@@ -1,500 +1,303 @@
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory)]
-  [string]$ExecutablePath,
-
-  [ValidateSet(
-    "control",
-    "control-static",
-    "control-geometry",
-    "control-scroll",
-    "control-layered",
-    "shell",
-    "chat",
-    "file",
-    "diff",
-    "explorer",
-    "source-control"
-  )]
-  [string]$Scenario = "chat",
-
-  [ValidateRange(1, 100)]
-  [int]$Launches = 5,
-
-  [ValidateRange(1, 60)]
-  [int]$WarmupSeconds = 8,
-
-  [ValidateRange(2, 60)]
-  [int]$SampleCount = 5,
-
-  [ValidateRange(100, 10000)]
-  [int]$SampleIntervalMs = 1000,
-
-  [ValidateRange(1, 120)]
-  [int]$WindowTimeoutSeconds = 20,
-
-  [ValidateRange(1, 100)]
-  [int]$InteractionIterations = 20,
-
-  [ValidateRange(0, 100)]
-  [int]$MaxLaunchAttempts = 0,
-
+  [Parameter(Mandatory)][string]$ExecutablePath,
+  [Parameter(Mandatory)][ValidateSet("chat", "explorer")][string]$Scenario,
+  [Parameter(Mandatory)][ValidatePattern("^[0-9a-fA-F]{64}$")][string]$ExpectedExecutableSha256,
+  [Parameter(Mandatory)][ValidatePattern("^[0-9a-fA-F]{64}$")][string]$ExpectedSourceAggregateSha256,
+  [Parameter(Mandatory)][string]$CandidateBindingPath,
+  [ValidateRange(1, 100)][int]$Launches = 5,
+  [ValidateRange(1, 60)][int]$WarmupSeconds = 8,
+  [ValidateRange(2, 60)][int]$SampleCount = 5,
+  [ValidateRange(100, 10000)][int]$SampleIntervalMs = 1000,
+  [ValidateRange(1, 120)][int]$WindowTimeoutSeconds = 20,
+  [ValidateRange(0, 100)][int]$MaxLaunchAttempts = 0,
+  [string]$NodePath = "node.exe",
   [string]$OutputDirectory = "",
-
-  [switch]$MeasureInteractions,
-
   [switch]$Acceptance
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-Import-Module (
-  Join-Path $PSScriptRoot "footprint/WindowsFootprint.psm1"
-) -Force
+Import-Module (Join-Path $PSScriptRoot "footprint/WindowsFootprint.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "footprint/ScenarioEvidence.psm1") -Force
 
-if (-not [IO.Path]::IsPathRooted($ExecutablePath)) {
-  throw "ExecutablePath must be an absolute path."
-}
-if (-not (Test-Path -LiteralPath $ExecutablePath -PathType Leaf)) {
-  throw "ExecutablePath does not exist: $ExecutablePath"
+if (-not [IO.Path]::IsPathRooted($ExecutablePath) -or -not (Test-Path -LiteralPath $ExecutablePath -PathType Leaf)) {
+  throw "ExecutablePath must identify an existing absolute file."
 }
 $resolvedExecutable = (Resolve-Path -LiteralPath $ExecutablePath).Path
-if ([IO.Path]::GetExtension($resolvedExecutable) -ne ".exe") {
-  throw "ExecutablePath must identify a Windows executable."
+if ([IO.Path]::GetExtension($resolvedExecutable) -ne ".exe") { throw "ExecutablePath must identify a Windows executable." }
+if ($Acceptance -and ($Launches -ne 5 -or $WarmupSeconds -ne 8 -or $SampleCount -ne 5 -or $SampleIntervalMs -ne 1000)) {
+  throw "Acceptance requires five launches, eight-second warm-up, and five one-second samples."
 }
+if ($Acceptance -and $MaxLaunchAttempts -gt 10) {
+  throw "Acceptance allows at most ten attempts to obtain five valid launches."
+}
+$nodeCommand = Get-Command $NodePath -CommandType Application -ErrorAction Stop
+$resolvedNode = $nodeCommand.Source
+$binding = Test-FootprintCandidateBinding $resolvedExecutable $ExpectedExecutableSha256 $ExpectedSourceAggregateSha256 $CandidateBindingPath
+Assert-FootprintDebugStateClear
+
+$existing = @(Get-CimInstance Win32_Process | Where-Object {
+  $_.ExecutablePath -and [string]::Equals([IO.Path]::GetFullPath([string]$_.ExecutablePath), $resolvedExecutable, [StringComparison]::OrdinalIgnoreCase)
+})
+if ($existing.Count -gt 0) { throw "The exact candidate is already running; acceptance requires a clean process boundary." }
 
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
   $workspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-  $stamp = [DateTime]::UtcNow.ToString("yyyyMMdd-HHmmss")
-  $OutputDirectory = Join-Path $workspaceRoot (
-    "local-evidence/windows-footprint/$stamp-$Scenario"
-  )
+  $OutputDirectory = Join-Path $workspaceRoot ("local-evidence/windows-footprint/{0}-{1}" -f [DateTime]::UtcNow.ToString("yyyyMMdd-HHmmss"), $Scenario)
 } elseif (-not [IO.Path]::IsPathRooted($OutputDirectory)) {
-  throw "OutputDirectory must be an absolute path."
+  throw "OutputDirectory must be absolute."
 }
-if ($Acceptance -and $Launches -lt 5) {
-  throw "Acceptance campaigns require at least five clean launches."
-}
-
-$debugEnvironmentNames = @(
-  "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-  "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER"
-)
-$savedEnvironment = @{}
-foreach ($name in $debugEnvironmentNames) {
-  $value = [Environment]::GetEnvironmentVariable($name, "Process")
-  $savedEnvironment[$name] = $value
-  if ($Acceptance -and -not [string]::IsNullOrWhiteSpace($value)) {
-    throw "Acceptance mode refuses the inherited $name variable."
-  }
-}
-
-$existing = @(
-  Get-CimInstance Win32_Process |
-    Where-Object {
-      $_.ExecutablePath -and
-      [string]::Equals(
-        [IO.Path]::GetFullPath([string]$_.ExecutablePath),
-        $resolvedExecutable,
-        [StringComparison]::OrdinalIgnoreCase
-      )
-    }
-)
-if ($existing.Count -gt 0) {
-  $ids = ($existing | ForEach-Object ProcessId) -join ", "
-  throw "The target executable is already running (PID $ids). Close it first."
-}
-
 [void](New-Item -ItemType Directory -Force -Path $OutputDirectory)
 $resolvedOutput = (Resolve-Path -LiteralPath $OutputDirectory).Path
-Write-Host "footprint: local raw output $resolvedOutput"
-$launchResults = @()
+$setupHelper = (Resolve-Path (Join-Path $PSScriptRoot "footprint/prepare-sage-scenario.mjs")).Path
+$debugNames = @("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER")
 $campaignTimer = [Diagnostics.Stopwatch]::StartNew()
-$maximumAttempts = if ($MaxLaunchAttempts -eq 0) {
-  $Launches + 5
-} else {
-  $MaxLaunchAttempts
-}
-if ($maximumAttempts -lt $Launches) {
-  throw "MaxLaunchAttempts cannot be less than Launches."
+
+function Get-AvailableLoopbackPort {
+  $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+  try { $listener.Start(); return ([Net.IPEndPoint]$listener.LocalEndpoint).Port } finally { $listener.Stop() }
 }
 
-try {
-  foreach ($name in $debugEnvironmentNames) {
-    [Environment]::SetEnvironmentVariable($name, $null, "Process")
-  }
+function Start-ExactFootprintProcess {
+  return Start-Process -FilePath $resolvedExecutable -WorkingDirectory (Split-Path -Parent $resolvedExecutable) -PassThru
+}
 
-  $attempt = 0
-  $validLaunchCount = 0
-  while (
-    $validLaunchCount -lt $Launches -and
-    $attempt -lt $maximumAttempts
-  ) {
-    $attempt += 1
-    $launchIndex = $validLaunchCount + 1
-    Write-Host (
-      "footprint: launch {0}/{1}, attempt {2}/{3} ({4})" -f
-      $launchIndex,
-      $Launches,
-      $attempt,
-      $maximumAttempts,
-      $Scenario
-    )
-
-    $process = $null
-    $rootIdentity = $null
-    $knownProcessIds = [Collections.Generic.HashSet[int]]::new()
-    $launch = [ordered]@{
-      launch = $launchIndex
-      attempt = $attempt
-      startedAtUtc = [DateTime]::UtcNow.ToString("o")
-      startupWindowMs = $null
-      webBounds = $null
-      scenarioSetup = $null
-      samples = @()
-      idleCpuPercentOneCore = $null
-      interaction = $null
-      processIdsSeen = @()
-      roleSet = @()
-      valid = $false
-      error = $null
-      errorTrace = $null
-      teardown = $null
+function Wait-ExactDebugListener {
+  param(
+    [Parameter(Mandatory)][int]$Port,
+    [Parameter(Mandatory)][int[]]$AllowedProcessIds,
+    [ValidateRange(1, 30)][int]$TimeoutSeconds = 10
+  )
+  $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+  do {
+    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)
+    if ($listeners.Count -gt 0) {
+      $owners = @($listeners | ForEach-Object OwningProcess | Sort-Object -Unique)
+      $foreign = @($owners | Where-Object { $_ -notin $AllowedProcessIds })
+      if ($foreign.Count -gt 0) { throw "Setup debug endpoint has a foreign owning PID." }
+      return $owners
     }
+    Start-Sleep -Milliseconds 100
+  } while ([DateTime]::UtcNow -lt $deadline)
+  throw "Setup debug endpoint did not bind to the exact candidate tree."
+}
 
+function Get-ExactRootIdentity {
+  param([Parameter(Mandatory)][int]$ProcessId)
+  for ($attempt = 1; $attempt -le 20; $attempt += 1) {
+    try { return Get-FootprintRootIdentity $ProcessId $resolvedExecutable } catch {
+      if ($attempt -eq 20) { throw }
+      Start-Sleep -Milliseconds 50
+    }
+  }
+}
+
+function Invoke-InstrumentedScenarioSetup {
+  $port = Get-AvailableLoopbackPort
+  $output = Join-Path $resolvedOutput "setup-semantic.json"
+  if (Test-Path -LiteralPath $output) { throw "Setup output already exists; use a fresh evidence directory." }
+  $process = $null
+  $identity = $null
+  $known = [Collections.Generic.HashSet[int]]::new()
+  try {
     try {
-      $process = Start-Process `
-        -FilePath $resolvedExecutable `
-        -WorkingDirectory (Split-Path -Parent $resolvedExecutable) `
-        -PassThru
-      [void]$knownProcessIds.Add($process.Id)
-      for ($identityAttempt = 1; $identityAttempt -le 20; $identityAttempt += 1) {
-        try {
-          $rootIdentity = Get-FootprintRootIdentity `
-            -RootProcessId $process.Id `
-            -ExpectedExecutablePath $resolvedExecutable
-          break
-        } catch {
-          if ($identityAttempt -eq 20) {
-            throw
-          }
-          Start-Sleep -Milliseconds 50
-        }
-      }
-
-      $window = Wait-FootprintWindow `
-        -ProcessId $process.Id `
-        -TimeoutSeconds $WindowTimeoutSeconds
-      $launch.startupWindowMs = $window.elapsedMs
-      $bounds = Get-FootprintWebBounds -WindowHandle $window.handle
-      $launch.webBounds = $bounds
-
-      # Allow the native bootstrap and first renderer navigation to finish
-      # before selecting the representative state.
-      Start-Sleep -Milliseconds 500
-      $launch.scenarioSetup = Invoke-FootprintScenario `
-        -Scenario $Scenario `
-        -WindowHandle $window.handle `
-        -Bounds $bounds
-      Start-Sleep -Seconds $WarmupSeconds
-
-      for ($sampleIndex = 1; $sampleIndex -le $SampleCount; $sampleIndex += 1) {
-        $sample = Get-FootprintTreeSample -RootProcessId $process.Id
-        foreach ($record in $sample.processes) {
-          [void]$knownProcessIds.Add([int]$record.processId)
-        }
-        $launch.samples += $sample
-        if ($sampleIndex -lt $SampleCount) {
-          Start-Sleep -Milliseconds $SampleIntervalMs
-        }
-      }
-
-      $firstSample = $launch.samples[0]
-      $lastSample = $launch.samples[$launch.samples.Count - 1]
-      $wallSeconds = (($launch.samples.Count - 1) * $SampleIntervalMs) / 1000
-      $cpuDelta = [Math]::Max(
-        0,
-        [double]$lastSample.coreCpuSeconds - [double]$firstSample.coreCpuSeconds
-      )
-      $launch.idleCpuPercentOneCore = if ($wallSeconds -gt 0) {
-        [Math]::Round(($cpuDelta / $wallSeconds) * 100, 6)
-      } else {
-        0.0
-      }
-
-      $unknown = @(
-        $launch.samples |
-          ForEach-Object processes |
-          Where-Object { $_.role -in @("unknown", "webview-unknown") }
-      )
-      $remoteDebug = @(
-        $launch.samples |
-          ForEach-Object processes |
-          Where-Object {
-            $_.commandLine -and
-            $_.commandLine -match "--remote-debugging-(?:port|pipe)"
-          }
-      )
-      if ($unknown.Count -gt 0) {
-        throw "Unclassified descendants were present in the acceptance tree."
-      }
-      if ($Acceptance -and $remoteDebug.Count -gt 0) {
-        throw "A WebView2 debugging endpoint was present in acceptance mode."
-      }
-
-      $screenshotPath = Join-Path $resolvedOutput (
-        "launch-{0:D2}-attempt-{1:D2}-{2}.png" -f
-        $launchIndex,
-        $attempt,
-        $Scenario
-      )
-      [SageFootprint.NativeMethods]::BringToFront($window.handle)
-      Save-FootprintScreenshot -Bounds $bounds -Path $screenshotPath
-
-      if ($MeasureInteractions -and $Scenario -ne "control") {
-        $launch.interaction = Invoke-FootprintInteractions `
-          -WindowHandle $window.handle `
-          -Bounds $bounds `
-          -Iterations $InteractionIterations
-      }
-
-      $launch.processIdsSeen = @($knownProcessIds | Sort-Object)
-      $launch.roleSet = @(
-        $launch.samples |
-          ForEach-Object processes |
-          ForEach-Object role |
-          Sort-Object -Unique
-      )
-      $launch.valid = $true
-    } catch {
-      $launch.error = $_.Exception.Message
-      $launch.errorTrace = $_.ScriptStackTrace
-      Write-Warning (
-        "Launch {0} failed: {1}`n{2}" -f
-        $launchIndex,
-        $launch.error,
-        $launch.errorTrace
-      )
+      [Environment]::SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--remote-debugging-port=$port", "Process")
+      [Environment]::SetEnvironmentVariable("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", $null, "Process")
+      $process = Start-ExactFootprintProcess
+      [void]$known.Add($process.Id)
+      $identity = Get-ExactRootIdentity $process.Id
     } finally {
-      if ($null -ne $rootIdentity) {
-        $launch.teardown = Stop-FootprintTree `
-          -RootIdentity $rootIdentity `
-          -KnownProcessIds $knownProcessIds
-      } elseif ($null -ne $process -and $process.MainWindowHandle -ne [IntPtr]::Zero) {
-        [void]$process.CloseMainWindow()
-        $launch.teardown = [ordered]@{
-          forced = $false
-          identityLost = $true
-          candidates = @()
-          remaining = @()
-        }
-      }
-      $launch.finishedAtUtc = [DateTime]::UtcNow.ToString("o")
-      $launchResults += $launch
+      foreach ($name in $debugNames) { [Environment]::SetEnvironmentVariable($name, $null, "Process") }
     }
-
-    if ($launch.valid) {
-      $validLaunchCount += 1
-    } else {
-      $failedPath = Join-Path $resolvedOutput (
-        "failed-attempt-{0:D2}.json" -f $attempt
-      )
-      $launch | ConvertTo-Json -Depth 12 |
-        Set-Content -LiteralPath $failedPath -Encoding UTF8
+    $window = Wait-FootprintWindow $process.Id $WindowTimeoutSeconds
+    Start-Sleep -Milliseconds 500
+    $tree = Get-FootprintTreeSample $process.Id
+    if ($tree.unknownProcessCount -ne 0) { throw "Setup process tree contains an unknown descendant." }
+    $debugRows = @($tree.processes | Where-Object { $_.commandLine -and $_.commandLine -match "--remote-debugging-port=$port(?:\s|$)" })
+    if ($debugRows.Count -lt 1) { throw "Setup endpoint was not bound to the exact candidate process tree." }
+    $treeProcessIds = @($tree.processes | ForEach-Object processId)
+    $debugOwnerProcessIds = @(Wait-ExactDebugListener $port $treeProcessIds)
+    & $resolvedNode $setupHelper $port $Scenario $output
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $output -PathType Leaf)) { throw "Semantic CDP setup failed." }
+    $semantic = Get-Content -LiteralPath $output -Raw | ConvertFrom-Json
+    $verifiedTree = Get-FootprintTreeSample $process.Id
+    if ($verifiedTree.unknownProcessCount -ne 0) { throw "Verified setup tree contains an unknown descendant." }
+    return [ordered]@{
+      scenario = $Scenario
+      executed = [bool]$semantic.executed
+      semanticVerified = [bool]$semantic.semanticVerified
+      processId = $process.Id
+      title = $window.title
+      origin = [string]$semantic.origin
+      executablePath = $resolvedExecutable
+      executableSha256 = $binding.executableSha256
+      sourceAggregateSha256 = $binding.sourceAggregateSha256
+      loopbackPort = $port
+      targetId = [string]$semantic.targetId
+      debugOwnerProcessIds = $debugOwnerProcessIds
+      chatCenterCount = [int]$semantic.chatCenterCount
+      explorerSidebarCount = [int]$semantic.explorerSidebarCount
+      processTree = $tree
+      verifiedProcessTree = $verifiedTree
     }
-  }
-
-  if ($validLaunchCount -lt $Launches) {
-    throw (
-      "Only $validLaunchCount of $Launches required launches succeeded " +
-      "within $maximumAttempts attempts."
-    )
-  }
-} finally {
-  foreach ($name in $debugEnvironmentNames) {
-    [Environment]::SetEnvironmentVariable(
-      $name,
-      $savedEnvironment[$name],
-      "Process"
-    )
+  } finally {
+    if ($null -ne $identity) {
+      $teardown = Stop-FootprintTree $identity $known
+      if ($teardown.identityLost -or $teardown.remaining.Count -ne 0) { throw "Instrumented setup teardown was incomplete or ambiguous." }
+    }
+    Assert-FootprintDebugStateClear
   }
 }
 
-$validLaunches = @($launchResults | Where-Object valid)
-$privatePerLaunch = @(
-  $validLaunches |
-    ForEach-Object {
-      Get-FootprintMedian -Values @(
-        $_.samples | ForEach-Object { [double]$_.corePrivateBytes }
-      )
+$setup = Invoke-InstrumentedScenarioSetup
+Assert-FootprintDebugStateClear
+$remainingSetupProcesses = @(Get-CimInstance Win32_Process | Where-Object {
+  $_.ExecutablePath -and [string]::Equals([IO.Path]::GetFullPath([string]$_.ExecutablePath), $resolvedExecutable, [StringComparison]::OrdinalIgnoreCase)
+})
+if ($remainingSetupProcesses.Count -gt 0) { throw "The instrumented setup process tree did not terminate completely." }
+$setupPid = [int]$setup.processId
+$launchResults = @()
+$maximumAttempts = if ($MaxLaunchAttempts -eq 0) { $Launches + 5 } else { $MaxLaunchAttempts }
+if ($maximumAttempts -lt $Launches) { throw "MaxLaunchAttempts cannot be less than Launches." }
+$attempt = 0
+$validCount = 0
+
+while ($validCount -lt $Launches -and $attempt -lt $maximumAttempts) {
+  $attempt += 1
+  $process = $null
+  $identity = $null
+  $known = [Collections.Generic.HashSet[int]]::new()
+  $launch = [ordered]@{
+    launch = $validCount + 1
+    attempt = $attempt
+    startedAtUtc = [DateTime]::UtcNow.ToString("o")
+    rootIdentity = $null
+    startupWindowMs = $null
+    scenarioEvidence = $null
+    postSampleScenarioEvidence = $null
+    samples = @()
+    idleCpuPercentOneCore = $null
+    processIdsSeen = @()
+    roleSet = @()
+    valid = $false
+    error = $null
+    teardown = $null
+  }
+  try {
+    Assert-FootprintDebugStateClear
+    $process = Start-ExactFootprintProcess
+    if ($process.Id -eq $setupPid) { throw "Measured process reused the setup PID." }
+    [void]$known.Add($process.Id)
+    $identity = Get-ExactRootIdentity $process.Id
+    $launch.rootIdentity = $identity
+    $window = Wait-FootprintWindow $process.Id $WindowTimeoutSeconds
+    $launch.startupWindowMs = $window.elapsedMs
+    $launch.scenarioEvidence = Wait-FootprintScenarioUiaEvidence $window.handle $process.Id $Scenario
+    Start-Sleep -Seconds $WarmupSeconds
+    for ($sampleIndex = 1; $sampleIndex -le $SampleCount; $sampleIndex += 1) {
+      $sample = Get-FootprintTreeSample $process.Id
+      foreach ($record in $sample.processes) { [void]$known.Add([int]$record.processId) }
+      if ($sample.unknownProcessCount -ne 0) { throw "Measured tree contains an unknown descendant." }
+      Assert-FootprintDebugStateClear @($sample.processes)
+      $launch.samples += $sample
+      if ($sampleIndex -lt $SampleCount) { Start-Sleep -Milliseconds $SampleIntervalMs }
     }
-)
-$workingSetPerLaunch = @(
-  $validLaunches |
-    ForEach-Object {
-      Get-FootprintMedian -Values @(
-        $_.samples | ForEach-Object { [double]$_.coreWorkingSetBytes }
-      )
+    $first = $launch.samples[0]
+    $last = $launch.samples[$launch.samples.Count - 1]
+    $wallSeconds = (($launch.samples.Count - 1) * $SampleIntervalMs) / 1000
+    $launch.idleCpuPercentOneCore = Get-FootprintCpuPercent $first.coreCpuSeconds $last.coreCpuSeconds $wallSeconds
+    $launch.postSampleScenarioEvidence = Wait-FootprintScenarioUiaEvidence $window.handle $process.Id $Scenario
+    [void](Assert-FootprintScenarioAcceptance $Scenario $setup $launch.postSampleScenarioEvidence @($launch.samples) $resolvedExecutable $binding.executableSha256 $binding.sourceAggregateSha256)
+    $launch.processIdsSeen = @($known | Sort-Object)
+    $launch.roleSet = @($launch.samples | ForEach-Object processes | ForEach-Object role | Sort-Object -Unique)
+    $launch.valid = $true
+  } catch {
+    $launch.error = $_.Exception.Message
+    $launch.errorTrace = $_.ScriptStackTrace
+  } finally {
+    if ($null -ne $identity) {
+      $launch.teardown = Stop-FootprintTree $identity $known
+      if ($launch.teardown.identityLost -or $launch.teardown.remaining.Count -ne 0) {
+        $launch.valid = $false
+        $launch.error = "Measured teardown was incomplete or ambiguous."
+      }
     }
-)
-$cpuPerLaunch = @(
-  $validLaunches | ForEach-Object { [double]$_.idleCpuPercentOneCore }
-)
-$startupPerLaunch = @(
-  $validLaunches | ForEach-Object { [double]$_.startupWindowMs }
-)
-$inputValues = @(
-  $validLaunches |
-    Where-Object { $null -ne $_.interaction } |
-    ForEach-Object { $_.interaction.inputToPaintMs }
-)
-$tabValues = @(
-  $validLaunches |
-    Where-Object { $null -ne $_.interaction } |
-    ForEach-Object { $_.interaction.tabSwitchMs }
-)
-$roles = @(
-  $validLaunches |
-    ForEach-Object samples |
-    ForEach-Object processes |
-    ForEach-Object role |
-    Sort-Object -Unique
-)
+    $launch.finishedAtUtc = [DateTime]::UtcNow.ToString("o")
+    $launchResults += $launch
+  }
+  if ($launch.valid) { $validCount += 1 } else {
+    $launch | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $resolvedOutput ("failed-attempt-{0:D2}.json" -f $attempt)) -Encoding UTF8
+  }
+}
+if ($validCount -ne $Launches) { throw "Only $validCount of $Launches required measured launches passed." }
+
+$valid = @($launchResults | Where-Object valid)
+$private = @($valid | ForEach-Object { Get-FootprintMedian @($_.samples | ForEach-Object corePrivateBytes) })
+$working = @($valid | ForEach-Object { Get-FootprintMedian @($_.samples | ForEach-Object coreWorkingSetBytes) })
+$cpu = @($valid | ForEach-Object idleCpuPercentOneCore)
+$startup = @($valid | ForEach-Object startupWindowMs)
+$roles = @($valid | ForEach-Object samples | ForEach-Object processes | Where-Object coreIncluded | ForEach-Object role | Sort-Object -Unique)
 $roleStatistics = [ordered]@{}
 foreach ($role in $roles) {
-  $rolePrivatePerLaunch = @()
-  $roleWorkingSetPerLaunch = @()
-  foreach ($launch in $validLaunches) {
-    $privateSamples = @()
-    $workingSetSamples = @()
-    foreach ($sample in $launch.samples) {
-      $roleProcesses = @($sample.processes | Where-Object { $_.role -eq $role })
-      $privateSamples += [double](
-        ($roleProcesses | ForEach-Object privateBytes | Measure-Object -Sum).Sum
-      )
-      $workingSetSamples += [double](
-        ($roleProcesses | ForEach-Object workingSetBytes | Measure-Object -Sum).Sum
-      )
-    }
-    $rolePrivatePerLaunch += Get-FootprintMedian $privateSamples
-    $roleWorkingSetPerLaunch += Get-FootprintMedian $workingSetSamples
+  $rolePrivate = @()
+  $roleWorking = @()
+  foreach ($launch in $valid) {
+    $rolePrivate += Get-FootprintMedian @($launch.samples | ForEach-Object {
+      [long](($_.processes | Where-Object role -eq $role | Measure-Object privateBytes -Sum).Sum)
+    })
+    $roleWorking += Get-FootprintMedian @($launch.samples | ForEach-Object {
+      [long](($_.processes | Where-Object role -eq $role | Measure-Object workingSetBytes -Sum).Sum)
+    })
   }
   $roleStatistics[$role] = [ordered]@{
-    privateBytes = [ordered]@{
-      perLaunchMedian = $rolePrivatePerLaunch
-      median = Get-FootprintMedian $rolePrivatePerLaunch
-      p95 = Get-FootprintPercentile $rolePrivatePerLaunch 0.95
-    }
-    workingSetBytes = [ordered]@{
-      perLaunchMedian = $roleWorkingSetPerLaunch
-      median = Get-FootprintMedian $roleWorkingSetPerLaunch
-      p95 = Get-FootprintPercentile $roleWorkingSetPerLaunch 0.95
-    }
+    privateBytes = [ordered]@{ perLaunchMedian = $rolePrivate; median = Get-FootprintMedian $rolePrivate; p95 = Get-FootprintPercentile $rolePrivate 0.95 }
+    workingSetBytes = [ordered]@{ perLaunchMedian = $roleWorking; median = Get-FootprintMedian $roleWorking; p95 = Get-FootprintPercentile $roleWorking 0.95 }
   }
 }
-$webViewPaths = @(
-  $validLaunches |
-    ForEach-Object samples |
-    ForEach-Object processes |
-    Where-Object { $_.name -eq "msedgewebview2.exe" -and $_.executablePath } |
-    ForEach-Object executablePath |
-    Sort-Object -Unique
-)
-$webViewVersions = @(
-  foreach ($path in $webViewPaths) {
-    $item = Get-Item -LiteralPath $path -ErrorAction SilentlyContinue
-    [ordered]@{
-      path = $path
-      fileVersion = if ($null -ne $item) {
-        $item.VersionInfo.FileVersion
-      } else {
-        $null
-      }
-      productVersion = if ($null -ne $item) {
-        $item.VersionInfo.ProductVersion
-      } else {
-        $null
-      }
-    }
+$webViewPaths = @($valid | ForEach-Object samples | ForEach-Object processes | Where-Object { $_.name -eq "msedgewebview2.exe" } | ForEach-Object executablePath | Where-Object { $_ } | Sort-Object -Unique)
+$webViewVersions = @($webViewPaths | ForEach-Object {
+  $item = Get-Item -LiteralPath $_ -ErrorAction SilentlyContinue
+  [ordered]@{
+    path = $_
+    fileVersion = if ($item) { $item.VersionInfo.FileVersion } else { $null }
+    productVersion = if ($item) { $item.VersionInfo.ProductVersion } else { $null }
   }
-)
-
+})
 $summary = [ordered]@{
-  schemaVersion = 1
+  schemaVersion = 2
   generatedAtUtc = [DateTime]::UtcNow.ToString("o")
+  candidate = $binding
   executablePath = $resolvedExecutable
   executableBytes = (Get-Item -LiteralPath $resolvedExecutable).Length
-  executableSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedExecutable).Hash
+  executableSha256 = $binding.executableSha256
   scenario = $Scenario
   acceptance = [bool]$Acceptance
-  validLaunches = $validLaunches.Count
+  setupProcessId = $setupPid
+  validLaunches = $valid.Count
   requestedLaunches = $Launches
   launchAttempts = $launchResults.Count
   maximumLaunchAttempts = $maximumAttempts
   warmupSeconds = $WarmupSeconds
   sampleCount = $SampleCount
   sampleIntervalMs = $SampleIntervalMs
-  processBoundary = "launched root plus descendants by Windows parent PID"
+  processBoundary = "exact launched root plus classified Windows descendants"
   primaryMetric = "summed core private bytes"
-  coreRoles = @(
-    "native-host",
-    "browser",
-    "renderer",
-    "gpu",
-    "utility-network",
-    "utility-storage",
-    "utility-other",
-    "crashpad"
-  )
+  coreRoles = @("native-host", "browser", "renderer", "gpu", "utility-network", "utility-storage", "utility-other", "crashpad")
   excludedRoles = @("excluded-child")
-  privateBytes = [ordered]@{
-    perLaunchMedian = $privatePerLaunch
-    median = Get-FootprintMedian $privatePerLaunch
-    p95 = Get-FootprintPercentile $privatePerLaunch 0.95
-  }
-  workingSetBytes = [ordered]@{
-    perLaunchMedian = $workingSetPerLaunch
-    median = Get-FootprintMedian $workingSetPerLaunch
-    p95 = Get-FootprintPercentile $workingSetPerLaunch 0.95
-  }
-  idleCpuPercentOneCore = [ordered]@{
-    perLaunch = $cpuPerLaunch
-    median = Get-FootprintMedian $cpuPerLaunch
-    p95 = Get-FootprintPercentile $cpuPerLaunch 0.95
-  }
-  startupWindowMs = [ordered]@{
-    perLaunch = $startupPerLaunch
-    median = Get-FootprintMedian $startupPerLaunch
-    p95 = Get-FootprintPercentile $startupPerLaunch 0.95
-  }
-  inputToPaintMs = if ($inputValues.Count -gt 0) {
-    [ordered]@{
-      samples = $inputValues.Count
-      median = Get-FootprintMedian $inputValues
-      p95 = Get-FootprintPercentile $inputValues 0.95
-    }
-  } else {
-    $null
-  }
-  tabSwitchMs = if ($tabValues.Count -gt 0) {
-    [ordered]@{
-      samples = $tabValues.Count
-      median = Get-FootprintMedian $tabValues
-      p95 = Get-FootprintPercentile $tabValues 0.95
-    }
-  } else {
-    $null
-  }
+  privateBytes = [ordered]@{ perLaunchMedian = $private; median = Get-FootprintMedian $private; p95 = Get-FootprintPercentile $private 0.95 }
+  workingSetBytes = [ordered]@{ perLaunchMedian = $working; median = Get-FootprintMedian $working; p95 = Get-FootprintPercentile $working 0.95 }
+  idleCpuPercentOneCore = [ordered]@{ perLaunch = $cpu; median = Get-FootprintMedian $cpu; p95 = Get-FootprintPercentile $cpu 0.95 }
+  startupWindowMs = [ordered]@{ perLaunch = $startup; median = Get-FootprintMedian $startup; p95 = Get-FootprintPercentile $startup 0.95 }
   roleStatistics = $roleStatistics
-  webView2 = $webViewVersions
-  roleSets = @($validLaunches | ForEach-Object roleSet)
+  webView2 = [ordered]@{ executablePaths = $webViewPaths; fileVersions = $webViewVersions }
+  roleSets = @($valid | ForEach-Object roleSet)
   elapsedSeconds = [Math]::Round($campaignTimer.Elapsed.TotalSeconds, 3)
 }
-
 $operatingSystem = Get-CimInstance Win32_OperatingSystem
 $raw = [ordered]@{
-  schemaVersion = 1
+  schemaVersion = 2
   generatedAtUtc = $summary.generatedAtUtc
   machine = [ordered]@{
     computerName = $env:COMPUTERNAME
@@ -505,19 +308,12 @@ $raw = [ordered]@{
     powershell = $PSVersionTable.PSVersion.ToString()
   }
   harness = [ordered]@{
-    scriptSha256 = (
-      Get-FileHash -Algorithm SHA256 -LiteralPath $PSCommandPath
-    ).Hash
-    moduleSha256 = (
-      Get-FileHash `
-        -Algorithm SHA256 `
-        -LiteralPath (
-          Join-Path $PSScriptRoot "footprint/WindowsFootprint.psm1"
-        )
-    ).Hash
+    scriptSha256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
+    processModuleSha256 = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot "footprint/WindowsFootprint.psm1") -Algorithm SHA256).Hash
+    scenarioModuleSha256 = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot "footprint/ScenarioEvidence.psm1") -Algorithm SHA256).Hash
+    setupHelperSha256 = (Get-FileHash -LiteralPath $setupHelper -Algorithm SHA256).Hash
   }
   configuration = [ordered]@{
-    executablePath = $resolvedExecutable
     scenario = $Scenario
     launches = $Launches
     maximumLaunchAttempts = $maximumAttempts
@@ -525,40 +321,27 @@ $raw = [ordered]@{
     sampleCount = $SampleCount
     sampleIntervalMs = $SampleIntervalMs
     acceptance = [bool]$Acceptance
-    measureInteractions = [bool]$MeasureInteractions
-    interactionIterations = $InteractionIterations
   }
+  candidate = $binding
+  setup = $setup
   launches = $launchResults
 }
-
-$rawPath = Join-Path $resolvedOutput "raw.json"
-$summaryPath = Join-Path $resolvedOutput "summary.json"
-$markdownPath = Join-Path $resolvedOutput "summary.md"
-$raw | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $rawPath -Encoding UTF8
-$summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding UTF8
-
-$privateMiB = [double]$summary.privateBytes.median / 1MB
-$privateP95MiB = [double]$summary.privateBytes.p95 / 1MB
-$workingSetMiB = [double]$summary.workingSetBytes.median / 1MB
+$raw | ConvertTo-Json -Depth 14 | Set-Content -LiteralPath (Join-Path $resolvedOutput "raw.json") -Encoding UTF8
+$summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $resolvedOutput "summary.json") -Encoding UTF8
 $markdown = @"
 # Windows footprint summary
 
-- Executable: ``$resolvedExecutable``
+- Executable SHA-256: ``$($binding.executableSha256)``
+- Source aggregate: ``$($binding.sourceAggregateSha256)``
 - Scenario: ``$Scenario``
-- Clean launches: $($summary.validLaunches)
-- Core private bytes median: $([Math]::Round($privateMiB, 3)) MiB
-- Core private bytes P95: $([Math]::Round($privateP95MiB, 3)) MiB
-- Summed working set median: $([Math]::Round($workingSetMiB, 3)) MiB
-- Idle CPU median: $($summary.idleCpuPercentOneCore.median)% of one core
+- Setup process: ``$setupPid``; measured launches: $($summary.validLaunches)
+- Core private bytes P50/P95: $($summary.privateBytes.median) / $($summary.privateBytes.p95)
+- Working set P50/P95: $($summary.workingSetBytes.median) / $($summary.workingSetBytes.p95)
+- Idle CPU P50/P95: $($summary.idleCpuPercentOneCore.median)% / $($summary.idleCpuPercentOneCore.p95)% of one core
 - Launch-to-window P50/P95: $($summary.startupWindowMs.median) / $($summary.startupWindowMs.p95) ms
-- Input-to-paint: $(if ($null -eq $summary.inputToPaintMs) { "not measured" } else { "$($summary.inputToPaintMs.median) / $($summary.inputToPaintMs.p95) ms P50/P95" })
-- Tab switch: $(if ($null -eq $summary.tabSwitchMs) { "not measured" } else { "$($summary.tabSwitchMs.median) / $($summary.tabSwitchMs.p95) ms P50/P95" })
 
-Private bytes are the primary ownership signal. Summed working set is retained
-for observation and may double-count shared WebView2 pages.
+The instrumented setup process is excluded from measurement. Every measured
+launch is uninstrumented and proves the scenario through exact-PID UI Automation.
 "@
-$markdown | Set-Content -LiteralPath $markdownPath -Encoding UTF8
-
-Write-Host "footprint: raw $rawPath"
-Write-Host "footprint: summary $summaryPath"
+$markdown | Set-Content -LiteralPath (Join-Path $resolvedOutput "summary.md") -Encoding UTF8
 $summary | ConvertTo-Json -Depth 8

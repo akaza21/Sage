@@ -49,14 +49,7 @@ function Get-FootprintMedianCompat {
 }
 
 $control = Read-JsonFile (Join-Path $ControlDirectory "summary.json")
-$scenarios = @(
-  "shell",
-  "chat",
-  "file",
-  "diff",
-  "explorer",
-  "source-control"
-)
+$scenarios = @("chat", "explorer")
 $scenarioResults = @()
 
 foreach ($scenario in $scenarios) {

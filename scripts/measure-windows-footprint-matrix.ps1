@@ -3,6 +3,17 @@ param(
   [Parameter(Mandatory)]
   [string]$ExecutablePath,
 
+  [Parameter(Mandatory)]
+  [ValidatePattern("^[0-9a-fA-F]{64}$")]
+  [string]$ExpectedExecutableSha256,
+
+  [Parameter(Mandatory)]
+  [ValidatePattern("^[0-9a-fA-F]{64}$")]
+  [string]$ExpectedSourceAggregateSha256,
+
+  [Parameter(Mandatory)]
+  [string]$CandidateBindingPath,
+
   [string]$OutputDirectory = "",
 
   [ValidateRange(1, 100)]
@@ -16,9 +27,6 @@ param(
 
   [ValidateRange(100, 10000)]
   [int]$SampleIntervalMs = 1000,
-
-  [ValidateRange(1, 100)]
-  [int]$InteractionIterations = 20,
 
   [switch]$Acceptance
 )
@@ -41,14 +49,7 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 Write-Host "footprint matrix: local raw output $OutputDirectory"
 
 $measure = Join-Path $PSScriptRoot "measure-windows-footprint.ps1"
-$scenarios = @(
-  "shell",
-  "chat",
-  "file",
-  "diff",
-  "explorer",
-  "source-control"
-)
+$scenarios = @("chat", "explorer")
 
 foreach ($scenario in $scenarios) {
   $scenarioOutput = Join-Path $OutputDirectory $scenario
@@ -62,6 +63,12 @@ foreach ($scenario in $scenarios) {
     $ExecutablePath,
     "-Scenario",
     $scenario,
+    "-ExpectedExecutableSha256",
+    $ExpectedExecutableSha256,
+    "-ExpectedSourceAggregateSha256",
+    $ExpectedSourceAggregateSha256,
+    "-CandidateBindingPath",
+    $CandidateBindingPath,
     "-Launches",
     $Launches,
     "-WarmupSeconds",
@@ -70,18 +77,12 @@ foreach ($scenario in $scenarios) {
     $SampleCount,
     "-SampleIntervalMs",
     $SampleIntervalMs,
-    "-InteractionIterations",
-    $InteractionIterations,
     "-OutputDirectory",
     $scenarioOutput
   )
   if ($Acceptance) {
     $arguments += "-Acceptance"
   }
-  if ($scenario -eq "chat") {
-    $arguments += "-MeasureInteractions"
-  }
-
   Write-Host "footprint matrix: starting $scenario"
   $scenarioLog = Join-Path $scenarioOutput "campaign-console.log"
   [void](New-Item -ItemType Directory -Force -Path $scenarioOutput)
