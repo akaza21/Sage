@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+target
+src-tauri/target
+package-lock.json
+*.md
+work
+local-evidence
+tools/footprint-control/gen

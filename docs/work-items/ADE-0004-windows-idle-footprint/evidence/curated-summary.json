@@ -1,0 +1,248 @@
+{
+  "schemaVersion": 1,
+  "sanitized": true,
+  "rawEvidence": {
+    "location": "%WORKSPACE%\\local-evidence\\ADE-0004-windows-idle-footprint\\raw-20260730",
+    "gitignored": true,
+    "fileCount": 284,
+    "bytes": 28673763
+  },
+  "measurement": {
+    "platform": "windows",
+    "webView2Version": "150.0.4078.65",
+    "primaryMetric": "summed_private_bytes_for_launched_process_tree",
+    "launchesPerCampaign": 5,
+    "warmupSeconds": 8,
+    "samplesPerLaunch": 5
+  },
+  "artifacts": {
+    "before": {
+      "frontendBytes": 1398873,
+      "sourceMapBytes": 1121206,
+      "executableBytes": 5737472,
+      "installerBytes": 2150179
+    },
+    "final": {
+      "frontendBytes": 277538,
+      "sourceMapBytes": 0,
+      "executableBytes": 4740608,
+      "executableSha256": "4132B0C672DB435A27F4276364B0764AD80651B5B034C06E7C089A2D779ADF41",
+      "installerBytes": 1754210,
+      "installerSha256": "E4625B1D74162E562956080F6AD14AC61E6B51834A9F8BF06DCB13268CDABEAD"
+    }
+  },
+  "control": {
+    "executableBytes": 3208192,
+    "executableSha256": "212F6E90C168EC484F2173D9D56421DB1227FB22F0A3F377757EFE529C7228C9",
+    "privateMiB": {
+      "median": 180.762,
+      "p95": 183.609
+    },
+    "workingSetMiB": {
+      "median": 387.211,
+      "p95": 392.992
+    },
+    "startupWindowMs": {
+      "median": 53.334,
+      "p95": 54.458
+    },
+    "gpuPrivateMiB": {
+      "median": 83.129,
+      "p95": 84.215
+    }
+  },
+  "states": [
+    {
+      "name": "shell",
+      "class": "idle",
+      "privateMiB": {
+        "median": 236.117,
+        "p95": 237.555
+      },
+      "overControlMiB": {
+        "median": 55.355,
+        "p95": 53.946
+      },
+      "gpuPrivateMedianMiB": 126.262,
+      "rendererPrivateMedianMiB": 34.762,
+      "startupWindowP95Ms": 62.338,
+      "idleCpuP95Percent": 0
+    },
+    {
+      "name": "chat",
+      "class": "idle",
+      "privateMiB": {
+        "median": 236.324,
+        "p95": 238.137
+      },
+      "overControlMiB": {
+        "median": 55.562,
+        "p95": 54.528
+      },
+      "gpuPrivateMedianMiB": 126.523,
+      "rendererPrivateMedianMiB": 33.781,
+      "startupWindowP95Ms": 64.267,
+      "idleCpuP95Percent": 0
+    },
+    {
+      "name": "explorer",
+      "class": "idle",
+      "privateMiB": {
+        "median": 234.566,
+        "p95": 235.113
+      },
+      "overControlMiB": {
+        "median": 53.805,
+        "p95": 51.504
+      },
+      "gpuPrivateMedianMiB": 126.469,
+      "rendererPrivateMedianMiB": 33.207,
+      "startupWindowP95Ms": 60.021,
+      "idleCpuP95Percent": 0
+    },
+    {
+      "name": "file",
+      "class": "active",
+      "privateMiB": {
+        "median": 241.859,
+        "p95": 243.672
+      },
+      "overControlMiB": {
+        "median": 61.098,
+        "p95": 60.063
+      },
+      "gpuPrivateMedianMiB": 126.902,
+      "rendererPrivateMedianMiB": 38.449,
+      "startupWindowP95Ms": 57.422,
+      "idleCpuP95Percent": 0
+    },
+    {
+      "name": "diff",
+      "class": "active",
+      "privateMiB": {
+        "median": 248.496,
+        "p95": 250.801
+      },
+      "overControlMiB": {
+        "median": 67.734,
+        "p95": 67.192
+      },
+      "gpuPrivateMedianMiB": 126.734,
+      "rendererPrivateMedianMiB": 44.352,
+      "startupWindowP95Ms": 57.581,
+      "idleCpuP95Percent": 0
+    },
+    {
+      "name": "source-control",
+      "class": "active",
+      "privateMiB": {
+        "median": 247.992,
+        "p95": 249.648
+      },
+      "overControlMiB": {
+        "median": 67.23,
+        "p95": 66.039
+      },
+      "gpuPrivateMedianMiB": 126.297,
+      "rendererPrivateMedianMiB": 43.934,
+      "startupWindowP95Ms": 58.446,
+      "idleCpuP95Percent": 0
+    }
+  ],
+  "interaction": {
+    "chat": {
+      "inputToPaintMs": {
+        "median": 34.718,
+        "p95": 48.548
+      },
+      "tabSwitchMs": {
+        "median": 40.415,
+        "p95": 56.549
+      }
+    }
+  },
+  "gpuAttribution": [
+    {
+      "state": "static",
+      "privateMedianMiB": 196.852,
+      "privateP95MiB": 197.945,
+      "gpuMedianMiB": 98.641,
+      "gpuP95MiB": 99.09
+    },
+    {
+      "state": "geometry",
+      "privateMedianMiB": 204.949,
+      "privateP95MiB": 206.645,
+      "gpuMedianMiB": 105.527,
+      "gpuP95MiB": 105.922
+    },
+    {
+      "state": "scroll",
+      "privateMedianMiB": 234.922,
+      "privateP95MiB": 235.602,
+      "gpuMedianMiB": 132.012,
+      "gpuP95MiB": 133.578
+    },
+    {
+      "state": "layered",
+      "privateMedianMiB": 245.176,
+      "privateP95MiB": 248.246,
+      "gpuMedianMiB": 143.098,
+      "gpuP95MiB": 143.812
+    }
+  ],
+  "runtimeComparison": {
+    "before": {
+      "chatPrivateMedianMiB": 235.027,
+      "chatPrivateP95MiB": 238.219,
+      "startupP95Ms": 61.396,
+      "inputP95Ms": 50.132,
+      "tabP95Ms": 55.102,
+      "idleCpuP95Percent": 0
+    },
+    "final": {
+      "chatPrivateMedianMiB": 236.324,
+      "chatPrivateP95MiB": 238.137,
+      "startupP95Ms": 64.267,
+      "inputP95Ms": 48.548,
+      "tabP95Ms": 56.549,
+      "idleCpuP95Percent": 0
+    }
+  },
+  "nativeBenchmarks": {
+    "atomicSave1MiB": {
+      "iterations": 20,
+      "p50Ms": 30.422,
+      "p95Ms": 34.11,
+      "maxMs": 40.959
+    },
+    "sha2561MiB": {
+      "iterations": 200,
+      "p50Ms": 2.106,
+      "p95Ms": 2.164,
+      "maxMs": 2.301
+    },
+    "sqliteGrowth": {
+      "oneBuffer": {
+        "databaseBytes": 4096,
+        "walBytes": 292552
+      },
+      "sixteenBuffers": {
+        "databaseBytes": 811008,
+        "walBytes": 1124792
+      },
+      "repeated100Revisions": {
+        "databaseBytes": 1204224,
+        "walBytes": 1124792
+      }
+    }
+  },
+  "packagedEditor": {
+    "restartRecovered": true,
+    "discardRestoredOriginalHash": true,
+    "saveRefreshedExplorerAndSourceControl": true,
+    "finalDirtyBufferRows": 0,
+    "orphanTempFiles": 0,
+    "liveWalDeltaBytes": 24720
+  }
+}

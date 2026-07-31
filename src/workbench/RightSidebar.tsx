@@ -1,0 +1,289 @@
+import {
+  Braces,
+  ChevronRight,
+  FileCode2,
+  FileSearch,
+  Files,
+  Folder,
+  GitBranch,
+  Link2,
+  ListChecks,
+  RefreshCw,
+} from "lucide-react";
+import { useEffect, useRef } from "react";
+
+import type { SidebarView } from "../app/store";
+import { useWorkbenchStore } from "../app/store";
+import {
+  childResource,
+  resourceKey,
+  sameResource,
+} from "../domain/resourceIdentity";
+import type {
+  FileChange,
+  GitFileState,
+  ProjectRootSummary,
+} from "../domain/workbench";
+import { flattenFileTree } from "../features/files/fileTree";
+
+const views: Array<{
+  id: SidebarView;
+  label: string;
+  icon: typeof Files;
+}> = [
+  { id: "explorer", label: "Explorer", icon: Files },
+  { id: "search", label: "Search", icon: FileSearch },
+  { id: "sourceControl", label: "Source Control", icon: GitBranch },
+  { id: "problems", label: "Problems", icon: ListChecks },
+  { id: "outline", label: "Outline", icon: Braces },
+];
+
+function RootTree({ root }: { root: ProjectRootSummary }) {
+  const selected = useWorkbenchStore((state) => state.selectedResource);
+  const listings = useWorkbenchStore((state) => state.directoryListings);
+  const expanded = useWorkbenchStore((state) => state.expandedDirectories);
+  const toggleDirectory = useWorkbenchStore((state) => state.toggleDirectory);
+  const openFile = useWorkbenchStore((state) => state.openFile);
+  const selectRoot = useWorkbenchStore((state) => state.selectRoot);
+  const selectedRow = useRef<HTMLButtonElement>(null);
+  const rootResource = childResource(root.id);
+  const tree = flattenFileTree(rootResource, listings, expanded);
+  const listing = listings[resourceKey(rootResource)];
+
+  useEffect(() => {
+    selectedRow.current?.scrollIntoView({ block: "nearest" });
+  }, [selected, tree.entries.length]);
+
+  return (
+    <section className="root-tree">
+      <button
+        className="root-tree__heading"
+        type="button"
+        onClick={() => selectRoot(root.id)}
+      >
+        <Folder size={14} aria-hidden="true" />
+        <span>{root.name}</span>
+        <span className={`root-state root-state--${root.availability}`}>
+          {root.availability === "available" ? "" : root.availability}
+        </span>
+      </button>
+      {root.availability !== "available" ? (
+        <p className="sidebar__empty">{root.message ?? "Root unavailable"}</p>
+      ) : null}
+      {listing?.phase === "loading" ? (
+        <p className="sidebar__empty">Loading files…</p>
+      ) : null}
+      {listing?.phase === "error" ? (
+        <p className="sidebar__empty">{listing.message}</p>
+      ) : null}
+      {tree.entries.map((entry) => {
+        const isSelected = sameResource(entry.resource, selected);
+        const key = resourceKey(entry.resource);
+        const directory = entry.kind === "directory";
+        const file = entry.kind === "file";
+        const Icon =
+          entry.kind === "symlink" ? Link2 : directory ? Folder : FileCode2;
+        return (
+          <button
+            className={`tree__row ${directory ? "tree__row--folder" : ""} ${
+              isSelected ? "tree__row--selected" : ""
+            }`}
+            key={key}
+            ref={isSelected ? selectedRow : undefined}
+            type="button"
+            role="treeitem"
+            aria-current={isSelected ? "page" : undefined}
+            aria-expanded={directory ? Boolean(expanded[key]) : undefined}
+            style={{ paddingLeft: 9 + entry.depth * 16 }}
+            disabled={!directory && !file}
+            onClick={() =>
+              directory
+                ? toggleDirectory(entry.resource)
+                : void openFile(entry.resource)
+            }
+          >
+            {directory ? (
+              <ChevronRight
+                className={
+                  expanded[key] ? "tree__chevron--expanded" : undefined
+                }
+                size={13}
+                aria-hidden="true"
+              />
+            ) : (
+              <span className="tree__indent" />
+            )}
+            <Icon size={14} strokeWidth={1.7} aria-hidden="true" />
+            <span>{entry.name}</span>
+          </button>
+        );
+      })}
+      {tree.truncated ? (
+        <p className="tree__limit">
+          More entries are hidden by the view limit.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function ExplorerView() {
+  const project = useWorkbenchStore((state) => state.project);
+  return (
+    <>
+      <div className="sidebar__heading">
+        <span>Explorer</span>
+        <span className="muted">{project?.name ?? "No project"}</span>
+      </div>
+      <div className="tree" role="tree" aria-label="Project files">
+        {project?.roots.map((root) => (
+          <RootTree key={root.id} root={root} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+const statusLabels: Record<GitFileState, string> = {
+  unchanged: "",
+  modified: "M",
+  typeChanged: "T",
+  added: "A",
+  deleted: "D",
+  renamed: "R",
+  copied: "C",
+  conflicted: "!",
+  untracked: "U",
+  unknown: "?",
+};
+
+function visibleStatus(change: FileChange): GitFileState {
+  return change.worktreeStatus !== "unchanged"
+    ? change.worktreeStatus
+    : change.indexStatus;
+}
+
+function SourceControlView() {
+  const project = useWorkbenchStore((state) => state.project);
+  const repositories = useWorkbenchStore((state) => state.repositories);
+  const selected = useWorkbenchStore((state) => state.selectedResource);
+  const refreshing = useWorkbenchStore((state) => state.repositoryRefreshing);
+  const refresh = useWorkbenchStore((state) => state.refreshRepository);
+  const openDiff = useWorkbenchStore((state) => state.openDiff);
+  const rootNames = new Map(
+    project?.roots.map((root) => [root.id, root.name]) ?? [],
+  );
+
+  return (
+    <>
+      <div className="sidebar__heading">
+        <span>Source Control</span>
+        <button
+          type="button"
+          aria-label="Refresh Source Control"
+          disabled={refreshing}
+          onClick={() => void refresh()}
+        >
+          <RefreshCw size={14} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="source-control-list">
+        {repositories.roots.map((repository) => (
+          <section className="source-root" key={repository.rootId}>
+            <div className="source-control-list__group">
+              <span>{rootNames.get(repository.rootId) ?? "Root"}</span>
+              <span className="muted">
+                {repository.branch ??
+                  (repository.state === "notRepository"
+                    ? "Not a repository"
+                    : "Unavailable")}
+              </span>
+            </div>
+            {repository.message ? (
+              <p className="sidebar__empty">{repository.message}</p>
+            ) : null}
+            {repository.changes.slice(0, 300).map((change) => (
+              <button
+                className={`source-change ${
+                  sameResource(selected, change.resource)
+                    ? "source-change--selected"
+                    : ""
+                }`}
+                key={resourceKey(change.resource)}
+                type="button"
+                onClick={() => void openDiff(change.resource)}
+              >
+                <span className="source-change__status">
+                  {statusLabels[visibleStatus(change)]}
+                </span>
+                <span className="source-change__path">
+                  {change.resource.relativePath}
+                </span>
+                <span className="source-change__counts">
+                  {change.additions === null ? "" : `+${change.additions}`}
+                  {change.deletions === null ? "" : ` -${change.deletions}`}
+                </span>
+              </button>
+            ))}
+            {repository.truncated ? (
+              <p className="tree__limit">Change list capped at 300 files.</p>
+            ) : null}
+          </section>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function SidebarContent({ view }: { view: SidebarView }) {
+  if (view === "explorer") return <ExplorerView />;
+  if (view === "sourceControl") return <SourceControlView />;
+  const labels = {
+    search: ["Search", "Project search is not part of ADE-0005."],
+    problems: ["Problems", "No problems have been reported."],
+    outline: ["Outline", "Open a source file to view its outline."],
+  } as const;
+  const [title, body] = labels[view];
+  return (
+    <>
+      <div className="sidebar__heading">{title}</div>
+      <p className="sidebar__empty">{body}</p>
+    </>
+  );
+}
+
+export function RightSidebar() {
+  const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
+  const sidebarView = useWorkbenchStore((state) => state.sidebarView);
+  const setSidebarView = useWorkbenchStore((state) => state.setSidebarView);
+  return (
+    <aside
+      className={`right-region ${sidebarOpen ? "" : "right-region--collapsed"}`}
+      aria-label="Project tools"
+    >
+      {sidebarOpen ? (
+        <section className="sidebar">
+          <SidebarContent view={sidebarView} />
+        </section>
+      ) : null}
+      <nav className="activity-rail" aria-label="Activity">
+        {views.map(({ id, label, icon: Icon }) => (
+          <button
+            className={`activity-rail__button ${
+              sidebarOpen && sidebarView === id
+                ? "activity-rail__button--active"
+                : ""
+            }`}
+            key={id}
+            type="button"
+            aria-label={label}
+            title={label}
+            onClick={() => setSidebarView(id)}
+          >
+            <Icon size={19} strokeWidth={1.7} aria-hidden="true" />
+          </button>
+        ))}
+      </nav>
+    </aside>
+  );
+}

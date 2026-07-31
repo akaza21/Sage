@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "bundle": {
+    "windowsInstallerMb": 45,
+    "macosSingleArchitectureMb": 45,
+    "macosUniversalMb": 80,
+    "linuxDebMb": 45,
+    "linuxAppImageMb": 90,
+    "installedCoreMb": 150
+  },
+  "runtime": {
+    "backgroundHostRssP95Mb": 45,
+    "idleWorkbenchRssP95Mb": 180,
+    "activeLargeChatRssP95Mb": 230,
+    "idleCpuSingleCorePercent": 0.5,
+    "warmWindowP50Ms": 800,
+    "warmWindowP95Ms": 1500,
+    "tabSwitchP95Ms": 100,
+    "inputToPaintP95Ms": 50,
+    "quickOpenFirstResultP95Ms": 100,
+    "searchFirstBatchP95Ms": 200,
+    "gitStatusP95Ms": 350
+  },
+  "platformRuntimeOverrides": {
+    "windowsWebView2": {
+      "metric": "summed_private_bytes_for_launched_process_tree",
+      "observedRuntimeVersion": "150.0.4078.65",
+      "supersedes": [
+        "runtime.idleWorkbenchRssP95Mb",
+        "runtime.activeLargeChatRssP95Mb"
+      ],
+      "controlFloor": {
+        "medianPrivateMb": 180.762,
+        "p95PrivateMb": 183.609,
+        "p95LimitMb": 184
+      },
+      "relativeMedianDefinition": "state_private_median_mb - control_private_median_mb",
+      "relativeP95Definition": "state_private_p95_mb - control_private_p95_mb",
+      "idle": {
+        "states": ["shell", "chat", "explorer"],
+        "absolutePrivateP95Mb": 240,
+        "overControlPrivateMedianMb": 58,
+        "overControlPrivateP95Mb": 56
+      },
+      "active": {
+        "states": ["file", "diff", "source-control"],
+        "absolutePrivateP95Mb": 253,
+        "overControlPrivateMedianMb": 70,
+        "overControlPrivateP95Mb": 69
+      }
+    }
+  },
+  "measurement": {
+    "excludeHarnessProcesses": true,
+    "excludeTerminalChildProcesses": true,
+    "reportProcessTreesSeparately": true
+  }
+}

@@ -1,0 +1,36 @@
+# JavaScript
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Rust and Tauri
+target/
+src-tauri/target/
+src-tauri/gen/
+tools/footprint-control/gen/
+
+# Editors and operating systems
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
+
+# Runtime data and diagnostics
+*.db
+*.db-shm
+*.db-wal
+diagnostics/
+work/
+local-evidence/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*

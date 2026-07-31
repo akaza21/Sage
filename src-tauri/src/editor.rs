@@ -1,0 +1,289 @@
+mod filesystem;
+
+use self::filesystem::{
+    DiskDocument, atomic_replace, cleanup_failed_save, cleanup_recorded_temp, read_disk_document,
+    sync_parent_directory, temporary_contract_path, write_temporary_file,
+};
+use crate::{
+    domain::{
+        BufferSnapshotAck, BufferSnapshotRequest, DocumentVersion, EditorBufferVersion,
+        EditorConflict, EditorDocument, EditorSaveResult, RecoveredEditorBuffer, ResourceRef,
+    },
+    editor_content::{
+        canonicalize_editor_content, fingerprint, materialize_content,
+        reject_oversized_materialized, reject_unsupported_content, validate_line_ending,
+    },
+    editor_persistence::PersistedEditorBuffer,
+    error::{AppError, AppResult},
+    persistence::Database,
+    workspace::Workspace,
+};
+
+pub fn open_document(
+    database: &Database,
+    workspace: &Workspace,
+    resource: &ResourceRef,
+) -> AppResult<EditorDocument> {
+    let resource = normalized_resource(workspace, resource)?;
+    let disk = read_disk_document(workspace, &resource.relative_path)?;
+    let Some(buffer) = database.editor_buffer(workspace.project_id(), &resource)? else {
+        return Ok(clean_document(resource, disk));
+    };
+    validate_persisted_buffer(&buffer)?;
+
+    if disk.version.fingerprint == buffer.buffer_fingerprint {
+        cleanup_recorded_temp(workspace, &buffer)?;
+        database.delete_editor_buffer(workspace.project_id(), &resource)?;
+        return Ok(clean_document(resource, disk));
+    }
+
+    Ok(buffered_document(resource, disk, buffer))
+}
+
+pub fn snapshot_buffer(
+    database: &Database,
+    workspace: &Workspace,
+    mut request: BufferSnapshotRequest,
+) -> AppResult<BufferSnapshotAck> {
+    request.resource = normalized_resource(workspace, &request.resource)?;
+    if request.revision == 0 {
+        return Err(AppError::InvalidRequest(
+            "buffer revision must be greater than zero".into(),
+        ));
+    }
+    validate_line_ending(&request.line_ending)?;
+    request.content = canonicalize_editor_content(&request.content);
+    reject_unsupported_content(&request.content)?;
+    let materialized = materialize_content(&request.content, &request.line_ending);
+    reject_oversized_materialized(&materialized)?;
+    let buffer_fingerprint = fingerprint(materialized.as_bytes());
+
+    let durable_buffer = database.editor_buffer(workspace.project_id(), &request.resource)?;
+    let disk = read_disk_document(workspace, &request.resource.relative_path)?;
+    let disk_matches_base = disk.version.fingerprint == request.base.fingerprint;
+    if durable_buffer.is_none() && !disk_matches_base {
+        return Err(AppError::InvalidRequest(
+            "snapshot base no longer matches disk and no durable buffer exists".into(),
+        ));
+    }
+    if disk_matches_base && buffer_fingerprint == request.base.fingerprint {
+        return database.apply_clean_editor_snapshot(workspace.project_id(), &request);
+    }
+
+    database.persist_editor_buffer(
+        workspace.project_id(),
+        &request,
+        &request.content,
+        &buffer_fingerprint,
+    )
+}
+
+pub fn save_document(
+    database: &Database,
+    workspace: &Workspace,
+    resource: &ResourceRef,
+) -> AppResult<EditorSaveResult> {
+    let resource = normalized_resource(workspace, resource)?;
+    let path = resource.relative_path.clone();
+    let Some(buffer) = database.editor_buffer(workspace.project_id(), &resource)? else {
+        return Ok(EditorSaveResult {
+            outcome: "unchanged".into(),
+            document: clean_document(resource, read_disk_document(workspace, &path)?),
+        });
+    };
+    validate_persisted_buffer(&buffer)?;
+
+    let disk = read_disk_document(workspace, &path)?;
+    if disk.version.fingerprint != buffer.base_fingerprint {
+        return Ok(conflict_result(resource, disk, buffer));
+    }
+
+    let materialized = materialize_content(&buffer.content, &buffer.line_ending);
+    reject_oversized_materialized(&materialized)?;
+    if fingerprint(materialized.as_bytes()) != buffer.buffer_fingerprint {
+        return Err(AppError::InvalidRequest(
+            "durable editor buffer fingerprint is inconsistent".into(),
+        ));
+    }
+    if buffer.buffer_fingerprint == buffer.base_fingerprint {
+        database.delete_editor_buffer(workspace.project_id(), &resource)?;
+        return Ok(EditorSaveResult {
+            outcome: "unchanged".into(),
+            document: clean_document(resource, disk),
+        });
+    }
+
+    let target = workspace.resolve_existing_file(&path)?;
+    let temp_path = temporary_contract_path(&path)?;
+    let temp = workspace.resolve_for_write(&temp_path)?;
+    database.set_editor_pending_temp(workspace.project_id(), &resource, &temp_path)?;
+
+    if let Err(error) = write_temporary_file(&target, &temp, materialized.as_bytes()) {
+        cleanup_failed_save(database, workspace.project_id(), &resource, &temp);
+        return Err(error);
+    }
+
+    let latest_disk = match read_disk_document(workspace, &path) {
+        Ok(document) => document,
+        Err(error) => {
+            cleanup_failed_save(database, workspace.project_id(), &resource, &temp);
+            return Err(error);
+        }
+    };
+    if latest_disk.version.fingerprint != buffer.base_fingerprint {
+        cleanup_failed_save(database, workspace.project_id(), &resource, &temp);
+        return Ok(conflict_result(resource, latest_disk, buffer));
+    }
+
+    if let Err(error) = atomic_replace(&target, &temp) {
+        cleanup_failed_save(database, workspace.project_id(), &resource, &temp);
+        return Err(error);
+    }
+    sync_parent_directory(&target)?;
+    database.delete_editor_buffer(workspace.project_id(), &resource)?;
+
+    Ok(EditorSaveResult {
+        outcome: "saved".into(),
+        document: clean_document(resource, read_disk_document(workspace, &path)?),
+    })
+}
+
+pub fn discard_document(
+    database: &Database,
+    workspace: &Workspace,
+    resource: &ResourceRef,
+) -> AppResult<EditorDocument> {
+    let resource = normalized_resource(workspace, resource)?;
+    let disk = read_disk_document(workspace, &resource.relative_path)?;
+    if let Some(buffer) = database.editor_buffer(workspace.project_id(), &resource)? {
+        cleanup_recorded_temp(workspace, &buffer)?;
+    }
+    database.delete_editor_buffer(workspace.project_id(), &resource)?;
+    Ok(clean_document(resource, disk))
+}
+
+pub fn recover_pending_saves(database: &Database, workspace: &Workspace) -> AppResult<()> {
+    for buffer in
+        database.dirty_editor_buffers(workspace.project_id(), Some(workspace.root_id()))?
+    {
+        let Some(_) = &buffer.pending_temp_path else {
+            continue;
+        };
+        validate_persisted_buffer(&buffer)?;
+        cleanup_recorded_temp(workspace, &buffer)?;
+        if read_disk_document(workspace, &buffer.resource.relative_path)
+            .is_ok_and(|disk| disk.version.fingerprint == buffer.buffer_fingerprint)
+        {
+            database.delete_editor_buffer(workspace.project_id(), &buffer.resource)?;
+        } else {
+            database.clear_editor_pending_temp(workspace.project_id(), &buffer.resource)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn recovered_buffers(
+    database: &Database,
+    project_id: &str,
+) -> AppResult<Vec<RecoveredEditorBuffer>> {
+    database
+        .dirty_editor_buffers(project_id, None)
+        .map(|buffers| {
+            buffers
+                .into_iter()
+                .map(|buffer| RecoveredEditorBuffer {
+                    resource: buffer.resource,
+                    revision: buffer.revision,
+                })
+                .collect()
+        })
+}
+
+fn clean_document(resource: ResourceRef, disk: DiskDocument) -> EditorDocument {
+    EditorDocument {
+        resource,
+        base: disk.version.clone(),
+        buffer: EditorBufferVersion {
+            fingerprint: disk.version.fingerprint.clone(),
+            byte_len: disk.canonical_content.len() as u64,
+            revision: 0,
+            content: disk.canonical_content,
+        },
+        line_ending: disk.line_ending,
+        dirty: false,
+        conflict: None,
+        disk: disk.version,
+    }
+}
+
+fn buffered_document(
+    resource: ResourceRef,
+    disk: DiskDocument,
+    buffer: PersistedEditorBuffer,
+) -> EditorDocument {
+    let conflict = (disk.version.fingerprint != buffer.base_fingerprint).then(|| {
+        EditorConflict {
+            kind: "external-change".into(),
+            message:
+                "The file changed on disk after this buffer was opened. Saving is blocked; discard or copy the buffer before reopening."
+                    .into(),
+        }
+    });
+    EditorDocument {
+        resource,
+        disk: disk.version,
+        base: DocumentVersion {
+            fingerprint: buffer.base_fingerprint,
+            byte_len: buffer.base_byte_len,
+            modified_at: buffer.base_modified_at,
+        },
+        buffer: EditorBufferVersion {
+            fingerprint: buffer.buffer_fingerprint,
+            byte_len: buffer.byte_len,
+            revision: buffer.revision,
+            content: buffer.content,
+        },
+        line_ending: buffer.line_ending,
+        dirty: true,
+        conflict,
+    }
+}
+
+fn conflict_result(
+    resource: ResourceRef,
+    disk: DiskDocument,
+    buffer: PersistedEditorBuffer,
+) -> EditorSaveResult {
+    EditorSaveResult {
+        outcome: "conflict".into(),
+        document: buffered_document(resource, disk, buffer),
+    }
+}
+
+fn normalized_resource(workspace: &Workspace, resource: &ResourceRef) -> AppResult<ResourceRef> {
+    Ok(ResourceRef {
+        root_id: workspace.root_id().into(),
+        relative_path: workspace.validate_resource(resource, false)?,
+    })
+}
+
+fn validate_persisted_buffer(buffer: &PersistedEditorBuffer) -> AppResult<()> {
+    validate_line_ending(&buffer.line_ending)?;
+    reject_unsupported_content(&buffer.content)?;
+    if buffer.byte_len != buffer.content.len() as u64 {
+        return Err(AppError::InvalidRequest(
+            "durable editor buffer byte length is inconsistent".into(),
+        ));
+    }
+    let materialized = materialize_content(&buffer.content, &buffer.line_ending);
+    reject_oversized_materialized(&materialized)?;
+    if fingerprint(materialized.as_bytes()) != buffer.buffer_fingerprint {
+        return Err(AppError::InvalidRequest(
+            "durable editor buffer fingerprint is inconsistent".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests;

@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "workItem": "ADE-0005",
+  "sanitized": true,
+  "fixCycle1": {
+    "phase": "review-ready",
+    "status": "fixed-awaiting-independent-re-review",
+    "findingCounts": {
+      "p0": 0,
+      "p1": 2,
+      "p2": 6,
+      "p3": 0
+    },
+    "independentAcceptance": false,
+    "independentVerificationStarted": false
+  },
+  "candidate": {
+    "aggregateSha256": "6688643519274952a23d8920dd371a4bb1ff24be4bd283eca2f8349be4736db6",
+    "fileCount": 159,
+    "totalBytes": 1301381,
+    "rawManifestSha256": "e7deb8c6f76986be88323e78af467093c3776eab6781086ba7b95a72ed073263",
+    "executableSha256": "26049de303084c07897ea9ae49d0e3c6a6c6a044621575cb539b01bd6f103372",
+    "campaigns": [
+      {
+        "name": "packaged-behavior-and-restart",
+        "aggregateSha256": "6688643519274952a23d8920dd371a4bb1ff24be4bd283eca2f8349be4736db6",
+        "executableSha256": "26049de303084c07897ea9ae49d0e3c6a6c6a044621575cb539b01bd6f103372"
+      },
+      {
+        "name": "100-input-to-paint-interactions",
+        "aggregateSha256": "6688643519274952a23d8920dd371a4bb1ff24be4bd283eca2f8349be4736db6",
+        "executableSha256": "26049de303084c07897ea9ae49d0e3c6a6c6a044621575cb539b01bd6f103372"
+      },
+      {
+        "name": "five-launch-chat-footprint",
+        "aggregateSha256": "6688643519274952a23d8920dd371a4bb1ff24be4bd283eca2f8349be4736db6",
+        "executableSha256": "26049de303084c07897ea9ae49d0e3c6a6c6a044621575cb539b01bd6f103372"
+      },
+      {
+        "name": "five-launch-explorer-footprint",
+        "aggregateSha256": "6688643519274952a23d8920dd371a4bb1ff24be4bd283eca2f8349be4736db6",
+        "executableSha256": "26049de303084c07897ea9ae49d0e3c6a6c6a044621575cb539b01bd6f103372"
+      }
+    ]
+  },
+  "evidenceAudit": {
+    "classification": "Build self-check; pending fresh-context re-review",
+    "packet": "%WORKSPACE%\\local-evidence\\ADE-0005-project-lifecycle\\fix-cycle-1\\current-profile-replay",
+    "operatorHandoffSha256": "b2a661b26055001ea65b64caabf9608c198ff8c4ecf96ad81e47801fd62dfbdc",
+    "rawInventorySha256": "ae6b781c6f42151a2dee4cab1270acf02cc58faa7985ee7e24e7085626ac8314",
+    "rawFileCount": 46,
+    "rawLogicalBytes": 1401336,
+    "inventoryHashMismatches": 0,
+    "rawVsEffectiveCoverage": {
+      "phase1": {
+        "rawPassed": 9,
+        "rawTotal": 11,
+        "retainedFalseCases": ["twoGitOnePlain", "sourceControlFollows"],
+        "separateSemanticProofsPassed": 2
+      },
+      "phase2": {
+        "rawPassed": 1,
+        "rawTotal": 2,
+        "retainedFalseCases": ["capacityGesture"],
+        "separateCapacityProofPassed": true
+      },
+      "effectivePassed": 13,
+      "effectiveTotal": 13
+    },
+    "historicalDiagnosticOnly": {
+      "inputToPaintP95Ms": 12.8,
+      "reason": "earlier environment redirection opened normal app data and used a superseded source aggregate"
+    }
+  },
+  "sourceAndTestGates": {
+    "frontendFiles": 7,
+    "frontendTestsPassed": 48,
+    "nodeManifestBudgetTestsPassed": 8,
+    "rustPassed": 71,
+    "rustIgnoredManual": 5,
+    "policyModules": 56,
+    "ade0004BudgetChecks": 35,
+    "ade0005BudgetChecksEvaluated": 12,
+    "ade0005BudgetChecksPassed": 10,
+    "ade0005BudgetChecksFailed": 2,
+    "ade0005BudgetFailures": [
+      "chat idle CPU P95 2% exceeds 0.5%",
+      "explorer idle CPU P95 1% exceeds 0.5%"
+    ],
+    "footprintParserPassed": true,
+    "manifestReproduced": true
+  },
+  "limits": {
+    "projects": 64,
+    "rootsPerProject": 8,
+    "tabsPerProject": 64,
+    "resourceTabsPerProject": 32,
+    "requestIntents": 128,
+    "expandedDirectories": 64,
+    "sessionEvents": 5000,
+    "sessionEventBytes": 67108864,
+    "globalEvents": 50000,
+    "globalEventBytes": 268435456,
+    "browserFallbackMessages": 500,
+    "browserFallbackMessageBytes": 4194304
+  },
+  "artifacts": {
+    "baseline": {
+      "frontendBytes": 277538,
+      "executableBytes": 4740608,
+      "nsisBytes": 1754210
+    },
+    "final": {
+      "frontendBytes": 288238,
+      "executableBytes": 5132288,
+      "executableSha256": "26049de303084c07897ea9ae49d0e3c6a6c6a044621575cb539b01bd6f103372",
+      "nsisBytes": 1851865,
+      "nsisSha256": "5a8d323793b1ac9290cde2dc6c40a4c97f9df16c411aeac843325b12e28edbaa",
+      "msiBytes": 2510848,
+      "msiSha256": "231e3a3bfcba76fd39f5e4bf1f338ae88e2cdee0de01d19a07c5f6dc5e7cc004"
+    },
+    "deltaFromAde0004": {
+      "frontendBytes": 10700,
+      "executableBytes": 391680,
+      "nsisBytes": 97655
+    },
+    "installed": false,
+    "dependencyOrRuntimeChangeInFixCycle1": false
+  },
+  "runtime": {
+    "classification": "exact-candidate Build self-check",
+    "platform": "windows",
+    "webView2Version": "150.0.4078.65",
+    "launchesPerState": 5,
+    "warmupSeconds": 8,
+    "samplesPerLaunch": 5,
+    "chat": {
+      "privateMedianBytes": 221863936,
+      "privateP95Bytes": 239312896,
+      "workingSetMedianBytes": 438001664,
+      "workingSetP95Bytes": 450703360,
+      "idleCpuP95Percent": 2,
+      "inputToPaintSamples": 100,
+      "inputToPaintP50Ms": 12.2,
+      "inputToPaintP95Ms": 12.7,
+      "tabSwitchSamples": 100,
+      "tabSwitchP50Ms": 53.9935,
+      "tabSwitchP95Ms": 71.55,
+      "tabSwitchProvenance": "retained prior unaffected packaged campaign"
+    },
+    "explorer": {
+      "privateMedianBytes": 223723520,
+      "privateP95Bytes": 243769344,
+      "workingSetMedianBytes": 441446400,
+      "workingSetP95Bytes": 455270400,
+      "idleCpuP95Percent": 1
+    },
+    "projectSwitch": {
+      "samples": 20,
+      "p50Ms": 167.4,
+      "p95Ms": 222.6
+    }
+  },
+  "packagedSmoke": {
+    "pickerCancellation": true,
+    "pickerSelection": true,
+    "projectCreation": true,
+    "addRoot": true,
+    "duplicateRelativePaths": true,
+    "dirtyEditSwitchRecovery": true,
+    "twoGitRootsAndPlainRoot": true,
+    "missingRootPreservesAvailableRoots": true,
+    "explorerFollowsActiveResource": true,
+    "sourceControlFollowsActiveDiff": true,
+    "nativeRestartRestoration": true,
+    "openedResourceFiles": 40,
+    "retainedResourceTabs": 32,
+    "uniqueTabIdentities": true,
+    "screenCoordinateInput": false,
+    "uacOrSystemMutation": false
+  },
+  "appData": {
+    "method": "authorized current-profile whole-directory same-parent quarantine and restore",
+    "originalFiles": 2,
+    "originalBytes": 2623992,
+    "originalAggregateSha256": "2bd73a56cc9079a8a132d14e50936bb68fc4f1578b095306272821e43e462f29",
+    "restoredIdentityAndInventoryExact": true,
+    "quarantinesRemaining": 0,
+    "sageProcessesRemaining": 0,
+    "freshTestDataPreservedIgnored": true
+  },
+  "remainingIndependentGates": [
+    "fresh-context independent re-review",
+    "Unix cfg(unix) execution on Linux or macOS",
+    "independent verification only after re-review disposition"
+  ],
+  "security": {
+    "capability": "core:default",
+    "javascriptDialogPermission": false,
+    "javascriptFilesystemPermission": false,
+    "cspDisabled": false,
+    "dependencyAddedInFixCycle1": false
+  }
+}
