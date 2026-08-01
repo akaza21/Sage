@@ -102,6 +102,25 @@ fn project_limit_is_rejected_without_losing_the_registry() {
     assert_eq!(database.project_count().unwrap(), MAX_PROJECTS);
 }
 
+#[cfg(unix)]
+#[test]
+fn non_utf8_selected_root_is_rejected_before_sqlite_persistence() {
+    use std::{ffi::OsString, os::unix::ffi::OsStringExt};
+
+    let folders = Folders::new();
+    let root = folders
+        .base
+        .join(OsString::from_vec(b"invalid-\xff".to_vec()));
+    fs::create_dir_all(&root).unwrap();
+    let database = Database::open(Path::new(":memory:")).unwrap();
+
+    assert!(matches!(
+        database.create_project_from_root(&root),
+        Err(AppError::InvalidRequest(_))
+    ));
+    assert_eq!(database.project_count().unwrap(), 0);
+}
+
 #[test]
 fn missing_root_remains_typed_and_does_not_hide_available_roots() {
     let folders = Folders::new();

@@ -4,7 +4,9 @@ use rusqlite::{OptionalExtension, params};
 use uuid::Uuid;
 
 use crate::{
-    error::AppResult, harnesses::SIMULATOR_ID, project_registry::canonical_comparison_key,
+    error::AppResult,
+    harnesses::SIMULATOR_ID,
+    project_registry::{canonical_comparison_key, persisted_path_text},
 };
 
 pub(super) fn insert_root(
@@ -21,7 +23,7 @@ pub(super) fn insert_root(
         params![
             root_id,
             project_id,
-            canonical.to_string_lossy(),
+            persisted_path_text(canonical)?,
             canonical_comparison_key(canonical),
             ordinal
         ],

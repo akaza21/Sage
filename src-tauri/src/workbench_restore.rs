@@ -12,6 +12,7 @@ use crate::{
 pub const MAX_RESTORED_TABS: usize = 64;
 pub const MAX_RESOURCE_TABS: usize = 32;
 pub const MAX_RESTORED_TAB_BYTES: i64 = 2 * 1024 * 1024;
+const MAX_LAYOUT_SELECTION_BYTES: i64 = 64 * 1024;
 const ALLOWED_TAB_KINDS: &[&str] = &[
     "chat", "file", "diff", "terminal", "search", "problems", "output", "settings",
 ];
@@ -33,6 +34,26 @@ pub fn restore_layout(
         .map(|root| (root.id.as_str(), root))
         .collect::<HashMap<_, _>>();
     let tabs = load_tabs(connection, project_id, &root_map)?;
+    let selection_bytes: i64 = connection
+        .query_row(
+            "SELECT COALESCE(
+               length(CAST(active_tab_id AS BLOB)), 0
+             ) + COALESCE(
+               length(CAST(selected_root_id AS BLOB)), 0
+             ) + COALESCE(
+               length(CAST(selected_relative_path AS BLOB)), 0
+             )
+             FROM project_layouts WHERE project_id = ?1",
+            [project_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .unwrap_or(0);
+    if selection_bytes > MAX_LAYOUT_SELECTION_BYTES {
+        return Err(AppError::ResourceLimit(
+            "persisted layout selection exceeds its byte limit".into(),
+        ));
+    }
     let (configured_tab, configured_root, selected_relative_path) = connection
         .query_row(
             "SELECT active_tab_id, selected_root_id, selected_relative_path
@@ -112,17 +133,30 @@ fn load_tabs(
     project_id: &str,
     roots: &HashMap<&str, &RootRecord>,
 ) -> AppResult<Vec<WorkbenchTab>> {
-    let (count, bytes): (i64, i64) = connection.query_row(
-        "SELECT COUNT(*), COALESCE(SUM(
+    let count: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM (
+           SELECT 1 FROM workbench_tabs
+           WHERE project_id = ?1 LIMIT ?2
+         )",
+        params![project_id, MAX_RESTORED_TABS as i64 + 1],
+        |row| row.get(0),
+    )?;
+    if count > MAX_RESTORED_TABS as i64 {
+        return Err(AppError::ResourceLimit(format!(
+            "project exceeds its {MAX_RESTORED_TABS}-tab restore limit"
+        )));
+    }
+    let bytes: i64 = connection.query_row(
+        "SELECT COALESCE(SUM(
            length(CAST(id AS BLOB)) + length(CAST(kind AS BLOB))
            + length(CAST(title AS BLOB)) + length(CAST(metadata_json AS BLOB))
            + COALESCE(length(CAST(status AS BLOB)), 0)
          ), 0)
          FROM workbench_tabs WHERE project_id = ?1",
         [project_id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
+        |row| row.get(0),
     )?;
-    if count > MAX_RESTORED_TABS as i64 || bytes > MAX_RESTORED_TAB_BYTES {
+    if bytes > MAX_RESTORED_TAB_BYTES {
         return Err(AppError::ResourceLimit(
             "persisted tabs exceed restore count or byte limits".into(),
         ));
@@ -399,6 +433,27 @@ mod tests {
             Some(fixture.root_id.as_str())
         );
         assert!(snapshot.selected_resource.is_none());
+    }
+
+    #[test]
+    fn oversized_layout_selection_fails_before_string_materialization() {
+        let fixture = Fixture::new();
+        fixture
+            .database
+            .connection()
+            .execute(
+                "UPDATE project_layouts
+                 SET selected_relative_path = ?2 WHERE project_id = ?1",
+                params![
+                    fixture.project_id,
+                    "x".repeat(MAX_LAYOUT_SELECTION_BYTES as usize + 1)
+                ],
+            )
+            .unwrap();
+        assert!(matches!(
+            fixture.database.bootstrap_snapshot(),
+            Err(AppError::ResourceLimit(_))
+        ));
     }
 
     #[cfg(windows)]

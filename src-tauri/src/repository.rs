@@ -24,6 +24,8 @@ const GIT_TIMEOUT: Duration = Duration::from_secs(3);
 const MAX_STATUS_BYTES: usize = 4 * 1024 * 1024;
 const MAX_DIFF_BYTES: usize = 1024 * 1024;
 const MAX_STDERR_BYTES: usize = 64 * 1024;
+type NumstatCounts = (Option<u64>, Option<u64>);
+type NumstatByPath = HashMap<String, NumstatCounts>;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -103,6 +105,7 @@ pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         .await?;
         ensure_success(&output)?;
         numstat_truncated = merge_numstat(&mut stats, &output.stdout, output.stdout_truncated)?;
+        stats = canonicalize_numstat_paths(workspace, stats)?;
     }
 
     for change in &mut changes {
@@ -121,6 +124,25 @@ pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         elapsed_ms: started.elapsed().as_millis() as u64,
         message: None,
     })
+}
+
+fn canonicalize_numstat_paths(
+    workspace: &Workspace,
+    stats: NumstatByPath,
+) -> AppResult<NumstatByPath> {
+    let mut canonical = HashMap::with_capacity(stats.len());
+    for (relative_path, counts) in stats {
+        let resource = workspace.canonical_ingress_resource(&ResourceRef {
+            root_id: workspace.root_id().into(),
+            relative_path,
+        })?;
+        if canonical.insert(resource.relative_path, counts).is_some() {
+            return Err(AppError::Git(
+                "Git numstat returned duplicate canonical resource identities".into(),
+            ));
+        }
+    }
+    Ok(canonical)
 }
 
 pub async fn file_diff(workspace: &Workspace, resource: &ResourceRef) -> AppResult<FileDiff> {
@@ -385,6 +407,20 @@ mod tests {
         assert_eq!(diff.hunks.len(), 1);
         assert_eq!(diff.hunks[0].lines[0].kind, "removed");
         assert_eq!(diff.hunks[0].lines[1].kind, "added");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn numstat_casing_is_canonicalized_before_status_merge() {
+        let root = std::env::temp_dir().join(format!("sage-git-case-{}", Uuid::new_v4()));
+        fs::create_dir_all(root.join("Source")).unwrap();
+        fs::write(root.join("Source/Main.rs"), "changed\n").unwrap();
+        let workspace = Workspace::open("project-test", "root-test", &root).unwrap();
+        let stats = HashMap::from([("source/main.rs".into(), (Some(3), Some(2)))]);
+
+        let canonical = canonicalize_numstat_paths(&workspace, stats).unwrap();
+        assert_eq!(canonical.get("Source/Main.rs"), Some(&(Some(3), Some(2))));
         fs::remove_dir_all(root).unwrap();
     }
 

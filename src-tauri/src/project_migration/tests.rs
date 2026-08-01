@@ -102,6 +102,47 @@ fn migrates_legacy_root_tabs_session_and_dirty_buffer() {
 }
 
 #[test]
+fn missing_legacy_root_and_dirty_buffer_survive_upgrade_and_reopen() {
+    let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
+    fs::create_dir_all(&folder).unwrap();
+    let root = folder.join("missing-root");
+    fs::create_dir_all(&root).unwrap();
+    let path = folder.join("sage.db");
+    seed_legacy(&path, &root, r#"{"resourcePath":"src/main.rs"}"#);
+    fs::remove_dir_all(&root).unwrap();
+
+    let database = Database::open(&path).unwrap();
+    let snapshot = database.bootstrap_snapshot().unwrap();
+    assert_eq!(
+        snapshot.project.as_ref().unwrap().roots[0].availability,
+        "missing"
+    );
+    assert_eq!(
+        database.dirty_editor_buffers("legacy", None).unwrap()[0].content,
+        "dirty"
+    );
+    drop(database);
+
+    let reopened = Database::open(&path).unwrap();
+    assert_eq!(
+        reopened
+            .bootstrap_snapshot()
+            .unwrap()
+            .project
+            .unwrap()
+            .roots[0]
+            .availability,
+        "missing"
+    );
+    assert_eq!(
+        reopened.dirty_editor_buffers("legacy", None).unwrap().len(),
+        1
+    );
+    drop(reopened);
+    fs::remove_dir_all(folder).unwrap();
+}
+
+#[test]
 fn failed_migration_rolls_back_without_destroying_legacy_rows() {
     let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
     fs::create_dir_all(&folder).unwrap();
@@ -261,3 +302,5 @@ fn windows_migration_recovers_actual_root_relative_casing() {
     drop(database);
     fs::remove_dir_all(folder).unwrap();
 }
+
+mod limits;

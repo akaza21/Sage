@@ -34,6 +34,14 @@ pub fn canonical_comparison_key(path: &Path) -> String {
     }
 }
 
+pub(crate) fn persisted_path_text(path: &Path) -> AppResult<&str> {
+    path.to_str().ok_or_else(|| {
+        AppError::InvalidRequest(
+            "selected project root is not valid UTF-8 and cannot be persisted".into(),
+        )
+    })
+}
+
 impl Database {
     pub fn project_count(&self) -> AppResult<i64> {
         Ok(self
@@ -323,6 +331,7 @@ fn canonical_folder(root: &Path) -> AppResult<PathBuf> {
             "selected project root is not a directory".into(),
         ));
     }
+    persisted_path_text(&canonical)?;
     Ok(canonical)
 }
 

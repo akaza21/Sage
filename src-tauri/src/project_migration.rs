@@ -1,8 +1,9 @@
 mod limits;
+mod roots;
 
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
@@ -10,17 +11,19 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::{
-    domain::ResourceRef,
     error::{AppError, AppResult},
     persistence::now_millis,
-    project_registry::{MAX_PROJECTS, MAX_ROOTS_PER_PROJECT, canonical_comparison_key},
-    workspace::{Workspace, validate_contract_path},
+    project_registry::{
+        MAX_PROJECTS, MAX_ROOTS_PER_PROJECT, canonical_comparison_key, persisted_path_text,
+    },
+    workspace::validate_contract_path,
 };
 
 use self::limits::{
     MAX_TOTAL_LEGACY_BUFFERS, MAX_TOTAL_LEGACY_ROOTS, MAX_TOTAL_LEGACY_TABS,
     preflight_legacy_bounds,
 };
+use self::roots::{canonical_migrated_path, canonical_or_recorded_root};
 
 const PROJECT_LIFECYCLE_SCHEMA: &str = include_str!("../migrations/004_project_lifecycle.sql");
 
@@ -115,12 +118,7 @@ pub fn migrate(connection: &mut Connection) -> AppResult<()> {
     let mut first_roots = HashMap::new();
     let mut seen_keys = HashSet::new();
     for root in roots {
-        let canonical = Path::new(&root.absolute_path).canonicalize()?;
-        if !canonical.is_dir() {
-            return Err(AppError::InvalidRequest(
-                "legacy project root is not a directory".into(),
-            ));
-        }
+        let canonical = canonical_or_recorded_root(&root.absolute_path)?;
         let root_id = Uuid::new_v4().to_string();
         let canonical_key = canonical_comparison_key(&canonical);
         if !seen_keys.insert((root.project_id.clone(), canonical_key.clone())) {
@@ -139,7 +137,7 @@ pub fn migrate(connection: &mut Connection) -> AppResult<()> {
             params![
                 root_id,
                 root.project_id,
-                canonical.to_string_lossy(),
+                persisted_path_text(&canonical)?,
                 canonical_key,
                 root.ordinal
             ],
@@ -330,26 +328,6 @@ fn migrate_tab_resources(
         )?;
     }
     Ok(())
-}
-
-fn canonical_migrated_path(
-    project_id: &str,
-    root_id: &str,
-    root: &Path,
-    relative_path: &str,
-) -> AppResult<String> {
-    validate_contract_path(relative_path, false)?;
-    let workspace = Workspace::open(project_id, root_id, root)?;
-    let resource = ResourceRef {
-        root_id: root_id.into(),
-        relative_path: relative_path.into(),
-    };
-    if workspace.root().join(relative_path).try_exists()? {
-        return workspace
-            .canonical_resource_identity(&resource, false)
-            .map(|canonical| canonical.relative_path);
-    }
-    Ok(relative_path.into())
 }
 
 fn seed_layouts(transaction: &rusqlite::Transaction<'_>) -> AppResult<()> {

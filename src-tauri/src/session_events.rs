@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub const MAX_BOOTSTRAP_MESSAGES: i64 = 500;
+pub const MAX_BOOTSTRAP_MESSAGE_BYTES: i64 = 4 * 1024 * 1024;
 pub const MAX_SESSION_EVENTS: i64 = 5_000;
 pub const MAX_SESSION_EVENT_BYTES: i64 = 64 * 1024 * 1024;
 pub const MAX_GLOBAL_EVENTS: i64 = 50_000;
@@ -123,6 +124,24 @@ impl Database {
 
     pub fn messages(&self, session_id: &str) -> AppResult<Vec<ChatMessage>> {
         let connection = self.connection();
+        let (count, bytes): (i64, i64) = connection.query_row(
+            "SELECT COUNT(*), COALESCE(SUM(
+               length(CAST(id AS BLOB)) + length(CAST(payload_json AS BLOB))
+             ), 0)
+             FROM (
+               SELECT id, payload_json FROM session_events
+               WHERE session_id = ?1 AND kind = 'message'
+               ORDER BY sequence DESC LIMIT ?2
+             )",
+            params![session_id, MAX_BOOTSTRAP_MESSAGES],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        if count > MAX_BOOTSTRAP_MESSAGES || bytes > MAX_BOOTSTRAP_MESSAGE_BYTES {
+            return Err(AppError::ResourceLimit(format!(
+                "session bootstrap exceeds its {MAX_BOOTSTRAP_MESSAGES}-message / {} MiB limit",
+                MAX_BOOTSTRAP_MESSAGE_BYTES / 1024 / 1024
+            )));
+        }
         let mut statement = connection.prepare(
             "SELECT id, sequence, payload_json, created_at
              FROM (
@@ -437,6 +456,52 @@ mod tests {
     }
 
     #[test]
+    fn transcript_bootstrap_rejects_actual_stored_bytes_before_json_collection() {
+        let database = Database::open(Path::new(":memory:")).unwrap();
+        let session_id = session(&database);
+        database
+            .connection()
+            .execute(
+                "UPDATE session_events SET payload_json = ?2 WHERE session_id = ?1",
+                params![
+                    session_id,
+                    "x".repeat(MAX_BOOTSTRAP_MESSAGE_BYTES as usize + 1)
+                ],
+            )
+            .unwrap();
+        assert!(matches!(
+            database.messages(&session_id),
+            Err(AppError::ResourceLimit(_))
+        ));
+    }
+
+    #[test]
+    fn transcript_bootstrap_collects_only_the_latest_bounded_window() {
+        let database = Database::open(Path::new(":memory:")).unwrap();
+        let session_id = session(&database);
+        database
+            .connection()
+            .execute(
+                "WITH RECURSIVE n(value) AS (
+                   SELECT 2 UNION ALL SELECT value + 1 FROM n WHERE value <= ?2
+                 )
+                 INSERT INTO session_events
+                   (id, session_id, sequence, kind, payload_json, created_at)
+                 SELECT printf('bootstrap-%d', value), ?1, value, 'message',
+                        '{\"role\":\"user\",\"text\":\"x\"}', 1 FROM n",
+                params![session_id, MAX_BOOTSTRAP_MESSAGES],
+            )
+            .unwrap();
+        let messages = database.messages(&session_id).unwrap();
+        assert_eq!(messages.len(), MAX_BOOTSTRAP_MESSAGES as usize);
+        assert_eq!(messages.first().unwrap().sequence, 2);
+        assert_eq!(
+            messages.last().unwrap().sequence,
+            MAX_BOOTSTRAP_MESSAGES + 1
+        );
+    }
+
+    #[test]
     fn switch_cannot_observe_or_leave_a_partial_turn_and_restart_is_stable() {
         let base = std::env::temp_dir().join(format!("sage-turn-race-{}", Uuid::new_v4()));
         let root_a = base.join("a");
@@ -509,19 +574,77 @@ mod tests {
     }
 
     #[test]
-    fn failed_switch_does_not_roll_back_or_split_a_committed_turn() {
+    fn failed_switch_waits_for_a_latched_turn_and_leaves_both_messages() {
         let database = Database::open(Path::new(":memory:")).unwrap();
         let session_id = session(&database);
         let snapshot = database.bootstrap_snapshot().unwrap();
-        database
-            .append_simulator_turn(&session_id, "user", "assistant")
-            .unwrap();
-        let error = database.switch_project(&ProjectSwitchRequest {
+        let request = ProjectSwitchRequest {
             target_project_id: "missing".into(),
             current_layout: layout(&snapshot),
+        };
+        let (inserted_tx, inserted_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let turn_database = database.clone();
+        let turn_session = session_id.clone();
+        let turn = thread::spawn(move || {
+            turn_database.append_simulator_turn_with_hook(
+                &turn_session,
+                "user",
+                "assistant",
+                || {
+                    inserted_tx.send(()).unwrap();
+                    release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+                },
+            )
         });
-        assert!(error.is_err());
+        inserted_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        let (switch_started_tx, switch_started_rx) = mpsc::channel();
+        let switch_database = database.clone();
+        let switching = thread::spawn(move || {
+            switch_started_tx.send(()).unwrap();
+            switch_database.switch_project(&request)
+        });
+        switch_started_rx
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap();
+        release_tx.send(()).unwrap();
+        turn.join().unwrap().unwrap();
+        assert!(switching.join().unwrap().is_err());
         assert_eq!(database.messages(&session_id).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn switch_first_rejects_the_old_session_before_either_message_is_inserted() {
+        let base = std::env::temp_dir().join(format!("sage-switch-first-{}", Uuid::new_v4()));
+        let root_a = base.join("a");
+        let root_b = base.join("b");
+        fs::create_dir_all(&root_a).unwrap();
+        fs::create_dir_all(&root_b).unwrap();
+        let database_path = base.join("sage.db");
+        let database = Database::open(&database_path).unwrap();
+        let project_a = database.create_project_from_root(&root_a).unwrap();
+        let session_a: String = database
+            .connection()
+            .query_row(
+                "SELECT id FROM agent_sessions WHERE project_id = ?1",
+                [&project_a.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        database.create_project_from_root(&root_b).unwrap();
+
+        let error =
+            database.append_simulator_turn_with_hook(&session_a, "user", "assistant", || {
+                panic!("inactive-session validation must precede the first insert")
+            });
+        assert!(error.is_err());
+        assert_eq!(database.messages(&session_a).unwrap().len(), 1);
+        drop(database);
+
+        let reopened = Database::open(&database_path).unwrap();
+        assert_eq!(reopened.messages(&session_a).unwrap().len(), 1);
+        drop(reopened);
+        fs::remove_dir_all(base).unwrap();
     }
 
     fn layout(snapshot: &crate::domain::BootstrapSnapshot) -> ProjectLayoutRequest {

@@ -1,3 +1,5 @@
+mod limits;
+
 use rusqlite::{OptionalExtension, params};
 
 use crate::{
@@ -7,8 +9,8 @@ use crate::{
     workbench_restore::validate_resource_for_project,
 };
 
-pub const MAX_DIRTY_BUFFERS: i64 = 16;
-pub const MAX_TOTAL_DIRTY_BYTES: i64 = 8 * 1024 * 1024;
+use self::limits::preflight_dirty_recovery;
+pub use self::limits::{MAX_DIRTY_BUFFERS, MAX_TOTAL_DIRTY_BYTES, MAX_TOTAL_DIRTY_METADATA_BYTES};
 
 #[derive(Debug, Clone)]
 pub struct PersistedEditorBuffer {
@@ -51,39 +53,7 @@ impl Database {
         root_id: Option<&str>,
     ) -> AppResult<Vec<PersistedEditorBuffer>> {
         let connection = self.connection();
-        let foreign_root: bool = connection.query_row(
-            "SELECT EXISTS(
-               SELECT 1 FROM editor_buffers b
-               LEFT JOIN project_roots r
-                 ON r.id = b.root_id AND r.project_id = b.project_id
-               WHERE b.project_id = ?1 AND r.id IS NULL
-             )",
-            [project_id],
-            |row| row.get(0),
-        )?;
-        if foreign_root {
-            return Err(AppError::InvalidRequest(
-                "dirty buffer references a foreign project root".into(),
-            ));
-        }
-        let (count, actual_bytes): (i64, i64) = connection.query_row(
-            "SELECT COUNT(*),
-                    COALESCE(SUM(length(CAST(buffer_content AS BLOB))), 0)
-             FROM editor_buffers WHERE project_id = ?1",
-            [project_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        if count > MAX_DIRTY_BUFFERS {
-            return Err(AppError::ResourceLimit(format!(
-                "project exceeds its {MAX_DIRTY_BUFFERS}-buffer recovery limit"
-            )));
-        }
-        if actual_bytes > MAX_TOTAL_DIRTY_BYTES {
-            return Err(AppError::ResourceLimit(format!(
-                "dirty-buffer recovery exceeds the {} MiB project limit",
-                MAX_TOTAL_DIRTY_BYTES / 1024 / 1024
-            )));
-        }
+        preflight_dirty_recovery(&connection, project_id)?;
         let sql = if root_id.is_some() {
             "SELECT root_id, relative_path, base_fingerprint, base_byte_len,
                     base_modified_at, line_ending, buffer_content,
@@ -480,6 +450,48 @@ mod recovery_bound_tests {
             )
             .unwrap();
         assert!(database.dirty_editor_buffers(&project_id, None).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn corrupt_identity_and_temp_bytes_count_toward_recovery_limit() {
+        let (root, database, project_id, root_id) = fixture();
+        insert_buffer(&database, &project_id, &root_id, "oversized.txt", "x");
+        database
+            .connection()
+            .execute(
+                "UPDATE editor_buffers
+                 SET pending_temp_path = ?2 WHERE project_id = ?1",
+                params![
+                    project_id,
+                    "x".repeat(MAX_TOTAL_DIRTY_METADATA_BYTES as usize)
+                ],
+            )
+            .unwrap();
+        assert!(matches!(
+            database.dirty_editor_buffers(&project_id, None),
+            Err(AppError::ResourceLimit(_))
+        ));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exact_content_limit_with_ordinary_metadata_remains_recoverable() {
+        let (root, database, project_id, root_id) = fixture();
+        insert_buffer(
+            &database,
+            &project_id,
+            &root_id,
+            "exact.txt",
+            &"x".repeat(MAX_TOTAL_DIRTY_BYTES as usize),
+        );
+        assert_eq!(
+            database
+                .dirty_editor_buffers(&project_id, None)
+                .unwrap()
+                .len(),
+            1
+        );
         fs::remove_dir_all(root).unwrap();
     }
 }
