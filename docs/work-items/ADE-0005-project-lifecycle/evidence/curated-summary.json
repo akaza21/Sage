@@ -5,89 +5,82 @@
   "fixCycle1": {
     "phase": "review-ready",
     "status": "fixed-awaiting-independent-re-review",
-    "findingCounts": {
-      "p0": 0,
-      "p1": 2,
-      "p2": 6,
-      "p3": 0
-    },
+    "findingCounts": { "p0": 0, "p1": 2, "p2": 6, "p3": 0 },
     "independentAcceptance": false,
     "independentVerificationStarted": false
   },
   "candidate": {
-    "aggregateSha256": "6688643519274952a23d8920dd371a4bb1ff24be4bd283eca2f8349be4736db6",
-    "fileCount": 159,
-    "totalBytes": 1301381,
-    "rawManifestSha256": "e7deb8c6f76986be88323e78af467093c3776eab6781086ba7b95a72ed073263",
-    "executableSha256": "26049de303084c07897ea9ae49d0e3c6a6c6a044621575cb539b01bd6f103372",
+    "implementationCommit": "b07910b9532586bf1770551348d456666a3a140b",
+    "implementationTree": "2ed268e29fb435c04c560d6c150f0b929c97f20e",
+    "aggregateSha256": "874e3930167e314ef748dbbe2967ababe5b07a6d347ecda1db42ec0ece3a8ccd",
+    "fileCount": 165,
+    "totalBytes": 1374241,
+    "rawManifestSha256": "e1ff8b15781daa2ee64a9e810b8f385a5f13d8b4c33b499c8109746ea7c16e0d",
+    "diagnosticsExecutableSha256": "8bfe1bc21baf5959f41bcc94bbd41165235f36495ee182a979740632af44d646",
     "campaigns": [
       {
         "name": "packaged-behavior-and-restart",
-        "aggregateSha256": "6688643519274952a23d8920dd371a4bb1ff24be4bd283eca2f8349be4736db6",
-        "executableSha256": "26049de303084c07897ea9ae49d0e3c6a6c6a044621575cb539b01bd6f103372"
+        "aggregateSha256": "874e3930167e314ef748dbbe2967ababe5b07a6d347ecda1db42ec0ece3a8ccd",
+        "executableSha256": "8bfe1bc21baf5959f41bcc94bbd41165235f36495ee182a979740632af44d646"
       },
       {
-        "name": "100-input-to-paint-interactions",
-        "aggregateSha256": "6688643519274952a23d8920dd371a4bb1ff24be4bd283eca2f8349be4736db6",
-        "executableSha256": "26049de303084c07897ea9ae49d0e3c6a6c6a044621575cb539b01bd6f103372"
+        "name": "100-input-and-tab-switch-interactions",
+        "aggregateSha256": "874e3930167e314ef748dbbe2967ababe5b07a6d347ecda1db42ec0ece3a8ccd",
+        "executableSha256": "8bfe1bc21baf5959f41bcc94bbd41165235f36495ee182a979740632af44d646"
       },
       {
         "name": "five-launch-chat-footprint",
-        "aggregateSha256": "6688643519274952a23d8920dd371a4bb1ff24be4bd283eca2f8349be4736db6",
-        "executableSha256": "26049de303084c07897ea9ae49d0e3c6a6c6a044621575cb539b01bd6f103372"
+        "aggregateSha256": "874e3930167e314ef748dbbe2967ababe5b07a6d347ecda1db42ec0ece3a8ccd",
+        "executableSha256": "8bfe1bc21baf5959f41bcc94bbd41165235f36495ee182a979740632af44d646"
       },
       {
         "name": "five-launch-explorer-footprint",
-        "aggregateSha256": "6688643519274952a23d8920dd371a4bb1ff24be4bd283eca2f8349be4736db6",
-        "executableSha256": "26049de303084c07897ea9ae49d0e3c6a6c6a044621575cb539b01bd6f103372"
+        "aggregateSha256": "874e3930167e314ef748dbbe2967ababe5b07a6d347ecda1db42ec0ece3a8ccd",
+        "executableSha256": "8bfe1bc21baf5959f41bcc94bbd41165235f36495ee182a979740632af44d646"
       }
     ]
   },
   "evidenceAudit": {
-    "classification": "Build self-check; pending fresh-context re-review",
-    "packet": "%WORKSPACE%\\local-evidence\\ADE-0005-project-lifecycle\\fix-cycle-1\\current-profile-replay",
-    "operatorHandoffSha256": "b2a661b26055001ea65b64caabf9608c198ff8c4ecf96ad81e47801fd62dfbdc",
-    "rawInventorySha256": "ae6b781c6f42151a2dee4cab1270acf02cc58faa7985ee7e24e7085626ac8314",
-    "rawFileCount": 46,
-    "rawLogicalBytes": 1401336,
-    "inventoryHashMismatches": 0,
-    "rawVsEffectiveCoverage": {
-      "phase1": {
-        "rawPassed": 9,
-        "rawTotal": 11,
-        "retainedFalseCases": ["twoGitOnePlain", "sourceControlFollows"],
-        "separateSemanticProofsPassed": 2
-      },
-      "phase2": {
-        "rawPassed": 1,
-        "rawTotal": 2,
-        "retainedFalseCases": ["capacityGesture"],
-        "separateCapacityProofPassed": true
-      },
-      "effectivePassed": 13,
-      "effectiveTotal": 13
+    "classification": "Build self-check; pending fresh-context independent review",
+    "packet": "%WORKSPACE%/local-evidence/ADE-0005-project-lifecycle/postfix-final-f4c96c5",
+    "replay": "replay-run-007",
+    "gestureCasesPassed": 14,
+    "gestureCasesTotal": 14,
+    "capacityInteractions": 40,
+    "retainedResourceTabs": 32,
+    "normalDataGuard": {
+      "files": 2,
+      "bytes": 2623992,
+      "aggregateSha256": "f18ae28dce3baabb695c6fe9c80aec66c245ba1b60c2852290bccef43f863154",
+      "unchanged": true
     },
-    "historicalDiagnosticOnly": {
-      "inputToPaintP95Ms": 12.8,
-      "reason": "earlier environment redirection opened normal app data and used a superseded source aggregate"
+    "defaultArtifactGuard": {
+      "count": 3,
+      "restoredAndFinalHashesVerified": true,
+      "unchangedAcrossFinalReplay": true
+    },
+    "buildIsolationRecovery": {
+      "occurred": true,
+      "cause": "CARGO_TARGET_DIR was not forwarded to one Windows child because WSLENV was omitted",
+      "recovery": "the three accepted default artifacts were restored byte-for-byte from retained ignored evidence; the accidental candidate was retained separately; production was rebuilt in a fresh verified isolated target",
+      "normalDatabaseTouched": false
     }
   },
   "sourceAndTestGates": {
     "frontendFiles": 7,
-    "frontendTestsPassed": 48,
+    "frontendTestsPassed": 52,
     "nodeManifestBudgetTestsPassed": 8,
-    "rustPassed": 71,
+    "rustPassed": 88,
     "rustIgnoredManual": 5,
-    "policyModules": 56,
-    "ade0004BudgetChecks": 35,
+    "policyModules": 59,
     "ade0005BudgetChecksEvaluated": 12,
     "ade0005BudgetChecksPassed": 10,
     "ade0005BudgetChecksFailed": 2,
     "ade0005BudgetFailures": [
-      "chat idle CPU P95 2% exceeds 0.5%",
-      "explorer idle CPU P95 1% exceeds 0.5%"
+      "chat idle CPU P95 1.171875% exceeds 0.5%",
+      "explorer idle CPU P95 0.78125% exceeds 0.5%"
     ],
-    "footprintParserPassed": true,
+    "footprintParserChecksPassed": 153,
     "manifestReproduced": true
   },
   "limits": {
@@ -102,7 +95,10 @@
     "globalEvents": 50000,
     "globalEventBytes": 268435456,
     "browserFallbackMessages": 500,
-    "browserFallbackMessageBytes": 4194304
+    "browserFallbackMessageBytes": 4194304,
+    "processSnapshotRows": 4096,
+    "retainedProcessRecords": 128,
+    "retainedProcessIdentityBytes": 65536
   },
   "artifacts": {
     "baseline": {
@@ -111,18 +107,18 @@
       "nsisBytes": 1754210
     },
     "final": {
-      "frontendBytes": 288238,
-      "executableBytes": 5132288,
-      "executableSha256": "26049de303084c07897ea9ae49d0e3c6a6c6a044621575cb539b01bd6f103372",
-      "nsisBytes": 1851865,
-      "nsisSha256": "5a8d323793b1ac9290cde2dc6c40a4c97f9df16c411aeac843325b12e28edbaa",
-      "msiBytes": 2510848,
-      "msiSha256": "231e3a3bfcba76fd39f5e4bf1f338ae88e2cdee0de01d19a07c5f6dc5e7cc004"
+      "frontendBytes": 289190,
+      "executableBytes": 5149184,
+      "executableSha256": "a929d81bce835ba4ce411d17b4e9e53ffe7321628e1dc8886768d89634eb5e31",
+      "nsisBytes": 1855664,
+      "nsisSha256": "f5b6bffbcabb762eaa6e46f443175d96820f025282847f9f833b447d22b534bc",
+      "msiBytes": 2514944,
+      "msiSha256": "0901f3bf181bfedf44ee80d372ee3f1d48ceb2da58e222d8761df4ea7fc74767"
     },
     "deltaFromAde0004": {
-      "frontendBytes": 10700,
-      "executableBytes": 391680,
-      "nsisBytes": 97655
+      "frontendBytes": 11652,
+      "executableBytes": 408576,
+      "nsisBytes": 101454
     },
     "installed": false,
     "dependencyOrRuntimeChangeInFixCycle1": false
@@ -135,30 +131,43 @@
     "warmupSeconds": 8,
     "samplesPerLaunch": 5,
     "chat": {
-      "privateMedianBytes": 221863936,
-      "privateP95Bytes": 239312896,
-      "workingSetMedianBytes": 438001664,
-      "workingSetP95Bytes": 450703360,
-      "idleCpuP95Percent": 2,
+      "privateMedianBytes": 225660928,
+      "privateP95Bytes": 228548608,
+      "workingSetMedianBytes": 450265088,
+      "workingSetP95Bytes": 461123584,
+      "idleCpuP95Percent": 1.171875,
       "inputToPaintSamples": 100,
-      "inputToPaintP50Ms": 12.2,
+      "inputToPaintP50Ms": 12.3,
       "inputToPaintP95Ms": 12.7,
       "tabSwitchSamples": 100,
-      "tabSwitchP50Ms": 53.9935,
-      "tabSwitchP95Ms": 71.55,
-      "tabSwitchProvenance": "retained prior unaffected packaged campaign"
+      "tabSwitchP50Ms": 7.9,
+      "tabSwitchP95Ms": 10.2
     },
     "explorer": {
-      "privateMedianBytes": 223723520,
-      "privateP95Bytes": 243769344,
-      "workingSetMedianBytes": 441446400,
-      "workingSetP95Bytes": 455270400,
-      "idleCpuP95Percent": 1
+      "privateMedianBytes": 226115584,
+      "privateP95Bytes": 226963456,
+      "workingSetMedianBytes": 445874176,
+      "workingSetP95Bytes": 447848448,
+      "idleCpuP95Percent": 0.78125
     },
     "projectSwitch": {
+      "packagedSamples": 20,
+      "packagedP50Ms": 165.75,
+      "packagedP95Ms": 218.6,
+      "nativeSamples": 20,
+      "nativeP50Micros": 282,
+      "nativeP95Micros": 348
+    },
+    "gitRefresh": {
       "samples": 20,
-      "p50Ms": 167.4,
-      "p95Ms": 222.6
+      "aggregateP50Ms": 162,
+      "aggregateP95Ms": 200,
+      "rootAP50Ms": 162,
+      "rootAP95Ms": 195,
+      "rootBP50Ms": 162,
+      "rootBP95Ms": 200,
+      "plainP50Ms": 38,
+      "plainP95Ms": 49
     }
   },
   "packagedSmoke": {
@@ -177,17 +186,16 @@
     "retainedResourceTabs": 32,
     "uniqueTabIdentities": true,
     "screenCoordinateInput": false,
+    "wifiOrSystemControlInput": false,
     "uacOrSystemMutation": false
   },
   "appData": {
-    "method": "authorized current-profile whole-directory same-parent quarantine and restore",
-    "originalFiles": 2,
-    "originalBytes": 2623992,
-    "originalAggregateSha256": "2bd73a56cc9079a8a132d14e50936bb68fc4f1578b095306272821e43e462f29",
-    "restoredIdentityAndInventoryExact": true,
-    "quarantinesRemaining": 0,
-    "sageProcessesRemaining": 0,
-    "freshTestDataPreservedIgnored": true
+    "method": "isolated diagnostic data directory with read-only normal-data inventory guards",
+    "normalFiles": 2,
+    "normalBytes": 2623992,
+    "normalAggregateSha256": "f18ae28dce3baabb695c6fe9c80aec66c245ba1b60c2852290bccef43f863154",
+    "normalInventoryUnchanged": true,
+    "sageProcessesRemaining": 0
   },
   "remainingIndependentGates": [
     "fresh-context independent re-review",
