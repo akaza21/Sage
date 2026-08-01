@@ -35,6 +35,12 @@ Assert-Equal 5.0 (Get-FootprintPercentile @(1.0, 2.0, 3.0, 4.0, 5.0) 0.95) "Near
 Assert-Equal 0.5 (Get-FootprintCpuPercent 10.0 10.02 4.0) "Raw CPU arithmetic failed."
 $processLimits = Get-FootprintProcessLimits
 Assert-Equal 5 $processLimits.postKillWaitSeconds "Post-kill convergence wait is not mechanically bounded."
+$creationBase = [DateTime]::Parse("2026-08-01T09:11:07.8910000Z").ToUniversalTime()
+$creationRow = [pscustomobject]@{ ProcessId = 1; ExecutablePath = "C:\Apps\sage.exe"; CreationDate = $creationBase }
+$driftedCreationRow = [pscustomobject]@{ ProcessId = 1; ExecutablePath = "C:\Apps\sage.exe"; CreationDate = $creationBase.AddTicks(9) }
+$reusedCreationRow = [pscustomobject]@{ ProcessId = 1; ExecutablePath = "C:\Apps\sage.exe"; CreationDate = $creationBase.AddMilliseconds(1) }
+Assert-Equal (ConvertTo-FootprintProcessIdentity $creationRow).creationDate (ConvertTo-FootprintProcessIdentity $driftedCreationRow).creationDate "Sub-millisecond CIM creation drift changed process identity."
+Assert-True ((ConvertTo-FootprintProcessIdentity $creationRow).creationDate -ne (ConvertTo-FootprintProcessIdentity $reusedCreationRow).creationDate) "A one-millisecond creation change did not change process identity."
 
 $roles = @(
   @("native-host", "sage.exe", $null, $true),
@@ -167,7 +173,7 @@ $ps5Rows = @([pscustomobject]@{
   ProcessId = [int]::MaxValue
   ParentProcessId = 1
   ExecutablePath = "C:\Apps\sage.exe"
-  CreationDate = "2026-07-30T00:00:00.0000000Z"
+  CreationDate = [DateTime]::Parse("2026-07-30T00:00:00Z")
 })
 $ps5Cleanup = Stop-FootprintLaunchedProcessObject $fakeRootOnlyProcess "C:\Apps\sage.exe" $ps5IdentityStore $ps5Rows 0 100
 Assert-True $ps5Cleanup.treeBoundaryVerified "PS5 root-only cleanup rejected an exact creation-matched snapshot."
@@ -382,6 +388,13 @@ foreach ($file in $harnessFiles) {
 }
 
 $measureSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "measure-windows-footprint.ps1") -Raw
+$windowsFootprintSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "footprint/WindowsFootprint.psm1") -Raw
+$scenarioEvidenceSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "footprint/ScenarioEvidence.psm1") -Raw
+Assert-True $windowsFootprintSource.Contains("Footprint sample captured no core candidate process") "Zero-core sampling is not rejected with a typed diagnostic."
+Assert-True $windowsFootprintSource.Contains('$records += [pscustomobject][ordered]@{') "Process samples are not represented as measurable property objects."
+Assert-True $windowsFootprintSource.Contains('$excludedPrivateBytes = [long]0') "Empty excluded-role samples do not have a deterministic zero-byte aggregate."
+Assert-True (-not $windowsFootprintSource.Contains('Measure-Object privateBytes -Sum')) "Sample aggregation still depends on missing strict-mode Sum properties."
+Assert-True $scenarioEvidenceSource.Contains('processId = $ExpectedProcessId') "Live UIA evidence does not use the acceptance process identity field."
 Assert-True ($measureSource.IndexOf("Invoke-InstrumentedScenarioSetup", [StringComparison]::Ordinal) -lt $measureSource.IndexOf("while (`$validCount", [StringComparison]::Ordinal)) "Setup is not ordered before measured launches."
 Assert-True (($measureSource.Split("Wait-FootprintScenarioUiaEvidence").Count - 1) -ge 2) "Measured launches do not verify semantic state before and after sampling."
 Assert-True (($measureSource.Split("Assert-FootprintExecutableHash").Count - 1) -ge 1) "Per-launch executable rehash is not wired into process launch."

@@ -54,7 +54,12 @@ function Get-FootprintDescendants {
 
 function ConvertTo-FootprintCreationIdentity {
   param([Parameter(Mandatory)]$CreationDate)
-  if ($CreationDate -is [DateTime]) { return $CreationDate.ToUniversalTime().ToString("o") }
+  if ($CreationDate -is [DateTime]) {
+    return $CreationDate.ToUniversalTime().ToString(
+      "yyyy-MM-ddTHH:mm:ss.fff'Z'",
+      [Globalization.CultureInfo]::InvariantCulture
+    )
+  }
   return [string]$CreationDate
 }
 

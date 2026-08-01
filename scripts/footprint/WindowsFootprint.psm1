@@ -75,7 +75,7 @@ function Get-FootprintTreeSample {
       if ($identityBytes -gt $limits.retainedIdentityBytes) {
         throw "Sampled process identities exceed their $($limits.retainedIdentityBytes)-byte limit."
       }
-      $records += [ordered]@{
+      $records += [pscustomobject][ordered]@{
         processId = [int]$member.ProcessId
         parentProcessId = [int]$member.ParentProcessId
         name = [string]$member.Name
@@ -94,13 +94,31 @@ function Get-FootprintTreeSample {
   }
   $core = @($records | Where-Object coreIncluded)
   $excluded = @($records | Where-Object { $_.role -eq "excluded-child" })
+  if ($core.Count -eq 0) {
+    $observed = (@($members | Select-Object -First 16 | ForEach-Object { "$($_.ProcessId):$($_.Name)" }) -join ",")
+    throw "Footprint sample captured no core candidate process (root $RootProcessId; members $observed)."
+  }
+  $corePrivateBytes = [long]0
+  $coreWorkingSetBytes = [long]0
+  $coreCpuSeconds = [double]0
+  foreach ($record in $core) {
+    $corePrivateBytes += [long]$record.privateBytes
+    $coreWorkingSetBytes += [long]$record.workingSetBytes
+    $coreCpuSeconds += [double]$record.cpuSeconds
+  }
+  $excludedPrivateBytes = [long]0
+  $excludedWorkingSetBytes = [long]0
+  foreach ($record in $excluded) {
+    $excludedPrivateBytes += [long]$record.privateBytes
+    $excludedWorkingSetBytes += [long]$record.workingSetBytes
+  }
   return [ordered]@{
     capturedAtUtc = [DateTime]::UtcNow.ToString("o")
-    corePrivateBytes = [long](($core | Measure-Object privateBytes -Sum).Sum)
-    coreWorkingSetBytes = [long](($core | Measure-Object workingSetBytes -Sum).Sum)
-    coreCpuSeconds = [double](($core | Measure-Object cpuSeconds -Sum).Sum)
-    excludedPrivateBytes = [long](($excluded | Measure-Object privateBytes -Sum).Sum)
-    excludedWorkingSetBytes = [long](($excluded | Measure-Object workingSetBytes -Sum).Sum)
+    corePrivateBytes = $corePrivateBytes
+    coreWorkingSetBytes = $coreWorkingSetBytes
+    coreCpuSeconds = $coreCpuSeconds
+    excludedPrivateBytes = $excludedPrivateBytes
+    excludedWorkingSetBytes = $excludedWorkingSetBytes
     processCount = $records.Count
     unknownProcessCount = @($records | Where-Object { $_.role -in @("unknown", "webview-unknown") }).Count
     processes = $records

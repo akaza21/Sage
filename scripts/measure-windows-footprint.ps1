@@ -183,7 +183,15 @@ function Invoke-InstrumentedScenarioSetup {
   } finally {
     if ($null -ne $identity) {
       $teardown = Stop-FootprintTree $identity $known 10
-      if ($teardown.identityLost -or $teardown.remaining.Count -ne 0) { throw "Instrumented setup teardown was incomplete or ambiguous." }
+      if ($teardown.identityLost -or $teardown.remaining.Count -ne 0) {
+        $currentRows = @(Get-FootprintProcessSnapshot | Where-Object { [int]$_.ProcessId -eq [int]$identity.processId })
+        $currentIdentities = @($currentRows | ForEach-Object {
+          try { ConvertTo-FootprintProcessIdentity $_ } catch { [ordered]@{ processId = [int]$_.ProcessId; error = $_.Exception.Message } }
+        })
+        [ordered]@{ expectedRootIdentity = $identity; teardown = $teardown; currentRootIdentities = $currentIdentities } |
+          ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $resolvedOutput "setup-teardown-failure.json") -Encoding UTF8
+        throw "Instrumented setup teardown was incomplete or ambiguous."
+      }
     } elseif ($null -ne $process) {
       $teardown = Stop-FootprintLaunchedProcessObject $process $resolvedExecutable $known
       if (-not $teardown.exited -or -not $teardown.treeBoundaryVerified) { throw "Instrumented setup exact process-object fallback cleanup was not verified." }

@@ -238,7 +238,7 @@ function Get-FootprintScenarioUiaEvidence {
   return [ordered]@{
     scenario = $Scenario
     semanticVerified = $true
-    rootProcessId = $ExpectedProcessId
+    processId = $ExpectedProcessId
     rootTitle = [string]$root.Current.Name
     visitedElementCount = $visited
     namedElementCount = $named
