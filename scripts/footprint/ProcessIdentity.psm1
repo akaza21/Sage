@@ -166,28 +166,36 @@ function Stop-FootprintLaunchedProcessObject {
   if ($initiallyExited) {
     return [ordered]@{ forced = $false; exited = $true; treeBoundaryVerified = $false }
   }
+  $expectedCreationDate = $null
+  try {
+    $expectedCreationDate = ConvertTo-FootprintCreationIdentity $Process.StartTime
+  } catch {
+    $boundaryError = $_.Exception.Message
+  }
   $rootIdentity = $null
   $snapshotMatched = $false
+  $identityConflict = $false
   try {
     if ($null -eq $ProcessRows) { $ProcessRows = @(Get-FootprintProcessSnapshot) }
     if ($ProcessRows.Count -gt $script:MaxProcessSnapshotRows) {
       throw "Process snapshot exceeds its $($script:MaxProcessSnapshotRows)-row limit."
     }
     $rootRows = @($ProcessRows | Where-Object { [int]$_.ProcessId -eq [int]$Process.Id })
-    if ($rootRows.Count -eq 1 -and $rootRows[0].ExecutablePath -and
-        [string]::Equals(
-          [IO.Path]::GetFullPath([string]$rootRows[0].ExecutablePath),
-          [IO.Path]::GetFullPath($ExpectedExecutablePath),
-          [StringComparison]::OrdinalIgnoreCase
-        )) {
+    if ($expectedCreationDate -and $rootRows.Count -eq 1 -and
+        (Test-FootprintProcessIdentity $rootRows[0] $ExpectedExecutablePath $expectedCreationDate)) {
       $rootIdentity = ConvertTo-FootprintProcessIdentity $rootRows[0]
       $snapshotMatched = $true
       foreach ($row in @(Get-FootprintDescendants ([int]$rootIdentity.processId) $ProcessRows)) {
         [void](Add-FootprintRememberedIdentity $KnownProcessIdentities $row)
       }
+    } elseif ($expectedCreationDate -and $rootRows.Count -gt 0) {
+      $identityConflict = $true
     }
   } catch {
     $boundaryError = $_.Exception.Message
+  }
+  if ($identityConflict) {
+    throw "Current CIM root reuses the launched PID without matching its exact path and creation identity."
   }
   try {
     if ($Process.MainWindowHandle -ne [IntPtr]::Zero) {

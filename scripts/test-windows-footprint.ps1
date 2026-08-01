@@ -141,6 +141,7 @@ $script:fakeRootOnlyExited = $false
 $fakeRootOnlyProcess = [pscustomobject]@{
   Id = [int]::MaxValue
   MainWindowHandle = [IntPtr]::Zero
+  StartTime = [DateTime]::Parse("2026-07-30T00:00:00Z")
 }
 $fakeRootOnlyProcess | Add-Member -MemberType ScriptProperty -Name HasExited -Value { $script:fakeRootOnlyExited }
 $fakeRootOnlyProcess | Add-Member -MemberType ScriptMethod -Name Refresh -Value {}
@@ -158,6 +159,45 @@ Assert-Throws {
   Stop-FootprintLaunchedProcessObject $fakeRootOnlyProcess "C:\Apps\sage.exe" $null @() 0 100
 } "A root-only fallback without an exact descendant snapshot did not fail closed."
 Assert-True $script:fakeRootOnlyExited "A failed tree-boundary proof leaked the exact launched root process."
+$script:fakeRootOnlyExited = $false
+$ps5IdentityStore = New-FootprintIdentityStore
+$ps5Rows = @([pscustomobject]@{
+  ProcessId = [int]::MaxValue
+  ParentProcessId = 1
+  ExecutablePath = "C:\Apps\sage.exe"
+  CreationDate = "2026-07-30T00:00:00.0000000Z"
+})
+$ps5Cleanup = Stop-FootprintLaunchedProcessObject $fakeRootOnlyProcess "C:\Apps\sage.exe" $ps5IdentityStore $ps5Rows 0 100
+Assert-True $ps5Cleanup.treeBoundaryVerified "PS5 root-only cleanup rejected an exact creation-matched snapshot."
+Assert-Equal 1 $ps5IdentityStore.Count "PS5 root-only cleanup did not retain the exact root identity."
+Assert-True $script:fakeRootOnlyExited "PS5 root-only cleanup did not close the exact launched Process object."
+
+$script:reusedProcessObjectExited = $false
+$script:reusedProcessKillAttempted = $false
+$samePathReuseProcess = [pscustomobject]@{
+  Id = 10
+  MainWindowHandle = [IntPtr]::Zero
+  StartTime = [DateTime]::Parse("2026-07-30T00:00:00Z")
+}
+$samePathReuseProcess | Add-Member -MemberType ScriptProperty -Name HasExited -Value { $script:reusedProcessObjectExited }
+$samePathReuseProcess | Add-Member -MemberType ScriptMethod -Name Refresh -Value {}
+$samePathReuseProcess | Add-Member -MemberType ScriptMethod -Name CloseMainWindow -Value { return $false }
+$samePathReuseProcess | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value {
+  param([int]$Milliseconds)
+  return $script:reusedProcessObjectExited
+}
+$samePathReuseProcess | Add-Member -MemberType ScriptMethod -Name Kill -Value {
+  param([AllowNull()][object]$EntireProcessTree)
+  $script:reusedProcessKillAttempted = $true
+  throw "A reused process identity must not be killed."
+}
+$samePathReuseStore = New-FootprintIdentityStore
+Assert-Throws {
+  Stop-FootprintLaunchedProcessObject $samePathReuseProcess "C:\Apps\sage.exe" $samePathReuseStore $reusedRootRows 0 100
+} "A same-path PID reuse was accepted as the launched process tree."
+Assert-Equal 0 $samePathReuseStore.Count "A same-path PID reuse or its descendants were remembered for kill."
+Assert-True (-not $script:reusedProcessKillAttempted) "A same-path PID reuse reached a Process-object kill method."
+Assert-True (-not $script:reusedProcessObjectExited) "A same-path PID reuse was killed through the launched Process object."
 
 $recordBoundStore = New-FootprintIdentityStore
 for ($index = 0; $index -lt 128; $index += 1) {
