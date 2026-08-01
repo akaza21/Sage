@@ -33,6 +33,8 @@ Assert-Equal 2.5 (Get-FootprintMedian @(4.0, 1.0)) "Even median failed."
 Assert-Equal 3.0 (Get-FootprintMedian @(3.0, 1.0, 9.0)) "Odd median failed."
 Assert-Equal 5.0 (Get-FootprintPercentile @(1.0, 2.0, 3.0, 4.0, 5.0) 0.95) "Nearest-rank P95 failed."
 Assert-Equal 0.5 (Get-FootprintCpuPercent 10.0 10.02 4.0) "Raw CPU arithmetic failed."
+$processLimits = Get-FootprintProcessLimits
+Assert-Equal 5 $processLimits.postKillWaitSeconds "Post-kill convergence wait is not mechanically bounded."
 
 $roles = @(
   @("native-host", "sage.exe", $null, $true),

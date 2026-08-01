@@ -3,12 +3,14 @@ Set-StrictMode -Version Latest
 $script:MaxProcessSnapshotRows = 4096
 $script:MaxRetainedProcessRecords = 128
 $script:MaxRetainedIdentityBytes = 64KB
+$script:PostKillWaitSeconds = 5
 
 function Get-FootprintProcessLimits {
   return [ordered]@{
     systemSnapshotRows = $script:MaxProcessSnapshotRows
     retainedProcessRecords = $script:MaxRetainedProcessRecords
     retainedIdentityBytes = $script:MaxRetainedIdentityBytes
+    postKillWaitSeconds = $script:PostKillWaitSeconds
   }
 }
 
@@ -330,9 +332,13 @@ function Stop-FootprintTree {
     Stop-Process -Id ([int]$current.ProcessId) -Force -ErrorAction SilentlyContinue
     $killed += ConvertTo-FootprintProcessIdentity $current
   }
-  Start-Sleep -Milliseconds 250
-  $remainingPlan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(Get-FootprintProcessSnapshot)
-  $identityLost = $identityLost -or $remainingPlan.identityLost
+  $postKillDeadline = [DateTime]::UtcNow.AddSeconds($script:PostKillWaitSeconds)
+  do {
+    $remainingPlan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(Get-FootprintProcessSnapshot)
+    $identityLost = $identityLost -or $remainingPlan.identityLost
+    if ($remainingPlan.candidates.Count -eq 0) { break }
+    Start-Sleep -Milliseconds 100
+  } while ([DateTime]::UtcNow -lt $postKillDeadline)
   return [ordered]@{
     forced = $killed.Count -gt 0
     identityLost = $identityLost
