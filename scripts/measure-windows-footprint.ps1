@@ -182,7 +182,7 @@ function Invoke-InstrumentedScenarioSetup {
     }
   } finally {
     if ($null -ne $identity) {
-      $teardown = Stop-FootprintTree $identity $known
+      $teardown = Stop-FootprintTree $identity $known 10
       if ($teardown.identityLost -or $teardown.remaining.Count -ne 0) { throw "Instrumented setup teardown was incomplete or ambiguous." }
     } elseif ($null -ne $process) {
       $teardown = Stop-FootprintLaunchedProcessObject $process $resolvedExecutable $known
@@ -261,7 +261,7 @@ while ($validCount -lt $Launches -and $attempt -lt $maximumAttempts) {
     $launch.errorTrace = $_.ScriptStackTrace
   } finally {
     if ($null -ne $identity) {
-      $launch.teardown = Stop-FootprintTree $identity $known
+      $launch.teardown = Stop-FootprintTree $identity $known 10
       if ($launch.teardown.identityLost -or $launch.teardown.remaining.Count -ne 0) {
         $launch.valid = $false
         $launch.error = "Measured teardown was incomplete or ambiguous."

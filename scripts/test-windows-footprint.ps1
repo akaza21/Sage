@@ -387,6 +387,7 @@ Assert-True (($measureSource.Split("Wait-FootprintScenarioUiaEvidence").Count - 
 Assert-True (($measureSource.Split("Assert-FootprintExecutableHash").Count - 1) -ge 1) "Per-launch executable rehash is not wired into process launch."
 Assert-True ([regex]::Matches($measureSource, [regex]::Escape('Stop-FootprintLaunchedProcessObject $process')).Count -eq 2) "Setup and measured launches do not both wire exact process-object fallback cleanup."
 Assert-True ([regex]::Matches($measureSource, [regex]::Escape('Stop-FootprintLaunchedProcessObject $launched')).Count -eq 1) "Post-launch candidate validation failure lacks exact process-object cleanup."
+Assert-True ([regex]::Matches($measureSource, [regex]::Escape('Stop-FootprintTree $identity $known 10')).Count -eq 2) "Setup and measured launches do not both use the bounded durable-close grace."
 
 $parseFiles = @($harnessFiles | Where-Object Extension -in @(".ps1", ".psm1"))
 foreach ($file in $parseFiles) {
