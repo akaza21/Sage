@@ -260,6 +260,7 @@ pub struct ProjectSwitchRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ProjectTransitionResult {
     pub committed: bool,
+    pub transition_epoch: u64,
     pub snapshot: Option<BootstrapSnapshot>,
     pub recovery_error: Option<String>,
 }
@@ -296,6 +297,7 @@ pub struct ChatMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BootstrapSnapshot {
+    pub transition_epoch: u64,
     pub projects: Vec<ProjectListItem>,
     pub project: Option<ProjectSummary>,
     pub tabs: Vec<WorkbenchTab>,

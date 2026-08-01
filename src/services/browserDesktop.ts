@@ -40,6 +40,7 @@ const repository: ProjectRepositoryStatus = {
   elapsedMs: 18,
 };
 const snapshot: BootstrapSnapshot = {
+  transitionEpoch: 0,
   projects: [
     { id: "browser-project", name: "Sage", rootCount: 1, lastOpenedAt: 1 },
   ],
@@ -261,13 +262,19 @@ export const browserDesktop = {
   },
   async switchProject(
     request: ProjectSwitchRequest,
+    expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
+    if (expectedTransitionEpoch !== snapshot.transitionEpoch) {
+      throw new Error("project changed before the requested transition");
+    }
     await this.persistProjectLayout(request.currentLayout);
     if (request.targetProjectId !== snapshot.project?.id) {
       throw new Error("Browser fixture has one project.");
     }
+    snapshot.transitionEpoch += 1;
     return {
       committed: true,
+      transitionEpoch: snapshot.transitionEpoch,
       snapshot: structuredClone({ ...snapshot, messages }),
       recoveryError: null,
     };

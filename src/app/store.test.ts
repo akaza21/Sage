@@ -67,6 +67,7 @@ function deferred<T>() {
 
 function snapshotB(): BootstrapSnapshot {
   return {
+    transitionEpoch: 1,
     projects: [
       { id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 },
       { id: "project-b", name: "B", rootCount: 1, lastOpenedAt: 2 },
@@ -113,6 +114,7 @@ describe("workbench resource and project navigation", () => {
   beforeEach(() => {
     useWorkbenchStore.setState({
       phase: "ready",
+      nativeTransitionEpoch: 0,
       projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
       project: {
         id: "project-a",
@@ -341,6 +343,7 @@ describe("workbench resource and project navigation", () => {
     });
     vi.spyOn(desktop, "switchProject").mockResolvedValue({
       committed: true,
+      transitionEpoch: 1,
       snapshot: null,
       recoveryError: null,
     });
@@ -501,6 +504,7 @@ describe("workbench resource and project navigation", () => {
       );
       vi.spyOn(desktop, "switchProject").mockResolvedValue({
         committed: true,
+        transitionEpoch: 1,
         snapshot: null,
         recoveryError: null,
       });
@@ -549,6 +553,7 @@ describe("workbench resource and project navigation", () => {
       });
       vi.spyOn(desktop, "switchProject").mockResolvedValue({
         committed: true,
+        transitionEpoch: 1,
         snapshot: null,
         recoveryError: null,
       });
@@ -606,6 +611,7 @@ describe("workbench resource and project navigation", () => {
       });
       vi.spyOn(desktop, "switchProject").mockResolvedValue({
         committed: true,
+        transitionEpoch: 1,
         snapshot: null,
         recoveryError: null,
       });
@@ -649,6 +655,7 @@ describe("workbench resource and project navigation", () => {
       });
       vi.spyOn(desktop, "switchProject").mockResolvedValue({
         committed: true,
+        transitionEpoch: 1,
         snapshot: null,
         recoveryError: null,
       });
@@ -714,6 +721,7 @@ describe("workbench resource and project navigation", () => {
       vi.spyOn(desktop, "listHarnessModels").mockReturnValue(pending.promise);
       vi.spyOn(desktop, "switchProject").mockResolvedValue({
         committed: true,
+        transitionEpoch: 1,
         snapshot: snapshotB(),
         recoveryError: null,
       });
@@ -759,9 +767,77 @@ describe("workbench resource and project navigation", () => {
     expect(useWorkbenchStore.getState().error).not.toBe("stale ABA failure");
   });
 
+  it("restores persisted harness models during initialization", async () => {
+    const restored = snapshotB();
+    restored.selectedHarnessId = "saved-harness";
+    restored.selectedModelId = "saved-model";
+    vi.spyOn(desktop, "getBootstrapSnapshot").mockResolvedValue(restored);
+    vi.spyOn(desktop, "listDirectory").mockImplementation(async (target) => ({
+      resource: target,
+      entries: [],
+      truncated: false,
+    }));
+    const models = vi.spyOn(desktop, "listHarnessModels").mockResolvedValue([
+      { id: "fallback-model", name: "Fallback" },
+      { id: "saved-model", name: "Saved" },
+    ]);
+
+    await useWorkbenchStore.getState().initialize();
+
+    expect(models).toHaveBeenCalledWith("saved-harness");
+    expect(useWorkbenchStore.getState()).toEqual(
+      expect.objectContaining({
+        projectTransitioning: false,
+        selectedHarnessId: "saved-harness",
+        selectedModelId: "saved-model",
+      }),
+    );
+  });
+
+  it("restores persisted harness models inside a project switch", async () => {
+    const restored = snapshotB();
+    restored.selectedHarnessId = "saved-harness";
+    restored.selectedModelId = "saved-model";
+    vi.spyOn(desktop, "switchProject").mockResolvedValue({
+      committed: true,
+      transitionEpoch: 1,
+      snapshot: restored,
+      recoveryError: null,
+    });
+    vi.spyOn(desktop, "listDirectory").mockImplementation(async (target) => ({
+      resource: target,
+      entries: [],
+      truncated: false,
+    }));
+    const pending = deferred<ModelOption[]>();
+    vi.spyOn(desktop, "listHarnessModels").mockReturnValue(pending.promise);
+
+    const switching = useWorkbenchStore.getState().switchProject("project-b");
+    await vi.waitFor(() =>
+      expect(useWorkbenchStore.getState()).toEqual(
+        expect.objectContaining({
+          projectTransitioning: true,
+          selectedHarnessId: "saved-harness",
+          selectedModelId: null,
+        }),
+      ),
+    );
+    pending.resolve([{ id: "saved-model", name: "Saved" }]);
+    await switching;
+
+    expect(useWorkbenchStore.getState()).toEqual(
+      expect.objectContaining({
+        projectTransitioning: false,
+        selectedHarnessId: "saved-harness",
+        selectedModelId: "saved-model",
+      }),
+    );
+  });
+
   it("blocks the workbench if projection recovery fails after a committed switch", async () => {
     vi.spyOn(desktop, "switchProject").mockResolvedValue({
       committed: true,
+      transitionEpoch: 1,
       snapshot: null,
       recoveryError: null,
     });
@@ -781,6 +857,7 @@ describe("workbench resource and project navigation", () => {
   it("blocks the workbench if projection recovery fails after project creation", async () => {
     vi.spyOn(desktop, "createProjectFromPicker").mockResolvedValue({
       committed: true,
+      transitionEpoch: 1,
       snapshot: null,
       recoveryError: null,
     });
@@ -799,6 +876,7 @@ describe("workbench resource and project navigation", () => {
   it("blocks the workbench if projection recovery fails after adding a root", async () => {
     vi.spyOn(desktop, "addProjectRootFromPicker").mockResolvedValue({
       committed: true,
+      transitionEpoch: 1,
       snapshot: null,
       recoveryError: null,
     });
@@ -817,6 +895,7 @@ describe("workbench resource and project navigation", () => {
   it("uses an authoritative snapshot returned by the switch command without a second bootstrap", async () => {
     vi.spyOn(desktop, "switchProject").mockResolvedValue({
       committed: true,
+      transitionEpoch: 1,
       snapshot: snapshotB(),
       recoveryError: null,
     });
@@ -897,6 +976,7 @@ describe("workbench resource and project navigation", () => {
     const open = vi.spyOn(desktop, "openEditorDocument");
     vi.spyOn(desktop, "switchProject").mockResolvedValue({
       committed: true,
+      transitionEpoch: 1,
       snapshot: snapshotB(),
       recoveryError: null,
     });
@@ -1088,6 +1168,7 @@ describe("workbench resource and project navigation", () => {
     useWorkbenchStore.setState({ sending: true, composerText: "old draft" });
     vi.spyOn(desktop, "switchProject").mockResolvedValue({
       committed: true,
+      transitionEpoch: 1,
       snapshot: snapshotB(),
       recoveryError: null,
     });

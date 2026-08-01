@@ -8,7 +8,7 @@ pub struct AppState {
     pub database: Database,
     pub harnesses: HarnessCatalog,
     pub editor_operations: EditorOperationCoordinator,
-    pub project_transitions: tokio::sync::Mutex<()>,
+    pub project_transitions: tokio::sync::Mutex<u64>,
 }
 
 impl AppState {
@@ -17,7 +17,7 @@ impl AppState {
             database,
             harnesses: HarnessCatalog,
             editor_operations: EditorOperationCoordinator::default(),
-            project_transitions: tokio::sync::Mutex::new(()),
+            project_transitions: tokio::sync::Mutex::new(0),
         }
     }
 }

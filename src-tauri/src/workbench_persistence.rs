@@ -48,6 +48,7 @@ impl Database {
             None => Vec::new(),
         };
         Ok(BootstrapSnapshot {
+            transition_epoch: 0,
             projects,
             project: Some(project),
             tabs,
@@ -133,6 +134,7 @@ impl Database {
 
 fn empty_snapshot(projects: Vec<crate::domain::ProjectListItem>) -> BootstrapSnapshot {
     BootstrapSnapshot {
+        transition_epoch: 0,
         projects,
         project: None,
         tabs: Vec::new(),

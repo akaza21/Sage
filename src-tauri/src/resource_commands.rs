@@ -21,15 +21,18 @@ use crate::{
 pub async fn get_bootstrap_snapshot(
     state: State<'_, AppState>,
 ) -> Result<BootstrapSnapshot, String> {
-    build_bootstrap_snapshot(&state)
+    let transition_epoch = state.project_transitions.lock().await;
+    build_bootstrap_snapshot(&state, *transition_epoch)
         .await
         .map_err(|error| error.to_string())
 }
 
 pub(crate) async fn build_bootstrap_snapshot(
     state: &AppState,
+    transition_epoch: u64,
 ) -> crate::error::AppResult<BootstrapSnapshot> {
     let mut snapshot = state.database.bootstrap_snapshot()?;
+    snapshot.transition_epoch = transition_epoch;
     snapshot.harnesses = state.harnesses.definitions();
     let Some(project) = &snapshot.project else {
         return Ok(snapshot);
@@ -451,7 +454,9 @@ mod tests {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         for _ in 0..2 {
             let state = AppState::new(Database::open(&database_path).unwrap());
-            let restored = runtime.block_on(build_bootstrap_snapshot(&state)).unwrap();
+            let restored = runtime
+                .block_on(build_bootstrap_snapshot(&state, 0))
+                .unwrap();
             assert_eq!(restored.recovered_buffers.len(), 2);
             assert_eq!(
                 restored

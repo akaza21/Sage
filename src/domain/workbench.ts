@@ -202,6 +202,7 @@ export interface ProjectSwitchRequest {
 
 export interface ProjectTransitionResult {
   committed: boolean;
+  transitionEpoch: number;
   snapshot: BootstrapSnapshot | null;
   recoveryError: string | null;
 }
@@ -233,6 +234,7 @@ export interface ChatMessage {
 }
 
 export interface BootstrapSnapshot {
+  transitionEpoch: number;
   projects: ProjectListItem[];
   project: ProjectSummary | null;
   tabs: WorkbenchTab[];

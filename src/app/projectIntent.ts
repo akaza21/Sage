@@ -1,5 +1,9 @@
 import { sameResource } from "../domain/resourceIdentity";
-import type { ResourceRef, WorkbenchTab } from "../domain/workbench";
+import type {
+  ProjectTransitionResult,
+  ResourceRef,
+  WorkbenchTab,
+} from "../domain/workbench";
 
 const MAX_PROJECT_GENERATION = Number.MAX_SAFE_INTEGER;
 
@@ -48,6 +52,22 @@ export function nextProjectGeneration(current: number): number {
     );
   }
   return current + 1;
+}
+
+export function validateTransitionIntent(
+  result: ProjectTransitionResult,
+  expectedTransitionEpoch: number,
+) {
+  const responseEpoch = result.committed
+    ? expectedTransitionEpoch + 1
+    : expectedTransitionEpoch;
+  if (
+    !Number.isSafeInteger(expectedTransitionEpoch) ||
+    !Number.isSafeInteger(result.transitionEpoch) ||
+    result.transitionEpoch !== responseEpoch
+  ) {
+    throw new Error("native project transition returned a stale intent epoch");
+  }
 }
 
 export function matchesProjectIntent(

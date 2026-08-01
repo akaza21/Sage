@@ -95,11 +95,16 @@ export const desktop = {
 
   createProjectFromPicker(
     expectedActiveProjectId: string | null,
+    expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
     return isTauriRuntime()
-      ? invoke("create_project_from_picker", { expectedActiveProjectId })
+      ? invoke("create_project_from_picker", {
+          expectedActiveProjectId,
+          expectedTransitionEpoch,
+        })
       : Promise.resolve({
           committed: false,
+          transitionEpoch: expectedTransitionEpoch,
           snapshot: null,
           recoveryError: null,
         });
@@ -107,11 +112,16 @@ export const desktop = {
 
   addProjectRootFromPicker(
     projectId: string,
+    expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
     return isTauriRuntime()
-      ? invoke("add_project_root_from_picker", { projectId })
+      ? invoke("add_project_root_from_picker", {
+          projectId,
+          expectedTransitionEpoch,
+        })
       : Promise.resolve({
           committed: false,
+          transitionEpoch: expectedTransitionEpoch,
           snapshot: null,
           recoveryError: null,
         });
@@ -135,10 +145,11 @@ export const desktop = {
 
   switchProject(
     request: ProjectSwitchRequest,
+    expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
     return isTauriRuntime()
-      ? invoke("switch_project", { request })
-      : browserDesktop.switchProject(request);
+      ? invoke("switch_project", { request, expectedTransitionEpoch })
+      : browserDesktop.switchProject(request, expectedTransitionEpoch);
   },
 
   listHarnessModels(harnessId: string): Promise<ModelOption[]> {

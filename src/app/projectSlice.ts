@@ -6,7 +6,11 @@ import type {
   ProjectTransitionResult,
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
-import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
+import {
+  matchesProjectIntent,
+  nextProjectGeneration,
+  validateTransitionIntent,
+} from "./projectIntent";
 import {
   currentProjectLayout as layout,
   projectErrorMessage as errorMessage,
@@ -16,6 +20,7 @@ import type { WorkbenchState } from "./store";
 
 export interface ProjectSlice {
   projectGeneration: number;
+  nativeTransitionEpoch: number;
   projectTransitioning: boolean;
   initialize: () => Promise<void>;
   persistLayout: () => Promise<void>;
@@ -53,15 +58,20 @@ export const createProjectSlice: StateCreator<
       snapshot.project?.roots.filter(
         (root) => root.availability === "available",
       ) ?? [];
-    await Promise.all(
-      availableRoots.map((root) => get().loadDirectory(childResource(root.id))),
+    const projectionLoads: Promise<void>[] = availableRoots.map((root) =>
+      get().loadDirectory(childResource(root.id)),
     );
-    if (projectId && !matchesProjectIntent(get(), generation, projectId)) {
-      return;
+    if (projectId && snapshot.selectedHarnessId) {
+      projectionLoads.push(
+        get().loadHarnessModelsForProjection(
+          snapshot.selectedHarnessId,
+          snapshot.selectedModelId,
+          generation,
+          projectId,
+        ),
+      );
     }
-    if (snapshot.selectedHarnessId) {
-      await get().selectHarness(snapshot.selectedHarnessId);
-    }
+    await Promise.all(projectionLoads);
     if (projectId && !matchesProjectIntent(get(), generation, projectId)) {
       return;
     }
@@ -141,6 +151,11 @@ export const createProjectSlice: StateCreator<
       throw new Error("native project transition did not commit");
     }
     if (result.snapshot) {
+      if (result.snapshot.transitionEpoch !== result.transitionEpoch) {
+        throw new Error(
+          "native project transition returned inconsistent intent metadata",
+        );
+      }
       if (!validate(result.snapshot)) {
         throw new Error("native project change returned an invalid project");
       }
@@ -181,6 +196,7 @@ export const createProjectSlice: StateCreator<
 
   return {
     projectGeneration: 0,
+    nativeTransitionEpoch: 0,
     projectTransitioning: false,
 
     initialize: async () => {
@@ -217,13 +233,18 @@ export const createProjectSlice: StateCreator<
     createProject: async () => {
       if (!beginProjectTransition()) return;
       const previousProjectId = get().project?.id ?? null;
+      const expectedTransitionEpoch = get().nativeTransitionEpoch;
       let committed = false;
       let mutationInvoked = false;
       try {
         await get().persistLayout();
         set({ phase: "booting" });
         mutationInvoked = true;
-        const result = await desktop.createProjectFromPicker(previousProjectId);
+        const result = await desktop.createProjectFromPicker(
+          previousProjectId,
+          expectedTransitionEpoch,
+        );
+        validateTransitionIntent(result, expectedTransitionEpoch);
         if (result.committed) {
           committed = true;
           const generation = invalidateProjectIntents();
@@ -274,13 +295,18 @@ export const createProjectSlice: StateCreator<
         return;
       }
       const previousRootCount = project.roots.length;
+      const expectedTransitionEpoch = get().nativeTransitionEpoch;
       let committed = false;
       let mutationInvoked = false;
       try {
         await get().persistLayout();
         set({ phase: "booting" });
         mutationInvoked = true;
-        const result = await desktop.addProjectRootFromPicker(project.id);
+        const result = await desktop.addProjectRootFromPicker(
+          project.id,
+          expectedTransitionEpoch,
+        );
+        validateTransitionIntent(result, expectedTransitionEpoch);
         if (result.committed) {
           committed = true;
           const generation = invalidateProjectIntents();
@@ -336,15 +362,20 @@ export const createProjectSlice: StateCreator<
       }
       let committed = false;
       let mutationInvoked = false;
+      const expectedTransitionEpoch = get().nativeTransitionEpoch;
       try {
         await get().flushActiveEditor();
         const generation = invalidateProjectIntents();
         set({ phase: "booting" });
         mutationInvoked = true;
-        const result = await desktop.switchProject({
-          targetProjectId: projectId,
-          currentLayout: layout(get())!,
-        });
+        const result = await desktop.switchProject(
+          {
+            targetProjectId: projectId,
+            currentLayout: layout(get())!,
+          },
+          expectedTransitionEpoch,
+        );
+        validateTransitionIntent(result, expectedTransitionEpoch);
         committed = result.committed;
         await applyCommittedProjection(
           result,

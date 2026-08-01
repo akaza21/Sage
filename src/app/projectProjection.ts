@@ -23,6 +23,7 @@ export function currentProjectLayout(
 
 export function snapshotProjection(snapshot: BootstrapSnapshot) {
   return {
+    nativeTransitionEpoch: snapshot.transitionEpoch,
     phase: "ready" as const,
     error: null,
     projects: snapshot.projects,

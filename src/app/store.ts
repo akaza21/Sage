@@ -61,6 +61,12 @@ export interface WorkbenchState
   setSidebarView: (view: SidebarView) => void;
   toggleSidebar: () => void;
   selectHarness: (harnessId: string) => Promise<void>;
+  loadHarnessModelsForProjection: (
+    harnessId: string,
+    selectedModelId: string | null,
+    projectGeneration: number,
+    projectId: string,
+  ) => Promise<void>;
   selectModel: (modelId: string) => void;
   setComposerText: (text: string) => void;
   sendPrompt: () => Promise<void>;
@@ -77,6 +83,45 @@ function errorMessage(error: unknown): string {
 }
 
 export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
+  const loadHarnessModels = async (
+    harnessId: string,
+    previousModelId: string | null,
+    generation: number,
+    projectId: string,
+  ) => {
+    const requestGeneration = nextProjectGeneration(
+      get().harnessRequestGeneration,
+    );
+    set({
+      selectedHarnessId: harnessId,
+      models: [],
+      selectedModelId: null,
+      harnessRequestGeneration: requestGeneration,
+    });
+    try {
+      const models = await desktop.listHarnessModels(harnessId);
+      if (
+        matchesProjectIntent(get(), generation, projectId) &&
+        get().harnessRequestGeneration === requestGeneration &&
+        get().selectedHarnessId === harnessId
+      ) {
+        set({
+          models,
+          selectedModelId: preferredModelId(models, previousModelId),
+          error: null,
+        });
+      }
+    } catch (error) {
+      if (
+        matchesProjectIntent(get(), generation, projectId) &&
+        get().harnessRequestGeneration === requestGeneration &&
+        get().selectedHarnessId === harnessId
+      ) {
+        set({ error: errorMessage(error) });
+      }
+    }
+  };
+
   return {
     phase: "booting",
     error: null,
@@ -237,37 +282,22 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
       if (!projectId) return;
       const previous =
         get().selectedHarnessId === harnessId ? get().selectedModelId : null;
-      const requestGeneration = nextProjectGeneration(
-        get().harnessRequestGeneration,
+      await loadHarnessModels(harnessId, previous, generation, projectId);
+    },
+
+    loadHarnessModelsForProjection: async (
+      harnessId,
+      selectedModelId,
+      projectGeneration,
+      projectId,
+    ) => {
+      if (!matchesProjectIntent(get(), projectGeneration, projectId)) return;
+      await loadHarnessModels(
+        harnessId,
+        selectedModelId,
+        projectGeneration,
+        projectId,
       );
-      set({
-        selectedHarnessId: harnessId,
-        models: [],
-        selectedModelId: null,
-        harnessRequestGeneration: requestGeneration,
-      });
-      try {
-        const models = await desktop.listHarnessModels(harnessId);
-        if (
-          matchesProjectIntent(get(), generation, projectId) &&
-          get().harnessRequestGeneration === requestGeneration &&
-          get().selectedHarnessId === harnessId
-        ) {
-          set({
-            models,
-            selectedModelId: preferredModelId(models, previous),
-            error: null,
-          });
-        }
-      } catch (error) {
-        if (
-          matchesProjectIntent(get(), generation, projectId) &&
-          get().harnessRequestGeneration === requestGeneration &&
-          get().selectedHarnessId === harnessId
-        ) {
-          set({ error: errorMessage(error) });
-        }
-      }
     },
 
     selectModel: (selectedModelId) => {

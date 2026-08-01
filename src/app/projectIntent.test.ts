@@ -4,6 +4,7 @@ import {
   issueRequestIntent,
   matchesRequestIntent,
   MAX_REQUEST_GENERATIONS,
+  validateTransitionIntent,
 } from "./projectIntent";
 
 describe("bounded request intents", () => {
@@ -43,5 +44,46 @@ describe("bounded request intents", () => {
         reinserted.token,
       ),
     ).toBe(true);
+  });
+});
+
+describe("native transition intents", () => {
+  it("accepts only the epoch owned by the issued transition", () => {
+    expect(() =>
+      validateTransitionIntent(
+        {
+          committed: true,
+          transitionEpoch: 8,
+          snapshot: null,
+          recoveryError: null,
+        },
+        7,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      validateTransitionIntent(
+        {
+          committed: false,
+          transitionEpoch: 7,
+          snapshot: null,
+          recoveryError: null,
+        },
+        7,
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects a late response after an ABA transition", () => {
+    expect(() =>
+      validateTransitionIntent(
+        {
+          committed: true,
+          transitionEpoch: 10,
+          snapshot: null,
+          recoveryError: null,
+        },
+        7,
+      ),
+    ).toThrow("stale intent epoch");
   });
 });
