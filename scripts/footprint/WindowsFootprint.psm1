@@ -1,4 +1,5 @@
 Set-StrictMode -Version Latest
+Import-Module (Join-Path $PSScriptRoot "ProcessIdentity.psm1") -Force
 
 function Get-FootprintMedian {
   param([Parameter(Mandatory)][double[]]$Values)
@@ -57,99 +58,29 @@ function Get-FootprintProcessRole {
   return "unknown"
 }
 
-function Get-FootprintDescendants {
-  param(
-    [Parameter(Mandatory)][int]$RootProcessId,
-    [AllowNull()][object[]]$ProcessRows
-  )
-  if ($null -eq $ProcessRows) { $ProcessRows = @(Get-CimInstance Win32_Process) }
-  $included = [Collections.Generic.HashSet[int]]::new()
-  [void]$included.Add($RootProcessId)
-  do {
-    $changed = $false
-    foreach ($row in $ProcessRows) {
-      $pid = [int]$row.ProcessId
-      if (-not $included.Contains($pid) -and $included.Contains([int]$row.ParentProcessId)) {
-        [void]$included.Add($pid)
-        $changed = $true
-      }
-    }
-  } while ($changed)
-  return @($ProcessRows | Where-Object { $included.Contains([int]$_.ProcessId) } | Sort-Object ProcessId)
-}
-
-function ConvertTo-FootprintCreationIdentity {
-  param([Parameter(Mandatory)]$CreationDate)
-  if ($CreationDate -is [DateTime]) { return $CreationDate.ToUniversalTime().ToString("o") }
-  return [string]$CreationDate
-}
-
-function Test-FootprintProcessIdentity {
-  param(
-    [Parameter(Mandatory)]$ProcessRow,
-    [Parameter(Mandatory)][string]$ExpectedExecutablePath,
-    [Parameter(Mandatory)][string]$ExpectedCreationDate
-  )
-  if (-not $ProcessRow.ExecutablePath -or -not $ProcessRow.CreationDate) { return $false }
-  $pathMatches = [string]::Equals(
-    [IO.Path]::GetFullPath([string]$ProcessRow.ExecutablePath),
-    [IO.Path]::GetFullPath($ExpectedExecutablePath),
-    [StringComparison]::OrdinalIgnoreCase
-  )
-  return $pathMatches -and (
-    (ConvertTo-FootprintCreationIdentity $ProcessRow.CreationDate) -eq $ExpectedCreationDate
-  )
-}
-
-function Get-FootprintRootIdentity {
-  param(
-    [Parameter(Mandatory)][int]$RootProcessId,
-    [Parameter(Mandatory)][string]$ExpectedExecutablePath,
-    [AllowNull()][object[]]$ProcessRows
-  )
-  if ($null -eq $ProcessRows) { $ProcessRows = @(Get-CimInstance Win32_Process) }
-  $root = @($ProcessRows | Where-Object { [int]$_.ProcessId -eq $RootProcessId }) | Select-Object -First 1
-  if ($null -eq $root -or -not $root.ExecutablePath -or -not $root.CreationDate) {
-    throw "The launched root lacks exact executable or creation identity."
-  }
-  $expected = [IO.Path]::GetFullPath($ExpectedExecutablePath)
-  if (-not [string]::Equals([IO.Path]::GetFullPath([string]$root.ExecutablePath), $expected, [StringComparison]::OrdinalIgnoreCase)) {
-    throw "The launched root executable identity does not match the target."
-  }
-  return [ordered]@{
-    processId = $RootProcessId
-    executablePath = $expected
-    creationDate = ConvertTo-FootprintCreationIdentity $root.CreationDate
-  }
-}
-
-function Get-FootprintForceKillCandidates {
-  param(
-    [Parameter(Mandatory)][Collections.IDictionary]$RootIdentity,
-    [AllowNull()][object[]]$ProcessRows
-  )
-  if ($null -eq $ProcessRows) { $ProcessRows = @(Get-CimInstance Win32_Process) }
-  $root = @($ProcessRows | Where-Object { [int]$_.ProcessId -eq [int]$RootIdentity.processId }) | Select-Object -First 1
-  if ($null -eq $root -or -not (Test-FootprintProcessIdentity $root $RootIdentity.executablePath $RootIdentity.creationDate)) {
-    return @()
-  }
-  return @(Get-FootprintDescendants ([int]$RootIdentity.processId) $ProcessRows)
-}
-
 function Get-FootprintTreeSample {
   param([Parameter(Mandatory)][int]$RootProcessId)
-  $members = @(Get-FootprintDescendants $RootProcessId @(Get-CimInstance Win32_Process))
+  $processRows = @(Get-FootprintProcessSnapshot)
+  $members = @(Get-FootprintDescendants $RootProcessId $processRows)
   $records = @()
+  $identityBytes = [long]0
+  $limits = Get-FootprintProcessLimits
   foreach ($member in $members) {
     try {
       $process = Get-Process -Id ([int]$member.ProcessId) -ErrorAction Stop
       $role = Get-FootprintProcessRole $member.Name $member.CommandLine ([int]$member.ProcessId -eq $RootProcessId)
       $coreIncluded = $role -in @("native-host", "browser", "renderer", "gpu", "utility-network", "utility-storage", "utility-other", "crashpad", "webview-unknown")
+      $identity = ConvertTo-FootprintProcessIdentity $member
+      $identityBytes += $identity.identityBytes
+      if ($identityBytes -gt $limits.retainedIdentityBytes) {
+        throw "Sampled process identities exceed their $($limits.retainedIdentityBytes)-byte limit."
+      }
       $records += [ordered]@{
         processId = [int]$member.ProcessId
         parentProcessId = [int]$member.ParentProcessId
         name = [string]$member.Name
         executablePath = if ($member.ExecutablePath) { [string]$member.ExecutablePath } else { $null }
+        creationDate = $identity.creationDate
         commandLine = if ($member.CommandLine) { [string]$member.CommandLine } else { $null }
         role = $role
         coreIncluded = $coreIncluded
@@ -194,55 +125,11 @@ function Wait-FootprintWindow {
   throw "The exact '$ExpectedTitle' window did not appear within $TimeoutSeconds seconds."
 }
 
-function Stop-FootprintTree {
-  param(
-    [Parameter(Mandatory)][Collections.IDictionary]$RootIdentity,
-    [Parameter(Mandatory)][Collections.Generic.HashSet[int]]$KnownProcessIds,
-    [ValidateRange(1, 30)][int]$GraceSeconds = 1
-  )
-  $rootPid = [int]$RootIdentity.processId
-  $initialRows = @(Get-CimInstance Win32_Process)
-  $initialRoot = @($initialRows | Where-Object { [int]$_.ProcessId -eq $rootPid }) | Select-Object -First 1
-  if ($null -eq $initialRoot) {
-    return [ordered]@{ forced = $false; identityLost = $false; candidates = @(); remaining = @() }
-  }
-  if (-not (Test-FootprintProcessIdentity $initialRoot $RootIdentity.executablePath $RootIdentity.creationDate)) {
-    return [ordered]@{ forced = $false; identityLost = $true; candidates = @(); remaining = @() }
-  }
-  $initial = @(Get-FootprintForceKillCandidates $RootIdentity $initialRows)
-  $root = Get-Process -Id $rootPid -ErrorAction SilentlyContinue
-  if ($null -ne $root -and $root.MainWindowHandle -ne [IntPtr]::Zero) { [void]$root.CloseMainWindow() }
-  $deadline = [DateTime]::UtcNow.AddSeconds($GraceSeconds)
-  do {
-    $members = @(Get-FootprintForceKillCandidates $RootIdentity @(Get-CimInstance Win32_Process))
-    foreach ($row in $members) { [void]$KnownProcessIds.Add([int]$row.ProcessId) }
-    if ($members.Count -eq 0) { return [ordered]@{ forced = $false; identityLost = $false; candidates = @(); remaining = @() } }
-    Start-Sleep -Milliseconds 100
-  } while ([DateTime]::UtcNow -lt $deadline)
-  $candidates = @(Get-FootprintForceKillCandidates $RootIdentity @(Get-CimInstance Win32_Process) | Sort-Object @{ Expression = { [int]$_.ProcessId -eq $rootPid } }, @{ Expression = { [int]$_.ProcessId }; Descending = $true })
-  $killed = @()
-  foreach ($candidate in $candidates) {
-    $current = @(Get-FootprintForceKillCandidates $RootIdentity @(Get-CimInstance Win32_Process) | Where-Object { [int]$_.ProcessId -eq [int]$candidate.ProcessId }) | Select-Object -First 1
-    if ($null -eq $current -or -not $candidate.ExecutablePath -or -not $candidate.CreationDate) { continue }
-    if (-not (Test-FootprintProcessIdentity $current $candidate.ExecutablePath (ConvertTo-FootprintCreationIdentity $candidate.CreationDate))) { continue }
-    Stop-Process -Id ([int]$current.ProcessId) -Force -ErrorAction SilentlyContinue
-    $killed += [ordered]@{ processId = [int]$current.ProcessId; executablePath = [string]$current.ExecutablePath; creationDate = ConvertTo-FootprintCreationIdentity $current.CreationDate }
-  }
-  Start-Sleep -Milliseconds 250
-  $finalRows = @(Get-CimInstance Win32_Process)
-  $remaining = @($killed | Where-Object { $identity = $_; $current = @($finalRows | Where-Object { [int]$_.ProcessId -eq [int]$identity.processId }) | Select-Object -First 1; $null -ne $current -and (Test-FootprintProcessIdentity $current $identity.executablePath $identity.creationDate) } | ForEach-Object processId)
-  return [ordered]@{ forced = $killed.Count -gt 0; identityLost = $false; candidates = @($candidates | ForEach-Object ProcessId); remaining = $remaining }
-}
-
 Export-ModuleMember -Function @(
   "Get-FootprintCpuPercent",
-  "Get-FootprintDescendants",
-  "Get-FootprintForceKillCandidates",
   "Get-FootprintMedian",
   "Get-FootprintPercentile",
   "Get-FootprintProcessRole",
-  "Get-FootprintRootIdentity",
   "Get-FootprintTreeSample",
-  "Stop-FootprintTree",
   "Wait-FootprintWindow"
 )

@@ -14,6 +14,9 @@ param(
   [Parameter(Mandatory)]
   [string]$CandidateBindingPath,
 
+  [Parameter(Mandatory)]
+  [string]$SourceManifestPath,
+
   [string]$OutputDirectory = "",
 
   [ValidateRange(1, 100)]
@@ -69,6 +72,8 @@ foreach ($scenario in $scenarios) {
     $ExpectedSourceAggregateSha256,
     "-CandidateBindingPath",
     $CandidateBindingPath,
+    "-SourceManifestPath",
+    $SourceManifestPath,
     "-Launches",
     $Launches,
     "-WarmupSeconds",

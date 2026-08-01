@@ -5,6 +5,7 @@ param(
   [Parameter(Mandatory)][ValidatePattern("^[0-9a-fA-F]{64}$")][string]$ExpectedExecutableSha256,
   [Parameter(Mandatory)][ValidatePattern("^[0-9a-fA-F]{64}$")][string]$ExpectedSourceAggregateSha256,
   [Parameter(Mandatory)][string]$CandidateBindingPath,
+  [Parameter(Mandatory)][string]$SourceManifestPath,
   [ValidateRange(1, 100)][int]$Launches = 5,
   [ValidateRange(1, 60)][int]$WarmupSeconds = 8,
   [ValidateRange(2, 60)][int]$SampleCount = 5,
@@ -20,6 +21,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 Import-Module (Join-Path $PSScriptRoot "footprint/WindowsFootprint.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "footprint/ProcessIdentity.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "footprint/ScenarioEvidence.psm1") -Force
 
 if (-not [IO.Path]::IsPathRooted($ExecutablePath) -or -not (Test-Path -LiteralPath $ExecutablePath -PathType Leaf)) {
@@ -35,10 +37,10 @@ if ($Acceptance -and $MaxLaunchAttempts -gt 10) {
 }
 $nodeCommand = Get-Command $NodePath -CommandType Application -ErrorAction Stop
 $resolvedNode = $nodeCommand.Source
-$binding = Test-FootprintCandidateBinding $resolvedExecutable $ExpectedExecutableSha256 $ExpectedSourceAggregateSha256 $CandidateBindingPath
+$binding = Test-FootprintCandidateBinding $resolvedExecutable $ExpectedExecutableSha256 $ExpectedSourceAggregateSha256 $CandidateBindingPath $SourceManifestPath
 Assert-FootprintDebugStateClear
 
-$existing = @(Get-CimInstance Win32_Process | Where-Object {
+$existing = @(Get-FootprintProcessSnapshot | Where-Object {
   $_.ExecutablePath -and [string]::Equals([IO.Path]::GetFullPath([string]$_.ExecutablePath), $resolvedExecutable, [StringComparison]::OrdinalIgnoreCase)
 })
 if ($existing.Count -gt 0) { throw "The exact candidate is already running; acceptance requires a clean process boundary." }
@@ -61,7 +63,23 @@ function Get-AvailableLoopbackPort {
 }
 
 function Start-ExactFootprintProcess {
-  return Start-Process -FilePath $resolvedExecutable -WorkingDirectory (Split-Path -Parent $resolvedExecutable) -PassThru
+  [void](Assert-FootprintExecutableHash $resolvedExecutable $binding.executableSha256)
+  $launched = Start-Process -FilePath $resolvedExecutable -WorkingDirectory (Split-Path -Parent $resolvedExecutable) -PassThru
+  try {
+    [void](Assert-FootprintExecutableHash $resolvedExecutable $binding.executableSha256)
+  } catch {
+    $launchFailure = $_
+    try {
+      $cleanup = Stop-FootprintLaunchedProcessObject $launched $resolvedExecutable
+      if (-not $cleanup.exited -or -not $cleanup.treeBoundaryVerified) {
+        throw "Post-launch validation cleanup did not verify the exact process tree."
+      }
+    } catch {
+      throw "Post-launch candidate validation failed and exact process-object cleanup could not be verified: $($_.Exception.Message)"
+    }
+    throw $launchFailure
+  }
+  return $launched
 }
 
 function Wait-ExactDebugListener {
@@ -85,9 +103,25 @@ function Wait-ExactDebugListener {
 }
 
 function Get-ExactRootIdentity {
-  param([Parameter(Mandatory)][int]$ProcessId)
+  param(
+    [Parameter(Mandatory)][Collections.IDictionary]$LaunchIdentity,
+    [Parameter(Mandatory)][Collections.Generic.Dictionary[string, object]]$KnownProcessIdentities
+  )
   for ($attempt = 1; $attempt -le 20; $attempt += 1) {
-    try { return Get-FootprintRootIdentity $ProcessId $resolvedExecutable } catch {
+    try {
+      $rows = @(Get-FootprintProcessSnapshot)
+      $rootRows = @($rows | Where-Object { [int]$_.ProcessId -eq [int]$LaunchIdentity.processId })
+      if ($rootRows.Count -eq 0 -or @($rootRows | Where-Object {
+        $_.ExecutablePath -and $_.CreationDate -and
+        [string]::Equals([IO.Path]::GetFullPath([string]$_.ExecutablePath), $LaunchIdentity.executablePath, [StringComparison]::OrdinalIgnoreCase) -and
+        (ConvertTo-FootprintProcessIdentity $_).creationDate -eq $LaunchIdentity.creationDate
+      }).Count -eq 1) {
+        foreach ($row in @(Get-FootprintDescendants ([int]$LaunchIdentity.processId) $rows)) {
+          [void](Add-FootprintRememberedIdentity $KnownProcessIdentities $row)
+        }
+      }
+      return Get-FootprintRootIdentity $LaunchIdentity.processId $resolvedExecutable $LaunchIdentity.creationDate $rows
+    } catch {
       if ($attempt -eq 20) { throw }
       Start-Sleep -Milliseconds 50
     }
@@ -100,20 +134,23 @@ function Invoke-InstrumentedScenarioSetup {
   if (Test-Path -LiteralPath $output) { throw "Setup output already exists; use a fresh evidence directory." }
   $process = $null
   $identity = $null
-  $known = [Collections.Generic.HashSet[int]]::new()
+  $known = New-FootprintIdentityStore
   try {
     try {
       [Environment]::SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--remote-debugging-port=$port", "Process")
       [Environment]::SetEnvironmentVariable("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", $null, "Process")
       $process = Start-ExactFootprintProcess
-      [void]$known.Add($process.Id)
-      $identity = Get-ExactRootIdentity $process.Id
+      $identity = Get-FootprintLaunchIdentity $process $resolvedExecutable
+      [void](Add-FootprintRememberedIdentity $known ([pscustomobject]@{ ProcessId = $identity.processId; ExecutablePath = $identity.executablePath; CreationDate = $identity.creationDate }))
+      $verifiedIdentity = Get-ExactRootIdentity $identity $known
+      $identity = $verifiedIdentity
     } finally {
       foreach ($name in $debugNames) { [Environment]::SetEnvironmentVariable($name, $null, "Process") }
     }
     $window = Wait-FootprintWindow $process.Id $WindowTimeoutSeconds
     Start-Sleep -Milliseconds 500
     $tree = Get-FootprintTreeSample $process.Id
+    foreach ($record in $tree.processes) { [void](Add-FootprintRememberedIdentity $known $record) }
     if ($tree.unknownProcessCount -ne 0) { throw "Setup process tree contains an unknown descendant." }
     $debugRows = @($tree.processes | Where-Object { $_.commandLine -and $_.commandLine -match "--remote-debugging-port=$port(?:\s|$)" })
     if ($debugRows.Count -lt 1) { throw "Setup endpoint was not bound to the exact candidate process tree." }
@@ -123,6 +160,7 @@ function Invoke-InstrumentedScenarioSetup {
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $output -PathType Leaf)) { throw "Semantic CDP setup failed." }
     $semantic = Get-Content -LiteralPath $output -Raw | ConvertFrom-Json
     $verifiedTree = Get-FootprintTreeSample $process.Id
+    foreach ($record in $verifiedTree.processes) { [void](Add-FootprintRememberedIdentity $known $record) }
     if ($verifiedTree.unknownProcessCount -ne 0) { throw "Verified setup tree contains an unknown descendant." }
     return [ordered]@{
       scenario = $Scenario
@@ -146,6 +184,9 @@ function Invoke-InstrumentedScenarioSetup {
     if ($null -ne $identity) {
       $teardown = Stop-FootprintTree $identity $known
       if ($teardown.identityLost -or $teardown.remaining.Count -ne 0) { throw "Instrumented setup teardown was incomplete or ambiguous." }
+    } elseif ($null -ne $process) {
+      $teardown = Stop-FootprintLaunchedProcessObject $process $resolvedExecutable $known
+      if (-not $teardown.exited -or -not $teardown.treeBoundaryVerified) { throw "Instrumented setup exact process-object fallback cleanup was not verified." }
     }
     Assert-FootprintDebugStateClear
   }
@@ -153,7 +194,7 @@ function Invoke-InstrumentedScenarioSetup {
 
 $setup = Invoke-InstrumentedScenarioSetup
 Assert-FootprintDebugStateClear
-$remainingSetupProcesses = @(Get-CimInstance Win32_Process | Where-Object {
+$remainingSetupProcesses = @(Get-FootprintProcessSnapshot | Where-Object {
   $_.ExecutablePath -and [string]::Equals([IO.Path]::GetFullPath([string]$_.ExecutablePath), $resolvedExecutable, [StringComparison]::OrdinalIgnoreCase)
 })
 if ($remainingSetupProcesses.Count -gt 0) { throw "The instrumented setup process tree did not terminate completely." }
@@ -168,7 +209,7 @@ while ($validCount -lt $Launches -and $attempt -lt $maximumAttempts) {
   $attempt += 1
   $process = $null
   $identity = $null
-  $known = [Collections.Generic.HashSet[int]]::new()
+  $known = New-FootprintIdentityStore
   $launch = [ordered]@{
     launch = $validCount + 1
     attempt = $attempt
@@ -189,8 +230,10 @@ while ($validCount -lt $Launches -and $attempt -lt $maximumAttempts) {
     Assert-FootprintDebugStateClear
     $process = Start-ExactFootprintProcess
     if ($process.Id -eq $setupPid) { throw "Measured process reused the setup PID." }
-    [void]$known.Add($process.Id)
-    $identity = Get-ExactRootIdentity $process.Id
+    $identity = Get-FootprintLaunchIdentity $process $resolvedExecutable
+    [void](Add-FootprintRememberedIdentity $known ([pscustomobject]@{ ProcessId = $identity.processId; ExecutablePath = $identity.executablePath; CreationDate = $identity.creationDate }))
+    $verifiedIdentity = Get-ExactRootIdentity $identity $known
+    $identity = $verifiedIdentity
     $launch.rootIdentity = $identity
     $window = Wait-FootprintWindow $process.Id $WindowTimeoutSeconds
     $launch.startupWindowMs = $window.elapsedMs
@@ -198,7 +241,7 @@ while ($validCount -lt $Launches -and $attempt -lt $maximumAttempts) {
     Start-Sleep -Seconds $WarmupSeconds
     for ($sampleIndex = 1; $sampleIndex -le $SampleCount; $sampleIndex += 1) {
       $sample = Get-FootprintTreeSample $process.Id
-      foreach ($record in $sample.processes) { [void]$known.Add([int]$record.processId) }
+      foreach ($record in $sample.processes) { [void](Add-FootprintRememberedIdentity $known $record) }
       if ($sample.unknownProcessCount -ne 0) { throw "Measured tree contains an unknown descendant." }
       Assert-FootprintDebugStateClear @($sample.processes)
       $launch.samples += $sample
@@ -210,7 +253,7 @@ while ($validCount -lt $Launches -and $attempt -lt $maximumAttempts) {
     $launch.idleCpuPercentOneCore = Get-FootprintCpuPercent $first.coreCpuSeconds $last.coreCpuSeconds $wallSeconds
     $launch.postSampleScenarioEvidence = Wait-FootprintScenarioUiaEvidence $window.handle $process.Id $Scenario
     [void](Assert-FootprintScenarioAcceptance $Scenario $setup $launch.postSampleScenarioEvidence @($launch.samples) $resolvedExecutable $binding.executableSha256 $binding.sourceAggregateSha256)
-    $launch.processIdsSeen = @($known | Sort-Object)
+    $launch.processIdsSeen = @($known.Values | ForEach-Object processId | Sort-Object -Unique)
     $launch.roleSet = @($launch.samples | ForEach-Object processes | ForEach-Object role | Sort-Object -Unique)
     $launch.valid = $true
   } catch {
@@ -222,6 +265,11 @@ while ($validCount -lt $Launches -and $attempt -lt $maximumAttempts) {
       if ($launch.teardown.identityLost -or $launch.teardown.remaining.Count -ne 0) {
         $launch.valid = $false
         $launch.error = "Measured teardown was incomplete or ambiguous."
+      }
+    } elseif ($null -ne $process) {
+      $launch.teardown = Stop-FootprintLaunchedProcessObject $process $resolvedExecutable $known
+      if (-not $launch.teardown.exited -or -not $launch.teardown.treeBoundaryVerified) {
+        throw "Measured exact process-object fallback cleanup was not verified."
       }
     }
     $launch.finishedAtUtc = [DateTime]::UtcNow.ToString("o")
@@ -283,6 +331,7 @@ $summary = [ordered]@{
   sampleCount = $SampleCount
   sampleIntervalMs = $SampleIntervalMs
   processBoundary = "exact launched root plus classified Windows descendants"
+  processLimits = Get-FootprintProcessLimits
   primaryMetric = "summed core private bytes"
   coreRoles = @("native-host", "browser", "renderer", "gpu", "utility-network", "utility-storage", "utility-other", "crashpad")
   excludedRoles = @("excluded-child")
@@ -310,6 +359,7 @@ $raw = [ordered]@{
   harness = [ordered]@{
     scriptSha256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
     processModuleSha256 = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot "footprint/WindowsFootprint.psm1") -Algorithm SHA256).Hash
+    processIdentityModuleSha256 = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot "footprint/ProcessIdentity.psm1") -Algorithm SHA256).Hash
     scenarioModuleSha256 = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot "footprint/ScenarioEvidence.psm1") -Algorithm SHA256).Hash
     setupHelperSha256 = (Get-FileHash -LiteralPath $setupHelper -Algorithm SHA256).Hash
   }

@@ -7,6 +7,48 @@ $script:DebugEnvironmentNames = @(
   "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
   "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER"
 )
+$script:MaxBindingBytes = 1MB
+$script:MaxManifestBytes = 8MB
+$script:MaxManifestFiles = 4096
+$script:MaxManifestSourceBytes = 512MB
+
+function Read-FootprintBoundedJsonFile {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [Parameter(Mandatory)][long]$MaxBytes,
+    [Parameter(Mandatory)][string]$Label
+  )
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "$Label is missing." }
+  $resolved = (Resolve-Path -LiteralPath $Path).Path
+  $stream = [IO.File]::Open($resolved, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+  try {
+    if ($stream.Length -gt $MaxBytes) { throw "$Label exceeds its $MaxBytes-byte limit." }
+    $bytes = [byte[]]::new([int]$stream.Length)
+    $offset = 0
+    while ($offset -lt $bytes.Length) {
+      $read = $stream.Read($bytes, $offset, $bytes.Length - $offset)
+      if ($read -eq 0) { throw "$Label changed while it was being read." }
+      $offset += $read
+    }
+    if ($stream.ReadByte() -ne -1) { throw "$Label changed while it was being read." }
+  } finally {
+    $stream.Dispose()
+  }
+  $sha = [Security.Cryptography.SHA256]::Create()
+  try {
+    $hash = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace("-", "").ToLowerInvariant()
+  } finally {
+    $sha.Dispose()
+  }
+  $decoder = [Text.UTF8Encoding]::new($false, $true)
+  $text = $decoder.GetString($bytes)
+  if ($text.Length -gt 0 -and $text[0] -eq [char]0xFEFF) { $text = $text.Substring(1) }
+  return [ordered]@{
+    json = $text | ConvertFrom-Json
+    path = $resolved
+    sha256 = $hash
+  }
+}
 
 function Get-FootprintScenarioContract {
   param([Parameter(Mandatory)][ValidateSet("chat", "explorer")][string]$Scenario)
@@ -43,28 +85,112 @@ function Test-FootprintCandidateBinding {
     [Parameter(Mandatory)][string]$ExecutablePath,
     [Parameter(Mandatory)][string]$ExpectedExecutableSha256,
     [Parameter(Mandatory)][string]$ExpectedSourceAggregateSha256,
-    [Parameter(Mandatory)][string]$CandidateBindingPath
+    [Parameter(Mandatory)][string]$CandidateBindingPath,
+    [Parameter(Mandatory)][string]$SourceManifestPath
   )
 
-  if (-not (Test-Path -LiteralPath $CandidateBindingPath -PathType Leaf)) {
-    throw "Candidate binding file is missing."
-  }
+  $bindingRecord = Read-FootprintBoundedJsonFile $CandidateBindingPath $script:MaxBindingBytes "Candidate binding file"
+  $manifestRecord = Read-FootprintBoundedJsonFile $SourceManifestPath $script:MaxManifestBytes "Retained source manifest"
   $actual = (Get-FileHash -LiteralPath $ExecutablePath -Algorithm SHA256).Hash.ToLowerInvariant()
   $expectedExecutable = $ExpectedExecutableSha256.ToLowerInvariant()
   $expectedSource = $ExpectedSourceAggregateSha256.ToLowerInvariant()
   if ($actual -ne $expectedExecutable) { throw "Candidate executable hash mismatch." }
-  $binding = Get-Content -LiteralPath $CandidateBindingPath -Raw | ConvertFrom-Json
+  $binding = $bindingRecord.json
+  $manifest = $manifestRecord.json
+  $manifestAggregate = Get-FootprintSourceManifestAggregate $manifest
   if (([string]$binding.candidate.executableSha256).ToLowerInvariant() -ne $expectedExecutable) {
     throw "Binding file does not identify the exact candidate executable."
   }
   if (([string]$binding.candidate.aggregateSha256).ToLowerInvariant() -ne $expectedSource) {
     throw "Binding file does not identify the exact source aggregate."
   }
+  if ([int]$binding.candidate.fileCount -ne [int]$manifest.fileCount -or
+      [long]$binding.candidate.totalBytes -ne [long]$manifest.totalBytes) {
+    throw "Binding file source counts do not match the retained source manifest."
+  }
+  if (([string]$manifest.aggregateSha256).ToLowerInvariant() -ne $manifestAggregate -or $manifestAggregate -ne $expectedSource) {
+    throw "Retained source manifest does not reproduce the expected aggregate."
+  }
   return [ordered]@{
     executableSha256 = $expectedExecutable
     sourceAggregateSha256 = $expectedSource
-    bindingPath = (Resolve-Path -LiteralPath $CandidateBindingPath).Path
+    bindingPath = $bindingRecord.path
+    candidateBindingSha256 = $bindingRecord.sha256
+    sourceManifestPath = $manifestRecord.path
+    sourceManifestSha256 = $manifestRecord.sha256
+    fileCount = [int]$manifest.fileCount
+    totalBytes = [long]$manifest.totalBytes
   }
+}
+
+function Get-FootprintSourceManifestAggregate {
+  param([Parameter(Mandatory)]$Manifest)
+
+  $files = @($Manifest.files)
+  if ($files.Count -lt 1 -or $files.Count -gt $script:MaxManifestFiles) {
+    throw "Source manifest must contain 1..$($script:MaxManifestFiles) files."
+  }
+  if ([int]$Manifest.schemaVersion -ne 1 -or
+      [string]$Manifest.aggregateConstruction -ne "SHA-256(path NUL sha256 NUL byteLength LF)") {
+    throw "Source manifest does not use the accepted deterministic schema."
+  }
+  if ([int]$Manifest.fileCount -ne $files.Count) {
+    throw "Source manifest file count does not match its entries."
+  }
+  $stream = [IO.MemoryStream]::new()
+  $totalBytes = [long]0
+  $previousPath = $null
+  try {
+    foreach ($file in $files) {
+      $path = [string]$file.path
+      $hash = ([string]$file.sha256).ToLowerInvariant()
+      $bytes = [long]$file.bytes
+      if ([string]::IsNullOrWhiteSpace($path) -or $path.Length -gt 1024 -or
+          [IO.Path]::IsPathRooted($path) -or $path.Contains("\") -or
+          $path.Contains([char]0) -or $path.Contains("`r") -or $path.Contains("`n") -or
+          $path.Split('/') -contains "" -or $path.Split('/') -contains "." -or
+          $path.Split('/') -contains "..") {
+        throw "Source manifest contains an invalid relative path."
+      }
+      if ($hash -notmatch "^[0-9a-f]{64}$" -or $bytes -lt 0) {
+        throw "Source manifest contains invalid file metadata."
+      }
+      if ($null -ne $previousPath -and [string]::CompareOrdinal($previousPath, $path) -ge 0) {
+        throw "Source manifest paths are not strictly ordered and unique."
+      }
+      $previousPath = $path
+      $totalBytes += $bytes
+      if ($totalBytes -gt $script:MaxManifestSourceBytes) {
+        throw "Source manifest exceeds its $($script:MaxManifestSourceBytes)-byte source limit."
+      }
+      $record = [Text.Encoding]::UTF8.GetBytes("$path`0$hash`0$bytes`n")
+      $stream.Write($record, 0, $record.Length)
+    }
+    if ([long]$Manifest.totalBytes -ne $totalBytes) {
+      throw "Source manifest byte count does not match its entries."
+    }
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+      $stream.Position = 0
+      return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace("-", "").ToLowerInvariant()
+    } finally {
+      $sha.Dispose()
+    }
+  } finally {
+    $stream.Dispose()
+  }
+}
+
+function Assert-FootprintExecutableHash {
+  param(
+    [Parameter(Mandatory)][string]$ExecutablePath,
+    [Parameter(Mandatory)][string]$ExpectedExecutableSha256
+  )
+  $actual = (Get-FileHash -LiteralPath $ExecutablePath -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($actual -ne $ExpectedExecutableSha256.ToLowerInvariant()) {
+    throw "Candidate executable changed before launch."
+  }
+  return $true
 }
 
 function Get-FootprintScenarioUiaEvidence {
@@ -182,9 +308,11 @@ function Assert-FootprintScenarioAcceptance {
 }
 
 Export-ModuleMember -Function @(
+  "Assert-FootprintExecutableHash",
   "Assert-FootprintDebugStateClear",
   "Assert-FootprintScenarioAcceptance",
   "Get-FootprintScenarioContract",
+  "Get-FootprintSourceManifestAggregate",
   "Get-FootprintScenarioUiaEvidence",
   "Test-FootprintCandidateBinding",
   "Wait-FootprintScenarioUiaEvidence"
