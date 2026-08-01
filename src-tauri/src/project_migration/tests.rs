@@ -142,6 +142,114 @@ fn missing_legacy_root_and_dirty_buffer_survive_upgrade_and_reopen() {
     fs::remove_dir_all(folder).unwrap();
 }
 
+#[cfg(windows)]
+#[test]
+fn missing_root_buffer_case_aliases_roll_back_with_legacy_rows_intact() {
+    let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
+    fs::create_dir_all(&folder).unwrap();
+    let root = folder.join("missing-root");
+    fs::create_dir_all(&root).unwrap();
+    let path = folder.join("sage.db");
+    seed_legacy(&path, &root, r#"{"resourcePath":"src/main.rs"}"#);
+    let connection = Connection::open(&path).unwrap();
+    connection
+        .execute(
+            "INSERT INTO editor_buffers
+             VALUES ('legacy', 'SRC/MAIN.RS', 'other-base', 1, NULL, 'lf',
+                     'other', 5, 'other-buffer', 1, NULL, 3)",
+            [],
+        )
+        .unwrap();
+    drop(connection);
+    fs::remove_dir_all(&root).unwrap();
+
+    assert!(matches!(
+        Database::open(&path),
+        Err(crate::error::AppError::InvalidRequest(_))
+    ));
+    let connection = Connection::open(&path).unwrap();
+    let paths = connection
+        .prepare("SELECT relative_path FROM editor_buffers ORDER BY relative_path")
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(0))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let migrated: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = 4)",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(paths, ["SRC/MAIN.RS", "src/main.rs"]);
+    assert!(!migrated);
+    drop(connection);
+    fs::remove_dir_all(folder).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn missing_root_buffer_and_tab_case_aliases_roll_back() {
+    let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
+    fs::create_dir_all(&folder).unwrap();
+    let root = folder.join("missing-root");
+    fs::create_dir_all(&root).unwrap();
+    let path = folder.join("sage.db");
+    seed_legacy(&path, &root, r#"{"resourcePath":"SRC/MAIN.RS"}"#);
+    fs::remove_dir_all(&root).unwrap();
+
+    assert!(Database::open(&path).is_err());
+    let connection = Connection::open(&path).unwrap();
+    let metadata: String = connection
+        .query_row(
+            "SELECT metadata_json FROM workbench_tabs WHERE id = 'file'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let migrated: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = 4)",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(metadata, r#"{"resourcePath":"SRC/MAIN.RS"}"#);
+    assert!(!migrated);
+    drop(connection);
+    fs::remove_dir_all(folder).unwrap();
+}
+
+#[cfg(not(windows))]
+#[test]
+fn missing_root_case_distinct_resources_remain_independent() {
+    let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
+    fs::create_dir_all(&folder).unwrap();
+    let root = folder.join("missing-root");
+    fs::create_dir_all(&root).unwrap();
+    let path = folder.join("sage.db");
+    seed_legacy(&path, &root, r#"{"resourcePath":"src/main.rs"}"#);
+    Connection::open(&path)
+        .unwrap()
+        .execute(
+            "INSERT INTO editor_buffers
+             VALUES ('legacy', 'SRC/MAIN.RS', 'other-base', 1, NULL, 'lf',
+                     'other', 5, 'other-buffer', 1, NULL, 3)",
+            [],
+        )
+        .unwrap();
+    fs::remove_dir_all(&root).unwrap();
+
+    let database = Database::open(&path).unwrap();
+    assert_eq!(
+        database.dirty_editor_buffers("legacy", None).unwrap().len(),
+        2
+    );
+    drop(database);
+    fs::remove_dir_all(folder).unwrap();
+}
+
 #[test]
 fn failed_migration_rolls_back_without_destroying_legacy_rows() {
     let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));

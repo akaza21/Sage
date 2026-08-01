@@ -23,7 +23,7 @@ use self::limits::{
     MAX_TOTAL_LEGACY_BUFFERS, MAX_TOTAL_LEGACY_ROOTS, MAX_TOTAL_LEGACY_TABS,
     preflight_legacy_bounds,
 };
-use self::roots::{canonical_migrated_path, canonical_or_recorded_root};
+use self::roots::{MigratedResourceSpellings, canonical_migrated_path, canonical_or_recorded_root};
 
 const PROJECT_LIFECYCLE_SCHEMA: &str = include_str!("../migrations/004_project_lifecycle.sql");
 
@@ -144,6 +144,7 @@ pub fn migrate(connection: &mut Connection) -> AppResult<()> {
         )?;
     }
 
+    let mut resource_spellings = MigratedResourceSpellings::default();
     let buffers = load_legacy_buffers(&transaction)?;
     for buffer in buffers {
         let (root_id, root_path) = first_roots.get(&buffer.project_id).ok_or_else(|| {
@@ -158,6 +159,7 @@ pub fn migrate(connection: &mut Connection) -> AppResult<()> {
             root_path,
             &buffer.relative_path,
         )?;
+        resource_spellings.record(root_id, &relative_path)?;
         transaction.execute(
             "INSERT INTO editor_buffers_v4 (
                project_id, root_id, relative_path, base_fingerprint,
@@ -185,7 +187,7 @@ pub fn migrate(connection: &mut Connection) -> AppResult<()> {
         )?;
     }
 
-    migrate_tab_resources(&transaction, &first_roots)?;
+    migrate_tab_resources(&transaction, &first_roots, &mut resource_spellings)?;
     transaction.execute_batch(
         "DROP TABLE editor_buffers;
          DROP TABLE project_roots;
@@ -262,6 +264,7 @@ fn load_legacy_buffers(transaction: &rusqlite::Transaction<'_>) -> AppResult<Vec
 fn migrate_tab_resources(
     transaction: &rusqlite::Transaction<'_>,
     first_roots: &HashMap<String, (String, PathBuf)>,
+    resource_spellings: &mut MigratedResourceSpellings,
 ) -> AppResult<()> {
     let tabs = {
         let mut statement = transaction.prepare(
@@ -310,6 +313,7 @@ fn migrate_tab_resources(
         })?;
         let relative_path =
             canonical_migrated_path(&project_id, root_id, root_path, &relative_path)?;
+        resource_spellings.record(root_id, &relative_path)?;
         let object = metadata.as_object_mut().ok_or_else(|| {
             AppError::InvalidRequest(format!("tab {tab_id} metadata is not an object"))
         })?;

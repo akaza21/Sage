@@ -1,11 +1,36 @@
-use std::path::{Component, Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Component, Path, PathBuf},
+};
 
 use crate::{
     domain::ResourceRef,
     error::{AppError, AppResult},
-    project_registry::persisted_path_text,
+    project_registry::{canonical_comparison_key, persisted_path_text},
     workspace::{Workspace, validate_contract_path},
 };
+
+#[derive(Default)]
+pub(super) struct MigratedResourceSpellings {
+    by_comparison_key: HashMap<(String, String), String>,
+}
+
+impl MigratedResourceSpellings {
+    pub(super) fn record(&mut self, root_id: &str, relative_path: &str) -> AppResult<()> {
+        let comparison_key = canonical_comparison_key(Path::new(relative_path));
+        let key = (root_id.into(), comparison_key);
+        if let Some(existing) = self.by_comparison_key.get(&key) {
+            if existing != relative_path {
+                return Err(AppError::InvalidRequest(
+                    "legacy resources contain distinct spellings for one canonical identity".into(),
+                ));
+            }
+            return Ok(());
+        }
+        self.by_comparison_key.insert(key, relative_path.into());
+        Ok(())
+    }
+}
 
 pub(super) fn canonical_migrated_path(
     project_id: &str,
