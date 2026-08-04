@@ -2,18 +2,16 @@ use serde_json::{Value, json};
 
 use crate::acp::{
     fixture::generated_cases::FrozenCase,
-    migration::{
-        fixture_validate_migration_free_bytes,
-        tests::{
-            FIXTURE_RETIREMENT_FAILPOINTS, fixture_backup_failpoint_observation,
-            fixture_retirement_observation,
-        },
+    migration::tests::{
+        FIXTURE_RETIREMENT_FAILPOINTS, fixture_backup_failpoint_observation,
+        fixture_insufficient_space_observation, fixture_retirement_observation,
     },
 };
 
 pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &[
     "migration-backup-failpoint-rollback",
     "migration-retirement-prefixes",
+    "migration-recovery-insufficient-space",
 ];
 
 pub(in crate::acp::fixture) fn execute(case: &FrozenCase) -> Value {
@@ -71,11 +69,11 @@ fn insufficient_space(steps: &[Value]) -> Value {
     };
     assert_eq!(step["op"], "runMigration");
     let free_bytes = step["freeBytes"].as_u64().unwrap();
-    assert!(fixture_validate_migration_free_bytes(free_bytes).is_err());
+    let observed = fixture_insufficient_space_observation(free_bytes);
     json!({
-        "accepted": false,
-        "error": "ResourceLimit",
-        "sqliteWrites": 0,
-        "backupCreated": false,
+        "accepted": observed.accepted,
+        "error": observed.error,
+        "sqliteWrites": observed.sqlite_writes,
+        "backupCreated": observed.backup_created,
     })
 }

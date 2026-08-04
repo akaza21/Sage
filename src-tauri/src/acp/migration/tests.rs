@@ -1147,6 +1147,89 @@ pub(crate) fn fixture_backup_failpoint_observation() -> FixtureBackupFailpointOb
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct FixtureSqliteState {
+    main: fingerprint::FileFingerprint,
+    wal: fingerprint::FileFingerprint,
+    shm: fingerprint::FileFingerprint,
+    database: fingerprint::DatabaseFingerprint,
+}
+
+fn fixture_sqlite_state(paths: &MigrationPaths) -> FixtureSqliteState {
+    let connection = open_read_only(&paths.live).unwrap();
+    let database = database_fingerprint(&connection).unwrap();
+    drop(connection);
+    FixtureSqliteState {
+        main: file_fingerprint(&paths.live).unwrap(),
+        wal: file_fingerprint(&paths.live_wal).unwrap(),
+        shm: file_fingerprint(&paths.live_shm).unwrap(),
+        database,
+    }
+}
+
+pub(crate) struct FixtureInsufficientSpaceObservation {
+    pub(crate) accepted: bool,
+    pub(crate) error: Option<&'static str>,
+    pub(crate) sqlite_writes: u64,
+    pub(crate) backup_created: bool,
+}
+
+pub(crate) fn fixture_insufficient_space_observation(
+    available_bytes: u64,
+) -> FixtureInsufficientSpaceObservation {
+    let directory = TestDir::new();
+    create_v4(
+        &directory.database(),
+        "fixture-migration-insufficient-space",
+        true,
+    );
+    let paths = MigrationPaths::new(&directory.database()).unwrap();
+    let before = fixture_sqlite_state(&paths);
+    assert_eq!(before.database.schema, SchemaClass::LegacyV4);
+
+    let available_bytes_guard = test_failpoint::override_available_bytes(available_bytes);
+    let result = open_or_migrate(&directory.database());
+    drop(available_bytes_guard);
+    let (accepted, error) = match result {
+        Ok(connection) => {
+            drop(connection);
+            (true, None)
+        }
+        Err(AppError::ResourceLimit(_)) => (false, Some("ResourceLimit")),
+        Err(error) => panic!("expected typed ResourceLimit, received {error}"),
+    };
+
+    let after = fixture_sqlite_state(&paths);
+    let sqlite_writes = if before == after { 0 } else { 1 };
+    let backup_created = [
+        &paths.backup_stage,
+        &paths.backup_journal,
+        &paths.backup_build_intent,
+        &paths.backup_stage_owner,
+        &paths.backup_final,
+        &paths.manifest_stage,
+        &paths.manifest_final,
+    ]
+    .iter()
+    .any(|path| path.exists());
+
+    FixtureInsufficientSpaceObservation {
+        accepted,
+        error,
+        sqlite_writes,
+        backup_created,
+    }
+}
+
+#[test]
+fn insufficient_space_preflight_preserves_v4_sqlite_and_creates_no_backup() {
+    let observed = fixture_insufficient_space_observation(limits::MIGRATION_FREE_BYTES - 1);
+    assert!(!observed.accepted);
+    assert_eq!(observed.error, Some("ResourceLimit"));
+    assert_eq!(observed.sqlite_writes, 0);
+    assert!(!observed.backup_created);
+}
+
 pub(crate) struct FixtureRetirementObservation {
     pub(crate) verified_source_or_v5: bool,
     pub(crate) permanent_blocker_for_valid_prefix: bool,
