@@ -8,15 +8,7 @@ use super::{
 
 const NODE_POLICY_CASES: &[&str] = &["csp-production-and-development"];
 const PATH_BOUND_CHILD_CASES: &[&str] = &["turn-text-success"];
-const OPEN_HOST_CASES: &[&str] = &[
-    "capability-snapshot-unknown-key",
-    "capability-snapshot-missing-key",
-    "capability-snapshot-wrong-type",
-    "activity-provenance-absolute-path",
-    "activity-provenance-missing-key",
-    "activity-provenance-wrong-type",
-    "migration-recovery-insufficient-space",
-];
+const OPEN_HOST_CASES: &[&str] = &["migration-recovery-insufficient-space"];
 const OPEN_CHILD_CASES: &[&str] = &[
     "permission-identical-live-duplicate",
     "permission-conflicting-duplicate",
@@ -29,19 +21,12 @@ const OPEN_CHILD_CASES: &[&str] = &[
     "resume-success-once",
     "resume-failure-no-second-attempt",
     "redaction-canaries-all-sinks",
-    "capability-token-bytes-65536",
-    "capability-token-bytes-65537",
-    "metadata-entries-64",
-    "metadata-entries-65",
-    "metadata-bytes-65536",
-    "metadata-bytes-65537",
     "permission-payload-bytes-65536",
     "permission-payload-bytes-65537",
     "native-activity-child-text",
     "native-activity-depth-4",
     "native-activity-depth-5",
     "native-activity-foreign-parent",
-    "stale-project-generation-completion",
 ];
 
 #[test]
@@ -72,10 +57,10 @@ fn foundation_literal_observer_registry_is_exact_and_nonoverlapping() {
     let host = collect_unique(host_families, FrozenOwner::Host);
     let child = collect_unique(child_families, FrozenOwner::Child);
     assert!(host.is_disjoint(&child));
-    assert_eq!(host.len(), 95, "registered host literal observers changed");
+    assert_eq!(host.len(), 101, "registered host literal observers changed");
     assert_eq!(
         child.len(),
-        40,
+        47,
         "registered child literal observers changed"
     );
 

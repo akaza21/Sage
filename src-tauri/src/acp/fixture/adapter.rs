@@ -8,6 +8,7 @@ use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId},
     intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload},
     lifecycle::{ItemLifecycle, ToolState, TurnState},
+    limits::LIMITS,
     transport::{Frame, OutboundFrame},
 };
 
@@ -29,6 +30,7 @@ pub(super) struct FixtureAdapter {
     runtime_epoch: RuntimeEpoch,
     session_id: SageAgentSessionId,
     client_message_id: Option<RequiredText<512>>,
+    capabilities: Option<CapabilitySnapshotV1>,
     state: State,
 }
 
@@ -50,6 +52,7 @@ impl FixtureAdapter {
             runtime_epoch,
             session_id,
             client_message_id: None,
+            capabilities: None,
             state: State::Idle,
         })
     }
@@ -111,7 +114,7 @@ impl FixtureAdapter {
 
 impl HarnessAdapter for FixtureAdapter {
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
-        None
+        self.capabilities.clone()
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
@@ -140,8 +143,25 @@ impl HarnessAdapter for FixtureAdapter {
         frame: &Frame,
         _resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        let envelope: Envelope =
+        let value: serde_json::Value =
             serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
+        if value.get("schemaVersion").is_some() {
+            if self.state != State::Idle {
+                return Err(AdapterRuntimeError::Operation);
+            }
+            if frame.len() > LIMITS.wire.capability_metadata_bytes as usize {
+                return Err(AdapterRuntimeError::BatchBytes);
+            }
+            let capabilities = serde_json::from_value::<CapabilitySnapshotV1>(value)
+                .map_err(|_| AdapterRuntimeError::Frame)?;
+            self.capabilities = Some(capabilities.clone());
+            return AdapterBatch::new(vec![AdapterEvent::Initialized { capabilities }], Vec::new());
+        }
+        if value.get("method").and_then(serde_json::Value::as_str) == Some("fixture/metadata") {
+            return ingest_metadata(value);
+        }
+        let envelope: Envelope =
+            serde_json::from_value(value).map_err(|_| AdapterRuntimeError::Frame)?;
         if envelope.jsonrpc != "2.0" || !envelope.params.is_empty() {
             return Err(AdapterRuntimeError::Frame);
         }
@@ -202,6 +222,13 @@ impl HarnessAdapter for FixtureAdapter {
                     state: TurnState::Completed,
                 }]
             }
+            (State::AwaitingTextStart, "fixture/turnComplete", false) => {
+                self.state = State::Complete;
+                vec![AdapterEvent::Turn {
+                    id: self.identity("fixture-turn-envelope")?,
+                    state: TurnState::Completed,
+                }]
+            }
             _ => return Err(AdapterRuntimeError::Operation),
         };
         AdapterBatch::new(event, Vec::new())
@@ -240,6 +267,60 @@ impl HarnessAdapter for FixtureAdapter {
             }
             _ => Err(AdapterRuntimeError::EgressIntent),
         }
+    }
+}
+
+fn ingest_metadata(value: serde_json::Value) -> Result<AdapterBatch, AdapterRuntimeError> {
+    if value
+        .as_object()
+        .is_some_and(|members| members.contains_key("id"))
+    {
+        return Err(AdapterRuntimeError::Frame);
+    }
+    let envelope =
+        serde_json::from_value::<Envelope>(value).map_err(|_| AdapterRuntimeError::Frame)?;
+    if envelope.jsonrpc != "2.0"
+        || envelope.id.is_some()
+        || envelope.method != "fixture/metadata"
+        || envelope.params.len() != 1
+    {
+        return Err(AdapterRuntimeError::Frame);
+    }
+    let metadata = envelope
+        .params
+        .get("_meta")
+        .and_then(serde_json::Value::as_object)
+        .ok_or(AdapterRuntimeError::Frame)?;
+    if metadata.len() > LIMITS.wire.metadata_entries as usize {
+        return Err(AdapterRuntimeError::BatchBytes);
+    }
+    let bytes = metadata.iter().try_fold(0_usize, |total, (key, value)| {
+        let value = value.as_str().ok_or(AdapterRuntimeError::Frame)?;
+        total
+            .checked_add(key.len())
+            .and_then(|next| next.checked_add(value.len()))
+            .ok_or(AdapterRuntimeError::BatchBytes)
+    })?;
+    if bytes > LIMITS.wire.metadata_bytes as usize {
+        return Err(AdapterRuntimeError::BatchBytes);
+    }
+    AdapterBatch::new(vec![AdapterEvent::Acknowledged], Vec::new())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AdapterRuntimeError, ingest_metadata};
+
+    #[test]
+    fn metadata_notification_rejects_explicit_null_id() {
+        let result = ingest_metadata(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": null,
+            "method": "fixture/metadata",
+            "params": {"_meta": {}}
+        }));
+
+        assert!(matches!(result, Err(AdapterRuntimeError::Frame)));
     }
 }
 

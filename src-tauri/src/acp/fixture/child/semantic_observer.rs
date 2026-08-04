@@ -1,22 +1,34 @@
 use serde_json::{Value, json};
 
 use crate::acp::{
-    bindings::adapter::AdapterModel,
-    contract::RequiredText,
-    intent::{CapabilitySnapshotV1, ExternalId, ModelId},
+    bindings::adapter::{
+        AdapterEvent, AdapterModel, AdapterRuntimeError, HarnessAdapter, ResourceMapper,
+    },
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
+    fixture::adapter::FixtureAdapter,
+    intent::{
+        CapabilitySnapshotV1, ExternalId, ModelId, SafeResourceRef, UnavailableResourceReason,
+    },
     limits::LIMITS,
     semantic_ingress::{
         SemanticIngressError, decode_capability_token, validate_metadata, validate_models,
         validate_permission_payload,
     },
+    store::{CompleteActivationCommand, complete_activation},
     transport::{Frame, IncrementalFrameDecoder, validate_structure},
 };
 
 use super::super::{generated_cases::FrozenCase, wire};
 
 pub(crate) const CASE_IDS: &[&str] = &[
+    "capability-token-bytes-65536",
+    "capability-token-bytes-65537",
     "external-id-bytes-512",
     "external-id-bytes-513",
+    "metadata-entries-64",
+    "metadata-entries-65",
+    "metadata-bytes-65536",
+    "metadata-bytes-65537",
     "models-entries-128",
     "models-entries-129",
     "models-bytes-131072",
@@ -48,24 +60,63 @@ pub(crate) fn execute(case: &FrozenCase) -> Value {
 }
 
 fn observe_capability(frame: Frame) -> Value {
-    match decode_capability_token(frame.as_bytes()) {
-        Ok(value) => json!({
-            "accepted": true,
-            "normalizedDocument": if canonical_legacy_deny_all(&value) {
-                "canonicalLegacyDenyAll"
-            } else {
-                "noncanonical"
+    let database = activation_database();
+    let before: i64 = database
+        .connection()
+        .query_row("SELECT COUNT(*) FROM session_facts", [], |row| row.get(0))
+        .unwrap();
+    let mut adapter = fixture_adapter();
+    let result = adapter.ingest(&frame, &Mapper);
+    debug_assert_eq!(
+        result.is_ok(),
+        decode_capability_token(frame.as_bytes()).is_ok()
+    );
+    if let Ok(batch) = &result
+        && let [AdapterEvent::Initialized { capabilities }] = batch.events()
+    {
+        complete_activation(
+            &mut database.connection(),
+            CompleteActivationCommand {
+                project_id: SageProjectId::parse("project-a").unwrap(),
+                chat_id: SageChatId::parse("chat-a").unwrap(),
+                session_id: SageAgentSessionId::parse("session-a").unwrap(),
+                runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+                binding_digest: "a".repeat(64),
+                artifact_digest: "d".repeat(64),
+                external_session_id: ExternalId::new("external", "fixture-session").unwrap(),
+                capabilities_json: serde_json::to_string(capabilities).unwrap(),
+                now_millis: 2,
             },
-        }),
-        Err(SemanticIngressError::Limit) => json!({
+        )
+        .unwrap();
+    }
+    let after: i64 = database
+        .connection()
+        .query_row("SELECT COUNT(*) FROM session_facts", [], |row| row.get(0))
+        .unwrap();
+    match result {
+        Ok(batch) => {
+            let [AdapterEvent::Initialized { capabilities }] = batch.events() else {
+                panic!("capability fixture did not produce initialization");
+            };
+            json!({
+                "accepted": true,
+                "normalizedDocument": if canonical_legacy_deny_all(capabilities) {
+                    "canonicalLegacyDenyAll"
+                } else {
+                    "noncanonical"
+                },
+            })
+        }
+        Err(AdapterRuntimeError::BatchBytes) => json!({
             "accepted": false,
             "error": "ProtocolLimit",
-            "durableRowsAdded": 0,
+            "durableRowsAdded": after - before,
         }),
-        Err(SemanticIngressError::Invalid) => json!({
+        Err(_) => json!({
             "accepted": false,
             "error": "ProtocolInvalid",
-            "durableRowsAdded": 0,
+            "durableRowsAdded": after - before,
         }),
     }
 }
@@ -81,19 +132,24 @@ fn observe_external_id(frame: Frame) -> Value {
 fn observe_metadata(frame: Frame) -> Value {
     let envelope: Value = serde_json::from_slice(frame.as_bytes()).unwrap();
     let metadata = envelope["params"]["_meta"].as_object().unwrap();
-    match validate_metadata(metadata) {
-        Ok(()) => json!({"accepted": true}),
-        Err(SemanticIngressError::Limit)
+    let mut adapter = fixture_adapter();
+    let result = adapter.ingest(&frame, &Mapper);
+    debug_assert_eq!(result.is_ok(), validate_metadata(metadata).is_ok());
+    match result {
+        Ok(batch) if matches!(batch.events(), [AdapterEvent::Acknowledged]) => {
+            json!({"accepted": true})
+        }
+        Err(AdapterRuntimeError::BatchBytes)
             if metadata.len() > LIMITS.wire.metadata_entries as usize =>
         {
             json!({"accepted": false, "error": "ProtocolLimit"})
         }
-        Err(SemanticIngressError::Limit) => json!({
+        Err(AdapterRuntimeError::BatchBytes) => json!({
             "accepted": false,
             "error": "ProtocolLimit",
             "entryLimitBreached": false,
         }),
-        Err(SemanticIngressError::Invalid) => {
+        _ => {
             json!({"accepted": false, "error": "ProtocolInvalid"})
         }
     }
@@ -194,4 +250,53 @@ fn canonical_legacy_deny_all(value: &CapabilitySnapshotV1) -> bool {
         && value.multi_root_extension_schema_id.is_none()
         && value.model_count == 0
         && value.config_count == 0
+}
+
+fn fixture_adapter() -> FixtureAdapter {
+    FixtureAdapter::new(
+        [7; 32],
+        RuntimeEpoch::new(1).unwrap(),
+        SageAgentSessionId::parse("fixture-session").unwrap(),
+        ExternalId::new("externalSession", "fixture-external-session").unwrap(),
+    )
+    .unwrap()
+}
+
+fn activation_database() -> crate::persistence::Database {
+    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    let connection = database.connection();
+    connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-a','project-a',1,1,1)",[]).unwrap();
+    connection.execute("INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal) VALUES('root-a','project-a','C:/project','c:/project',0)",[]).unwrap();
+    connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('chat-a','project-a',0,'chat-a',1,1)",[]).unwrap();
+    connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,capabilities_json,state,residency,legacy,revision,projection_revision,created_at,updated_at) VALUES('session-a','project-a','chat-a',0,'fixture',?1,?2,'starting','hot',0,0,0,1,1)",rusqlite::params!["a".repeat(64), pending_capabilities()]).unwrap();
+    connection.execute("INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,artifact_digest,started_at) VALUES('project-a','chat-a','session-a',1,'starting',?1,1)",["d".repeat(64)]).unwrap();
+    connection
+        .execute(
+            "INSERT INTO acp_project_usage VALUES('project-a',1,1,0,0,0,0,0)",
+            [],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO acp_session_usage VALUES('project-a','chat-a','session-a',0,0,0,0,0,0,0)",
+            [],
+        )
+        .unwrap();
+    drop(connection);
+    database
+}
+
+fn pending_capabilities() -> &'static str {
+    r#"{"schemaVersion":1,"protocolVersion":"pending","newSession":false,"resumeSession":false,"loadSession":false,"closeSession":false,"prompt":false,"cancel":false,"nativeSessionFork":false,"activeTurnSteer":false,"childConversationProjection":false,"childTranscriptRead":false,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#
+}
+
+struct Mapper;
+
+impl ResourceMapper for Mapper {
+    fn map_existing(
+        &self,
+        _absolute_path: &str,
+    ) -> Result<SafeResourceRef, UnavailableResourceReason> {
+        Err(UnavailableResourceReason::Unsupported)
+    }
 }
