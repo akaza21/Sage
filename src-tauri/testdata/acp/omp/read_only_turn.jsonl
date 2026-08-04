@@ -1,0 +1,7 @@
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"omp-session-1","update":{"sessionUpdate":"agent_message_chunk","itemId":"message-1","content":{"type":"text","text":"Inspection complete."}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"omp-session-1","update":{"sessionUpdate":"agent_thought_chunk","itemId":"thought-1","content":{"type":"text","text":"Checked the bounded projection."}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"omp-session-1","update":{"sessionUpdate":"plan","itemId":"plan-1","entries":[{"status":"completed","content":"Inspect"},{"status":"pending","content":"Report"}]}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"omp-session-1","update":{"sessionUpdate":"tool_call","toolCallId":"tool-1","kind":"edit","title":"Edit file","status":"pending"}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"omp-session-1","update":{"sessionUpdate":"tool_call_update","toolCallId":"tool-1","kind":"edit","status":"completed","content":[{"type":"diff","path":"C:\\fixture\\src\\lib.rs","oldText":"old\n","newText":"new\nline\n"}]}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"omp-session-1","update":{"sessionUpdate":"usage","itemId":"usage-1","usage":{"inputTokens":12,"outputTokens":7}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"omp-session-1","update":{"sessionUpdate":"browser","itemId":"browser-1","url":"https://example.invalid/private"}}}

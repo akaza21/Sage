@@ -1,0 +1,13 @@
+{
+  "id": "permission-1",
+  "method": "session/request_permission",
+  "params": {
+    "sessionId": "claude-session-1",
+    "toolCall": {
+      "toolCallId": "tool-1",
+      "title": "Run secret-command",
+      "rawInput": { "token": "sk-ant-fixture" }
+    },
+    "options": [{ "optionId": "allow_always", "name": "Allow always" }]
+  }
+}

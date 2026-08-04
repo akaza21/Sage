@@ -1,0 +1,385 @@
+mod capabilities;
+mod permissions;
+mod turns;
+
+use crate::acp::{
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
+    intent::{CapabilitySnapshotV1, ExternalId, ModelId, Prompt},
+    lifecycle::{ItemLifecycle, ServerRequestState, TurnState},
+    limits::LIMITS,
+};
+
+use super::{
+    incoming::{IncomingEvent, IngressDisposition, ResourceMapper, ingest},
+    manifest::Platform,
+    request::{
+        NativeProjectRoot, OutgoingRequest, RequestError, RequestKind, initialized_notification,
+    },
+};
+
+const TERMINAL_ID_BYTES: usize = 128 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ExternalKind {
+    Session,
+    Turn,
+    Item,
+    Request,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ScopedExternalId {
+    pub(crate) binding_digest: [u8; 32],
+    pub(crate) runtime_epoch: RuntimeEpoch,
+    pub(crate) session_id: SageAgentSessionId,
+    pub(crate) turn_id: Option<ExternalId>,
+    pub(crate) turn_client_message_id: Option<RequiredText<512>>,
+    pub(crate) kind: ExternalKind,
+    pub(crate) external_id: ExternalId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ItemTerminal {
+    id: String,
+    state: ItemLifecycle,
+}
+
+#[derive(Debug)]
+struct TurnTombstone {
+    id: ExternalId,
+    client_message_id: RequiredText<512>,
+    state: TurnState,
+    item_terminals: Vec<ItemTerminal>,
+    terminal_id_bytes: usize,
+}
+
+#[derive(Debug)]
+struct TurnStartIntent {
+    request_id: u64,
+    client_message_id: RequiredText<512>,
+}
+
+#[derive(Debug, Clone)]
+struct NegotiatedMethods {
+    snapshot: CapabilitySnapshotV1,
+    models: bool,
+}
+
+#[derive(Debug)]
+struct PermissionRequestEntry {
+    id: String,
+    fingerprint: u64,
+    method: String,
+    turn_id: String,
+    item_id: String,
+    response: Vec<u8>,
+    state: ServerRequestState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TurnBinding {
+    Active,
+    PreviousTerminal,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PermissionRegistration {
+    New(ScopedExternalId),
+    DuplicatePending,
+    DuplicateCommitted(Vec<u8>),
+}
+
+pub(crate) struct CodexAdapter {
+    binding_digest: [u8; 32],
+    runtime_epoch: RuntimeEpoch,
+    session_id: SageAgentSessionId,
+    platform: Platform,
+    pending: Vec<(u64, RequestKind)>,
+    negotiated: Option<NegotiatedMethods>,
+    external_thread_id: Option<ExternalId>,
+    pending_turn_start: Option<TurnStartIntent>,
+    active_turn_id: Option<ExternalId>,
+    active_turn_client_message_id: Option<RequiredText<512>>,
+    active_item_terminals: Vec<ItemTerminal>,
+    active_terminal_id_bytes: usize,
+    previous_turn: Option<TurnTombstone>,
+    permission_requests: Vec<PermissionRequestEntry>,
+}
+
+impl CodexAdapter {
+    pub(crate) fn new(
+        binding_digest: [u8; 32],
+        runtime_epoch: RuntimeEpoch,
+        session_id: SageAgentSessionId,
+        platform: Platform,
+    ) -> Self {
+        Self {
+            binding_digest,
+            runtime_epoch,
+            session_id,
+            platform,
+            pending: Vec::new(),
+            negotiated: None,
+            external_thread_id: None,
+            pending_turn_start: None,
+            active_turn_id: None,
+            active_turn_client_message_id: None,
+            active_item_terminals: Vec::new(),
+            active_terminal_id_bytes: 0,
+            previous_turn: None,
+            permission_requests: Vec::new(),
+        }
+    }
+
+    pub(crate) fn effective_capabilities(&self) -> Result<CapabilitySnapshotV1, AdapterError> {
+        self.negotiated
+            .as_ref()
+            .map(|value| value.snapshot.clone())
+            .ok_or(AdapterError::CapabilityUnavailable)
+    }
+
+    pub(crate) fn project_root(&self, value: String) -> Result<NativeProjectRoot, AdapterError> {
+        NativeProjectRoot::new(self.platform, value).map_err(AdapterError::Request)
+    }
+
+    pub(crate) fn initialize(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
+        if self.negotiated.is_some()
+            || self
+                .pending
+                .iter()
+                .any(|(_, kind)| *kind == RequestKind::Initialize)
+        {
+            return Err(AdapterError::AlreadyInitialized);
+        }
+        self.reserve(OutgoingRequest::initialize(id)?)
+    }
+
+    pub(crate) fn initialized(&self) -> Result<Vec<u8>, AdapterError> {
+        self.require_method(|_| true)?;
+        initialized_notification().map_err(AdapterError::Request)
+    }
+
+    pub(crate) fn start(
+        &mut self,
+        id: u64,
+        root: &NativeProjectRoot,
+        model: Option<&ModelId>,
+    ) -> Result<OutgoingRequest, AdapterError> {
+        self.require_method(|methods| methods.snapshot.new_session)?;
+        self.reserve(OutgoingRequest::start(id, root, model)?)
+    }
+
+    pub(crate) fn resume(
+        &mut self,
+        id: u64,
+        external_thread_id: &ExternalId,
+        root: &NativeProjectRoot,
+        model: Option<&ModelId>,
+    ) -> Result<OutgoingRequest, AdapterError> {
+        self.require_method(|methods| methods.snapshot.resume_session)?;
+        self.reserve(OutgoingRequest::resume(
+            id,
+            external_thread_id,
+            root,
+            model,
+        )?)
+    }
+
+    pub(crate) fn read(
+        &mut self,
+        id: u64,
+        external_thread_id: &ExternalId,
+    ) -> Result<OutgoingRequest, AdapterError> {
+        self.require_method(|methods| methods.snapshot.load_session)?;
+        self.reserve(OutgoingRequest::read(id, external_thread_id)?)
+    }
+
+    pub(crate) fn models(
+        &mut self,
+        id: u64,
+        cursor: Option<&RequiredText<512>>,
+    ) -> Result<OutgoingRequest, AdapterError> {
+        self.require_method(|methods| methods.models)?;
+        self.reserve(OutgoingRequest::models(id, cursor)?)
+    }
+
+    pub(crate) fn prompt(
+        &mut self,
+        id: u64,
+        prompt: &Prompt,
+        client_message_id: &RequiredText<512>,
+    ) -> Result<OutgoingRequest, AdapterError> {
+        self.require_method(|methods| methods.snapshot.prompt)?;
+        if self.pending_turn_start.is_some() || self.active_turn_id.is_some() {
+            return Err(AdapterError::TurnAlreadyActive);
+        }
+        let thread = self
+            .external_thread_id
+            .clone()
+            .ok_or(AdapterError::SessionUnavailable)?;
+        let request = self.reserve(OutgoingRequest::turn_start(
+            id,
+            &thread,
+            prompt,
+            client_message_id,
+        )?)?;
+        self.pending_turn_start = Some(TurnStartIntent {
+            request_id: id,
+            client_message_id: client_message_id.clone(),
+        });
+        Ok(request)
+    }
+
+    pub(crate) fn cancel(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
+        self.require_method(|methods| methods.snapshot.cancel)?;
+        let thread = self
+            .external_thread_id
+            .clone()
+            .ok_or(AdapterError::SessionUnavailable)?;
+        let turn = self
+            .active_turn_id
+            .clone()
+            .ok_or(AdapterError::TurnUnavailable)?;
+        self.reserve(OutgoingRequest::interrupt(id, &thread, &turn)?)
+    }
+
+    pub(crate) fn close(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
+        self.require_method(|methods| methods.snapshot.close_session)?;
+        let thread = self
+            .external_thread_id
+            .clone()
+            .ok_or(AdapterError::SessionUnavailable)?;
+        self.reserve(OutgoingRequest::unsubscribe(id, &thread)?)
+    }
+
+    pub(crate) fn reject_before_write(&mut self, id: u64) -> Result<(), AdapterError> {
+        let kind = self
+            .remove_pending(id)
+            .ok_or(AdapterError::ForeignRequest)?;
+        if kind == RequestKind::TurnStart {
+            self.clear_turn_start(id)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn pending_kind(&self, id: u64) -> Option<RequestKind> {
+        self.pending
+            .iter()
+            .find_map(|(pending, kind)| (*pending == id).then_some(*kind))
+    }
+
+    pub(crate) fn ingest<M: ResourceMapper>(
+        &mut self,
+        bytes: &[u8],
+        mapper: &M,
+    ) -> Result<IngressDisposition, AdapterError> {
+        ingest(self, bytes, mapper).map_err(AdapterError::Ingress)
+    }
+
+    pub(super) fn take_pending(&mut self, id: u64) -> Option<RequestKind> {
+        self.remove_pending(id)
+    }
+
+    pub(super) fn fail_response(&mut self, id: u64, kind: RequestKind) -> Result<(), AdapterError> {
+        if kind == RequestKind::TurnStart {
+            if self.active_turn_id.is_some() {
+                return Err(AdapterError::TurnIntentConflict);
+            }
+            self.clear_turn_start(id)?;
+        }
+        Ok(())
+    }
+
+    fn clear_turn_start(&mut self, id: u64) -> Result<(), AdapterError> {
+        match self.pending_turn_start.as_ref() {
+            Some(intent) if intent.request_id == id => {
+                self.pending_turn_start = None;
+                Ok(())
+            }
+            _ => Err(AdapterError::TurnIntentConflict),
+        }
+    }
+
+    fn remove_pending(&mut self, id: u64) -> Option<RequestKind> {
+        let index = self
+            .pending
+            .iter()
+            .position(|(pending, _)| *pending == id)?;
+        Some(self.pending.swap_remove(index).1)
+    }
+
+    fn reserve(&mut self, request: OutgoingRequest) -> Result<OutgoingRequest, AdapterError> {
+        if self.pending.len() >= LIMITS.queues.outstanding_rpc_per_session as usize {
+            return Err(AdapterError::PendingFull);
+        }
+        if self.pending.iter().any(|(id, _)| *id == request.id) {
+            return Err(AdapterError::DuplicateRequestId);
+        }
+        self.pending.push((request.id, request.kind));
+        Ok(request)
+    }
+
+    fn require_method(
+        &self,
+        available: impl FnOnce(&NegotiatedMethods) -> bool,
+    ) -> Result<(), AdapterError> {
+        match self.negotiated.as_ref() {
+            Some(methods) if available(methods) => Ok(()),
+            _ => Err(AdapterError::CapabilityUnavailable),
+        }
+    }
+
+    fn scoped(&self, kind: ExternalKind, external_id: ExternalId) -> ScopedExternalId {
+        ScopedExternalId {
+            binding_digest: self.binding_digest,
+            runtime_epoch: self.runtime_epoch,
+            session_id: self.session_id.clone(),
+            turn_id: None,
+            turn_client_message_id: None,
+            kind,
+            external_id,
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum AdapterError {
+    #[error(transparent)]
+    Request(#[from] RequestError),
+    #[error(transparent)]
+    Contract(#[from] crate::acp::contract::ContractError),
+    #[error(transparent)]
+    Ingress(#[from] super::incoming::IngressError),
+    #[error("outstanding request ledger is full")]
+    PendingFull,
+    #[error("duplicate outstanding request id")]
+    DuplicateRequestId,
+    #[error("binding capabilities are unavailable or do not admit this operation")]
+    CapabilityUnavailable,
+    #[error("the adapter was already initialized")]
+    AlreadyInitialized,
+    #[error("session identity is unavailable")]
+    SessionUnavailable,
+    #[error("a Turn start is already pending or active")]
+    TurnAlreadyActive,
+    #[error("active turn identity is unavailable")]
+    TurnUnavailable,
+    #[error("outbound request does not belong to this adapter")]
+    ForeignRequest,
+    #[error("external identity conflicts with durable binding")]
+    IdentityConflict,
+    #[error("external identity belongs to a foreign session, Turn, or epoch")]
+    ForeignIdentity,
+    #[error("Turn start intent is stale or conflicting")]
+    TurnIntentConflict,
+    #[error("terminal item ledger is full")]
+    TerminalLedgerFull,
+    #[error("permission decline lifecycle failed; runtime teardown is required")]
+    PermissionTeardownRequired,
+}
+
+impl From<IncomingEvent> for IngressDisposition {
+    fn from(event: IncomingEvent) -> Self {
+        Self::Events(vec![event])
+    }
+}

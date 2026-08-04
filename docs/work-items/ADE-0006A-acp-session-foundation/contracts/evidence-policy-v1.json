@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "status": "proposed-c0-specification",
+  "rootPolicy": {
+    "rawEvidence": "ignored local-evidence only",
+    "curatedEvidence": "tracked sanitized summaries only",
+    "normalSageDataAllowed": false,
+    "defaultPackageArtifactsMutable": false,
+    "systemOrNetworkControlsAllowed": false
+  },
+  "campaignBounds": {
+    "rawFiles": 64,
+    "rawBytes": 67108864,
+    "campaignsPerCandidateIdentity": 8,
+    "rawBytesPerCandidateIdentity": 536870912,
+    "retainedCandidateIdentities": 2,
+    "globalFiles": 1024,
+    "globalBytes": 1073741824,
+    "curatedBytes": 16777216,
+    "compactedCuratedFiles": 16,
+    "compactedCuratedBytes": 2097152,
+    "compactionAgeDaysAfterDone": 90
+  },
+  "retentionRules": [
+    "Never delete an active campaign.",
+    "Never delete the sole unsummarized failure.",
+    "Reject a new campaign before allocation when retaining it would exceed a count or byte ceiling.",
+    "Cleanup is explicit, candidate-scoped, oldest-completed-first, and records every removed relative path and byte count.",
+    "Evidence paths are repository-relative or sanitized fixture-relative; absolute paths are forbidden."
+  ],
+  "requiredCandidateBinding": [
+    "sourceCommit",
+    "sourceTree",
+    "sourceAggregateSha256",
+    "sourceManifestSha256",
+    "contractManifestSha256",
+    "cargoLockSha256",
+    "frontendLockSha256",
+    "executableSha256",
+    "executableBytes",
+    "featureSet",
+    "platform",
+    "architecture"
+  ],
+  "requiredCampaignMetadata": [
+    "candidateBindingSha256",
+    "fixtureManifestSha256",
+    "startedAtUtc",
+    "completedAtUtc",
+    "testOwner",
+    "reviewRole",
+    "hostClass",
+    "osVersion",
+    "runtimeVersions",
+    "powerPolicy",
+    "commandTemplates",
+    "sampleCounts",
+    "percentileMethod",
+    "result",
+    "limitations"
+  ],
+  "commandTemplateContract": {
+    "maximumEntries": 32,
+    "maximumUtf8BytesPerEntry": 512,
+    "requiredFields": [
+      "tool",
+      "toolSha256",
+      "subcommand",
+      "fixedFlags",
+      "placeholderNames"
+    ],
+    "allowedFields": [
+      "tool",
+      "toolSha256",
+      "subcommand",
+      "fixedFlags",
+      "placeholderNames"
+    ],
+    "toolSha256Rule": "exact lowercase 64-hex digest of the executable used for the campaign",
+    "placeholderRule": "symbolic names only, such as <isolated-data-dir> and <candidate-executable>; values are never retained",
+    "forbiddenFields": [
+      "argv",
+      "workingDirectory",
+      "environment",
+      "absolutePath",
+      "secret",
+      "token"
+    ],
+    "example": {
+      "tool": "npm",
+      "toolSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "subcommand": "run",
+      "fixedFlags": ["check"],
+      "placeholderNames": []
+    }
+  },
+  "forbiddenPayloadClasses": [
+    "raw protocol frames",
+    "prompts or provider text",
+    "hidden reasoning",
+    "secrets or credentials",
+    "environment values",
+    "command lines",
+    "absolute paths",
+    "normal Sage database content",
+    "unredacted stderr"
+  ],
+  "curatedOnlyPayloads": [
+    "counts",
+    "actual retained bytes",
+    "durations",
+    "percentiles",
+    "typed terminal states",
+    "hashes",
+    "sanitized fixture identifiers",
+    "pass-fail dispositions",
+    "bounded limitations"
+  ],
+  "independence": {
+    "buildSelfCheckCanAccept": false,
+    "candidateCanSetOwnBudgets": false,
+    "independentTestMayEditCeilings": false,
+    "independentTestMayFillResultsAndProvenanceOnly": true
+  }
+}

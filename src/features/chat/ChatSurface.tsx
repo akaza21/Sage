@@ -2,7 +2,16 @@ import { ArrowUp, Check, ChevronDown, Plus, ShieldCheck } from "lucide-react";
 import { type FormEvent, useEffect, useRef } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
+import type { CuratedBindingId, CuratedModelId } from "../../domain/acp";
+import type { ResourceRef } from "../../domain/workbench";
 import { EditSummary } from "./EditSummary";
+import {
+  AcpChatProjection,
+  type OpenResourceTarget,
+  useAcpChatActions,
+  useAcpChatHistory,
+  useAcpChatProjection,
+} from "./acp";
 
 export function ChatSurface() {
   const messages = useWorkbenchStore((state) => state.messages);
@@ -14,17 +23,48 @@ export function ChatSurface() {
   const selectedModelId = useWorkbenchStore((state) => state.selectedModelId);
   const composerText = useWorkbenchStore((state) => state.composerText);
   const sending = useWorkbenchStore((state) => state.sending);
+  const projectTransitioning = useWorkbenchStore(
+    (state) => state.projectTransitioning,
+  );
   const error = useWorkbenchStore((state) => state.error);
   const selectHarness = useWorkbenchStore((state) => state.selectHarness);
   const selectModel = useWorkbenchStore((state) => state.selectModel);
   const setComposerText = useWorkbenchStore((state) => state.setComposerText);
   const sendPrompt = useWorkbenchStore((state) => state.sendPrompt);
-  const endRef = useRef<HTMLDivElement>(null);
-
+  const openDiff = useWorkbenchStore((state) => state.openDiff);
+  const openFile = useWorkbenchStore((state) => state.openFile);
   const selectedHarness = harnesses.find(
     (harness) => harness.id === selectedHarnessId,
   );
+  const useNativeAcp = selectedHarness?.transport === "acp";
+  const acpPage = useAcpChatProjection(useNativeAcp);
+  const acpActions = useAcpChatActions();
+  const acpHistory = useAcpChatHistory();
+  const endRef = useRef<HTMLDivElement>(null);
+
   const harnessAvailable = selectedHarness?.installState === "available";
+  const selectedAcpBindingId =
+    selectedHarness?.transport === "acp" && selectedHarness.bindingId
+      ? (selectedHarness.bindingId as CuratedBindingId)
+      : null;
+  const currentAcpSession = acpPage?.sessions.find(
+    (session) => session.id === acpPage.currentSessionId && !session.legacy,
+  );
+  const selectedMatchesCurrentSession = Boolean(
+    currentAcpSession &&
+    currentAcpSession.bindingId === selectedAcpBindingId &&
+    currentAcpSession.modelId === selectedModelId,
+  );
+  const actionBusy = useNativeAcp ? acpActions.busy : sending;
+  const canPrompt = useNativeAcp
+    ? Boolean(
+        acpPage &&
+        harnessAvailable &&
+        selectedAcpBindingId &&
+        (!selectedMatchesCurrentSession ||
+          currentAcpSession?.capabilities.prompt),
+      )
+    : harnessAvailable;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -32,7 +72,21 @@ export function ChatSurface() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    const bindingId = selectedAcpBindingId;
+    if (useNativeAcp) {
+      if (!bindingId) return;
+      void acpActions.submit(
+        composerText,
+        bindingId,
+        selectedModelId as CuratedModelId | null,
+      );
+      return;
+    }
     void sendPrompt();
+  }
+
+  function openAcpResource(resource: ResourceRef, target: OpenResourceTarget) {
+    void (target === "file" ? openFile(resource) : openDiff(resource));
   }
 
   return (
@@ -40,7 +94,7 @@ export function ChatSurface() {
       <header className="surface-header">
         <div>
           <p className="eyebrow">Persistent agent session</p>
-          <h1>Walking skeleton</h1>
+          <h1>Sage workbench</h1>
         </div>
         <div className="session-state">
           <span className="session-state__dot" />
@@ -49,39 +103,71 @@ export function ChatSurface() {
       </header>
 
       <div className="message-list" aria-live="polite">
-        <div className="project-intro">
-          <span className="project-intro__icon">
-            <Check size={17} aria-hidden="true" />
-          </span>
-          <div>
-            <strong>Phase 0 has started</strong>
-            <p>
-              This first vertical slice proves the tab-first workbench,
-              harness-then-model selection, and Rust-owned durable transcript.
-            </p>
+        {projectTransitioning ? (
+          <div className="composer__notice" role="status">
+            Loading the authoritative project…
           </div>
-        </div>
-        {messages.map((message) => (
-          <article
-            className={`message message--${message.role}`}
-            key={message.id}
-          >
-            <div className="message__role">
-              {message.role === "user" ? "You" : "Sage"}
-            </div>
-            <p>{message.text}</p>
-          </article>
-        ))}
-        <EditSummary />
+        ) : (
+          <>
+            {useNativeAcp && acpPage ? (
+              <AcpChatProjection
+                page={acpPage}
+                active
+                cancellableTurnId={acpActions.cancellableTurnId}
+                onCancelTurn={(turnId) => void acpActions.cancel(turnId)}
+                onOpenResource={openAcpResource}
+                hasEarlier={acpHistory.hasEarlier}
+                loadingEarlier={acpHistory.loadingEarlier}
+                historyError={acpHistory.historyError}
+                onLoadEarlier={acpHistory.loadEarlier}
+              />
+            ) : (
+              <>
+                <div className="project-intro">
+                  <span className="project-intro__icon">
+                    <Check size={17} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <strong>Phase 0 has started</strong>
+                    <p>
+                      This first vertical slice proves the tab-first workbench,
+                      harness-then-model selection, and Rust-owned durable
+                      transcript.
+                    </p>
+                  </div>
+                </div>
+                {messages.map((message) => (
+                  <article
+                    className={`message message--${message.role}`}
+                    key={message.id}
+                  >
+                    <div className="message__role">
+                      {message.role === "user" ? "You" : "Sage"}
+                    </div>
+                    <p>{message.text}</p>
+                  </article>
+                ))}
+              </>
+            )}
+            <EditSummary />
+          </>
+        )}
         <div ref={endRef} />
       </div>
 
-      <form className="composer" onSubmit={submit}>
-        {error ? <div className="composer__error">{error}</div> : null}
-        {!harnessAvailable ? (
+      <form
+        className="composer"
+        aria-busy={projectTransitioning}
+        onSubmit={submit}
+      >
+        {error || acpActions.error ? (
+          <div className="composer__error" role="alert">
+            {acpActions.error?.message ?? error}
+          </div>
+        ) : null}
+        {!canPrompt ? (
           <div className="composer__notice">
-            This curated harness is not installed. Managed installation will be
-            added in the ACP runtime phase.
+            No reviewed local binding is available for this harness.
           </div>
         ) : null}
         <label className="sr-only" htmlFor="prompt">
@@ -92,11 +178,11 @@ export function ChatSurface() {
           value={composerText}
           rows={3}
           placeholder={
-            harnessAvailable
+            canPrompt
               ? "Ask Sage to do anything"
-              : "Install this harness before starting a session"
+              : "Choose an available harness before starting a session"
           }
-          disabled={!harnessAvailable || sending}
+          disabled={!canPrompt || actionBusy || projectTransitioning}
           onChange={(event) => setComposerText(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
@@ -111,6 +197,7 @@ export function ChatSurface() {
             type="button"
             aria-label="Attach context"
             title="Attach context"
+            disabled
           >
             <Plus size={18} aria-hidden="true" />
           </button>
@@ -119,6 +206,7 @@ export function ChatSurface() {
               <span className="sr-only">Harness</span>
               <select
                 value={selectedHarnessId ?? ""}
+                disabled={projectTransitioning}
                 onChange={(event) => void selectHarness(event.target.value)}
               >
                 {harnesses.map((harness) => (
@@ -136,7 +224,9 @@ export function ChatSurface() {
               <span className="sr-only">Model</span>
               <select
                 value={selectedModelId ?? ""}
-                disabled={!harnessAvailable || models.length === 0}
+                disabled={
+                  projectTransitioning || !canPrompt || models.length === 0
+                }
                 onChange={(event) => selectModel(event.target.value)}
               >
                 {models.length === 0 ? (
@@ -151,16 +241,24 @@ export function ChatSurface() {
               </select>
               <ChevronDown size={14} aria-hidden="true" />
             </label>
-            <span className="access-mode" title="Project-scoped access">
+            <span
+              className="access-mode"
+              title="Permission requests fail closed"
+            >
               <ShieldCheck size={14} aria-hidden="true" />
-              Project access
+              Read-only policy
             </span>
           </div>
           <button
             className="send-button"
             type="submit"
             aria-label="Send prompt"
-            disabled={!composerText.trim() || !harnessAvailable || sending}
+            disabled={
+              projectTransitioning ||
+              !composerText.trim() ||
+              !canPrompt ||
+              actionBusy
+            }
           >
             <ArrowUp size={18} aria-hidden="true" />
           </button>

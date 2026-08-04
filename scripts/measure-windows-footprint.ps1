@@ -6,6 +6,8 @@ param(
   [Parameter(Mandatory)][ValidatePattern("^[0-9a-fA-F]{64}$")][string]$ExpectedSourceAggregateSha256,
   [Parameter(Mandatory)][string]$CandidateBindingPath,
   [Parameter(Mandatory)][string]$SourceManifestPath,
+  [Parameter(Mandatory)][string]$FixtureProjectRoot,
+  [AllowEmptyString()][string]$DiagnosticDataDirectory = "",
   [ValidateRange(1, 100)][int]$Launches = 5,
   [ValidateRange(1, 60)][int]$WarmupSeconds = 8,
   [ValidateRange(2, 60)][int]$SampleCount = 5,
@@ -38,22 +40,31 @@ if ($Acceptance -and $MaxLaunchAttempts -gt 10) {
 $nodeCommand = Get-Command $NodePath -CommandType Application -ErrorAction Stop
 $resolvedNode = $nodeCommand.Source
 $binding = Test-FootprintCandidateBinding $resolvedExecutable $ExpectedExecutableSha256 $ExpectedSourceAggregateSha256 $CandidateBindingPath $SourceManifestPath
+[void](Assert-FootprintDiagnosticCampaignInputs $binding $DiagnosticDataDirectory)
 Assert-FootprintDebugStateClear
+[void](Assert-FootprintDiagnosticEnvironmentClear)
+[void](Assert-FootprintFixtureEnvironmentClear)
 
 $existing = @(Get-FootprintProcessSnapshot | Where-Object {
   $_.ExecutablePath -and [string]::Equals([IO.Path]::GetFullPath([string]$_.ExecutablePath), $resolvedExecutable, [StringComparison]::OrdinalIgnoreCase)
 })
 if ($existing.Count -gt 0) { throw "The exact candidate is already running; acceptance requires a clean process boundary." }
 
+$workspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-  $workspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
   $OutputDirectory = Join-Path $workspaceRoot ("local-evidence/windows-footprint/{0}-{1}" -f [DateTime]::UtcNow.ToString("yyyyMMdd-HHmmss"), $Scenario)
 } elseif (-not [IO.Path]::IsPathRooted($OutputDirectory)) {
   throw "OutputDirectory must be absolute."
 }
 [void](New-Item -ItemType Directory -Force -Path $OutputDirectory)
 $resolvedOutput = (Resolve-Path -LiteralPath $OutputDirectory).Path
+$diagnosticDataInitial = Get-FootprintDiagnosticDataProvenance $DiagnosticDataDirectory $workspaceRoot $resolvedOutput
+[void](Assert-FootprintFreshDiagnosticData $diagnosticDataInitial)
+$fixtureProject = Get-FootprintFixtureProjectProvenance $FixtureProjectRoot $workspaceRoot $diagnosticDataInitial.path $resolvedOutput
+$normalDataInitial = Get-FootprintNormalDataInventory
+$resolvedDiagnosticData = $diagnosticDataInitial.path
 $setupHelper = (Resolve-Path (Join-Path $PSScriptRoot "footprint/prepare-sage-scenario.mjs")).Path
+$boundedNodeRunner = (Resolve-Path (Join-Path $PSScriptRoot "footprint/bounded-node-runner.mjs")).Path
 $debugNames = @("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER")
 $campaignTimer = [Diagnostics.Stopwatch]::StartNew()
 
@@ -63,8 +74,24 @@ function Get-AvailableLoopbackPort {
 }
 
 function Start-ExactFootprintProcess {
+  param([switch]$SeedProject)
   [void](Assert-FootprintExecutableHash $resolvedExecutable $binding.executableSha256)
-  $launched = Start-Process -FilePath $resolvedExecutable -WorkingDirectory (Split-Path -Parent $resolvedExecutable) -PassThru
+  [void](Assert-FootprintDiagnosticEnvironmentClear)
+  [void](Assert-FootprintFixtureEnvironmentClear)
+  $launched = $null
+  try {
+    [Environment]::SetEnvironmentVariable("SAGE_DIAGNOSTIC_DATA_DIR", $resolvedDiagnosticData, "Process")
+    if ($SeedProject) {
+      [Environment]::SetEnvironmentVariable("SAGE_PROJECT_ROOT", $fixtureProject.path, "Process")
+    }
+    $launched = Start-Process -FilePath $resolvedExecutable -WorkingDirectory (Split-Path -Parent $resolvedExecutable) -PassThru
+  } finally {
+    [Environment]::SetEnvironmentVariable("SAGE_DIAGNOSTIC_DATA_DIR", $null, "Process")
+    [Environment]::SetEnvironmentVariable("SAGE_PROJECT_ROOT", $null, "Process")
+  }
+  [void](Assert-FootprintDiagnosticEnvironmentClear)
+  [void](Assert-FootprintFixtureEnvironmentClear)
+  if ($null -eq $launched) { throw "The exact diagnostics candidate did not launch." }
   try {
     [void](Assert-FootprintExecutableHash $resolvedExecutable $binding.executableSha256)
   } catch {
@@ -139,7 +166,7 @@ function Invoke-InstrumentedScenarioSetup {
     try {
       [Environment]::SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--remote-debugging-port=$port", "Process")
       [Environment]::SetEnvironmentVariable("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", $null, "Process")
-      $process = Start-ExactFootprintProcess
+      $process = Start-ExactFootprintProcess -SeedProject
       $identity = Get-FootprintLaunchIdentity $process $resolvedExecutable
       [void](Add-FootprintRememberedIdentity $known ([pscustomobject]@{ ProcessId = $identity.processId; ExecutablePath = $identity.executablePath; CreationDate = $identity.creationDate }))
       $verifiedIdentity = Get-ExactRootIdentity $identity $known
@@ -156,8 +183,10 @@ function Invoke-InstrumentedScenarioSetup {
     if ($debugRows.Count -lt 1) { throw "Setup endpoint was not bound to the exact candidate process tree." }
     $treeProcessIds = @($tree.processes | ForEach-Object processId)
     $debugOwnerProcessIds = @(Wait-ExactDebugListener $port $treeProcessIds)
-    & $resolvedNode $setupHelper $port $Scenario $output
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $output -PathType Leaf)) { throw "Semantic CDP setup failed." }
+    $nodeResult = Invoke-FootprintBoundedProcess $resolvedNode $boundedNodeRunner $resolvedNode `
+      @($setupHelper, [string]$port, $Scenario, $output) `
+      (Join-Path $resolvedOutput "setup-node-process.json") 60000 65536
+    if (-not (Test-Path -LiteralPath $output -PathType Leaf)) { throw "Semantic CDP setup did not produce its bounded result." }
     $semantic = Get-Content -LiteralPath $output -Raw | ConvertFrom-Json
     $verifiedTree = Get-FootprintTreeSample $process.Id
     foreach ($record in $verifiedTree.processes) { [void](Add-FootprintRememberedIdentity $known $record) }
@@ -172,11 +201,16 @@ function Invoke-InstrumentedScenarioSetup {
       executablePath = $resolvedExecutable
       executableSha256 = $binding.executableSha256
       sourceAggregateSha256 = $binding.sourceAggregateSha256
+      diagnosticDataDirectorySha256 = $diagnosticDataInitial.pathSha256
+      fixtureProjectRootSha256 = $fixtureProject.pathSha256
       loopbackPort = $port
       targetId = [string]$semantic.targetId
       debugOwnerProcessIds = $debugOwnerProcessIds
+      nodeProcess = $nodeResult
       chatCenterCount = [int]$semantic.chatCenterCount
+      projectChatCount = [int]$semantic.projectChatCount
       explorerSidebarCount = [int]$semantic.explorerSidebarCount
+      explorerHeavyViewMounted = [bool]$semantic.explorerHeavyViewMounted
       processTree = $tree
       verifiedProcessTree = $verifiedTree
     }
@@ -200,12 +234,18 @@ function Invoke-InstrumentedScenarioSetup {
   }
 }
 
-$setup = Invoke-InstrumentedScenarioSetup
+$guardedSetup = Invoke-FootprintNormalDataGuardedAction $normalDataInitial `
+  { Invoke-InstrumentedScenarioSetup } `
+  { Get-FootprintNormalDataInventory }
+$setup = $guardedSetup.result
+$normalDataAfterSetup = $guardedSetup.after
 Assert-FootprintDebugStateClear
 $remainingSetupProcesses = @(Get-FootprintProcessSnapshot | Where-Object {
   $_.ExecutablePath -and [string]::Equals([IO.Path]::GetFullPath([string]$_.ExecutablePath), $resolvedExecutable, [StringComparison]::OrdinalIgnoreCase)
 })
 if ($remainingSetupProcesses.Count -gt 0) { throw "The instrumented setup process tree did not terminate completely." }
+$diagnosticDataAfterSetup = Get-FootprintDiagnosticDataProvenance $resolvedDiagnosticData $workspaceRoot $resolvedOutput
+[void](Assert-FootprintDiagnosticStateChanged $diagnosticDataInitial $diagnosticDataAfterSetup)
 $setupPid = [int]$setup.processId
 $launchResults = @()
 $maximumAttempts = if ($MaxLaunchAttempts -eq 0) { $Launches + 5 } else { $MaxLaunchAttempts }
@@ -225,9 +265,12 @@ while ($validCount -lt $Launches -and $attempt -lt $maximumAttempts) {
     rootIdentity = $null
     startupWindowMs = $null
     scenarioEvidence = $null
+    scenarioTransition = $null
     postSampleScenarioEvidence = $null
     samples = @()
     idleCpuPercentOneCore = $null
+    cpuMeasurement = $null
+    diagnosticDataDirectorySha256 = $diagnosticDataInitial.pathSha256
     processIdsSeen = @()
     roleSet = @()
     valid = $false
@@ -245,10 +288,13 @@ while ($validCount -lt $Launches -and $attempt -lt $maximumAttempts) {
     $launch.rootIdentity = $identity
     $window = Wait-FootprintWindow $process.Id $WindowTimeoutSeconds
     $launch.startupWindowMs = $window.elapsedMs
-    $launch.scenarioEvidence = Wait-FootprintScenarioUiaEvidence $window.handle $process.Id $Scenario
+    $launch.scenarioTransition = Invoke-FootprintMeasuredScenarioTransition $window.handle $process.Id $Scenario
+    $launch.scenarioEvidence = $launch.scenarioTransition.afterEvidence
     Start-Sleep -Seconds $WarmupSeconds
+    $sampleTimer = [Diagnostics.Stopwatch]::StartNew()
     for ($sampleIndex = 1; $sampleIndex -le $SampleCount; $sampleIndex += 1) {
       $sample = Get-FootprintTreeSample $process.Id
+      $sample["sampleElapsedSeconds"] = [Math]::Round($sampleTimer.Elapsed.TotalSeconds, 9)
       foreach ($record in $sample.processes) { [void](Add-FootprintRememberedIdentity $known $record) }
       if ($sample.unknownProcessCount -ne 0) { throw "Measured tree contains an unknown descendant." }
       Assert-FootprintDebugStateClear @($sample.processes)
@@ -257,10 +303,15 @@ while ($validCount -lt $Launches -and $attempt -lt $maximumAttempts) {
     }
     $first = $launch.samples[0]
     $last = $launch.samples[$launch.samples.Count - 1]
-    $wallSeconds = (($launch.samples.Count - 1) * $SampleIntervalMs) / 1000
-    $launch.idleCpuPercentOneCore = Get-FootprintCpuPercent $first.coreCpuSeconds $last.coreCpuSeconds $wallSeconds
+    [void](Assert-FootprintStableCpuSamples @($launch.samples))
+    $launch.cpuMeasurement = Get-FootprintCpuMeasurement $first $last
+    $launch.idleCpuPercentOneCore = $launch.cpuMeasurement.percentOneCore
     $launch.postSampleScenarioEvidence = Wait-FootprintScenarioUiaEvidence $window.handle $process.Id $Scenario
-    [void](Assert-FootprintScenarioAcceptance $Scenario $setup $launch.postSampleScenarioEvidence @($launch.samples) $resolvedExecutable $binding.executableSha256 $binding.sourceAggregateSha256)
+    $launch.postSampleScenarioEvidence["transitionAction"] = $launch.scenarioTransition.action
+    $launch.postSampleScenarioEvidence["transitionInvokeCount"] = $launch.scenarioTransition.invokeCount
+    $launch.postSampleScenarioEvidence["transitionShowControlExposed"] = $launch.scenarioTransition.providerShowControlExposed
+    $launch.postSampleScenarioEvidence["transitionUiaView"] = $launch.scenarioTransition.uiaView
+    [void](Assert-FootprintScenarioAcceptance $Scenario $setup $launch.postSampleScenarioEvidence @($launch.samples) $resolvedExecutable $binding.executableSha256 $binding.sourceAggregateSha256 $diagnosticDataInitial.pathSha256 $fixtureProject.pathSha256)
     $launch.processIdsSeen = @($known.Values | ForEach-Object processId | Sort-Object -Unique)
     $launch.roleSet = @($launch.samples | ForEach-Object processes | ForEach-Object role | Sort-Object -Unique)
     $launch.valid = $true
@@ -283,6 +334,8 @@ while ($validCount -lt $Launches -and $attempt -lt $maximumAttempts) {
     $launch.finishedAtUtc = [DateTime]::UtcNow.ToString("o")
     $launchResults += $launch
   }
+  $normalDataAfterLaunch = Get-FootprintNormalDataInventory
+  [void](Assert-FootprintNormalDataUnchanged $normalDataInitial $normalDataAfterLaunch)
   if ($launch.valid) { $validCount += 1 } else {
     $launch | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $resolvedOutput ("failed-attempt-{0:D2}.json" -f $attempt)) -Encoding UTF8
   }
@@ -293,6 +346,7 @@ $valid = @($launchResults | Where-Object valid)
 $private = @($valid | ForEach-Object { Get-FootprintMedian @($_.samples | ForEach-Object corePrivateBytes) })
 $working = @($valid | ForEach-Object { Get-FootprintMedian @($_.samples | ForEach-Object coreWorkingSetBytes) })
 $cpu = @($valid | ForEach-Object idleCpuPercentOneCore)
+$cpuWallSeconds = @($valid | ForEach-Object { $_.cpuMeasurement.measuredWallSeconds })
 $startup = @($valid | ForEach-Object startupWindowMs)
 $roles = @($valid | ForEach-Object samples | ForEach-Object processes | Where-Object coreIncluded | ForEach-Object role | Sort-Object -Unique)
 $roleStatistics = [ordered]@{}
@@ -321,6 +375,9 @@ $webViewVersions = @($webViewPaths | ForEach-Object {
     productVersion = if ($item) { $item.VersionInfo.ProductVersion } else { $null }
   }
 })
+$diagnosticDataFinal = Get-FootprintDiagnosticDataProvenance $resolvedDiagnosticData $workspaceRoot $resolvedOutput
+$normalDataFinal = Get-FootprintNormalDataInventory
+[void](Assert-FootprintNormalDataUnchanged $normalDataInitial $normalDataFinal)
 $summary = [ordered]@{
   schemaVersion = 2
   generatedAtUtc = [DateTime]::UtcNow.ToString("o")
@@ -345,11 +402,29 @@ $summary = [ordered]@{
   excludedRoles = @("excluded-child")
   privateBytes = [ordered]@{ perLaunchMedian = $private; median = Get-FootprintMedian $private; p95 = Get-FootprintPercentile $private 0.95 }
   workingSetBytes = [ordered]@{ perLaunchMedian = $working; median = Get-FootprintMedian $working; p95 = Get-FootprintPercentile $working 0.95 }
-  idleCpuPercentOneCore = [ordered]@{ perLaunch = $cpu; median = Get-FootprintMedian $cpu; p95 = Get-FootprintPercentile $cpu 0.95 }
+  idleCpuPercentOneCore = [ordered]@{ perLaunch = $cpu; measuredWallSecondsPerLaunch = $cpuWallSeconds; median = Get-FootprintMedian $cpu; p95 = Get-FootprintPercentile $cpu 0.95 }
   startupWindowMs = [ordered]@{ perLaunch = $startup; median = Get-FootprintMedian $startup; p95 = Get-FootprintPercentile $startup 0.95 }
   roleStatistics = $roleStatistics
   webView2 = [ordered]@{ executablePaths = $webViewPaths; fileVersions = $webViewVersions }
   roleSets = @($valid | ForEach-Object roleSet)
+  fixtureProject = $fixtureProject
+  diagnosticData = [ordered]@{
+    environmentVariable = $diagnosticDataInitial.environmentVariable
+    path = $diagnosticDataInitial.path
+    pathSha256 = $diagnosticDataInitial.pathSha256
+    purpose = $diagnosticDataInitial.purpose
+    withinIgnoredLocalEvidence = $diagnosticDataInitial.withinIgnoredLocalEvidence
+    initialStateFiles = $diagnosticDataInitial.stateFiles
+    afterSetupStateFiles = $diagnosticDataAfterSetup.stateFiles
+    finalStateFiles = $diagnosticDataFinal.stateFiles
+  }
+  profileDataIsolation = [ordered]@{
+    initial = $normalDataInitial
+    afterSetup = $normalDataAfterSetup
+    final = $normalDataFinal
+    durableRoamingUnchanged = $true
+    localCachePolicy = "disposable-uncontrolled-not-an-isolation-gate"
+  }
   elapsedSeconds = [Math]::Round($campaignTimer.Elapsed.TotalSeconds, 3)
 }
 $operatingSystem = Get-CimInstance Win32_OperatingSystem
@@ -370,6 +445,7 @@ $raw = [ordered]@{
     processIdentityModuleSha256 = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot "footprint/ProcessIdentity.psm1") -Algorithm SHA256).Hash
     scenarioModuleSha256 = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot "footprint/ScenarioEvidence.psm1") -Algorithm SHA256).Hash
     setupHelperSha256 = (Get-FileHash -LiteralPath $setupHelper -Algorithm SHA256).Hash
+    boundedNodeRunnerSha256 = (Get-FileHash -LiteralPath $boundedNodeRunner -Algorithm SHA256).Hash
   }
   configuration = [ordered]@{
     scenario = $Scenario
@@ -379,6 +455,10 @@ $raw = [ordered]@{
     sampleCount = $SampleCount
     sampleIntervalMs = $SampleIntervalMs
     acceptance = [bool]$Acceptance
+    diagnosticDataDirectory = $diagnosticDataInitial.path
+    diagnosticDataDirectorySha256 = $diagnosticDataInitial.pathSha256
+    fixtureProjectRoot = $fixtureProject.path
+    fixtureProjectRootSha256 = $fixtureProject.pathSha256
   }
   candidate = $binding
   setup = $setup

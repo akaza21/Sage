@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "status": "proposed-c0-a-selection-pending-independent-admission",
+  "selectedProtocolSchema": {
+    "crate": "agent-client-protocol-schema",
+    "version": "1.4.0",
+    "registry": "crates.io",
+    "cargoChecksumSha256": "06679e1542356341f4550ccfb16338b64f37f6af70de2105446ef6fbb078234c",
+    "licenseExpression": "Apache-2.0",
+    "rustVersion": "1.88.0",
+    "defaultFeatures": false,
+    "enabledFeatures": [],
+    "unstableFeaturesEnabled": false,
+    "runtimeReachable": false,
+    "windowsAllFeatureIncrementalPackages": 10,
+    "rejectedRuntimeIncrementalPackages": 42,
+    "runtimeOnlyPackagesRemoved": 32,
+    "use": "typed stable schema shapes only after Sage-owned bounded raw JSON validation"
+  },
+  "rejectedRuntime": {
+    "crate": "agent-client-protocol",
+    "version": "1.3.0",
+    "cargoChecksumSha256": "1d386d6a58f4dbe0ebfa98e915caa54005dabdefd419de3d4678b28cd5752444",
+    "licenseExpression": "Apache-2.0",
+    "decision": "remove from reachable production graph",
+    "reasons": [
+      "unbounded stdio line reading",
+      "unbounded or externally unaccounted actor and session-update channels",
+      "task-per-message reachability",
+      "unbounded handler and pending-reply registries",
+      "runtime auth, transport, and process ownership conflicts with Sage"
+    ],
+    "forbiddenProductionSymbols": [
+      "agent_client_protocol::Builder",
+      "agent_client_protocol::Stdio",
+      "agent_client_protocol::ConnectionTo",
+      "tokio::io::AsyncBufReadExt::lines",
+      "tokio::sync::mpsc::unbounded_channel"
+    ]
+  },
+  "windowsProcessApi": {
+    "crate": "windows-sys",
+    "version": "0.61.2",
+    "features": [
+      "Win32_Foundation",
+      "Win32_Security",
+      "Win32_Storage_FileSystem",
+      "Win32_System_JobObjects",
+      "Win32_System_Pipes",
+      "Win32_System_Threading"
+    ],
+    "productAdmissionPlatform": "windows",
+    "nonWindowsAde0006ABehavior": "compile-time PlatformUnavailable stub"
+  },
+  "loggingPolicy": {
+    "crate": "tracing-subscriber",
+    "version": "0.3.23",
+    "removeFeature": "env-filter",
+    "allowedFeature": "fmt",
+    "ambientFilterAllowed": false,
+    "targetPolicy": "exact Sage-owned target allowlist"
+  },
+  "requiredC0AIndependentEvidence": [
+    "registry artifact hash and source-to-lock provenance",
+    "complete transitive package list and license/NOTICE audit",
+    "source reachability audit proving runtime symbols are unreachable",
+    "schema parser allocation audit",
+    "malformed and oversized schema-only probe",
+    "Cargo manifest and lock diff",
+    "debug and release compile delta",
+    "executable and package byte delta",
+    "idle CPU and RSS delta",
+    "security and maintenance disposition"
+  ],
+  "c0BRule": "The exact integrated candidate is compared against the accepted C0-A selection and ceilings; C0-B cannot change dependencies or budgets."
+}

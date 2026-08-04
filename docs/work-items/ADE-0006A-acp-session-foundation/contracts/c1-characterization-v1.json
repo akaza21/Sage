@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "status": "proposed-c0-specification",
+  "preconditions": [
+    "ADE-0005 Gate 0 is closed.",
+    "C0-S contract manifest is accepted.",
+    "C0-A schema dependency admission is independently accepted.",
+    "The integration checkout has one writer and no production lane exists."
+  ],
+  "purpose": "Establish immutable schema-only allocation, package and process-control baselines without implementing the ACP product runtime or UI projection.",
+  "feature": {
+    "name": "acp-c1-characterization",
+    "default": false,
+    "allowedInProductionBundle": false,
+    "allowedInNormalCommands": false,
+    "allowedInInstaller": false,
+    "allowedRuntimeDownload": false
+  },
+  "sourceOwner": [
+    "src-tauri/Cargo.toml",
+    "src-tauri/Cargo.lock",
+    "src-tauri/src/lib.rs",
+    "src-tauri/src/acp_c1_characterization.rs",
+    "src-tauri/src/bin/acp_c1_probe.rs",
+    "src-tauri/src/bin/acp_c1_control.rs",
+    "src-tauri/tests/acp_c1_characterization.rs",
+    "scripts/measure-acp-c1.mjs",
+    "scripts/measure-acp-c1.node-test.mjs",
+    "scripts/check-policy.mjs",
+    "scripts/validate-performance-budgets.mjs",
+    "scripts/validate-performance-budgets.node-test.mjs",
+    "docs/performance/budgets.json"
+  ],
+  "forbiddenSource": [
+    "src-tauri/migrations/005_acp_session_foundation.sql",
+    "src-tauri/src/acp",
+    "src/domain/acp.ts",
+    "src/services/acpDesktop.ts",
+    "src/features/chat/acp",
+    "src/app/acpProjectionStore.ts",
+    "Tauri command registration",
+    "curated harness bindings",
+    "package resources or sidecars"
+  ],
+  "probeOperations": [
+    "deserialize accepted schema fixture only after bounded structural validation",
+    "reject every malformed and exact-plus-one schema vector without product persistence",
+    "launch the fixed local probe/control by exact absolute artifact identity in isolated evidence state",
+    "measure only the metrics assigned to C1 below without changing ceilings",
+    "exit with zero child processes and no retained listener or socket"
+  ],
+  "commands": [
+    "cargo test --manifest-path src-tauri/Cargo.toml --features acp-c1-characterization --test acp_c1_characterization",
+    "cargo build --manifest-path src-tauri/Cargo.toml --release --features acp-c1-characterization --bin acp_c1_probe --bin acp_c1_control",
+    "node scripts/measure-acp-c1.mjs --binding <relative-binding-json> --output <ignored-relative-evidence-dir>",
+    "node scripts/validate-performance-budgets.mjs ADE-0006A-C1"
+  ],
+  "deliverables": [
+    "source and artifact binding",
+    "accepted C0-A dependency identity",
+    "probe and matched-control executable hashes and bytes",
+    "C1-assigned performance-budgets-v1 metric results and provenance",
+    "dependency, executable and package deltas",
+    "queue/allocation rejection results",
+    "zero-orphan and zero-normal-data mutation proof",
+    "independent pass-fail disposition"
+  ],
+  "metricPartition": {
+    "c1Required": [
+      "spawnToProcessReadyP95",
+      "initializeP95",
+      "promptWriteCompleteToFirstNormalizedFixtureOutputP50",
+      "promptWriteCompleteToFirstNormalizedFixtureOutputP95",
+      "explicitCloseP95",
+      "forcedTeardownHardMaximum",
+      "readyIdleCpuSingleCorePercentP95",
+      "fixtureTreePrivateBytesP95",
+      "orphanProcessesAfterClose",
+      "schema allocation exact-plus-one",
+      "dependency executable and package deltas"
+    ],
+    "c0BRequiredAfterIntegratedRuntimeAndProjection": [
+      "nativeReceiptToPaintP95",
+      "inputToPaintP95",
+      "tabSwitchP95",
+      "cancelDispatchP95",
+      "cancelTerminalP95",
+      "coldActivationP50",
+      "coldActivationP95",
+      "sageNativeAndRendererIncrementalPrivateBytesP95",
+      "persistence and WAL metrics",
+      "packaged accessibility gesture metrics"
+    ],
+    "rule": "C1 cannot claim, synthesize, or waive a C0-B metric; C0-B measures the exact integrated candidate against the same fixed C0-S ceiling."
+  },
+  "inheritanceIntoC0I": {
+    "retained": [
+      "accepted Cargo dependency and lock identity",
+      "fixed budgets and independent provenance",
+      "bounded structural validator fixtures",
+      "policy tests that exclude C1 artifacts from production"
+    ],
+    "removedOrReplaced": [
+      "acp_c1_characterization.rs",
+      "acp_c1_probe.rs",
+      "acp_c1_control.rs",
+      "acp_c1_characterization.rs integration test",
+      "acp-c1-characterization feature from distributable targets"
+    ]
+  },
+  "exitCondition": "Independent Test accepts one exact C1 source/artifact/control identity; failure returns to Specify and never edits a C0-S ceiling."
+}

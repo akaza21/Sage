@@ -50,6 +50,7 @@ export interface WorkbenchState
   recoveryNotice: string | null;
   composerText: string;
   sending: boolean;
+  sendRequestGeneration: number;
   repositoryRefreshing: boolean;
   repositoryRefreshSuperseded: boolean;
   repositoryRequestGeneration: number;
@@ -144,6 +145,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     recoveryNotice: null,
     composerText: "",
     sending: false,
+    sendRequestGeneration: 0,
     repositoryRefreshing: false,
     repositoryRefreshSuperseded: false,
     repositoryRequestGeneration: 0,
@@ -311,40 +313,71 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
       const state = get();
       const generation = state.projectGeneration;
       const projectId = state.project?.id;
+      const activeChat = state.tabs.find(
+        (tab) => tab.id === state.activeTabId && tab.kind === "chat",
+      );
       const text = state.composerText.trim();
       if (
         !text ||
         !projectId ||
-        !state.sessionId ||
+        !activeChat ||
         !state.selectedHarnessId ||
         state.sending
       )
         return;
       if (state.projectTransitioning) return;
-      set({ sending: true, composerText: "", error: null });
+      const sendRequestGeneration = nextProjectGeneration(
+        state.sendRequestGeneration,
+      );
+      set({
+        sending: true,
+        sendRequestGeneration,
+        composerText: "",
+        error: null,
+      });
       try {
-        const messages = await desktop.sendPrompt({
-          sessionId: state.sessionId,
+        const result = await desktop.sendPrompt({
+          chatId: activeChat.id,
           harnessId: state.selectedHarnessId,
           modelId: state.selectedModelId,
           text,
         });
+        const current = get();
         if (
-          matchesProjectIntent(get(), generation, projectId) &&
-          get().sessionId === state.sessionId
+          matchesProjectIntent(current, generation, projectId) &&
+          current.sendRequestGeneration === sendRequestGeneration
         ) {
-          set({ messages, sending: false });
+          const chatStillAttached = current.tabs.some(
+            (tab) => tab.id === activeChat.id && tab.kind === "chat",
+          );
+          set(
+            chatStillAttached
+              ? {
+                  sessionId: result.sessionId,
+                  messages: result.messages,
+                  sending: false,
+                }
+              : { sending: false },
+          );
         }
       } catch (error) {
+        const current = get();
         if (
-          matchesProjectIntent(get(), generation, projectId) &&
-          get().sessionId === state.sessionId
+          matchesProjectIntent(current, generation, projectId) &&
+          current.sendRequestGeneration === sendRequestGeneration
         ) {
-          set({
-            sending: false,
-            composerText: text,
-            error: errorMessage(error),
-          });
+          const chatStillAttached = current.tabs.some(
+            (tab) => tab.id === activeChat.id && tab.kind === "chat",
+          );
+          set(
+            chatStillAttached
+              ? {
+                  sending: false,
+                  composerText: text,
+                  error: errorMessage(error),
+                }
+              : { sending: false },
+          );
         }
       }
     },

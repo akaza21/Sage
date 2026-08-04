@@ -9,6 +9,7 @@ import type {
   ProjectSwitchRequest,
   ProjectTransitionResult,
   ResourceRef,
+  SimulatorTurnResult,
 } from "../domain/workbench";
 import { resourceKey } from "../domain/resourceIdentity";
 import { browserEditor } from "./browserEditor";
@@ -73,18 +74,13 @@ const snapshot: BootstrapSnapshot = {
   selectedResource: null,
   harnesses: [
     {
-      id: "claude-code",
-      name: "Claude Code",
-      description: "Curated ACP adapter, installed only when requested.",
-      installState: "notInstalled",
-      source: "builtIn",
-    },
-    {
       id: "codex",
       name: "Codex",
       description: "Curated ACP adapter, installed only when requested.",
       installState: "notInstalled",
       source: "builtIn",
+      transport: "acp",
+      bindingId: "codex-app-server",
     },
     {
       id: "pi",
@@ -92,6 +88,26 @@ const snapshot: BootstrapSnapshot = {
       description: "Curated ACP adapter, installed only when requested.",
       installState: "notInstalled",
       source: "builtIn",
+      transport: "acp",
+      bindingId: null,
+    },
+    {
+      id: "claude-code",
+      name: "Claude Code",
+      description: "Curated ACP adapter, installed only when requested.",
+      installState: "notInstalled",
+      source: "builtIn",
+      transport: "acp",
+      bindingId: null,
+    },
+    {
+      id: "oh-my-pi",
+      name: "Oh My Pi",
+      description: "Curated native ACP binding, admitted last.",
+      installState: "notInstalled",
+      source: "builtIn",
+      transport: "acp",
+      bindingId: null,
     },
     {
       id: "sage-simulator",
@@ -99,9 +115,11 @@ const snapshot: BootstrapSnapshot = {
       description: "Deterministic development harness.",
       installState: "available",
       source: "development",
+      transport: "legacySimulator",
+      bindingId: null,
     },
   ],
-  sessionId: "session-walking-skeleton",
+  sessionId: null,
   selectedHarnessId: "sage-simulator",
   selectedModelId: "sim-fast",
   messages: [
@@ -175,8 +193,16 @@ const directories = new Map<string, DirectoryListing>([
 ]);
 
 let messages = [...snapshot.messages];
+let simulatorModelId: string | null = null;
 const MAX_BROWSER_MESSAGES = 500;
 const MAX_BROWSER_MESSAGE_BYTES = 4 * 1024 * 1024;
+
+export function resetBrowserDesktopForTests() {
+  snapshot.sessionId = null;
+  snapshot.selectedModelId = "sim-fast";
+  simulatorModelId = null;
+  messages = [...snapshot.messages];
+}
 
 function browserMessageBytes(values: ChatMessage[]) {
   const encoder = new TextEncoder();
@@ -281,16 +307,45 @@ export const browserDesktop = {
   },
   async listHarnessModels(harnessId: string) {
     return harnessId === "sage-simulator"
-      ? [{ id: "sim-fast", name: "Simulator Fast" }]
+      ? [
+          { id: "sim-fast", name: "Simulator Fast" },
+          { id: "sim-deep", name: "Simulator Deep" },
+        ]
       : [];
   },
   async sendPrompt(request: {
-    sessionId: string;
+    chatId: string;
     harnessId: string;
     modelId: string | null;
     text: string;
-  }): Promise<ChatMessage[]> {
-    messages = appendBrowserSimulatorTurn(messages, request);
-    return structuredClone(messages);
+  }): Promise<SimulatorTurnResult> {
+    if (request.chatId !== snapshot.activeTabId) {
+      throw new Error("Chat is not active");
+    }
+    if (
+      request.harnessId !== "sage-simulator" ||
+      (request.modelId !== null &&
+        request.modelId !== "sim-fast" &&
+        request.modelId !== "sim-deep")
+    ) {
+      throw new Error(
+        "Harness or model is not available in the browser fixture",
+      );
+    }
+    const modelId = request.modelId ?? "sim-fast";
+    const sessionId =
+      snapshot.sessionId && simulatorModelId === modelId
+        ? snapshot.sessionId
+        : crypto.randomUUID();
+    const nextMessages = appendBrowserSimulatorTurn(messages, {
+      sessionId,
+      modelId: request.modelId,
+      text: request.text,
+    });
+    messages = nextMessages;
+    snapshot.sessionId = sessionId;
+    snapshot.selectedModelId = modelId;
+    simulatorModelId = modelId;
+    return structuredClone({ sessionId, messages });
   },
 };

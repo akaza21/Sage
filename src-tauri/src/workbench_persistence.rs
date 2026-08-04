@@ -8,11 +8,15 @@ use crate::{
         BootstrapSnapshot, ProjectLayoutRequest, ProjectRepositoryStatus, ProjectSwitchRequest,
     },
     error::{AppError, AppResult},
-    harnesses::SIMULATOR_ID,
+    harnesses::{HarnessCatalog, SIMULATOR_ID},
     persistence::{Database, now_millis},
     project_registry::MAX_PROJECTS,
     workbench_restore::{restore_layout, validate_resource_for_project, validate_tab_projection},
 };
+
+use self::bootstrap::{active_project_in, load_chat_id, load_session};
+
+mod bootstrap;
 
 pub use crate::workbench_restore::MAX_RESTORED_TABS;
 
@@ -30,22 +34,36 @@ impl Database {
         };
         let project = self.project_summary(&project_id)?;
         let roots = self.root_records(&project_id)?;
-        let (tabs, active_tab_id, selected_root_id, selected_resource, session) = {
+        let (tabs, active_tab_id, selected_root_id, selected_resource, chat_id, session) = {
             let connection = self.connection();
             let restored = restore_layout(&connection, &project_id, &roots)?;
-            let session =
-                load_session(&connection, &project_id, restored.active_tab_id.as_deref())?;
+            let chat_id =
+                load_chat_id(&connection, &project_id, restored.active_tab_id.as_deref())?;
+            let session = load_session(&connection, &project_id, chat_id.as_deref())?;
             (
                 restored.tabs,
                 restored.active_tab_id,
                 restored.selected_root_id,
                 restored.selected_resource,
+                chat_id,
                 session,
             )
         };
-        let messages = match &session {
-            Some((id, _, _)) => self.messages(id)?,
+        let messages = match &chat_id {
+            Some(id) => self.messages_for_chat(id)?,
             None => Vec::new(),
+        };
+        let selected_harness_id = match &session {
+            Some((_, binding_id, _)) => Some(
+                HarnessCatalog
+                    .harness_id_for_binding(binding_id)
+                    .ok_or_else(|| {
+                        AppError::InvalidRequest(
+                            "active Chat head has no curated harness binding".into(),
+                        )
+                    })?,
+            ),
+            None => Some(SIMULATOR_ID.into()),
         };
         Ok(BootstrapSnapshot {
             transition_epoch: 0,
@@ -57,10 +75,7 @@ impl Database {
             selected_resource,
             harnesses: Vec::new(),
             session_id: session.as_ref().map(|value| value.0.clone()),
-            selected_harness_id: session
-                .as_ref()
-                .map(|value| value.1.clone())
-                .or_else(|| Some(SIMULATOR_ID.into())),
+            selected_harness_id,
             selected_model_id: session.and_then(|value| value.2),
             messages,
             repositories: ProjectRepositoryStatus {
@@ -75,7 +90,7 @@ impl Database {
     }
 
     pub fn persist_project_layout(&self, request: &ProjectLayoutRequest) -> AppResult<()> {
-        let mut connection = self.connection();
+        let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
         let active = active_project_in(&transaction)?;
         if active.as_deref() != Some(request.project_id.as_str()) {
@@ -89,7 +104,7 @@ impl Database {
     }
 
     pub fn switch_project(&self, request: &ProjectSwitchRequest) -> AppResult<()> {
-        let mut connection = self.connection();
+        let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
         let active = active_project_in(&transaction)?;
         if active.as_deref() != Some(request.current_layout.project_id.as_str()) {
@@ -195,21 +210,74 @@ fn persist_layout_in(
                 now
             ],
         )?;
+        if tab.kind == "chat" {
+            let durable_chat: bool = transaction.query_row(
+                "SELECT EXISTS(
+                   SELECT 1 FROM chats WHERE project_id=?1 AND id=?2
+                 )",
+                params![request.project_id, tab.id],
+                |row| row.get(0),
+            )?;
+            if !durable_chat {
+                return Err(AppError::InvalidRequest(
+                    "Chat tab does not reference an existing durable Chat".into(),
+                ));
+            }
+            transaction.execute(
+                "INSERT OR IGNORE INTO chat_tabs(project_id,chat_id,tab_id,attached_at)
+                 VALUES (?1,?2,?2,?3)",
+                params![request.project_id, tab.id, now],
+            )?;
+            let attached: bool = transaction.query_row(
+                "SELECT EXISTS(
+                   SELECT 1 FROM chat_tabs
+                   WHERE project_id=?1 AND chat_id=?2 AND tab_id=?2
+                 )",
+                params![request.project_id, tab.id],
+                |row| row.get(0),
+            )?;
+            if !attached {
+                return Err(AppError::InvalidRequest(
+                    "Chat tab identity conflicts with another attachment".into(),
+                ));
+            }
+        } else {
+            transaction.execute(
+                "DELETE FROM chat_tabs WHERE project_id=?1 AND tab_id=?2",
+                params![request.project_id, tab.id],
+            )?;
+        }
     }
     let retained: HashSet<_> = request.tabs.iter().map(|tab| tab.id.as_str()).collect();
     let existing = {
-        let mut statement =
-            transaction.prepare("SELECT id FROM workbench_tabs WHERE project_id = ?1")?;
-        statement
-            .query_map([&request.project_id], |row| row.get::<_, String>(0))?
-            .collect::<Result<Vec<_>, _>>()?
+        let mut statement = transaction.prepare(
+            "SELECT id FROM workbench_tabs WHERE project_id = ?1
+             ORDER BY id LIMIT ?2",
+        )?;
+        let rows = statement
+            .query_map(
+                params![request.project_id, MAX_RESTORED_TABS as i64 + 1],
+                |row| row.get::<_, String>(0),
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        if rows.len() > MAX_RESTORED_TABS {
+            return Err(AppError::ResourceLimit(format!(
+                "persisted project exceeds its {MAX_RESTORED_TABS}-tab limit"
+            )));
+        }
+        rows
     };
     for stale_id in existing
         .into_iter()
         .filter(|id| !retained.contains(id.as_str()))
     {
         transaction.execute(
-            "DELETE FROM workbench_tabs WHERE project_id = ?1 AND id = ?2",
+            "DELETE FROM chat_tabs WHERE project_id=?1 AND tab_id=?2",
+            params![request.project_id, stale_id],
+        )?;
+        transaction.execute(
+            "DELETE FROM workbench_tabs
+             WHERE project_id = ?1 AND id = ?2",
             params![request.project_id, stale_id],
         )?;
     }
@@ -241,9 +309,9 @@ fn validate_layout(
     transaction: &rusqlite::Transaction<'_>,
     request: &ProjectLayoutRequest,
 ) -> AppResult<()> {
-    if request.tabs.is_empty() || request.tabs.len() > MAX_RESTORED_TABS {
+    if request.tabs.len() > MAX_RESTORED_TABS {
         return Err(AppError::ResourceLimit(format!(
-            "project layout must contain 1..={MAX_RESTORED_TABS} tabs"
+            "project layout may contain at most {MAX_RESTORED_TABS} tabs"
         )));
     }
     validate_tab_projection(&request.tabs)?;
@@ -334,31 +402,5 @@ fn validate_root_membership(
     Ok(())
 }
 
-fn active_project_in(transaction: &rusqlite::Transaction<'_>) -> AppResult<Option<String>> {
-    Ok(transaction
-        .query_row(
-            "SELECT active_project_id FROM app_state WHERE singleton = 1",
-            [],
-            |row| row.get(0),
-        )
-        .optional()?
-        .flatten())
-}
-
-fn load_session(
-    connection: &rusqlite::Connection,
-    project_id: &str,
-    active_tab_id: Option<&str>,
-) -> AppResult<Option<(String, String, Option<String>)>> {
-    Ok(connection
-        .query_row(
-            "SELECT id, harness_id, model_id
-             FROM agent_sessions
-             WHERE project_id = ?1
-             ORDER BY CASE WHEN chat_tab_id = ?2 THEN 0 ELSE 1 END, updated_at DESC
-             LIMIT 1",
-            params![project_id, active_tab_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .optional()?)
-}
+#[cfg(test)]
+mod tests;

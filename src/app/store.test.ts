@@ -158,6 +158,7 @@ describe("workbench resource and project navigation", () => {
       selectedHarnessId: null,
       selectedModelId: null,
       models: [],
+      sendRequestGeneration: 0,
       sessionId: "session-a",
       messages: [],
       recoveryNotice: null,
@@ -165,6 +166,108 @@ describe("workbench resource and project navigation", () => {
   });
 
   afterEach(() => vi.restoreAllMocks());
+
+  it("addresses simulator prompts by Chat and adopts the durable session head", async () => {
+    const messages = [
+      {
+        id: "message-new",
+        sessionId: "session-new",
+        sequence: 2,
+        role: "assistant" as const,
+        text: "ack",
+        createdAt: 2,
+      },
+    ];
+    const send = vi.spyOn(desktop, "sendPrompt").mockResolvedValue({
+      sessionId: "session-new",
+      messages,
+    });
+    useWorkbenchStore.setState({
+      selectedHarnessId: "sage-simulator",
+      selectedModelId: "sim-fast",
+      sessionId: null,
+      composerText: "continue",
+    });
+
+    await useWorkbenchStore.getState().sendPrompt();
+
+    expect(send).toHaveBeenCalledWith({
+      chatId: chatTab.id,
+      harnessId: "sage-simulator",
+      modelId: "sim-fast",
+      text: "continue",
+    });
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      sessionId: "session-new",
+      messages,
+      sending: false,
+    });
+  });
+
+  it("settles the originating Chat send after switching to a File tab", async () => {
+    const pending = deferred<Awaited<ReturnType<typeof desktop.sendPrompt>>>();
+    vi.spyOn(desktop, "sendPrompt").mockReturnValue(pending.promise);
+    const fileTab: WorkbenchTab = {
+      id: "file:a",
+      kind: "file",
+      title: "main.rs",
+      position: 1,
+      pinned: false,
+      dirty: false,
+      resource: resource("src/main.rs"),
+    };
+    useWorkbenchStore.setState({
+      tabs: [chatTab, fileTab],
+      selectedHarnessId: "sage-simulator",
+      selectedModelId: "sim-fast",
+      composerText: "continue",
+    });
+
+    const sending = useWorkbenchStore.getState().sendPrompt();
+    useWorkbenchStore.setState({ activeTabId: fileTab.id });
+    pending.resolve({
+      sessionId: "session-new",
+      messages: [
+        {
+          id: "message-new",
+          sessionId: "session-new",
+          sequence: 2,
+          role: "assistant",
+          text: "ack",
+          createdAt: 2,
+        },
+      ],
+    });
+    await sending;
+
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: fileTab.id,
+      sessionId: "session-new",
+      sending: false,
+    });
+  });
+
+  it("settles only the matching send intent after its Chat tab closes", async () => {
+    const pending = deferred<Awaited<ReturnType<typeof desktop.sendPrompt>>>();
+    vi.spyOn(desktop, "sendPrompt").mockReturnValue(pending.promise);
+    useWorkbenchStore.setState({
+      selectedHarnessId: "sage-simulator",
+      selectedModelId: "sim-fast",
+      composerText: "continue",
+    });
+
+    const sending = useWorkbenchStore.getState().sendPrompt();
+    useWorkbenchStore.getState().closeTab(chatTab.id);
+    pending.resolve({ sessionId: "detached-session", messages: [] });
+    await sending;
+
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      tabs: [],
+      sending: false,
+      sessionId: "session-a",
+      messages: [],
+    });
+  });
 
   it("keeps the same relative path in two roots as distinct tabs and caches", async () => {
     const left = resource("src/main.rs", "root-a");

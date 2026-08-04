@@ -46,9 +46,9 @@ fn seed_legacy(path: &Path, root: &Path, metadata: &str) {
         .execute(
             "INSERT INTO agent_sessions
              (id, project_id, chat_tab_id, harness_id, model_id, status,
-              created_at, updated_at)
+              last_committed_sequence, created_at, updated_at)
              VALUES ('session', 'legacy', 'chat', 'sage-simulator',
-                     'sim-fast', 'idle', 1, 1)",
+                     'sim-fast', 'idle', 1, 1, 1)",
             [],
         )
         .unwrap();
@@ -96,7 +96,7 @@ fn migrates_legacy_root_tabs_session_and_dirty_buffer() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 4);
+    assert_eq!(version, 5);
     drop(database);
     fs::remove_dir_all(folder).unwrap();
 }

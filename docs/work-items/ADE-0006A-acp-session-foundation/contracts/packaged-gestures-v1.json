@@ -1,0 +1,466 @@
+{
+  "schemaVersion": 1,
+  "status": "proposed-c0-specification",
+  "interactionPolicy": {
+    "semanticAutomationRequired": true,
+    "screenCoordinatesAllowed": false,
+    "globalInputAllowed": false,
+    "taskbarOrSystemUiAllowed": false,
+    "networkControlAllowed": false,
+    "normalSageDataAllowed": false,
+    "installRequired": false
+  },
+  "semanticContracts": {
+    "promptComposer": {
+      "promptRole": "textbox",
+      "promptAccessibleName": "Message agent",
+      "promptAccessibleDescription": "Send a message to the selected harness and model",
+      "promptMultiline": true,
+      "sendRole": "button",
+      "sendAccessibleName": "Send message",
+      "cancelRole": "button",
+      "cancelAccessibleName": "Cancel turn",
+      "mutualPresence": "Send message is enabled only with no active Turn and valid input; Cancel turn replaces Send message while the active Turn is cancellable",
+      "turnStatusRole": "status",
+      "turnStatusAriaLive": "polite",
+      "turnStatusAriaAtomic": true,
+      "turnStatusNames": [
+        "Queued",
+        "Sending",
+        "Running",
+        "Waiting for model",
+        "Waiting for tool",
+        "Waiting for approval",
+        "Waiting for user",
+        "Cancelling",
+        "Completed",
+        "Interrupted",
+        "Cancelled",
+        "Failed",
+        "Delivery unknown"
+      ],
+      "focusAfterTerminal": "Message agent when it still exists; otherwise the Turn status"
+    },
+    "toolCard": {
+      "containerRole": "group",
+      "accessibleName": "<tool-safe-label>",
+      "accessibleDescription": "<bounded-safe-tool-summary-or-empty>",
+      "statusRole": "status",
+      "allowedStatusNames": [
+        "Pending",
+        "In progress",
+        "Waiting for approval",
+        "Completed",
+        "Failed",
+        "Declined",
+        "Cancelled"
+      ],
+      "disclosureRole": "button",
+      "disclosureStates": ["aria-expanded=false", "aria-expanded=true"],
+      "focusOrder": [
+        "tool disclosure",
+        "contained safe resource links when expanded"
+      ],
+      "terminalAnnouncement": "exactly one polite status message named <tool-safe-label>: <terminal-status>"
+    },
+    "permissionCard": {
+      "containerRole": "group",
+      "accessibleName": "Permission request",
+      "accessibleDescription": "Sage declines permission requests in this read-only foundation",
+      "statusRole": "status",
+      "allowedStatusNames": ["Declining", "Declined", "Failed closed"],
+      "allowedControls": ["Details disclosure"],
+      "forbiddenControls": ["Allow", "Approve", "Always allow"],
+      "focusOrder": ["permission details disclosure"],
+      "terminalAnnouncement": "exactly one assertive status message named Permission declined or Permission failed closed"
+    },
+    "unknownTool": {
+      "containerRole": "group",
+      "accessibleName": "Unsupported tool activity",
+      "accessibleDescription": "This harness activity is not supported by Sage",
+      "statusRole": "status",
+      "allowedStatusNames": ["Unsupported"],
+      "disclosureRole": "button",
+      "rawPayloadExposed": false,
+      "focusOrder": ["unsupported activity disclosure"]
+    },
+    "collaboration": {
+      "containerRole": "group",
+      "accessibleName": "Harness collaboration",
+      "accessibleDescription": "Read-only activity owned and scheduled by the harness",
+      "statusRole": "status",
+      "allowedStatusNames": [
+        "Observed",
+        "Active",
+        "Completed",
+        "Failed",
+        "Cancelled",
+        "Unsupported"
+      ],
+      "controls": ["activity disclosure", "bounded child item links"],
+      "forbiddenControls": ["Start worker", "Stop worker", "Reassign worker"],
+      "focusOrder": [
+        "activity disclosure",
+        "bounded child item links in durable order"
+      ]
+    },
+    "harnessActivity": {
+      "containerRole": "group",
+      "accessibleName": "Harness activity: <safe-label>",
+      "accessibleDescription": "Bounded read-only child activity in the originating Turn",
+      "treeRole": "tree",
+      "nodeRole": "treeitem",
+      "nodeStates": [
+        "aria-level=1..4",
+        "aria-expanded=false|true when children exist"
+      ],
+      "keyboardModel": "one roving tabindex=0 treeitem; ArrowDown/ArrowUp move to next/previous visible treeitem, ArrowRight expands or moves to first child, ArrowLeft collapses or moves to parent, Home/End move to first/last visible treeitem, Enter activates only a safe Sage resource link",
+      "focusOrder": [
+        "activity disclosure",
+        "visible treeitems in depth-first durable order"
+      ],
+      "focusRestoration": "collapsing returns focus to the activity disclosure; tab return restores the last still-existing focused Sage ID, otherwise the activity disclosure"
+    }
+  },
+  "caseSemanticContract": {
+    "fixture-start-and-first-output": ["promptComposer"],
+    "cancel-running-turn": ["promptComposer"],
+    "permission-request-denied": ["permissionCard"],
+    "unknown-tool-fallback": ["unknownTool"],
+    "file-resource-tool-projection": ["toolCard"],
+    "diff-resource-tool-projection": ["toolCard"],
+    "harness-child-activity": ["collaboration", "harnessActivity"],
+    "inactive-heavy-view-cleanup": ["toolCard", "harnessActivity"],
+    "keyboard-and-focus-cycle": [
+      "promptComposer",
+      "toolCard",
+      "permissionCard",
+      "harnessActivity"
+    ]
+  },
+  "cases": [
+    {
+      "id": "default-package-has-no-fixture",
+      "build": "production-default",
+      "actions": ["launch", "open Chat", "inspect harness selector", "close"],
+      "oracle": [
+        "fixture absent from selector",
+        "fixture absent from resources",
+        "zero child processes after close"
+      ]
+    },
+    {
+      "id": "unsupported-platform-fails-closed",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "launch on non-admitted platform",
+        "open Chat",
+        "select fixture metadata"
+      ],
+      "oracle": [
+        "PlatformUnavailable shown",
+        "prompt disabled",
+        "zero child processes"
+      ]
+    },
+    {
+      "id": "fixture-start-and-first-output",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "launch",
+        "select fixture binding",
+        "select model",
+        "send prompt",
+        "observe first text",
+        "observe completion"
+      ],
+      "oracle": [
+        "one runtime tree",
+        "one Turn",
+        "ordered text",
+        "completed terminal state"
+      ]
+    },
+    {
+      "id": "active-turn-capacity",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "start blocking Turn in Chat A",
+        "open Chat B",
+        "attempt prompt"
+      ],
+      "oracle": [
+        "Chat A continues",
+        "Chat B receives RuntimeCapacity",
+        "no second Turn row",
+        "no second runtime tree"
+      ]
+    },
+    {
+      "id": "project-switch-running-turn",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "start delayed Turn in project A",
+        "switch to project B",
+        "wait for project A completion",
+        "return to project A"
+      ],
+      "oracle": [
+        "project B receives no stale projection",
+        "project A completes durably",
+        "single active-turn slot retained",
+        "completed output restored"
+      ]
+    },
+    {
+      "id": "cancel-running-turn",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "start blocking Turn",
+        "activate Cancel",
+        "observe terminal state"
+      ],
+      "oracle": [
+        "Cancel is a button named Cancel turn in focus order after the prompt",
+        "cancel dispatch within 100 ms",
+        "terminal within 5 s",
+        "zero descendants",
+        "focus moves to the Turn status when Cancel disappears"
+      ]
+    },
+    {
+      "id": "permission-request-denied",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "start permission fixture",
+        "observe permission card",
+        "wait for automatic decline"
+      ],
+      "oracle": [
+        "no Allow control",
+        "permissionCard semantic contract passes",
+        "decline committed before response",
+        "no mutation"
+      ]
+    },
+    {
+      "id": "unknown-tool-fallback",
+      "build": "feature-gated-characterization",
+      "actions": ["start unknown-tool fixture", "expand card", "collapse card"],
+      "oracle": [
+        "unknownTool semantic contract passes",
+        "no capability broadened",
+        "no raw payload"
+      ]
+    },
+    {
+      "id": "file-resource-tool-projection",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "start file-reference fixture",
+        "activate valid file summary",
+        "activate foreign file summary"
+      ],
+      "oracle": [
+        "valid ResourceRef opens File",
+        "Explorer follows valid resource",
+        "foreign path is non-clickable",
+        "no absolute path displayed"
+      ]
+    },
+    {
+      "id": "diff-resource-tool-projection",
+      "build": "feature-gated-characterization",
+      "actions": ["start diff-reference fixture", "activate changed file"],
+      "oracle": [
+        "per-file Diff tab opens",
+        "Source Control follows",
+        "bounded summary remains in Chat"
+      ]
+    },
+    {
+      "id": "harness-child-activity",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "start child-activity fixture",
+        "expand Harness activity",
+        "navigate child Items",
+        "collapse"
+      ],
+      "oracle": [
+        "child activity remains in originating Turn",
+        "no Sage worker created",
+        "no additional runtime tree",
+        "collaboration and harnessActivity semantic contracts pass"
+      ]
+    },
+    {
+      "id": "native-fork-disabled",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "select binding without native fork capability",
+        "inspect Chat actions"
+      ],
+      "oracle": [
+        "fork action absent",
+        "no synthesized transcript copy",
+        "no transport write"
+      ]
+    },
+    {
+      "id": "delivery-unknown-restart",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "start partial-write fixture",
+        "observe deliveryUnknown",
+        "close",
+        "restart",
+        "open same Chat"
+      ],
+      "oracle": [
+        "deliveryUnknown restored",
+        "prompt not replayed",
+        "explicit resend creates a new Turn"
+      ]
+    },
+    {
+      "id": "cold-session-reactivation",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "complete Turn",
+        "wait for zero-resource cold state",
+        "close Chat tab",
+        "reopen Chat",
+        "activate session"
+      ],
+      "oracle": [
+        "cold owns no process or listener",
+        "one resume or load attempt",
+        "no prompt replay",
+        "history unchanged"
+      ]
+    },
+    {
+      "id": "final-window-close",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "start blocking Turn",
+        "close final window",
+        "wait for process exit",
+        "restart"
+      ],
+      "oracle": [
+        "closing recorded",
+        "bounded cancel or teardown",
+        "zero orphan descendants",
+        "terminal durable state restored"
+      ]
+    },
+    {
+      "id": "history-page-boundary",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "open fixture Chat with 21 Turns",
+        "load initial history page",
+        "load continuation page"
+      ],
+      "oracle": [
+        "first page has at most 20 Turns",
+        "continuation has no duplicate or gap",
+        "at most 256 Items and 2 MiB per page"
+      ]
+    },
+    {
+      "id": "inactive-heavy-view-cleanup",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "open expanded tool and child activity",
+        "switch to File tab",
+        "switch back"
+      ],
+      "oracle": [
+        "inactive heavy projection unmounted or sleeping",
+        "no duplicate listener",
+        "state restored from bounded projection"
+      ]
+    },
+    {
+      "id": "keyboard-and-focus-cycle",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "navigate prompt",
+        "send",
+        "navigate Cancel",
+        "expand tool",
+        "switch tabs",
+        "return"
+      ],
+      "oracle": [
+        "focus order equals Message agent, Send message, Cancel turn while running, tool disclosure, visible resource links",
+        "every focused element has a non-color focus indicator with at least 2 CSS pixel perimeter thickness",
+        "tab return follows harnessActivity focusRestoration",
+        "each terminal state is announced exactly once by its named status role"
+      ]
+    },
+    {
+      "id": "forced-colors-and-zoom",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "enable forced colors in test harness",
+        "set 200 percent zoom",
+        "open tool and permission cards"
+      ],
+      "oracle": [
+        "state not color-only",
+        "no clipped controls",
+        "no horizontal page overflow",
+        "Allow remains absent"
+      ]
+    },
+    {
+      "id": "reduced-motion",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "enable prefers-reduced-motion reduce in the semantic test harness",
+        "start streaming Turn",
+        "expand and collapse tool and Harness activity cards",
+        "cancel Turn"
+      ],
+      "oracle": [
+        "computed animation-duration and transition-duration are zero seconds for nonessential motion",
+        "state changes remain available through accessible names and status roles",
+        "disclosure and Cancel activation complete without animation delay",
+        "focus order is unchanged from the promptComposer and card contracts"
+      ]
+    },
+    {
+      "id": "renderer-recreation",
+      "build": "feature-gated-characterization",
+      "actions": [
+        "open completed Turn with expanded tool and Harness activity",
+        "record focused Sage ID and projection revision",
+        "destroy renderer projection",
+        "re-bootstrap from Rust and SQLite",
+        "navigate the restored projection"
+      ],
+      "oracle": [
+        "durable row counts and runtime-tree count are unchanged",
+        "restored projection revision is greater than or equal to the recorded revision",
+        "terminal live-region announcement count after recreation is zero until a new state change",
+        "focus restores to the same still-existing Sage ID or the activity disclosure fallback",
+        "projection channel listener count is exactly one"
+      ]
+    },
+    {
+      "id": "five-clean-close-cycles",
+      "build": "feature-gated-characterization",
+      "actions": ["run five isolated launch, prompt, complete, close cycles"],
+      "oracle": [
+        "five valid semantic launches",
+        "zero orphans after every cycle",
+        "bounded state disk",
+        "normal Sage data unchanged"
+      ]
+    }
+  ]
+}

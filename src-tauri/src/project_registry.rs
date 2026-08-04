@@ -84,7 +84,7 @@ impl Database {
     }
 
     pub fn repair_active_project(&self) -> AppResult<Option<String>> {
-        let mut connection = self.connection();
+        let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
         let configured = transaction
             .query_row(
@@ -202,7 +202,7 @@ impl Database {
         let tab_id = Uuid::new_v4().to_string();
         let session_id = Uuid::new_v4().to_string();
         let now = now_millis();
-        let mut connection = self.connection();
+        let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
         if let Some(expected) = expected_active_project_id
             && active_project_in(&transaction)?.as_deref() != expected
@@ -240,7 +240,7 @@ impl Database {
     pub fn add_project_root(&self, project_id: &str, root: &Path) -> AppResult<ProjectSummary> {
         let canonical = canonical_folder(root)?;
         let canonical_key = canonical_comparison_key(&canonical);
-        let mut connection = self.connection();
+        let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
         let active = active_project_in(&transaction)?;
         if active.as_deref() != Some(project_id) {

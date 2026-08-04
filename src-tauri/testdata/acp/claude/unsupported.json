@@ -1,0 +1,22 @@
+[
+  {
+    "method": "session/update",
+    "params": {
+      "sessionId": "claude-session-1",
+      "update": {
+        "sessionUpdate": "agent_thought_chunk",
+        "content": { "type": "text", "text": "unproven thought" }
+      }
+    }
+  },
+  {
+    "method": "session/update",
+    "params": {
+      "sessionId": "claude-session-1",
+      "update": {
+        "sessionUpdate": "claude_nested_transcript",
+        "childSessionId": "must-not-create-sage-worker"
+      }
+    }
+  }
+]

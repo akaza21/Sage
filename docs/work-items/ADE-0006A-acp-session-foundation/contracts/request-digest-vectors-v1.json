@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "status": "proposed-c0-specification",
+  "algorithm": "sha256",
+  "domainSeparatorHex": "736167652d6163702d726571756573742d763100",
+  "encoding": "domain || method-present-01 || method-u64be-length || method-utf8 || params-present-00-or-01 || params-u64be-length || exact-params-token-utf8",
+  "methodUtf8": "session/prompt",
+  "vectors": [
+    {
+      "id": "params-absent",
+      "paramsPresent": false,
+      "paramsTokenUtf8": "",
+      "paramsBytes": 0,
+      "sha256": "6f4278bcf9e410c8eb61c1a4f1fe187e6124b9b5da963f34b3b60505e06e5c79"
+    },
+    {
+      "id": "params-null",
+      "paramsPresent": true,
+      "paramsTokenUtf8": "null",
+      "paramsBytes": 4,
+      "sha256": "c997bba696c3971081f21b48cc2a52722f47f3dccb061c8832b48d2ba2c8b760"
+    },
+    {
+      "id": "params-empty-object",
+      "paramsPresent": true,
+      "paramsTokenUtf8": "{}",
+      "paramsBytes": 2,
+      "sha256": "03044145b292729d7bf1513b7719741d5bf3af0e0c36192879e49b0248ea4076"
+    },
+    {
+      "id": "whitespace-compact",
+      "paramsPresent": true,
+      "paramsTokenUtf8": "{\"a\":1}",
+      "paramsBytes": 7,
+      "sha256": "5cee96eee73a0effd8541928b6374f2aa29d521256063e43b1a53b51b6763459"
+    },
+    {
+      "id": "whitespace-expanded",
+      "paramsPresent": true,
+      "paramsTokenUtf8": "{ \"a\" : 1 }",
+      "paramsBytes": 11,
+      "sha256": "bd90dd874963cc0c274ecd1218d85d71a8c10513cdcefd44b867e23b351b600a"
+    },
+    {
+      "id": "key-order-ab",
+      "paramsPresent": true,
+      "paramsTokenUtf8": "{\"a\":1,\"b\":2}",
+      "paramsBytes": 13,
+      "sha256": "3b468c4241a04a6989c656143b60a080c37250b6827f8a738c991cdcdda40ca0"
+    },
+    {
+      "id": "key-order-ba",
+      "paramsPresent": true,
+      "paramsTokenUtf8": "{\"b\":2,\"a\":1}",
+      "paramsBytes": 13,
+      "sha256": "60d286d3d355178577d1509f16c75487554174ba1c554c4082129b03cebbca7e"
+    },
+    {
+      "id": "escape-literal",
+      "paramsPresent": true,
+      "paramsTokenUtf8": "{\"s\":\"a\"}",
+      "paramsBytes": 9,
+      "sha256": "4825b50a0b28d64f87ee6773d31a3a2eab7e4e1eee13ead7dcdd372d75ceb3a9"
+    },
+    {
+      "id": "escape-unicode",
+      "paramsPresent": true,
+      "paramsTokenUtf8": "{\"s\":\"\\u0061\"}",
+      "paramsBytes": 14,
+      "sha256": "817cb009020c2961718daeb2a63aea68f10905b0b564ceaa689594404c4b54a9"
+    },
+    {
+      "id": "number-integer",
+      "paramsPresent": true,
+      "paramsTokenUtf8": "{\"n\":1}",
+      "paramsBytes": 7,
+      "sha256": "34ee77f2181fb583110aa5bff2ed2f693a3b31236559d316d50966756682a431"
+    },
+    {
+      "id": "number-decimal",
+      "paramsPresent": true,
+      "paramsTokenUtf8": "{\"n\":1.0}",
+      "paramsBytes": 9,
+      "sha256": "ccc31c31a616a995a81e7ed6cc19e81fee3e6c80cd8801b62a892e273088f44d"
+    },
+    {
+      "id": "number-exponent",
+      "paramsPresent": true,
+      "paramsTokenUtf8": "{\"n\":1e0}",
+      "paramsBytes": 9,
+      "sha256": "cdc365140105ab1a6cbebcab05c4ed39f6add5cc073e762ccb864cd70b3d03ac"
+    }
+  ],
+  "legacyBindingDigestV1": {
+    "domainSeparatorHex": "736167652d6c65676163792d62696e64696e672d763100",
+    "vectors": [
+      {
+        "id": "legacy-harness-version-null",
+        "bindingIdUtf8": "simulator",
+        "harnessVersionPresent": false,
+        "harnessVersionUtf8": "",
+        "sha256": "8db860cda854b96c7ff210345c1858668b305f4a661d03cb359dcc18be701e24"
+      },
+      {
+        "id": "legacy-harness-version-present",
+        "bindingIdUtf8": "simulator",
+        "harnessVersionPresent": true,
+        "harnessVersionUtf8": "1.2.3",
+        "sha256": "371fdf57fe765356a6326686def4e70bbeb9ccce6fe2ea587c83b1aa3fabf9df"
+      }
+    ]
+  },
+  "requiredAssertions": [
+    "Every vector reproduces its expected digest.",
+    "Every pair with different token bytes produces a different digest.",
+    "Duplicate decoded keys are rejected before digest construction.",
+    "Durable server request rows store digest version 1.",
+    "Both legacy binding vectors reproduce exactly and null remains distinct from a present empty harness version."
+  ]
+}

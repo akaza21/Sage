@@ -1,0 +1,253 @@
+{
+  "schemaVersion": 1,
+  "status": "proposed-c0-specification",
+  "authority": "Every named exact/plus-one pair is mandatory. The C0-I validator must load limits-v1.json, resolve every path, prove exact == limit and plusOne == limit + 1, and reject a missing fixture ID.",
+  "orthogonalityRule": "A plus-one case must keep every lower-level count and byte limit at or below its own ceiling so the named boundary fails first, except for the closed derivedBoundaryExceptions where the aggregate equals the sum of its partitions and deterministic error precedence is mandatory.",
+  "pairs": [
+    ["wire.frameBytes", "frame-exact-1048576", "frame-over-1048576"],
+    ["wire.jsonDepth", "json-depth-32", "json-depth-33"],
+    ["wire.jsonNodes", "json-nodes-16384", "json-nodes-16385"],
+    [
+      "wire.objectMembers",
+      "json-object-members-256",
+      "json-object-members-257"
+    ],
+    ["wire.arrayEntries", "json-array-entries-512", "json-array-entries-513"],
+    ["wire.decodedKeyBytes", "decoded-key-bytes-256", "decoded-key-bytes-257"],
+    ["wire.methodBytes", "method-bytes-128", "method-bytes-129"],
+    [
+      "wire.numericTokenBytes",
+      "numeric-token-bytes-64",
+      "numeric-token-bytes-65"
+    ],
+    ["wire.externalIdBytes", "external-id-bytes-512", "external-id-bytes-513"],
+    ["wire.pageCursorBytes", "page-cursor-bytes-512", "page-cursor-bytes-513"],
+    ["wire.metadataEntries", "metadata-entries-64", "metadata-entries-65"],
+    ["wire.metadataBytes", "metadata-bytes-65536", "metadata-bytes-65537"],
+    [
+      "wire.absolutePathBytesNativeOnly",
+      "absolute-path-bytes-32768",
+      "absolute-path-bytes-32769"
+    ],
+    [
+      "wire.relativePathBytesNativeOnly",
+      "relative-path-bytes-16384",
+      "relative-path-bytes-16385"
+    ],
+    ["wire.promptBytes", "prompt-bytes-100000", "prompt-bytes-100001"],
+    [
+      "wire.capabilityMetadataBytes",
+      "capability-token-bytes-65536",
+      "capability-token-bytes-65537"
+    ],
+    ["wire.modelsOrConfigEntries", "models-entries-128", "models-entries-129"],
+    ["wire.modelsOrConfigBytes", "models-bytes-131072", "models-bytes-131073"],
+    [
+      "wire.normalizedItemBytes",
+      "normalized-item-bytes-262144",
+      "normalized-item-bytes-262145"
+    ],
+    [
+      "wire.retainedToolInputBytes",
+      "tool-input-output-bytes-65536",
+      "tool-input-bytes-65537"
+    ],
+    [
+      "wire.retainedToolOutputBytes",
+      "tool-input-output-bytes-65536",
+      "tool-output-bytes-65537"
+    ],
+    [
+      "wire.permissionPayloadBytes",
+      "permission-payload-bytes-65536",
+      "permission-payload-bytes-65537"
+    ],
+    ["wire.errorBytes", "error-bytes-8192", "error-bytes-8193"],
+    [
+      "wire.unsupportedSummaryBytes",
+      "unsupported-summary-bytes-16384",
+      "unsupported-summary-bytes-16385"
+    ],
+    ["wire.itemsPerTurn", "items-per-turn-512", "items-per-turn-513"],
+    [
+      "wire.itemBytesPerTurn",
+      "item-bytes-per-turn-8388608",
+      "item-bytes-per-turn-8388609"
+    ],
+    [
+      "queues.driverDataMessages",
+      "driver-data-messages-256",
+      "driver-data-messages-257"
+    ],
+    [
+      "queues.driverDataBytes",
+      "driver-data-bytes-2097152",
+      "driver-data-bytes-2097153"
+    ],
+    ["queues.egressFrames", "egress-frames-64", "egress-frames-65"],
+    ["queues.egressBytes", "egress-bytes-2097152", "egress-bytes-2097153"],
+    ["queues.journalBatches", "journal-batches-128", "journal-batches-129"],
+    ["queues.journalBytes", "journal-bytes-4194304", "journal-bytes-4194305"],
+    [
+      "queues.outstandingRpcPerSession",
+      "rpc-session-16-global-32",
+      "rpc-session-17"
+    ],
+    [
+      "queues.outstandingRpcGlobal",
+      "rpc-session-16-global-32",
+      "rpc-global-33"
+    ],
+    [
+      "queues.serverRequestsPerSession",
+      "server-requests-session-8-global-16",
+      "server-requests-session-9"
+    ],
+    [
+      "queues.serverRequestsGlobal",
+      "server-requests-session-8-global-16",
+      "server-requests-global-17"
+    ],
+    [
+      "queues.runtimeTasksPerSession",
+      "runtime-tasks-session-16-global-64",
+      "runtime-tasks-session-17"
+    ],
+    [
+      "queues.runtimeTasksGlobal",
+      "runtime-tasks-session-16-global-64",
+      "runtime-tasks-global-65"
+    ],
+    ["process.arguments", "process-arguments-32", "process-arguments-33"],
+    [
+      "process.argumentBytesEach",
+      "process-argument-bytes-8192",
+      "process-argument-bytes-8193"
+    ],
+    [
+      "process.argumentBytesTotal",
+      "process-argument-total-32768",
+      "process-argument-total-32769"
+    ],
+    [
+      "process.environmentEntries",
+      "environment-entries-64",
+      "environment-entries-65"
+    ],
+    [
+      "process.environmentKeyBytes",
+      "environment-key-bytes-256",
+      "environment-key-bytes-257"
+    ],
+    [
+      "process.environmentValueBytes",
+      "environment-value-bytes-8192",
+      "environment-value-bytes-8193"
+    ],
+    [
+      "process.environmentBytesTotal",
+      "environment-total-bytes-32768",
+      "environment-total-bytes-32769"
+    ],
+    [
+      "process.descendantsPerTree",
+      "descendants-exact-32",
+      "descendants-over-32"
+    ],
+    [
+      "process.windowsJobActiveProcessLimit",
+      "windows-job-processes-33",
+      "windows-job-processes-34"
+    ],
+    [
+      "process.stderrRingBytes",
+      "stderr-ring-bytes-262144",
+      "stderr-ring-bytes-262145"
+    ],
+    [
+      "process.stderrLineBytes",
+      "stderr-line-bytes-16384",
+      "stderr-line-bytes-16385"
+    ],
+    [
+      "process.terminalTailBytes",
+      "terminal-tail-bytes-32768",
+      "terminal-tail-bytes-32769"
+    ],
+    [
+      "nativeThreadProjection.observedDepth",
+      "native-activity-depth-4",
+      "native-activity-depth-5"
+    ],
+    [
+      "nativeThreadProjection.activityGroupsPerTurn",
+      "activity-groups-32",
+      "activity-groups-33"
+    ],
+    [
+      "nativeThreadProjection.receiversPerCollaborationItem",
+      "collaboration-receivers-32",
+      "collaboration-receivers-33"
+    ],
+    [
+      "nativeThreadProjection.activityNodesPerPage",
+      "activity-page-nodes-128",
+      "activity-page-nodes-129"
+    ],
+    [
+      "nativeThreadProjection.activityLabelBytes",
+      "activity-label-bytes-512",
+      "activity-label-bytes-513"
+    ],
+    [
+      "nativeThreadProjection.activityMessageBytes",
+      "activity-message-bytes-16384",
+      "activity-message-bytes-16385"
+    ]
+  ],
+  "derivedBoundaryExceptions": [
+    {
+      "limit": "wire.modelsOrConfigBytes",
+      "reason": "128 model entries with a 512-byte ID and 512-byte name exactly derive the 131072-byte aggregate; the plus-one shape also has 129 entries, and production rejects the entry count first",
+      "errorPrecedence": "entry-count-before-aggregate-model-bytes"
+    },
+    {
+      "limit": "queues.egressFrames",
+      "reason": "the total is exactly the 56-frame data partition plus the 8-frame control partition",
+      "errorPrecedence": "control-partition-count-before-unreachable-total"
+    },
+    {
+      "limit": "queues.egressBytes",
+      "reason": "the total is exactly the 1835008-byte data partition plus the 262144-byte control partition",
+      "errorPrecedence": "data-partition-bytes-before-unreachable-total"
+    },
+    {
+      "limit": "queues.journalBatches",
+      "reason": "the total is exactly the 120-batch data partition plus the 8-batch control partition",
+      "errorPrecedence": "control-partition-count-before-unreachable-total"
+    },
+    {
+      "limit": "queues.journalBytes",
+      "reason": "the total is exactly the 3932160-byte data partition plus the 262144-byte control partition",
+      "errorPrecedence": "data-partition-bytes-before-unreachable-total"
+    },
+    {
+      "limit": "process.windowsJobActiveProcessLimit",
+      "reason": "the 33-process Job limit is one root process plus the 32-descendant partition; this remains a Windows Job-object proof and is not claimed by the portable observer registry",
+      "errorPrecedence": "external-windows-job-enforcement"
+    }
+  ],
+  "reservedLaneProofs": [
+    "egress-data-cannot-consume-control-reserve",
+    "journal-data-cannot-consume-control-reserve",
+    "cancel-dispatch-at-capacity",
+    "permission-decline-queue-failure"
+  ],
+  "otherNumericClasses": {
+    "deadlines": "exact monotonic deadline and deadline-plus-one completion cases, not capacity allocation pairs",
+    "durableAndMigration": "literal LIMIT+1 SQL/corrupt-database tests generated from the path-keyed limits ledger in C0-I; they do not execute in the child wire fixture",
+    "evidenceRetention": "validator unit tests create exact retained file/byte sets and reject the next allocation",
+    "operationalFeatureValues": "policy assertions, not numeric capacity pairs",
+    "performanceSamples": "measurement protocol cardinalities, not runtime acceptance limits"
+  }
+}

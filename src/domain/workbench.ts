@@ -210,13 +210,31 @@ export interface ProjectTransitionResult {
 export type HarnessInstallState =
   "available" | "notInstalled" | "installing" | "unavailable";
 
-export interface HarnessDefinition {
+interface HarnessDefinitionBase {
   id: string;
   name: string;
   description: string;
-  installState: HarnessInstallState;
   source: "builtIn" | "registry" | "custom" | "development";
 }
+
+export type HarnessDefinition = HarnessDefinitionBase &
+  (
+    | {
+        transport: "legacySimulator";
+        installState: HarnessInstallState;
+        bindingId: null;
+      }
+    | {
+        transport: "acp";
+        installState: "available";
+        bindingId: string;
+      }
+    | {
+        transport: "acp";
+        installState: Exclude<HarnessInstallState, "available">;
+        bindingId: string | null;
+      }
+  );
 
 export interface ModelOption {
   id: string;
@@ -231,6 +249,11 @@ export interface ChatMessage {
   role: "user" | "assistant" | "system";
   text: string;
   createdAt: number;
+}
+
+export interface SimulatorTurnResult {
+  sessionId: string;
+  messages: ChatMessage[];
 }
 
 export interface BootstrapSnapshot {

@@ -1,23 +1,76 @@
 use crate::{
-    editor_coordination::EditorOperationCoordinator, harnesses::HarnessCatalog,
+    acp::{
+        intent::{ACP_PROJECTION_CHANGED_EVENT, ProjectionChangedV1},
+        runtime::{NotificationError, NotificationSink, NotificationSinkFuture},
+        service::AcpService,
+    },
+    editor_coordination::EditorOperationCoordinator,
+    error::AppResult,
+    harnesses::HarnessCatalog,
     persistence::Database,
 };
 
 #[derive(Debug)]
 pub struct AppState {
     pub database: Database,
+    pub acp: AcpService,
     pub harnesses: HarnessCatalog,
     pub editor_operations: EditorOperationCoordinator,
     pub project_transitions: tokio::sync::Mutex<u64>,
 }
 
 impl AppState {
-    pub fn new(database: Database) -> Self {
-        Self {
+    #[cfg(test)]
+    pub fn try_new(database: Database) -> AppResult<Self> {
+        let acp = AcpService::new(database.clone()).map_err(|_| {
+            crate::error::AppError::InvalidRequest(
+                "bounded ACP restart recovery failed; durable history was preserved".into(),
+            )
+        })?;
+        Ok(Self {
             database,
+            acp,
             harnesses: HarnessCatalog,
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(0),
-        }
+        })
+    }
+
+    pub fn try_new_desktop(database: Database, app: tauri::AppHandle) -> AppResult<Self> {
+        let acp = AcpService::new_with_notification_sink(
+            database.clone(),
+            std::sync::Arc::new(DesktopProjectionSink(app)),
+        )
+        .map_err(|_| {
+            crate::error::AppError::InvalidRequest(
+                "bounded ACP restart recovery failed; durable history was preserved".into(),
+            )
+        })?;
+        Ok(Self {
+            database,
+            acp,
+            harnesses: HarnessCatalog,
+            editor_operations: EditorOperationCoordinator::default(),
+            project_transitions: tokio::sync::Mutex::new(0),
+        })
+    }
+
+    #[cfg(test)]
+    pub fn new(database: Database) -> Self {
+        Self::try_new(database).expect("test ACP state must recover")
+    }
+}
+
+struct DesktopProjectionSink(tauri::AppHandle);
+
+impl NotificationSink for DesktopProjectionSink {
+    fn publish<'a>(&'a self, event: ProjectionChangedV1) -> NotificationSinkFuture<'a> {
+        Box::pin(async move {
+            use tauri::Emitter;
+
+            self.0
+                .emit(ACP_PROJECTION_CHANGED_EVENT, event)
+                .map_err(|_| NotificationError::SinkUnavailable)
+        })
     }
 }

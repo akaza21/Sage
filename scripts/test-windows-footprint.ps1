@@ -33,6 +33,36 @@ Assert-Equal 2.5 (Get-FootprintMedian @(4.0, 1.0)) "Even median failed."
 Assert-Equal 3.0 (Get-FootprintMedian @(3.0, 1.0, 9.0)) "Odd median failed."
 Assert-Equal 5.0 (Get-FootprintPercentile @(1.0, 2.0, 3.0, 4.0, 5.0) 0.95) "Nearest-rank P95 failed."
 Assert-Equal 0.5 (Get-FootprintCpuPercent 10.0 10.02 4.0) "Raw CPU arithmetic failed."
+$coreIdentity = "1`0c:\apps\sage.exe`02026-08-01T00:00:00.000Z"
+$measuredCpu = Get-FootprintCpuMeasurement `
+  ([ordered]@{ coreCpuSeconds = 10.0; sampleElapsedSeconds = 0.25; coreProcessIdentityKeys = @($coreIdentity); processes = @([pscustomobject]@{ identityKey = $coreIdentity; cpuSeconds = 10.0; coreIncluded = $true }) }) `
+  ([ordered]@{ coreCpuSeconds = 10.02; sampleElapsedSeconds = 4.75; coreProcessIdentityKeys = @($coreIdentity); processes = @([pscustomobject]@{ identityKey = $coreIdentity; cpuSeconds = 10.02; coreIncluded = $true }) })
+Assert-Equal 4.5 $measuredCpu.measuredWallSeconds "CPU measurement did not retain measured wall duration."
+Assert-Equal 0.444444 $measuredCpu.percentOneCore "CPU measurement used nominal rather than measured duration."
+Assert-Throws {
+  Get-FootprintCpuMeasurement `
+    ([ordered]@{ coreCpuSeconds = 10.0; sampleElapsedSeconds = 1.0; coreProcessIdentityKeys = @($coreIdentity); processes = @([pscustomobject]@{ identityKey = $coreIdentity; cpuSeconds = 10.0; coreIncluded = $true }) }) `
+    ([ordered]@{ coreCpuSeconds = 10.1; sampleElapsedSeconds = 1.0; coreProcessIdentityKeys = @($coreIdentity); processes = @([pscustomobject]@{ identityKey = $coreIdentity; cpuSeconds = 10.1; coreIncluded = $true }) })
+} "A zero-duration CPU sample window passed."
+Assert-Throws { Get-FootprintCpuPercent 10.1 10.0 1.0 } "A negative aggregate CPU delta was clamped instead of rejected."
+$replacementIdentity = "2`0c:\apps\renderer.exe`02026-08-01T00:00:01.000Z"
+Assert-Throws {
+  Get-FootprintCpuMeasurement `
+    ([ordered]@{ coreCpuSeconds = 10.0; sampleElapsedSeconds = 1.0; coreProcessIdentityKeys = @($coreIdentity); processes = @([pscustomobject]@{ identityKey = $coreIdentity; cpuSeconds = 10.0; coreIncluded = $true }) }) `
+    ([ordered]@{ coreCpuSeconds = 10.1; sampleElapsedSeconds = 2.0; coreProcessIdentityKeys = @($replacementIdentity); processes = @([pscustomobject]@{ identityKey = $replacementIdentity; cpuSeconds = 10.1; coreIncluded = $true }) })
+} "Core process churn did not invalidate CPU measurement."
+Assert-Throws {
+  Get-FootprintCpuMeasurement `
+    ([ordered]@{ coreCpuSeconds = 10.0; sampleElapsedSeconds = 1.0; coreProcessIdentityKeys = @($coreIdentity); processes = @([pscustomobject]@{ identityKey = $coreIdentity; cpuSeconds = 10.0; coreIncluded = $true }) }) `
+    ([ordered]@{ coreCpuSeconds = 9.9; sampleElapsedSeconds = 2.0; coreProcessIdentityKeys = @($coreIdentity); processes = @([pscustomobject]@{ identityKey = $coreIdentity; cpuSeconds = 9.9; coreIncluded = $true }) })
+} "A negative per-identity CPU delta passed."
+$stableFirst = [ordered]@{ coreCpuSeconds = 10.0; sampleElapsedSeconds = 1.0; coreProcessIdentityKeys = @($coreIdentity); processes = @([pscustomobject]@{ identityKey = $coreIdentity; cpuSeconds = 10.0; coreIncluded = $true }) }
+$stableLast = [ordered]@{ coreCpuSeconds = 10.2; sampleElapsedSeconds = 3.0; coreProcessIdentityKeys = @($coreIdentity); processes = @([pscustomobject]@{ identityKey = $coreIdentity; cpuSeconds = 10.2; coreIncluded = $true }) }
+$churnMiddle = [ordered]@{ coreCpuSeconds = 10.1; sampleElapsedSeconds = 2.0; coreProcessIdentityKeys = @($replacementIdentity); processes = @([pscustomobject]@{ identityKey = $replacementIdentity; cpuSeconds = 10.1; coreIncluded = $true }) }
+Assert-Throws { Assert-FootprintStableCpuSamples @($stableFirst, $churnMiddle, $stableLast) } "Intermediate process churn did not invalidate the launch."
+$negativeMiddle = [ordered]@{ coreCpuSeconds = 9.9; sampleElapsedSeconds = 2.0; coreProcessIdentityKeys = @($coreIdentity); processes = @([pscustomobject]@{ identityKey = $coreIdentity; cpuSeconds = 9.9; coreIncluded = $true }) }
+Assert-Throws { Assert-FootprintStableCpuSamples @($stableFirst, $negativeMiddle, $stableLast) } "An intermediate negative CPU delta did not invalidate the launch."
+Assert-True (Assert-FootprintStableCpuSamples @($stableFirst, $stableLast)) "Stable canonical process membership was rejected."
 $processLimits = Get-FootprintProcessLimits
 Assert-Equal 5 $processLimits.postKillWaitSeconds "Post-kill convergence wait is not mechanically bounded."
 $creationBase = [DateTime]::Parse("2026-08-01T09:11:07.8910000Z").ToUniversalTime()
@@ -235,60 +265,194 @@ Assert-Throws {
 $expectedPath = "C:\Apps\sage.exe"
 $expectedExecutableHash = "a" * 64
 $expectedSourceHash = "b" * 64
+$expectedDiagnosticHash = "c" * 64
+$expectedFixtureHash = "d" * 64
 $setup = [ordered]@{
   scenario = "chat"; executed = $true; semanticVerified = $true; processId = 10
   title = "Sage"; origin = "http://tauri.localhost/"; executablePath = $expectedPath
   executableSha256 = $expectedExecutableHash; sourceAggregateSha256 = $expectedSourceHash
+  diagnosticDataDirectorySha256 = $expectedDiagnosticHash
+  fixtureProjectRootSha256 = $expectedFixtureHash; projectChatCount = 1
+  chatCenterCount = 1; explorerSidebarCount = 0; explorerHeavyViewMounted = $false
 }
 $chatMeasured = [ordered]@{
-  semanticVerified = $true; processId = 20; rootTitle = "Sage"
-  chatCenterCount = 1; explorerSidebarCount = 0
+  semanticVerified = $true; processId = 20; rootTitle = "Sage"; uiaView = "control"; transitionUiaView = "control"
+  chatCenterCount = 1; explorerSidebarCount = 0; explorerHeavyViewMounted = $false
+  transitionAction = "invoke-hide-right-sidebar"; transitionInvokeCount = 1; transitionShowControlExposed = $false
 }
 $explorerMeasured = [ordered]@{
-  semanticVerified = $true; processId = 21; rootTitle = "Sage"
-  chatCenterCount = 1; explorerSidebarCount = 1
+  semanticVerified = $true; processId = 21; rootTitle = "Sage"; uiaView = "control"; transitionUiaView = "control"
+  chatCenterCount = 1; explorerSidebarCount = 1; explorerHeavyViewMounted = $true
+  transitionAction = "verify-explorer"; transitionInvokeCount = 0; transitionShowControlExposed = $false
 }
 $cleanSamples = @([ordered]@{ unknownProcessCount = 0; processes = @() })
-Assert-True (Assert-FootprintScenarioAcceptance "chat" $setup $chatMeasured $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash) "Chat scenario contract failed."
+Assert-True (Assert-FootprintScenarioAcceptance "chat" $setup $chatMeasured $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash $expectedDiagnosticHash $expectedFixtureHash) "Chat scenario contract failed."
+$closedChatMeasured = [ordered]@{} + $chatMeasured
+$closedChatMeasured.transitionAction = "already-closed-noop"
+$closedChatMeasured.transitionInvokeCount = 0
+$closedChatMeasured.transitionShowControlExposed = $true
+Assert-True (Assert-FootprintScenarioAcceptance "chat" $setup $closedChatMeasured $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash $expectedDiagnosticHash $expectedFixtureHash) "Persisted closed Chat scenario contract failed."
+$providerUnexposedChat = [ordered]@{} + $chatMeasured
+$providerUnexposedChat.transitionAction = "already-closed-provider-unexposed"
+$providerUnexposedChat.transitionInvokeCount = 0
+$providerUnexposedChat.transitionShowControlExposed = $false
+Assert-True (Assert-FootprintScenarioAcceptance "chat" $setup $providerUnexposedChat $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash $expectedDiagnosticHash $expectedFixtureHash) "Provider-unexposed closed Chat scenario contract failed."
+$rawViewChat = [ordered]@{} + $providerUnexposedChat
+$rawViewChat.uiaView = "raw"
+$rawViewChat.transitionUiaView = "raw"
+Assert-True (Assert-FootprintScenarioAcceptance "chat" $setup $rawViewChat $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash $expectedDiagnosticHash $expectedFixtureHash) "Exact RawView Chat evidence was rejected."
+$unsupportedViewChat = [ordered]@{} + $rawViewChat
+$unsupportedViewChat.uiaView = "combined"
+Assert-Throws {
+  Assert-FootprintScenarioAcceptance "chat" $setup $unsupportedViewChat $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash $expectedDiagnosticHash $expectedFixtureHash
+} "Combined UIA view evidence passed."
+$inconsistentChatTransition = [ordered]@{} + $closedChatMeasured
+$inconsistentChatTransition.transitionInvokeCount = 1
+Assert-Throws {
+  Assert-FootprintScenarioAcceptance "chat" $setup $inconsistentChatTransition $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash $expectedDiagnosticHash $expectedFixtureHash
+} "A no-op Chat transition recorded an invocation."
 $explorerSetup = [ordered]@{
   scenario = "explorer"; executed = $true; semanticVerified = $true; processId = 10
   title = "Sage"; origin = "http://tauri.localhost/"; executablePath = $expectedPath
   executableSha256 = $expectedExecutableHash; sourceAggregateSha256 = $expectedSourceHash
+  diagnosticDataDirectorySha256 = $expectedDiagnosticHash
+  fixtureProjectRootSha256 = $expectedFixtureHash; projectChatCount = 1
+  chatCenterCount = 1; explorerSidebarCount = 1; explorerHeavyViewMounted = $true
 }
-Assert-True (Assert-FootprintScenarioAcceptance "explorer" $explorerSetup $explorerMeasured $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash) "Explorer scenario contract failed."
+Assert-True (Assert-FootprintScenarioAcceptance "explorer" $explorerSetup $explorerMeasured $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash $expectedDiagnosticHash $expectedFixtureHash) "Explorer scenario contract failed."
+$multipleProjectChats = [ordered]@{} + $setup
+$multipleProjectChats.projectChatCount = 2
 Assert-Throws {
-  Assert-FootprintScenarioAcceptance "chat" ([ordered]@{ scenario = "chat" }) $chatMeasured $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash
+  Assert-FootprintScenarioAcceptance "chat" $multipleProjectChats $chatMeasured $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash $expectedDiagnosticHash $expectedFixtureHash
+} "Setup with multiple project Chats passed."
+Assert-Throws {
+  Assert-FootprintScenarioAcceptance "chat" ([ordered]@{ scenario = "chat" }) $chatMeasured $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash $expectedDiagnosticHash $expectedFixtureHash
 } "A scenario label without setup evidence passed."
 $sameProcess = [ordered]@{
-  semanticVerified = $true; processId = 10; rootTitle = "Sage"
-  chatCenterCount = 1; explorerSidebarCount = 0
+  semanticVerified = $true; processId = 10; rootTitle = "Sage"; uiaView = "control"; transitionUiaView = "control"
+  chatCenterCount = 1; explorerSidebarCount = 0; explorerHeavyViewMounted = $false
+  transitionAction = "invoke-hide-right-sidebar"; transitionInvokeCount = 1; transitionShowControlExposed = $false
 }
 Assert-Throws {
-  Assert-FootprintScenarioAcceptance "chat" $setup $sameProcess $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash
+  Assert-FootprintScenarioAcceptance "chat" $setup $sameProcess $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash $expectedDiagnosticHash $expectedFixtureHash
 } "Setup and measured launches were not required to be distinct."
 $ambiguousExplorer = [ordered]@{
-  semanticVerified = $true; processId = 21; rootTitle = "Sage"
-  chatCenterCount = 1; explorerSidebarCount = 2
+  semanticVerified = $true; processId = 21; rootTitle = "Sage"; uiaView = "control"; transitionUiaView = "control"
+  chatCenterCount = 1; explorerSidebarCount = 2; explorerHeavyViewMounted = $true
+  transitionAction = "verify-explorer"; transitionInvokeCount = 0; transitionShowControlExposed = $false
 }
 Assert-Throws {
-  Assert-FootprintScenarioAcceptance "explorer" $explorerSetup $ambiguousExplorer $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash
+  Assert-FootprintScenarioAcceptance "explorer" $explorerSetup $ambiguousExplorer $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash $expectedDiagnosticHash $expectedFixtureHash
 } "An ambiguous Explorer accessibility tree passed."
+$chatWithExplorerMounted = [ordered]@{} + $chatMeasured
+$chatWithExplorerMounted.explorerSidebarCount = 1
+$chatWithExplorerMounted.explorerHeavyViewMounted = $true
+Assert-Throws {
+  Assert-FootprintScenarioAcceptance "chat" $setup $chatWithExplorerMounted $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash $expectedDiagnosticHash $expectedFixtureHash
+} "Chat acceptance retained the Explorer heavy view."
+$explorerWithoutHeavyView = [ordered]@{} + $explorerMeasured
+$explorerWithoutHeavyView.explorerSidebarCount = 0
+$explorerWithoutHeavyView.explorerHeavyViewMounted = $false
+Assert-Throws {
+  Assert-FootprintScenarioAcceptance "explorer" $explorerSetup $explorerWithoutHeavyView $cleanSamples $expectedPath $expectedExecutableHash $expectedSourceHash $expectedDiagnosticHash $expectedFixtureHash
+} "Explorer acceptance passed without its heavy view."
 $unknownSamples = @([ordered]@{ unknownProcessCount = 1; processes = @() })
 Assert-Throws {
-  Assert-FootprintScenarioAcceptance "chat" $setup $chatMeasured $unknownSamples $expectedPath $expectedExecutableHash $expectedSourceHash
+  Assert-FootprintScenarioAcceptance "chat" $setup $chatMeasured $unknownSamples $expectedPath $expectedExecutableHash $expectedSourceHash $expectedDiagnosticHash $expectedFixtureHash
 } "An unknown descendant did not invalidate acceptance."
 $debugSamples = @([ordered]@{
   unknownProcessCount = 0
   processes = @([ordered]@{ commandLine = "msedgewebview2.exe --remote-debugging-port=9222" })
 })
 Assert-Throws {
-  Assert-FootprintScenarioAcceptance "chat" $setup $chatMeasured $debugSamples $expectedPath $expectedExecutableHash $expectedSourceHash
+  Assert-FootprintScenarioAcceptance "chat" $setup $chatMeasured $debugSamples $expectedPath $expectedExecutableHash $expectedSourceHash $expectedDiagnosticHash $expectedFixtureHash
 } "A measured debug descendant did not invalidate acceptance."
 
 foreach ($scenario in @("chat", "explorer")) {
   $contract = Get-FootprintScenarioContract $scenario
   Assert-True ($contract.setupRequired -and $contract.setupVerificationRequired -and $contract.measuredVerificationRequired) "$scenario omitted a required phase."
 }
+Assert-Equal 0 (Get-FootprintScenarioContract "chat").explorerSidebarCount "Chat contract does not require Explorer to unmount."
+Assert-Equal 1 (Get-FootprintScenarioContract "explorer").explorerSidebarCount "Explorer contract does not require its heavy view."
+$openChatDecision = Get-FootprintChatTransitionDecision 1 1 1 0
+Assert-Equal "invoke-hide-right-sidebar" $openChatDecision.action "An open Chat launch did not select the semantic hide transition."
+Assert-Equal 1 $openChatDecision.invokeCount "An open Chat launch did not require exactly one invocation."
+$closedChatDecision = Get-FootprintChatTransitionDecision 1 0 0 1
+Assert-Equal "already-closed-noop" $closedChatDecision.action "A persisted closed Chat launch did not select the deterministic no-op."
+Assert-Equal 0 $closedChatDecision.invokeCount "A persisted closed Chat launch attempted a redundant invocation."
+Assert-Equal "already-closed-provider-unexposed" (Get-FootprintChatTransitionDecision 1 0 0 0).action "Provider-unexposed closed Chat state was rejected."
+Assert-Throws { Get-FootprintChatTransitionDecision 0 0 0 0 } "Chat-zero unexposed state passed."
+Assert-Throws { Get-FootprintChatTransitionDecision 1 1 2 0 } "An ambiguous new Chat transition passed."
+Assert-Throws { Get-FootprintChatTransitionDecision 1 0 0 2 } "Multiple show-sidebar controls passed as already closed."
+Assert-Throws { Get-FootprintChatTransitionDecision 1 1 1 1 } "Conflicting show/hide sidebar controls passed."
+$rawSelectionProbe = [pscustomobject]@{ calls = 0 }
+$rawSnapshot = [ordered]@{ uiaView = "raw"; chatCenterCount = 1 }
+$selectedRaw = Select-FootprintUiaViewSnapshot ([ordered]@{ uiaView = "control"; chatCenterCount = 0 }) {
+  $rawSelectionProbe.calls += 1
+  return $rawSnapshot
+}
+Assert-Equal "raw" $selectedRaw.uiaView "ControlView chat-zero did not select a fresh RawView snapshot."
+Assert-Equal 1 $rawSelectionProbe.calls "ControlView chat-zero did not invoke RawView exactly once."
+$selectedControl = Select-FootprintUiaViewSnapshot ([ordered]@{ uiaView = "control"; chatCenterCount = 1 }) {
+  $rawSelectionProbe.calls += 1
+  return $rawSnapshot
+}
+Assert-Equal "control" $selectedControl.uiaView "ControlView exact Chat did not remain authoritative."
+Assert-Equal 1 $rawSelectionProbe.calls "ControlView exact Chat unnecessarily traversed RawView."
+$ambiguousControl = Select-FootprintUiaViewSnapshot ([ordered]@{ uiaView = "control"; chatCenterCount = 2 }) {
+  $rawSelectionProbe.calls += 1
+  return $rawSnapshot
+}
+Assert-Equal 2 $ambiguousControl.chatCenterCount "Ambiguous ControlView was replaced by RawView."
+Assert-Equal 1 $rawSelectionProbe.calls "Ambiguous ControlView incorrectly fell back to RawView."
+$emptyThenClosed = @(
+  [ordered]@{ uiaView = "control"; chatCenterCount = 0; explorerSidebarCount = 0; hideSidebarButtonCount = 0; showSidebarButtonCount = 0; visitedElementCount = 3 },
+  [ordered]@{ uiaView = "raw"; chatCenterCount = 1; explorerSidebarCount = 0; hideSidebarButtonCount = 0; showSidebarButtonCount = 1; visitedElementCount = 20 }
+)
+$closedRetryProbe = [pscustomobject]@{ index = 0 }
+$closedRetry = Wait-FootprintChatTransitionDecision {
+  $snapshot = $emptyThenClosed[$closedRetryProbe.index]
+  $closedRetryProbe.index += 1
+  return $snapshot
+} 2 0
+Assert-Equal "already-closed-noop" $closedRetry.decision.action "Empty UIA readiness did not retry to the exact closed state."
+Assert-Equal 2 $closedRetry.attempts "Closed-state readiness retry count was not retained."
+$ambiguousThenOpen = @(
+  [ordered]@{ uiaView = "raw"; chatCenterCount = 1; explorerSidebarCount = 1; hideSidebarButtonCount = 2; showSidebarButtonCount = 0; visitedElementCount = 15 },
+  [ordered]@{ uiaView = "raw"; chatCenterCount = 1; explorerSidebarCount = 1; hideSidebarButtonCount = 1; showSidebarButtonCount = 0; visitedElementCount = 25 }
+)
+$openRetryProbe = [pscustomobject]@{ index = 0 }
+$openRetry = Wait-FootprintChatTransitionDecision {
+  $snapshot = $ambiguousThenOpen[$openRetryProbe.index]
+  $openRetryProbe.index += 1
+  return $snapshot
+} 2 0
+Assert-Equal "invoke-hide-right-sidebar" $openRetry.decision.action "Ambiguous UIA readiness did not retry to the exact open state."
+Assert-Equal 2 $openRetry.attempts "Open-state readiness retry count was not retained."
+$invalidRetryProbe = [pscustomobject]@{ calls = 0 }
+$invalidRetryError = $null
+try {
+  Wait-FootprintChatTransitionDecision {
+    $invalidRetryProbe.calls += 1
+    return [ordered]@{ uiaView = "control"; chatCenterCount = 1; explorerSidebarCount = 2; hideSidebarButtonCount = 0; showSidebarButtonCount = 0; visitedElementCount = 41 }
+  } 3 0
+} catch {
+  $invalidRetryError = $_.Exception.Message
+}
+Assert-Equal 3 $invalidRetryProbe.calls "Permanent invalid readiness exceeded or skipped its bounded attempts."
+Assert-True $invalidRetryError.Contains("final view=control, chat=1, explorer=2, hide=0, show=0, visited=41, traversalCap=4096") "Readiness timeout omitted final observed counts, chosen view, and traversal cap."
+$throwingProviderProbe = [pscustomobject]@{ calls = 0 }
+$throwingProviderError = $null
+try {
+  Wait-FootprintChatTransitionDecision {
+    $throwingProviderProbe.calls += 1
+    throw "root PID`r`ntitle mismatch"
+  } 2 0
+} catch {
+  $throwingProviderError = $_.Exception.Message
+}
+Assert-Equal 2 $throwingProviderProbe.calls "Throwing snapshot provider exceeded or skipped its bounded attempts."
+Assert-True $throwingProviderError.Contains("providerError=root PID title mismatch") "Readiness timeout swallowed or failed to sanitize the final snapshot-provider error."
 
 $temporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) ("sage-footprint-test-" + [Guid]::NewGuid().ToString("N"))
 [void](New-Item -ItemType Directory -Path $temporaryDirectory)
@@ -308,26 +472,60 @@ try {
   }
   $manifest.aggregateSha256 = Get-FootprintSourceManifestAggregate $manifest
   $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
-  [ordered]@{ candidate = [ordered]@{
+  [ordered]@{ cargoProfile = "release"; cargoFeatures = @("custom-protocol", "diagnostics"); candidate = [ordered]@{
     executableSha256 = $actualHash
     aggregateSha256 = $manifest.aggregateSha256
     fileCount = $manifest.fileCount
     totalBytes = $manifest.totalBytes
+    diagnosticsFeature = $true
   } } |
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $bindingPath -Encoding UTF8
   $binding = Test-FootprintCandidateBinding $fakeExecutable $actualHash $manifest.aggregateSha256 $bindingPath $manifestPath
   Assert-Equal $actualHash $binding.executableSha256 "Executable binding failed."
   Assert-Equal (Get-FileHash -LiteralPath $bindingPath -Algorithm SHA256).Hash.ToLowerInvariant() $binding.candidateBindingSha256 "Candidate binding bytes were not retained in evidence."
   Assert-Equal (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant() $binding.sourceManifestSha256 "Source-manifest bytes were not retained in evidence."
+  Assert-True $binding.diagnosticsFeature "Diagnostics-feature provenance was not retained in the candidate binding."
+  Assert-Equal "release" $binding.cargoProfile "Diagnostics candidate release profile was not retained."
+  Assert-True ("custom-protocol" -in $binding.cargoFeatures) "Custom-protocol feature provenance was not retained."
+  $missingCustomProtocolPath = Join-Path $temporaryDirectory "missing-custom-protocol.json"
+  [ordered]@{ cargoProfile = "release"; cargoFeatures = @("diagnostics"); candidate = [ordered]@{
+    executableSha256 = $actualHash
+    aggregateSha256 = $manifest.aggregateSha256
+    fileCount = $manifest.fileCount
+    totalBytes = $manifest.totalBytes
+    diagnosticsFeature = $true
+  } } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $missingCustomProtocolPath -Encoding UTF8
+  Assert-Throws {
+    Test-FootprintCandidateBinding $fakeExecutable $actualHash $manifest.aggregateSha256 $missingCustomProtocolPath $manifestPath
+  } "A diagnostics release binding without custom-protocol passed."
+  $invalidProfiles = @(
+    [pscustomobject]@{ name = "array"; value = [object[]]@("release") },
+    [pscustomobject]@{ name = "object"; value = [ordered]@{ value = "release" } },
+    [pscustomobject]@{ name = "number"; value = 1 }
+  )
+  foreach ($invalidProfile in $invalidProfiles) {
+    $invalidProfilePath = Join-Path $temporaryDirectory ("invalid-profile-{0}.json" -f $invalidProfile.name)
+    [ordered]@{ cargoProfile = $invalidProfile.value; cargoFeatures = @("custom-protocol", "diagnostics"); candidate = [ordered]@{
+      executableSha256 = $actualHash
+      aggregateSha256 = $manifest.aggregateSha256
+      fileCount = $manifest.fileCount
+      totalBytes = $manifest.totalBytes
+      diagnosticsFeature = $true
+    } } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $invalidProfilePath -Encoding UTF8
+    Assert-Throws {
+      Test-FootprintCandidateBinding $fakeExecutable $actualHash $manifest.aggregateSha256 $invalidProfilePath $manifestPath
+    } "A non-string cargoProfile '$($invalidProfile.name)' passed."
+  }
   Assert-Throws {
     Test-FootprintCandidateBinding $fakeExecutable ("c" * 64) $manifest.aggregateSha256 $bindingPath $manifestPath
   } "A relabeled candidate executable passed."
   $relabeledBindingPath = Join-Path $temporaryDirectory "relabeled-candidate.json"
-  [ordered]@{ candidate = [ordered]@{
+  [ordered]@{ cargoProfile = "release"; cargoFeatures = @("custom-protocol", "diagnostics"); candidate = [ordered]@{
     executableSha256 = $actualHash
     aggregateSha256 = ("c" * 64)
     fileCount = 1
     totalBytes = 4
+    diagnosticsFeature = $true
   } } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $relabeledBindingPath -Encoding UTF8
   Assert-Throws {
     Test-FootprintCandidateBinding $fakeExecutable $actualHash ("c" * 64) $relabeledBindingPath $manifestPath
@@ -339,6 +537,37 @@ try {
   Assert-Throws {
     Test-FootprintCandidateBinding $fakeExecutable $actualHash $manifest.aggregateSha256 $bindingPath $corruptManifestPath
   } "A retained manifest with an internal aggregate mismatch passed."
+  $nonDiagnosticBindingPath = Join-Path $temporaryDirectory "non-diagnostic-candidate.json"
+  [ordered]@{ candidate = [ordered]@{
+    executableSha256 = $actualHash
+    aggregateSha256 = $manifest.aggregateSha256
+    fileCount = $manifest.fileCount
+    totalBytes = $manifest.totalBytes
+    diagnosticsFeature = $false
+  } } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $nonDiagnosticBindingPath -Encoding UTF8
+  $nonDiagnosticBinding = Test-FootprintCandidateBinding $fakeExecutable $actualHash $manifest.aggregateSha256 $nonDiagnosticBindingPath $manifestPath
+  Assert-True (-not $nonDiagnosticBinding.diagnosticsFeature) "Production-candidate capability provenance was not retained."
+  Assert-Throws {
+    Assert-FootprintDiagnosticCampaignInputs $nonDiagnosticBinding ""
+  } "A production candidate entered the diagnostics-only campaign."
+  Assert-Throws {
+    Assert-FootprintDiagnosticCampaignInputs $nonDiagnosticBinding "C:\isolated-diagnostics"
+  } "A production candidate accepted the diagnostics-only data override."
+  Assert-Throws {
+    Assert-FootprintDiagnosticCampaignInputs $binding ""
+  } "A diagnostics candidate passed without an explicit isolated data directory."
+  Assert-True (Assert-FootprintDiagnosticCampaignInputs $binding "C:\isolated-diagnostics") "A diagnostics candidate rejected an explicit isolated data directory."
+  $stringCapabilityBindingPath = Join-Path $temporaryDirectory "string-capability-candidate.json"
+  [ordered]@{ cargoProfile = "release"; cargoFeatures = @("custom-protocol", "diagnostics"); candidate = [ordered]@{
+    executableSha256 = $actualHash
+    aggregateSha256 = $manifest.aggregateSha256
+    fileCount = $manifest.fileCount
+    totalBytes = $manifest.totalBytes
+    diagnosticsFeature = "false"
+  } } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $stringCapabilityBindingPath -Encoding UTF8
+  Assert-Throws {
+    Test-FootprintCandidateBinding $fakeExecutable $actualHash $manifest.aggregateSha256 $stringCapabilityBindingPath $manifestPath
+  } "A non-boolean diagnostics capability entered candidate binding."
   $aliasManifest = [ordered]@{} + $manifest
   $aliasManifest.files = @([ordered]@{ path = "src//example.ts"; sha256 = ("d" * 64); bytes = 4 })
   Assert-Throws {
@@ -367,6 +596,126 @@ try {
   Remove-Item -LiteralPath $temporaryDirectory -Recurse -Force
 }
 
+$workspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$provenanceRoot = Join-Path $workspaceRoot ("local-evidence/footprint-contract-" + [Guid]::NewGuid().ToString("N"))
+$diagnosticData = Join-Path $provenanceRoot "diagnostic-data"
+$provenanceOutput = Join-Path $provenanceRoot "output"
+$fixtureRoot = Join-Path $provenanceRoot "fixture-project"
+[void](New-Item -ItemType Directory -Force -Path $diagnosticData)
+[void](New-Item -ItemType Directory -Force -Path $provenanceOutput)
+[void](New-Item -ItemType Directory -Force -Path $fixtureRoot)
+try {
+  "fixture" | Set-Content -LiteralPath (Join-Path $fixtureRoot "README.txt") -Encoding UTF8
+  $freshProvenance = Get-FootprintDiagnosticDataProvenance $diagnosticData $workspaceRoot $provenanceOutput
+  $fixtureProvenance = Get-FootprintFixtureProjectProvenance $fixtureRoot $workspaceRoot $diagnosticData $provenanceOutput
+  Assert-Equal "native-project-seed" $fixtureProvenance.purpose "Fixture project provenance purpose was not explicit."
+  Assert-Equal 1 $fixtureProvenance.fileCount "Fixture project seed file count was not retained."
+  Assert-Equal 64 $fixtureProvenance.pathSha256.Length "Fixture project canonical path identity was not hashed."
+  Assert-True (Assert-FootprintFreshDiagnosticData $freshProvenance) "A fresh scenario data directory was rejected."
+  Assert-Throws { Assert-FootprintDiagnosticStateChanged $freshProvenance $freshProvenance } "A mislabeled production launch passed without creating isolated database state."
+  [IO.File]::WriteAllBytes((Join-Path $diagnosticData "sage.db"), [byte[]](7, 8, 9))
+  $provenance = Get-FootprintDiagnosticDataProvenance $diagnosticData $workspaceRoot $provenanceOutput
+  Assert-True (Assert-FootprintDiagnosticStateChanged $freshProvenance $provenance) "Created isolated database state was not accepted."
+  Assert-Throws { Assert-FootprintFreshDiagnosticData $provenance } "A reused diagnostics directory passed as fresh."
+  Assert-True $provenance.withinIgnoredLocalEvidence "Diagnostics data was not proven inside ignored local evidence."
+  Assert-Equal "isolated-diagnostics" $provenance.purpose "Diagnostics provenance purpose was not explicit."
+  Assert-Equal 64 $provenance.pathSha256.Length "Diagnostics path identity was not hashed."
+  Assert-Equal 3 $provenance.stateFiles.Count "Diagnostics database triple provenance is incomplete."
+  Assert-Equal 3 $provenance.stateFiles[0].bytes "Diagnostics database bytes were not retained."
+  Assert-Throws {
+    Get-FootprintDiagnosticDataProvenance $diagnosticData $workspaceRoot $provenanceRoot
+  } "Diagnostics data was allowed inside the campaign output boundary."
+  Assert-Throws {
+    Get-FootprintDiagnosticDataProvenance $provenanceOutput $workspaceRoot $provenanceOutput
+  } "The campaign output directory was accepted as diagnostics data."
+  $previousDiagnosticEnvironment = [Environment]::GetEnvironmentVariable("SAGE_DIAGNOSTIC_DATA_DIR", "Process")
+  try {
+    [Environment]::SetEnvironmentVariable("SAGE_DIAGNOSTIC_DATA_DIR", $diagnosticData, "Process")
+    Assert-Throws { Assert-FootprintDiagnosticEnvironmentClear } "An inherited diagnostics data override did not fail closed."
+  } finally {
+    [Environment]::SetEnvironmentVariable("SAGE_DIAGNOSTIC_DATA_DIR", $previousDiagnosticEnvironment, "Process")
+  }
+  [void](Assert-FootprintDiagnosticEnvironmentClear)
+  $previousFixtureEnvironment = [Environment]::GetEnvironmentVariable("SAGE_PROJECT_ROOT", "Process")
+  try {
+    [Environment]::SetEnvironmentVariable("SAGE_PROJECT_ROOT", $fixtureRoot, "Process")
+    Assert-Throws { Assert-FootprintFixtureEnvironmentClear } "An inherited fixture project override did not fail closed."
+  } finally {
+    [Environment]::SetEnvironmentVariable("SAGE_PROJECT_ROOT", $previousFixtureEnvironment, "Process")
+  }
+  [void](Assert-FootprintFixtureEnvironmentClear)
+  Assert-Throws {
+    Get-FootprintFixtureProjectProvenance $diagnosticData $workspaceRoot $diagnosticData $provenanceOutput
+  } "A fixture project overlapping diagnostics data passed."
+  $outsideFixture = Join-Path ([IO.Path]::GetTempPath()) ("sage-outside-fixture-" + [Guid]::NewGuid().ToString("N"))
+  [void](New-Item -ItemType Directory -Path $outsideFixture)
+  try {
+    "outside" | Set-Content -LiteralPath (Join-Path $outsideFixture "seed.txt") -Encoding UTF8
+    Assert-Throws {
+      Get-FootprintFixtureProjectProvenance $outsideFixture $workspaceRoot $diagnosticData $provenanceOutput
+    } "A fixture project outside ignored local evidence passed."
+  } finally {
+    Remove-Item -LiteralPath $outsideFixture -Recurse -Force
+  }
+  $normalBefore = [ordered]@{ durableAggregateSha256 = "a" * 64 }
+  $normalSame = [ordered]@{ durableAggregateSha256 = "a" * 64 }
+  $normalChanged = [ordered]@{ durableAggregateSha256 = "b" * 64 }
+  Assert-True (Assert-FootprintNormalDataUnchanged $normalBefore $normalSame) "Identical durable Roaming inventories were rejected."
+  Assert-Throws { Assert-FootprintNormalDataUnchanged $normalBefore $normalChanged } "Durable Roaming mutation did not fail isolation."
+  $setupGuardProbe = [pscustomobject]@{ ran = $false }
+  $guardedFailure = $null
+  try {
+    Invoke-FootprintNormalDataGuardedAction $normalBefore `
+      { throw "simulated setup failure after mutation" } `
+      { $setupGuardProbe.ran = $true; return $normalChanged }
+  } catch {
+    $guardedFailure = $_.Exception.Message
+  }
+  Assert-True $setupGuardProbe.ran "Setup failure bypassed the normal-data post-inventory guard."
+  Assert-True ($guardedFailure.Contains("simulated setup failure after mutation")) "Guarded setup lost the original failure context."
+  Assert-True ($guardedFailure.Contains("Normal-data isolation guard also failed")) "Guarded setup did not fail on the simulated normal-data mutation."
+} finally {
+  Remove-Item -LiteralPath $provenanceRoot -Recurse -Force
+}
+
+$nodeTestRoot = Join-Path ([IO.Path]::GetTempPath()) ("sage-bounded-node-" + [Guid]::NewGuid().ToString("N"))
+[void](New-Item -ItemType Directory -Path $nodeTestRoot)
+try {
+  $nodeExecutable = (Get-Command node.exe -CommandType Application -ErrorAction Stop).Source
+  $nodeRunner = (Resolve-Path (Join-Path $PSScriptRoot "footprint/bounded-node-runner.mjs")).Path
+  $successScript = Join-Path $nodeTestRoot "success.mjs"
+  $failureScript = Join-Path $nodeTestRoot "failure.mjs"
+  $timeoutScript = Join-Path $nodeTestRoot "timeout.mjs"
+  'process.stdout.write("bounded-ok");' | Set-Content -LiteralPath $successScript -Encoding UTF8
+  'process.stderr.write("bounded-failure"); process.exit(7);' | Set-Content -LiteralPath $failureScript -Encoding UTF8
+  'setTimeout(() => process.exit(0), 2000);' | Set-Content -LiteralPath $timeoutScript -Encoding UTF8
+  $boundedSuccess = Invoke-FootprintBoundedProcess $nodeExecutable $nodeRunner $nodeExecutable @($successScript) (Join-Path $nodeTestRoot "success.json") 5000 1024
+  Assert-Equal 0 $boundedSuccess.exitCode "Bounded Node success lost the exact exit code."
+  Assert-Equal "bounded-ok" $boundedSuccess.stdout "Bounded Node success did not capture stdout."
+  Assert-Throws {
+    Invoke-FootprintBoundedProcess $nodeExecutable $nodeRunner $nodeExecutable @($failureScript) (Join-Path $nodeTestRoot "failure.json") 5000 1024
+  } "A nonzero bounded Node process passed."
+  Assert-Throws {
+    Invoke-FootprintBoundedProcess $nodeExecutable $nodeRunner $nodeExecutable @($timeoutScript) (Join-Path $nodeTestRoot "timeout.json") 100 1024
+  } "A timed-out bounded Node process passed."
+  $powerShellExecutable = (Get-Command powershell.exe -CommandType Application -ErrorAction Stop).Source
+  $matrixChild = Invoke-FootprintBoundedProcess $nodeExecutable $nodeRunner $powerShellExecutable `
+    @("-NoProfile", "-Command", "Write-Output matrix-child-ok; exit 0") `
+    (Join-Path $nodeTestRoot "matrix-success.json") 5000 1024
+  Assert-Equal 0 $matrixChild.exitCode "Bounded matrix child lost the exact PowerShell exit code."
+  Assert-True $matrixChild.stdout.Contains("matrix-child-ok") "Bounded matrix child did not capture PowerShell stdout."
+  Assert-Throws {
+    Invoke-FootprintBoundedProcess $nodeExecutable $nodeRunner $powerShellExecutable `
+      @("-NoProfile", "-Command", "exit 9") (Join-Path $nodeTestRoot "matrix-failure.json") 5000 1024
+  } "A nonzero bounded matrix PowerShell child passed."
+  Assert-Throws {
+    Invoke-FootprintBoundedProcess $nodeExecutable $nodeRunner $powerShellExecutable `
+      @("-NoProfile", "-Command", "Start-Sleep -Seconds 2") (Join-Path $nodeTestRoot "matrix-timeout.json") 100 1024
+  } "A timed-out bounded matrix PowerShell child passed."
+} finally {
+  Remove-Item -LiteralPath $nodeTestRoot -Recurse -Force
+}
+
 $harnessFiles = @(
   Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot "footprint") -File |
     Where-Object Extension -in @(".psm1", ".mjs")
@@ -388,6 +737,8 @@ foreach ($file in $harnessFiles) {
 }
 
 $measureSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "measure-windows-footprint.ps1") -Raw
+$matrixSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "measure-windows-footprint-matrix.ps1") -Raw
+$setupSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "footprint/prepare-sage-scenario.mjs") -Raw
 $windowsFootprintSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "footprint/WindowsFootprint.psm1") -Raw
 $scenarioEvidenceSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "footprint/ScenarioEvidence.psm1") -Raw
 Assert-True $windowsFootprintSource.Contains("Footprint sample captured no core candidate process") "Zero-core sampling is not rejected with a typed diagnostic."
@@ -395,6 +746,42 @@ Assert-True $windowsFootprintSource.Contains('$records += [pscustomobject][order
 Assert-True $windowsFootprintSource.Contains('$excludedPrivateBytes = [long]0') "Empty excluded-role samples do not have a deterministic zero-byte aggregate."
 Assert-True (-not $windowsFootprintSource.Contains('Measure-Object privateBytes -Sum')) "Sample aggregation still depends on missing strict-mode Sum properties."
 Assert-True $scenarioEvidenceSource.Contains('processId = $ExpectedProcessId') "Live UIA evidence does not use the acceptance process identity field."
+Assert-True $scenarioEvidenceSource.Contains("Measured Chat state retained an Explorer heavy view") "Live Chat evidence does not reject a mounted Explorer heavy view."
+Assert-True $scenarioEvidenceSource.Contains("[Windows.Automation.InvokePattern]::Pattern") "Measured Chat launch does not use semantic UI Automation invocation."
+Assert-True $scenarioEvidenceSource.Contains('[int]$current.Current.ProcessId -eq $ExpectedProcessId') "Measured Chat transition is not bound to the exact process identity."
+Assert-True $scenarioEvidenceSource.Contains("Normal durable Roaming Sage state changed during an isolated diagnostics launch") "Normal durable-data mutation does not fail closed."
+Assert-True $scenarioEvidenceSource.Contains("disposable-uncontrolled-not-an-isolation-gate") "Local WebView cache is not explicitly recorded as disposable and uncontrolled."
+Assert-True $setupSource.Contains('button[aria-label="Show right sidebar"]') "Chat setup does not prove that the right sidebar is closed."
+Assert-True $setupSource.Contains("finalState.explorerSidebarCount === 0") "Chat setup does not prove that the Explorer heavy view is unmounted."
+Assert-True $setupSource.Contains("if(chats.length!==1)return false") "Setup does not require exactly one native-seeded project Chat."
+Assert-True $setupSource.Contains("finalState.projectChatCount === 1") "Final setup evidence does not retain the exact project Chat count."
+Assert-True $measureSource.Contains('Get-FootprintCpuMeasurement $first $last') "CPU measurement is not derived from timestamped samples."
+Assert-True (-not $measureSource.Contains('$SampleIntervalMs * ($SampleCount - 1) / 1000')) "CPU measurement still derives wall duration from the nominal sleep interval."
+Assert-True $measureSource.Contains('Assert-FootprintDiagnosticCampaignInputs $binding $DiagnosticDataDirectory') "The diagnostics campaign does not fail closed on candidate capability/data provenance."
+Assert-True $measureSource.Contains('Assert-FootprintDiagnosticStateChanged $diagnosticDataInitial $diagnosticDataAfterSetup') "The diagnostics campaign trusts metadata without behavioral state proof."
+Assert-True $measureSource.Contains('Invoke-FootprintBoundedProcess $resolvedNode $boundedNodeRunner $resolvedNode') "Semantic setup does not use bounded exact-path Node execution."
+Assert-True (-not $measureSource.Contains('& $resolvedNode $setupHelper')) "Semantic setup still uses ambient native-command exit state."
+Assert-True (-not $measureSource.Contains('$LASTEXITCODE')) "Semantic setup still trusts shared LASTEXITCODE state."
+Assert-True $matrixSource.Contains('Invoke-FootprintBoundedProcess $resolvedNode $runner $resolvedPowerShell $arguments') "Matrix scenarios do not use bounded exact-path PowerShell execution."
+Assert-True (-not $matrixSource.Contains('& powershell.exe')) "Matrix still launches PowerShell through ambient native invocation."
+Assert-True (-not $matrixSource.Contains('$LASTEXITCODE')) "Matrix still trusts shared LASTEXITCODE state."
+Assert-True $matrixSource.Contains('120000 1MB') "Matrix child timeout/output bounds are not explicit."
+Assert-True $setupSource.Contains('const deadline = Date.now() + 20_000') "Target readiness is not bounded to 20 seconds."
+Assert-True $setupSource.Contains('target discovery response exceeded 64 KiB') "Target discovery response bytes are not bounded before parsing."
+Assert-True $setupSource.Contains('target discovery exceeded 32 entries') "Target discovery count is not bounded."
+Assert-True $setupSource.Contains('targetSummaries: targetDiagnostics') "Setup failure evidence omits sanitized target summaries."
+Assert-True $setupSource.Contains('target.url === "http://tauri.localhost/"') "Target discovery does not retain the exact authoritative Tauri origin."
+Assert-True $setupSource.Contains('pages.length === 1 && pages[0].title === "Sage"') "Target readiness does not distinguish page selection from title readiness."
+Assert-True $measureSource.Contains('Invoke-FootprintNormalDataGuardedAction $normalDataInitial') "Setup failure paths do not always run the normal-data isolation guard."
+Assert-True $measureSource.Contains('[Environment]::SetEnvironmentVariable("SAGE_PROJECT_ROOT", $fixtureProject.path, "Process")') "Native fixture seeding is not process-scoped to the exact setup launch."
+Assert-True $measureSource.Contains('[Environment]::SetEnvironmentVariable("SAGE_PROJECT_ROOT", $null, "Process")') "Native fixture seeding is not always cleared."
+Assert-True ([regex]::Matches($measureSource, 'Start-ExactFootprintProcess -SeedProject').Count -eq 1) "Fixture seeding is not limited to the initial setup launch."
+Assert-True $measureSource.Contains('Invoke-FootprintMeasuredScenarioTransition $window.handle $process.Id $Scenario') "Measured launches do not perform the exact-process scenario transition."
+Assert-True $measureSource.Contains('diagnosticDataDirectorySha256 = $diagnosticDataInitial.pathSha256') "Measured evidence does not retain isolated data-directory identity."
+Assert-True $matrixSource.Contains('$arguments += @("-DiagnosticDataDirectory", $scenarioDataDirectory)') "The matrix harness does not forward scenario-specific isolated data-directory provenance."
+Assert-True $matrixSource.Contains('$scenarioDataDirectory = Join-Path $DiagnosticDataDirectory $scenario') "Chat and Explorer do not receive disjoint scenario data directories."
+Assert-True $matrixSource.Contains('"-FixtureProjectRoot"') "The matrix harness does not forward the bounded fixture project root."
+Assert-True $windowsFootprintSource.Contains("Core process identity membership changed during CPU sampling") "CPU process churn does not invalidate measurement."
 Assert-True ($measureSource.IndexOf("Invoke-InstrumentedScenarioSetup", [StringComparison]::Ordinal) -lt $measureSource.IndexOf("while (`$validCount", [StringComparison]::Ordinal)) "Setup is not ordered before measured launches."
 Assert-True (($measureSource.Split("Wait-FootprintScenarioUiaEvidence").Count - 1) -ge 2) "Measured launches do not verify semantic state before and after sampling."
 Assert-True (($measureSource.Split("Assert-FootprintExecutableHash").Count - 1) -ge 1) "Per-launch executable rehash is not wired into process launch."

@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   buildSourceManifest,
+  curatedCandidate,
   validateEvidenceBinding,
 } from "./generate-source-manifest.mjs";
 
@@ -51,6 +52,33 @@ test("source manifest aggregate changes with a build input", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("curated source identity is scoped to the requested work item and raw evidence", () => {
+  const candidate = curatedCandidate(
+    {
+      schemaVersion: 1,
+      policyVersion: 1,
+      aggregateSha256: "candidate",
+      fileCount: 3,
+      totalBytes: 42,
+      generatorSha256: "generator",
+      nodeVersion: "v22",
+      pathFormat: "relative",
+      ordering: "ordered",
+      aggregateConstruction: "digest",
+    },
+    {
+      workItem: "ADE-0006A",
+      rawManifest:
+        "%WORKSPACE%/local-evidence/ADE-0006A-final/source-manifest.json",
+    },
+  );
+  assert.equal(candidate.workItem, "ADE-0006A");
+  assert.equal(
+    candidate.rawManifest,
+    "%WORKSPACE%/local-evidence/ADE-0006A-final/source-manifest.json",
+  );
 });
 
 test("evidence binding rejects stale artifact and candidate labels", () => {

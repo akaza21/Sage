@@ -4,8 +4,8 @@
   "sanitized": true,
   "fixCycle1": {
     "phase": "review-ready",
-    "status": "fixed-awaiting-independent-re-review",
-    "findingCounts": { "p0": 0, "p1": 2, "p2": 6, "p3": 0 },
+    "status": "fixed-awaiting-independent-Test",
+    "findingCounts": { "p0": 0, "p1": 3, "p2": 6, "p3": 0 },
     "independentAcceptance": false,
     "independentVerificationStarted": false
   },
@@ -41,7 +41,7 @@
     ]
   },
   "evidenceAudit": {
-    "classification": "Build self-check; pending fresh-context independent review",
+    "classification": "Build self-check; fixed-awaiting-independent-Test",
     "packet": "%WORKSPACE%/local-evidence/ADE-0005-project-lifecycle/postfix-final-f4c96c5",
     "replay": "replay-run-007",
     "gestureCasesPassed": 14,
@@ -66,6 +66,41 @@
       "normalDatabaseTouched": false
     }
   },
+  "postReviewHarnessCorrection": {
+    "finding": "ADE-0005-RV-009",
+    "classification": "Build self-check; no valid corrected footprint samples",
+    "sourceAggregateSha256": "884c66f3fb314075a9c6b2139c34e22b521f2aa9e6e35579068c6ad69c41d92b",
+    "sourceFiles": 166,
+    "sourceBytes": 1456042,
+    "rawManifestSha256": "701af32f15454f4d10eaf2cff34352c95e3cf0d1a1017f0c1275da7ecf34d7fd",
+    "diagnosticsExecutableSha256": "a3bc0c71a1add22dbcb703569a7c24669d44530f93c729b6c7dd94928fa66b0b",
+    "diagnosticsExecutableBytes": 5912576,
+    "deterministicHarnessChecksPassed": 285,
+    "setupSemanticPassed": true,
+    "measuredChatAttempts": 2,
+    "validChatSamples": 0,
+    "explorerExecuted": false,
+    "uiaControlViewSageSemanticNodes": 0,
+    "uiaRawViewSageSemanticNodes": 0,
+    "uiaRawViewVisitedNodes": 245,
+    "cpuBudgetDisposition": "historical non-blocking diagnostic under the 2026-08-03 product-owner decision",
+    "normalDatabaseTouched": false,
+    "wifiOrSystemControlsTouched": false,
+    "freshDiagnosticsBuild": {
+      "executableSha256": "398fd3a7883121e44889fedc492d5b74fc8c2719dfb56918759c5c7e4d6d0891",
+      "executableBytes": 5912576,
+      "cargoProfile": "release",
+      "cargoFeatures": ["custom-protocol", "diagnostics"],
+      "bindingValidated": true,
+      "isolatedTarget": true
+    },
+    "portableCapableHostPacket": {
+      "files": 14,
+      "logicalBytes": 6048587,
+      "inventorySha256": "4470b8243270c829f161f1c1485fb9e2973636e8736f9838c3f6abe5bac66d68",
+      "currentHostExecuted": false
+    }
+  },
   "sourceAndTestGates": {
     "frontendFiles": 7,
     "frontendTestsPassed": 52,
@@ -80,8 +115,12 @@
       "chat idle CPU P95 1.171875% exceeds 0.5%",
       "explorer idle CPU P95 0.78125% exceeds 0.5%"
     ],
-    "footprintParserChecksPassed": 153,
-    "manifestReproduced": true
+    "footprintParserChecksPassed": 285,
+    "manifestReproduced": true,
+    "freshIsolatedDiagnosticsBuildPassed": true,
+    "freshIsolatedPackageBuildPassed": true,
+    "rv007PackagedCapacityRestartPassed": true,
+    "rv008PackagedInterleaveRestartPassed": true
   },
   "limits": {
     "projects": 64,
@@ -115,6 +154,16 @@
       "msiBytes": 2514944,
       "msiSha256": "0901f3bf181bfedf44ee80d372ee3f1d48ceb2da58e222d8761df4ea7fc74767"
     },
+    "freshIsolatedRebuild": {
+      "frontendBytes": 289190,
+      "executableBytes": 5149184,
+      "executableSha256": "4d1569d08fcaaa59c269e8afc0e74750d1bc01704213f2c057e5b873797d892a",
+      "msiBytes": 2514944,
+      "msiSha256": "dda5a57445e65363005257265611ff058b34bcc9cde4a31367344ba520bec3dc",
+      "nsisBytes": 1855680,
+      "nsisSha256": "3b728ecc285dab28a366e641f6b9dd8488d53f288d7b30c7bd5c114b7f3629f8",
+      "defaultArtifactsUnchanged": true
+    },
     "deltaFromAde0004": {
       "frontendBytes": 11652,
       "executableBytes": 408576,
@@ -124,7 +173,8 @@
     "dependencyOrRuntimeChangeInFixCycle1": false
   },
   "runtime": {
-    "classification": "exact-candidate Build self-check",
+    "classification": "superseded pre-RV-009 diagnostic Build self-check",
+    "acceptedAsCurrentFootprintEvidence": false,
     "platform": "windows",
     "webView2Version": "150.0.4078.65",
     "launchesPerState": 5,
@@ -155,20 +205,50 @@
       "packagedP50Ms": 165.75,
       "packagedP95Ms": 218.6,
       "nativeSamples": 20,
-      "nativeP50Micros": 282,
-      "nativeP95Micros": 348
+      "nativeP50Micros": 271,
+      "nativeP95Micros": 323
     },
     "gitRefresh": {
       "samples": 20,
-      "aggregateP50Ms": 162,
-      "aggregateP95Ms": 200,
-      "rootAP50Ms": 162,
-      "rootAP95Ms": 195,
-      "rootBP50Ms": 162,
-      "rootBP95Ms": 200,
-      "plainP50Ms": 38,
+      "aggregateP50Ms": 158,
+      "aggregateP95Ms": 184,
+      "rootAP50Ms": 158,
+      "rootAP95Ms": 184,
+      "rootBP50Ms": 158,
+      "rootBP95Ms": 183,
+      "plainP50Ms": 39,
       "plainP95Ms": 49
     }
+  },
+  "targetedPackagedGaps": {
+    "classification": "historical behavioral Build corroboration; exact driver bytes not retained",
+    "driverProvenance": {
+      "reportedValidatedInputManifestSha256": "393d874e61bb65a3a9acaf512aec060ac56a2172ea443c066d67f937e675c4fb",
+      "retainedSemanticManifestSha256": "b0569ddec614b8f4d7ee4e77b8660b399cc5ea5b809d6c939f2e8e0764cc099f",
+      "laterCurrentDriverManifestSha256": "92245cfdf5528fd1eafec07ff6bf0bd8dd3bebde27b18e62860f942fe3caf7dc",
+      "byteIdenticalInputRetained": false,
+      "acceptedAsExactDriverEvidence": false
+    },
+    "rv007": {
+      "capacityRejections": 2,
+      "durableEventsAfterRestart": 4999,
+      "payloadBytes": 212513,
+      "rejectedMarkersPersisted": 0,
+      "passed": true
+    },
+    "rv008": {
+      "attempts": 20,
+      "acceptedTurns": 19,
+      "rejectedBeforeInsert": 1,
+      "partialTurns": 0,
+      "visibleMessagesAfterRestart": 39,
+      "firstAndRestartAuditSha256": "5a2bbed0e6aadb4f1a2c99eb297a428d4e80d2ab736daecf322c4b2d048ffa8b",
+      "passed": true
+    },
+    "normalDataUnchanged": true,
+    "defaultArtifactsUnchanged": true,
+    "sageProcessesRemaining": 0,
+    "wifiOrSystemControlInput": false
   },
   "packagedSmoke": {
     "pickerCancellation": true,
@@ -198,9 +278,12 @@
     "sageProcessesRemaining": 0
   },
   "remainingIndependentGates": [
-    "fresh-context independent re-review",
-    "Unix cfg(unix) execution on Linux or macOS",
-    "independent verification only after re-review disposition"
+    "fresh independent Test reproduction and finding disposition",
+    "Unix cfg(unix) execution on macOS; Linux is not required for this work-item acceptance"
+  ],
+  "nonBlockingDiagnostics": [
+    "five-launch no-debug WebView2 UIA campaign removed from Gate 0 by product owner on 2026-08-03",
+    "historical 0.5% idle-CPU comparison retained without an acceptance requirement"
   ],
   "security": {
     "capability": "core:default",

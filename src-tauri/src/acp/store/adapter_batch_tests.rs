@@ -1,0 +1,492 @@
+use super::{extended_tests::*, *};
+use crate::acp::{
+    contract::{ClientIntentId, ProjectGeneration, RequiredText, SafeText},
+    intent::{ExternalId, NormalizedPayload, Prompt, ToolCategory},
+    lifecycle::{ItemLifecycle, TurnState},
+    limits::LIMITS,
+    projection::ItemContent,
+    runtime::permissions::PermissionIntent,
+};
+
+mod lifecycle_tests;
+
+struct Fixture {
+    connection: rusqlite::Connection,
+    owner: AdapterStoreOwner,
+}
+
+fn fixture() -> Fixture {
+    let mut connection = setup();
+    let started = start_session(&mut connection, start(0, "adapter-start")).unwrap();
+    activate_session(
+        &mut connection,
+        ActivateSessionCommand {
+            project_id: project(),
+            chat_id: chat(),
+            expected_projection_revision: ProjectionRevision::new(1).unwrap(),
+            client_intent_id: ClientIntentId::parse("adapter-activate").unwrap(),
+            session_id: started.session_id.clone(),
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+            artifact_digest: "d".repeat(64),
+            now_millis: 2,
+        },
+    )
+    .unwrap();
+    let external_session_id = ExternalId::new("external", "adapter-session").unwrap();
+    complete_activation(
+        &mut connection,
+        CompleteActivationCommand {
+            project_id: project(),
+            chat_id: chat(),
+            session_id: started.session_id.clone(),
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+            binding_digest: "a".repeat(64),
+            artifact_digest: "d".repeat(64),
+            external_session_id: external_session_id.clone(),
+            capabilities_json: capabilities(),
+            now_millis: 3,
+        },
+    )
+    .unwrap();
+    let prepared = prepare_turn(
+        &mut connection,
+        PrepareTurnCommand {
+            project_id: project(),
+            project_generation: ProjectGeneration::new(1).unwrap(),
+            chat_id: chat(),
+            session_id: started.session_id.clone(),
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+            expected_projection_revision: ProjectionRevision::new(3).unwrap(),
+            client_intent_id: ClientIntentId::parse("adapter-turn").unwrap(),
+            prompt: Prompt::new("prompt", "test").unwrap(),
+            now_millis: 4,
+        },
+    )
+    .unwrap();
+    begin_send(
+        &mut connection,
+        TurnMutationCommand {
+            project_id: project(),
+            chat_id: chat(),
+            session_id: started.session_id.clone(),
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+            turn_id: prepared.turn_id.clone(),
+            expected_revision: prepared.turn_revision,
+            now_millis: 5,
+        },
+    )
+    .unwrap();
+    Fixture {
+        connection,
+        owner: AdapterStoreOwner {
+            project_id: project(),
+            chat_id: chat(),
+            session_id: started.session_id,
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+            turn_id: prepared.turn_id,
+            binding_digest: "a".repeat(64),
+            external_session_id,
+        },
+    }
+}
+
+#[test]
+fn event_n_failure_rolls_back_the_complete_adapter_batch() {
+    let mut fixture = fixture();
+    let before = projection(&fixture.connection);
+    let command = batch(
+        &fixture.owner,
+        vec![
+            AdapterInboundEvent::Item(item(&fixture.owner, "item-one")),
+            AdapterInboundEvent::Turn {
+                state: TurnState::WaitingModel,
+                now_millis: 7,
+            },
+        ],
+    );
+    assert!(matches!(
+        apply_adapter_inbound_batch(&mut fixture.connection, command),
+        Err(StoreError::InvalidTransition {
+            resource: "adapterTurnState"
+        })
+    ));
+    let count: i64 = fixture
+        .connection
+        .query_row(
+            "SELECT COUNT(*) FROM items WHERE external_item_id='item-one'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!((count, projection(&fixture.connection)), (0, before));
+}
+
+#[test]
+fn permission_request_and_decline_commit_are_one_atomic_projection() {
+    let mut fixture = fixture();
+    let intent = permission(&fixture.owner);
+    let mutation = apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        batch(
+            &fixture.owner,
+            vec![AdapterInboundEvent::PermissionDeny {
+                intent: intent.clone(),
+                now_millis: 8,
+            }],
+        ),
+    )
+    .unwrap();
+    let state: String = fixture
+        .connection
+        .query_row(
+            "SELECT state FROM server_requests WHERE id=?1",
+            [intent.request_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let item: (String, String) = fixture
+        .connection
+        .query_row(
+            "SELECT lifecycle,tool_state FROM items WHERE external_item_id=?1",
+            [intent.external_request_id.as_str()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(state, "declineCommitted");
+    assert_eq!(item, ("started".into(), "waitingForApproval".into()));
+    assert_eq!(
+        mutation.projection_revision,
+        projection(&fixture.connection)
+    );
+}
+
+#[test]
+fn injected_decline_failure_rolls_back_the_request_item_and_received_facts() {
+    let mut fixture = fixture();
+    let before = projection(&fixture.connection);
+    let facts_before: i64 = fixture
+        .connection
+        .query_row("SELECT COUNT(*) FROM session_facts", [], |row| row.get(0))
+        .unwrap();
+    fixture
+        .connection
+        .execute_batch(
+            "CREATE TRIGGER inject_decline_failure
+             BEFORE UPDATE OF state ON server_requests
+             WHEN NEW.state='declineCommitted'
+             BEGIN SELECT RAISE(ABORT, 'injected decline failure'); END;",
+        )
+        .unwrap();
+    assert!(matches!(
+        apply_adapter_inbound_batch(
+            &mut fixture.connection,
+            batch(
+                &fixture.owner,
+                vec![AdapterInboundEvent::PermissionDeny {
+                    intent: permission(&fixture.owner),
+                    now_millis: 8,
+                }]
+            )
+        ),
+        Err(StoreError::Database(_))
+    ));
+    for table in ["server_requests", "session_facts"] {
+        let count: i64 = fixture
+            .connection
+            .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let expected = if table == "session_facts" {
+            facts_before
+        } else {
+            0
+        };
+        assert_eq!(
+            count, expected,
+            "{table} exposed a partial permission prefix"
+        );
+    }
+    let item_count: i64 = fixture
+        .connection
+        .query_row(
+            "SELECT COUNT(*) FROM items WHERE kind='permissionRequest'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!((item_count, projection(&fixture.connection)), (0, before));
+}
+
+#[test]
+fn limit_plus_one_and_foreign_ownership_fail_before_mutation() {
+    let mut fixture = fixture();
+    let before = projection(&fixture.connection);
+    let events = (0..=LIMITS.queues.journal_facts_per_transaction)
+        .map(|_| AdapterInboundEvent::Turn {
+            state: TurnState::Running,
+            now_millis: 6,
+        })
+        .collect();
+    assert!(matches!(
+        AdapterInboundBatchCommand::new(fixture.owner.clone(), 1024, 4096, events),
+        Err(StoreError::BatchShape)
+    ));
+    let mut foreign = fixture.owner.clone();
+    foreign.external_session_id = ExternalId::new("external", "foreign").unwrap();
+    assert!(matches!(
+        apply_adapter_inbound_batch(
+            &mut fixture.connection,
+            batch(
+                &foreign,
+                vec![AdapterInboundEvent::Turn {
+                    state: TurnState::Running,
+                    now_millis: 6
+                }]
+            )
+        ),
+        Err(StoreError::Conflict {
+            resource: "adapterBatchOwner"
+        })
+    ));
+    assert_eq!(projection(&fixture.connection), before);
+}
+
+#[test]
+fn durable_turn_item_limit_accepts_exact_and_rejects_plus_one_atomically() {
+    let mut fixture = fixture();
+    let additional = LIMITS.wire.items_per_turn - 1;
+    let mut next = 0_u64;
+    while next < additional {
+        let take = (additional - next).min(LIMITS.queues.journal_facts_per_transaction);
+        let events = (next..next + take)
+            .map(|index| AdapterInboundEvent::Item(item(&fixture.owner, &format!("item-{index}"))))
+            .collect();
+        apply_adapter_inbound_batch(&mut fixture.connection, batch(&fixture.owner, events))
+            .unwrap();
+        next += take;
+    }
+
+    let exact: i64 = fixture
+        .connection
+        .query_row(
+            "SELECT COUNT(*) FROM items WHERE turn_id=?1",
+            [fixture.owner.turn_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(exact, LIMITS.wire.items_per_turn as i64);
+
+    assert!(matches!(
+        apply_adapter_inbound_batch(
+            &mut fixture.connection,
+            batch(
+                &fixture.owner,
+                vec![AdapterInboundEvent::Item(item(&fixture.owner, "item-over"))]
+            )
+        ),
+        Err(StoreError::Capacity {
+            resource: "turnItems",
+            limit
+        }) if limit == LIMITS.wire.items_per_turn
+    ));
+    let retained: i64 = fixture
+        .connection
+        .query_row(
+            "SELECT COUNT(*) FROM items WHERE turn_id=?1",
+            [fixture.owner.turn_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(retained, exact);
+}
+
+#[test]
+fn durable_turn_item_bytes_accept_exact_and_reject_the_next_item_atomically() {
+    let mut fixture = fixture();
+    let existing: i64 = fixture
+        .connection
+        .query_row(
+            "SELECT COALESCE(SUM(payload_bytes),0) FROM items WHERE turn_id=?1",
+            [fixture.owner.turn_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let maximum = LIMITS.wire.normalized_item_bytes as usize;
+    let mut remaining = LIMITS.wire.item_bytes_per_turn as usize - existing as usize;
+    let minimum = serialized_text_payload_bytes(0);
+    let mut sizes = Vec::new();
+    while remaining > maximum {
+        sizes.push(maximum);
+        remaining -= maximum;
+    }
+    if remaining < minimum {
+        let previous = sizes.pop().expect("the aggregate limit spans many items");
+        remaining += previous;
+        sizes.push(remaining - minimum);
+        sizes.push(minimum);
+    } else {
+        sizes.push(remaining);
+    }
+
+    for (index, bytes) in sizes.into_iter().enumerate() {
+        apply_item_ingress(
+            &mut fixture.connection,
+            sized_item(&fixture.owner, &format!("bytes-{index}"), bytes),
+        )
+        .unwrap();
+    }
+    let exact: i64 = fixture
+        .connection
+        .query_row(
+            "SELECT COALESCE(SUM(payload_bytes),0) FROM items WHERE turn_id=?1",
+            [fixture.owner.turn_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(exact, LIMITS.wire.item_bytes_per_turn as i64);
+
+    assert!(matches!(
+        apply_item_ingress(
+            &mut fixture.connection,
+            sized_item(&fixture.owner, "bytes-over", minimum)
+        ),
+        Err(StoreError::Capacity {
+            resource: "turnItemBytes",
+            limit
+        }) if limit == LIMITS.wire.item_bytes_per_turn
+    ));
+    let retained: i64 = fixture
+        .connection
+        .query_row(
+            "SELECT COALESCE(SUM(payload_bytes),0) FROM items WHERE turn_id=?1",
+            [fixture.owner.turn_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(retained, exact);
+}
+
+fn batch(
+    owner: &AdapterStoreOwner,
+    events: Vec<AdapterInboundEvent>,
+) -> AdapterInboundBatchCommand {
+    AdapterInboundBatchCommand::new(owner.clone(), 1024, 4096, events).unwrap()
+}
+
+fn item(owner: &AdapterStoreOwner, external: &str) -> ItemIngressCommand {
+    let payload = NormalizedPayload::Text {
+        text: SafeText::new("text", "adapter text").unwrap(),
+    };
+    let json = serde_json::to_string(&payload).unwrap();
+    ItemIngressCommand {
+        project_id: owner.project_id.clone(),
+        chat_id: owner.chat_id.clone(),
+        session_id: owner.session_id.clone(),
+        turn_id: owner.turn_id.clone(),
+        runtime_epoch: owner.runtime_epoch,
+        external_item_id: ExternalId::new("external", external).unwrap(),
+        activity_id: None,
+        payload,
+        payload_digest: facts::hex_digest(json.as_bytes()),
+        lifecycle: ItemLifecycle::Completed,
+        tool_state: None,
+        now_millis: 6,
+    }
+}
+
+fn serialized_text_payload_bytes(text_bytes: usize) -> usize {
+    serde_json::to_string(&NormalizedPayload::Text {
+        text: SafeText::new("text", "x".repeat(text_bytes)).unwrap(),
+    })
+    .unwrap()
+    .len()
+}
+
+fn sized_item(owner: &AdapterStoreOwner, external: &str, bytes: usize) -> ItemIngressCommand {
+    let overhead = serialized_text_payload_bytes(0);
+    assert!(bytes >= overhead);
+    let payload = NormalizedPayload::Text {
+        text: SafeText::new("text", "x".repeat(bytes - overhead)).unwrap(),
+    };
+    let json = serde_json::to_string(&payload).unwrap();
+    assert_eq!(json.len(), bytes);
+    ItemIngressCommand {
+        project_id: owner.project_id.clone(),
+        chat_id: owner.chat_id.clone(),
+        session_id: owner.session_id.clone(),
+        turn_id: owner.turn_id.clone(),
+        runtime_epoch: owner.runtime_epoch,
+        external_item_id: ExternalId::new("external", external).unwrap(),
+        activity_id: None,
+        payload,
+        payload_digest: facts::hex_digest(json.as_bytes()),
+        lifecycle: ItemLifecycle::Completed,
+        tool_state: None,
+        now_millis: 6,
+    }
+}
+
+fn terminal_item(
+    owner: &AdapterStoreOwner,
+    external: &str,
+    payload: NormalizedPayload,
+    lifecycle: ItemLifecycle,
+) -> AdapterInboundEvent {
+    let json = serde_json::to_string(&payload).unwrap();
+    AdapterInboundEvent::Item(ItemIngressCommand {
+        project_id: owner.project_id.clone(),
+        chat_id: owner.chat_id.clone(),
+        session_id: owner.session_id.clone(),
+        turn_id: owner.turn_id.clone(),
+        runtime_epoch: owner.runtime_epoch,
+        external_item_id: ExternalId::new("external", external).unwrap(),
+        activity_id: None,
+        payload,
+        payload_digest: facts::hex_digest(json.as_bytes()),
+        lifecycle,
+        tool_state: None,
+        now_millis: 7,
+    })
+}
+
+fn permission(owner: &AdapterStoreOwner) -> PermissionIntent {
+    let payload = NormalizedPayload::PermissionRequest {
+        category: ToolCategory::Command,
+        summary: SafeText::new("summary", "Run command?").unwrap(),
+    };
+    let json = serde_json::to_string(&payload).unwrap();
+    PermissionIntent {
+        request_id: SageServerRequestId::parse("request-adapter").unwrap(),
+        project_id: owner.project_id.clone(),
+        chat_id: owner.chat_id.clone(),
+        session_id: owner.session_id.clone(),
+        turn_id: owner.turn_id.clone(),
+        runtime_epoch: owner.runtime_epoch,
+        binding_digest: owner.binding_digest.clone(),
+        external_request_id: ExternalId::new("external", "permission-adapter").unwrap(),
+        kind: RequiredText::new("kind", "permission").unwrap(),
+        payload_digest: "f".repeat(64),
+        normalized_payload_digest: facts::hex_digest(json.as_bytes()),
+        normalized_payload_json: json,
+    }
+}
+
+fn projection(connection: &rusqlite::Connection) -> ProjectionRevision {
+    let revision: i64 = connection
+        .query_row(
+            "SELECT projection_revision FROM chats WHERE id='chat-one'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    ProjectionRevision::new(revision as u64).unwrap()
+}
+
+fn project() -> SageProjectId {
+    SageProjectId::parse("project-one").unwrap()
+}
+
+fn chat() -> SageChatId {
+    SageChatId::parse("chat-one").unwrap()
+}

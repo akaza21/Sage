@@ -27,8 +27,95 @@ function Get-FootprintCpuPercent {
     [Parameter(Mandatory)][double]$LastCpuSeconds,
     [Parameter(Mandatory)][ValidateRange(0.000001, 3600)][double]$WallSeconds
   )
-  $delta = [Math]::Max(0.0, $LastCpuSeconds - $FirstCpuSeconds)
+  if ($LastCpuSeconds -lt $FirstCpuSeconds) {
+    throw "CPU counters cannot decrease across a measurement window."
+  }
+  $delta = $LastCpuSeconds - $FirstCpuSeconds
   return [Math]::Round(($delta / $WallSeconds) * 100, 6)
+}
+
+function Get-FootprintCpuMeasurement {
+  param(
+    [Parameter(Mandatory)][Collections.IDictionary]$FirstSample,
+    [Parameter(Mandatory)][Collections.IDictionary]$LastSample
+  )
+  foreach ($sample in @($FirstSample, $LastSample)) {
+    foreach ($field in @("coreCpuSeconds", "sampleElapsedSeconds", "coreProcessIdentityKeys", "processes")) {
+      if (-not $sample.Contains($field)) {
+        throw "CPU sample is missing '$field'."
+      }
+    }
+  }
+  $wallSeconds = [double]$LastSample.sampleElapsedSeconds - [double]$FirstSample.sampleElapsedSeconds
+  if ($wallSeconds -le 0 -or $wallSeconds -gt 3600) {
+    throw "CPU sampling requires a positive measured wall duration of at most one hour."
+  }
+  $firstKeys = @($FirstSample.coreProcessIdentityKeys)
+  $lastKeys = @($LastSample.coreProcessIdentityKeys)
+  if ($firstKeys.Count -eq 0 -or $firstKeys.Count -ne $lastKeys.Count -or
+      (@(Compare-Object $firstKeys $lastKeys -SyncWindow 0).Count -ne 0)) {
+    throw "Core process identity membership changed during CPU sampling."
+  }
+  $firstByIdentity = @{}
+  $lastByIdentity = @{}
+  foreach ($record in @($FirstSample.processes | Where-Object coreIncluded)) {
+    $firstByIdentity[[string]$record.identityKey] = [double]$record.cpuSeconds
+  }
+  foreach ($record in @($LastSample.processes | Where-Object coreIncluded)) {
+    $lastByIdentity[[string]$record.identityKey] = [double]$record.cpuSeconds
+  }
+  $cpuDelta = [double]0
+  foreach ($key in $firstKeys) {
+    if (-not $firstByIdentity.ContainsKey($key) -or -not $lastByIdentity.ContainsKey($key)) {
+      throw "CPU sample identity records do not match their canonical membership set."
+    }
+    $identityDelta = [double]$lastByIdentity[$key] - [double]$firstByIdentity[$key]
+    if ($identityDelta -lt 0) { throw "A per-process CPU counter decreased during sampling." }
+    $cpuDelta += $identityDelta
+  }
+  $aggregateDelta = [double]$LastSample.coreCpuSeconds - [double]$FirstSample.coreCpuSeconds
+  if ($aggregateDelta -lt 0) { throw "The aggregate core CPU counter decreased during sampling." }
+  if ([Math]::Abs($aggregateDelta - $cpuDelta) -gt 0.000001) {
+    throw "Aggregate CPU delta does not match the stable per-process identity set."
+  }
+  return [ordered]@{
+    firstCpuSeconds = [double]$FirstSample.coreCpuSeconds
+    lastCpuSeconds = [double]$LastSample.coreCpuSeconds
+    measuredWallSeconds = [Math]::Round($wallSeconds, 9)
+    coreProcessIdentityKeys = $firstKeys
+    percentOneCore = [Math]::Round(($cpuDelta / $wallSeconds) * 100, 6)
+  }
+}
+
+function Assert-FootprintStableCpuSamples {
+  param([Parameter(Mandatory)][object[]]$Samples)
+  if ($Samples.Count -lt 2) { throw "CPU stability requires at least two samples." }
+  $baselineKeys = @($Samples[0].coreProcessIdentityKeys)
+  if ($baselineKeys.Count -eq 0) { throw "CPU stability requires at least one core process identity." }
+  $previous = $null
+  foreach ($sample in $Samples) {
+    $keys = @($sample.coreProcessIdentityKeys)
+    if ($keys.Count -ne $baselineKeys.Count -or @(Compare-Object $baselineKeys $keys -SyncWindow 0).Count -ne 0) {
+      throw "Core process identity membership changed during CPU sampling."
+    }
+    $current = @{}
+    foreach ($record in @($sample.processes | Where-Object coreIncluded)) {
+      $current[[string]$record.identityKey] = [double]$record.cpuSeconds
+    }
+    if ($current.Count -ne $baselineKeys.Count) { throw "CPU sample identity records are incomplete or duplicated." }
+    foreach ($key in $baselineKeys) {
+      if (-not $current.ContainsKey($key)) { throw "CPU sample identity records do not match their canonical membership set." }
+      if ($null -ne $previous -and [double]$current[$key] -lt [double]$previous[$key]) {
+        throw "A per-process CPU counter decreased during sampling."
+      }
+    }
+    if ($null -ne $previous -and [double]$sample.coreCpuSeconds -lt [double]$previous.aggregateCpuSeconds) {
+      throw "The aggregate core CPU counter decreased during sampling."
+    }
+    $current["aggregateCpuSeconds"] = [double]$sample.coreCpuSeconds
+    $previous = $current
+  }
+  return $true
 }
 
 function Get-FootprintProcessRole {
@@ -81,6 +168,7 @@ function Get-FootprintTreeSample {
         name = [string]$member.Name
         executablePath = if ($member.ExecutablePath) { [string]$member.ExecutablePath } else { $null }
         creationDate = $identity.creationDate
+        identityKey = "$($identity.processId)`0$($identity.executablePath.ToLowerInvariant())`0$($identity.creationDate)"
         commandLine = if ($member.CommandLine) { [string]$member.CommandLine } else { $null }
         role = $role
         coreIncluded = $coreIncluded
@@ -117,6 +205,7 @@ function Get-FootprintTreeSample {
     corePrivateBytes = $corePrivateBytes
     coreWorkingSetBytes = $coreWorkingSetBytes
     coreCpuSeconds = $coreCpuSeconds
+    coreProcessIdentityKeys = @($core | ForEach-Object identityKey | Sort-Object)
     excludedPrivateBytes = $excludedPrivateBytes
     excludedWorkingSetBytes = $excludedWorkingSetBytes
     processCount = $records.Count
@@ -144,6 +233,8 @@ function Wait-FootprintWindow {
 }
 
 Export-ModuleMember -Function @(
+  "Assert-FootprintStableCpuSamples",
+  "Get-FootprintCpuMeasurement",
   "Get-FootprintCpuPercent",
   "Get-FootprintMedian",
   "Get-FootprintPercentile",

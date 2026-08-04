@@ -35,6 +35,21 @@
 - Never introduce unbounded queues, scans, terminal buffers, transcripts, or
   frontend lists.
 
+## Default engineering flow
+
+- Apply the implicit `engineering-workflow` skill to software work; the user
+  does not need to invoke individual skills.
+- Use the main flow as an index, entering at the earliest unresolved stage:
+  `grill-with-docs` -> `to-spec` -> `to-tickets` -> `implement`, with `tdd`
+  driving implementation and `code-review` closing it out.
+- Scale the flow to the task. A small settled change may start at `tdd`; an
+  agent-ready ticket starts at `implement`; a review request starts at
+  `code-review`.
+- Use `wayfinder` before the main flow only when the route is too uncertain or
+  too large for one working session.
+- Do not publish tracker artifacts, commit, push, or mutate external systems
+  unless the user authorizes that action.
+
 ## Change handoff
 
 Report:

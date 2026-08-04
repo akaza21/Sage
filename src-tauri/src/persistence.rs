@@ -6,31 +6,37 @@ use std::{
 
 use rusqlite::Connection;
 
-use crate::{error::AppResult, project_migration};
+use crate::{acp::migration, error::AppResult};
 
-const INITIAL_MIGRATION: &str = include_str!("../migrations/001_initial.sql");
-const DIFF_TABS_MIGRATION: &str = include_str!("../migrations/002_diff_tabs.sql");
-const EDITOR_BUFFERS_MIGRATION: &str = include_str!("../migrations/003_editor_buffers.sql");
+mod physical_storage;
+
+use physical_storage::{PhysicalStorage, StorageLimits};
 
 #[derive(Debug, Clone)]
 pub struct Database {
     connection: Arc<Mutex<Connection>>,
+    physical_storage: Arc<PhysicalStorage>,
+    _live_path_anchor: Arc<migration::LivePathAnchor>,
 }
 
 impl Database {
     pub fn open(path: &Path) -> AppResult<Self> {
-        let mut connection = Connection::open(path)?;
+        Self::open_with_limits(path, StorageLimits::production())
+    }
+
+    fn open_with_limits(path: &Path, limits: StorageLimits) -> AppResult<Self> {
+        let (connection, live_path_anchor) = migration::open_or_migrate(path)?.into_parts();
         connection.pragma_update(None, "journal_mode", "WAL")?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "busy_timeout", 5_000)?;
-        connection.execute_batch(INITIAL_MIGRATION)?;
-        apply_sql_migration(&connection, 2, DIFF_TABS_MIGRATION)?;
-        apply_sql_migration(&connection, 3, EDITOR_BUFFERS_MIGRATION)?;
-        project_migration::migrate(&mut connection)?;
         connection.pragma_update(None, "wal_autocheckpoint", 256)?;
         connection.pragma_update(None, "journal_size_limit", 8 * 1024 * 1024)?;
+        let physical_storage = Arc::new(PhysicalStorage::new(path, limits));
+        physical_storage.configure(&connection)?;
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
+            physical_storage,
+            _live_path_anchor: Arc::new(live_path_anchor),
         })
     }
 
@@ -39,20 +45,40 @@ impl Database {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
+
+    pub(crate) fn write_connection(&self) -> AppResult<WriteConnection<'_>> {
+        let connection = self.connection();
+        self.physical_storage.admit_write(&connection)?;
+        Ok(WriteConnection {
+            connection,
+            physical_storage: &self.physical_storage,
+        })
+    }
 }
 
-fn apply_sql_migration(connection: &Connection, version: i64, sql: &str) -> AppResult<()> {
-    let applied: bool = connection.query_row(
-        "SELECT EXISTS(
-           SELECT 1 FROM schema_migrations WHERE version = ?1
-         )",
-        [version],
-        |row| row.get(0),
-    )?;
-    if !applied {
-        connection.execute_batch(sql)?;
+pub(crate) struct WriteConnection<'a> {
+    connection: std::sync::MutexGuard<'a, Connection>,
+    physical_storage: &'a PhysicalStorage,
+}
+
+impl std::ops::Deref for WriteConnection<'_> {
+    type Target = Connection;
+
+    fn deref(&self) -> &Self::Target {
+        &self.connection
     }
-    Ok(())
+}
+
+impl std::ops::DerefMut for WriteConnection<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.connection
+    }
+}
+
+impl Drop for WriteConnection<'_> {
+    fn drop(&mut self) {
+        self.physical_storage.observe_after_write(&self.connection);
+    }
 }
 
 pub(crate) fn now_millis() -> i64 {
@@ -78,7 +104,7 @@ mod tests {
         let project_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(migration_count, 4);
+        assert_eq!(migration_count, 5);
         assert_eq!(project_count, 0);
     }
 
@@ -94,5 +120,86 @@ mod tests {
             .unwrap();
         assert_eq!(auto_checkpoint, 256);
         assert_eq!(journal_size_limit, 8 * 1024 * 1024);
+    }
+
+    #[test]
+    fn pinned_reader_forces_wal_hard_stop_and_release_converges_before_new_write() {
+        let directory =
+            std::env::temp_dir().join(format!("sage-wal-gate-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("sage.db");
+        let database = Database::open_with_limits(
+            &path,
+            StorageLimits::fixture(4 * 1024 * 1024, 16 * 1024, 32 * 1024),
+        )
+        .unwrap();
+        {
+            let connection = database.write_connection().unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE wal_gate_fixture(id INTEGER PRIMARY KEY, payload BLOB);
+                     INSERT INTO wal_gate_fixture(payload) VALUES(zeroblob(8192));
+                     PRAGMA wal_checkpoint(TRUNCATE);",
+                )
+                .unwrap();
+        }
+        let reader = Connection::open(&path).unwrap();
+        reader.execute_batch("BEGIN").unwrap();
+        let _: i64 = reader
+            .query_row("SELECT COUNT(*) FROM wal_gate_fixture", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let mut committed = 0;
+        for _ in 0..8 {
+            let Ok(connection) = database.write_connection() else {
+                break;
+            };
+            connection
+                .execute(
+                    "INSERT INTO wal_gate_fixture(payload) VALUES(zeroblob(8192))",
+                    [],
+                )
+                .unwrap();
+            committed += 1;
+        }
+        assert!(committed > 0);
+        assert!(database.physical_storage.recovery_required());
+        assert!(matches!(
+            database.write_connection(),
+            Err(crate::error::AppError::ResourceLimit(_))
+        ));
+        drop(reader);
+        {
+            let connection = database.write_connection().unwrap();
+            connection
+                .execute(
+                    "INSERT INTO wal_gate_fixture(payload) VALUES(zeroblob(1))",
+                    [],
+                )
+                .unwrap();
+        }
+        assert!(!database.physical_storage.recovery_required());
+        drop(database);
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn live_path_anchor_outlives_every_database_clone() {
+        let directory =
+            std::env::temp_dir().join(format!("sage-live-anchor-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("sage.db");
+        let moved = directory.join("moved.db");
+        let database = Database::open(&path).unwrap();
+        let clone = database.clone();
+        assert!(std::fs::remove_file(&path).is_err());
+        assert!(std::fs::rename(&path, &moved).is_err());
+        drop(database);
+        assert!(std::fs::rename(&path, &moved).is_err());
+        drop(clone);
+        std::fs::rename(&path, &moved).unwrap();
+        let _ = std::fs::remove_dir_all(directory);
     }
 }

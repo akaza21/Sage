@@ -1,0 +1,362 @@
+{
+  "schemaVersion": 1,
+  "status": "proposed-c0-specification",
+  "identity": {
+    "sageIdsAuthoritative": true,
+    "bindingDigestRequired": true,
+    "bindingDigest": "lowercase SHA-256 of the exact independently admitted curated binding record; immutable for the AgentSession attempt",
+    "legacyBindingDigest": "lowercase SHA-256 over UTF-8 domain sage-legacy-binding-v1 followed by NUL, bindingId presence byte 01, u64be bindingId UTF-8 byte length and exact bytes, harnessVersion presence byte 00 or 01, u64be harnessVersion UTF-8 byte length and exact bytes; no Unicode normalization",
+    "externalIdsArePrimaryKeys": false,
+    "externalIdScope": [
+      "bindingDigest",
+      "runtimeEpoch",
+      "agentSessionId",
+      "objectKind"
+    ],
+    "externalIdBytes": 512
+  },
+  "itemKinds": [
+    "text",
+    "thoughtSummary",
+    "plan",
+    "toolCall",
+    "toolUpdateResult",
+    "fileChangeDiff",
+    "usage",
+    "permissionRequest",
+    "error",
+    "unsupported",
+    "collaboration"
+  ],
+  "sessionTransitions": {
+    "created": ["starting", "closing"],
+    "starting": ["ready", "incompatible", "failed", "closing"],
+    "ready": ["active", "recovering", "closing", "failed"],
+    "active": ["ready", "recovering", "closing", "failed"],
+    "recovering": ["ready", "incompatible", "failed", "closing"],
+    "closing": ["closed", "failed"],
+    "closed": [],
+    "failed": [],
+    "incompatible": []
+  },
+  "turnTransitions": {
+    "queued": ["sending", "cancelled"],
+    "sending": [
+      "running",
+      "cancelling",
+      "cancelled",
+      "failed",
+      "deliveryUnknown"
+    ],
+    "running": [
+      "waitingModel",
+      "waitingTool",
+      "waitingApproval",
+      "waitingUser",
+      "cancelling",
+      "completed",
+      "interrupted",
+      "cancelled",
+      "failed"
+    ],
+    "waitingModel": [
+      "running",
+      "cancelling",
+      "completed",
+      "interrupted",
+      "cancelled",
+      "failed"
+    ],
+    "waitingTool": [
+      "running",
+      "cancelling",
+      "completed",
+      "interrupted",
+      "cancelled",
+      "failed"
+    ],
+    "waitingApproval": [
+      "running",
+      "cancelling",
+      "completed",
+      "interrupted",
+      "cancelled",
+      "failed"
+    ],
+    "waitingUser": [
+      "running",
+      "cancelling",
+      "completed",
+      "interrupted",
+      "cancelled",
+      "failed"
+    ],
+    "cancelling": ["cancelled", "interrupted", "failed", "deliveryUnknown"],
+    "completed": [],
+    "interrupted": [],
+    "cancelled": [],
+    "failed": [],
+    "deliveryUnknown": []
+  },
+  "itemTransitions": {
+    "started": ["streaming", "completed", "failed", "cancelled", "unsupported"],
+    "streaming": ["completed", "failed", "cancelled", "unsupported"],
+    "completed": [],
+    "failed": [],
+    "cancelled": [],
+    "unsupported": []
+  },
+  "toolTransitions": {
+    "pending": [
+      "inProgress",
+      "waitingForApproval",
+      "completed",
+      "failed",
+      "declined",
+      "cancelled"
+    ],
+    "inProgress": [
+      "waitingForApproval",
+      "completed",
+      "failed",
+      "declined",
+      "cancelled"
+    ],
+    "waitingForApproval": [
+      "inProgress",
+      "completed",
+      "failed",
+      "declined",
+      "cancelled"
+    ],
+    "completed": [],
+    "failed": [],
+    "declined": [],
+    "cancelled": []
+  },
+  "serverRequestTransitions": {
+    "received": ["declinePending"],
+    "declinePending": ["declineCommitted"],
+    "declineCommitted": ["responseQueued"],
+    "responseQueued": ["resolvedDeclined"],
+    "resolvedDeclined": []
+  },
+  "activityTransitions": {
+    "observed": ["active", "completed", "failed", "cancelled", "unsupported"],
+    "active": ["completed", "failed", "cancelled", "unsupported"],
+    "completed": [],
+    "failed": [],
+    "cancelled": [],
+    "unsupported": []
+  },
+  "terminalRules": {
+    "firstValidTerminalWins": true,
+    "identicalDuplicateTerminal": "no-op",
+    "conflictingTerminal": "protocol-violation-preserve-first",
+    "lateDelta": "discard-without-reopen",
+    "commitBeforeNotify": true
+  },
+  "requestPayloadDigestV1": {
+    "algorithm": "sha256",
+    "domainSeparatorUtf8": "sage-acp-request-v1\\u0000",
+    "orderedParts": [
+      "one-byte method-presence tag",
+      "eight-byte big-endian method byte length",
+      "exact structurally validated method UTF-8 bytes",
+      "one-byte params-presence tag",
+      "eight-byte big-endian params-token byte length",
+      "exact structurally validated params JSON token bytes"
+    ],
+    "semanticJsonCanonicalization": false,
+    "unicodeNormalization": false,
+    "duplicateDecodedKeysAccepted": false,
+    "durableDigestVersion": 1
+  },
+  "projectionEvent": {
+    "name": "acp-projection-changed-v1",
+    "payload": [
+      { "name": "projectId", "type": "SageProjectId" },
+      { "name": "chatId", "type": "SageChatId" },
+      { "name": "sessionId", "type": "SageAgentSessionId" },
+      {
+        "name": "projectionRevision",
+        "type": "canonical-positive-decimal-string"
+      }
+    ],
+    "mailboxSlots": 1,
+    "coalescing": "same projectId/chatId/sessionId tuple keeps only greatest revision; different tuple waits or converges through command response/bootstrap",
+    "contentPayloadAllowed": false
+  },
+  "ipcCommands": {
+    "queries": ["get_acp_chat_page"],
+    "mutations": [
+      "start_acp_session",
+      "activate_acp_session",
+      "send_acp_turn",
+      "cancel_acp_turn",
+      "close_acp_session"
+    ],
+    "requiredMutationIntent": [
+      "projectId",
+      "projectGeneration",
+      "chatId",
+      "expectedProjectionRevision",
+      "clientIntentId"
+    ],
+    "sessionMutationIntentAdds": ["sessionId", "runtimeEpoch"],
+    "cancelIntentAdds": ["turnId", "expectedTurnState", "expectedTurnRevision"],
+    "serverChosenPageSize": true,
+    "opaqueCursor": true,
+    "rustCreatesAuthoritativeIds": true,
+    "forbiddenInputs": [
+      "artifact path",
+      "executable path",
+      "arguments",
+      "command line",
+      "working directory",
+      "environment",
+      "raw frame",
+      "provider object",
+      "absolute path",
+      "shell request",
+      "generic process request",
+      "generic filesystem request",
+      "secret",
+      "token",
+      "client-selected queue limit",
+      "client-selected page size"
+    ]
+  },
+  "optionalNativeCapabilities": {
+    "nativeSessionFork": "disabled-in-ADE-0006A",
+    "activeTurnSteer": "disabled-in-ADE-0006A",
+    "childConversationProjection": "representation-only-in-ADE-0006A",
+    "childTranscriptRead": "disabled-in-ADE-0006A",
+    "collaborationEventProjection": "representation-only-in-ADE-0006A"
+  },
+  "capabilitySnapshotV1": {
+    "persistenceRule": "Rust validates the closed shape and byte bounds before serialization and SQLite insertion; json_valid alone is insufficient",
+    "additionalProperties": false,
+    "requiredKeys": [
+      "schemaVersion",
+      "protocolVersion",
+      "newSession",
+      "resumeSession",
+      "loadSession",
+      "closeSession",
+      "prompt",
+      "cancel",
+      "nativeSessionFork",
+      "activeTurnSteer",
+      "childConversationProjection",
+      "childTranscriptRead",
+      "collaborationEventProjection",
+      "multiRootExtensionSchemaId",
+      "modelCount",
+      "configCount"
+    ],
+    "missingKeyRule": "reject before persistence; capability absence is represented by an explicit false or null value, never a tolerant default",
+    "canonicalPendingDenyAll": {
+      "schemaVersion": 1,
+      "protocolVersion": "pending",
+      "newSession": false,
+      "resumeSession": false,
+      "loadSession": false,
+      "closeSession": false,
+      "prompt": false,
+      "cancel": false,
+      "nativeSessionFork": false,
+      "activeTurnSteer": false,
+      "childConversationProjection": false,
+      "childTranscriptRead": false,
+      "collaborationEventProjection": false,
+      "multiRootExtensionSchemaId": null,
+      "modelCount": 0,
+      "configCount": 0
+    },
+    "pendingFillRule": "A new nonlegacy AgentSession is inserted with the exact canonicalPendingDenyAll UTF-8 serialization and null externalSessionId. Exactly one atomic starting-to-ready update may replace both with a validated negotiated snapshot and nonempty externalSessionId. Every later identity change, including recovering-to-ready, is rejected.",
+    "canonicalLegacyDenyAll": {
+      "schemaVersion": 1,
+      "protocolVersion": "legacy",
+      "newSession": false,
+      "resumeSession": false,
+      "loadSession": false,
+      "closeSession": false,
+      "prompt": false,
+      "cancel": false,
+      "nativeSessionFork": false,
+      "activeTurnSteer": false,
+      "childConversationProjection": false,
+      "childTranscriptRead": false,
+      "collaborationEventProjection": false,
+      "multiRootExtensionSchemaId": null,
+      "modelCount": 0,
+      "configCount": 0
+    },
+    "allowedKeys": {
+      "schemaVersion": "integer-exactly-1",
+      "protocolVersion": "utf8-string-1-to-64-bytes",
+      "newSession": "boolean",
+      "resumeSession": "boolean",
+      "loadSession": "boolean",
+      "closeSession": "boolean",
+      "prompt": "boolean",
+      "cancel": "boolean",
+      "nativeSessionFork": "boolean",
+      "activeTurnSteer": "boolean",
+      "childConversationProjection": "boolean",
+      "childTranscriptRead": "boolean",
+      "collaborationEventProjection": "boolean",
+      "multiRootExtensionSchemaId": "null-or-utf8-string-1-to-128-bytes",
+      "modelCount": "integer-0-to-128",
+      "configCount": "integer-0-to-128"
+    },
+    "forbiddenContent": [
+      "_meta",
+      "raw provider object",
+      "absolute path",
+      "command",
+      "environment",
+      "secret",
+      "token"
+    ]
+  },
+  "activityProvenanceV1": {
+    "persistenceRule": "Rust validates the closed shape, enum values, and byte bounds before serialization and SQLite insertion; unknown or forbidden data becomes a bounded unsupported summary",
+    "additionalProperties": false,
+    "requiredKeys": [
+      "schemaVersion",
+      "sourceKind",
+      "externalKind",
+      "extensionSchemaId",
+      "safeLabel"
+    ],
+    "missingKeyRule": "reject before persistence; absent optional semantics are explicit null values",
+    "allowedKeys": {
+      "schemaVersion": "integer-exactly-1",
+      "sourceKind": "one-of-tool-extension-collaboration-unknown",
+      "externalKind": "utf8-string-1-to-128-bytes",
+      "extensionSchemaId": "null-or-utf8-string-1-to-128-bytes",
+      "safeLabel": "null-or-utf8-string-1-to-512-bytes"
+    },
+    "authoritativeForCapabilities": false,
+    "forbiddenContent": [
+      "_meta",
+      "raw provider object",
+      "absolute path",
+      "command",
+      "environment",
+      "secret",
+      "token"
+    ]
+  },
+  "nativeThreadRules": {
+    "harnessChildCreatesSageSession": false,
+    "harnessChildConsumesSageTurnSlot": false,
+    "harnessChildCreatesProcessTree": false,
+    "nativeForkCopiesTranscriptRows": false,
+    "nativeForkCreatesChatBeforeCorrelatedSuccess": false,
+    "possibleForkOrSteerWrite": "deliveryUnknown-no-automatic-replay",
+    "workerSchedulingOwner": "harness"
+  }
+}

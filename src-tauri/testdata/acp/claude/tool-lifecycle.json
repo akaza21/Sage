@@ -1,0 +1,37 @@
+[
+  {
+    "method": "session/update",
+    "params": {
+      "sessionId": "claude-session-1",
+      "update": {
+        "sessionUpdate": "tool_call",
+        "toolCallId": "tool-1",
+        "kind": "edit",
+        "status": "pending",
+        "title": "Edit C:\\private\\secret.txt",
+        "rawInput": { "command": "secret-command", "token": "sk-ant-fixture" }
+      }
+    }
+  },
+  {
+    "method": "session/update",
+    "params": {
+      "sessionId": "claude-session-1",
+      "update": {
+        "sessionUpdate": "tool_call_update",
+        "toolCallId": "tool-1",
+        "kind": "edit",
+        "status": "completed",
+        "rawOutput": "secret-command sk-ant-fixture",
+        "content": [
+          {
+            "type": "diff",
+            "path": "C:\\fixture\\root\\src\\lib.rs",
+            "oldText": "old\n",
+            "newText": "new\nline\n"
+          }
+        ]
+      }
+    }
+  }
+]

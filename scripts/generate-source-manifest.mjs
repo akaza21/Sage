@@ -127,10 +127,32 @@ export function buildSourceManifest(root, policy = defaultPolicy) {
   };
 }
 
-export function curatedCandidate(manifest) {
+const defaultCandidateOptions = {
+  workItem: "ADE-0005",
+  rawManifest:
+    "%WORKSPACE%/local-evidence/ADE-0005-project-lifecycle/fix-cycle-1/source-manifest.json",
+};
+
+export function curatedCandidate(manifest, options = defaultCandidateOptions) {
+  const { workItem, rawManifest } = {
+    ...defaultCandidateOptions,
+    ...options,
+  };
+  if (!/^ADE-[0-9]{4}[A-Z]?$/.test(workItem)) {
+    throw new Error(`invalid work item: ${workItem}`);
+  }
+  if (
+    !rawManifest.startsWith("%WORKSPACE%/local-evidence/") ||
+    !rawManifest.endsWith(".json") ||
+    rawManifest.includes("..") ||
+    rawManifest.includes("\\") ||
+    rawManifest.includes("\0")
+  ) {
+    throw new Error(`invalid raw manifest label: ${rawManifest}`);
+  }
   return {
     schemaVersion: manifest.schemaVersion,
-    workItem: "ADE-0005",
+    workItem,
     sanitized: true,
     policyVersion: manifest.policyVersion,
     aggregateSha256: manifest.aggregateSha256,
@@ -141,8 +163,7 @@ export function curatedCandidate(manifest) {
     pathFormat: manifest.pathFormat,
     ordering: manifest.ordering,
     aggregateConstruction: manifest.aggregateConstruction,
-    rawManifest:
-      "%WORKSPACE%/local-evidence/ADE-0005-project-lifecycle/fix-cycle-1/source-manifest.json",
+    rawManifest,
   };
 }
 
@@ -173,24 +194,39 @@ function argument(name) {
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
+function rawManifestLabel(output) {
+  const relative = normalizedRelative(workspaceRoot, path.resolve(output));
+  if (!relative.startsWith("local-evidence/")) {
+    throw new Error("raw source manifest must be stored under local-evidence");
+  }
+  return `%WORKSPACE%/${relative}`;
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
   const rawOutput = argument("--output");
   const curatedOutput = argument("--curated-output");
+  const workItem = argument("--work-item") ?? defaultCandidateOptions.workItem;
   if (!rawOutput || !curatedOutput) {
     throw new Error(
-      "usage: generate-source-manifest.mjs --output <ignored-json> --curated-output <json>",
+      "usage: generate-source-manifest.mjs --output <ignored-json> --curated-output <json> [--work-item ADE-0000]",
     );
   }
   const manifest = buildSourceManifest(workspaceRoot);
-  manifest.command =
-    "node scripts/generate-source-manifest.mjs --output %RAW_MANIFEST% --curated-output docs/work-items/ADE-0005-project-lifecycle/evidence/candidate-summary.json";
+  manifest.command = `node scripts/generate-source-manifest.mjs --output %RAW_MANIFEST% --curated-output %CURATED_MANIFEST% --work-item ${workItem}`;
   for (const output of [rawOutput, curatedOutput]) {
     mkdirSync(path.dirname(path.resolve(output)), { recursive: true });
   }
   writeFileSync(rawOutput, `${JSON.stringify(manifest, null, 2)}\n`);
   writeFileSync(
     curatedOutput,
-    `${JSON.stringify(curatedCandidate(manifest), null, 2)}\n`,
+    `${JSON.stringify(
+      curatedCandidate(manifest, {
+        workItem,
+        rawManifest: rawManifestLabel(rawOutput),
+      }),
+      null,
+      2,
+    )}\n`,
   );
   console.log(
     JSON.stringify({

@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 2,
+  "status": "implemented-pending-independent-review",
+  "authority": "Every file in ownedDirectoryScopes and ownedFileScopes resolves to exactly one rule. Prefixes include all descendants. Files outside these scopes are not assigned by this ADE manifest.",
+  "checkoutPolicy": {
+    "integrationCheckoutWriters": 1,
+    "productionWritersPerCheckout": 1,
+    "laneCheckoutRequired": true,
+    "staleWorktreeReuseAllowed": false,
+    "contractChangeAction": "stop-and-return-to-specify",
+    "integrationAction": "serialized-owner-only"
+  },
+  "ownedDirectoryScopes": [
+    "docs/work-items/ADE-0006A-acp-session-foundation/",
+    "src-tauri/src/acp/",
+    "src-tauri/src/persistence/",
+    "src-tauri/src/session_events/",
+    "src-tauri/src/workbench_persistence/",
+    "src-tauri/testdata/acp/",
+    "src/features/chat/acp/"
+  ],
+  "ownedFileScopes": [
+    "docs/decisions/ADR-0007-bounded-acp-session-runtime.md",
+    "docs/development/CURRENT-STATE.md",
+    "docs/development/ROADMAP.md",
+    "scripts/check-policy.mjs",
+    "scripts/generate-acp-fixture-cases.mjs",
+    "src-tauri/Cargo.lock",
+    "src-tauri/Cargo.toml",
+    "src-tauri/migrations/005_acp_session_foundation.sql",
+    "src-tauri/src/bin/acp_adversarial_fixture.rs",
+    "src-tauri/src/commands.rs",
+    "src-tauri/src/editor_persistence.rs",
+    "src-tauri/src/lib.rs",
+    "src-tauri/src/persistence.rs",
+    "src-tauri/src/project_registry.rs",
+    "src-tauri/src/session_events.rs",
+    "src-tauri/src/state.rs",
+    "src-tauri/src/workbench_persistence.rs",
+    "src-tauri/tauri.conf.json",
+    "src/app/acpProjectionMerge.ts",
+    "src/app/acpProjectionStore.test.ts",
+    "src/app/acpProjectionStore.ts",
+    "src/domain/acp.ts",
+    "src/features/chat/ChatSurface.test.tsx",
+    "src/features/chat/ChatSurface.tsx",
+    "src/services/acpDesktop.test.ts",
+    "src/services/acpDesktop.ts"
+  ],
+  "rules": [
+    {
+      "owner": "c0-contract-and-migration",
+      "prefixes": [
+        "docs/work-items/ADE-0006A-acp-session-foundation/",
+        "src-tauri/src/acp/migration/",
+        "src-tauri/src/acp/resource_mapper/",
+        "src-tauri/src/acp/tests/"
+      ],
+      "files": [
+        "docs/decisions/ADR-0007-bounded-acp-session-runtime.md",
+        "docs/development/CURRENT-STATE.md",
+        "docs/development/ROADMAP.md",
+        "scripts/generate-acp-fixture-cases.mjs",
+        "src-tauri/Cargo.lock",
+        "src-tauri/Cargo.toml",
+        "src-tauri/migrations/005_acp_session_foundation.sql",
+        "src-tauri/src/acp/bindings/adapter.rs",
+        "src-tauri/src/acp/contract.rs",
+        "src-tauri/src/acp/fixture_protocol.rs",
+        "src-tauri/src/acp/intent.rs",
+        "src-tauri/src/acp/lifecycle.rs",
+        "src-tauri/src/acp/limits.rs",
+        "src-tauri/src/acp/projection.rs",
+        "src-tauri/src/acp/semantic_ingress.rs",
+        "src/domain/acp.ts"
+      ]
+    },
+    {
+      "owner": "p1-process-wire-fixture",
+      "prefixes": [
+        "src-tauri/src/acp/fixture/",
+        "src-tauri/src/acp/process/",
+        "src-tauri/src/acp/redaction/",
+        "src-tauri/src/acp/transport/"
+      ],
+      "files": ["src-tauri/src/bin/acp_adversarial_fixture.rs"]
+    },
+    {
+      "owner": "p2-runtime-store",
+      "prefixes": [
+        "src-tauri/src/acp/recovery/",
+        "src-tauri/src/acp/runtime/",
+        "src-tauri/src/acp/scheduler/",
+        "src-tauri/src/acp/service/",
+        "src-tauri/src/acp/store/",
+        "src-tauri/src/persistence/",
+        "src-tauri/src/session_events/",
+        "src-tauri/src/workbench_persistence/"
+      ],
+      "files": [
+        "src-tauri/src/acp/page_admission.rs",
+        "src-tauri/src/acp/service.rs"
+      ]
+    },
+    {
+      "owner": "p3-chat-projection",
+      "prefixes": ["src/features/chat/acp/"],
+      "files": [
+        "src/app/acpProjectionMerge.ts",
+        "src/app/acpProjectionStore.test.ts",
+        "src/app/acpProjectionStore.ts"
+      ]
+    },
+    {
+      "owner": "h1-codex-admission",
+      "prefixes": [
+        "src-tauri/src/acp/bindings/codex/",
+        "src-tauri/testdata/acp/codex/"
+      ],
+      "files": []
+    },
+    {
+      "owner": "h2-pi-admission",
+      "prefixes": [
+        "src-tauri/src/acp/bindings/pi/",
+        "src-tauri/testdata/acp/pi/"
+      ],
+      "files": []
+    },
+    {
+      "owner": "h3-claude-admission",
+      "prefixes": [
+        "src-tauri/src/acp/bindings/claude/",
+        "src-tauri/testdata/acp/claude/"
+      ],
+      "files": []
+    },
+    {
+      "owner": "h4-omp-admission",
+      "prefixes": [
+        "src-tauri/src/acp/bindings/omp/",
+        "src-tauri/testdata/acp/omp/"
+      ],
+      "files": []
+    },
+    {
+      "owner": "serialized-final-integration",
+      "prefixes": [],
+      "files": [
+        "scripts/check-policy.mjs",
+        "src-tauri/src/acp/bindings/mod.rs",
+        "src-tauri/src/acp/ipc.rs",
+        "src-tauri/src/acp/mod.rs",
+        "src-tauri/src/commands.rs",
+        "src-tauri/src/editor_persistence.rs",
+        "src-tauri/src/lib.rs",
+        "src-tauri/src/persistence.rs",
+        "src-tauri/src/project_registry.rs",
+        "src-tauri/src/session_events.rs",
+        "src-tauri/src/state.rs",
+        "src-tauri/src/workbench_persistence.rs",
+        "src-tauri/tauri.conf.json",
+        "src/features/chat/ChatSurface.test.tsx",
+        "src/features/chat/ChatSurface.tsx",
+        "src/services/acpDesktop.test.ts",
+        "src/services/acpDesktop.ts"
+      ]
+    }
+  ],
+  "mergeOrder": [
+    "C0 shared contract and migration checkpoint",
+    "P1 process-wire-fixture and P2 runtime-store after the shared checkpoint",
+    "P3 chat projection after the shared TypeScript contract",
+    "H1 Codex, H2 Pi, H3 Claude, H4 OMP as separately reviewed admissions",
+    "serialized shared wiring",
+    "fresh review and independent test"
+  ]
+}

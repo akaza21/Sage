@@ -1,0 +1,2159 @@
+{
+  "schemaVersion": 1,
+  "status": "proposed-c0-specification",
+  "fixtureCli": ["--case", "<case-id>", "--seed", "0"],
+  "caseBounds": {
+    "steps": 128,
+    "expandedBytes": 9437184,
+    "instructionBytes": 65536,
+    "delayMs": 30000
+  },
+  "executionContract": {
+    "childOperations": [
+      "awaitClient",
+      "closeStdin",
+      "closeStdinBeforeRead",
+      "closeStdout",
+      "delayUntilIntentChanges",
+      "emitBoundedJson",
+      "emitCanaries",
+      "emitCapabilityToken",
+      "emitExternalId",
+      "emitKnownFrame",
+      "emitMalformed",
+      "emitMetadata",
+      "emitModels",
+      "emitPermissionPayload",
+      "emitRpcMethod",
+      "emitSizedFrame",
+      "emitStderrLine",
+      "exit",
+      "fillStderrRing",
+      "readPromptBytes",
+      "readRequestBytes",
+      "spawnFixtureChildren",
+      "spawnTree"
+    ],
+    "hostOperations": [
+      "advanceDelivery",
+      "commitDecline",
+      "crashRestartEach",
+      "deleteChatLineage",
+      "deleteRuntimeEpoch",
+      "fillEgressControl",
+      "fillEgressData",
+      "fillJournalControl",
+      "fillJournalData",
+      "fillDriverData",
+      "injectEncodingFailure",
+      "injectQueueFailure",
+      "injectSqliteFailure",
+      "insertActivity",
+      "insertAgentSession",
+      "insertChatHead",
+      "insertChatLineage",
+      "insertItem",
+      "insertResolvedRequest",
+      "insertRuntimeEpoch",
+      "insertServerRequest",
+      "insertTerminalAgentSession",
+      "insertTerminalTurn",
+      "inspectCsp",
+      "inspectPackage",
+      "launchShape",
+      "mapNativePath",
+      "migrateSession",
+      "normalizeError",
+      "normalizeItem",
+      "normalizeTool",
+      "normalizeUnsupported",
+      "openVerifiedArtifact",
+      "persistActivities",
+      "persistActivity",
+      "persistActivityProvenance",
+      "persistCapabilitySnapshot",
+      "persistCollaboration",
+      "persistItems",
+      "readActivityPage",
+      "readPage",
+      "receivePermissionRequest",
+      "reloadSession",
+      "replaceArtifactPath",
+      "reserveRpc",
+      "reserveRuntimeTasks",
+      "reserveServerRequests",
+      "restart",
+      "retainTerminalTail",
+      "runMigration",
+      "runMigrationFailpoint",
+      "sendPrompt",
+      "spawnFromVerifiedHandle",
+      "terminalizeActivity",
+      "terminalizeSession",
+      "updateActivity",
+      "updateAgentSession",
+      "updateChatHead",
+      "updateChatLineage",
+      "updateServerRequest",
+      "updateTurn"
+    ],
+    "requiredOwnershipCounts": {
+      "child": 73,
+      "host": 106,
+      "mixed": 0,
+      "operations": 84
+    },
+    "phaseExceptions": {
+      "windows": [
+        "descendants-exact-32",
+        "descendants-over-32",
+        "verified-artifact-replacement-race",
+        "windows-job-processes-33",
+        "windows-job-processes-34"
+      ],
+      "package": ["default-package-fixture-exclusion"],
+      "deferredFoundation": [
+        "native-fork-capability-absent",
+        "native-fork-partial-write",
+        "native-fork-correlated-success",
+        "native-steer-stale-turn",
+        "terminal-tail-bytes-32768",
+        "terminal-tail-bytes-32769"
+      ]
+    },
+    "requiredPhaseCounts": {
+      "headlessFoundation": 167,
+      "windows": 5,
+      "package": 1,
+      "deferredFoundation": 6,
+      "inScopeAde0006a": 173,
+      "total": 179
+    },
+    "oracleRule": "Only literal equality with independently observed fields from the designated production seam passes. Recognition, syntax validation, child exit success, HostOracleRequired, platform unavailability, skip, and ignore do not satisfy an oracle.",
+    "sqliteConstraintLabels": {
+      "unique": "SQLite PRIMARY KEY or UNIQUE extended constraint",
+      "foreign-key": "SQLite FOREIGN KEY extended constraint",
+      "check": "SQLite CHECK extended constraint",
+      "trigger": "SQLite trigger RAISE constraint"
+    },
+    "seedPolicy": {
+      "conformanceSeed": 0,
+      "nonzeroSeeds": "diagnostic-or-stress-only"
+    }
+  },
+  "cases": [
+    {
+      "id": "frame-lf-split-every-byte",
+      "steps": [
+        { "op": "awaitClient", "kind": "initialize" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "initializeSuccess",
+          "delimiter": "lf",
+          "split": "everyByte"
+        },
+        { "op": "exit", "code": 0 }
+      ],
+      "oracle": { "terminal": "ready", "protocolViolation": false }
+    },
+    {
+      "id": "frame-crlf-accepted",
+      "steps": [
+        { "op": "awaitClient", "kind": "initialize" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "initializeSuccess",
+          "delimiter": "crlf",
+          "split": "none"
+        },
+        { "op": "exit", "code": 0 }
+      ],
+      "oracle": { "terminal": "ready", "protocolViolation": false }
+    },
+    {
+      "id": "frame-invalid-utf8",
+      "steps": [{ "op": "emitMalformed", "shape": "invalidUtf8" }],
+      "oracle": {
+        "terminal": "failed",
+        "protocolViolation": true,
+        "treeMustExit": true
+      }
+    },
+    {
+      "id": "frame-nul",
+      "steps": [{ "op": "emitMalformed", "shape": "embeddedNul" }],
+      "oracle": {
+        "terminal": "failed",
+        "protocolViolation": true,
+        "treeMustExit": true
+      }
+    },
+    {
+      "id": "frame-exact-1048576",
+      "steps": [
+        { "op": "emitSizedFrame", "bytes": 1048576, "validJson": true }
+      ],
+      "oracle": {
+        "protocolViolation": false,
+        "allocationBytesMaximum": 1048576
+      }
+    },
+    {
+      "id": "frame-over-1048576",
+      "steps": [
+        { "op": "emitSizedFrame", "bytes": 1048577, "validJson": true }
+      ],
+      "oracle": {
+        "terminal": "failed",
+        "protocolViolation": true,
+        "allocationBytesMaximum": 1048576
+      }
+    },
+    {
+      "id": "frame-partial-eof",
+      "steps": [
+        { "op": "emitMalformed", "shape": "partialJsonWithoutDelimiter" },
+        { "op": "closeStdout" }
+      ],
+      "oracle": { "terminal": "failed", "protocolViolation": true }
+    },
+    {
+      "id": "frame-json-batch",
+      "steps": [{ "op": "emitMalformed", "shape": "topLevelArray" }],
+      "oracle": { "terminal": "failed", "protocolViolation": true }
+    },
+    {
+      "id": "frame-trailing-json",
+      "steps": [{ "op": "emitMalformed", "shape": "twoObjectsOneFrame" }],
+      "oracle": { "terminal": "failed", "protocolViolation": true }
+    },
+    {
+      "id": "json-depth-32",
+      "steps": [
+        { "op": "emitBoundedJson", "shape": "nestedObject", "depth": 32 }
+      ],
+      "oracle": { "structuralValidation": "accepted" }
+    },
+    {
+      "id": "json-depth-33",
+      "steps": [
+        { "op": "emitBoundedJson", "shape": "nestedObject", "depth": 33 }
+      ],
+      "oracle": {
+        "terminal": "failed",
+        "structuralValidation": "limitExceeded"
+      }
+    },
+    {
+      "id": "json-object-members-256",
+      "steps": [
+        { "op": "emitBoundedJson", "shape": "objectMembers", "count": 256 }
+      ],
+      "oracle": { "structuralValidation": "accepted" }
+    },
+    {
+      "id": "json-object-members-257",
+      "steps": [
+        { "op": "emitBoundedJson", "shape": "objectMembers", "count": 257 }
+      ],
+      "oracle": {
+        "terminal": "failed",
+        "structuralValidation": "limitExceeded"
+      }
+    },
+    {
+      "id": "json-array-entries-512",
+      "steps": [
+        { "op": "emitBoundedJson", "shape": "arrayEntries", "count": 512 }
+      ],
+      "oracle": { "structuralValidation": "accepted" }
+    },
+    {
+      "id": "json-array-entries-513",
+      "steps": [
+        { "op": "emitBoundedJson", "shape": "arrayEntries", "count": 513 }
+      ],
+      "oracle": {
+        "terminal": "failed",
+        "structuralValidation": "limitExceeded"
+      }
+    },
+    {
+      "id": "json-duplicate-decoded-key",
+      "steps": [{ "op": "emitMalformed", "shape": "duplicateDecodedKey" }],
+      "oracle": { "terminal": "failed", "protocolViolation": true }
+    },
+    {
+      "id": "rpc-unknown-bounded-notification",
+      "steps": [
+        {
+          "op": "emitKnownFrame",
+          "shape": "unknownBoundedNotification",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": { "normalizedItem": "unsupported", "capabilityChange": false }
+    },
+    {
+      "id": "rpc-unknown-request",
+      "steps": [
+        {
+          "op": "emitKnownFrame",
+          "shape": "unknownRequest",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": { "terminal": "failed", "permissionGranted": false }
+    },
+    {
+      "id": "turn-text-success",
+      "steps": [
+        { "op": "awaitClient", "kind": "prompt" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "textStart",
+          "delimiter": "lf",
+          "split": "none"
+        },
+        {
+          "op": "emitKnownFrame",
+          "shape": "textDelta",
+          "delimiter": "lf",
+          "split": "none"
+        },
+        {
+          "op": "emitKnownFrame",
+          "shape": "textComplete",
+          "delimiter": "lf",
+          "split": "none"
+        },
+        {
+          "op": "emitKnownFrame",
+          "shape": "turnComplete",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": {
+        "turn": "completed",
+        "item": "completed",
+        "commitBeforeNotify": true
+      }
+    },
+    {
+      "id": "item-identical-terminal-duplicate",
+      "steps": [
+        { "op": "awaitClient", "kind": "prompt" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "toolCompletedA",
+          "delimiter": "lf",
+          "split": "none"
+        },
+        {
+          "op": "emitKnownFrame",
+          "shape": "toolCompletedA",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": { "tool": "completed", "secondUpdate": "noOp", "factCount": 1 }
+    },
+    {
+      "id": "item-conflicting-terminal-duplicate",
+      "steps": [
+        { "op": "awaitClient", "kind": "prompt" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "toolCompletedA",
+          "delimiter": "lf",
+          "split": "none"
+        },
+        {
+          "op": "emitKnownFrame",
+          "shape": "toolFailedA",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": {
+        "terminal": "failed",
+        "protocolViolation": true,
+        "firstTerminalPreserved": true
+      }
+    },
+    {
+      "id": "item-late-delta-after-terminal",
+      "steps": [
+        { "op": "awaitClient", "kind": "prompt" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "textComplete",
+          "delimiter": "lf",
+          "split": "none"
+        },
+        {
+          "op": "emitKnownFrame",
+          "shape": "textDelta",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": { "lateUpdate": "discarded", "terminalReopened": false }
+    },
+    {
+      "id": "permission-identical-live-duplicate",
+      "steps": [
+        {
+          "op": "emitKnownFrame",
+          "shape": "permissionRequestA",
+          "delimiter": "lf",
+          "split": "none"
+        },
+        {
+          "op": "emitKnownFrame",
+          "shape": "permissionRequestA",
+          "delimiter": "lf",
+          "split": "none"
+        },
+        { "op": "awaitClient", "kind": "permissionDecline" }
+      ],
+      "oracle": {
+        "permission": "declined",
+        "durableDeclineCount": 1,
+        "allowVisible": false
+      }
+    },
+    {
+      "id": "permission-conflicting-duplicate",
+      "steps": [
+        {
+          "op": "emitKnownFrame",
+          "shape": "permissionRequestA",
+          "delimiter": "lf",
+          "split": "none"
+        },
+        {
+          "op": "emitKnownFrame",
+          "shape": "permissionRequestAConflictingPayload",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": {
+        "terminal": "failed",
+        "permissionGranted": false,
+        "treeMustExit": true
+      }
+    },
+    {
+      "id": "permission-old-epoch-after-restart",
+      "steps": [
+        {
+          "op": "emitKnownFrame",
+          "shape": "permissionRequestA",
+          "delimiter": "lf",
+          "split": "none"
+        },
+        { "op": "exit", "code": 7 }
+      ],
+      "oracle": {
+        "session": "failed",
+        "requestReplayed": false,
+        "permissionGranted": false
+      }
+    },
+    {
+      "id": "send-zero-byte-failure",
+      "steps": [{ "op": "closeStdinBeforeRead" }, { "op": "exit", "code": 8 }],
+      "oracle": { "retryCount": 1, "deliveryUnknown": false }
+    },
+    {
+      "id": "send-partial-write-failure",
+      "steps": [
+        { "op": "readPromptBytes", "bytes": 1 },
+        { "op": "closeStdin" },
+        { "op": "exit", "code": 9 }
+      ],
+      "oracle": { "turn": "deliveryUnknown", "automaticReplay": false }
+    },
+    {
+      "id": "send-complete-uncorrelated-exit",
+      "steps": [
+        { "op": "awaitClient", "kind": "prompt" },
+        { "op": "exit", "code": 10 }
+      ],
+      "oracle": { "turn": "deliveryUnknown", "automaticReplay": false }
+    },
+    {
+      "id": "send-correlated-then-exit",
+      "steps": [
+        { "op": "awaitClient", "kind": "prompt" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "textStart",
+          "delimiter": "lf",
+          "split": "none"
+        },
+        { "op": "exit", "code": 11 }
+      ],
+      "oracle": { "turn": "interrupted", "deliveryUnknown": false }
+    },
+    {
+      "id": "cancel-dispatch-at-capacity",
+      "steps": [
+        { "op": "awaitClient", "kind": "prompt" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "fillDataQueue",
+          "delimiter": "lf",
+          "split": "none"
+        },
+        { "op": "awaitClient", "kind": "cancel" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "turnCancelled",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": {
+        "cancelDispatchMsMaximum": 100,
+        "controlCapacityBorrowed": false
+      }
+    },
+    {
+      "id": "resume-success-once",
+      "steps": [
+        { "op": "awaitClient", "kind": "resume" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "resumeSuccess",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": {
+        "session": "ready",
+        "resumeAttempts": 1,
+        "promptReplayed": false
+      }
+    },
+    {
+      "id": "resume-failure-no-second-attempt",
+      "steps": [
+        { "op": "awaitClient", "kind": "resume" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "resumeFailure",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": {
+        "session": "failed",
+        "resumeAttempts": 1,
+        "promptReplayed": false
+      }
+    },
+    {
+      "id": "descendants-exact-32",
+      "steps": [
+        { "op": "spawnFixtureChildren", "count": 32 },
+        { "op": "awaitClient", "kind": "cancel" }
+      ],
+      "oracle": { "launchAccepted": true, "survivors": 0 }
+    },
+    {
+      "id": "descendants-over-32",
+      "steps": [{ "op": "spawnFixtureChildren", "count": 33 }],
+      "oracle": {
+        "terminal": "failed",
+        "launchAccepted": false,
+        "survivors": 0
+      }
+    },
+    {
+      "id": "stale-project-generation-completion",
+      "steps": [
+        { "op": "awaitClient", "kind": "prompt" },
+        { "op": "delayUntilIntentChanges" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "turnComplete",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": {
+        "durableOwningTurnMayComplete": true,
+        "activeForeignProjectProjectionChanged": false
+      }
+    },
+    {
+      "id": "native-activity-child-text",
+      "steps": [
+        { "op": "awaitClient", "kind": "prompt" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "parentToolStart",
+          "delimiter": "lf",
+          "split": "none"
+        },
+        {
+          "op": "emitKnownFrame",
+          "shape": "childActivityText",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": {
+        "itemOrigin": "harnessActivity",
+        "newSageSession": false,
+        "newProcessTree": false
+      }
+    },
+    {
+      "id": "native-activity-depth-4",
+      "steps": [
+        {
+          "op": "emitKnownFrame",
+          "shape": "childActivityDepth4",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": { "projection": "accepted", "depth": 4 }
+    },
+    {
+      "id": "native-activity-depth-5",
+      "steps": [
+        {
+          "op": "emitKnownFrame",
+          "shape": "childActivityDepth5",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": { "projection": "unsupported", "capabilityChange": false }
+    },
+    {
+      "id": "native-activity-foreign-parent",
+      "steps": [
+        {
+          "op": "emitKnownFrame",
+          "shape": "childActivityForeignParent",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": {
+        "terminal": "failed",
+        "protocolViolation": true,
+        "newSageSession": false
+      }
+    },
+    {
+      "id": "native-fork-capability-absent",
+      "steps": [{ "op": "awaitClient", "kind": "nativeFork" }],
+      "oracle": {
+        "result": "CapabilityUnavailable",
+        "newChat": false,
+        "transportWrite": false
+      }
+    },
+    {
+      "id": "native-fork-partial-write",
+      "steps": [
+        { "op": "awaitClient", "kind": "nativeFork" },
+        { "op": "readRequestBytes", "bytes": 1 },
+        { "op": "closeStdin" }
+      ],
+      "oracle": {
+        "result": "deliveryUnknown",
+        "newChat": false,
+        "automaticReplay": false
+      }
+    },
+    {
+      "id": "native-fork-correlated-success",
+      "steps": [
+        { "op": "awaitClient", "kind": "nativeFork" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "nativeForkSuccess",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": {
+        "newChat": true,
+        "immutableLineage": true,
+        "copiedTranscriptRows": false
+      }
+    },
+    {
+      "id": "native-steer-stale-turn",
+      "steps": [{ "op": "awaitClient", "kind": "nativeSteerStaleTurn" }],
+      "oracle": { "result": "IntentMismatch", "transportWrite": false }
+    },
+    {
+      "id": "collaboration-unknown-operation",
+      "steps": [
+        {
+          "op": "emitKnownFrame",
+          "shape": "unknownCollaborationOperation",
+          "delimiter": "lf",
+          "split": "none"
+        }
+      ],
+      "oracle": {
+        "normalizedItem": "unsupported",
+        "workerControlEnabled": false
+      }
+    },
+    {
+      "id": "driver-data-messages-256",
+      "steps": [{ "op": "fillDriverData", "messages": 256, "bytes": 256 }],
+      "oracle": { "accepted": true, "retainedMessages": 256 }
+    },
+    {
+      "id": "driver-data-messages-257",
+      "steps": [{ "op": "fillDriverData", "messages": 257, "bytes": 257 }],
+      "oracle": {
+        "accepted": false,
+        "error": "RuntimeCapacity",
+        "retainedMessagesMaximum": 256
+      }
+    },
+    {
+      "id": "driver-data-bytes-2097152",
+      "steps": [
+        {
+          "op": "fillDriverData",
+          "repeatedMessageBytes": { "bytes": 8192, "count": 256 }
+        }
+      ],
+      "oracle": { "accepted": true, "retainedBytes": 2097152 }
+    },
+    {
+      "id": "driver-data-bytes-2097153",
+      "steps": [
+        {
+          "op": "fillDriverData",
+          "repeatedMessageBytes": { "bytes": 8192, "count": 255 },
+          "additionalMessageBytes": [8193],
+          "additionalMessageKinds": ["prompt"]
+        }
+      ],
+      "oracle": {
+        "accepted": false,
+        "error": "RuntimeCapacity",
+        "retainedBytesMaximum": 2097152,
+        "messageLimitBreached": false
+      }
+    },
+    {
+      "id": "egress-frames-64",
+      "steps": [
+        { "op": "fillEgressData", "frames": 56, "bytes": 168 },
+        { "op": "fillEgressControl", "frames": 8, "bytes": 24 }
+      ],
+      "oracle": {
+        "accepted": true,
+        "totalFrames": 64,
+        "controlReserveUsable": true
+      }
+    },
+    {
+      "id": "egress-frames-65",
+      "steps": [
+        { "op": "fillEgressData", "frames": 56, "bytes": 168 },
+        { "op": "fillEgressControl", "frames": 9, "bytes": 27 }
+      ],
+      "oracle": {
+        "accepted": false,
+        "error": "RuntimeCapacity",
+        "totalFramesMaximum": 64
+      }
+    },
+    {
+      "id": "egress-data-cannot-consume-control-reserve",
+      "steps": [{ "op": "fillEgressData", "frames": 57, "bytes": 1835011 }],
+      "oracle": {
+        "accepted": false,
+        "dataFramesMaximum": 56,
+        "dataBytesMaximum": 1835008,
+        "controlReserveIntact": true
+      }
+    },
+    {
+      "id": "egress-bytes-2097152",
+      "steps": [
+        {
+          "op": "fillEgressData",
+          "frames": 56,
+          "bytesEach": 32768,
+          "bytes": 1835008
+        },
+        {
+          "op": "fillEgressControl",
+          "frames": 8,
+          "bytesEach": 32768,
+          "bytes": 262144
+        }
+      ],
+      "oracle": { "accepted": true, "totalBytes": 2097152 }
+    },
+    {
+      "id": "egress-bytes-2097153",
+      "steps": [
+        {
+          "op": "fillEgressData",
+          "frames": 56,
+          "bytes": 1835009,
+          "largestFrameBytes": 32769
+        },
+        {
+          "op": "fillEgressControl",
+          "frames": 8,
+          "bytesEach": 32768,
+          "bytes": 262144
+        }
+      ],
+      "oracle": { "accepted": false, "totalBytesMaximum": 2097152 }
+    },
+    {
+      "id": "journal-batches-128",
+      "steps": [
+        { "op": "fillJournalData", "batches": 120 },
+        { "op": "fillJournalControl", "batches": 8 }
+      ],
+      "oracle": {
+        "accepted": true,
+        "totalBatches": 128,
+        "controlReserveUsable": true
+      }
+    },
+    {
+      "id": "journal-batches-129",
+      "steps": [
+        { "op": "fillJournalData", "batches": 120 },
+        { "op": "fillJournalControl", "batches": 9 }
+      ],
+      "oracle": { "accepted": false, "totalBatchesMaximum": 128 }
+    },
+    {
+      "id": "journal-data-cannot-consume-control-reserve",
+      "steps": [{ "op": "fillJournalData", "batches": 121 }],
+      "oracle": {
+        "accepted": false,
+        "dataBatchesMaximum": 120,
+        "controlReserveIntact": true
+      }
+    },
+    {
+      "id": "journal-bytes-4194304",
+      "steps": [
+        {
+          "op": "fillJournalData",
+          "batches": 120,
+          "bytesEach": 32768,
+          "bytes": 3932160
+        },
+        {
+          "op": "fillJournalControl",
+          "batches": 8,
+          "bytesEach": 32768,
+          "bytes": 262144
+        }
+      ],
+      "oracle": { "accepted": true, "totalBytes": 4194304 }
+    },
+    {
+      "id": "journal-bytes-4194305",
+      "steps": [
+        {
+          "op": "fillJournalData",
+          "batches": 120,
+          "bytes": 3932161,
+          "largestBatchBytes": 32769
+        },
+        {
+          "op": "fillJournalControl",
+          "batches": 8,
+          "bytesEach": 32768,
+          "bytes": 262144
+        }
+      ],
+      "oracle": { "accepted": false, "totalBytesMaximum": 4194304 }
+    },
+    {
+      "id": "rpc-session-16-global-32",
+      "steps": [
+        { "op": "reserveRpc", "sessions": 2, "perSession": 16, "global": 32 }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "rpc-session-17",
+      "steps": [
+        { "op": "reserveRpc", "sessions": 1, "perSession": 17, "global": 17 }
+      ],
+      "oracle": { "accepted": false, "scope": "session", "maximum": 16 }
+    },
+    {
+      "id": "rpc-global-33",
+      "steps": [
+        { "op": "reserveRpc", "sessions": 3, "perSession": 11, "global": 33 }
+      ],
+      "oracle": { "accepted": false, "scope": "global", "maximum": 32 }
+    },
+    {
+      "id": "server-requests-session-8-global-16",
+      "steps": [
+        {
+          "op": "reserveServerRequests",
+          "sessions": 2,
+          "perSession": 8,
+          "global": 16
+        }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "server-requests-session-9",
+      "steps": [
+        {
+          "op": "reserveServerRequests",
+          "sessions": 1,
+          "perSession": 9,
+          "global": 9
+        }
+      ],
+      "oracle": { "accepted": false, "scope": "session", "maximum": 8 }
+    },
+    {
+      "id": "server-requests-global-17",
+      "steps": [
+        {
+          "op": "reserveServerRequests",
+          "sessions": 3,
+          "perSession": 6,
+          "global": 17
+        }
+      ],
+      "oracle": { "accepted": false, "scope": "global", "maximum": 16 }
+    },
+    {
+      "id": "runtime-tasks-session-16-global-64",
+      "steps": [
+        {
+          "op": "reserveRuntimeTasks",
+          "sessions": 4,
+          "perSession": 16,
+          "global": 64
+        }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "runtime-tasks-session-17",
+      "steps": [
+        {
+          "op": "reserveRuntimeTasks",
+          "sessions": 1,
+          "perSession": 17,
+          "global": 17
+        }
+      ],
+      "oracle": { "accepted": false, "scope": "session", "maximum": 16 }
+    },
+    {
+      "id": "runtime-tasks-global-65",
+      "steps": [
+        {
+          "op": "reserveRuntimeTasks",
+          "sessions": 5,
+          "perSession": 13,
+          "global": 65
+        }
+      ],
+      "oracle": { "accepted": false, "scope": "global", "maximum": 64 }
+    },
+    {
+      "id": "items-per-turn-512",
+      "steps": [
+        {
+          "op": "persistItems",
+          "count": 512,
+          "serializedPayloadBytesEach": 37,
+          "aggregateBytes": 18944
+        }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "items-per-turn-513",
+      "steps": [
+        {
+          "op": "persistItems",
+          "count": 513,
+          "serializedPayloadBytesEach": 37,
+          "aggregateBytes": 18981
+        }
+      ],
+      "oracle": {
+        "accepted": false,
+        "error": "DatabaseCapacity",
+        "maximum": 512
+      }
+    },
+    {
+      "id": "item-bytes-per-turn-8388608",
+      "steps": [
+        {
+          "op": "persistItems",
+          "repeatedItemBytes": { "bytes": 262144, "count": 32 }
+        }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "item-bytes-per-turn-8388609",
+      "steps": [
+        {
+          "op": "persistItems",
+          "repeatedItemBytes": { "bytes": 262144, "count": 31 },
+          "additionalItemBytes": [262108, 37]
+        }
+      ],
+      "oracle": {
+        "accepted": false,
+        "error": "DatabaseCapacity",
+        "maximum": 8388608,
+        "itemLimitBreached": false,
+        "itemCount": 33
+      }
+    },
+    {
+      "id": "activity-groups-32",
+      "steps": [{ "op": "persistActivities", "groups": 32, "nodes": 32 }],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "activity-groups-33",
+      "steps": [{ "op": "persistActivities", "groups": 33, "nodes": 33 }],
+      "oracle": {
+        "accepted": false,
+        "error": "DatabaseCapacity",
+        "maximum": 32
+      }
+    },
+    {
+      "id": "collaboration-receivers-32",
+      "steps": [{ "op": "persistCollaboration", "receivers": 32 }],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "collaboration-receivers-33",
+      "steps": [{ "op": "persistCollaboration", "receivers": 33 }],
+      "oracle": {
+        "accepted": false,
+        "error": "ProtocolLimit",
+        "maximum": 32
+      }
+    },
+    {
+      "id": "activity-page-nodes-128",
+      "steps": [{ "op": "readActivityPage", "requestedNodes": 128 }],
+      "oracle": { "returnedNodesMaximum": 128, "continuationRequired": false }
+    },
+    {
+      "id": "activity-page-nodes-129",
+      "steps": [{ "op": "readActivityPage", "requestedNodes": 129 }],
+      "oracle": { "returnedNodesMaximum": 128, "continuationRequired": true }
+    },
+    {
+      "id": "activity-label-bytes-512",
+      "steps": [
+        { "op": "persistActivity", "labelBytes": 512, "messageBytes": 0 }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "activity-label-bytes-513",
+      "steps": [
+        { "op": "persistActivity", "labelBytes": 513, "messageBytes": 0 }
+      ],
+      "oracle": {
+        "accepted": false,
+        "error": "ProtocolLimit",
+        "maximum": 512
+      }
+    },
+    {
+      "id": "activity-message-bytes-16384",
+      "steps": [
+        { "op": "persistActivity", "labelBytes": 1, "messageBytes": 16384 }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "activity-message-bytes-16385",
+      "steps": [
+        { "op": "persistActivity", "labelBytes": 1, "messageBytes": 16385 }
+      ],
+      "oracle": {
+        "accepted": false,
+        "error": "ProtocolLimit",
+        "maximum": 16384
+      }
+    },
+    {
+      "id": "runtime-epoch-item-mismatch",
+      "steps": [
+        {
+          "op": "insertItem",
+          "sessionEpoch": 2,
+          "turnEpoch": 2,
+          "itemEpoch": 1
+        }
+      ],
+      "oracle": {
+        "accepted": false,
+        "sqlite": "foreign-key",
+        "durableRowsAdded": 0
+      }
+    },
+    {
+      "id": "runtime-epoch-request-mismatch",
+      "steps": [
+        { "op": "insertServerRequest", "turnEpoch": 2, "requestEpoch": 1 }
+      ],
+      "oracle": {
+        "accepted": false,
+        "sqlite": "foreign-key",
+        "durableRowsAdded": 0
+      }
+    },
+    {
+      "id": "server-request-binding-digest-mismatch",
+      "steps": [
+        {
+          "op": "insertServerRequest",
+          "sessionBindingDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "requestBindingDigest": "1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ],
+      "oracle": {
+        "accepted": false,
+        "sqlite": "foreign-key",
+        "durableRowsAdded": 0
+      }
+    },
+    {
+      "id": "runtime-epoch-activity-mismatch",
+      "steps": [{ "op": "insertActivity", "turnEpoch": 2, "activityEpoch": 1 }],
+      "oracle": {
+        "accepted": false,
+        "sqlite": "foreign-key",
+        "durableRowsAdded": 0
+      }
+    },
+    {
+      "id": "runtime-epoch-reuse",
+      "steps": [
+        { "op": "insertRuntimeEpoch", "runtimeEpoch": 1 },
+        { "op": "insertRuntimeEpoch", "runtimeEpoch": 1 }
+      ],
+      "oracle": {
+        "accepted": false,
+        "sqlite": "unique",
+        "firstEpochPreserved": true
+      }
+    },
+    {
+      "id": "runtime-epoch-delete-reuse",
+      "steps": [
+        { "op": "insertRuntimeEpoch", "runtimeEpoch": 1 },
+        { "op": "deleteRuntimeEpoch", "runtimeEpoch": 1 },
+        { "op": "insertRuntimeEpoch", "runtimeEpoch": 1 }
+      ],
+      "oracle": {
+        "deleteAccepted": false,
+        "reuseAccepted": false,
+        "firstEpochPreserved": true
+      }
+    },
+    {
+      "id": "agent-session-nonterminal-chat-conflict",
+      "steps": [
+        { "op": "insertAgentSession", "chatId": "chat-a", "state": "ready" },
+        { "op": "insertAgentSession", "chatId": "chat-a", "state": "created" }
+      ],
+      "oracle": {
+        "accepted": false,
+        "sqlite": "unique",
+        "nonterminalSessions": 1
+      }
+    },
+    {
+      "id": "agent-session-binding-mutation",
+      "steps": [
+        {
+          "op": "insertAgentSession",
+          "bindingDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "op": "updateAgentSession",
+          "bindingDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "oracle": {
+        "accepted": false,
+        "bindingDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "id": "terminal-agent-session-mutation",
+      "steps": [
+        {
+          "op": "insertTerminalAgentSession",
+          "state": "closed",
+          "terminalAt": 2
+        },
+        { "op": "updateAgentSession", "terminalAt": 3 }
+      ],
+      "oracle": { "accepted": false, "terminalAt": 2 }
+    },
+    {
+      "id": "turn-delivery-regression",
+      "steps": [
+        {
+          "op": "advanceDelivery",
+          "states": ["notWritten", "writing", "possibleBytes"]
+        },
+        { "op": "advanceDelivery", "states": ["notWritten"] }
+      ],
+      "oracle": { "accepted": false, "deliveryState": "possibleBytes" }
+    },
+    {
+      "id": "terminal-turn-mutation",
+      "steps": [
+        { "op": "insertTerminalTurn", "state": "completed", "terminalAt": 2 },
+        { "op": "updateTurn", "terminalAt": 3 }
+      ],
+      "oracle": { "accepted": false, "terminalAt": 2 }
+    },
+    {
+      "id": "resolved-request-mutation",
+      "steps": [
+        {
+          "op": "insertResolvedRequest",
+          "payloadDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resolvedAt": 2
+        },
+        {
+          "op": "updateServerRequest",
+          "payloadDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "resolvedAt": 3
+        }
+      ],
+      "oracle": {
+        "accepted": false,
+        "payloadDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resolvedAt": 2
+      }
+    },
+    {
+      "id": "resolved-request-time-parity",
+      "steps": [
+        {
+          "op": "insertServerRequest",
+          "state": "responseQueued",
+          "resolvedAt": 2
+        }
+      ],
+      "oracle": { "accepted": false, "sqlite": "check", "durableRowsAdded": 0 }
+    },
+    {
+      "id": "external-item-id-epoch-kind-conflict",
+      "steps": [
+        {
+          "op": "insertItem",
+          "externalItemId": "external-a",
+          "runtimeEpoch": 1,
+          "kind": "text"
+        },
+        {
+          "op": "insertItem",
+          "externalItemId": "external-a",
+          "runtimeEpoch": 1,
+          "kind": "text"
+        }
+      ],
+      "oracle": { "accepted": false, "sqlite": "unique", "durableRowsAdded": 1 }
+    },
+    {
+      "id": "chat-lineage-mutation-delete",
+      "steps": [
+        { "op": "insertChatLineage" },
+        { "op": "updateChatLineage" },
+        { "op": "deleteChatLineage" }
+      ],
+      "oracle": {
+        "updateAccepted": false,
+        "deleteAccepted": false,
+        "originalPreserved": true
+      }
+    },
+    {
+      "id": "activity-identity-mutation",
+      "steps": [
+        { "op": "insertActivity", "externalActivityId": "activity-a" },
+        { "op": "updateActivity", "externalActivityId": "activity-b" }
+      ],
+      "oracle": { "accepted": false, "externalActivityId": "activity-a" }
+    },
+    {
+      "id": "native-activity-foreign-parent-item",
+      "steps": [{ "op": "insertActivity", "parentItemOwner": "foreign-turn" }],
+      "oracle": {
+        "accepted": false,
+        "sqlite": "foreign-key",
+        "durableRowsAdded": 0
+      }
+    },
+    {
+      "id": "native-activity-conflicting-terminal",
+      "steps": [
+        { "op": "terminalizeActivity", "state": "completed", "revision": 2 },
+        { "op": "terminalizeActivity", "state": "failed", "revision": 3 }
+      ],
+      "oracle": {
+        "accepted": false,
+        "firstTerminal": "completed",
+        "revision": 2
+      }
+    },
+    {
+      "id": "chat-head-update-terminal-session",
+      "steps": [
+        { "op": "insertChatHead", "sessionState": "ready" },
+        {
+          "op": "terminalizeSession",
+          "state": "closed",
+          "via": "closing",
+          "atomic": true
+        },
+        { "op": "updateChatHead", "sameSession": true }
+      ],
+      "oracle": {
+        "accepted": false,
+        "sqlite": "trigger",
+        "replacementRequired": true,
+        "sessionState": "ready",
+        "headPreserved": true
+      }
+    },
+    {
+      "id": "chat-lineage-cross-project",
+      "steps": [
+        {
+          "op": "insertChatLineage",
+          "parentProject": "project-a",
+          "childProject": "project-b"
+        }
+      ],
+      "oracle": { "accepted": false, "sqlite": "check", "durableRowsAdded": 0 }
+    },
+    {
+      "id": "harness-version-round-trip",
+      "steps": [
+        {
+          "op": "migrateSession",
+          "bindingId": "simulator",
+          "harnessVersion": "fixture-1.2.3"
+        },
+        { "op": "reloadSession" }
+      ],
+      "oracle": {
+        "harnessVersion": "fixture-1.2.3",
+        "bindingDigest": "f14413e831bc2e344d013c50f1f0c86ebf3634dbbf6d01b3ca27f2e84691cd8d",
+        "bindingDigestUnchanged": true
+      }
+    },
+    {
+      "id": "capability-snapshot-unknown-key",
+      "steps": [
+        {
+          "op": "persistCapabilitySnapshot",
+          "schemaVersion": 1,
+          "extraKey": "providerObject"
+        }
+      ],
+      "oracle": {
+        "accepted": false,
+        "durableRowsAdded": 0,
+        "rawPayloadRetained": false
+      }
+    },
+    {
+      "id": "activity-provenance-absolute-path",
+      "steps": [
+        {
+          "op": "persistActivityProvenance",
+          "document": {
+            "schemaVersion": 1,
+            "sourceKind": "collaboration",
+            "externalKind": "subagent",
+            "extensionSchemaId": null,
+            "safeLabel": "C:\\secret\\file"
+          }
+        }
+      ],
+      "oracle": {
+        "accepted": false,
+        "durableRowsAdded": 0,
+        "webviewIngress": false
+      }
+    },
+    {
+      "id": "verified-artifact-replacement-race",
+      "steps": [
+        { "op": "openVerifiedArtifact" },
+        { "op": "replaceArtifactPath" },
+        { "op": "spawnFromVerifiedHandle" }
+      ],
+      "oracle": {
+        "spawnedBytes": "original-verified",
+        "replacementExecuted": false,
+        "handleHeldThroughTreeExit": true
+      }
+    },
+    {
+      "id": "redaction-canaries-all-sinks",
+      "steps": [
+        {
+          "op": "emitCanaries",
+          "canaries": [
+            "secret.sqlite.7e31",
+            "secret.projection.8a42",
+            "secret.structuredLog.9b53",
+            "secret.stderrRing.ac64",
+            "secret.curatedEvidence.bd75",
+            "absolutePath.sqlite.ce86",
+            "absolutePath.projection.df97",
+            "absolutePath.structuredLog.e0a8",
+            "absolutePath.stderrRing.f1b9",
+            "absolutePath.curatedEvidence.02ca",
+            "commandLine.sqlite.13db",
+            "commandLine.projection.24ec",
+            "commandLine.structuredLog.35fd",
+            "commandLine.stderrRing.460e",
+            "commandLine.curatedEvidence.571f",
+            "environment.sqlite.6820",
+            "environment.projection.7931",
+            "environment.structuredLog.8a42",
+            "environment.stderrRing.9b53",
+            "environment.curatedEvidence.ac64",
+            "rawFrame.sqlite.bd75",
+            "rawFrame.projection.ce86",
+            "rawFrame.structuredLog.df97",
+            "rawFrame.stderrRing.e0a8",
+            "rawFrame.curatedEvidence.f1b9"
+          ]
+        }
+      ],
+      "oracle": {
+        "expectedOccurrencesByCanary": [
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0
+        ],
+        "typedRedactionCount": 25,
+        "unredactedStderr": false
+      }
+    },
+    {
+      "id": "permission-decline-persist-failure",
+      "steps": [
+        { "op": "receivePermissionRequest" },
+        { "op": "injectSqliteFailure", "at": "declineCommit" }
+      ],
+      "oracle": {
+        "responseQueued": false,
+        "permissionGranted": false,
+        "session": "failed"
+      }
+    },
+    {
+      "id": "permission-decline-queue-failure",
+      "steps": [
+        { "op": "receivePermissionRequest" },
+        { "op": "commitDecline" },
+        { "op": "injectQueueFailure", "at": "declineResponse" }
+      ],
+      "oracle": {
+        "declineDurable": true,
+        "permissionGranted": false,
+        "session": "failed",
+        "automaticAllowFallback": false
+      }
+    },
+    {
+      "id": "permission-decline-encoding-failure",
+      "steps": [
+        { "op": "receivePermissionRequest" },
+        { "op": "commitDecline" },
+        { "op": "injectEncodingFailure", "at": "declineResponse" }
+      ],
+      "oracle": {
+        "declineDurable": true,
+        "responseQueued": false,
+        "permissionGranted": false,
+        "session": "failed",
+        "teardownRequired": true
+      }
+    },
+    {
+      "id": "csp-production-and-development",
+      "steps": [
+        {
+          "op": "inspectCsp",
+          "builds": [
+            "production-default",
+            "development",
+            "feature-gated-characterization"
+          ]
+        }
+      ],
+      "oracle": {
+        "cspDisabled": false,
+        "unsafeEvalAdded": false,
+        "productionConnectSrcExact": [
+          "'self'",
+          "ipc:",
+          "http://ipc.localhost",
+          "http://tauri.localhost"
+        ],
+        "developmentConnectSrcAdditionalExact": [
+          "ws://127.0.0.1:1420",
+          "http://127.0.0.1:1420"
+        ],
+        "productionForbidden": [
+          "ws://127.0.0.1:1420",
+          "http://127.0.0.1:1420",
+          "http://localhost:*",
+          "ws://localhost:*",
+          "remote-script",
+          "new-scheme",
+          "unsafe-eval"
+        ],
+        "scriptSrcExact": ["'self'"],
+        "rawAdapterEndpointExposed": false
+      }
+    },
+    {
+      "id": "capability-snapshot-missing-key",
+      "steps": [
+        {
+          "op": "persistCapabilitySnapshot",
+          "document": "canonicalLegacyDenyAll",
+          "removeKey": "cancel"
+        }
+      ],
+      "oracle": {
+        "accepted": false,
+        "durableRowsAdded": 0,
+        "effectiveCapabilities": "deny-all"
+      }
+    },
+    {
+      "id": "capability-snapshot-wrong-type",
+      "steps": [
+        {
+          "op": "persistCapabilitySnapshot",
+          "document": "canonicalLegacyDenyAll",
+          "replace": { "cancel": "false" }
+        }
+      ],
+      "oracle": {
+        "accepted": false,
+        "durableRowsAdded": 0,
+        "effectiveCapabilities": "deny-all"
+      }
+    },
+    {
+      "id": "capability-token-bytes-65536",
+      "steps": [
+        {
+          "op": "emitCapabilityToken",
+          "document": "canonicalLegacyDenyAll",
+          "totalTokenBytes": 65536
+        }
+      ],
+      "oracle": {
+        "accepted": true,
+        "normalizedDocument": "canonicalLegacyDenyAll"
+      }
+    },
+    {
+      "id": "capability-token-bytes-65537",
+      "steps": [
+        {
+          "op": "emitCapabilityToken",
+          "document": "canonicalLegacyDenyAll",
+          "totalTokenBytes": 65537
+        }
+      ],
+      "oracle": {
+        "accepted": false,
+        "error": "ProtocolLimit",
+        "durableRowsAdded": 0
+      }
+    },
+    {
+      "id": "activity-provenance-missing-key",
+      "steps": [
+        {
+          "op": "persistActivityProvenance",
+          "document": "knownTool",
+          "removeKey": "sourceKind"
+        }
+      ],
+      "oracle": { "accepted": false, "durableRowsAdded": 0 }
+    },
+    {
+      "id": "activity-provenance-wrong-type",
+      "steps": [
+        {
+          "op": "persistActivityProvenance",
+          "document": "knownTool",
+          "replace": { "safeLabel": 1 }
+        }
+      ],
+      "oracle": { "accepted": false, "durableRowsAdded": 0 }
+    },
+    {
+      "id": "json-nodes-16384",
+      "steps": [
+        { "op": "emitBoundedJson", "shape": "nodeCount", "count": 16384 }
+      ],
+      "oracle": { "structuralValidation": "accepted" }
+    },
+    {
+      "id": "json-nodes-16385",
+      "steps": [
+        { "op": "emitBoundedJson", "shape": "nodeCount", "count": 16385 }
+      ],
+      "oracle": {
+        "structuralValidation": "limitExceeded",
+        "terminal": "failed"
+      }
+    },
+    {
+      "id": "decoded-key-bytes-256",
+      "steps": [
+        { "op": "emitBoundedJson", "shape": "decodedKeyBytes", "bytes": 256 }
+      ],
+      "oracle": { "structuralValidation": "accepted" }
+    },
+    {
+      "id": "decoded-key-bytes-257",
+      "steps": [
+        { "op": "emitBoundedJson", "shape": "decodedKeyBytes", "bytes": 257 }
+      ],
+      "oracle": {
+        "structuralValidation": "limitExceeded",
+        "terminal": "failed"
+      }
+    },
+    {
+      "id": "method-bytes-128",
+      "steps": [{ "op": "emitRpcMethod", "bytes": 128 }],
+      "oracle": { "structuralValidation": "accepted" }
+    },
+    {
+      "id": "method-bytes-129",
+      "steps": [{ "op": "emitRpcMethod", "bytes": 129 }],
+      "oracle": {
+        "structuralValidation": "limitExceeded",
+        "terminal": "failed"
+      }
+    },
+    {
+      "id": "numeric-token-bytes-64",
+      "steps": [
+        { "op": "emitBoundedJson", "shape": "numericTokenBytes", "bytes": 64 }
+      ],
+      "oracle": { "structuralValidation": "accepted" }
+    },
+    {
+      "id": "numeric-token-bytes-65",
+      "steps": [
+        { "op": "emitBoundedJson", "shape": "numericTokenBytes", "bytes": 65 }
+      ],
+      "oracle": {
+        "structuralValidation": "limitExceeded",
+        "terminal": "failed"
+      }
+    },
+    {
+      "id": "external-id-bytes-512",
+      "steps": [{ "op": "emitExternalId", "bytes": 512 }],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "external-id-bytes-513",
+      "steps": [{ "op": "emitExternalId", "bytes": 513 }],
+      "oracle": { "accepted": false, "error": "ProtocolLimit" }
+    },
+    {
+      "id": "page-cursor-bytes-512",
+      "steps": [{ "op": "readPage", "cursorBytes": 512 }],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "page-cursor-bytes-513",
+      "steps": [{ "op": "readPage", "cursorBytes": 513 }],
+      "oracle": { "accepted": false, "error": "ProtocolLimit" }
+    },
+    {
+      "id": "metadata-entries-64",
+      "steps": [{ "op": "emitMetadata", "entries": 64, "aggregateBytes": 128 }],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "metadata-entries-65",
+      "steps": [{ "op": "emitMetadata", "entries": 65, "aggregateBytes": 130 }],
+      "oracle": { "accepted": false, "error": "ProtocolLimit" }
+    },
+    {
+      "id": "metadata-bytes-65536",
+      "steps": [
+        { "op": "emitMetadata", "entries": 1, "aggregateBytes": 65536 }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "metadata-bytes-65537",
+      "steps": [
+        { "op": "emitMetadata", "entries": 2, "entryBytes": [32768, 32769] }
+      ],
+      "oracle": {
+        "accepted": false,
+        "error": "ProtocolLimit",
+        "entryLimitBreached": false
+      }
+    },
+    {
+      "id": "prompt-bytes-100000",
+      "steps": [{ "op": "sendPrompt", "bytes": 100000 }],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "prompt-bytes-100001",
+      "steps": [{ "op": "sendPrompt", "bytes": 100001 }],
+      "oracle": {
+        "accepted": false,
+        "error": "ProtocolLimit",
+        "turnRowsAdded": 0
+      }
+    },
+    {
+      "id": "models-entries-128",
+      "steps": [{ "op": "emitModels", "entries": 128, "aggregateBytes": 256 }],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "models-entries-129",
+      "steps": [{ "op": "emitModels", "entries": 129, "aggregateBytes": 258 }],
+      "oracle": { "accepted": false, "error": "ProtocolLimit" }
+    },
+    {
+      "id": "models-bytes-131072",
+      "steps": [
+        {
+          "op": "emitModels",
+          "entries": 128,
+          "repeatedEntry": { "idBytes": 512, "nameBytes": 512, "count": 128 }
+        }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "models-bytes-131073",
+      "steps": [
+        {
+          "op": "emitModels",
+          "entries": 129,
+          "repeatedEntry": { "idBytes": 512, "nameBytes": 512, "count": 127 },
+          "entryBytes": [1023, 2]
+        }
+      ],
+      "oracle": {
+        "accepted": false,
+        "error": "ProtocolLimit",
+        "entryCountLimitAlsoBreached": true
+      }
+    },
+    {
+      "id": "normalized-item-bytes-262144",
+      "steps": [{ "op": "normalizeItem", "bytes": 262144 }],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "normalized-item-bytes-262145",
+      "steps": [{ "op": "normalizeItem", "bytes": 262145 }],
+      "oracle": {
+        "accepted": false,
+        "error": "ProtocolLimit",
+        "retainedBytesMaximum": 262144
+      }
+    },
+    {
+      "id": "tool-input-output-bytes-65536",
+      "steps": [
+        { "op": "normalizeTool", "inputBytes": 65536, "outputBytes": 65536 }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "tool-input-bytes-65537",
+      "steps": [
+        { "op": "normalizeTool", "inputBytes": 65537, "outputBytes": 1 }
+      ],
+      "oracle": { "accepted": false, "error": "ProtocolLimit" }
+    },
+    {
+      "id": "tool-output-bytes-65537",
+      "steps": [
+        { "op": "normalizeTool", "inputBytes": 1, "outputBytes": 65537 }
+      ],
+      "oracle": { "accepted": false, "error": "ProtocolLimit" }
+    },
+    {
+      "id": "permission-payload-bytes-65536",
+      "steps": [{ "op": "emitPermissionPayload", "bytes": 65536 }],
+      "oracle": { "accepted": true, "permissionGranted": false }
+    },
+    {
+      "id": "permission-payload-bytes-65537",
+      "steps": [{ "op": "emitPermissionPayload", "bytes": 65537 }],
+      "oracle": {
+        "accepted": false,
+        "permissionGranted": false,
+        "session": "failed"
+      }
+    },
+    {
+      "id": "error-bytes-8192",
+      "steps": [{ "op": "normalizeError", "bytes": 8192 }],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "error-bytes-8193",
+      "steps": [{ "op": "normalizeError", "bytes": 8193 }],
+      "oracle": { "accepted": false, "retainedBytesMaximum": 8192 }
+    },
+    {
+      "id": "unsupported-summary-bytes-16384",
+      "steps": [{ "op": "normalizeUnsupported", "bytes": 16384 }],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "unsupported-summary-bytes-16385",
+      "steps": [{ "op": "normalizeUnsupported", "bytes": 16385 }],
+      "oracle": { "accepted": false, "retainedBytesMaximum": 16384 }
+    },
+    {
+      "id": "windows-job-processes-33",
+      "steps": [{ "op": "spawnTree", "roots": 1, "descendants": 32 }],
+      "oracle": {
+        "accepted": true,
+        "jobActiveProcesses": 33,
+        "descendantLedger": 32
+      }
+    },
+    {
+      "id": "windows-job-processes-34",
+      "steps": [{ "op": "spawnTree", "roots": 1, "descendants": 33 }],
+      "oracle": {
+        "accepted": false,
+        "treeMustExit": true,
+        "jobActiveProcessMaximum": 33,
+        "descendantLedgerMaximum": 32
+      }
+    },
+    {
+      "id": "absolute-path-bytes-32768",
+      "steps": [{ "op": "mapNativePath", "absolutePathBytes": 32768 }],
+      "oracle": {
+        "preFilesystemByteValidationAccepted": true,
+        "webviewAbsolutePath": false
+      }
+    },
+    {
+      "id": "absolute-path-bytes-32769",
+      "steps": [{ "op": "mapNativePath", "absolutePathBytes": 32769 }],
+      "oracle": {
+        "accepted": false,
+        "error": "ResourceLimit",
+        "webviewAbsolutePath": false
+      }
+    },
+    {
+      "id": "relative-path-bytes-16384",
+      "steps": [{ "op": "mapNativePath", "relativePathBytes": 16384 }],
+      "oracle": { "accepted": true, "resourceRef": true }
+    },
+    {
+      "id": "relative-path-bytes-16385",
+      "steps": [{ "op": "mapNativePath", "relativePathBytes": 16385 }],
+      "oracle": {
+        "accepted": false,
+        "error": "ResourceLimit",
+        "resourceRef": false
+      }
+    },
+    {
+      "id": "process-arguments-32",
+      "steps": [
+        { "op": "launchShape", "argumentCount": 32, "argumentBytesTotal": 32 }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "process-arguments-33",
+      "steps": [
+        { "op": "launchShape", "argumentCount": 33, "argumentBytesTotal": 33 }
+      ],
+      "oracle": { "accepted": false, "processCreated": false }
+    },
+    {
+      "id": "process-argument-bytes-8192",
+      "steps": [{ "op": "launchShape", "argumentBytes": [8192] }],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "process-argument-bytes-8193",
+      "steps": [{ "op": "launchShape", "argumentBytes": [8193] }],
+      "oracle": { "accepted": false, "processCreated": false }
+    },
+    {
+      "id": "process-argument-total-32768",
+      "steps": [
+        { "op": "launchShape", "argumentBytes": [8192, 8192, 8192, 8192] }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "process-argument-total-32769",
+      "steps": [
+        { "op": "launchShape", "argumentBytes": [8192, 8192, 8192, 8192, 1] }
+      ],
+      "oracle": {
+        "accepted": false,
+        "perArgumentLimitBreached": false,
+        "processCreated": false
+      }
+    },
+    {
+      "id": "environment-entries-64",
+      "steps": [
+        {
+          "op": "launchShape",
+          "environmentEntries": 64,
+          "environmentBytesTotal": 128
+        }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "environment-entries-65",
+      "steps": [
+        {
+          "op": "launchShape",
+          "environmentEntries": 65,
+          "environmentBytesTotal": 130
+        }
+      ],
+      "oracle": { "accepted": false, "processCreated": false }
+    },
+    {
+      "id": "environment-key-bytes-256",
+      "steps": [
+        {
+          "op": "launchShape",
+          "environmentKeyBytes": 256,
+          "environmentValueBytes": 1
+        }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "environment-key-bytes-257",
+      "steps": [
+        {
+          "op": "launchShape",
+          "environmentKeyBytes": 257,
+          "environmentValueBytes": 1
+        }
+      ],
+      "oracle": { "accepted": false, "processCreated": false }
+    },
+    {
+      "id": "environment-value-bytes-8192",
+      "steps": [
+        {
+          "op": "launchShape",
+          "environmentKeyBytes": 1,
+          "environmentValueBytes": 8192
+        }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "environment-value-bytes-8193",
+      "steps": [
+        {
+          "op": "launchShape",
+          "environmentKeyBytes": 1,
+          "environmentValueBytes": 8193
+        }
+      ],
+      "oracle": { "accepted": false, "processCreated": false }
+    },
+    {
+      "id": "environment-total-bytes-32768",
+      "steps": [
+        {
+          "op": "launchShape",
+          "environmentPairBytes": [8192, 8192, 8192, 8192]
+        }
+      ],
+      "oracle": { "accepted": true }
+    },
+    {
+      "id": "environment-total-bytes-32769",
+      "steps": [
+        {
+          "op": "launchShape",
+          "environmentPairBytes": [8192, 8192, 8192, 8192, 1]
+        }
+      ],
+      "oracle": {
+        "accepted": false,
+        "perEntryLimitBreached": false,
+        "processCreated": false
+      }
+    },
+    {
+      "id": "stderr-line-bytes-16384",
+      "steps": [{ "op": "emitStderrLine", "bytes": 16384 }],
+      "oracle": { "accepted": true, "retainedLineBytes": 16384 }
+    },
+    {
+      "id": "stderr-line-bytes-16385",
+      "steps": [{ "op": "emitStderrLine", "bytes": 16385 }],
+      "oracle": {
+        "accepted": false,
+        "retainedLineBytesMaximum": 16384,
+        "secretCanaryOccurrences": 0
+      }
+    },
+    {
+      "id": "stderr-ring-bytes-262144",
+      "steps": [
+        {
+          "op": "fillStderrRing",
+          "repeatedLineBytes": { "bytes": 16383, "count": 16 }
+        }
+      ],
+      "oracle": { "retainedBytes": 262144 }
+    },
+    {
+      "id": "stderr-ring-bytes-262145",
+      "steps": [
+        {
+          "op": "fillStderrRing",
+          "repeatedLineBytes": { "bytes": 16383, "count": 16 },
+          "finalLineBytes": 0
+        }
+      ],
+      "oracle": { "retainedBytesMaximum": 262144, "oldestBytesEvicted": 1 }
+    },
+    {
+      "id": "terminal-tail-bytes-32768",
+      "steps": [{ "op": "retainTerminalTail", "bytes": 32768 }],
+      "oracle": { "retainedBytes": 32768 }
+    },
+    {
+      "id": "terminal-tail-bytes-32769",
+      "steps": [{ "op": "retainTerminalTail", "bytes": 32769 }],
+      "oracle": { "retainedBytesMaximum": 32768, "oldestBytesEvicted": 1 }
+    },
+    {
+      "id": "default-package-fixture-exclusion",
+      "steps": [{ "op": "inspectPackage", "build": "production-default" }],
+      "oracle": {
+        "fixtureExecutableCount": 0,
+        "fixtureMetadataCount": 0,
+        "runtimeDownloadBytes": 0
+      }
+    },
+    {
+      "id": "migration-backup-failpoint-rollback",
+      "steps": [
+        { "op": "runMigrationFailpoint", "at": "replacement-build" },
+        { "op": "restart" }
+      ],
+      "oracle": {
+        "oldSchemaReadable": true,
+        "newSchemaVisible": true,
+        "backupState": "verified-retained",
+        "partialRows": 0
+      }
+    },
+    {
+      "id": "migration-retirement-prefixes",
+      "steps": [
+        {
+          "op": "crashRestartEach",
+          "failpoints": [
+            "replacement-manifest-fsync",
+            "replacement-build-intent-remove-or-parent-fsync",
+            "retire-wal-rename-or-parent-fsync",
+            "retire-shm-rename-or-parent-fsync",
+            "retire-live-rename-or-parent-fsync",
+            "replacement-publish",
+            "postcommit-reopen",
+            "cleanup-retired-shm-remove-or-parent-fsync",
+            "cleanup-retired-wal-remove-or-parent-fsync",
+            "cleanup-retired-live-remove-or-parent-fsync",
+            "cleanup-replacement-manifest-remove-or-parent-fsync"
+          ]
+        }
+      ],
+      "oracle": {
+        "verifiedSourceOrV5": true,
+        "permanentBlockerForValidPrefix": false,
+        "partialLogicalDatabase": false,
+        "unlistedPrefix": false
+      }
+    },
+    {
+      "id": "migration-recovery-insufficient-space",
+      "steps": [{ "op": "runMigration", "freeBytes": 2254857830 }],
+      "oracle": {
+        "accepted": false,
+        "error": "ResourceLimit",
+        "sqliteWrites": 0,
+        "backupCreated": false
+      }
+    }
+  ]
+}

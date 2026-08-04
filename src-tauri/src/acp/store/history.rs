@@ -1,0 +1,310 @@
+use rusqlite::{OptionalExtension, params};
+
+use crate::acp::{
+    contract::{
+        BoundedVec, EntityRevision, ProjectionRevision, RuntimeEpoch, SafeText, SageAgentSessionId,
+        SageChatId, SageProjectId, SageRootId,
+    },
+    intent::{BindingId, CapabilitySnapshotV1, ModelId, PageCursor},
+    lifecycle::Residency,
+    limits::LIMITS,
+    projection::{AcpChatPage, SessionProjection},
+};
+
+use super::StoreError;
+
+pub(super) struct TurnRow {
+    pub(super) id: String,
+    pub(super) project_id: String,
+    pub(super) chat_id: String,
+    pub(super) session_id: String,
+    pub(super) session_ordinal: i64,
+    pub(super) runtime_epoch: i64,
+    pub(super) ordinal: i64,
+    pub(super) state: String,
+    pub(super) revision: i64,
+    pub(super) created_at: i64,
+    pub(super) updated_at: i64,
+    pub(super) terminal_at: Option<i64>,
+    pub(super) item_before: Option<i64>,
+}
+
+pub(crate) fn load_chat_page(
+    connection: &rusqlite::Connection,
+    project_id: SageProjectId,
+    chat_id: SageChatId,
+    cursor: Option<PageCursor>,
+) -> Result<AcpChatPage, StoreError> {
+    let (title, projection): (String, i64) = connection
+        .query_row(
+            "SELECT title,projection_revision FROM chats WHERE project_id=?1 AND id=?2",
+            params![project_id.as_str(), chat_id.as_str()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?
+        .ok_or(StoreError::Conflict { resource: "chat" })?;
+    let sessions = load_sessions(connection, &project_id, &chat_id)?;
+    let project_roots = load_project_roots(connection, &project_id)?;
+    let current = connection
+        .query_row(
+            "SELECT session_id FROM chat_session_heads WHERE project_id=?1 AND chat_id=?2",
+            params![project_id.as_str(), chat_id.as_str()],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .map(SageAgentSessionId::parse)
+        .transpose()
+        .map_err(|_| StoreError::Corrupt("head session id"))?;
+    let cursor = cursor
+        .map(|cursor| super::history_cursor::resolve(connection, &project_id, &chat_id, cursor))
+        .transpose()?;
+    let (mut turn_rows, mut has_more) =
+        load_turn_rows(connection, &project_id, &chat_id, cursor.as_ref())?;
+    super::history_activities::retain_bounded_turn_prefix(
+        connection,
+        &mut turn_rows,
+        &mut has_more,
+    )?;
+    let activities = super::history_activities::load_activities(connection, &turn_rows)?;
+    let title = SafeText::new("chatTitle", title).map_err(|_| StoreError::Corrupt("chat title"))?;
+    let projection_revision = ProjectionRevision::new(
+        u64::try_from(projection).map_err(|_| StoreError::Corrupt("projection revision"))?,
+    )
+    .map_err(|_| StoreError::Corrupt("projection revision"))?;
+    let sessions = BoundedVec::new("sessions", sessions)
+        .map_err(|_| StoreError::Corrupt("session page bound"))?;
+    let empty_page = AcpChatPage {
+        project_id: project_id.clone(),
+        chat_id: chat_id.clone(),
+        title: title.clone(),
+        projection_revision,
+        current_session_id: current.clone(),
+        sessions: sessions.clone(),
+        turns: BoundedVec::new("turns", Vec::new())
+            .map_err(|_| StoreError::Corrupt("turn page bound"))?,
+        next_cursor: None,
+    };
+    let base_page_bytes = serde_json::to_vec(&empty_page)
+        .map_err(|_| StoreError::Corrupt("chat page serialization"))?
+        .len();
+    let slice = super::history_items::load(super::history_items::HistoryLoad {
+        connection,
+        project: &project_id,
+        chat: &chat_id,
+        rows: &turn_rows,
+        has_more_turns: has_more,
+        project_roots: &project_roots,
+        activities,
+        base_page_bytes,
+    })?;
+    let page = AcpChatPage {
+        project_id,
+        chat_id,
+        title,
+        projection_revision,
+        current_session_id: current,
+        sessions,
+        turns: BoundedVec::new("turns", slice.turns)
+            .map_err(|_| StoreError::Corrupt("turn page bound"))?,
+        next_cursor: slice.next_cursor,
+    };
+    page.validate_page_bounds()
+        .map_err(|_| StoreError::Corrupt("chat page ownership"))?;
+    let page_bytes = serde_json::to_vec(&page)
+        .map_err(|_| StoreError::Corrupt("chat page serialization"))?
+        .len();
+    if page_bytes > LIMITS.durable.history_page_bytes as usize {
+        return Err(StoreError::Capacity {
+            resource: "historyPage",
+            limit: LIMITS.durable.history_page_bytes,
+        });
+    }
+    Ok(page)
+}
+
+fn load_project_roots(
+    connection: &rusqlite::Connection,
+    project: &SageProjectId,
+) -> Result<Vec<SageRootId>, StoreError> {
+    let mut statement = connection
+        .prepare("SELECT id FROM project_roots WHERE project_id=?1 ORDER BY ordinal,id LIMIT 9")?;
+    let mut roots = Vec::with_capacity(8);
+    for row in statement.query_map([project.as_str()], |row| row.get::<_, String>(0))? {
+        if roots.len() == 8 {
+            return Err(StoreError::Corrupt("project root limit+1"));
+        }
+        roots.push(SageRootId::parse(row?).map_err(|_| StoreError::Corrupt("project root id"))?);
+    }
+    if roots.is_empty() {
+        return Err(StoreError::Corrupt("project root membership"));
+    }
+    Ok(roots)
+}
+
+fn load_sessions(
+    connection: &rusqlite::Connection,
+    project: &SageProjectId,
+    chat: &SageChatId,
+) -> Result<Vec<SessionProjection>, StoreError> {
+    let mut statement=connection.prepare("SELECT s.id,s.ordinal,s.binding_id,s.model_id,s.state,s.residency,(SELECT MAX(e.runtime_epoch) FROM session_runtime_epochs e WHERE e.session_id=s.id AND e.state IN ('starting','running','terminating')),(SELECT MAX(e.runtime_epoch) FROM session_runtime_epochs e WHERE e.session_id=s.id),s.capabilities_json,s.revision,s.projection_revision,s.legacy FROM agent_sessions s WHERE s.project_id=?1 AND s.chat_id=?2 ORDER BY s.ordinal,id LIMIT 33")?;
+    let rows = statement.query_map(params![project.as_str(), chat.as_str()], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, String>(4)?,
+            row.get::<_, String>(5)?,
+            row.get::<_, Option<i64>>(6)?,
+            row.get::<_, Option<i64>>(7)?,
+            row.get::<_, String>(8)?,
+            row.get::<_, i64>(9)?,
+            row.get::<_, i64>(10)?,
+            row.get::<_, i64>(11)?,
+        ))
+    })?;
+    let mut result = Vec::with_capacity(32);
+    for row in rows {
+        if result.len() == 32 {
+            return Err(StoreError::Corrupt("session page limit+1"));
+        }
+        let row = row?;
+        let state = super::state::parse_session_state(&row.4)?;
+        let residency = match row.5.as_str() {
+            "hot" => Residency::Hot,
+            "cold" => Residency::Cold,
+            _ => return Err(StoreError::Corrupt("residency")),
+        };
+        let runtime_epoch = row
+            .6
+            .map(|value| {
+                RuntimeEpoch::new(
+                    u64::try_from(value).map_err(|_| StoreError::Corrupt("runtime epoch"))?,
+                )
+                .map_err(|_| StoreError::Corrupt("runtime epoch"))
+            })
+            .transpose()?;
+        let next_runtime_epoch = if runtime_epoch.is_none()
+            && residency == Residency::Cold
+            && matches!(
+                state,
+                crate::acp::lifecycle::SessionState::Created
+                    | crate::acp::lifecycle::SessionState::Ready
+            ) {
+            let latest = row.7.unwrap_or(0);
+            let next = latest.checked_add(1).ok_or(StoreError::CounterExhausted)?;
+            Some(
+                RuntimeEpoch::new(
+                    u64::try_from(next).map_err(|_| StoreError::Corrupt("runtime epoch"))?,
+                )
+                .map_err(|_| StoreError::Corrupt("runtime epoch"))?,
+            )
+        } else {
+            None
+        };
+        result.push(SessionProjection {
+            id: SageAgentSessionId::parse(row.0).map_err(|_| StoreError::Corrupt("session id"))?,
+            ordinal: u64::try_from(row.1).map_err(|_| StoreError::Corrupt("session ordinal"))?,
+            binding_id: BindingId::new("bindingId", row.2)
+                .map_err(|_| StoreError::Corrupt("binding id"))?,
+            model_id: row
+                .3
+                .map(|v| ModelId::new("modelId", v))
+                .transpose()
+                .map_err(|_| StoreError::Corrupt("model id"))?,
+            state,
+            residency,
+            runtime_epoch,
+            next_runtime_epoch,
+            capabilities: serde_json::from_str::<CapabilitySnapshotV1>(&row.8)
+                .map_err(|_| StoreError::Corrupt("capabilities"))?,
+            revision: EntityRevision::new(row.9 as u64)
+                .map_err(|_| StoreError::Corrupt("session revision"))?,
+            projection_revision: ProjectionRevision::new(row.10 as u64)
+                .map_err(|_| StoreError::Corrupt("projection revision"))?,
+            legacy: match row.11 {
+                0 => false,
+                1 => true,
+                _ => return Err(StoreError::Corrupt("legacy flag")),
+            },
+        });
+    }
+    Ok(result)
+}
+
+fn load_turn_rows(
+    connection: &rusqlite::Connection,
+    project: &SageProjectId,
+    chat: &SageChatId,
+    cursor: Option<&super::history_cursor::Boundary>,
+) -> Result<(Vec<TurnRow>, bool), StoreError> {
+    let base = "SELECT t.id,t.project_id,t.chat_id,t.session_id,s.ordinal,
+                       t.runtime_epoch,t.ordinal,t.state,t.revision,
+                       t.created_at,t.updated_at,t.terminal_at
+                FROM turns t JOIN agent_sessions s ON s.id=t.session_id
+                WHERE t.project_id=?1 AND t.chat_id=?2";
+    let sql = match cursor {
+        Some(boundary) if boundary.includes_boundary_turn() => format!(
+            "{base} AND (s.ordinal<?3 OR (s.ordinal=?3 AND
+             (t.ordinal<?4 OR (t.ordinal=?4 AND t.id<=?5))))
+             ORDER BY s.ordinal DESC,t.ordinal DESC,t.id DESC LIMIT 21"
+        ),
+        Some(_) => format!(
+            "{base} AND (s.ordinal<?3 OR (s.ordinal=?3 AND
+             (t.ordinal<?4 OR (t.ordinal=?4 AND t.id<?5))))
+             ORDER BY s.ordinal DESC,t.ordinal DESC,t.id DESC LIMIT 21"
+        ),
+        None => format!("{base} ORDER BY s.ordinal DESC,t.ordinal DESC,t.id DESC LIMIT 21"),
+    };
+    let mut statement = connection.prepare(&sql)?;
+    let mapper = |row: &rusqlite::Row<'_>| {
+        Ok(TurnRow {
+            id: row.get(0)?,
+            project_id: row.get(1)?,
+            chat_id: row.get(2)?,
+            session_id: row.get(3)?,
+            session_ordinal: row.get(4)?,
+            runtime_epoch: row.get(5)?,
+            ordinal: row.get(6)?,
+            state: row.get(7)?,
+            revision: row.get(8)?,
+            created_at: row.get(9)?,
+            updated_at: row.get(10)?,
+            terminal_at: row.get(11)?,
+            item_before: None,
+        })
+    };
+    let mut result = Vec::with_capacity(21);
+    if let Some(boundary) = cursor {
+        for row in statement.query_map(
+            params![
+                project.as_str(),
+                chat.as_str(),
+                boundary.session_ordinal,
+                boundary.turn_ordinal,
+                boundary.turn_id
+            ],
+            mapper,
+        )? {
+            result.push(row?);
+        }
+    } else {
+        for row in statement.query_map(params![project.as_str(), chat.as_str()], mapper)? {
+            result.push(row?);
+        }
+    }
+    let more = result.len() > LIMITS.durable.history_page_turns as usize;
+    if more {
+        result.pop();
+    }
+    if let Some(boundary) = cursor.filter(|boundary| boundary.includes_boundary_turn()) {
+        let first = result
+            .first_mut()
+            .filter(|row| row.id == boundary.turn_id)
+            .ok_or(StoreError::Conflict {
+                resource: "pageCursor",
+            })?;
+        first.item_before = boundary.item_before;
+    }
+    Ok((result, more))
+}

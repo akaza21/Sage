@@ -273,6 +273,36 @@ pub struct HarnessDefinition {
     pub description: String,
     pub install_state: String,
     pub source: String,
+    pub transport: HarnessTransport,
+    pub binding_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HarnessTransport {
+    Acp,
+    LegacySimulator,
+}
+
+impl HarnessDefinition {
+    pub fn validate_transport_contract(&self) -> Result<(), &'static str> {
+        match (self.transport, self.binding_id.as_deref()) {
+            (HarnessTransport::LegacySimulator, None) => Ok(()),
+            (HarnessTransport::LegacySimulator, Some(_)) => {
+                Err("legacy simulator cannot declare an ACP binding")
+            }
+            (HarnessTransport::Acp, None) if self.install_state != "available" => Ok(()),
+            (HarnessTransport::Acp, None) => Err("an available ACP harness requires a binding ID"),
+            (HarnessTransport::Acp, Some(binding_id))
+                if !binding_id.is_empty()
+                    && binding_id.len() <= 512
+                    && !binding_id.contains('\0') =>
+            {
+                Ok(())
+            }
+            (HarnessTransport::Acp, Some(_)) => Err("ACP binding ID is invalid"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -292,6 +322,13 @@ pub struct ChatMessage {
     pub role: String,
     pub text: String,
     pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SimulatorTurnResult {
+    pub session_id: String,
+    pub messages: Vec<ChatMessage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

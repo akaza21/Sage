@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "status": "proposed-c0-specification",
+  "hashAlgorithm": "sha256",
+  "selfIncluded": false,
+  "ordering": "relativePath ascending by UTF-8 byte order",
+  "fileCount": 14,
+  "logicalBytes": 183921,
+  "files": [
+    {
+      "relativePath": "README.md",
+      "bytes": 2957,
+      "sha256": "b36b8c03a324c8b7d7b3e06b5319768e977768d1829f8f6c33baba4c73675399"
+    },
+    {
+      "relativePath": "c1-characterization-v1.json",
+      "bytes": 4629,
+      "sha256": "eb1b09c26734650cac88684bffc3d67be334f23f2fdedfd717a4ffc458ae76c7"
+    },
+    {
+      "relativePath": "dependency-admission-v1.json",
+      "bytes": 2896,
+      "sha256": "e1ce0a9bc1a6cf06ebcc5980a4c3ae249e8a3670f18a43c7642cfd7c99699d7c"
+    },
+    {
+      "relativePath": "evidence-policy-v1.json",
+      "bytes": 3506,
+      "sha256": "ea8954ca29473c558d7db272e574446aac8bcec058e10c8c379c2918664742d2"
+    },
+    {
+      "relativePath": "fixture-vectors-v1.json",
+      "bytes": 58310,
+      "sha256": "60baf7fdb6ec8054df3b5d231847ba806b44d9ecb1fdaaadc8c98a669d00f221"
+    },
+    {
+      "relativePath": "limit-fixture-coverage-v1.json",
+      "bytes": 8892,
+      "sha256": "0078fb868155de3d8fa44fd7e9eb743c51ab717ac717c8f9ad394d18094a41d9"
+    },
+    {
+      "relativePath": "limits-v1.json",
+      "bytes": 5862,
+      "sha256": "993320cc797c58d2a39900300ce24d7b075b0a3e04ab87407014ea60739178a9"
+    },
+    {
+      "relativePath": "migration-recovery-v1.json",
+      "bytes": 19519,
+      "sha256": "84d49ae1a0c1cc3244ff368dccc308d2a41327cc90ad0368b83bd1f97f7fc764"
+    },
+    {
+      "relativePath": "ownership-manifest-v1.json",
+      "bytes": 5850,
+      "sha256": "d62df206c0978e92a09100d0a94d8e4f44de75cb501cb02646d24c0dcc196a13"
+    },
+    {
+      "relativePath": "packaged-gestures-v1.json",
+      "bytes": 15153,
+      "sha256": "f48f7443863cd9df978e33f9bae17ef74000525d7682a20e3518bc28d9797451"
+    },
+    {
+      "relativePath": "performance-budgets-v1.json",
+      "bytes": 8334,
+      "sha256": "e1156734180479446f381d82ca4b286b958598e3a842e5d8609fb8ce19fadbdd"
+    },
+    {
+      "relativePath": "protocol-contract-v1.json",
+      "bytes": 11112,
+      "sha256": "08763a778e43422320df69df49cecb8eedd303a65b24138b418e3bb0221396e2"
+    },
+    {
+      "relativePath": "request-digest-vectors-v1.json",
+      "bytes": 4065,
+      "sha256": "5e15440ea60e05874e178f52c41d11859112d8be8511c4fbe71585cdbb792b7b"
+    },
+    {
+      "relativePath": "schema-005.sql",
+      "bytes": 32836,
+      "sha256": "ff7dc34d088b786954a5255fcb13cc44e6c9ca1447eb2a2bb7e274b2a0e8572d"
+    }
+  ]
+}

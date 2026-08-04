@@ -1,13 +1,11 @@
 use std::path::Path;
 
-use rusqlite::{OptionalExtension, params};
-use uuid::Uuid;
-
 use crate::{
     error::AppResult,
-    harnesses::SIMULATOR_ID,
     project_registry::{canonical_comparison_key, persisted_path_text},
+    session_events::seed_simulator_chat,
 };
+use rusqlite::{OptionalExtension, params};
 
 pub(super) fn insert_root(
     transaction: &rusqlite::Transaction<'_>,
@@ -47,28 +45,12 @@ pub(super) fn seed_project(
                  '{}', ?3, ?3)",
         params![tab_id, project_id, now],
     )?;
-    transaction.execute(
-        "INSERT INTO agent_sessions
-         (id, project_id, chat_tab_id, harness_id, model_id, status,
-          last_committed_sequence, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, 'sim-fast', 'idle', 1, ?5, ?5)",
-        params![session_id, project_id, tab_id, SIMULATOR_ID, now],
-    )?;
     let payload = serde_json::json!({
         "role": "assistant",
         "text": "This project is ready. Choose a harness and begin a persistent chat."
-    });
-    transaction.execute(
-        "INSERT INTO session_events
-         (id, session_id, sequence, kind, payload_json, created_at)
-         VALUES (?1, ?2, 1, 'message', ?3, ?4)",
-        params![
-            Uuid::new_v4().to_string(),
-            session_id,
-            payload.to_string(),
-            now
-        ],
-    )?;
+    })
+    .to_string();
+    seed_simulator_chat(transaction, project_id, tab_id, session_id, now, &payload)?;
     transaction.execute(
         "INSERT INTO project_layouts
          (project_id, active_tab_id, selected_root_id,

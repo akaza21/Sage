@@ -1,0 +1,391 @@
+{
+  "schemaVersion": 1,
+  "status": "proposed-c0-specification",
+  "commitModel": "verified-replacement-with-restart-adoption",
+  "filenames": {
+    "live": "sage.db",
+    "liveWal": "sage.db-wal",
+    "liveShm": "sage.db-shm",
+    "backupStage": "sage.pre-v5.db.stage",
+    "backupJournal": "sage.pre-v5.db.stage-journal",
+    "backupBuildIntent": "sage.pre-v5.build-intent.json",
+    "backupStageOwner": "sage.pre-v5.stage-owner.json",
+    "backupFinal": "sage.pre-v5.db",
+    "manifestStage": "sage.pre-v5.manifest.json.stage",
+    "manifestFinal": "sage.pre-v5.manifest.json",
+    "replacementStage": "sage.v5.db.stage",
+    "replacementJournal": "sage.v5.db.stage-journal",
+    "replacementBuildIntent": "sage.v5.build-intent.json",
+    "replacementStageOwner": "sage.v5.stage-owner.json",
+    "replacementManifestStage": "sage.v5.manifest.json.stage",
+    "retiredLive": "sage.v4.db.retired",
+    "retiredWal": "sage.v4.db-wal.retired",
+    "retiredShm": "sage.v4.db-shm.retired",
+    "quarantineLiveStage": "sage.failed-v5.db.stage",
+    "quarantineWalStage": "sage.failed-v5.db-wal.stage",
+    "quarantineShmStage": "sage.failed-v5.db-shm.stage",
+    "quarantineManifestStage": "sage.failed-v5.manifest.json.stage",
+    "quarantineLiveFinal": "sage.failed-v5.db",
+    "quarantineWalFinal": "sage.failed-v5.db-wal",
+    "quarantineShmFinal": "sage.failed-v5.db-shm",
+    "quarantineManifestFinal": "sage.failed-v5.manifest.json",
+    "probeMain": "sage.migration-probe.db",
+    "probeWal": "sage.migration-probe.db-wal",
+    "probeShm": "sage.migration-probe.db-shm",
+    "probeManifest": "sage.migration-probe.manifest.json"
+  },
+  "globalRules": [
+    "Acquire the exclusive process migration lock before classification, cleanup, adoption, backup, replacement, or restore.",
+    "Classify an absent/zero-WAL database with immutable read-only open. For a nonempty WAL, first create the identity-bound bounded probe snapshot below and classify only that isolated copy. Require exact schema/version/fingerprint, quick_check(1), foreign_key_check, bytes and SHA-256 before an action.",
+    "Any present artifact with an invalid name class, invalid fingerprint, unexpected nonempty WAL, mismatched manifest, or unlisted schema is a typed blocker and is never overwritten or deleted.",
+    "Every file fsync is followed by parent-directory fsync after rename; all stage/final byte counts charge the migration storage ledger before creation.",
+    "Only the rules below may adopt or remove a stage artifact. A valid build intent plus a StageOwner synced before use must bind the nonce, fixed stage/journal names, and separate native identities of both precreated files. Removal requires both exact identities; absent, unowned, replaced, or mismatched artifacts are preserved and block. Every unlisted combination fails closed."
+  ],
+  "backupPublication": [
+    "Open live v1-v4, acquire BEGIN IMMEDIATE only to pin and validate the source snapshot, and perform every LIMIT+1 and aggregate-byte preflight.",
+    "Create backupBuildIntent, then precreate backupStage and backupJournal and bind both native identities in backupStageOwner. Copy the snapshot into backupStage in bounded page steps using migration-only TRUNCATE journal mode, then verify schema, integrity, foreign keys, row counts, aggregate bytes, logical fingerprint, length and SHA-256.",
+    "Fsync backupStage; write and fsync manifestStage; fsync the parent; rename backupStage to backupFinal; fsync parent; rename manifestStage to manifestFinal; fsync parent.",
+    "Reopen both finals and verify cross-digests, source fingerprint and app/source identity, then roll back the read-only outer transaction and close its handle.",
+    "A matching verified final pair is reused; a mismatched final is a blocker and is never overwritten."
+  ],
+  "backupRestartStates": [
+    { "present": [], "action": "begin-new-publication" },
+    {
+      "present": ["backupStage"],
+      "action": "verify-source-still-matches-delete-stage-fsync-restart"
+    },
+    { "present": ["manifestStage"], "action": "block-corrupt-publication" },
+    {
+      "present": ["backupStage", "manifestStage"],
+      "action": "verify-cross-digests-publish-both-finals"
+    },
+    {
+      "present": ["backupFinal", "manifestStage"],
+      "action": "verify-cross-digests-publish-manifest-final"
+    },
+    {
+      "present": ["backupFinal", "manifestFinal"],
+      "action": "verify-and-reuse-only-for-matching-source"
+    },
+    { "present": ["backupFinal"], "action": "block-corrupt-publication" },
+    { "present": ["manifestFinal"], "action": "block-corrupt-publication" },
+    {
+      "present": ["any-other-backup-stage-final-combination"],
+      "action": "block-corrupt-publication"
+    }
+  ],
+  "classificationProbe": [
+    "For a present nonempty live WAL, fingerprint bounded live main/WAL/SHM under the migration lock and preflight the admitted transient bytes before creating a probe artifact.",
+    "Create and fsync probeManifest first with the app/schema identity, exact source fingerprints, and fixed probe names. Then copy main and WAL with create-new/no-follow and physical byte caps; the isolated SQLite open may generate only the named bounded probeShm.",
+    "Require source fingerprints to be identical before and after the copy, copied main/WAL digests to equal the manifest, and classify/quick-check/foreign-key-check only the isolated copy.",
+    "Remove probeShm, probeWal, probeMain, then probeManifest with synchronized deletion. Unmanifested, foreign, mismatched, over-limit, or out-of-order probe artifacts are preserved and block."
+  ],
+  "classificationProbeRestartStates": [
+    {
+      "present": ["probeManifest"],
+      "action": "verify-live-identity-remove-manifest-restart"
+    },
+    {
+      "present": ["probeManifest", "probeMain-partial-or-complete"],
+      "action": "verify-live-identity-and-source-prefix-remove-owned-prefix-restart"
+    },
+    {
+      "present": ["probeManifest", "probeMain", "probeWal-partial-or-complete"],
+      "action": "verify-live-identity-and-source-prefix-remove-owned-prefix-restart"
+    },
+    {
+      "present": ["probeManifest", "probeMain", "probeWal", "probeShm"],
+      "action": "verify-live-identity-and-bounded-generated-shm-remove-owned-prefix-restart"
+    },
+    {
+      "present": ["any-probe-artifact-without-valid-matching-probeManifest"],
+      "action": "block-preserve-all"
+    }
+  ],
+  "replacementBuild": [
+    "Before replacementStage creation, create and fsync replacementBuildIntent bound to the app/schema identity, exact verified backup file/logical fingerprints, exact live legacy logical fingerprint, and the fixed replacementStage/replacementManifestStage names.",
+    "Build replacementStage from the verified backupFinal, never from a changing live handle, using migration-only TRUNCATE journal mode and bounded keyset conversion. Precreate replacementStage/replacementJournal and bind their separate native identities in replacementStageOwner; only a valid matching build intent plus exact owner identities may authorize removal after restart.",
+    "Verify exact schema-005, both version markers, ownership, ledgers, quick_check(1), foreign_key_check and logical conversion fingerprint; fsync replacementStage and parent.",
+    "Reopen live under the migration lock, require the same v1-v4 source fingerprint, checkpoint it to a zero-byte/absent WAL, close every SQLite handle, and validate that SHM carries no durable content.",
+    "Write/fsync replacementManifestStage with replacement hash/fingerprint plus exact pre/post-checkpoint source main/WAL/SHM presence, bytes and hashes; verify it against replacementBuildIntent and the retained backup, then remove replacementBuildIntent. The replacement manifest makes every retirement prefix classifiable.",
+    "Rename an expected zero-byte WAL to retiredWal and fsync parent, then an expected SHM to retiredShm and fsync parent, then live to retiredLive and fsync parent. Absent sidecars are explicit skipped prefix steps. Finally rename replacementStage to live and fsync parent.",
+    "Reopen live read-only and verify v5 plus conversion fingerprint before configuring WAL. Only then clean in fixed order: retiredShm if manifested, retiredWal if manifested, retiredLive, and replacementManifestStage last, with parent fsync after every removal. The manifest remains until all retired files are absent, so every cleanup prefix is restart-classifiable; backupFinal and manifestFinal remain retained."
+  ],
+  "replacementRestartStates": [
+    {
+      "liveClass": "verified-v1-v4",
+      "replacementStage": "absent",
+      "retiredSet": "absent",
+      "action": "reuse-backup-or-build-replacement"
+    },
+    {
+      "liveClass": "verified-v1-v4",
+      "buildIntent": "valid-matching",
+      "replacementStage": "absent",
+      "replacementManifestStage": "absent",
+      "action": "verify-live-and-backup-rebuild-replacement"
+    },
+    {
+      "liveClass": "verified-v1-v4",
+      "buildIntent": "valid-matching",
+      "replacementStage": "bounded-partial-or-complete",
+      "replacementManifestStage": "absent",
+      "action": "verify-live-and-backup-remove-authorized-stage-or-journal-rebuild-checkpoint-and-manifest"
+    },
+    {
+      "liveClass": "verified-v1-v4",
+      "buildIntent": "valid-matching",
+      "replacementStage": "verified-v5",
+      "replacementManifestStage": "valid-matching",
+      "action": "verify-both-manifests-and-stage-remove-build-intent-enter-retirement"
+    },
+    {
+      "liveClass": "any",
+      "buildIntent": "missing-foreign-or-mismatched",
+      "replacementStage": "any-unmanifested-stage-or-journal",
+      "action": "block-preserve-all"
+    },
+    {
+      "liveClass": "verified-v1-v4",
+      "replacementStage": "verified-v5",
+      "retirementPrefix": "none-with-valid-replacement-manifest",
+      "action": "reverify-source-fingerprint-then-enter-retirement-step"
+    },
+    {
+      "liveClass": "verified-v1-v4",
+      "replacementStage": "verified-v5",
+      "retirementPrefix": "wal-retired-exactly-as-manifested",
+      "action": "verify-live-and-prefix-then-retire-shm-or-skip"
+    },
+    {
+      "liveClass": "verified-v1-v4",
+      "replacementStage": "verified-v5",
+      "retirementPrefix": "all-manifested-sidecars-retired",
+      "action": "verify-live-and-prefix-then-retire-main"
+    },
+    {
+      "liveClass": "absent",
+      "replacementStage": "verified-v5",
+      "retirementPrefix": "complete-main-and-sidecars-as-manifested",
+      "action": "publish-replacement-as-live"
+    },
+    {
+      "liveClass": "verified-v5",
+      "replacementStage": "absent",
+      "retirementPrefix": "complete-main-and-sidecars-as-manifested",
+      "action": "verify-v5-then-remove-retiredShm-or-skip"
+    },
+    {
+      "liveClass": "verified-v5",
+      "replacementStage": "absent",
+      "retirementPrefix": "cleanup-shm-absent-sidecars-still-manifested",
+      "action": "verify-v5-and-prefix-then-remove-retiredWal-or-skip"
+    },
+    {
+      "liveClass": "verified-v5",
+      "replacementStage": "absent",
+      "retirementPrefix": "cleanup-sidecars-absent-retiredLive-present",
+      "action": "verify-v5-and-prefix-then-remove-retiredLive"
+    },
+    {
+      "liveClass": "verified-v5",
+      "replacementStage": "absent",
+      "retirementPrefix": "cleanup-retired-files-absent-replacement-manifest-present",
+      "action": "verify-v5-and-prefix-then-remove-replacementManifestStage"
+    },
+    {
+      "liveClass": "verified-v5",
+      "replacementStage": "absent",
+      "retiredSet": "absent",
+      "action": "normal-v5-open"
+    },
+    {
+      "liveClass": "absent",
+      "replacementStage": "absent",
+      "retirementPrefix": "complete-main-and-sidecars-as-manifested",
+      "action": "restore-retiredLive-to-live-and-restart-migration"
+    },
+    {
+      "liveClass": "verified-v1-v4",
+      "replacementStage": "verified-v5",
+      "retirementPrefix": "complete-main-and-sidecars-as-manifested",
+      "action": "block-impossible-duplicate-retirement"
+    },
+    {
+      "liveClass": "any",
+      "replacementStage": "invalid-or-non-v5",
+      "retiredSet": "any",
+      "action": "block-preserve-all"
+    },
+    {
+      "liveClass": "invalid-or-unsupported",
+      "replacementStage": "any",
+      "retiredSet": "any",
+      "action": "block-preserve-all"
+    },
+    {
+      "liveClass": "any",
+      "replacementStage": "any",
+      "retirementPrefix": "partial-not-equal-to-a-manifested-prefix-or-invalid",
+      "action": "block-preserve-all"
+    },
+    {
+      "liveClass": "any-other-combination",
+      "replacementStage": "any",
+      "retirementPrefix": "any",
+      "action": "block-preserve-all"
+    }
+  ],
+  "sidecarRules": {
+    "classificationProbe": "probeManifest is synced before probeMain/probeWal creation and removed last. Its valid matching identity authorizes removal only of exact bounded source prefixes and the generated bounded probeShm; otherwise every probe artifact is preserved and blocks.",
+    "replacementBuild": "replacementBuildIntent is synced before the precreated replacementStage/replacementJournal pair is used. replacementStageOwner binds nonce, names, and both native identities. A valid matching intent and owner authorize bounded partial-build cleanup until replacementManifestStage is verified; the exact journal is retired by identity, then the owner and intent are removed before retirement.",
+    "sourceWal": "Before retirement WAL must be absent or exactly zero bytes after successful checkpoint; nonzero or mismatched WAL blocks replacement.",
+    "sourceShm": "SHM is never treated as durable data; if present it is renamed with the retired set and removed only after verified v5 open.",
+    "retiredSet": "replacementManifestStage records exact source presence and hashes before the first rename. Valid retirement prefixes are none, WAL moved or explicitly absent, WAL+SHM moved or explicitly absent, then main moved. With live verified v5, valid cleanup prefixes remove manifested SHM, manifested WAL, retired main, then the manifest itself in that fixed order; any other prefix blocks without mutation.",
+    "newLive": "No old WAL/SHM filename may remain when replacementStage is renamed to live."
+  },
+  "offlineRestore": [
+    "Require exclusive offline lock and verify backupFinal plus manifestFinal.",
+    "Hash the failed live/WAL/SHM source set and write/fsync quarantineManifestStage with exact presence, bytes, hashes and source identity; copy each present file independently to its three quarantine stage names and fsync each file and parent.",
+    "Publish each present database stage to its matching quarantine final, main first then WAL then SHM, with parent fsync after each rename; after the complete set verifies, publish quarantineManifestFinal and fsync parent. Restart adopts only a prefix verified by the manifest stage/final; invalid or mismatched sets block.",
+    "After the complete quarantine set is verified, detach old sidecars, copy backupFinal to replacementStage, verify/fsync it, use the replacement retirement state machine, and retain exactly one quarantine set plus one backup pair.",
+    "Restore is never automatic and never merges WAL or application rows."
+  ],
+  "quarantineRestartStates": [
+    {
+      "stageSet": "absent",
+      "finalSet": "absent",
+      "action": "begin-on-explicit-restore"
+    },
+    {
+      "stageSet": "manifest-stage-plus-hash-complete-prefix",
+      "finalSet": "absent-or-matching-prefix",
+      "action": "verify-and-publish-next-file-then-manifest"
+    },
+    {
+      "stageSet": "absent",
+      "finalSet": "complete-files-plus-matching-manifest-final",
+      "action": "continue-explicit-restore"
+    },
+    {
+      "stageSet": "invalid-or-out-of-order",
+      "finalSet": "any",
+      "action": "block-preserve-all"
+    },
+    {
+      "stageSet": "any",
+      "finalSet": "invalid-or-mismatched",
+      "action": "block-preserve-all"
+    },
+    {
+      "stageSet": "any-other-combination",
+      "finalSet": "any",
+      "action": "block-preserve-all"
+    }
+  ],
+  "failpoints": [
+    { "id": "probe-manifest-fsync", "restartClass": "probeManifest-only" },
+    {
+      "id": "probe-main-copy",
+      "restartClass": "probeManifest-plus-main-prefix"
+    },
+    {
+      "id": "probe-wal-copy",
+      "restartClass": "probeManifest-plus-main-and-wal-prefix"
+    },
+    {
+      "id": "probe-open-generated-shm",
+      "restartClass": "complete-probe-prefix"
+    },
+    { "id": "backup-copy", "restartClass": "backupStage-only" },
+    { "id": "backup-file-fsync", "restartClass": "backupStage-only" },
+    { "id": "manifest-write", "restartClass": "both-stage" },
+    { "id": "manifest-file-fsync", "restartClass": "both-stage" },
+    { "id": "backup-rename", "restartClass": "backupFinal-manifestStage" },
+    { "id": "manifest-rename", "restartClass": "both-final" },
+    {
+      "id": "replacement-build-intent-fsync",
+      "restartClass": "buildIntent-only"
+    },
+    {
+      "id": "replacement-build",
+      "restartClass": "buildIntent-plus-replacementStage-prefix"
+    },
+    {
+      "id": "replacement-fsync",
+      "restartClass": "buildIntent-plus-complete-replacementStage"
+    },
+    {
+      "id": "source-checkpoint-before-replacement-manifest",
+      "restartClass": "buildIntent-plus-checkpointed-v1-v4-plus-complete-replacementStage"
+    },
+    {
+      "id": "replacement-manifest-fsync",
+      "restartClass": "both-build-and-replacement-manifests"
+    },
+    {
+      "id": "replacement-build-intent-remove-or-parent-fsync",
+      "restartClass": "retirement-prefix-none"
+    },
+    {
+      "id": "retire-wal-rename-or-parent-fsync",
+      "restartClass": "retirement-prefix-wal"
+    },
+    {
+      "id": "retire-shm-rename-or-parent-fsync",
+      "restartClass": "retirement-prefix-sidecars"
+    },
+    {
+      "id": "retire-live-rename-or-parent-fsync",
+      "restartClass": "retired-set-plus-replacementStage-no-live"
+    },
+    { "id": "replacement-publish", "restartClass": "live-v5-plus-retired-set" },
+    { "id": "postcommit-reopen", "restartClass": "live-v5-plus-retired-set" },
+    {
+      "id": "cleanup-retired-shm-remove-or-parent-fsync",
+      "restartClass": "live-v5-cleanup-prefix-shm"
+    },
+    {
+      "id": "cleanup-retired-wal-remove-or-parent-fsync",
+      "restartClass": "live-v5-cleanup-prefix-sidecars"
+    },
+    {
+      "id": "cleanup-retired-live-remove-or-parent-fsync",
+      "restartClass": "live-v5-cleanup-prefix-files-absent"
+    },
+    {
+      "id": "cleanup-replacement-manifest-remove-or-parent-fsync",
+      "restartClass": "normal-live-v5"
+    },
+    {
+      "id": "quarantine-manifest-write",
+      "restartClass": "quarantine-manifest-stage"
+    },
+    { "id": "quarantine-copy-main", "restartClass": "quarantine-main-stage" },
+    {
+      "id": "quarantine-copy-wal",
+      "restartClass": "quarantine-main-wal-stage"
+    },
+    {
+      "id": "quarantine-copy-shm",
+      "restartClass": "quarantine-complete-stage"
+    },
+    {
+      "id": "quarantine-publish-main",
+      "restartClass": "quarantine-main-final-tail-stage"
+    },
+    {
+      "id": "quarantine-publish-wal",
+      "restartClass": "quarantine-main-wal-final-shm-stage"
+    },
+    {
+      "id": "quarantine-publish-shm",
+      "restartClass": "quarantine-complete-final"
+    },
+    {
+      "id": "quarantine-publish-manifest",
+      "restartClass": "quarantine-complete-files-plus-manifest-final"
+    },
+    { "id": "restore-replacement", "restartClass": "replacementRestartStates" }
+  ]
+}

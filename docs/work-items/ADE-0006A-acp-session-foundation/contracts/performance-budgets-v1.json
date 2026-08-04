@@ -1,0 +1,202 @@
+{
+  "schemaVersion": 1,
+  "status": "proposed-c0-s-ceilings",
+  "authorityRule": "C0-S fixes ceilings; independent C1 records candidate/control provenance and pass-fail only.",
+  "latencyMs": {
+    "spawnToProcessReadyP95": 2500,
+    "initializeP95": 5000,
+    "promptWriteCompleteToFirstNormalizedFixtureOutputP50": 250,
+    "promptWriteCompleteToFirstNormalizedFixtureOutputP95": 750,
+    "nativeReceiptToPaintP95": 50,
+    "inputToPaintP95": 50,
+    "tabSwitchP95": 100,
+    "cancelDispatchP95": 100,
+    "cancelTerminalP95": 1000,
+    "coldActivationP50": 800,
+    "coldActivationP95": 1500,
+    "explicitCloseP95": 1000,
+    "forcedTeardownHardMaximum": 5000
+  },
+  "resource": {
+    "readyIdleCpuSingleCorePercentP95": 0.5,
+    "coldProcessCount": 0,
+    "coldSocketCount": 0,
+    "coldListenerCount": 0,
+    "coldTimerCount": 0,
+    "operationalRuntimeTrees": 1,
+    "operationalRunningTurns": 1,
+    "fixtureTreePrivateBytesP95": 67108864,
+    "sageNativeAndRendererIncrementalPrivateBytesP95": 33554432,
+    "orphanProcessesAfterClose": 0
+  },
+  "persistence": {
+    "walCheckpointTargetBytes": 16777216,
+    "walHardStopBytes": 33554432,
+    "liveDatabaseBytes": 1073741824,
+    "stateDirectoryBytesForFoundationFixture": 16777216,
+    "promptWritesPerTurn": 1,
+    "sqliteWritesPerTextDelta": 0,
+    "ipcNotificationsPerTextDelta": 0
+  },
+  "packageDelta": {
+    "defaultProductionFixtureArtifactsBytes": 0,
+    "defaultProductionChildProcesses": 0,
+    "frontendRawBytesMaximum": 131072,
+    "productionExecutableBytesMaximum": 1048576,
+    "installedCoreBytesMaximum": 2097152,
+    "runtimeDownloadBytes": 0
+  },
+  "controlRegressionMax": {
+    "latencyMs": {
+      "spawnToProcessReadyP95": 250,
+      "initializeP95": 500,
+      "promptWriteCompleteToFirstNormalizedFixtureOutputP50": 50,
+      "promptWriteCompleteToFirstNormalizedFixtureOutputP95": 100,
+      "nativeReceiptToPaintP95": 10,
+      "inputToPaintP95": 10,
+      "tabSwitchP95": 20,
+      "cancelDispatchP95": 20,
+      "cancelTerminalP95": 250,
+      "coldActivationP50": 200,
+      "coldActivationP95": 300,
+      "explicitCloseP95": 250
+    },
+    "resource": {
+      "readyIdleCpuSingleCorePercentagePointsP95": 0.1,
+      "fixtureTreePrivateBytesP95": 67108864,
+      "sageNativeAndRendererIncrementalPrivateBytesP95": 33554432,
+      "orphanProcessesAfterClose": 0
+    },
+    "persistence": {
+      "walBytes": 16777216,
+      "liveDatabaseBytes": 16777216,
+      "writesPerTextDelta": 0,
+      "ipcNotificationsPerTextDelta": 0
+    },
+    "absoluteOnly": [
+      "forcedTeardownHardMaximum",
+      "coldProcessCount",
+      "coldSocketCount",
+      "coldListenerCount",
+      "coldTimerCount",
+      "operationalRuntimeTrees",
+      "operationalRunningTurns",
+      "all packageDelta metrics"
+    ]
+  },
+  "sampleContract": {
+    "cleanResourceLaunches": 5,
+    "coldFixtureCycles": 30,
+    "receiptToPaintSamples": 100,
+    "inputToPaintSamples": 100,
+    "saturationCyclesPerBoundary": 30,
+    "percentileMethod": "nearest-rank",
+    "warmWakeApplicable": false,
+    "matchedAcceptedControlRequired": true,
+    "candidateMayChangeCeiling": false,
+    "testMayChangeCeiling": false
+  },
+  "samplePhase": {
+    "c1": [
+      "cleanResourceLaunches",
+      "coldFixtureCycles",
+      "saturationCyclesPerBoundary"
+    ],
+    "c0B": [
+      "cleanResourceLaunches",
+      "receiptToPaintSamples",
+      "inputToPaintSamples",
+      "saturationCyclesPerBoundary"
+    ],
+    "notApplicableSamplesAreOmittedNotZero": true
+  },
+  "measurementContract": {
+    "candidateAndControlIdentity": {
+      "candidate": "exact executable SHA-256 plus source tree, source manifest, contract manifest, lockfile hashes, feature set, OS, architecture, WebView runtime, and toolchain",
+      "control": "the independently accepted ADE-0005 executable and its exact source tree, source manifest, lockfile hashes, OS, architecture, WebView runtime, and toolchain",
+      "matchedHostRequired": true,
+      "matchedPowerPolicyRequired": true,
+      "invalidIfIdentityFieldMissing": true
+    },
+    "runOrder": {
+      "order": "alternating-control-candidate",
+      "firstPairOrder": "seed-0-even-control-first",
+      "subsequentPairs": "alternate first participant",
+      "cleanResourceLaunch": "new isolated data directory, no prior Sage process, OS file cache left natural and recorded",
+      "warmupCyclesExcluded": 3,
+      "invalidLaunch": "discard the whole control/candidate pair, record typed reason, and rerun; never substitute or interpolate"
+    },
+    "readyIdle": {
+      "entry": "initialize committed ready, projection revision observed by WebView, no Turn active, ingress/egress/journal queues empty, WAL converged below checkpoint target",
+      "settleMs": 5000,
+      "sampleIntervalMs": 250,
+      "samplesPerLaunch": 40,
+      "cpuFormula": "sum process CPU-time delta across the owned tree divided by wall-time delta and one logical core, multiplied by 100",
+      "cpuAggregation": "nearest-rank P95 across all valid per-interval samples; intervals spanning spawn or exit are invalid"
+    },
+    "processMembership": {
+      "nativeAndRenderer": "candidate Sage parent plus descendants whose parent chain reaches that exact PID and process creation time",
+      "fixtureTree": "child root recorded from the verified spawn handle plus descendants whose parent chain reaches that exact PID and creation time",
+      "pidReuseDefense": "PID plus process creation time",
+      "privateBytes": "sum platform private/unique committed bytes for current members at each sample",
+      "orphanCheck": "zero living descendants from either owned tree 5 seconds after close"
+    },
+    "latencyAnchors": {
+      "spawnToProcessReady": "monotonic instant immediately before verified spawn through successful child-process handle creation",
+      "initialize": "first initialize request byte write through durable ready commit",
+      "firstNormalizedOutput": "last prompt request byte written through first structurally validated normalized Item accepted by Rust",
+      "nativeReceiptToPaint": "Rust frame receipt monotonic timestamp through browser performance.now mark after the projection paint containing that revision",
+      "inputToPaint": "trusted semantic input event timestamp through browser performance.now mark after resulting paint",
+      "cancelDispatch": "trusted Cancel activation through final cancel byte write or typed local no-write disposition",
+      "cancelTerminal": "trusted Cancel activation through durable terminal Turn commit",
+      "explicitClose": "close request receipt through zero owned process descendants and WAL convergence"
+    },
+    "deltaFormulas": {
+      "latency": "candidate percentile minus matched control percentile in milliseconds; metrics present in controlRegressionMax must pass both that value and the absolute ceiling, while metrics listed in absoluteOnly use only the absolute ceiling",
+      "bytes": "candidate retained or package bytes minus matched control bytes",
+      "processes": "candidate owned process count minus matched control owned process count",
+      "wal": "candidate WAL bytes at matching lifecycle marker minus control WAL bytes at the same marker",
+      "percentile": "sort ascending and select element ceil(p*n), one-indexed; no interpolation"
+    },
+    "saturation": {
+      "eachBoundary": "run exact-limit then limit-plus-one in one fresh runtime epoch",
+      "cycles": 30,
+      "requiredObservations": [
+        "accepted count",
+        "rejected count",
+        "retained bytes",
+        "queue high-water mark",
+        "typed error",
+        "terminal state",
+        "zero orphan descendants"
+      ],
+      "invalidIfPollingDetected": true
+    }
+  },
+  "requiredC1Provenance": [
+    "sourceCommit",
+    "sourceTree",
+    "sourceManifestSha256",
+    "contractManifestSha256",
+    "fixtureManifestSha256",
+    "cargoLockSha256",
+    "frontendLockSha256",
+    "operatingSystem",
+    "architecture",
+    "hardware",
+    "powerPolicy",
+    "WebViewRuntime",
+    "toolchain",
+    "candidateExecutableSha256",
+    "controlExecutableSha256",
+    "sampleCounts",
+    "percentileMethod",
+    "runOrder",
+    "warmupCycles",
+    "readyIdleDefinition",
+    "cpuSampleIntervalMs",
+    "cpuSampleCount",
+    "processMembershipMethod",
+    "invalidPairCountAndReasons"
+  ]
+}

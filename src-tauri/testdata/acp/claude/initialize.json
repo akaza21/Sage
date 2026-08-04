@@ -1,0 +1,15 @@
+{
+  "id": 1,
+  "result": {
+    "protocolVersion": "1.0",
+    "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": { "image": true },
+      "mcpCapabilities": { "http": true }
+    },
+    "models": [{ "id": "claude-reviewed", "name": "Claude reviewed fixture" }],
+    "_meta": {
+      "untrustedCapability": true
+    }
+  }
+}

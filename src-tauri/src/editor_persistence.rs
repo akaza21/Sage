@@ -110,7 +110,7 @@ impl Database {
         buffer_fingerprint: &str,
     ) -> AppResult<BufferSnapshotAck> {
         let byte_len = content.len() as i64;
-        let mut connection = self.connection();
+        let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
         let existing = transaction
             .query_row(
@@ -221,7 +221,7 @@ impl Database {
         project_id: &str,
         request: &BufferSnapshotRequest,
     ) -> AppResult<BufferSnapshotAck> {
-        let mut connection = self.connection();
+        let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
         let existing = transaction
             .query_row(
@@ -272,7 +272,7 @@ impl Database {
         resource: &ResourceRef,
         temp_path: &str,
     ) -> AppResult<()> {
-        let updated = self.connection().execute(
+        let updated = self.write_connection()?.execute(
             "UPDATE editor_buffers
              SET pending_temp_path = ?4, updated_at = ?5
              WHERE project_id = ?1 AND root_id = ?2 AND relative_path = ?3",
@@ -297,7 +297,7 @@ impl Database {
         project_id: &str,
         resource: &ResourceRef,
     ) -> AppResult<()> {
-        self.connection().execute(
+        self.write_connection()?.execute(
             "UPDATE editor_buffers
              SET pending_temp_path = NULL, updated_at = ?4
              WHERE project_id = ?1 AND root_id = ?2 AND relative_path = ?3",
@@ -312,7 +312,7 @@ impl Database {
     }
 
     pub fn delete_editor_buffer(&self, project_id: &str, resource: &ResourceRef) -> AppResult<()> {
-        let mut connection = self.connection();
+        let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
         delete_buffer_in(&transaction, project_id, resource, now_millis())?;
         transaction.commit()?;

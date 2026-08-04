@@ -3,6 +3,7 @@ use std::path::PathBuf;
 #[cfg(test)]
 use crate::persistence::Database;
 use crate::{
+    acp::contract::SageProjectId,
     domain::{ProjectLayoutRequest, ProjectSwitchRequest, ProjectTransitionResult},
     error::AppResult,
     resource_commands::build_bootstrap_snapshot,
@@ -139,6 +140,11 @@ async fn execute_committed_transition<T: Send + 'static>(
         return failed_transition(*transition_epoch, error);
     }
     *transition_epoch = committed_epoch;
+    if let Ok(Some(active_project)) = state.database.active_project_id()
+        && let Ok(active_project) = SageProjectId::parse(active_project)
+    {
+        state.acp.project_switched(&active_project);
+    }
     committed_projection(state, committed_epoch).await
 }
 

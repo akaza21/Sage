@@ -23,7 +23,7 @@ impl Fixture {
     fn new() -> Self {
         let root = std::env::temp_dir().join(format!("sage-editor-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
-        let database = Database::open(&root.join("sage-test.db")).unwrap();
+        let database = Database::open(&root.join("sage.db")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let workspace = Workspace::open(&project.id, &project.roots[0].id, &root).unwrap();
         Self {
@@ -47,7 +47,7 @@ impl Fixture {
 
     fn reopen_database(&mut self) {
         drop(self.database.take());
-        self.database = Some(Database::open(&self.root.join("sage-test.db")).unwrap());
+        self.database = Some(Database::open(&self.root.join("sage.db")).unwrap());
     }
 
     fn resource(&self, path: &str) -> ResourceRef {
@@ -114,6 +114,22 @@ fn discard_document(
     path: &str,
 ) -> AppResult<EditorDocument> {
     super::discard_document(database, workspace, &workspace.resource(path)?)
+}
+
+fn sqlite_sidecar_path(database_path: &Path, suffix: &str) -> PathBuf {
+    let mut sidecar = database_path.as_os_str().to_os_string();
+    sidecar.push(suffix);
+    PathBuf::from(sidecar)
+}
+
+#[test]
+fn sqlite_sidecar_path_preserves_the_database_filename() {
+    let database_path = Path::new("fixture/sage.db");
+
+    assert_eq!(
+        sqlite_sidecar_path(database_path, "-wal"),
+        PathBuf::from("fixture/sage.db-wal")
+    );
 }
 
 #[test]
@@ -618,14 +634,15 @@ fn measures_bounded_sqlite_growth() {
     fn file_size(path: &Path) -> u64 {
         fs::metadata(path).map_or(0, |metadata| metadata.len())
     }
-    fn sizes(root: &Path) -> (u64, u64) {
+    fn sizes(database_path: &Path) -> (u64, u64) {
         (
-            file_size(&root.join("sage-test.db")),
-            file_size(&root.join("sage-test.db-wal")),
+            file_size(database_path),
+            file_size(&sqlite_sidecar_path(database_path, "-wal")),
         )
     }
 
     let fixture = Fixture::new();
+    let database_path = fixture.root.join("sage.db");
     let content = "x".repeat(64 * 1024);
     let mut opened_documents = Vec::new();
     for index in 0..16 {
@@ -640,7 +657,7 @@ fn measures_bounded_sqlite_growth() {
         snapshot_request(&opened_documents[0], content.clone(), 1),
     )
     .unwrap();
-    let one = sizes(&fixture.root);
+    let one = sizes(&database_path);
     for document in opened_documents.iter().skip(1) {
         snapshot_buffer(
             fixture.database(),
@@ -649,7 +666,7 @@ fn measures_bounded_sqlite_growth() {
         )
         .unwrap();
     }
-    let sixteen = sizes(&fixture.root);
+    let sixteen = sizes(&database_path);
     for revision in 2..=101 {
         let mut updated = content.clone();
         updated.replace_range(..1, if revision % 2 == 0 { "y" } else { "x" });
@@ -660,7 +677,7 @@ fn measures_bounded_sqlite_growth() {
         )
         .unwrap();
     }
-    let repeated = sizes(&fixture.root);
+    let repeated = sizes(&database_path);
     println!(
         "sqlite_growth buffer_bytes=65536 one_db={} one_wal={} sixteen_db={} sixteen_wal={} repeated_100_db={} repeated_100_wal={}",
         one.0, one.1, sixteen.0, sixteen.1, repeated.0, repeated.1

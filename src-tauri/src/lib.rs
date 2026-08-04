@@ -1,3 +1,4 @@
+pub mod acp;
 mod commands;
 mod domain;
 mod editor;
@@ -26,18 +27,20 @@ use std::path::PathBuf;
 use tauri::{Manager, RunEvent};
 use tracing::info;
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{persistence::Database, state::AppState, workspace::development_workspace_root};
 
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 fn initialize_tracing() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("sage=info")),
-        )
+    let sage_targets = tracing_subscriber::filter::filter_fn(|metadata| {
+        let target = metadata.target();
+        target == "sage_lib" || target.starts_with("sage_lib::")
+    });
+    let formatter = tracing_subscriber::fmt::layer()
         .with_target(false)
-        .try_init();
+        .with_filter(sage_targets);
+    let _ = tracing_subscriber::registry().with(formatter).try_init();
 }
 
 #[cfg(not(any(debug_assertions, feature = "diagnostics")))]
@@ -75,8 +78,8 @@ pub fn run() {
             {
                 database.create_project_from_root(&root)?;
             }
-            app.manage(AppState::new(database));
-            info!(path = %app_data_dir.display(), "Sage application state initialized");
+            app.manage(AppState::try_new_desktop(database, app.handle().clone())?);
+            info!("Sage application state initialized");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -95,12 +98,20 @@ pub fn run() {
             project_commands::persist_project_layout_and_close,
             project_commands::switch_project,
             commands::list_harness_models,
-            commands::send_simulated_prompt
+            commands::send_simulated_prompt,
+            commands::get_acp_chat_page,
+            commands::start_acp_session,
+            commands::activate_acp_session,
+            commands::send_acp_turn,
+            commands::cancel_acp_turn,
+            commands::close_acp_session
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Sage")
-        .run(|_app_handle, event| {
+        .run(|app_handle, event| {
             if matches!(event, RunEvent::ExitRequested { .. }) {
+                let state = app_handle.state::<AppState>();
+                let _ = state.acp.shutdown_blocking();
                 info!("Sage host exit requested");
             }
         });

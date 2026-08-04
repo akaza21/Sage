@@ -1,0 +1,41 @@
+#![cfg(feature = "acp-fixture")]
+
+mod adapter;
+mod cases;
+#[cfg(test)]
+mod child;
+#[cfg(test)]
+mod coverage;
+#[cfg(all(test, windows))]
+mod external_tests;
+mod generated_cases;
+#[cfg(test)]
+mod host;
+mod interpreter;
+#[cfg(test)]
+mod oracle;
+mod process_ops;
+mod wire;
+mod wire_payload;
+
+use std::ffi::OsString;
+
+use self::cases::FixtureInvocation;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FixtureError {
+    DeferredCase,
+    ExpandedLimit,
+    HostOracleRequired,
+    InstructionLimit,
+    InvalidArguments,
+    Io,
+    UnknownStep,
+}
+
+pub fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<i32, FixtureError> {
+    interpreter::execute(FixtureInvocation::parse(arguments)?)
+}
+
+#[cfg(test)]
+mod tests;

@@ -2,7 +2,6 @@ import type {
   BootstrapSnapshot,
   BufferSnapshotAck,
   BufferSnapshotRequest,
-  ChatMessage,
   DirectoryListing,
   EditorDocument,
   EditorSaveResult,
@@ -13,6 +12,7 @@ import type {
   ProjectSwitchRequest,
   ProjectTransitionResult,
   ResourceRef,
+  SimulatorTurnResult,
   TextFile,
 } from "../domain/workbench";
 import { browserDesktop } from "./browserDesktop";
@@ -30,7 +30,7 @@ async function invoke<T>(
 }
 
 interface SendPromptRequest {
-  sessionId: string;
+  chatId: string;
   harnessId: string;
   modelId: string | null;
   text: string;
@@ -158,7 +158,7 @@ export const desktop = {
       : browserDesktop.listHarnessModels(harnessId);
   },
 
-  sendPrompt(request: SendPromptRequest): Promise<ChatMessage[]> {
+  sendPrompt(request: SendPromptRequest): Promise<SimulatorTurnResult> {
     return isTauriRuntime()
       ? invoke("send_simulated_prompt", { ...request })
       : browserDesktop.sendPrompt(request);

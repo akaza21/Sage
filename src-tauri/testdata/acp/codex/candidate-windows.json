@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "bindingId": "codex-app-server",
+  "platform": "windowsX86_64",
+  "codexSourceCommit": "c42ea41ee0b836539a2a5d24f3faff96cc48db40",
+  "codexRuntimeVersion": "0.0.0-dev",
+  "appServerSchemaSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "entrypoint": {
+    "path": "C:\\SageHarnesses\\Codex\\codex.exe",
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "byteLen": 1024
+  },
+  "supportingArtifacts": [],
+  "statePolicy": "isolatedBindingDirectory",
+  "transport": "stdioJsonl",
+  "workspacePolicy": "singleRootOnly"
+}
