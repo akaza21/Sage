@@ -20,11 +20,6 @@ mod test_failpoint;
 #[allow(unused_imports)]
 pub(crate) use identity::legacy_binding_digest;
 
-#[cfg(test)]
-pub(crate) fn fixture_validate_migration_free_bytes(available: u64) -> AppResult<()> {
-    platform::validate_available_bytes(available, limits::MIGRATION_FREE_BYTES)
-}
-
 use std::{fs, path::Path, time::Duration};
 
 use rusqlite::{Connection, TransactionBehavior, backup::Backup};

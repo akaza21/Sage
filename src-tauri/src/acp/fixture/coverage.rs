@@ -8,7 +8,7 @@ use super::{
 
 const NODE_POLICY_CASES: &[&str] = &["csp-production-and-development"];
 const PATH_BOUND_CHILD_CASES: &[&str] = &["turn-text-success"];
-const OPEN_HOST_CASES: &[&str] = &["migration-recovery-insufficient-space"];
+const OPEN_HOST_CASES: &[&str] = &[];
 const OPEN_CHILD_CASES: &[&str] = &[
     "permission-identical-live-duplicate",
     "permission-conflicting-duplicate",
@@ -57,7 +57,7 @@ fn foundation_literal_observer_registry_is_exact_and_nonoverlapping() {
     let host = collect_unique(host_families, FrozenOwner::Host);
     let child = collect_unique(child_families, FrozenOwner::Child);
     assert!(host.is_disjoint(&child));
-    assert_eq!(host.len(), 101, "registered host literal observers changed");
+    assert_eq!(host.len(), 102, "registered host literal observers changed");
     assert_eq!(
         child.len(),
         47,
