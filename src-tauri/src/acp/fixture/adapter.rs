@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+mod activation;
+
 use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity,
@@ -15,6 +17,13 @@ use crate::acp::{
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum State {
     Idle,
+    InitializeCreated,
+    InitializeQueued,
+    AwaitingInitialize,
+    Initialized,
+    ResumeCreated,
+    ResumeQueued,
+    AwaitingResume,
     PromptCreated,
     PromptQueued,
     CancelCreated,
@@ -31,8 +40,12 @@ pub(super) struct FixtureAdapter {
     binding_digest: [u8; 32],
     runtime_epoch: RuntimeEpoch,
     session_id: SageAgentSessionId,
+    external_session_id: ExternalId,
     client_message_id: Option<RequiredText<512>>,
     capabilities: Option<CapabilitySnapshotV1>,
+    next_request_id: u64,
+    pending_request_id: Option<u64>,
+    session_ready: bool,
     state: State,
 }
 
@@ -44,7 +57,7 @@ impl FixtureAdapter {
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
-        _external_session_id: ExternalId,
+        external_session_id: ExternalId,
     ) -> Result<Self, AdapterRuntimeError> {
         if binding_digest == [0; 32] || runtime_epoch == RuntimeEpoch::ZERO {
             return Err(AdapterRuntimeError::Operation);
@@ -53,10 +66,33 @@ impl FixtureAdapter {
             binding_digest,
             runtime_epoch,
             session_id,
+            external_session_id,
             client_message_id: None,
             capabilities: None,
+            next_request_id: 1,
+            pending_request_id: None,
+            session_ready: false,
             state: State::Idle,
         })
+    }
+
+    fn request(&mut self, payload: Vec<u8>) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let id = self.next_request_id;
+        self.next_request_id = id.checked_add(1).ok_or(AdapterRuntimeError::Operation)?;
+        let frame = OutboundFrame::new(payload).map_err(|_| AdapterRuntimeError::Frame)?;
+        self.pending_request_id = Some(id);
+        Ok(AdapterEgress::new(frame, EgressToken::request(id)))
+    }
+
+    fn session_identity(&self) -> AdapterIdentity {
+        AdapterIdentity {
+            binding_digest: self.binding_digest,
+            runtime_epoch: self.runtime_epoch,
+            session_id: self.session_id.clone(),
+            external_id: self.external_session_id.clone(),
+            turn_id: None,
+            turn_client_message_id: None,
+        }
     }
 
     fn identity(&self, external_id: &str) -> Result<AdapterIdentity, AdapterRuntimeError> {
@@ -121,22 +157,20 @@ impl HarnessAdapter for FixtureAdapter {
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
         match command {
+            command @ (AdapterCommand::Initialize | AdapterCommand::ResumeSession { .. }) => {
+                self.activation_command(command)
+            }
             AdapterCommand::Prompt {
                 client_message_id, ..
-            } => {
-                if self.state != State::Idle {
-                    return Err(AdapterRuntimeError::Operation);
-                }
+            } if self.state == State::Idle => {
                 self.client_message_id = Some(client_message_id);
+                let request = self.request(
+                    br#"{"jsonrpc":"2.0","method":"fixture/prompt","params":{}}"#.to_vec(),
+                )?;
                 self.state = State::PromptCreated;
-                Ok(AdapterEgress::new(
-                    OutboundFrame::new(
-                        br#"{"jsonrpc":"2.0","method":"fixture/prompt","params":{}}"#.to_vec(),
-                    )
-                    .map_err(|_| AdapterRuntimeError::Frame)?,
-                    EgressToken::request(1),
-                ))
+                Ok(request)
             }
+            AdapterCommand::Prompt { .. } => Err(AdapterRuntimeError::Operation),
             AdapterCommand::Cancel if self.state == State::AwaitingTextStart => {
                 self.state = State::CancelCreated;
                 Ok(AdapterEgress::new(
@@ -160,7 +194,7 @@ impl HarnessAdapter for FixtureAdapter {
         let value: serde_json::Value =
             serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
         if value.get("schemaVersion").is_some() {
-            if self.state != State::Idle {
+            if self.state != State::Idle || self.session_ready {
                 return Err(AdapterRuntimeError::Operation);
             }
             if frame.len() > LIMITS.wire.capability_metadata_bytes as usize {
@@ -176,7 +210,13 @@ impl HarnessAdapter for FixtureAdapter {
         }
         let envelope: Envelope =
             serde_json::from_value(value).map_err(|_| AdapterRuntimeError::Frame)?;
-        if envelope.jsonrpc != "2.0" || !envelope.params.is_empty() {
+        if envelope.jsonrpc != "2.0" {
+            return Err(AdapterRuntimeError::Frame);
+        }
+        if let Some(result) = self.ingest_activation(&envelope) {
+            return result;
+        }
+        if !envelope.params.is_empty() {
             return Err(AdapterRuntimeError::Frame);
         }
         let event = match (self.state, envelope.method.as_str(), envelope.id.is_some()) {
@@ -279,8 +319,11 @@ impl HarnessAdapter for FixtureAdapter {
                 _ => Err(AdapterRuntimeError::EgressIntent),
             };
         }
-        if token.request_id() != Some(1) {
+        if token.request_id() != self.pending_request_id {
             return Err(AdapterRuntimeError::EgressIntent);
+        }
+        if let Some(result) = self.resolve_activation_egress(resolution) {
+            return result;
         }
         match (self.state, resolution) {
             (State::PromptCreated, EgressResolution::Queued) => {
@@ -289,15 +332,18 @@ impl HarnessAdapter for FixtureAdapter {
             }
             (State::PromptCreated, EgressResolution::QueueRejected)
             | (State::PromptQueued, EgressResolution::WriteZeroBytes) => {
+                self.pending_request_id = None;
                 self.state = State::Idle;
                 self.client_message_id = None;
                 Ok(())
             }
             (State::PromptQueued, EgressResolution::Written) => {
+                self.pending_request_id = None;
                 self.state = State::AwaitingTextStart;
                 Ok(())
             }
             (State::PromptQueued, EgressResolution::DeliveryUnknown) => {
+                self.pending_request_id = None;
                 self.state = State::Complete;
                 Ok(())
             }
@@ -344,21 +390,7 @@ fn ingest_metadata(value: serde_json::Value) -> Result<AdapterBatch, AdapterRunt
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{AdapterRuntimeError, ingest_metadata};
-
-    #[test]
-    fn metadata_notification_rejects_explicit_null_id() {
-        let result = ingest_metadata(serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": null,
-            "method": "fixture/metadata",
-            "params": {"_meta": {}}
-        }));
-
-        assert!(matches!(result, Err(AdapterRuntimeError::Frame)));
-    }
-}
+mod tests;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
