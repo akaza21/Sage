@@ -184,7 +184,17 @@ fn close_native_stdin(state: &mut WireState) -> Result<(), FixtureError> {
     Ok(())
 }
 
-#[cfg(not(windows))]
+#[cfg(unix)]
+fn close_native_stdin(state: &mut WireState) -> Result<(), FixtureError> {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+
+    let stdin = io::stdin();
+    drop(unsafe { OwnedFd::from_raw_fd(stdin.as_raw_fd()) });
+    state.stdin_open = false;
+    Ok(())
+}
+
+#[cfg(not(any(unix, windows)))]
 fn close_native_stdin(_state: &mut WireState) -> Result<(), FixtureError> {
     Err(FixtureError::HostOracleRequired)
 }
