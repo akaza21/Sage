@@ -9,17 +9,13 @@ use super::{
 const NODE_POLICY_CASES: &[&str] = &["csp-production-and-development"];
 const PATH_BOUND_CHILD_CASES: &[&str] = &[
     "turn-text-success",
+    "send-zero-byte-failure",
     "send-complete-uncorrelated-exit",
     "send-correlated-then-exit",
 ];
-const OPEN_HOST_CASES: &[&str] = &[
-    "send-partial-write-failure",
-    "cancel-dispatch-at-capacity",
-    "redaction-canaries-all-sinks",
-];
+const OPEN_HOST_CASES: &[&str] = &["redaction-canaries-all-sinks"];
 const OPEN_CHILD_CASES: &[&str] = &[
     "permission-identical-live-duplicate",
-    "send-zero-byte-failure",
     "resume-success-once",
     "resume-failure-no-second-attempt",
     "native-activity-child-text",
@@ -31,6 +27,8 @@ fn foundation_literal_observer_registry_is_exact_and_nonoverlapping() {
     let host_families: &[&[&str]] = &[
         host::CASE_IDS,
         host::CAPACITY_CASE_IDS,
+        host::CANCEL_CASE_IDS,
+        host::DELIVERY_CASE_IDS,
         host::QUEUE_CASE_IDS,
         host::PROCESS_CASE_IDS,
         host::STORE_CASE_IDS,
@@ -55,7 +53,7 @@ fn foundation_literal_observer_registry_is_exact_and_nonoverlapping() {
     let host = collect_unique(host_families, FrozenOwner::Host);
     let child = collect_unique(child_families, FrozenOwner::Child);
     assert!(host.is_disjoint(&child));
-    assert_eq!(host.len(), 102, "registered host literal observers changed");
+    assert_eq!(host.len(), 104, "registered host literal observers changed");
     assert_eq!(
         child.len(),
         53,
