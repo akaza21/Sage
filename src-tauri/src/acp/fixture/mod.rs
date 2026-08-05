@@ -13,6 +13,8 @@ mod external_fixture_adapters;
 #[cfg(all(test, windows))]
 mod external_fixture_runtime;
 #[cfg(all(test, windows))]
+mod external_fixture_support;
+#[cfg(all(test, windows))]
 mod external_tests;
 mod generated_cases;
 #[cfg(test)]

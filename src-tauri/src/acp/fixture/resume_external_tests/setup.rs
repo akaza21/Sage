@@ -28,8 +28,11 @@ use crate::{
 };
 
 use super::{
-    super::external_fixture_adapters::{Mapper, launch_spec},
-    support::{CompleteTransport, ProcessCleanup},
+    super::{
+        external_fixture_adapters::{Mapper, launch_spec},
+        external_fixture_support::ProcessCleanup,
+    },
+    support::CompleteTransport,
 };
 
 #[derive(Debug, PartialEq, Eq)]

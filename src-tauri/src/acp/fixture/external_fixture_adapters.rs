@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::{
     acp::{
         bindings::adapter::ResourceMapper,
-        contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SchemaVersionV1},
+        contract::{RuntimeEpoch, SageAgentSessionId},
         intent::{IntentSnapshot, ProjectionChangedV1, SafeResourceRef, UnavailableResourceReason},
         process::{
             ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, CanonicalNativeDirectory,
@@ -25,8 +25,6 @@ use crate::{
     },
     persistence::Database,
 };
-
-use crate::acp::intent::CapabilitySnapshotV1;
 
 #[derive(Clone, Copy)]
 pub(super) enum ExternalCase {
@@ -104,27 +102,6 @@ impl ProjectionPublisher for CommitCheckingPublisher {
                 .store(true, Ordering::SeqCst);
         }
         Ok(ProjectionPublishStatus::Published)
-    }
-}
-
-pub(super) fn capabilities() -> CapabilitySnapshotV1 {
-    CapabilitySnapshotV1 {
-        schema_version: SchemaVersionV1,
-        protocol_version: RequiredText::new("protocol", "fixture-1").unwrap(),
-        new_session: true,
-        resume_session: false,
-        load_session: false,
-        close_session: true,
-        prompt: true,
-        cancel: true,
-        native_session_fork: false,
-        active_turn_steer: false,
-        child_conversation_projection: false,
-        child_transcript_read: false,
-        collaboration_event_projection: false,
-        multi_root_extension_schema_id: None,
-        model_count: 0,
-        config_count: 0,
     }
 }
 

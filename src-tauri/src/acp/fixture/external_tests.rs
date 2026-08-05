@@ -18,7 +18,7 @@ use super::{
 fn turn_text_success_runs_through_supervisor_driver_and_sqlite() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let ExternalPrepared {
-            root,
+            temp_root,
             database,
             project_id,
             chat_id,
@@ -30,9 +30,8 @@ fn turn_text_success_runs_through_supervisor_driver_and_sqlite() {
             journal_task,
             scheduler,
             process_capacity,
-            retained_control,
+            mut process_cleanup,
             mailbox,
-            reader,
             active,
             ..
         } = prepare_external_case(ExternalCase::TurnTextSuccess).await;
@@ -53,7 +52,7 @@ fn turn_text_success_runs_through_supervisor_driver_and_sqlite() {
         {
             active.turn.driver.run_next(mailbox.as_ref()).await.unwrap();
         }
-        reader.expect("text reader").join().unwrap();
+        process_cleanup.wait_zero();
         assert!(publisher.terminal_seen_after_commit.load(Ordering::SeqCst));
 
         let page = load_chat_page(
@@ -125,8 +124,8 @@ fn turn_text_success_runs_through_supervisor_driver_and_sqlite() {
         drop(scheduler);
         drop(publisher);
         drop(mailbox);
-        drop(retained_control);
+        drop(process_cleanup);
         drop(database);
-        std::fs::remove_dir_all(root).unwrap();
+        temp_root.remove();
     });
 }

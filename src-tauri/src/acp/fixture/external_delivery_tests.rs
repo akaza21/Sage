@@ -51,7 +51,7 @@ fn run(case: ExternalCase) {
 async fn observe_zero_bytes(prepared: ExternalPrepared) {
     let ExternalPrepared {
         case_id,
-        root,
+        temp_root,
         database_path,
         database,
         project_id,
@@ -65,7 +65,7 @@ async fn observe_zero_bytes(prepared: ExternalPrepared) {
         journal_task,
         scheduler,
         process_capacity,
-        retained_control,
+        process_cleanup,
         mailbox,
         active,
         ..
@@ -105,12 +105,11 @@ async fn observe_zero_bytes(prepared: ExternalPrepared) {
         .unwrap();
     assert_eq!((state.as_str(), delivery.as_str()), ("failed", "zeroBytes"));
     let before = send_started(&database, &started.session_id);
-    let _ = retained_control.wait_zero().unwrap();
     assert_eq!(process_capacity.usage(), (0, 0));
     drop(scheduler);
     drop(publisher);
     drop(mailbox);
-    drop(retained_control);
+    drop(process_cleanup);
     journal.close_when_drained();
     journal_task.await.unwrap();
     drop(journal);
@@ -131,7 +130,7 @@ async fn observe_zero_bytes(prepared: ExternalPrepared) {
         }),
     );
     drop(reopened);
-    std::fs::remove_dir_all(root).unwrap();
+    temp_root.remove();
 }
 
 struct PreparedZeroFixturePort {
@@ -249,7 +248,7 @@ impl LiveRuntimePort for PreparedZeroFixturePort {
 async fn observe_complete_exit(prepared: ExternalPrepared) {
     let ExternalPrepared {
         case_id,
-        root,
+        temp_root,
         database_path,
         database,
         started,
@@ -259,9 +258,8 @@ async fn observe_complete_exit(prepared: ExternalPrepared) {
         journal_task,
         scheduler,
         process_capacity,
-        retained_control,
+        mut process_cleanup,
         mailbox,
-        reader,
         active,
         ..
     } = prepared;
@@ -300,15 +298,14 @@ async fn observe_complete_exit(prepared: ExternalPrepared) {
         .driver
         .latest_durable_turn_cursor()
         .is_some_and(|cursor| cursor.delivery_state() == DeliveryState::Correlated);
-    let _ = retained_control.wait_zero().unwrap();
-    reader.expect("delivery reader").join().unwrap();
+    process_cleanup.wait_zero();
     assert_eq!(process_capacity.usage(), (0, 0));
     let before = send_started(&database, &started.session_id);
     drop(active);
     drop(scheduler);
     drop(publisher);
     drop(mailbox);
-    drop(retained_control);
+    drop(process_cleanup);
     journal.close_when_drained();
     journal_task.await.unwrap();
     drop(journal);
@@ -345,5 +342,5 @@ async fn observe_complete_exit(prepared: ExternalPrepared) {
         },
     );
     drop(reopened);
-    std::fs::remove_dir_all(root).unwrap();
+    temp_root.remove();
 }

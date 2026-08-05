@@ -1,32 +1,24 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::{
-    acp::{
-        contract::{
-            ClientIntentId, RequiredText, RuntimeEpoch, SafeText, SageChatId, SageProjectId,
-        },
-        fixture::adapter::FixtureAdapter,
-        intent::ExternalId,
-        lifecycle::SessionState,
-        process::{PlatformSupervisor, TreeCapacityPool},
-        runtime::{
-            ActivationDriverError, ActivationIntent, ActivationMode, ActivationProcessDriver,
-            ActivationPump, BoundedThread, CoordinatorActivationHandoff,
-            CoordinatorActivationJournal, DriverClock, DriverMailbox, JournalHandle,
-            ProjectionPublisher, SessionCoordinator, SystemDriverClock, ZeroProcessProof,
-        },
-        scheduler::{RuntimeOwner, Scheduler},
-        store::{
-            DatabaseAcpStore, FailActivationCommand, ParkSessionCommand, StartSessionCommand,
-            load_chat_page,
-        },
+use crate::acp::{
+    contract::{RequiredText, RuntimeEpoch},
+    fixture::adapter::FixtureAdapter,
+    intent::ExternalId,
+    lifecycle::SessionState,
+    process::{PlatformSupervisor, TreeCapacityPool},
+    runtime::{
+        ActivationDriverError, ActivationIntent, ActivationMode, ActivationProcessDriver,
+        ActivationPump, BoundedThread, CoordinatorActivationHandoff, CoordinatorActivationJournal,
+        DriverClock, DriverMailbox, SystemDriverClock, ZeroProcessProof,
     },
-    persistence::Database,
+    scheduler::RuntimeOwner,
+    store::{FailActivationCommand, ParkSessionCommand},
 };
 
 use super::{
-    external_fixture_adapters::{
-        CommitCheckingPublisher, Mapper, fixture_artifact, hex, launch_spec,
+    external_fixture_adapters::{Mapper, fixture_artifact, hex, launch_spec},
+    external_fixture_support::{
+        FIXTURE_BINDING_DIGEST, FixtureEnvironment, ProcessCleanup, prepare_fixture_environment,
     },
     generated_cases::FROZEN_CASES,
 };
@@ -38,7 +30,7 @@ use setup::{
     activate_new, activation_command, historical_turns, persisted_capabilities,
     prove_prior_zero_process, seed_historical_turn,
 };
-use support::{ObservedStdin, ProcessCleanup, ResumeCase, TempRoot};
+use support::{ObservedStdin, ResumeCase};
 
 const EXTERNAL_SESSION: &str = "fixture-persisted-session-1";
 
@@ -52,57 +44,30 @@ fn resume_cases_run_from_cold_through_supervisor_driver_and_sqlite() {
 
 fn run_resume_case(case: ResumeCase) {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let temp_root = TempRoot::new("sage-resume-e2e");
-        let root = temp_root.path().to_path_buf();
-        let project_root = root.join("project");
-        std::fs::create_dir_all(&project_root).unwrap();
-        let database = Database::open(&root.join("sage.db")).unwrap();
-        let project = database.create_project_from_root(&project_root).unwrap();
-        let project_id = SageProjectId::parse(project.id).unwrap();
-        let chat_id = SageChatId::parse("fixture-resume-chat").unwrap();
-        let now = crate::persistence::now_millis();
-        database
-            .connection()
-            .execute(
-                "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at)
-                 VALUES (?1,?2,1,'Resume fixture',0,?3,?3)",
-                rusqlite::params![chat_id.as_str(), project_id.as_str(), now],
-            )
-            .unwrap();
-
-        let publisher: Arc<dyn ProjectionPublisher> = Arc::new(CommitCheckingPublisher {
-            database: database.clone(),
-            terminal_seen_after_commit: Default::default(),
-        });
-        let (journal, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
-        let journal_task = runner.spawn();
-        let scheduler = Scheduler::new();
-        let sessions = SessionCoordinator::new(journal.clone(), scheduler.clone(), publisher);
-        let initial = load_chat_page(
-            &database.connection(),
-            project_id.clone(),
-            chat_id.clone(),
-            None,
+        let FixtureEnvironment {
+            temp_root,
+            project_root,
+            database,
+            project_id,
+            chat_id,
+            now_millis: now,
+            journal,
+            journal_task,
+            scheduler,
+            sessions,
+            started,
+            ..
+        } = prepare_fixture_environment(
+            "sage-resume-e2e",
+            "fixture-resume-chat",
+            "Resume fixture",
+            "resume-fixture-start",
         )
-        .unwrap();
-        let started = sessions
-            .start_session(StartSessionCommand {
-                project_id: project_id.clone(),
-                chat_id: chat_id.clone(),
-                expected_projection_revision: initial.projection_revision,
-                client_intent_id: ClientIntentId::parse("resume-fixture-start").unwrap(),
-                binding_id: RequiredText::new("binding", "fixture-binding").unwrap(),
-                binding_digest: hex(&[7_u8; 32]),
-                harness_version: Some(SafeText::new("harnessVersion", "fixture-1").unwrap()),
-                model_id: None,
-                now_millis: now,
-            })
-            .await
-            .unwrap();
+        .await;
 
         let (fixture_path, artifact_digest, fixture_byte_len) = fixture_artifact();
         let artifact_hex = hex(&artifact_digest);
-        let binding_digest = [7_u8; 32];
+        let binding_digest = FIXTURE_BINDING_DIGEST;
         let binding_hex = hex(&binding_digest);
         let external_session = ExternalId::new("externalSessionId", EXTERNAL_SESSION).unwrap();
         let capabilities = FixtureAdapter::activation_capabilities();
@@ -269,12 +234,10 @@ fn run_resume_case(case: ResumeCase) {
             )
             .unwrap();
         if !teardown {
-            let result = tokio::time::timeout(
-                Duration::from_secs(5),
-                driver.run_next(mailbox.as_ref()),
-            )
-            .await
-            .expect("resume fixture exit wake timed out");
+            let result =
+                tokio::time::timeout(Duration::from_secs(5), driver.run_next(mailbox.as_ref()))
+                    .await
+                    .expect("resume fixture exit wake timed out");
             assert!(matches!(
                 result,
                 Err(ActivationDriverError::TeardownRequired(_))
@@ -284,11 +247,9 @@ fn run_resume_case(case: ResumeCase) {
             .take_zero_process_handoff()
             .unwrap_or_else(|_| panic!("resume fixture did not prove zero processes"));
         process_cleanup.finish_after_zero().unwrap();
-        let proof = ZeroProcessProof::from_supervisor(
-            zero_handoff.owner.clone(),
-            &zero_handoff.proof,
-        )
-        .unwrap();
+        let proof =
+            ZeroProcessProof::from_supervisor(zero_handoff.owner.clone(), &zero_handoff.proof)
+                .unwrap();
         let mut lease = match case {
             ResumeCase::Success => {
                 let (lease, handoff) = match zero_handoff.parts.journal.into_handoff() {
@@ -312,11 +273,8 @@ fn run_resume_case(case: ResumeCase) {
                             chat_id: chat_id.clone(),
                             session_id: started.session_id.clone(),
                             runtime_epoch: second_epoch,
-                            exit_kind: RequiredText::new(
-                                "exitKind",
-                                "fixtureExitedAfterResume",
-                            )
-                            .unwrap(),
+                            exit_kind: RequiredText::new("exitKind", "fixtureExitedAfterResume")
+                                .unwrap(),
                             now_millis: now + 9,
                         },
                         proof,
@@ -358,7 +316,10 @@ fn run_resume_case(case: ResumeCase) {
             "resume activation must emit only one initialize and one resume"
         );
         let history_after = historical_turns(&database, &started.session_id);
-        assert_eq!(history_after, history_before, "resume mutated immutable history");
+        assert_eq!(
+            history_after, history_before,
+            "resume mutated immutable history"
+        );
         let final_row: (String, String, String) = database
             .connection()
             .query_row(
