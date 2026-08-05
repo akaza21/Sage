@@ -192,7 +192,7 @@ fn item_bound(id: &str, step: &Value) -> Value {
     }
 }
 
-fn item_fixture() -> SchemaFixture {
+pub(super) fn item_fixture() -> SchemaFixture {
     let fixture = SchemaFixture::session();
     let connection = fixture.database.connection();
     insert_epoch(&connection, 1, "running", None);
@@ -392,7 +392,7 @@ fn seeded_activity_page(counts: &[usize]) -> crate::persistence::Database {
     fixture.database
 }
 
-fn digest(bytes: &[u8]) -> String {
+pub(super) fn digest(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
         .map(|byte| format!("{byte:02x}"))

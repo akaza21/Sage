@@ -7,6 +7,7 @@ mod migration_recovery;
 mod permission_failures;
 mod process_bounds;
 mod queue_capacity;
+mod redaction_observer;
 mod resource_bounds;
 mod schema;
 mod schema_common;
@@ -26,6 +27,7 @@ pub(super) use process_bounds::{CASE_IDS as PROCESS_CASE_IDS, execute as execute
 pub(super) use queue_capacity::{
     CANCEL_CASE_IDS, CASE_IDS as QUEUE_CASE_IDS, execute as execute_queue,
 };
+pub(super) use redaction_observer::{CASE_IDS as REDACTION_CASE_IDS, execute as execute_redaction};
 pub(super) use resource_bounds::{CASE_IDS as RESOURCE_CASE_IDS, execute as execute_resource};
 pub(super) use schema::{CASE_IDS, execute};
 pub(in crate::acp::fixture) use store_bounds::execute_child_activity;

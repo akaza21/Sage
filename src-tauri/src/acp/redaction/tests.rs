@@ -22,6 +22,17 @@ fn sensitive_bytes_have_normalizer_only_access() {
 }
 
 #[test]
+fn sensitive_bytes_redact_through_the_central_typed_boundary() {
+    let canary = "secret.central-boundary.7e31";
+    let diagnostic =
+        SensitiveBytes::new(canary.as_bytes().to_vec()).redact(DiagnosticCode::IdentityMismatch);
+    assert_eq!(diagnostic.code, DiagnosticCode::IdentityMismatch);
+    assert_eq!(diagnostic.observed_bytes, canary.len() as u64);
+    assert!(!diagnostic.truncated);
+    assert!(!serde_json::to_string(&diagnostic).unwrap().contains(canary));
+}
+
+#[test]
 fn stderr_ring_allocates_lazily_and_never_retains_over_its_limit() {
     let mut ring = StderrRing::new(8, 8);
     assert_eq!(ring.bytes.capacity(), 0);

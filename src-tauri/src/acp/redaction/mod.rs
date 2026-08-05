@@ -37,6 +37,15 @@ impl SensitiveBytes {
     pub(crate) fn expose_to_normalizer(&self) -> &[u8] {
         &self.0
     }
+
+    /// Discards the sensitive allocation and exposes only bounded diagnostic metadata.
+    pub(crate) fn redact(self, code: DiagnosticCode) -> SafeDiagnostic {
+        SafeDiagnostic {
+            code,
+            observed_bytes: u64::try_from(self.0.len()).unwrap_or(u64::MAX),
+            truncated: false,
+        }
+    }
 }
 
 impl Drop for SensitiveBytes {

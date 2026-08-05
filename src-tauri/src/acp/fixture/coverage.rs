@@ -17,7 +17,7 @@ const PATH_BOUND_CHILD_CASES: &[&str] = &[
     "native-activity-child-text",
     "native-activity-foreign-parent",
 ];
-const OPEN_HOST_CASES: &[&str] = &["redaction-canaries-all-sinks"];
+const OPEN_HOST_CASES: &[&str] = &[];
 const OPEN_CHILD_CASES: &[&str] = &[];
 
 #[test]
@@ -34,6 +34,7 @@ fn foundation_literal_observer_registry_is_exact_and_nonoverlapping() {
         host::METADATA_CASE_IDS,
         host::PERMISSION_CASE_IDS,
         host::MIGRATION_CASE_IDS,
+        host::REDACTION_CASE_IDS,
         host::RESOURCE_CASE_IDS,
         NODE_POLICY_CASES,
     ];
@@ -51,7 +52,7 @@ fn foundation_literal_observer_registry_is_exact_and_nonoverlapping() {
     let host = collect_unique(host_families, FrozenOwner::Host);
     let child = collect_unique(child_families, FrozenOwner::Child);
     assert!(host.is_disjoint(&child));
-    assert_eq!(host.len(), 104, "registered host literal observers changed");
+    assert_eq!(host.len(), 105, "registered host literal observers changed");
     assert_eq!(
         child.len(),
         54,
