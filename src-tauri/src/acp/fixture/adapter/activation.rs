@@ -17,9 +17,9 @@ impl FixtureAdapter {
             new_session: true,
             resume_session: true,
             load_session: false,
-            close_session: true,
-            prompt: true,
-            cancel: true,
+            close_session: false,
+            prompt: false,
+            cancel: false,
             native_session_fork: false,
             active_turn_steer: false,
             child_conversation_projection: false,
@@ -43,6 +43,13 @@ impl FixtureAdapter {
                 self.state = State::InitializeCreated;
                 Ok(request)
             }
+            AdapterCommand::NewSession { .. } if self.state == State::Initialized => {
+                let request = self.request(
+                    br#"{"jsonrpc":"2.0","method":"fixture/newSession","params":{}}"#.to_vec(),
+                )?;
+                self.state = State::NewCreated;
+                Ok(request)
+            }
             AdapterCommand::ResumeSession {
                 external_session_id,
                 ..
@@ -59,9 +66,9 @@ impl FixtureAdapter {
                 self.state = State::ResumeCreated;
                 Ok(request)
             }
-            AdapterCommand::Initialize | AdapterCommand::ResumeSession { .. } => {
-                Err(AdapterRuntimeError::Operation)
-            }
+            AdapterCommand::Initialize
+            | AdapterCommand::NewSession { .. }
+            | AdapterCommand::ResumeSession { .. } => Err(AdapterRuntimeError::Operation),
             _ => Err(AdapterRuntimeError::UnsupportedCommand),
         }
     }
@@ -69,9 +76,21 @@ impl FixtureAdapter {
     pub(super) fn ingest_activation(
         &mut self,
         envelope: &Envelope,
+        id_present: bool,
     ) -> Option<Result<AdapterBatch, AdapterRuntimeError>> {
+        let activation_response = matches!(
+            envelope.method.as_str(),
+            "fixture/initializeSuccess"
+                | "fixture/newSessionSuccess"
+                | "fixture/resumeSuccess"
+                | "fixture/resumeFailure"
+        );
+        if activation_response && id_present {
+            return Some(Err(AdapterRuntimeError::Frame));
+        }
         let result = match envelope.method.as_str() {
             "fixture/initializeSuccess" => self.ingest_initialized(envelope),
+            "fixture/newSessionSuccess" => self.ingest_session_ready(envelope, State::AwaitingNew),
             "fixture/resumeSuccess" => self.ingest_resume_success(envelope),
             "fixture/resumeFailure" => self.ingest_resume_failure(envelope),
             _ => return None,
@@ -88,16 +107,23 @@ impl FixtureAdapter {
             (State::InitializeCreated, EgressResolution::QueueRejected)
             | (State::InitializeQueued, EgressResolution::WriteZeroBytes) => State::Idle,
             (State::InitializeQueued, EgressResolution::Written) => State::AwaitingInitialize,
+            (State::NewCreated, EgressResolution::Queued) => State::NewQueued,
+            (State::NewCreated, EgressResolution::QueueRejected)
+            | (State::NewQueued, EgressResolution::WriteZeroBytes) => State::Initialized,
+            (State::NewQueued, EgressResolution::Written) => State::AwaitingNew,
             (State::ResumeCreated, EgressResolution::Queued) => State::ResumeQueued,
             (State::ResumeCreated, EgressResolution::QueueRejected)
             | (State::ResumeQueued, EgressResolution::WriteZeroBytes) => State::Initialized,
             (State::ResumeQueued, EgressResolution::Written) => State::AwaitingResume,
-            (State::InitializeQueued | State::ResumeQueued, EgressResolution::DeliveryUnknown) => {
-                State::Complete
-            }
+            (
+                State::InitializeQueued | State::NewQueued | State::ResumeQueued,
+                EgressResolution::DeliveryUnknown,
+            ) => State::Complete,
             (
                 State::InitializeCreated
                 | State::InitializeQueued
+                | State::NewCreated
+                | State::NewQueued
                 | State::ResumeCreated
                 | State::ResumeQueued,
                 _,
@@ -115,10 +141,7 @@ impl FixtureAdapter {
         &mut self,
         envelope: &Envelope,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        if self.state != State::AwaitingInitialize
-            || envelope.id.is_some()
-            || !envelope.params.is_empty()
-        {
+        if self.state != State::AwaitingInitialize || !envelope.params.is_empty() {
             return Err(AdapterRuntimeError::Operation);
         }
         let capabilities = Self::activation_capabilities();
@@ -131,8 +154,15 @@ impl FixtureAdapter {
         &mut self,
         envelope: &Envelope,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        if self.state != State::AwaitingResume
-            || envelope.id.is_some()
+        self.ingest_session_ready(envelope, State::AwaitingResume)
+    }
+
+    fn ingest_session_ready(
+        &mut self,
+        envelope: &Envelope,
+        expected_state: State,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        if self.state != expected_state
             || envelope.params.len() != 1
             || envelope
                 .params
@@ -157,10 +187,7 @@ impl FixtureAdapter {
         &mut self,
         envelope: &Envelope,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        if self.state != State::AwaitingResume
-            || envelope.id.is_some()
-            || !envelope.params.is_empty()
-        {
+        if self.state != State::AwaitingResume || !envelope.params.is_empty() {
             return Err(AdapterRuntimeError::Operation);
         }
         self.state = State::Complete;

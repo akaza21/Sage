@@ -81,6 +81,83 @@ fn initialize_then_resume_preserves_the_persisted_session_identity() {
 }
 
 #[test]
+fn initialize_then_new_session_uses_the_store_bound_identity() {
+    let external = ExternalId::new("externalSession", "fixture-persisted-session-1").unwrap();
+    let mut adapter = adapter(external.clone());
+
+    write_command(&mut adapter, AdapterCommand::Initialize);
+    adapter
+        .ingest(&frame("initializeSuccess", serde_json::json!({})), &Mapper)
+        .unwrap();
+    write_command(
+        &mut adapter,
+        AdapterCommand::NewSession {
+            native_root: "C:\\fixture".into(),
+            model: None,
+        },
+    );
+
+    let ready = adapter
+        .ingest(
+            &frame(
+                "newSessionSuccess",
+                serde_json::json!({"externalSessionId": external.as_str()}),
+            ),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(
+        ready.events(),
+        [AdapterEvent::SessionReady { id, loaded: false }]
+            if id.external_id == external && id.turn_id.is_none()
+                && id.turn_client_message_id.is_none()
+    ));
+}
+
+#[test]
+fn activation_responses_reject_an_explicit_null_id() {
+    let external = ExternalId::new("externalSession", "fixture-persisted-session-1").unwrap();
+    let mut initialize = adapter(external.clone());
+    write_command(&mut initialize, AdapterCommand::Initialize);
+    assert!(matches!(
+        initialize.ingest(
+            &frame_with_id(
+                "initializeSuccess",
+                serde_json::json!({}),
+                serde_json::Value::Null
+            ),
+            &Mapper,
+        ),
+        Err(AdapterRuntimeError::Frame)
+    ));
+
+    let mut resume = adapter(external.clone());
+    write_command(&mut resume, AdapterCommand::Initialize);
+    resume
+        .ingest(&frame("initializeSuccess", serde_json::json!({})), &Mapper)
+        .unwrap();
+    write_command(
+        &mut resume,
+        AdapterCommand::ResumeSession {
+            external_session_id: external.clone(),
+            native_root: "C:\\fixture".into(),
+            model: None,
+        },
+    );
+    assert!(matches!(
+        resume.ingest(
+            &frame_with_id(
+                "resumeSuccess",
+                serde_json::json!({"externalSessionId": external.as_str()}),
+                serde_json::Value::Null,
+            ),
+            &Mapper,
+        ),
+        Err(AdapterRuntimeError::Frame)
+    ));
+}
+
+#[test]
 fn resume_failure_cannot_issue_a_second_resume_or_prompt() {
     let external = ExternalId::new("externalSession", "fixture-persisted-session-1").unwrap();
     let mut adapter = adapter(external.clone());
@@ -139,12 +216,28 @@ fn write_command(adapter: &mut FixtureAdapter, command: AdapterCommand) {
 }
 
 fn frame(method: &str, params: serde_json::Value) -> crate::acp::transport::Frame {
-    let bytes = serde_json::to_vec(&serde_json::json!({
+    frame_value(serde_json::json!({
         "jsonrpc": "2.0",
         "method": format!("fixture/{method}"),
         "params": params,
     }))
-    .unwrap();
+}
+
+fn frame_with_id(
+    method: &str,
+    params: serde_json::Value,
+    id: serde_json::Value,
+) -> crate::acp::transport::Frame {
+    frame_value(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": format!("fixture/{method}"),
+        "params": params,
+    }))
+}
+
+fn frame_value(value: serde_json::Value) -> crate::acp::transport::Frame {
+    let bytes = serde_json::to_vec(&value).unwrap();
     IncrementalFrameDecoder::new()
         .push_chunk(&[bytes, b"\n".to_vec()].concat())
         .unwrap()

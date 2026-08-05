@@ -21,6 +21,9 @@ enum State {
     InitializeQueued,
     AwaitingInitialize,
     Initialized,
+    NewCreated,
+    NewQueued,
+    AwaitingNew,
     ResumeCreated,
     ResumeQueued,
     AwaitingResume,
@@ -157,9 +160,9 @@ impl HarnessAdapter for FixtureAdapter {
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
         match command {
-            command @ (AdapterCommand::Initialize | AdapterCommand::ResumeSession { .. }) => {
-                self.activation_command(command)
-            }
+            command @ (AdapterCommand::Initialize
+            | AdapterCommand::NewSession { .. }
+            | AdapterCommand::ResumeSession { .. }) => self.activation_command(command),
             AdapterCommand::Prompt {
                 client_message_id, ..
             } if self.state == State::Idle => {
@@ -208,12 +211,15 @@ impl HarnessAdapter for FixtureAdapter {
         if value.get("method").and_then(serde_json::Value::as_str) == Some("fixture/metadata") {
             return ingest_metadata(value);
         }
+        let id_present = value
+            .as_object()
+            .is_some_and(|members| members.contains_key("id"));
         let envelope: Envelope =
             serde_json::from_value(value).map_err(|_| AdapterRuntimeError::Frame)?;
         if envelope.jsonrpc != "2.0" {
             return Err(AdapterRuntimeError::Frame);
         }
-        if let Some(result) = self.ingest_activation(&envelope) {
+        if let Some(result) = self.ingest_activation(&envelope, id_present) {
             return result;
         }
         if !envelope.params.is_empty() {
