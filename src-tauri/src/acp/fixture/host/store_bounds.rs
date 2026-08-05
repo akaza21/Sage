@@ -9,7 +9,6 @@ use crate::acp::{
     fixture::generated_cases::FrozenCase,
     intent::{ActivityProvenanceV1, ActivitySourceKind, ExternalId, NormalizedPayload},
     lifecycle::{ActivityLifecycle, ItemLifecycle},
-    process::TreeCapacityPool,
     projection::ActivityRole,
     runtime::{NormalizerInput, normalize},
     store::{
@@ -18,7 +17,9 @@ use crate::acp::{
     },
 };
 
-use super::schema_seed::{DIGEST_A, SchemaFixture, insert_epoch, insert_turn};
+use super::schema_seed::{
+    DIGEST_A, PENDING_CAPABILITIES, SchemaFixture, insert_epoch, insert_turn,
+};
 
 pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &[
     "items-per-turn-512",
@@ -52,107 +53,45 @@ pub(in crate::acp::fixture) fn execute(case: &FrozenCase) -> Value {
     }
 }
 
-pub(in crate::acp::fixture) fn execute_child_activity(case: &FrozenCase) -> Value {
-    match case.id {
-        "native-activity-child-text" => child_activity_text(),
-        "native-activity-depth-4" => child_activity_depth(4),
-        "native-activity-depth-5" => child_activity_depth(5),
-        "native-activity-foreign-parent" => child_activity_foreign_parent(),
-        _ => panic!("unregistered child activity fixture {}", case.id),
-    }
-}
-
-fn child_activity_text() -> Value {
-    let fixture = item_fixture_for_activity();
-    let process_capacity = TreeCapacityPool::isolated_ade_0006a();
-    let before_processes = process_capacity.usage();
-    let before_sessions: i64 = fixture
-        .database
-        .connection()
-        .query_row("SELECT COUNT(*) FROM agent_sessions", [], |row| row.get(0))
-        .unwrap();
-    let mut connection = fixture.database.connection();
-    let activity =
-        apply_activity_ingress(&mut connection, child_activity_command(1, "item-a")).unwrap();
-    let payload = NormalizedPayload::Text {
-        text: SafeText::new("text", "child text").unwrap(),
-    };
-    let encoded = serde_json::to_string(&payload).unwrap();
-    apply_item_ingress(
-        &mut connection,
-        ItemIngressCommand {
-            project_id: SageProjectId::parse("project-a").unwrap(),
-            chat_id: SageChatId::parse("chat-a").unwrap(),
-            session_id: crate::acp::contract::SageAgentSessionId::parse("session-a").unwrap(),
-            turn_id: crate::acp::contract::SageTurnId::parse("turn-a").unwrap(),
-            runtime_epoch: RuntimeEpoch::new(2).unwrap(),
-            external_item_id: ExternalId::new("item", "child-text-item").unwrap(),
-            activity_id: Some(activity.activity_id),
-            payload,
-            payload_digest: digest(encoded.as_bytes()),
-            lifecycle: ItemLifecycle::Completed,
-            tool_state: None,
-            now_millis: 20,
-        },
-    )
-    .unwrap();
-    let child_origin: String = connection
-        .query_row(
-            "SELECT origin FROM items WHERE external_item_id='child-text-item'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    let after_sessions: i64 = connection
-        .query_row("SELECT COUNT(*) FROM agent_sessions", [], |row| row.get(0))
-        .unwrap();
-    json!({
-        "itemOrigin": child_origin,
-        "newSageSession": after_sessions != before_sessions,
-        "newProcessTree": process_capacity.usage() != before_processes,
-    })
-}
-
-fn child_activity_depth(depth: u8) -> Value {
+pub(in crate::acp::fixture) fn execute_child_activity(depth: u8) -> Value {
     let fixture = item_fixture_for_activity();
     let result = apply_activity_ingress(
         &mut fixture.database.connection(),
         child_activity_command(depth, "item-a"),
     );
-    if depth == 4 {
-        json!({"projection": if result.is_ok() { "accepted" } else { "unsupported" }, "depth": depth})
-    } else {
-        json!({"projection": if result.is_err() { "unsupported" } else { "accepted" }, "capabilityChange": false})
+    match result {
+        Ok(mutation) => {
+            let page = activity_page(&fixture);
+            let projected = page
+                .turns
+                .as_slice()
+                .iter()
+                .flat_map(|turn| turn.activities.as_slice())
+                .find(|candidate| candidate.id == mutation.activity_id)
+                .unwrap();
+            json!({"projection": "accepted", "depth": projected.depth})
+        }
+        Err(StoreError::InvalidTransition {
+            resource: "activityShape",
+        }) => json!({"projection": "unsupported", "capabilityChange": false}),
+        Err(error) => panic!("unexpected activity projection failure: {error}"),
     }
-}
-
-fn child_activity_foreign_parent() -> Value {
-    let fixture = item_fixture_for_activity();
-    let before_sessions: i64 = fixture
-        .database
-        .connection()
-        .query_row("SELECT COUNT(*) FROM agent_sessions", [], |row| row.get(0))
-        .unwrap();
-    let result = apply_activity_ingress(
-        &mut fixture.database.connection(),
-        child_activity_command(1, "item-old"),
-    );
-    let after_sessions: i64 = fixture
-        .database
-        .connection()
-        .query_row("SELECT COUNT(*) FROM agent_sessions", [], |row| row.get(0))
-        .unwrap();
-    json!({
-        "terminal": if result.is_err() { "failed" } else { "ready" },
-        "protocolViolation": result.is_err(),
-        "newSageSession": after_sessions != before_sessions,
-    })
 }
 
 fn item_fixture_for_activity() -> SchemaFixture {
     let fixture = SchemaFixture::graph();
     seed_usage(&fixture);
     fixture
+}
+
+fn activity_page(fixture: &SchemaFixture) -> crate::acp::projection::AcpChatPage {
+    load_chat_page(
+        &fixture.database.connection(),
+        SageProjectId::parse("project-a").unwrap(),
+        SageChatId::parse("chat-a").unwrap(),
+        None,
+    )
+    .unwrap()
 }
 
 fn child_activity_command(depth: u8, parent_item: &str) -> ActivityIngressCommand {
@@ -429,10 +368,9 @@ fn provenance() -> ActivityProvenanceV1 {
 }
 
 fn seeded_activity_page(counts: &[usize]) -> crate::persistence::Database {
-    const CAPABILITIES: &str = r#"{"schemaVersion":1,"protocolVersion":"pending","newSession":false,"resumeSession":false,"loadSession":false,"closeSession":false,"prompt":false,"cancel":false,"nativeSessionFork":false,"activeTurnSteer":false,"childConversationProjection":false,"childTranscriptRead":false,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
     let fixture = SchemaFixture::project_chat();
     let connection = fixture.database.connection();
-    connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,capabilities_json,state,residency,terminal_at,created_at,updated_at) VALUES('session-a','project-a','chat-a',0,'binding',?1,?2,'closed','cold',1,1,1)", rusqlite::params![DIGEST_A, CAPABILITIES]).unwrap();
+    connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,capabilities_json,state,residency,terminal_at,created_at,updated_at) VALUES('session-a','project-a','chat-a',0,'binding',?1,?2,'closed','cold',1,1,1)", rusqlite::params![DIGEST_A, PENDING_CAPABILITIES]).unwrap();
     insert_epoch(&connection, 1, "exited", Some(1));
     let payload = serde_json::to_string(&NormalizedPayload::Text {
         text: SafeText::new("text", "parent").unwrap(),

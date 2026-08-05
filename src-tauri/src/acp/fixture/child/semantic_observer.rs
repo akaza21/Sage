@@ -12,7 +12,6 @@ use crate::acp::{
     limits::LIMITS,
     semantic_ingress::{
         SemanticIngressError, decode_capability_token, validate_metadata, validate_models,
-        validate_permission_payload,
     },
     store::{CompleteActivationCommand, complete_activation},
     transport::{Frame, IncrementalFrameDecoder, validate_structure},
@@ -52,9 +51,6 @@ pub(crate) fn execute(case: &FrozenCase) -> Value {
         | "models-entries-129"
         | "models-bytes-131072"
         | "models-bytes-131073" => observe_models(frame),
-        "permission-payload-bytes-65536" | "permission-payload-bytes-65537" => {
-            observe_permission(frame)
-        }
         _ => panic!("unregistered semantic fixture {}", case.id),
     }
 }
@@ -191,18 +187,6 @@ fn observe_models(frame: Frame) -> Value {
         Err(SemanticIngressError::Invalid) => {
             json!({"accepted": false, "error": "ProtocolInvalid"})
         }
-    }
-}
-
-fn observe_permission(frame: Frame) -> Value {
-    let value = envelope_value(&frame);
-    match validate_permission_payload(value.as_bytes()) {
-        Ok(()) => json!({"accepted": true, "permissionGranted": false}),
-        Err(_) => json!({
-            "accepted": false,
-            "permissionGranted": false,
-            "session": "failed",
-        }),
     }
 }
 

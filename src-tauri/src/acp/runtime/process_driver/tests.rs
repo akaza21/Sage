@@ -605,15 +605,21 @@ fn malformed_pump_input_process_exit_and_mandatory_failure_all_request_teardown(
         );
         assert_eq!(shared.0.lock().expect("shared").batches.len(), 1);
 
-        let (mut mandatory, shared, _, _) = build_driver(Vec::new(), VecDeque::new());
+        let (mut mandatory, shared, _, control) = build_driver(Vec::new(), VecDeque::new());
         shared.0.lock().expect("shared").ingest_error =
             Some(AdapterRuntimeError::MandatoryDenyTeardown);
         let mailbox = DriverMailbox::new().expect("mailbox");
         mailbox.try_push_chunk(b"{}\n".to_vec()).expect("data");
-        assert!(matches!(
+        assert_eq!(
             mandatory.run_next(&mailbox).await,
-            Err(DriverError::TeardownRequired(_))
-        ));
+            Err(DriverError::TeardownRequired(
+                TeardownCause::MandatoryDenyFailure
+            ))
+        );
+        assert_eq!(
+            control.lock().expect("control").requested,
+            [TreeExit::ProtocolFailure]
+        );
     });
 }
 

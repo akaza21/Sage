@@ -86,7 +86,7 @@ fn ready_adapter() -> FixtureAdapter {
     adapter
 }
 
-fn decode(bytes: &[u8]) -> Vec<Frame> {
+pub(super) fn decode(bytes: &[u8]) -> Vec<Frame> {
     let mut decoder = IncrementalFrameDecoder::new();
     let mut frames = Vec::new();
     for chunk in bytes.chunks(8 * 1024) {

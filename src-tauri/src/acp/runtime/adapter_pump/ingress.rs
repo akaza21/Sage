@@ -169,7 +169,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         let batch = match self.adapter.ingest(&frame, &self.resources) {
             Ok(batch) => batch,
             Err(AdapterRuntimeError::MandatoryDenyTeardown) => {
-                return self.fail_deferred_or_teardown(mode).await;
+                return self.fail_deferred_mandatory_deny(mode).await;
             }
             Err(AdapterRuntimeError::Frame) => {
                 return match mode {
@@ -364,7 +364,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         Err(AdapterPumpError::Frame)
     }
 
-    async fn fail_deferred_or_teardown<T>(
+    async fn fail_deferred_mandatory_deny<T>(
         &mut self,
         mode: IngestMode,
     ) -> Result<T, AdapterPumpError> {
@@ -373,7 +373,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         }
         self.pending.clear();
         self.teardown = true;
-        Err(AdapterPumpError::TeardownRequired)
+        Err(AdapterPumpError::Adapter(
+            AdapterRuntimeError::MandatoryDenyTeardown,
+        ))
     }
 
     async fn fail_deferred_protocol<T>(

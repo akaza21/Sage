@@ -6,6 +6,10 @@ pub(super) const DIGEST_A: &str =
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 pub(super) const DIGEST_B: &str =
     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+pub(super) const PENDING_CAPABILITIES: &str = r#"{"schemaVersion":1,"protocolVersion":"pending","newSession":false,"resumeSession":false,"loadSession":false,"closeSession":false,"prompt":false,"cancel":false,"nativeSessionFork":false,"activeTurnSteer":false,"childConversationProjection":false,"childTranscriptRead":false,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
+const TEXT_PAYLOAD: &str = r#"{"kind":"text","payload":{"text":"parent"}}"#;
+const TEXT_PAYLOAD_DIGEST: &str =
+    "b55cd523a427334e1e3d339dfe7f6d884fb91cd465d6c4d91c815381fb80dda7";
 
 pub(super) struct SchemaFixture {
     pub(super) database: Database,
@@ -113,13 +117,14 @@ pub(super) fn insert_session(
                id,project_id,chat_id,ordinal,binding_id,binding_digest,
                capabilities_json,state,residency,legacy,revision,
                projection_revision,created_at,updated_at,terminal_at
-             ) VALUES (?1,?2,?3,?4,'binding',?5,'{}',?6,?7,0,0,0,1,1,?8)",
+             ) VALUES (?1,?2,?3,?4,'binding',?5,?6,?7,?8,0,0,0,1,1,?9)",
             params![
                 id,
                 project_id,
                 chat_id,
                 ordinal,
                 binding_digest,
+                PENDING_CAPABILITIES,
                 state,
                 residency,
                 terminal_at
@@ -186,8 +191,17 @@ pub(super) fn insert_item(
                origin,kind,lifecycle,external_item_id,payload_json,payload_bytes,
                payload_digest,revision,created_at,updated_at,terminal_at
              ) VALUES (?1,'project-a','chat-a','session-a',?2,?3,?4,
-                       'primary','text','completed',?5,'{}',2,?6,0,1,1,2)",
-            params![id, turn_id, runtime_epoch, ordinal, external_id, DIGEST_A],
+                       'primary','text','completed',?5,?6,?7,?8,0,1,1,2)",
+            params![
+                id,
+                turn_id,
+                runtime_epoch,
+                ordinal,
+                external_id,
+                TEXT_PAYLOAD,
+                TEXT_PAYLOAD.len() as i64,
+                TEXT_PAYLOAD_DIGEST
+            ],
         )
         .unwrap();
 }

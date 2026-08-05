@@ -1,5 +1,8 @@
 mod activity_observer;
 mod item_observer;
+mod permission_fixture_adapter;
+mod permission_observer;
+mod permission_store_fixture;
 mod semantic_observer;
 mod stale_projection_observer;
 mod stderr_observer;
@@ -8,6 +11,9 @@ mod wire_observer;
 
 pub(super) use activity_observer::{CASE_IDS as ACTIVITY_CASE_IDS, execute as execute_activity};
 pub(super) use item_observer::{CASE_IDS as ITEM_CASE_IDS, execute as execute_item};
+pub(super) use permission_observer::{
+    CASE_IDS as PERMISSION_CASE_IDS, execute as execute_permission,
+};
 pub(super) use semantic_observer::{CASE_IDS as SEMANTIC_CASE_IDS, execute as execute_semantic};
 pub(super) use stale_projection_observer::{
     CASE_IDS as STALE_PROJECTION_CASE_IDS, execute as execute_stale_projection,

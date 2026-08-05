@@ -190,6 +190,21 @@ fn frozen_child_item_terminals_are_idempotent_and_late_safe() {
 }
 
 #[test]
+fn frozen_child_permissions_decline_durably_and_fail_closed() {
+    use super::generated_cases::{FrozenOwner, FrozenPhase};
+
+    for case_id in child::PERMISSION_CASE_IDS {
+        let fixture_case = FROZEN_CASES
+            .iter()
+            .find(|candidate| candidate.id == *case_id)
+            .unwrap();
+        assert!(fixture_case.owner == FrozenOwner::Child);
+        assert!(fixture_case.phase == FrozenPhase::Foundation);
+        oracle::assert_literal(fixture_case, child::execute_permission(fixture_case));
+    }
+}
+
+#[test]
 fn frozen_stale_project_completion_is_durable_but_projection_suppressed() {
     use super::generated_cases::{FrozenOwner, FrozenPhase};
 

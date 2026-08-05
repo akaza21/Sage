@@ -7,25 +7,21 @@ use super::{
 };
 
 const NODE_POLICY_CASES: &[&str] = &["csp-production-and-development"];
-const PATH_BOUND_CHILD_CASES: &[&str] = &["turn-text-success"];
+const PATH_BOUND_CHILD_CASES: &[&str] = &[
+    "turn-text-success",
+    "send-complete-uncorrelated-exit",
+    "send-correlated-then-exit",
+];
 const OPEN_HOST_CASES: &[&str] = &[];
 const OPEN_CHILD_CASES: &[&str] = &[
     "permission-identical-live-duplicate",
-    "permission-conflicting-duplicate",
-    "permission-old-epoch-after-restart",
     "send-zero-byte-failure",
     "send-partial-write-failure",
-    "send-complete-uncorrelated-exit",
-    "send-correlated-then-exit",
     "cancel-dispatch-at-capacity",
     "resume-success-once",
     "resume-failure-no-second-attempt",
     "redaction-canaries-all-sinks",
-    "permission-payload-bytes-65536",
-    "permission-payload-bytes-65537",
     "native-activity-child-text",
-    "native-activity-depth-4",
-    "native-activity-depth-5",
     "native-activity-foreign-parent",
 ];
 
@@ -47,6 +43,7 @@ fn foundation_literal_observer_registry_is_exact_and_nonoverlapping() {
     let child_families: &[&[&str]] = &[
         child::ACTIVITY_CASE_IDS,
         child::ITEM_CASE_IDS,
+        child::PERMISSION_CASE_IDS,
         child::WIRE_CASE_IDS,
         child::SEMANTIC_CASE_IDS,
         child::STALE_PROJECTION_CASE_IDS,
@@ -60,7 +57,7 @@ fn foundation_literal_observer_registry_is_exact_and_nonoverlapping() {
     assert_eq!(host.len(), 102, "registered host literal observers changed");
     assert_eq!(
         child.len(),
-        47,
+        53,
         "registered child literal observers changed"
     );
 
