@@ -290,7 +290,7 @@ struct FirstTurnFixture {
     now_millis: i64,
     publisher: Arc<ProjectionMailbox>,
     journal: JournalHandle,
-    journal_task: BoundedJournalTask,
+    journal_task: JournalThreadCleanup,
     scheduler: Scheduler,
     sessions: SessionCoordinator,
     started: SessionMutation,
@@ -321,28 +321,33 @@ impl Drop for TempRoot {
     }
 }
 
-struct BoundedJournalTask(Option<tokio::task::JoinHandle<()>>);
+struct JournalThreadCleanup {
+    journal: JournalHandle,
+    thread: Option<BoundedThread>,
+}
 
-impl BoundedJournalTask {
-    async fn finish(mut self) {
-        let mut task = self.0.take().expect("journal task retained");
+impl JournalThreadCleanup {
+    fn finish(mut self) {
+        self.journal.close_when_drained();
         let deadline =
             Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.wal_convergence);
-        match tokio::time::timeout(deadline, &mut task).await {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => panic!("journal task failed: {error}"),
-            Err(_) => {
-                task.abort();
-                panic!("journal task exceeded WAL convergence deadline")
-            }
+        let result = self
+            .thread
+            .as_mut()
+            .expect("journal thread retained")
+            .wait(deadline);
+        if result.is_ok() {
+            self.thread.take();
         }
+        result.unwrap();
     }
 }
 
-impl Drop for BoundedJournalTask {
+impl Drop for JournalThreadCleanup {
     fn drop(&mut self) {
-        if let Some(task) = self.0.take() {
-            task.abort();
+        self.journal.shutdown();
+        if let Some(thread) = &mut self.thread {
+            let _ = thread.wait(tree_termination_deadline());
         }
     }
 }
@@ -417,7 +422,12 @@ async fn prepare_first_turn_fixture() -> FirstTurnFixture {
         .unwrap();
     let publisher = Arc::new(ProjectionMailbox::default());
     let (journal, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
-    let journal_task = BoundedJournalTask(Some(runner.spawn()));
+    let journal_thread = BoundedThread::spawn("first-turn-journal", move || runner.run_blocking())
+        .expect("spawn first-turn journal");
+    let journal_task = JournalThreadCleanup {
+        journal: journal.clone(),
+        thread: Some(journal_thread),
+    };
     let scheduler = Scheduler::new();
     let sessions = SessionCoordinator::new(journal.clone(), scheduler.clone(), publisher.clone());
     let initial = crate::acp::store::load_chat_page(
@@ -842,10 +852,9 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
             drop(state);
             drop(context);
             drop(scheduler);
-            journal.close_when_drained();
             drop(journal);
             drop(database);
-            journal_task.finish().await;
+            journal_task.finish();
             drop(root);
 
             CancelDispatchObservation {
@@ -1124,10 +1133,9 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
             .unwrap();
         assert_eq!(close_facts, 1);
 
-        journal.close_when_drained();
         drop(journal);
         drop(database);
-        journal_task.finish().await;
+        journal_task.finish();
         drop(root);
     });
 }
