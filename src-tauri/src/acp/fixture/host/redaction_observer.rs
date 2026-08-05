@@ -254,8 +254,9 @@ fn observe_curated_evidence(observation: &Value) -> Value {
     let encoded = serde_json::to_vec(observation).unwrap();
     assert!(encoded.len() <= LIMITS.fixture.curated_evidence_bytes as usize);
     let evidence = TemporaryEvidence::create(&encoded);
-    let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let script = workspace.join("scripts/acp-redaction-curated-observer.mjs");
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workspace = manifest.parent().unwrap();
+    let script = manifest.join("src/acp/fixture/redaction_curated_observer.mjs");
     let child = Command::new("node")
         .arg(script)
         .arg("--input")
@@ -344,7 +345,14 @@ impl Drop for ChildGuard {
     fn drop(&mut self) {
         if !self.completed {
             let _ = self.child.kill();
-            let _ = self.child.wait();
+            let deadline =
+                Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.tree_termination);
+            while Instant::now() < deadline {
+                match self.child.try_wait() {
+                    Ok(Some(_)) | Err(_) => break,
+                    Ok(None) => thread::sleep(Duration::from_millis(10)),
+                }
+            }
         }
     }
 }

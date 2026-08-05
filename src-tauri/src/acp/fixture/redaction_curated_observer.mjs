@@ -6,8 +6,8 @@ import {
   exactKeys,
   inspectSanitized,
   parseBoundedJson,
-} from "./ade0006a-c0b-common.mjs";
-import { loadFrozenContracts } from "./ade0006a-c0b-contracts.mjs";
+} from "../../../../scripts/ade0006a-c0b-common.mjs";
+import { loadFrozenContracts } from "../../../../scripts/ade0006a-c0b-contracts.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 
@@ -79,7 +79,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
   const inputPath = argument("--input");
   if (!inputPath) {
     console.error(
-      "usage: node scripts/acp-redaction-curated-observer.mjs --input <curated.json>",
+      "usage: node src-tauri/src/acp/fixture/redaction_curated_observer.mjs --input <curated.json>",
     );
     process.exitCode = 1;
   } else {
