@@ -38,7 +38,7 @@ const execution = document.executionContract;
 const childOperations = new Set(execution?.childOperations);
 const hostOperations = new Set(execution?.hostOperations);
 if (
-  childOperations.size !== 23 ||
+  childOperations.size !== 22 ||
   hostOperations.size !== 64 ||
   [...childOperations].some((operation) => hostOperations.has(operation))
 ) {

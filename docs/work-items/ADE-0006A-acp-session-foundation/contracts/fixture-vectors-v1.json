@@ -16,7 +16,6 @@
       "closeStdout",
       "delayUntilIntentChanges",
       "emitBoundedJson",
-      "emitCanaries",
       "emitCapabilityToken",
       "emitExternalId",
       "emitKnownFrame",
@@ -104,7 +103,7 @@
       "child": 70,
       "host": 109,
       "mixed": 0,
-      "operations": 87
+      "operations": 86
     },
     "phaseExceptions": {
       "windows": [
@@ -532,18 +531,26 @@
           "delimiter": "lf",
           "split": "none"
         },
-        { "op": "awaitClient", "kind": "resume" },
+        {
+          "op": "awaitClient",
+          "kind": "resume",
+          "externalSessionId": "fixture-persisted-session-1"
+        },
         {
           "op": "emitKnownFrame",
           "shape": "resumeSuccess",
+          "externalSessionId": "fixture-persisted-session-1",
           "delimiter": "lf",
           "split": "none"
         }
       ],
       "oracle": {
+        "priorSession": "cold",
+        "zeroProcessBeforeActivation": true,
         "session": "ready",
         "resumeAttempts": 1,
-        "promptReplayed": false
+        "promptReplayed": false,
+        "externalSessionIdPreserved": true
       }
     },
     {
@@ -556,7 +563,11 @@
           "delimiter": "lf",
           "split": "none"
         },
-        { "op": "awaitClient", "kind": "resume" },
+        {
+          "op": "awaitClient",
+          "kind": "resume",
+          "externalSessionId": "fixture-persisted-session-1"
+        },
         {
           "op": "emitKnownFrame",
           "shape": "resumeFailure",
@@ -565,9 +576,12 @@
         }
       ],
       "oracle": {
+        "priorSession": "cold",
+        "zeroProcessBeforeActivation": true,
         "session": "failed",
         "resumeAttempts": 1,
-        "promptReplayed": false
+        "promptReplayed": false,
+        "externalSessionIdPreserved": true
       }
     },
     {
@@ -666,7 +680,8 @@
           "parentExternalItemId": "fixture-foreign-parent-1",
           "delimiter": "lf",
           "split": "none"
-        }
+        },
+        { "op": "awaitClient", "kind": "close" }
       ],
       "oracle": {
         "terminal": "failed",

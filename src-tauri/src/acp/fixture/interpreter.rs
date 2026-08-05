@@ -43,7 +43,6 @@ pub(super) fn classify(op: &str) -> Result<StepOwner, FixtureError> {
         | "closeStdin"
         | "closeStdout"
         | "emitBoundedJson"
-        | "emitCanaries"
         | "emitCapabilityToken"
         | "emitExternalId"
         | "emitKnownFrame"

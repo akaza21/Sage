@@ -35,6 +35,9 @@ impl WireState {
 }
 
 pub(super) fn execute(step: &Value, _seed: u32, state: &mut WireState) -> Result<(), FixtureError> {
+    if field_str(step, "op")? == "closeNativeStdin" {
+        return close_native_stdin(state);
+    }
     let mut input = io::stdin().lock();
     let mut output = io::stdout().lock();
     let mut error = io::stderr().lock();
@@ -53,7 +56,7 @@ fn execute_with_io(
         "readPromptBytes" | "readRequestBytes" => {
             await_client(input, state, field_u64(step, "bytes")?)?
         }
-        "closeStdin" | "closeStdinBeforeRead" => state.stdin_open = false,
+        "closeStdin" => state.stdin_open = false,
         "closeStdout" => state.stdout_open = false,
         "emitKnownFrame" => emit_known(step, state, output)?,
         "emitMalformed" => emit_malformed(field_str(step, "shape")?, state, output)?,
@@ -71,7 +74,6 @@ fn execute_with_io(
             super::wire_payload::emit_sized_method(field_u64(step, "bytes")?, state, output)?
         }
         "emitCapabilityToken" => super::wire_payload::emit_capability_token(step, state, output)?,
-        "emitCanaries" => super::wire_payload::emit_step(step, state, output)?,
         "emitMetadata" => super::wire_payload::emit_metadata(step, state, output)?,
         "emitModels" => super::wire_payload::emit_models(step, state, output)?,
         _ => return Err(FixtureError::UnknownStep),
@@ -112,7 +114,6 @@ fn emit_known(
         | "childActivityDepth5"
         | "childActivityForeignParent"
         | "childActivityText"
-        | "fillDataQueue"
         | "initializeSuccess"
         | "nativeForkSuccess"
         | "parentToolStart"
@@ -120,6 +121,7 @@ fn emit_known(
         | "permissionRequestAConflictingPayload"
         | "resumeFailure"
         | "resumeSuccess"
+        | "stdinClosedBarrier"
         | "textComplete"
         | "textDelta"
         | "textStart"
@@ -137,8 +139,26 @@ fn emit_known(
     } else {
         ""
     };
+    let params = match shape {
+        "parentToolStart" => serde_json::json!({
+            "externalItemId": field_str(step, "externalItemId")?,
+        }),
+        "childActivityText" => serde_json::json!({
+            "externalActivityId": field_str(step, "externalActivityId")?,
+            "parentExternalItemId": field_str(step, "parentExternalItemId")?,
+            "text": field_str(step, "text")?,
+        }),
+        "childActivityForeignParent" => serde_json::json!({
+            "externalActivityId": field_str(step, "externalActivityId")?,
+            "parentExternalItemId": field_str(step, "parentExternalItemId")?,
+        }),
+        "resumeSuccess" => serde_json::json!({
+            "externalSessionId": field_str(step, "externalSessionId")?,
+        }),
+        _ => serde_json::json!({}),
+    };
     let frame = format!(
-        "{{\"jsonrpc\":\"2.0\"{request_id},\"method\":\"fixture/{shape}\",\"params\":{{}}}}"
+        "{{\"jsonrpc\":\"2.0\"{request_id},\"method\":\"fixture/{shape}\",\"params\":{params}}}"
     );
     let delimiter = match field_str(step, "delimiter")? {
         "lf" => b"\n".as_slice(),
@@ -148,6 +168,25 @@ fn emit_known(
     let split = field_str(step, "split")?;
     write_stdout(output, state, frame.as_bytes(), split == "everyByte")?;
     write_stdout(output, state, delimiter, split == "everyByte")
+}
+
+#[cfg(windows)]
+fn close_native_stdin(state: &mut WireState) -> Result<(), FixtureError> {
+    use std::os::windows::io::AsRawHandle;
+
+    let stdin = io::stdin();
+    let result =
+        unsafe { windows_sys::Win32::Foundation::CloseHandle(stdin.as_raw_handle().cast()) };
+    if result == 0 {
+        return Err(FixtureError::Io);
+    }
+    state.stdin_open = false;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn close_native_stdin(_state: &mut WireState) -> Result<(), FixtureError> {
+    Err(FixtureError::HostOracleRequired)
 }
 
 fn emit_malformed(

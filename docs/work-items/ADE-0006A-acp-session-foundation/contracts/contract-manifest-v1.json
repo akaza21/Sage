@@ -5,7 +5,7 @@
   "selfIncluded": false,
   "ordering": "relativePath ascending by UTF-8 byte order",
   "fileCount": 14,
-  "logicalBytes": 184662,
+  "logicalBytes": 185174,
   "files": [
     {
       "relativePath": "README.md",
@@ -29,8 +29,8 @@
     },
     {
       "relativePath": "fixture-vectors-v1.json",
-      "bytes": 59051,
-      "sha256": "0c58398ff04cebd8a8bac5ee77455efa7aad4785de75592a8929f2e9c18fbbd0"
+      "bytes": 59563,
+      "sha256": "dba01245c8b64602397456691974396f712dfabba1bf218fadef98156c1e5cf5"
     },
     {
       "relativePath": "limit-fixture-coverage-v1.json",

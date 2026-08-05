@@ -101,16 +101,6 @@ pub(super) fn emit_sized_method(
     write_stdout(output, state, b"\"}\n", false)
 }
 
-pub(super) fn emit_step(
-    step: &Value,
-    state: &mut WireState,
-    output: &mut impl Write,
-) -> Result<(), FixtureError> {
-    let encoded = serde_json::to_vec(step).map_err(|_| FixtureError::InvalidArguments)?;
-    write_stdout(output, state, &encoded, false)?;
-    write_stdout(output, state, b"\n", false)
-}
-
 pub(super) fn emit_metadata(
     step: &Value,
     state: &mut WireState,
