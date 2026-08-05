@@ -136,7 +136,8 @@ where
         loop {
             if produced {
                 progress.accepted_frames += 1;
-                self.flush_all(DispatchSource::Ingress, &mut progress)?;
+                self.flush_all_ingress(DispatchSource::Ingress, now_millis, &mut progress)
+                    .await?;
             }
             if let Some(envelope) = self.dispatch_urgent(mailbox, &mut progress)? {
                 return Ok(DriverStep::YieldWorker { progress, envelope });
@@ -162,7 +163,8 @@ where
                 return Ok(());
             }
             let mut progress = DriverProgress::default();
-            self.flush_all(DispatchSource::Ingress, &mut progress)?;
+            self.flush_all_ingress(DispatchSource::Ingress, now_millis, &mut progress)
+                .await?;
         }
     }
 
@@ -174,7 +176,8 @@ where
         };
         if flushed {
             progress.deferred_flushes = 1;
-            self.flush_all(DispatchSource::Ingress, &mut progress)?;
+            self.flush_all_ingress(DispatchSource::Ingress, now_millis, &mut progress)
+                .await?;
         }
         Ok(progress)
     }

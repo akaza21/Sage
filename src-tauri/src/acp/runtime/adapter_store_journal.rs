@@ -4,10 +4,11 @@ use sha2::{Digest, Sha256};
 
 use crate::acp::{
     intent::NormalizedPayload,
+    lifecycle::ServerRequestState,
     limits::LIMITS,
     store::{
         AdapterInboundBatchCommand, AdapterInboundEvent, AdapterStoreOwner, ItemIngressCommand,
-        StoreError, StoreMutation, StoreMutationResult,
+        RequestStateCommand, StoreError, StoreMutation, StoreMutationResult,
     },
 };
 
@@ -19,6 +20,8 @@ use super::{
     journal::{JournalError, JournalHandle, JournalLane},
     process_driver::{DriverClock, SystemDriverClock},
 };
+
+mod activity;
 
 pub(crate) struct SqliteAdapterBatchJournal {
     handle: JournalHandle,
@@ -83,6 +86,49 @@ impl AdapterBatchJournal for SqliteAdapterBatchJournal {
                 projection_revision,
                 result.into_turn_cursor(),
             ))
+        })
+    }
+
+    fn transition_permission<'a>(
+        &'a mut self,
+        intent: &'a crate::acp::runtime::permissions::PermissionIntent,
+        state: ServerRequestState,
+        now_millis: i64,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<crate::acp::contract::ProjectionRevision, PumpJournalError>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let ticket = self
+                .handle
+                .enqueue_one(
+                    JournalLane::Control,
+                    StoreMutation::RequestState(RequestStateCommand {
+                        project_id: intent.project_id.clone(),
+                        chat_id: intent.chat_id.clone(),
+                        session_id: intent.session_id.clone(),
+                        turn_id: intent.turn_id.clone(),
+                        runtime_epoch: intent.runtime_epoch,
+                        request_id: intent.request_id.clone(),
+                        state,
+                        now_millis,
+                    }),
+                    self.next_deadline(),
+                )
+                .map_err(map_journal)?;
+            let committed = ticket.committed().await.map_err(map_journal)?;
+            let projection_revision = committed.projection_revision;
+            let mut results = committed.results;
+            let Some(StoreMutationResult::Entity(entity)) = results.pop() else {
+                return Err(PumpJournalError::Rejected);
+            };
+            if !results.is_empty() || entity.projection_revision != projection_revision {
+                return Err(PumpJournalError::Rejected);
+            }
+            Ok(projection_revision)
         })
     }
 
@@ -192,6 +238,7 @@ fn event_bytes(
                 + payload_digest.len()
                 + payload_bytes)
         }
+        DurableAdapterEvent::ActivityItem(activity) => activity::event_bytes(intent, activity),
         DurableAdapterEvent::PermissionDeny { intent: deny, .. } => {
             if deny.project_id != intent.project_id
                 || deny.chat_id != intent.chat_id
@@ -246,6 +293,7 @@ fn convert(event: DurableAdapterEvent) -> Result<AdapterInboundEvent, PumpJourna
             tool_state,
             now_millis,
         }),
+        DurableAdapterEvent::ActivityItem(activity) => activity::convert(*activity)?,
         DurableAdapterEvent::PermissionDeny { intent, now_millis } => {
             AdapterInboundEvent::PermissionDeny { intent, now_millis }
         }

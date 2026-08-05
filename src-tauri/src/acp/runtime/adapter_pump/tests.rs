@@ -1,10 +1,14 @@
-use std::{collections::VecDeque, sync::Mutex};
+use std::{collections::VecDeque, future::Future, pin::Pin, sync::Mutex};
 
 use crate::acp::{
     bindings::adapter::{AdapterBatch, AdapterIdentity, EgressToken},
-    contract::{EntityRevision, SafeText},
-    intent::{CapabilitySnapshotV1, SafeResourceRef, ToolCategory},
-    lifecycle::DeliveryState,
+    contract::{EntityRevision, SafeText, SchemaVersionV1},
+    intent::{
+        ActivityProvenanceV1, ActivitySourceKind, CapabilitySnapshotV1, SafeResourceRef,
+        ToolCategory,
+    },
+    lifecycle::{ActivityLifecycle, DeliveryState, ServerRequestState},
+    projection::ActivityRole,
     runtime::ProjectionPublishError,
 };
 
@@ -17,6 +21,8 @@ struct FakeState {
     commands: Vec<&'static str>,
     resolutions: Vec<EgressResolution>,
     durable_batches: Vec<Vec<DurableAdapterEvent>>,
+    request_states: Vec<ServerRequestState>,
+    permission_failure: Option<(ServerRequestState, PumpJournalError)>,
     log: Vec<&'static str>,
     ingest_error: Option<AdapterRuntimeError>,
 }
@@ -135,6 +141,33 @@ impl AdapterBatchJournal for FakeJournal {
         })
     }
 
+    fn transition_permission<'a>(
+        &'a mut self,
+        _: &'a PermissionIntent,
+        request_state: ServerRequestState,
+        _: i64,
+    ) -> Pin<Box<dyn Future<Output = Result<ProjectionRevision, PumpJournalError>> + Send + 'a>>
+    {
+        self.next_projection += 1;
+        let revision = revision(self.next_projection);
+        let label = match request_state {
+            ServerRequestState::ResponseQueued => "responseQueued",
+            ServerRequestState::ResolvedDeclined => "resolvedDeclined",
+            _ => "unexpectedRequestState",
+        };
+        let mut state = self.shared.0.lock().unwrap();
+        state.log.push(label);
+        if state
+            .permission_failure
+            .is_some_and(|(failed, _)| failed == request_state)
+        {
+            let error = state.permission_failure.take().unwrap().1;
+            return Box::pin(async move { Err(error) });
+        }
+        state.request_states.push(request_state);
+        Box::pin(async move { Ok(revision) })
+    }
+
     fn try_rebind(mut self, intent: PumpIntent) -> Result<Self, (Self, PumpJournalError)> {
         if self.allow_rebind {
             self.turn_id = intent.active_turn.turn_id;
@@ -185,6 +218,16 @@ impl EgressTransport for ScriptTransport {
     }
 }
 
+#[derive(Default)]
+struct CountingTransport(usize);
+
+impl EgressTransport for CountingTransport {
+    fn write(&mut self, _: &OutboundFrame) -> FrameWriteOutcome {
+        self.0 += 1;
+        FrameWriteOutcome::Complete
+    }
+}
+
 #[test]
 fn normalized_events_commit_once_before_one_projection_publish() {
     runtime().block_on(async {
@@ -201,6 +244,46 @@ fn normalized_events_commit_once_before_one_projection_publish() {
             matches!(event, DurableAdapterEvent::Item { scope, now_millis: 11, .. }
                 if scope.binding_digest == "07".repeat(32))
         }));
+    });
+}
+
+#[test]
+fn activity_child_normalizes_atomically_and_foreign_parent_identity_is_ignored() {
+    runtime().block_on(async {
+        let mut foreign_parent = identity("foreign-parent");
+        foreign_parent.binding_digest = [8; 32];
+        let (mut pump, shared) = build_pump(vec![owned(
+            vec![
+                activity_item(identity("parent")),
+                activity_item(foreign_parent),
+            ],
+            Vec::new(),
+        )]);
+
+        assert!(pump.push_stdout_chunk(b"{}\n", 11).await.unwrap());
+        let state = shared.0.lock().unwrap();
+        assert!(matches!(
+            state.durable_batches.as_slice(),
+            [batch] if matches!(
+                batch.as_slice(),
+                [DurableAdapterEvent::ActivityItem(activity)] if matches!(
+                    activity.as_ref(),
+                    DurableActivityItem {
+                        external_activity_id,
+                        external_item_id,
+                        parent_external_item_id,
+                        role: ActivityRole::Child,
+                        depth: 1,
+                        observed_sequence: 1,
+                        payload: NormalizedPayload::Text { text },
+                        ..
+                    } if external_activity_id.as_str() == "child-activity"
+                    && external_item_id.as_str() == "child-item"
+                    && parent_external_item_id.as_str() == "parent"
+                    && text.as_str() == "child text"
+                )
+            )
+        ));
     });
 }
 
@@ -377,7 +460,7 @@ fn delivery_unknown_reports_once_then_rejects_every_later_operation() {
 }
 
 #[test]
-fn mandatory_deny_commits_before_queue_and_unknown_write_tears_down() {
+fn mandatory_deny_persists_real_queue_before_publish_and_unknown_write_does_not_resolve() {
     runtime().block_on(async {
         let mandatory = AdapterEgress::new(
             OutboundFrame::new(br#"{"deny":true}"#.to_vec()).unwrap(),
@@ -396,7 +479,13 @@ fn mandatory_deny_commits_before_queue_and_unknown_write_tears_down() {
         pump.push_stdout_chunk(b"{}\n", 20).await.unwrap();
         assert_eq!(
             shared.0.lock().unwrap().log,
-            ["journal", "mandatory", "publish"]
+            [
+                "journal",
+                "mandatory",
+                "responseQueued",
+                "publish",
+                "publish"
+            ]
         );
         let state = shared.0.lock().unwrap();
         assert!(matches!(
@@ -417,6 +506,108 @@ fn mandatory_deny_commits_before_queue_and_unknown_write_tears_down() {
             FlushDisposition::DeliveryUnknown
         );
         assert!(pump.teardown_required());
+        assert_eq!(
+            shared.0.lock().unwrap().request_states,
+            [ServerRequestState::ResponseQueued]
+        );
+    });
+}
+
+#[test]
+fn mandatory_deny_resolves_only_after_complete_write() {
+    runtime().block_on(async {
+        let mandatory = AdapterEgress::new(
+            OutboundFrame::new(br#"{"deny":true}"#.to_vec()).unwrap(),
+            EgressToken::mandatory_deny(
+                ExternalId::new("request", "external-request").unwrap(),
+                false,
+            ),
+        );
+        let event = AdapterEvent::PermissionRequest {
+            turn_id: identity("turn-envelope"),
+            item_id: identity("external-request"),
+            payload: permission(),
+            request_payload_digest: [1; 32],
+        };
+        let (mut pump, shared) = build_pump(vec![owned(vec![event], vec![mandatory])]);
+
+        pump.push_stdout_chunk(b"{}\n", 20).await.unwrap();
+        assert_eq!(
+            shared.0.lock().unwrap().request_states,
+            [ServerRequestState::ResponseQueued]
+        );
+        let mut transport = ScriptTransport(VecDeque::from([FrameWriteOutcome::Complete]));
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            FlushDisposition::Written
+        );
+        assert!(pump.settle_written_permission(21).await.unwrap());
+        let state = shared.0.lock().unwrap();
+        assert_eq!(
+            state.request_states,
+            [
+                ServerRequestState::ResponseQueued,
+                ServerRequestState::ResolvedDeclined
+            ]
+        );
+        assert_eq!(
+            state.log,
+            [
+                "journal",
+                "mandatory",
+                "responseQueued",
+                "publish",
+                "publish",
+                "resolvedDeclined",
+                "publish"
+            ]
+        );
+    });
+}
+
+#[test]
+fn mandatory_deny_state_failures_block_or_tear_down_at_the_exact_boundary() {
+    runtime().block_on(async {
+        let (mut queue_failure, shared) = permission_pump();
+        shared.0.lock().unwrap().permission_failure = Some((
+            ServerRequestState::ResponseQueued,
+            PumpJournalError::Rejected,
+        ));
+        assert!(matches!(
+            queue_failure.push_stdout_chunk(b"{}\n", 20).await,
+            Err(AdapterPumpError::TeardownRequired)
+        ));
+        let mut blocked = CountingTransport::default();
+        assert!(matches!(
+            queue_failure.flush_one(&mut blocked),
+            Err(AdapterPumpError::TeardownRequired)
+        ));
+        assert_eq!(blocked.0, 0);
+        assert!(shared.0.lock().unwrap().request_states.is_empty());
+
+        let (mut resolution_failure, shared) = permission_pump();
+        resolution_failure
+            .push_stdout_chunk(b"{}\n", 20)
+            .await
+            .unwrap();
+        let mut written = CountingTransport::default();
+        assert_eq!(
+            resolution_failure.flush_one(&mut written).unwrap(),
+            FlushDisposition::Written
+        );
+        shared.0.lock().unwrap().permission_failure = Some((
+            ServerRequestState::ResolvedDeclined,
+            PumpJournalError::Rejected,
+        ));
+        assert!(matches!(
+            resolution_failure.settle_written_permission(21).await,
+            Err(AdapterPumpError::TeardownRequired)
+        ));
+        assert_eq!(written.0, 1);
+        assert_eq!(
+            shared.0.lock().unwrap().request_states,
+            [ServerRequestState::ResponseQueued]
+        );
     });
 }
 
@@ -820,6 +1011,23 @@ fn build_pump(
     )
 }
 
+fn permission_pump() -> (AdapterPump<FakeAdapter, FakeJournal, Mapper>, Shared) {
+    let mandatory = AdapterEgress::new(
+        OutboundFrame::new(br#"{"deny":true}"#.to_vec()).unwrap(),
+        EgressToken::mandatory_deny(
+            ExternalId::new("request", "external-request").unwrap(),
+            false,
+        ),
+    );
+    let event = AdapterEvent::PermissionRequest {
+        turn_id: identity("turn-envelope"),
+        item_id: identity("external-request"),
+        payload: permission(),
+        request_payload_digest: [1; 32],
+    };
+    build_pump(vec![owned(vec![event], vec![mandatory])])
+}
+
 fn pump_with_queue(
     batches: Vec<AdapterBatch>,
     queue: ReservedQueue<AdapterEgress>,
@@ -883,6 +1091,32 @@ fn item_with_payload(external: &str, payload: NormalizedPayload) -> AdapterEvent
         tool_state: None,
         payload,
     }
+}
+
+fn activity_item(parent_item_id: AdapterIdentity) -> AdapterEvent {
+    AdapterEvent::ActivityItem(Box::new(
+        crate::acp::bindings::adapter::AdapterActivityItem {
+            activity_id: identity("child-activity"),
+            item_id: identity("child-item"),
+            parent_activity_id: None,
+            parent_item_id,
+            activity_kind: RequiredText::new("activityKind", "nativeChild").unwrap(),
+            role: ActivityRole::Child,
+            activity_lifecycle: ActivityLifecycle::Observed,
+            depth: 1,
+            observed_sequence: 1,
+            provenance: ActivityProvenanceV1 {
+                schema_version: SchemaVersionV1,
+                source_kind: ActivitySourceKind::Collaboration,
+                external_kind: RequiredText::new("externalKind", "nativeChild").unwrap(),
+                extension_schema_id: None,
+                safe_label: None,
+            },
+            item_lifecycle: ItemLifecycle::Completed,
+            item_tool_state: None,
+            payload: text("child text"),
+        },
+    ))
 }
 
 fn normalized_fact(external: &str, payload: NormalizedPayload) -> NormalizedFact {

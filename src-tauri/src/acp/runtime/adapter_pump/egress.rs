@@ -60,6 +60,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             return Ok(FlushDisposition::Idle);
         };
         let mandatory = egress.token().is_mandatory();
+        let written_permission = egress
+            .token()
+            .deny_request()
+            .and_then(|(request, replay)| (!replay).then_some(request.to_owned()));
         let outcome = transport.write(egress.frame());
         let (resolution, disposition) = match outcome {
             FrameWriteOutcome::Complete => (EgressResolution::Written, FlushDisposition::Written),
@@ -81,6 +85,19 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             self.teardown = true;
             return Err(AdapterPumpError::TeardownRequired);
         }
+        if disposition == FlushDisposition::Written
+            && let Some(request) = written_permission
+        {
+            let Some(pending) = self.pending_permission.as_mut() else {
+                self.teardown = true;
+                return Err(AdapterPumpError::TeardownRequired);
+            };
+            if pending.intent.external_request_id.as_str() != request || pending.written {
+                self.teardown = true;
+                return Err(AdapterPumpError::TeardownRequired);
+            }
+            pending.written = true;
+        }
         if delivery_unknown {
             Ok(disposition)
         } else if self.teardown {
@@ -88,6 +105,33 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         } else {
             Ok(disposition)
         }
+    }
+
+    pub(crate) async fn settle_written_permission(
+        &mut self,
+        now_millis: i64,
+    ) -> Result<bool, AdapterPumpError> {
+        let Some(pending) = self.pending_permission.as_ref() else {
+            return Ok(false);
+        };
+        if !pending.written {
+            return Ok(false);
+        }
+        let intent = pending.intent.clone();
+        let revision = match self
+            .journal
+            .transition_permission(&intent, ServerRequestState::ResolvedDeclined, now_millis)
+            .await
+        {
+            Ok(revision) => revision,
+            Err(PumpJournalError::CommitUnknown | PumpJournalError::Rejected) => {
+                self.teardown = true;
+                return Err(AdapterPumpError::TeardownRequired);
+            }
+        };
+        self.pending_permission = None;
+        self.publish_revision(revision)?;
+        Ok(true)
     }
 
     pub(super) fn enqueue(

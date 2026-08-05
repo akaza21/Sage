@@ -1,4 +1,4 @@
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::sync::Arc;
 
 use crate::acp::{
     bindings::adapter::{
@@ -10,7 +10,7 @@ use crate::acp::{
         SageProjectId, SageServerRequestId, SageTurnId,
     },
     intent::{ExternalId, NormalizedPayload},
-    lifecycle::{ItemLifecycle, ToolState, TurnState},
+    lifecycle::{ItemLifecycle, ServerRequestState, ToolState, TurnState},
     limits::LIMITS,
     runtime::{ProjectionPublishStatus, ProjectionPublisher, permissions::PermissionIntent},
     store::AdapterTurnCursor,
@@ -20,7 +20,10 @@ use crate::acp::{
     },
 };
 
+mod activity;
+mod batch_journal;
 mod coalescer;
+mod commit;
 mod completion;
 mod egress;
 mod ingress;
@@ -28,6 +31,8 @@ mod normalize;
 mod payload;
 mod receipt;
 
+pub(crate) use activity::DurableActivityItem;
+pub(crate) use batch_journal::{AdapterBatchJournal, JournalReceipt, PumpJournalError};
 pub(crate) use coalescer::DeferredIngressState;
 use coalescer::PendingIngress;
 #[allow(unused_imports)]
@@ -120,6 +125,7 @@ pub(crate) enum DurableAdapterEvent {
         payload_digest: String,
         now_millis: i64,
     },
+    ActivityItem(Box<DurableActivityItem>),
     PermissionDeny {
         intent: PermissionIntent,
         now_millis: i64,
@@ -131,51 +137,6 @@ pub(crate) enum DurableAdapterEvent {
         payload_digest: String,
         now_millis: i64,
     },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct JournalReceipt {
-    pub projection_revision: ProjectionRevision,
-    turn_cursor: AdapterTurnCursor,
-}
-
-impl JournalReceipt {
-    pub(super) fn committed(
-        projection_revision: ProjectionRevision,
-        turn_cursor: AdapterTurnCursor,
-    ) -> Self {
-        Self {
-            projection_revision,
-            turn_cursor,
-        }
-    }
-
-    pub(crate) fn turn_cursor(&self) -> &AdapterTurnCursor {
-        &self.turn_cursor
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum PumpJournalError {
-    #[error("durable adapter batch was rejected")]
-    Rejected,
-    #[error("durable adapter commit outcome is unknown")]
-    CommitUnknown,
-}
-
-pub(crate) trait AdapterBatchJournal: Send {
-    fn commit<'a>(
-        &'a mut self,
-        events: Vec<DurableAdapterEvent>,
-        actual_bytes: usize,
-    ) -> Pin<Box<dyn Future<Output = Result<JournalReceipt, PumpJournalError>> + Send + 'a>>;
-
-    fn try_rebind(self, _intent: PumpIntent) -> Result<Self, (Self, PumpJournalError)>
-    where
-        Self: Sized,
-    {
-        Err((self, PumpJournalError::Rejected))
-    }
 }
 
 pub(crate) trait EgressTransport {
@@ -235,6 +196,13 @@ pub(crate) struct AdapterPump<A, J, R> {
     durable_turn_cursor: Option<AdapterTurnCursor>,
     teardown: bool,
     projection_recovery_required: bool,
+    pending_permission: Option<PendingPermission>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PendingPermission {
+    intent: PermissionIntent,
+    written: bool,
 }
 
 pub(crate) struct AdapterPumpAdmission {
@@ -286,6 +254,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             durable_turn_cursor: None,
             teardown: false,
             projection_recovery_required: false,
+            pending_permission: None,
         }
     }
 
@@ -409,7 +378,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     }
 
     fn ensure_live(&self) -> Result<(), AdapterPumpError> {
-        if self.teardown {
+        if self.teardown
+            || self
+                .pending_permission
+                .as_ref()
+                .is_some_and(|permission| permission.written)
+        {
             Err(AdapterPumpError::TeardownRequired)
         } else {
             Ok(())

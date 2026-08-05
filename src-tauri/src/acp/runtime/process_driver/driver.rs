@@ -211,6 +211,32 @@ where
         }
     }
 
+    async fn flush_all_ingress(
+        &mut self,
+        source: DispatchSource,
+        now_millis: i64,
+        progress: &mut DriverProgress,
+    ) -> Result<(), DriverError> {
+        loop {
+            match self.pump.flush_one(&mut self.transport) {
+                Ok(FlushDisposition::Idle) => return Ok(()),
+                Ok(FlushDisposition::Written) => {
+                    progress.written_frames += 1;
+                    if let Err(error) = self.pump.settle_written_permission(now_millis).await {
+                        return Err(self.pump_error(error));
+                    }
+                }
+                Ok(FlushDisposition::ZeroBytes) => progress.zero_byte_failures += 1,
+                Ok(FlushDisposition::DeliveryUnknown) => {
+                    self.first_delivery_unknown
+                        .get_or_insert(FirstDeliveryUnknown { source });
+                    return Err(self.latch(TeardownCause::DeliveryUnknown));
+                }
+                Err(error) => return Err(self.pump_error(error)),
+            }
+        }
+    }
+
     fn pump_error(&mut self, error: AdapterPumpError) -> DriverError {
         let cause = match error {
             AdapterPumpError::Frame => TeardownCause::ProtocolFailure,

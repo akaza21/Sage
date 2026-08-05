@@ -1,10 +1,13 @@
 use super::{extended_tests::*, *};
 use crate::acp::{
-    contract::{ClientIntentId, ProjectGeneration, RequiredText, SafeText},
-    intent::{ExternalId, NormalizedPayload, Prompt, ToolCategory},
-    lifecycle::{ItemLifecycle, TurnState},
+    contract::{ClientIntentId, ProjectGeneration, RequiredText, SafeText, SchemaVersionV1},
+    intent::{
+        ActivityProvenanceV1, ActivitySourceKind, ExternalId, NormalizedPayload, Prompt,
+        ToolCategory,
+    },
+    lifecycle::{ActivityLifecycle, ItemLifecycle, TurnState},
     limits::LIMITS,
-    projection::ItemContent,
+    projection::{ActivityRole, ItemContent},
     runtime::permissions::PermissionIntent,
 };
 
@@ -119,6 +122,84 @@ fn event_n_failure_rolls_back_the_complete_adapter_batch() {
         )
         .unwrap();
     assert_eq!((count, projection(&fixture.connection)), (0, before));
+}
+
+#[test]
+fn activity_and_child_item_commit_or_rollback_as_one_adapter_batch() {
+    let mut committed = fixture();
+    apply_adapter_inbound_batch(
+        &mut committed.connection,
+        batch(
+            &committed.owner,
+            vec![AdapterInboundEvent::Item(item(&committed.owner, "parent"))],
+        ),
+    )
+    .unwrap();
+    apply_adapter_inbound_batch(
+        &mut committed.connection,
+        batch(
+            &committed.owner,
+            vec![activity_item(
+                &committed.owner,
+                "activity-one",
+                "child-one",
+                true,
+            )],
+        ),
+    )
+    .unwrap();
+    let linked: (String, String, String) = committed
+        .connection
+        .query_row(
+            "SELECT i.origin,i.activity_id,a.external_activity_id
+             FROM items i JOIN session_activities a ON a.id=i.activity_id
+             WHERE i.external_item_id='child-one'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(linked.0, "harnessActivity");
+    assert!(!linked.1.is_empty());
+    assert_eq!(linked.2, "activity-one");
+
+    let mut rolled_back = fixture();
+    apply_adapter_inbound_batch(
+        &mut rolled_back.connection,
+        batch(
+            &rolled_back.owner,
+            vec![AdapterInboundEvent::Item(item(
+                &rolled_back.owner,
+                "parent",
+            ))],
+        ),
+    )
+    .unwrap();
+    assert!(matches!(
+        apply_adapter_inbound_batch(
+            &mut rolled_back.connection,
+            batch(
+                &rolled_back.owner,
+                vec![activity_item(
+                    &rolled_back.owner,
+                    "activity-one",
+                    "child-one",
+                    false,
+                )]
+            )
+        ),
+        Err(StoreError::Corrupt("normalized item digest"))
+    ));
+    let retained: (i64, i64) = rolled_back
+        .connection
+        .query_row(
+            "SELECT
+               (SELECT COUNT(*) FROM session_activities),
+               (SELECT COUNT(*) FROM items WHERE external_item_id='child-one')",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(retained, (0, 0));
 }
 
 #[test]
@@ -393,6 +474,39 @@ fn item(owner: &AdapterStoreOwner, external: &str) -> ItemIngressCommand {
         tool_state: None,
         now_millis: 6,
     }
+}
+
+fn activity_item(
+    owner: &AdapterStoreOwner,
+    external_activity: &str,
+    external_item: &str,
+    valid_item_digest: bool,
+) -> AdapterInboundEvent {
+    let provenance = ActivityProvenanceV1 {
+        schema_version: SchemaVersionV1,
+        source_kind: ActivitySourceKind::Collaboration,
+        external_kind: RequiredText::new("kind", "subagent").unwrap(),
+        extension_schema_id: None,
+        safe_label: Some(RequiredText::new("label", "Fixture child").unwrap()),
+    };
+    let provenance_json = serde_json::to_string(&provenance).unwrap();
+    let mut child = item(owner, external_item);
+    if !valid_item_digest {
+        child.payload_digest = "0".repeat(64);
+    }
+    AdapterInboundEvent::ActivityItem(Box::new(super::AdapterActivityItemCommand {
+        external_activity_id: ExternalId::new("activity", external_activity).unwrap(),
+        activity_kind: RequiredText::new("activityKind", "subagent").unwrap(),
+        parent_external_activity_id: None,
+        parent_external_item_id: ExternalId::new("parentItem", "parent").unwrap(),
+        role: ActivityRole::Child,
+        activity_lifecycle: ActivityLifecycle::Observed,
+        depth: 1,
+        observed_sequence: 1,
+        provenance,
+        provenance_digest: facts::hex_digest(provenance_json.as_bytes()),
+        item: child,
+    }))
 }
 
 fn serialized_text_payload_bytes(text_bytes: usize) -> usize {

@@ -2,17 +2,19 @@ use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::acp::{
     contract::{
-        EntityRevision, ProjectionRevision, RuntimeEpoch, SageAgentSessionId, SageChatId,
-        SageProjectId, SageTurnId,
+        EntityRevision, ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId,
+        SageChatId, SageProjectId, SageTurnId,
     },
-    intent::ExternalId,
-    lifecycle::{DeliveryState, TurnState},
+    intent::{ActivityProvenanceV1, ExternalId},
+    lifecycle::{ActivityLifecycle, DeliveryState, TurnState},
     limits::LIMITS,
+    projection::ActivityRole,
     runtime::permissions::PermissionIntent,
 };
 
 use super::{ItemIngressCommand, MutationDisposition, StoreError};
 
+mod activity_item;
 mod turns;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,12 +29,28 @@ pub(crate) struct AdapterStoreOwner {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AdapterActivityItemCommand {
+    pub external_activity_id: ExternalId,
+    pub activity_kind: RequiredText<128>,
+    pub parent_external_activity_id: Option<ExternalId>,
+    pub parent_external_item_id: ExternalId,
+    pub role: ActivityRole,
+    pub activity_lifecycle: ActivityLifecycle,
+    pub depth: u8,
+    pub observed_sequence: u64,
+    pub provenance: ActivityProvenanceV1,
+    pub provenance_digest: String,
+    pub item: ItemIngressCommand,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum AdapterInboundEvent {
     Turn {
         state: TurnState,
         now_millis: i64,
     },
     Item(ItemIngressCommand),
+    ActivityItem(Box<AdapterActivityItemCommand>),
     PermissionDeny {
         intent: PermissionIntent,
         now_millis: i64,
@@ -205,6 +223,9 @@ fn apply_event(
                     == MutationDisposition::Applied,
             )
         }
+        event @ AdapterInboundEvent::ActivityItem(_) => {
+            activity_item::apply(transaction, owner, event)
+        }
         AdapterInboundEvent::PermissionDeny { intent, now_millis } => {
             verify_permission_scope(owner, intent)?;
             let received =
@@ -263,7 +284,7 @@ fn verify_owner(
     }
 }
 
-fn verify_item_scope(
+pub(super) fn verify_item_scope(
     owner: &AdapterStoreOwner,
     command: &ItemIngressCommand,
 ) -> Result<(), StoreError> {

@@ -175,6 +175,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
                 | AdapterEvent::Acknowledged
                 | AdapterEvent::Turn { .. }
                 | AdapterEvent::Item { .. }
+                | AdapterEvent::ActivityItem(_)
                 | AdapterEvent::Usage { .. }
                 | AdapterEvent::PermissionRequest { .. } => return self.protocol_error(),
             }

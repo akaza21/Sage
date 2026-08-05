@@ -50,6 +50,18 @@ pub(crate) fn apply_activity_ingress(
     connection: &mut rusqlite::Connection,
     command: ActivityIngressCommand,
 ) -> Result<ActivityIngressMutation, StoreError> {
+    let transaction = connection.transaction()?;
+    let result = apply_activity_ingress_in(&transaction, command)?;
+    transaction
+        .commit()
+        .map_err(|_| StoreError::CommitUnknown)?;
+    Ok(result)
+}
+
+pub(super) fn apply_activity_ingress_in(
+    transaction: &Transaction<'_>,
+    command: ActivityIngressCommand,
+) -> Result<ActivityIngressMutation, StoreError> {
     command
         .provenance
         .validate_for_persistence()
@@ -70,14 +82,9 @@ pub(crate) fn apply_activity_ingress(
     {
         return Err(StoreError::Corrupt("activity provenance digest"));
     }
-    let transaction = connection.transaction()?;
-    verify_owner(&transaction, &command)?;
-    if let Some(existing) = existing_activity(&transaction, &command)? {
-        let result = update_existing(&transaction, command, existing, provenance)?;
-        transaction
-            .commit()
-            .map_err(|_| StoreError::CommitUnknown)?;
-        return Ok(result);
+    verify_owner(transaction, &command)?;
+    if let Some(existing) = existing_activity(transaction, &command)? {
+        return update_existing(transaction, command, existing, provenance);
     }
     let count: i64 = transaction.query_row(
         "SELECT COUNT(*) FROM session_activities WHERE turn_id=?1",
@@ -101,7 +108,7 @@ pub(crate) fn apply_activity_ingress(
         });
     }
     let projection = next_projection_revision(
-        &transaction,
+        transaction,
         command.project_id.as_str(),
         command.chat_id.as_str(),
     )?;
@@ -138,18 +145,15 @@ pub(crate) fn apply_activity_ingress(
             terminal
         ],
     )?;
-    append_activity_fact(&transaction, &command, &activity_id, projection)?;
+    append_activity_fact(transaction, &command, &activity_id, projection)?;
     publish_projection(
-        &transaction,
+        transaction,
         command.project_id.as_str(),
         command.chat_id.as_str(),
         command.session_id.as_str(),
         projection,
         command.now_millis,
     )?;
-    transaction
-        .commit()
-        .map_err(|_| StoreError::CommitUnknown)?;
     Ok(ActivityIngressMutation {
         activity_id,
         entity: EntityMutation {
@@ -208,10 +212,7 @@ fn existing_activity(
             })
         },
     )?;
-    let mut matches = Vec::with_capacity(2);
-    for row in rows {
-        matches.push(row?);
-    }
+    let mut matches = rows.collect::<Result<Vec<_>, _>>()?;
     if matches.len() > 1 {
         return Err(StoreError::Conflict {
             resource: "activityIdentity",

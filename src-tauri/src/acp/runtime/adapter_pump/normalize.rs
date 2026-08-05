@@ -45,6 +45,55 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                     measured.bytes,
                 )))
             }
+            AdapterEvent::ActivityItem(activity)
+                if self.exact_turn(&activity.activity_id)
+                    && self.exact_turn(&activity.item_id)
+                    && self.exact_turn(&activity.parent_item_id)
+                    && activity
+                        .parent_activity_id
+                        .as_ref()
+                        .is_none_or(|parent| self.exact_turn(parent))
+                    && terminal.is_none() =>
+            {
+                let crate::acp::bindings::adapter::AdapterActivityItem {
+                    activity_id,
+                    item_id,
+                    parent_activity_id,
+                    parent_item_id,
+                    activity_kind,
+                    role,
+                    activity_lifecycle,
+                    depth,
+                    observed_sequence,
+                    provenance,
+                    item_lifecycle,
+                    item_tool_state,
+                    payload,
+                } = *activity;
+                let measured = payload_measure(&payload)?;
+                Ok(Some(NormalizedFact::new(
+                    DurableAdapterEvent::ActivityItem(Box::new(DurableActivityItem {
+                        scope: self.scope(),
+                        external_activity_id: activity_id.external_id,
+                        external_item_id: item_id.external_id,
+                        parent_external_activity_id: parent_activity_id
+                            .map(|parent| parent.external_id),
+                        parent_external_item_id: parent_item_id.external_id,
+                        activity_kind,
+                        role,
+                        activity_lifecycle,
+                        depth,
+                        observed_sequence,
+                        provenance,
+                        item_lifecycle,
+                        item_tool_state,
+                        payload,
+                        payload_digest: measured.digest,
+                        now_millis,
+                    })),
+                    measured.bytes,
+                )))
+            }
             AdapterEvent::Usage { turn_id, payload }
                 if self.exact_turn(&turn_id) && terminal.is_none() =>
             {
@@ -89,6 +138,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             AdapterEvent::SessionReady { id, .. } if !self.exact_session(&id) => Ok(None),
             AdapterEvent::Turn { .. }
             | AdapterEvent::Item { .. }
+            | AdapterEvent::ActivityItem(_)
             | AdapterEvent::Usage { .. }
             | AdapterEvent::PermissionRequest { .. }
             | AdapterEvent::Error(_)
@@ -139,6 +189,7 @@ pub(super) fn control_critical(fact: &NormalizedFact) -> bool {
             NormalizedPayload::Error { .. } | NormalizedPayload::Unsupported { .. }
         ),
         DurableAdapterEvent::Item { .. } => false,
+        DurableAdapterEvent::ActivityItem(_) => false,
     }
 }
 
