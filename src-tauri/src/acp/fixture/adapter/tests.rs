@@ -2,7 +2,7 @@ use crate::acp::{
     bindings::adapter::{
         AdapterCommand, AdapterEvent, EgressResolution, HarnessAdapter, ResourceMapper,
     },
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SchemaVersionV1},
     intent::{ExternalId, Prompt, SafeResourceRef, UnavailableResourceReason},
     transport::IncrementalFrameDecoder,
 };
@@ -30,6 +30,39 @@ fn metadata_notification_rejects_explicit_null_id() {
     }));
 
     assert!(matches!(result, Err(AdapterRuntimeError::Frame)));
+}
+
+#[test]
+fn activation_capabilities_match_the_implemented_session_surface() {
+    let capabilities = FixtureAdapter::activation_capabilities();
+    assert_eq!(capabilities.schema_version, SchemaVersionV1);
+    assert_eq!(capabilities.protocol_version.as_str(), "fixture-1");
+    assert_eq!(
+        (
+            capabilities.new_session,
+            capabilities.resume_session,
+            capabilities.load_session,
+            capabilities.close_session,
+            capabilities.prompt,
+            capabilities.cancel,
+        ),
+        (true, true, false, false, true, false)
+    );
+    assert_eq!(
+        (
+            capabilities.native_session_fork,
+            capabilities.active_turn_steer,
+            capabilities.child_conversation_projection,
+            capabilities.child_transcript_read,
+            capabilities.collaboration_event_projection,
+        ),
+        (false, false, false, false, false)
+    );
+    assert_eq!(
+        (capabilities.model_count, capabilities.config_count),
+        (0, 0)
+    );
+    assert!(capabilities.multi_root_extension_schema_id.is_none());
 }
 
 #[test]

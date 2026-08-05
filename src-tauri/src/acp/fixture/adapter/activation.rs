@@ -18,7 +18,7 @@ impl FixtureAdapter {
             resume_session: true,
             load_session: false,
             close_session: false,
-            prompt: false,
+            prompt: true,
             cancel: false,
             native_session_fork: false,
             active_turn_steer: false,
