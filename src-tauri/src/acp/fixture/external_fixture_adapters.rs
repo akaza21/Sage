@@ -28,8 +28,10 @@ use crate::{
 
 use crate::acp::intent::CapabilitySnapshotV1;
 
+#[derive(Clone, Copy)]
 pub(super) enum ExternalCase {
     TurnTextSuccess,
+    ZeroByteFailure,
     CompleteDeliveryExit(&'static str),
 }
 
@@ -37,6 +39,7 @@ impl ExternalCase {
     pub(super) fn id(&self) -> &'static str {
         match self {
             Self::TurnTextSuccess => "turn-text-success",
+            Self::ZeroByteFailure => "send-zero-byte-failure",
             Self::CompleteDeliveryExit(case_id) => case_id,
         }
     }

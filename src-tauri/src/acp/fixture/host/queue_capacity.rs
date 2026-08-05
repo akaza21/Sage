@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use serde_json::{Value, json};
 
 use crate::acp::{
@@ -8,7 +10,7 @@ use crate::acp::{
     fixture::generated_cases::FrozenCase,
     intent::{ExternalId, Prompt},
     runtime::{
-        DriverMailbox, DriverMailboxError, JournalError, JournalHandle, JournalLane,
+        CancelIntent, DriverMailbox, DriverMailboxError, JournalError, JournalHandle, JournalLane,
         permissions::PermissionIntent,
     },
     store::{AcpStore, StoreCommit, StoreError, StoreMutation},
@@ -20,6 +22,7 @@ pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &[
     "driver-data-messages-257",
     "driver-data-bytes-2097152",
     "driver-data-bytes-2097153",
+    "cancel-dispatch-at-capacity",
     "egress-frames-64",
     "egress-frames-65",
     "egress-data-cannot-consume-control-reserve",
@@ -35,10 +38,54 @@ pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &[
 pub(in crate::acp::fixture) fn execute(case: &FrozenCase) -> Value {
     let steps: Vec<Value> = serde_json::from_str(case.steps_json).unwrap();
     match case.id {
+        "cancel-dispatch-at-capacity" => execute_cancel(&steps),
         id if id.starts_with("driver-") => execute_driver(id, &steps),
         id if id.starts_with("egress-") => execute_egress(id, &steps),
         id if id.starts_with("journal-") => execute_journal(id, &steps),
         id => panic!("unexpected queue-capacity case {id}"),
+    }
+}
+
+fn execute_cancel(steps: &[Value]) -> Value {
+    let [fill, dispatch] = steps else {
+        panic!("expected exact driver fill followed by cancel dispatch");
+    };
+    assert_eq!(fill["op"], "fillDriverData");
+    assert_eq!(dispatch["op"], "dispatchCancel");
+    let messages = field_u64(fill, "messages");
+    let bytes = field_u64(fill, "bytes");
+    let deadline_ms = field_u64(dispatch, "deadlineMs");
+    assert_eq!(
+        messages,
+        crate::acp::limits::LIMITS.queues.driver_data_messages
+    );
+    assert_eq!(bytes, messages);
+
+    let mailbox = DriverMailbox::new().unwrap();
+    for _ in 0..messages {
+        mailbox.try_push_chunk(vec![b'x']).unwrap();
+    }
+    let saturated_before = mailbox.try_push_chunk(vec![b'x']).is_err();
+    let started = Instant::now();
+    let observed_cancel = mailbox.submit_cancel(cancel_intent(), deadline_ms).is_ok();
+    let saturated_with_control = mailbox.try_push_chunk(vec![b'x']).is_err();
+    assert!(observed_cancel);
+    assert!(started.elapsed() <= Duration::from_millis(deadline_ms));
+
+    json!({
+        "cancelDispatchMsMaximum": deadline_ms,
+        "controlCapacityBorrowed": !(saturated_before && saturated_with_control),
+    })
+}
+
+fn cancel_intent() -> CancelIntent {
+    CancelIntent {
+        project_id: SageProjectId::parse("fixture-project").unwrap(),
+        chat_id: SageChatId::parse("fixture-chat").unwrap(),
+        session_id: SageAgentSessionId::parse("fixture-session").unwrap(),
+        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+        turn_id: SageTurnId::parse("fixture-turn").unwrap(),
+        client_message_id: RequiredText::new("clientMessageId", "fixture-turn").unwrap(),
     }
 }
 

@@ -7,7 +7,11 @@ mod child;
 #[cfg(test)]
 mod coverage;
 #[cfg(all(test, windows))]
+mod external_delivery_tests;
+#[cfg(all(test, windows))]
 mod external_fixture_adapters;
+#[cfg(all(test, windows))]
+mod external_fixture_runtime;
 #[cfg(all(test, windows))]
 mod external_tests;
 mod generated_cases;

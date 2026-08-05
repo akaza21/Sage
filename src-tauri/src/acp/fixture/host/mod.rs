@@ -1,5 +1,6 @@
 mod capacity;
 mod contract_bounds;
+mod delivery_observer;
 mod metadata_integrity;
 mod migration_recovery;
 mod permission_failures;
