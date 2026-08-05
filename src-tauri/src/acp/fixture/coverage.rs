@@ -12,15 +12,16 @@ const PATH_BOUND_CHILD_CASES: &[&str] = &[
     "send-complete-uncorrelated-exit",
     "send-correlated-then-exit",
 ];
-const OPEN_HOST_CASES: &[&str] = &[];
+const OPEN_HOST_CASES: &[&str] = &[
+    "send-partial-write-failure",
+    "cancel-dispatch-at-capacity",
+    "redaction-canaries-all-sinks",
+];
 const OPEN_CHILD_CASES: &[&str] = &[
     "permission-identical-live-duplicate",
     "send-zero-byte-failure",
-    "send-partial-write-failure",
-    "cancel-dispatch-at-capacity",
     "resume-success-once",
     "resume-failure-no-second-attempt",
-    "redaction-canaries-all-sinks",
     "native-activity-child-text",
     "native-activity-foreign-parent",
 ];

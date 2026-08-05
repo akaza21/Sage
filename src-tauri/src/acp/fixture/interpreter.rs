@@ -39,8 +39,8 @@ pub(super) fn classify(op: &str) -> Result<StepOwner, FixtureError> {
             Ok(StepOwner::Process)
         }
         "awaitClient"
+        | "closeNativeStdin"
         | "closeStdin"
-        | "closeStdinBeforeRead"
         | "closeStdout"
         | "emitBoundedJson"
         | "emitCanaries"
@@ -62,6 +62,8 @@ pub(super) fn classify(op: &str) -> Result<StepOwner, FixtureError> {
         | "crashRestartEach"
         | "deleteChatLineage"
         | "deleteRuntimeEpoch"
+        | "dispatchCancel"
+        | "exerciseRedactionSinks"
         | "fillEgressControl"
         | "fillEgressData"
         | "fillJournalControl"
@@ -70,6 +72,7 @@ pub(super) fn classify(op: &str) -> Result<StepOwner, FixtureError> {
         | "injectEncodingFailure"
         | "injectQueueFailure"
         | "injectSqliteFailure"
+        | "injectStdinFailure"
         | "insertActivity"
         | "insertAgentSession"
         | "insertChatHead"

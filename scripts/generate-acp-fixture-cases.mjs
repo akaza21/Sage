@@ -39,7 +39,7 @@ const childOperations = new Set(execution?.childOperations);
 const hostOperations = new Set(execution?.hostOperations);
 if (
   childOperations.size !== 23 ||
-  hostOperations.size !== 61 ||
+  hostOperations.size !== 64 ||
   [...childOperations].some((operation) => hostOperations.has(operation))
 ) {
   throw new Error(

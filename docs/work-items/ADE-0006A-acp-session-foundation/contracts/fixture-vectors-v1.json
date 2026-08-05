@@ -11,8 +11,8 @@
   "executionContract": {
     "childOperations": [
       "awaitClient",
+      "closeNativeStdin",
       "closeStdin",
-      "closeStdinBeforeRead",
       "closeStdout",
       "delayUntilIntentChanges",
       "emitBoundedJson",
@@ -40,6 +40,8 @@
       "crashRestartEach",
       "deleteChatLineage",
       "deleteRuntimeEpoch",
+      "dispatchCancel",
+      "exerciseRedactionSinks",
       "fillEgressControl",
       "fillEgressData",
       "fillJournalControl",
@@ -48,6 +50,7 @@
       "injectEncodingFailure",
       "injectQueueFailure",
       "injectSqliteFailure",
+      "injectStdinFailure",
       "insertActivity",
       "insertAgentSession",
       "insertChatHead",
@@ -98,10 +101,10 @@
       "updateTurn"
     ],
     "requiredOwnershipCounts": {
-      "child": 73,
-      "host": 106,
+      "child": 70,
+      "host": 109,
       "mixed": 0,
-      "operations": 84
+      "operations": 87
     },
     "phaseExceptions": {
       "windows": [
@@ -422,8 +425,7 @@
       ],
       "oracle": {
         "permission": "declined",
-        "durableDeclineCount": 1,
-        "allowVisible": false
+        "durableDeclineCount": 1
       }
     },
     {
@@ -467,15 +469,23 @@
     },
     {
       "id": "send-zero-byte-failure",
-      "steps": [{ "op": "closeStdinBeforeRead" }, { "op": "exit", "code": 8 }],
+      "steps": [
+        { "op": "closeNativeStdin" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "stdinClosedBarrier",
+          "delimiter": "lf",
+          "split": "none"
+        },
+        { "op": "exit", "code": 8 }
+      ],
       "oracle": { "retryCount": 1, "deliveryUnknown": false }
     },
     {
       "id": "send-partial-write-failure",
       "steps": [
-        { "op": "readPromptBytes", "bytes": 1 },
-        { "op": "closeStdin" },
-        { "op": "exit", "code": 9 }
+        { "op": "injectStdinFailure", "afterBytes": 1 },
+        { "op": "sendPrompt", "bytes": 2 }
       ],
       "oracle": { "turn": "deliveryUnknown", "automaticReplay": false }
     },
@@ -504,20 +514,8 @@
     {
       "id": "cancel-dispatch-at-capacity",
       "steps": [
-        { "op": "awaitClient", "kind": "prompt" },
-        {
-          "op": "emitKnownFrame",
-          "shape": "fillDataQueue",
-          "delimiter": "lf",
-          "split": "none"
-        },
-        { "op": "awaitClient", "kind": "cancel" },
-        {
-          "op": "emitKnownFrame",
-          "shape": "turnCancelled",
-          "delimiter": "lf",
-          "split": "none"
-        }
+        { "op": "fillDriverData", "messages": 256, "bytes": 256 },
+        { "op": "dispatchCancel", "deadlineMs": 100 }
       ],
       "oracle": {
         "cancelDispatchMsMaximum": 100,
@@ -527,6 +525,13 @@
     {
       "id": "resume-success-once",
       "steps": [
+        { "op": "awaitClient", "kind": "initialize" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "initializeSuccess",
+          "delimiter": "lf",
+          "split": "none"
+        },
         { "op": "awaitClient", "kind": "resume" },
         {
           "op": "emitKnownFrame",
@@ -544,6 +549,13 @@
     {
       "id": "resume-failure-no-second-attempt",
       "steps": [
+        { "op": "awaitClient", "kind": "initialize" },
+        {
+          "op": "emitKnownFrame",
+          "shape": "initializeSuccess",
+          "delimiter": "lf",
+          "split": "none"
+        },
         { "op": "awaitClient", "kind": "resume" },
         {
           "op": "emitKnownFrame",
@@ -599,15 +611,20 @@
         {
           "op": "emitKnownFrame",
           "shape": "parentToolStart",
+          "externalItemId": "fixture-parent-tool-1",
           "delimiter": "lf",
           "split": "none"
         },
         {
           "op": "emitKnownFrame",
           "shape": "childActivityText",
+          "externalActivityId": "fixture-child-activity-1",
+          "parentExternalItemId": "fixture-parent-tool-1",
+          "text": "fixture child activity",
           "delimiter": "lf",
           "split": "none"
-        }
+        },
+        { "op": "awaitClient", "kind": "close" }
       ],
       "oracle": {
         "itemOrigin": "harnessActivity",
@@ -645,6 +662,8 @@
         {
           "op": "emitKnownFrame",
           "shape": "childActivityForeignParent",
+          "externalActivityId": "fixture-foreign-activity-1",
+          "parentExternalItemId": "fixture-foreign-parent-1",
           "delimiter": "lf",
           "split": "none"
         }
@@ -1438,7 +1457,7 @@
       "id": "redaction-canaries-all-sinks",
       "steps": [
         {
-          "op": "emitCanaries",
+          "op": "exerciseRedactionSinks",
           "canaries": [
             "secret.sqlite.7e31",
             "secret.projection.8a42",

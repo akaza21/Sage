@@ -73,7 +73,7 @@ fn frozen_execution_ownership_and_phase_counts_are_exact() {
             FrozenPhase::Deferred => deferred += 1,
         }
     }
-    assert_eq!((child, host), (73, 106));
+    assert_eq!((child, host), (70, 109));
     assert_eq!((foundation, windows, package, deferred), (167, 5, 1, 6));
 }
 
