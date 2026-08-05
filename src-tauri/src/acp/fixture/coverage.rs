@@ -12,12 +12,12 @@ const PATH_BOUND_CHILD_CASES: &[&str] = &[
     "send-zero-byte-failure",
     "send-complete-uncorrelated-exit",
     "send-correlated-then-exit",
+    "resume-success-once",
+    "resume-failure-no-second-attempt",
 ];
 const OPEN_HOST_CASES: &[&str] = &["redaction-canaries-all-sinks"];
 const OPEN_CHILD_CASES: &[&str] = &[
     "permission-identical-live-duplicate",
-    "resume-success-once",
-    "resume-failure-no-second-attempt",
     "native-activity-child-text",
     "native-activity-foreign-parent",
 ];

@@ -19,7 +19,7 @@ impl FixtureAdapter {
             load_session: false,
             close_session: false,
             prompt: true,
-            cancel: false,
+            cancel: true,
             native_session_fork: false,
             active_turn_steer: false,
             child_conversation_projection: false,

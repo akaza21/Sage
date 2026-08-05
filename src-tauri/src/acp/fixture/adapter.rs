@@ -1,6 +1,7 @@
 use serde::Deserialize;
 
 mod activation;
+mod cancel;
 
 use crate::acp::{
     bindings::adapter::{
@@ -79,12 +80,20 @@ impl FixtureAdapter {
         })
     }
 
-    fn request(&mut self, payload: Vec<u8>) -> Result<AdapterEgress, AdapterRuntimeError> {
+    fn request_with(
+        &mut self,
+        payload: Vec<u8>,
+        token: impl FnOnce(u64) -> EgressToken,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
         let id = self.next_request_id;
         self.next_request_id = id.checked_add(1).ok_or(AdapterRuntimeError::Operation)?;
         let frame = OutboundFrame::new(payload).map_err(|_| AdapterRuntimeError::Frame)?;
         self.pending_request_id = Some(id);
-        Ok(AdapterEgress::new(frame, EgressToken::request(id)))
+        Ok(AdapterEgress::new(frame, token(id)))
+    }
+
+    fn request(&mut self, payload: Vec<u8>) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.request_with(payload, EgressToken::request)
     }
 
     fn session_identity(&self) -> AdapterIdentity {
@@ -174,17 +183,7 @@ impl HarnessAdapter for FixtureAdapter {
                 Ok(request)
             }
             AdapterCommand::Prompt { .. } => Err(AdapterRuntimeError::Operation),
-            AdapterCommand::Cancel if self.state == State::AwaitingTextStart => {
-                self.state = State::CancelCreated;
-                Ok(AdapterEgress::new(
-                    OutboundFrame::new(
-                        br#"{"jsonrpc":"2.0","method":"fixture/cancel","params":{}}"#.to_vec(),
-                    )
-                    .map_err(|_| AdapterRuntimeError::Frame)?,
-                    EgressToken::cancel_request(2),
-                ))
-            }
-            AdapterCommand::Cancel => Err(AdapterRuntimeError::Operation),
+            AdapterCommand::Cancel => self.cancel_command(),
             _ => Err(AdapterRuntimeError::UnsupportedCommand),
         }
     }
@@ -304,26 +303,7 @@ impl HarnessAdapter for FixtureAdapter {
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
         if token.is_cancel() {
-            if token.request_id() != Some(2) {
-                return Err(AdapterRuntimeError::EgressIntent);
-            }
-            return match (self.state, resolution) {
-                (State::CancelCreated, EgressResolution::Queued) => {
-                    self.state = State::CancelQueued;
-                    Ok(())
-                }
-                (State::CancelCreated, EgressResolution::QueueRejected)
-                | (State::CancelQueued, EgressResolution::WriteZeroBytes)
-                | (State::CancelQueued, EgressResolution::Written) => {
-                    self.state = State::AwaitingTextStart;
-                    Ok(())
-                }
-                (State::CancelQueued, EgressResolution::DeliveryUnknown) => {
-                    self.state = State::Complete;
-                    Ok(())
-                }
-                _ => Err(AdapterRuntimeError::EgressIntent),
-            };
+            return self.resolve_cancel_egress(token, resolution);
         }
         if token.request_id() != self.pending_request_id {
             return Err(AdapterRuntimeError::EgressIntent);

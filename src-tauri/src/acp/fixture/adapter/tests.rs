@@ -46,7 +46,7 @@ fn activation_capabilities_match_the_implemented_session_surface() {
             capabilities.prompt,
             capabilities.cancel,
         ),
-        (true, true, false, false, true, false)
+        (true, true, false, false, true, true)
     );
     assert_eq!(
         (
@@ -145,6 +145,50 @@ fn initialize_then_new_session_uses_the_store_bound_identity() {
             if id.external_id == external && id.turn_id.is_none()
                 && id.turn_client_message_id.is_none()
     ));
+}
+
+#[test]
+fn cancel_after_activation_uses_the_next_request_identity() {
+    let external = ExternalId::new("externalSession", "fixture-persisted-session-1").unwrap();
+    let mut adapter = adapter(external.clone());
+
+    write_command(&mut adapter, AdapterCommand::Initialize);
+    adapter
+        .ingest(&frame("initializeSuccess", serde_json::json!({})), &Mapper)
+        .unwrap();
+    write_command(
+        &mut adapter,
+        AdapterCommand::NewSession {
+            native_root: "C:\\fixture".into(),
+            model: None,
+        },
+    );
+    adapter
+        .ingest(
+            &frame(
+                "newSessionSuccess",
+                serde_json::json!({"externalSessionId": external.as_str()}),
+            ),
+            &Mapper,
+        )
+        .unwrap();
+    write_command(
+        &mut adapter,
+        AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "fixture cancel setup").unwrap(),
+            client_message_id: RequiredText::new("message", "message-1").unwrap(),
+        },
+    );
+
+    let cancel = adapter.command(AdapterCommand::Cancel).unwrap();
+    assert!(cancel.token().is_cancel());
+    assert_eq!(cancel.token().request_id(), Some(4));
+    adapter
+        .resolve_egress(cancel.token().clone(), EgressResolution::Queued)
+        .unwrap();
+    adapter
+        .resolve_egress(cancel.into_token(), EgressResolution::Written)
+        .unwrap();
 }
 
 #[test]
