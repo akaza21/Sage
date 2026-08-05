@@ -1,11 +1,12 @@
 use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     intent::{
-        CapabilitySnapshotV1, ExternalId, ModelId, NormalizedPayload, PageCursor, Prompt,
-        SafeResourceRef, UnavailableResourceReason,
+        ActivityProvenanceV1, CapabilitySnapshotV1, ExternalId, ModelId, NormalizedPayload,
+        PageCursor, Prompt, SafeResourceRef, UnavailableResourceReason,
     },
-    lifecycle::{ItemLifecycle, ToolState, TurnState},
+    lifecycle::{ActivityLifecycle, ItemLifecycle, ToolState, TurnState},
     limits::LIMITS,
+    projection::ActivityRole,
     transport::{Frame, OutboundFrame},
 };
 
@@ -68,6 +69,23 @@ impl AdapterModel {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct AdapterActivityItem {
+    pub(crate) activity_id: AdapterIdentity,
+    pub(crate) item_id: AdapterIdentity,
+    pub(crate) parent_activity_id: Option<AdapterIdentity>,
+    pub(crate) parent_item_id: AdapterIdentity,
+    pub(crate) activity_kind: RequiredText<128>,
+    pub(crate) role: ActivityRole,
+    pub(crate) activity_lifecycle: ActivityLifecycle,
+    pub(crate) depth: u8,
+    pub(crate) observed_sequence: u64,
+    pub(crate) provenance: ActivityProvenanceV1,
+    pub(crate) item_lifecycle: ItemLifecycle,
+    pub(crate) item_tool_state: Option<ToolState>,
+    pub(crate) payload: NormalizedPayload,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) enum AdapterEvent {
     Initialized {
         capabilities: CapabilitySnapshotV1,
@@ -90,6 +108,7 @@ pub(crate) enum AdapterEvent {
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,
     },
+    ActivityItem(Box<AdapterActivityItem>),
     Usage {
         turn_id: AdapterIdentity,
         payload: NormalizedPayload,
