@@ -56,6 +56,10 @@ mod activation_tests;
 #[cfg(test)]
 mod first_turn_tests;
 #[cfg(test)]
+pub(crate) use first_turn_tests::{
+    CancelDispatchObservation, observe_process_live_port_cancel_at_capacity,
+};
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod worker_tests;

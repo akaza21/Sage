@@ -207,7 +207,7 @@ impl ProcessLivePort {
     }
 
     #[cfg(test)]
-    fn new_with_timeout(
+    pub(super) fn new_with_timeout(
         owner: RuntimeOwner,
         mailbox: Arc<DriverMailbox>,
         deadline_abort: Arc<dyn WorkerDeadlineAbort>,

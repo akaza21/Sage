@@ -33,7 +33,11 @@ pub(crate) use adapter_store_journal::SqliteAdapterBatchJournal;
 pub(crate) use bounded_thread::{BoundedThread, ThreadWaitError};
 mod process_driver;
 #[cfg(test)]
-pub(crate) use process_driver::protocol_failure_requests_tree_exit;
+#[allow(unused_imports)]
+pub(crate) use process_driver::{
+    CancelDispatchObservation, observe_process_live_port_cancel_at_capacity,
+    protocol_failure_requests_tree_exit,
+};
 mod projection_publisher;
 mod runtime_host;
 mod session_coordinator;

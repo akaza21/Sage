@@ -1,10 +1,12 @@
 use std::{
     collections::VecDeque,
     fs,
+    path::PathBuf,
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
+    time::{Duration, Instant},
 };
 
 use uuid::Uuid;
@@ -31,13 +33,15 @@ use crate::{
         scheduler::{RuntimeOwner, Scheduler},
         store::{
             AcpStore, ActivateSessionCommand, CompleteActivationCommand, DatabaseAcpStore,
-            PrepareTurnCommand, StartSessionCommand, StoreCommit, StoreError, StoreMutation,
+            PrepareTurnCommand, SessionMutation, StartSessionCommand, StoreCommit, StoreError,
+            StoreMutation,
         },
         transport::{Frame, FrameWriteOutcome, OutboundFrame},
     },
     persistence::Database,
 };
 
+use super::worker_command::WorkerDeadlineAbort;
 use super::*;
 
 struct Authority(IntentSnapshot);
@@ -278,90 +282,468 @@ impl ProjectIntentAuthority for MutableAuthority {
     }
 }
 
-#[test]
-fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
-    tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let root = std::env::temp_dir().join(format!("sage-first-turn-{}", Uuid::new_v4()));
-        fs::create_dir_all(&root).unwrap();
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
-        let project_id = SageProjectId::parse(project.id).unwrap();
-        let chat_id = SageChatId::parse("chat-first-turn").unwrap();
-        let now = crate::persistence::now_millis();
-        database
-            .connection()
-            .execute(
-                "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at)
-                 VALUES (?1,?2,1,'First Turn',0,?3,?3)",
-                rusqlite::params![chat_id.as_str(), project_id.as_str(), now],
-            )
-            .unwrap();
-        let publisher = Arc::new(ProjectionMailbox::default());
-        let (journal, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
-        let task = runner.spawn();
-        let scheduler = Scheduler::new();
-        let sessions =
-            SessionCoordinator::new(journal.clone(), scheduler.clone(), publisher.clone());
-        let initial = crate::acp::store::load_chat_page(
-            &database.connection(),
-            project_id.clone(),
-            chat_id.clone(),
-            None,
+struct FirstTurnFixture {
+    database: Database,
+    project_id: SageProjectId,
+    chat_id: SageChatId,
+    now_millis: i64,
+    publisher: Arc<ProjectionMailbox>,
+    journal: JournalHandle,
+    journal_task: tokio::task::JoinHandle<()>,
+    scheduler: Scheduler,
+    sessions: SessionCoordinator,
+    started: SessionMutation,
+    epoch: RuntimeEpoch,
+    activation_journal: CoordinatorActivationJournal,
+    capabilities: CapabilitySnapshotV1,
+    external_session: ExternalId,
+    owner: RuntimeOwner,
+    ready_projection_revision: ProjectionRevision,
+    root: PathBuf,
+}
+
+async fn prepare_first_turn_fixture() -> FirstTurnFixture {
+    let root = std::env::temp_dir().join(format!("sage-first-turn-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let project_id = SageProjectId::parse(project.id).unwrap();
+    let chat_id = SageChatId::parse("chat-first-turn").unwrap();
+    let now_millis = crate::persistence::now_millis();
+    database
+        .connection()
+        .execute(
+            "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at)
+             VALUES (?1,?2,1,'First Turn',0,?3,?3)",
+            rusqlite::params![chat_id.as_str(), project_id.as_str(), now_millis],
         )
         .unwrap();
-        let binding = "11".repeat(32);
-        let artifact = "22".repeat(32);
-        let started = sessions
-            .start_session(StartSessionCommand {
-                project_id: project_id.clone(),
-                chat_id: chat_id.clone(),
-                expected_projection_revision: initial.projection_revision,
-                client_intent_id: ClientIntentId::parse("intent-start").unwrap(),
-                binding_id: RequiredText::new("binding", "binding-test").unwrap(),
-                binding_digest: binding.clone(),
-                harness_version: None,
-                model_id: None,
-                now_millis: now,
-            })
-            .await
-            .unwrap();
-        let epoch = RuntimeEpoch::new(1).unwrap();
-        let lease = sessions
-            .activate_session(ActivateSessionCommand {
-                project_id: project_id.clone(),
-                chat_id: chat_id.clone(),
-                expected_projection_revision: started.projection_revision,
-                client_intent_id: ClientIntentId::parse("intent-activate").unwrap(),
-                session_id: started.session_id.clone(),
-                runtime_epoch: epoch,
-                artifact_digest: artifact.clone(),
-                now_millis: now + 1,
-            })
-            .await
-            .unwrap();
-        let capabilities = capabilities();
-        let external_session = ExternalId::new("external", "external-session").unwrap();
-        let mut activation_journal = CoordinatorActivationJournal::new(lease);
-        let ready = activation_journal
-            .commit_ready(CompleteActivationCommand {
-                project_id: project_id.clone(),
-                chat_id: chat_id.clone(),
-                session_id: started.session_id.clone(),
-                runtime_epoch: epoch,
-                binding_digest: binding,
-                artifact_digest: artifact,
-                external_session_id: external_session.clone(),
-                capabilities_json: serde_json::to_string(&capabilities).unwrap(),
-                now_millis: now + 2,
-            })
-            .await
-            .unwrap();
-        let owner = RuntimeOwner {
+    let publisher = Arc::new(ProjectionMailbox::default());
+    let (journal, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
+    let journal_task = runner.spawn();
+    let scheduler = Scheduler::new();
+    let sessions = SessionCoordinator::new(journal.clone(), scheduler.clone(), publisher.clone());
+    let initial = crate::acp::store::load_chat_page(
+        &database.connection(),
+        project_id.clone(),
+        chat_id.clone(),
+        None,
+    )
+    .unwrap();
+    let binding = "11".repeat(32);
+    let artifact = "22".repeat(32);
+    let started = sessions
+        .start_session(StartSessionCommand {
+            project_id: project_id.clone(),
+            chat_id: chat_id.clone(),
+            expected_projection_revision: initial.projection_revision,
+            client_intent_id: ClientIntentId::parse("intent-start").unwrap(),
+            binding_id: RequiredText::new("binding", "binding-test").unwrap(),
+            binding_digest: binding.clone(),
+            harness_version: None,
+            model_id: None,
+            now_millis,
+        })
+        .await
+        .unwrap();
+    let epoch = RuntimeEpoch::new(1).unwrap();
+    let lease = sessions
+        .activate_session(ActivateSessionCommand {
+            project_id: project_id.clone(),
+            chat_id: chat_id.clone(),
+            expected_projection_revision: started.projection_revision,
+            client_intent_id: ClientIntentId::parse("intent-activate").unwrap(),
+            session_id: started.session_id.clone(),
+            runtime_epoch: epoch,
+            artifact_digest: artifact.clone(),
+            now_millis: now_millis + 1,
+        })
+        .await
+        .unwrap();
+    let capabilities = capabilities();
+    let external_session = ExternalId::new("external", "external-session").unwrap();
+    let mut activation_journal = CoordinatorActivationJournal::new(lease);
+    let ready = activation_journal
+        .commit_ready(CompleteActivationCommand {
             project_id: project_id.clone(),
             chat_id: chat_id.clone(),
             session_id: started.session_id.clone(),
             runtime_epoch: epoch,
-        };
+            binding_digest: binding,
+            artifact_digest: artifact,
+            external_session_id: external_session.clone(),
+            capabilities_json: serde_json::to_string(&capabilities).unwrap(),
+            now_millis: now_millis + 2,
+        })
+        .await
+        .unwrap();
+    let owner = RuntimeOwner {
+        project_id: project_id.clone(),
+        chat_id: chat_id.clone(),
+        session_id: started.session_id.clone(),
+        runtime_epoch: epoch,
+    };
+    FirstTurnFixture {
+        database,
+        project_id,
+        chat_id,
+        now_millis,
+        publisher,
+        journal,
+        journal_task,
+        scheduler,
+        sessions,
+        started,
+        epoch,
+        activation_journal,
+        capabilities,
+        external_session,
+        owner,
+        ready_projection_revision: ready.projection_revision,
+        root,
+    }
+}
+
+pub(crate) struct CancelDispatchObservation {
+    pub(crate) cancel_dispatch_ms_maximum: u64,
+    pub(crate) control_capacity_borrowed: bool,
+}
+
+struct CancelTransport {
+    writes: Arc<AtomicUsize>,
+}
+
+impl crate::acp::runtime::EgressTransport for CancelTransport {
+    fn write(&mut self, _: &OutboundFrame) -> FrameWriteOutcome {
+        self.writes.fetch_add(1, Ordering::SeqCst);
+        FrameWriteOutcome::Complete
+    }
+}
+
+impl StdinTransport for CancelTransport {
+    fn close(&mut self) {}
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct CancelSnapshot {
+    state: String,
+    delivery_state: String,
+    turn_revision: i64,
+    session_projection_revision: i64,
+    chat_projection_revision: i64,
+    cancelling_facts: i64,
+    cancel_intent_facts: i64,
+}
+
+fn cancel_snapshot(
+    database: &Database,
+    turn_id: &crate::acp::contract::SageTurnId,
+) -> CancelSnapshot {
+    database
+        .connection()
+        .query_row(
+            "SELECT t.state,t.delivery_state,t.revision,s.projection_revision,c.projection_revision,
+                    (SELECT COUNT(*) FROM session_facts WHERE turn_id=t.id AND kind='turnCancelling'),
+                    (SELECT COUNT(*) FROM session_facts WHERE turn_id=t.id AND kind='turnCancelIntent')
+             FROM turns t
+             JOIN agent_sessions s ON s.id=t.session_id
+             JOIN chats c ON c.id=t.chat_id AND c.project_id=t.project_id
+             WHERE t.id=?1",
+            [turn_id.as_str()],
+            |row| {
+                Ok(CancelSnapshot {
+                    state: row.get(0)?,
+                    delivery_state: row.get(1)?,
+                    turn_revision: row.get(2)?,
+                    session_projection_revision: row.get(3)?,
+                    chat_projection_revision: row.get(4)?,
+                    cancelling_facts: row.get(5)?,
+                    cancel_intent_facts: row.get(6)?,
+                })
+            },
+        )
+        .unwrap()
+}
+
+pub(crate) fn observe_process_live_port_cancel_at_capacity(
+    messages: u64,
+    bytes: u64,
+    deadline_ms: u64,
+) -> CancelDispatchObservation {
+    tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(async move {
+            let FirstTurnFixture {
+                database,
+                project_id,
+                chat_id,
+                now_millis,
+                publisher,
+                journal,
+                journal_task,
+                scheduler,
+                sessions: _sessions,
+                started,
+                epoch,
+                activation_journal,
+                capabilities,
+                external_session,
+                owner,
+                ready_projection_revision,
+                root,
+            } = prepare_first_turn_fixture().await;
+            let cancel_count = Arc::new(AtomicUsize::new(0));
+            let writes = Arc::new(AtomicUsize::new(0));
+            let zero_waits = Arc::new(AtomicUsize::new(0));
+            let completed = CompletedActivationDriverParts {
+                parts: IdleActivationParts::new(
+                    Adapter {
+                        cancel_count: Arc::clone(&cancel_count),
+                    },
+                    activation_journal,
+                    Mapper,
+                    ActivatedSession {
+                        binding_digest: [0x11; 32],
+                        project_id: project_id.clone(),
+                        chat_id: chat_id.clone(),
+                        session_id: started.session_id.clone(),
+                        external_session_id: external_session,
+                        runtime_epoch: epoch,
+                        capabilities,
+                        models: Vec::new(),
+                        next_model_cursor: None,
+                    },
+                ),
+                transport: CancelTransport {
+                    writes: Arc::clone(&writes),
+                },
+                control: Control {
+                    zero_waits: Arc::clone(&zero_waits),
+                },
+                owner: owner.clone(),
+                clock: Arc::new(SystemDriverClock) as Arc<dyn DriverClock>,
+            };
+            let authority = Arc::new(Authority(IntentSnapshot {
+                project_id: project_id.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat_id.clone(),
+                projection_revision: ready_projection_revision,
+                session_id: Some(started.session_id.clone()),
+                runtime_epoch: Some(epoch),
+                turn_id: None,
+                turn_state: None,
+                turn_revision: None,
+            }));
+            let mailbox = Arc::new(DriverMailbox::new().unwrap());
+            let context = FirstTurnWorkerContext {
+                owner: owner.clone(),
+                coordinator: SendCoordinator::new(authority, journal.clone(), publisher.clone()),
+                journal: journal.clone(),
+                publisher,
+                clock: Arc::new(SystemDriverClock) as Arc<dyn DriverClock>,
+                mailbox: Arc::clone(&mailbox),
+                zero_sequence: std::sync::atomic::AtomicU64::new(0),
+            };
+            let caller_mailbox = Arc::clone(&mailbox);
+            let caller_owner = owner.clone();
+            let (ready_sender, ready_receiver) = std::sync::mpsc::sync_channel(1);
+            let (go_sender, go_receiver) = std::sync::mpsc::sync_channel(1);
+            let caller = std::thread::spawn(move || {
+                let mut port = ProcessLivePort::new(
+                    caller_owner.clone(),
+                    caller_mailbox,
+                    Arc::new(|_| panic!("successful cancel dispatch must not abort the process")),
+                );
+                let turn_id = port
+                    .prepare_prompt(&HostPromptIntent {
+                        command: PrepareTurnCommand {
+                            project_id: caller_owner.project_id.clone(),
+                            project_generation: ProjectGeneration::ZERO,
+                            chat_id: caller_owner.chat_id.clone(),
+                            session_id: caller_owner.session_id.clone(),
+                            runtime_epoch: caller_owner.runtime_epoch,
+                            expected_projection_revision: ready_projection_revision,
+                            client_intent_id: ClientIntentId::parse("intent-saturated-turn")
+                                .unwrap(),
+                            prompt: Prompt::new("prompt", "saturated cancel").unwrap(),
+                            now_millis: now_millis + 3,
+                        },
+                    })
+                    .unwrap();
+                assert_eq!(
+                    port.dispatch_prompt(&caller_owner, &turn_id),
+                    Ok(LiveWrite::Complete)
+                );
+                port.observe_send(
+                    &caller_owner,
+                    &turn_id,
+                    crate::acp::store::SendObservation::CompleteBytes,
+                )
+                .unwrap();
+                let cancel = HostCancelIntent {
+                    owner: caller_owner,
+                    turn_id: turn_id.clone(),
+                    client_intent_id: ClientIntentId::parse("intent-saturated-cancel").unwrap(),
+                    now_millis: now_millis + 4,
+                };
+                port.begin_cancel(&cancel).unwrap();
+                ready_sender.send((turn_id, cancel.clone())).unwrap();
+                go_receiver.recv().unwrap();
+                let started = Instant::now();
+                let result = port.dispatch_cancel(&cancel);
+                (result, started.elapsed())
+            });
+
+            let mut state = FirstTurnWorkerState::Idle(completed);
+            for _ in 0..4 {
+                let next = mailbox
+                    .wait_next_until(None, context.clock.as_ref())
+                    .unwrap()
+                    .expect("first-turn worker command");
+                let ControlMessage::Worker(envelope) = next else {
+                    panic!("expected first-turn worker command")
+                };
+                state = state.handle(&context, envelope).await;
+            }
+            let (turn_id, cancel) = ready_receiver.recv().unwrap();
+            let durable_before = cancel_snapshot(&database, &turn_id);
+            assert_eq!(
+                durable_before,
+                CancelSnapshot {
+                    state: "cancelling".into(),
+                    delivery_state: "completeBytes".into(),
+                    turn_revision: 3,
+                    session_projection_revision: 7,
+                    chat_projection_revision: 7,
+                    cancelling_facts: 1,
+                    cancel_intent_facts: 1,
+                }
+            );
+            assert_eq!(
+                messages,
+                crate::acp::limits::LIMITS.queues.driver_data_messages
+            );
+            assert_eq!(bytes, messages);
+            for _ in 0..messages {
+                mailbox.try_push_chunk(vec![b'x']).unwrap();
+            }
+            let saturated_before =
+                matches!(mailbox.try_push_chunk(vec![b'x']), Err(MailboxError::Full));
+            assert_eq!(
+                mailbox.retained_usage().0,
+                (messages as usize, bytes as usize)
+            );
+            go_sender.send(()).unwrap();
+            let dispatch_queued = Instant::now();
+            while mailbox.retained_usage().1.0 == 0 {
+                assert!(dispatch_queued.elapsed() < Duration::from_secs(1));
+                std::thread::yield_now();
+            }
+
+            let FirstTurnWorkerState::Active(mut active) = state else {
+                panic!("cancel dispatch requires active first-turn state")
+            };
+            let step = active
+                .turn
+                .driver
+                .run_next_step(mailbox.as_ref())
+                .await
+                .unwrap();
+            let DriverStep::YieldWorker { envelope, .. } = step else {
+                panic!("reserved cancel must yield the live worker")
+            };
+            assert!(matches!(
+                &envelope.command,
+                WorkerCommand::DispatchCancel(intent) if intent == &cancel
+            ));
+            state = FirstTurnWorkerState::Active(active)
+                .handle(&context, envelope)
+                .await;
+            let (dispatch, elapsed) = caller.join().unwrap();
+            assert_eq!(dispatch, Ok(()));
+            assert!(elapsed <= Duration::from_millis(deadline_ms));
+            assert!(matches!(state, FirstTurnWorkerState::Active(_)));
+            assert_eq!(cancel_count.load(Ordering::SeqCst), 1);
+            assert_eq!(writes.load(Ordering::SeqCst), 2);
+            assert_eq!(zero_waits.load(Ordering::SeqCst), 0);
+            assert_eq!(mailbox.retained_usage(), ((256, 256), (0, 0)));
+            let saturated_after =
+                matches!(mailbox.try_push_chunk(vec![b'x']), Err(MailboxError::Full));
+            assert_eq!(cancel_snapshot(&database, &turn_id), durable_before);
+
+            let exits = Arc::new(Mutex::new(Vec::new()));
+            let recorded = Arc::clone(&exits);
+            let timeout_mailbox = Arc::clone(&mailbox);
+            let timeout_owner = owner.clone();
+            let timeout_cancel = cancel.clone();
+            let timeout = std::thread::spawn(move || {
+                let abort: Arc<dyn WorkerDeadlineAbort> = Arc::new(move |reason| {
+                    recorded.lock().unwrap().push(reason);
+                });
+                let mut port =
+                    ProcessLivePort::new_with_timeout(timeout_owner, timeout_mailbox, abort, 50);
+                let started = Instant::now();
+                (port.dispatch_cancel(&timeout_cancel), started.elapsed())
+            });
+            let wait_started = Instant::now();
+            while mailbox.retained_usage().1.0 == 0 {
+                assert!(wait_started.elapsed() < Duration::from_secs(1));
+                std::thread::yield_now();
+            }
+            let queued = mailbox.submit_worker(WorkerCommand::Shutdown).unwrap();
+            let (timeout_result, timeout_elapsed) = timeout.join().unwrap();
+            assert_eq!(timeout_result, Err(HostError::Deadline));
+            assert!(timeout_elapsed < Duration::from_secs(1));
+            assert!(matches!(
+                queued.recv_timeout(Duration::from_secs(1)),
+                Ok(Err(HostError::Closed))
+            ));
+            assert!(matches!(
+                mailbox.try_push_chunk(vec![b'x']),
+                Err(MailboxError::Closed)
+            ));
+            assert_eq!(*exits.lock().unwrap(), [TreeExit::Deadline]);
+            assert_eq!(cancel_snapshot(&database, &turn_id), durable_before);
+            assert_eq!(writes.load(Ordering::SeqCst), 2);
+
+            drop(state);
+            drop(context);
+            drop(scheduler);
+            journal.close_when_drained();
+            journal_task.await.unwrap();
+            drop(journal);
+            drop(database);
+            fs::remove_dir_all(root).unwrap();
+
+            CancelDispatchObservation {
+                cancel_dispatch_ms_maximum: deadline_ms,
+                control_capacity_borrowed: !(saturated_before && saturated_after),
+            }
+        })
+}
+
+#[test]
+fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let FirstTurnFixture {
+            database,
+            project_id,
+            chat_id,
+            now_millis: now,
+            publisher,
+            journal,
+            journal_task: task,
+            scheduler,
+            sessions: _sessions,
+            started,
+            epoch,
+            activation_journal,
+            capabilities,
+            external_session,
+            owner,
+            ready_projection_revision,
+            root,
+        } = prepare_first_turn_fixture().await;
         let clock: Arc<dyn DriverClock> = Arc::new(SystemDriverClock);
         let zero_waits = Arc::new(AtomicUsize::new(0));
         let cancel_count = Arc::new(AtomicUsize::new(0));
@@ -399,7 +781,7 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
             project_id: project_id.clone(),
             project_generation: ProjectGeneration::ZERO,
             chat_id: chat_id.clone(),
-            projection_revision: ready.projection_revision,
+            projection_revision: ready_projection_revision,
             session_id: Some(started.session_id.clone()),
             runtime_epoch: Some(epoch),
             turn_id: None,
@@ -433,7 +815,7 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
                         chat_id: caller_owner.chat_id.clone(),
                         session_id: caller_owner.session_id.clone(),
                         runtime_epoch: caller_owner.runtime_epoch,
-                        expected_projection_revision: ready.projection_revision,
+                        expected_projection_revision: ready_projection_revision,
                         client_intent_id: ClientIntentId::parse("intent-turn").unwrap(),
                         prompt: Prompt::new("prompt", "hello").unwrap(),
                         now_millis: now + 3,
