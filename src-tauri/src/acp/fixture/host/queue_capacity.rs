@@ -1,5 +1,3 @@
-use std::time::{Duration, Instant};
-
 use serde_json::{Value, json};
 
 use crate::acp::{
@@ -9,9 +7,8 @@ use crate::acp::{
     },
     fixture::generated_cases::FrozenCase,
     intent::{ExternalId, Prompt},
-    limits::LIMITS,
     runtime::{
-        CancelIntent, DriverMailbox, DriverMailboxError, JournalError, JournalHandle, JournalLane,
+        DriverMailbox, DriverMailboxError, JournalError, JournalHandle, JournalLane,
         permissions::PermissionIntent,
     },
     store::{AcpStore, StoreCommit, StoreError, StoreMutation},
@@ -39,60 +36,11 @@ pub(in crate::acp::fixture) const CANCEL_CASE_IDS: &[&str] = &["cancel-dispatch-
 pub(in crate::acp::fixture) fn execute(case: &FrozenCase) -> Value {
     let steps: Vec<Value> = serde_json::from_str(case.steps_json).unwrap();
     match case.id {
-        "cancel-dispatch-at-capacity" => execute_cancel(&steps),
+        "cancel-dispatch-at-capacity" => super::cancel_dispatch::execute(&steps),
         id if id.starts_with("driver-") => execute_driver(id, &steps),
         id if id.starts_with("egress-") => execute_egress(id, &steps),
         id if id.starts_with("journal-") => execute_journal(id, &steps),
         id => panic!("unexpected queue-capacity case {id}"),
-    }
-}
-
-fn execute_cancel(steps: &[Value]) -> Value {
-    let [fill, dispatch] = steps else {
-        panic!("expected exact driver fill followed by cancel dispatch");
-    };
-    assert_eq!(fill["op"], "fillDriverData");
-    assert_eq!(dispatch["op"], "dispatchCancel");
-    let messages = field_u64(fill, "messages");
-    let bytes = field_u64(fill, "bytes");
-    let literal_deadline_ms = field_u64(dispatch, "deadlineMs");
-    let production_deadline_ms = LIMITS.deadlines_ms.cancel_dispatch;
-    assert_eq!(literal_deadline_ms, production_deadline_ms);
-    assert_eq!(messages, LIMITS.queues.driver_data_messages);
-    assert_eq!(bytes, messages);
-
-    let mailbox = DriverMailbox::new().unwrap();
-    for _ in 0..messages {
-        mailbox.try_push_chunk(vec![b'x']).unwrap();
-    }
-    let saturated_before = mailbox.try_push_chunk(vec![b'x']).is_err();
-    let intent = cancel_intent();
-    let started = Instant::now();
-    mailbox
-        .submit_cancel(intent.clone(), production_deadline_ms)
-        .unwrap();
-    let saturated_with_control = mailbox.try_push_chunk(vec![b'x']).is_err();
-    let observed_intent = mailbox
-        .try_pop_cancel_for_fixture()
-        .expect("reserved cancel envelope");
-    let elapsed = started.elapsed();
-    assert_eq!(observed_intent, intent);
-    assert!(elapsed <= Duration::from_millis(literal_deadline_ms));
-
-    json!({
-        "cancelDispatchMsMaximum": production_deadline_ms,
-        "controlCapacityBorrowed": !(saturated_before && saturated_with_control),
-    })
-}
-
-fn cancel_intent() -> CancelIntent {
-    CancelIntent {
-        project_id: SageProjectId::parse("fixture-project").unwrap(),
-        chat_id: SageChatId::parse("fixture-chat").unwrap(),
-        session_id: SageAgentSessionId::parse("fixture-session").unwrap(),
-        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
-        turn_id: SageTurnId::parse("fixture-turn").unwrap(),
-        client_message_id: RequiredText::new("clientMessageId", "fixture-turn").unwrap(),
     }
 }
 
@@ -362,7 +310,7 @@ fn field_u64(value: &Value, field: &str) -> u64 {
         .unwrap_or_else(|| panic!("missing numeric field {field}"))
 }
 
-struct RejectingStore;
+pub(super) struct RejectingStore;
 
 impl AcpStore for RejectingStore {
     fn commit(&mut self, _batch: &[StoreMutation]) -> Result<StoreCommit, StoreError> {

@@ -33,7 +33,7 @@ use crate::{
 
 pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &["send-partial-write-failure"];
 
-pub(in crate::acp::fixture) fn execute(case: &FrozenCase) -> Value {
+fn execute(case: &FrozenCase) -> Value {
     match case.id {
         "send-partial-write-failure" => observe_partial_write(case),
         id => panic!("unexpected delivery observer case {id}"),

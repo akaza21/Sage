@@ -306,14 +306,6 @@ impl DriverMailbox {
         message
     }
 
-    #[cfg(test)]
-    pub(crate) fn try_pop_cancel_for_fixture(&self) -> Option<CancelIntent> {
-        let ControlMessage::Cancel(intent) = self.try_pop_control()? else {
-            return None;
-        };
-        Some(intent)
-    }
-
     pub(super) fn is_quiescent(&self) -> bool {
         let state = self.lock();
         state.queue.data_usage() == (0, 0)
