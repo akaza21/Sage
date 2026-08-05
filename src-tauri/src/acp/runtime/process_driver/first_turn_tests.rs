@@ -5,6 +5,7 @@ use std::{
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
+        mpsc,
     },
     time::{Duration, Instant},
 };
@@ -25,9 +26,9 @@ use crate::{
         lifecycle::{DeliveryState, TurnState},
         process::{LaunchError, TreeExit},
         runtime::{
-            ActivatedSession, ActivationJournal, CoordinatorActivationJournal, HostCancelIntent,
-            HostError, HostPromptIntent, IdleActivationParts, JournalHandle, LiveRuntimePort,
-            LiveWrite, ProjectIntentAuthority, ProjectionMailbox, SendCoordinator,
+            ActivatedSession, ActivationJournal, BoundedThread, CoordinatorActivationJournal,
+            HostCancelIntent, HostError, HostPromptIntent, IdleActivationParts, JournalHandle,
+            LiveRuntimePort, LiveWrite, ProjectIntentAuthority, ProjectionMailbox, SendCoordinator,
             SessionCoordinator,
         },
         scheduler::{RuntimeOwner, Scheduler},
@@ -289,7 +290,7 @@ struct FirstTurnFixture {
     now_millis: i64,
     publisher: Arc<ProjectionMailbox>,
     journal: JournalHandle,
-    journal_task: tokio::task::JoinHandle<()>,
+    journal_task: BoundedJournalTask,
     scheduler: Scheduler,
     sessions: SessionCoordinator,
     started: SessionMutation,
@@ -299,14 +300,110 @@ struct FirstTurnFixture {
     external_session: ExternalId,
     owner: RuntimeOwner,
     ready_projection_revision: ProjectionRevision,
-    root: PathBuf,
+    root: TempRoot,
+}
+
+struct TempRoot(PathBuf);
+
+impl TempRoot {
+    fn new(prefix: &str) -> Self {
+        Self(std::env::temp_dir().join(format!("{prefix}-{}", Uuid::new_v4())))
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for TempRoot {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+struct BoundedJournalTask(Option<tokio::task::JoinHandle<()>>);
+
+impl BoundedJournalTask {
+    async fn finish(mut self) {
+        let mut task = self.0.take().expect("journal task retained");
+        let deadline =
+            Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.wal_convergence);
+        match tokio::time::timeout(deadline, &mut task).await {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => panic!("journal task failed: {error}"),
+            Err(_) => {
+                task.abort();
+                panic!("journal task exceeded WAL convergence deadline")
+            }
+        }
+    }
+}
+
+impl Drop for BoundedJournalTask {
+    fn drop(&mut self) {
+        if let Some(task) = self.0.take() {
+            task.abort();
+        }
+    }
+}
+
+struct TestThreadCleanup {
+    thread: Option<BoundedThread>,
+    release: Option<mpsc::SyncSender<()>>,
+    mailbox: Arc<DriverMailbox>,
+}
+
+impl TestThreadCleanup {
+    fn release(&mut self) {
+        if let Some(release) = self.release.take() {
+            let _ = release.send(());
+        }
+    }
+
+    fn wait(&mut self) {
+        self.release();
+        let mut thread = self.thread.take().expect("test thread retained");
+        thread.wait(tree_termination_deadline()).unwrap();
+    }
+}
+
+impl Drop for TestThreadCleanup {
+    fn drop(&mut self) {
+        self.mailbox.close();
+        self.release();
+        if let Some(thread) = &mut self.thread {
+            let _ = thread.wait(tree_termination_deadline());
+        }
+    }
+}
+
+fn tree_termination_deadline() -> Duration {
+    Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.tree_termination)
+}
+
+fn mailbox_deadline(clock: &dyn DriverClock, timeout_millis: u64) -> i64 {
+    clock
+        .now_millis()
+        .saturating_add(i64::try_from(timeout_millis).unwrap_or(i64::MAX))
+}
+
+fn wait_for_queued_control(mailbox: &DriverMailbox) {
+    let deadline = Instant::now()
+        + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.cancel_dispatch);
+    while mailbox.retained_usage().1.0 == 0 {
+        assert!(
+            Instant::now() < deadline,
+            "cancel control was not queued by its deadline"
+        );
+        std::thread::yield_now();
+    }
 }
 
 async fn prepare_first_turn_fixture() -> FirstTurnFixture {
-    let root = std::env::temp_dir().join(format!("sage-first-turn-{}", Uuid::new_v4()));
-    fs::create_dir_all(&root).unwrap();
+    let root = TempRoot::new("sage-first-turn");
+    fs::create_dir_all(root.path()).unwrap();
     let database = Database::open(std::path::Path::new(":memory:")).unwrap();
-    let project = database.create_project_from_root(&root).unwrap();
+    let project = database.create_project_from_root(root.path()).unwrap();
     let project_id = SageProjectId::parse(project.id).unwrap();
     let chat_id = SageChatId::parse("chat-first-turn").unwrap();
     let now_millis = crate::persistence::now_millis();
@@ -320,7 +417,7 @@ async fn prepare_first_turn_fixture() -> FirstTurnFixture {
         .unwrap();
     let publisher = Arc::new(ProjectionMailbox::default());
     let (journal, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
-    let journal_task = runner.spawn();
+    let journal_task = BoundedJournalTask(Some(runner.spawn()));
     let scheduler = Scheduler::new();
     let sessions = SessionCoordinator::new(journal.clone(), scheduler.clone(), publisher.clone());
     let initial = crate::acp::store::load_chat_page(
@@ -546,9 +643,10 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
             };
             let caller_mailbox = Arc::clone(&mailbox);
             let caller_owner = owner.clone();
-            let (ready_sender, ready_receiver) = std::sync::mpsc::sync_channel(1);
-            let (go_sender, go_receiver) = std::sync::mpsc::sync_channel(1);
-            let caller = std::thread::spawn(move || {
+            let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
+            let (go_sender, go_receiver) = mpsc::sync_channel(1);
+            let (caller_result_sender, caller_result_receiver) = mpsc::sync_channel(1);
+            let caller = BoundedThread::spawn("saturated-cancel-caller", move || {
                 let mut port = ProcessLivePort::new(
                     caller_owner.clone(),
                     caller_mailbox,
@@ -588,16 +686,36 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
                 };
                 port.begin_cancel(&cancel).unwrap();
                 ready_sender.send((turn_id, cancel.clone())).unwrap();
-                go_receiver.recv().unwrap();
+                go_receiver
+                    .recv_timeout(Duration::from_millis(
+                        crate::acp::limits::LIMITS.deadlines_ms.explicit_close,
+                    ))
+                    .expect("cancel dispatch release before close deadline");
                 let started = Instant::now();
                 let result = port.dispatch_cancel(&cancel);
-                (result, started.elapsed())
-            });
+                caller_result_sender
+                    .send((result, started.elapsed()))
+                    .unwrap();
+            })
+            .unwrap();
+            let mut caller = TestThreadCleanup {
+                thread: Some(caller),
+                release: Some(go_sender),
+                mailbox: Arc::clone(&mailbox),
+            };
 
             let mut state = FirstTurnWorkerState::Idle(completed);
-            for _ in 0..4 {
+            for timeout_millis in [
+                crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc,
+                crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc,
+                crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc,
+                crate::acp::limits::LIMITS.deadlines_ms.explicit_close,
+            ] {
                 let next = mailbox
-                    .wait_next_until(None, context.clock.as_ref())
+                    .wait_next_until(
+                        Some(mailbox_deadline(context.clock.as_ref(), timeout_millis)),
+                        context.clock.as_ref(),
+                    )
                     .unwrap()
                     .expect("first-turn worker command");
                 let ControlMessage::Worker(envelope) = next else {
@@ -605,7 +723,11 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
                 };
                 state = state.handle(&context, envelope).await;
             }
-            let (turn_id, cancel) = ready_receiver.recv().unwrap();
+            let (turn_id, cancel) = ready_receiver
+                .recv_timeout(Duration::from_millis(
+                    crate::acp::limits::LIMITS.deadlines_ms.explicit_close,
+                ))
+                .expect("cancel intent before close deadline");
             let durable_before = cancel_snapshot(&database, &turn_id);
             assert_eq!(
                 durable_before,
@@ -633,12 +755,8 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
                 mailbox.retained_usage().0,
                 (messages as usize, bytes as usize)
             );
-            go_sender.send(()).unwrap();
-            let dispatch_queued = Instant::now();
-            while mailbox.retained_usage().1.0 == 0 {
-                assert!(dispatch_queued.elapsed() < Duration::from_secs(1));
-                std::thread::yield_now();
-            }
+            caller.release();
+            wait_for_queued_control(mailbox.as_ref());
 
             let FirstTurnWorkerState::Active(mut active) = state else {
                 panic!("cancel dispatch requires active first-turn state")
@@ -659,7 +777,12 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
             state = FirstTurnWorkerState::Active(active)
                 .handle(&context, envelope)
                 .await;
-            let (dispatch, elapsed) = caller.join().unwrap();
+            let (dispatch, elapsed) = caller_result_receiver
+                .recv_timeout(Duration::from_millis(
+                    crate::acp::limits::LIMITS.deadlines_ms.cancel_dispatch,
+                ))
+                .expect("cancel result before dispatch deadline");
+            caller.wait();
             assert_eq!(dispatch, Ok(()));
             assert!(elapsed <= Duration::from_millis(deadline_ms));
             assert!(matches!(state, FirstTurnWorkerState::Active(_)));
@@ -676,22 +799,32 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
             let timeout_mailbox = Arc::clone(&mailbox);
             let timeout_owner = owner.clone();
             let timeout_cancel = cancel.clone();
-            let timeout = std::thread::spawn(move || {
+            let (timeout_result_sender, timeout_result_receiver) = mpsc::sync_channel(1);
+            let timeout = BoundedThread::spawn("saturated-cancel-timeout", move || {
                 let abort: Arc<dyn WorkerDeadlineAbort> = Arc::new(move |reason| {
                     recorded.lock().unwrap().push(reason);
                 });
                 let mut port =
                     ProcessLivePort::new_with_timeout(timeout_owner, timeout_mailbox, abort, 50);
                 let started = Instant::now();
-                (port.dispatch_cancel(&timeout_cancel), started.elapsed())
-            });
-            let wait_started = Instant::now();
-            while mailbox.retained_usage().1.0 == 0 {
-                assert!(wait_started.elapsed() < Duration::from_secs(1));
-                std::thread::yield_now();
-            }
+                timeout_result_sender
+                    .send((port.dispatch_cancel(&timeout_cancel), started.elapsed()))
+                    .unwrap();
+            })
+            .unwrap();
+            let mut timeout = TestThreadCleanup {
+                thread: Some(timeout),
+                release: None,
+                mailbox: Arc::clone(&mailbox),
+            };
+            wait_for_queued_control(mailbox.as_ref());
             let queued = mailbox.submit_worker(WorkerCommand::Shutdown).unwrap();
-            let (timeout_result, timeout_elapsed) = timeout.join().unwrap();
+            let (timeout_result, timeout_elapsed) = timeout_result_receiver
+                .recv_timeout(Duration::from_millis(
+                    crate::acp::limits::LIMITS.deadlines_ms.cancel_dispatch,
+                ))
+                .expect("deadline result before cancel dispatch deadline");
+            timeout.wait();
             assert_eq!(timeout_result, Err(HostError::Deadline));
             assert!(timeout_elapsed < Duration::from_secs(1));
             assert!(matches!(
@@ -710,10 +843,10 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
             drop(context);
             drop(scheduler);
             journal.close_when_drained();
-            journal_task.await.unwrap();
             drop(journal);
             drop(database);
-            fs::remove_dir_all(root).unwrap();
+            journal_task.finish().await;
+            drop(root);
 
             CancelDispatchObservation {
                 cancel_dispatch_ms_maximum: deadline_ms,
@@ -732,7 +865,7 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
             now_millis: now,
             publisher,
             journal,
-            journal_task: task,
+            journal_task,
             scheduler,
             sessions: _sessions,
             started,
@@ -992,9 +1125,10 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
         assert_eq!(close_facts, 1);
 
         journal.close_when_drained();
-        task.await.unwrap();
+        drop(journal);
         drop(database);
-        fs::remove_dir_all(root).unwrap();
+        journal_task.finish().await;
+        drop(root);
     });
 }
 
