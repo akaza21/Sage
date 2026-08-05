@@ -33,14 +33,16 @@ use crate::{persistence::Database, state::AppState, workspace::development_works
 
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 fn initialize_tracing() {
-    let sage_targets = tracing_subscriber::filter::filter_fn(|metadata| {
-        let target = metadata.target();
-        target == "sage_lib" || target.starts_with("sage_lib::")
-    });
+    let sage_targets = tracing_subscriber::filter::filter_fn(is_sage_target);
     let formatter = tracing_subscriber::fmt::layer()
         .with_target(false)
         .with_filter(sage_targets);
     let _ = tracing_subscriber::registry().with(formatter).try_init();
+}
+
+fn is_sage_target(metadata: &tracing::Metadata<'_>) -> bool {
+    let target = metadata.target();
+    target == "sage_lib" || target.starts_with("sage_lib::")
 }
 
 #[cfg(not(any(debug_assertions, feature = "diagnostics")))]
