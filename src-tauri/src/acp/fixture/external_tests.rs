@@ -1,6 +1,6 @@
 use std::{
     sync::{Arc, atomic::Ordering},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use crate::acp::{
@@ -10,8 +10,8 @@ use crate::acp::{
     process::{PlatformSupervisor, StdinEndpoint, TreeCapacityPool, TreeControl, TreeExit},
     projection::ItemContent,
     runtime::{
-        ActiveCloseBeginState, AdapterPump, BlockingStdoutReader, DriverError, DriverMailbox,
-        JournalHandle, LiveWrite, ProcessAdapterDriver, ProjectionMailbox,
+        ActiveCloseBeginState, AdapterPump, BlockingStdoutReader, BoundedThread, DriverError,
+        DriverMailbox, JournalHandle, LiveWrite, ProcessAdapterDriver, ProjectionMailbox,
         SqliteAdapterBatchJournal, TeardownCause, TreeLeaseOwner,
     },
     scheduler::{RuntimeOwner, Scheduler, TreeLease},
@@ -23,6 +23,7 @@ use super::child::{ActivityFixtureAdapter, BINDING_DIGEST, PermissionStoreFixtur
 use super::{
     external_fixture_adapters::{ExternalCase, fixture_artifact, launch_spec},
     external_fixture_runtime::{ExternalPrepared, prepare_external_case},
+    external_fixture_support::{JournalCleanup, ProcessCleanup},
 };
 
 #[test]
@@ -72,6 +73,11 @@ enum ActivityOutcome {
 }
 
 async fn run_path_bound_activity(case_id: &'static str) -> serde_json::Value {
+    let deadline = Instant::now()
+        + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc);
+    let tree_budget =
+        Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.tree_termination);
+    let wal_budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.wal_convergence);
     let fixture = PermissionStoreFixture::new();
     let initial_sessions = fixture.session_count();
     let owner = owner(&fixture);
@@ -87,6 +93,8 @@ async fn run_path_bound_activity(case_id: &'static str) -> serde_json::Value {
         fixture_byte_len,
     );
     let process_capacity = TreeCapacityPool::isolated_ade_0006a();
+    let (journal, runner) = JournalHandle::new(fixture.database_store());
+    let journal_cleanup = JournalCleanup::spawn(journal.clone(), runner).unwrap();
     let tree = PlatformSupervisor::launch(
         &spec,
         process_capacity
@@ -96,13 +104,14 @@ async fn run_path_bound_activity(case_id: &'static str) -> serde_json::Value {
     .unwrap();
     let (stdin, stdout, control) = tree.into_parts();
     let retained_control = control.clone();
+    let mut process_cleanup = ProcessCleanup::new(control.clone(), None);
     let mailbox = Arc::new(DriverMailbox::new().unwrap());
     let reader_mailbox = Arc::clone(&mailbox);
-    let reader = std::thread::spawn(move || {
+    let reader = BoundedThread::spawn("activity-fixture-reader", move || {
         BlockingStdoutReader::new(stdout).run(reader_mailbox.as_ref());
-    });
-    let (journal, runner) = JournalHandle::new(fixture.database_store());
-    let journal_task = runner.spawn();
+    })
+    .unwrap();
+    process_cleanup.attach_reader(reader);
     let adapter = ActivityFixtureAdapter::new(
         BINDING_DIGEST,
         fixture.runtime_epoch(),
@@ -128,7 +137,7 @@ async fn run_path_bound_activity(case_id: &'static str) -> serde_json::Value {
     )
     .unwrap();
 
-    let outcome = if case_id == "native-activity-child-text" {
+    let (outcome, zero_started) = if case_id == "native-activity-child-text" {
         driver
             .dispatch_prompt(
                 Prompt::new("prompt", "fixture activity").unwrap(),
@@ -139,7 +148,7 @@ async fn run_path_bound_activity(case_id: &'static str) -> serde_json::Value {
             if fixture.activity_count() == 1 {
                 break;
             }
-            tokio::time::timeout(Duration::from_secs(5), driver.run_next(mailbox.as_ref()))
+            tokio::time::timeout(remaining(deadline), driver.run_next(mailbox.as_ref()))
                 .await
                 .expect("activity fixture driver wake timed out")
                 .unwrap();
@@ -156,20 +165,22 @@ async fn run_path_bound_activity(case_id: &'static str) -> serde_json::Value {
             .active()
             .is_none_or(|allocation| allocation.tree != owner);
         assert!(!new_tree);
+        let zero_started = Instant::now();
         driver.request_host_termination().unwrap();
         let handoff = driver.take_zero_process_handoff().unwrap();
         assert_eq!(handoff.cause, TeardownCause::HostTermination);
         assert_eq!(handoff.exit, TreeExit::Cancelled);
         handoff.lease.0.zero_process_converged().unwrap();
-        ActivityOutcome::Child { new_tree }
+        (ActivityOutcome::Child { new_tree }, zero_started)
     } else {
-        tokio::time::timeout(Duration::from_secs(5), driver.run_next(mailbox.as_ref()))
+        tokio::time::timeout(remaining(deadline), driver.run_next(mailbox.as_ref()))
             .await
             .expect("foreign-parent fixture frame timed out")
             .unwrap();
         assert_eq!(retained_control.active_processes().unwrap(), 1);
         clock.set(100);
-        let error = tokio::time::timeout(Duration::from_secs(5), driver.run_next(mailbox.as_ref()))
+        let zero_started = Instant::now();
+        let error = tokio::time::timeout(remaining(deadline), driver.run_next(mailbox.as_ref()))
             .await
             .expect("foreign-parent durable rejection timed out")
             .unwrap_err();
@@ -181,16 +192,24 @@ async fn run_path_bound_activity(case_id: &'static str) -> serde_json::Value {
         assert_eq!(handoff.cause, TeardownCause::PumpFailure);
         assert_eq!(handoff.exit, TreeExit::ProtocolFailure);
         handoff.lease.0.zero_process_converged().unwrap();
-        ActivityOutcome::Foreign {
-            protocol_violation: fixture.activity_count() == 0,
-        }
+        (
+            ActivityOutcome::Foreign {
+                protocol_violation: fixture.activity_count() == 0,
+            },
+            zero_started,
+        )
     };
 
-    reader.join().unwrap();
+    process_cleanup
+        .finish_after_zero_within(
+            remaining(deadline).min(tree_budget.saturating_sub(zero_started.elapsed())),
+        )
+        .unwrap();
     assert!(scheduler.active().is_none());
     assert_eq!(process_capacity.usage(), (0, 0));
-    journal.close_when_drained();
-    journal_task.await.unwrap();
+    journal_cleanup
+        .finish(remaining(deadline).min(wal_budget))
+        .unwrap();
     if case_id == "native-activity-foreign-parent" {
         assert_eq!(fixture.recover(200).recovered_sessions, 1);
         assert_eq!(fixture.session_state(), "failed");
@@ -208,6 +227,10 @@ async fn run_path_bound_activity(case_id: &'static str) -> serde_json::Value {
             "newSageSession":new_session,
         }),
     }
+}
+
+fn remaining(deadline: Instant) -> Duration {
+    deadline.saturating_duration_since(Instant::now())
 }
 
 fn run_external_case(case: ExternalCase) {

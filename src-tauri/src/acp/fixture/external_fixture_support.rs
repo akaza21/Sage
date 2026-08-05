@@ -8,9 +8,11 @@ use crate::{
     acp::{
         contract::{ClientIntentId, RequiredText, SafeText, SageChatId, SageProjectId},
         process::{TreeControl, TreeExit},
-        runtime::{BoundedThread, JournalHandle, SessionCoordinator, ThreadWaitError},
+        runtime::{
+            BoundedThread, JournalHandle, JournalRunner, SessionCoordinator, ThreadWaitError,
+        },
         scheduler::Scheduler,
-        store::{DatabaseAcpStore, SessionMutation, StartSessionCommand, load_chat_page},
+        store::{AcpStore, DatabaseAcpStore, SessionMutation, StartSessionCommand, load_chat_page},
     },
     persistence::Database,
 };
@@ -136,6 +138,48 @@ impl Drop for TempRoot {
     }
 }
 
+pub(super) struct JournalCleanup {
+    journal: JournalHandle,
+    thread: Option<BoundedThread>,
+}
+
+impl JournalCleanup {
+    pub(super) fn spawn<S: AcpStore + 'static>(
+        journal: JournalHandle,
+        runner: JournalRunner<S>,
+    ) -> std::io::Result<Self> {
+        let thread = BoundedThread::spawn("external-fixture-journal", move || {
+            runner.run_blocking();
+        })?;
+        Ok(Self {
+            journal,
+            thread: Some(thread),
+        })
+    }
+
+    pub(super) fn finish(mut self, timeout: Duration) -> Result<(), ThreadWaitError> {
+        self.journal.close_when_drained();
+        let result = self
+            .thread
+            .as_mut()
+            .expect("fixture journal thread retained")
+            .wait(timeout);
+        self.thread.take();
+        result
+    }
+}
+
+impl Drop for JournalCleanup {
+    fn drop(&mut self) {
+        self.journal.shutdown();
+        if let Some(thread) = &mut self.thread {
+            let deadline =
+                Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.tree_termination);
+            let _ = thread.wait(deadline);
+        }
+    }
+}
+
 pub(super) struct ProcessCleanup {
     control: TreeControl,
     reader: Option<BoundedThread>,
@@ -156,11 +200,20 @@ impl ProcessCleanup {
     }
 
     pub(super) fn finish_after_zero(&mut self) -> Result<(), ThreadWaitError> {
+        self.finish_after_zero_within(READER_DEADLINE)
+    }
+
+    pub(super) fn finish_after_zero_within(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<(), ThreadWaitError> {
         self.zero = true;
-        match &mut self.reader {
-            Some(reader) => reader.wait(READER_DEADLINE),
+        let result = match &mut self.reader {
+            Some(reader) => reader.wait(timeout),
             None => Ok(()),
-        }
+        };
+        self.reader.take();
+        result
     }
 
     pub(super) fn wait_zero(&mut self) -> TreeExit {
