@@ -31,10 +31,12 @@ pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &[
     "journal-bytes-4194304",
     "journal-bytes-4194305",
 ];
+pub(in crate::acp::fixture) const CANCEL_CASE_IDS: &[&str] = &["cancel-dispatch-at-capacity"];
 
 pub(in crate::acp::fixture) fn execute(case: &FrozenCase) -> Value {
     let steps: Vec<Value> = serde_json::from_str(case.steps_json).unwrap();
     match case.id {
+        "cancel-dispatch-at-capacity" => super::cancel_dispatch::execute(&steps),
         id if id.starts_with("driver-") => execute_driver(id, &steps),
         id if id.starts_with("egress-") => execute_egress(id, &steps),
         id if id.starts_with("journal-") => execute_journal(id, &steps),
@@ -308,10 +310,21 @@ fn field_u64(value: &Value, field: &str) -> u64 {
         .unwrap_or_else(|| panic!("missing numeric field {field}"))
 }
 
-struct RejectingStore;
+pub(super) struct RejectingStore;
 
 impl AcpStore for RejectingStore {
     fn commit(&mut self, _batch: &[StoreMutation]) -> Result<StoreCommit, StoreError> {
         Err(StoreError::BatchShape)
+    }
+}
+
+#[test]
+fn corrected_cancel_capacity_case_matches_its_literal_oracle() {
+    for case_id in super::CANCEL_CASE_IDS {
+        let case = super::super::generated_cases::FROZEN_CASES
+            .iter()
+            .find(|case| case.id == *case_id)
+            .unwrap();
+        super::super::oracle::assert_literal(case, execute(case));
     }
 }

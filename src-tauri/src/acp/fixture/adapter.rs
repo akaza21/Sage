@@ -17,6 +17,8 @@ enum State {
     Idle,
     PromptCreated,
     PromptQueued,
+    CancelCreated,
+    CancelQueued,
     AwaitingTextStart,
     Streaming,
     ItemComplete,
@@ -118,24 +120,36 @@ impl HarnessAdapter for FixtureAdapter {
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
-        let AdapterCommand::Prompt {
-            client_message_id, ..
-        } = command
-        else {
-            return Err(AdapterRuntimeError::UnsupportedCommand);
-        };
-        if self.state != State::Idle {
-            return Err(AdapterRuntimeError::Operation);
+        match command {
+            AdapterCommand::Prompt {
+                client_message_id, ..
+            } => {
+                if self.state != State::Idle {
+                    return Err(AdapterRuntimeError::Operation);
+                }
+                self.client_message_id = Some(client_message_id);
+                self.state = State::PromptCreated;
+                Ok(AdapterEgress::new(
+                    OutboundFrame::new(
+                        br#"{"jsonrpc":"2.0","method":"fixture/prompt","params":{}}"#.to_vec(),
+                    )
+                    .map_err(|_| AdapterRuntimeError::Frame)?,
+                    EgressToken::request(1),
+                ))
+            }
+            AdapterCommand::Cancel if self.state == State::AwaitingTextStart => {
+                self.state = State::CancelCreated;
+                Ok(AdapterEgress::new(
+                    OutboundFrame::new(
+                        br#"{"jsonrpc":"2.0","method":"fixture/cancel","params":{}}"#.to_vec(),
+                    )
+                    .map_err(|_| AdapterRuntimeError::Frame)?,
+                    EgressToken::cancel_request(2),
+                ))
+            }
+            AdapterCommand::Cancel => Err(AdapterRuntimeError::Operation),
+            _ => Err(AdapterRuntimeError::UnsupportedCommand),
         }
-        self.client_message_id = Some(client_message_id);
-        self.state = State::PromptCreated;
-        Ok(AdapterEgress::new(
-            OutboundFrame::new(
-                br#"{"jsonrpc":"2.0","method":"fixture/prompt","params":{}}"#.to_vec(),
-            )
-            .map_err(|_| AdapterRuntimeError::Frame)?,
-            EgressToken::request(1),
-        ))
     }
 
     fn ingest(
@@ -243,6 +257,28 @@ impl HarnessAdapter for FixtureAdapter {
         token: EgressToken,
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
+        if token.is_cancel() {
+            if token.request_id() != Some(2) {
+                return Err(AdapterRuntimeError::EgressIntent);
+            }
+            return match (self.state, resolution) {
+                (State::CancelCreated, EgressResolution::Queued) => {
+                    self.state = State::CancelQueued;
+                    Ok(())
+                }
+                (State::CancelCreated, EgressResolution::QueueRejected)
+                | (State::CancelQueued, EgressResolution::WriteZeroBytes)
+                | (State::CancelQueued, EgressResolution::Written) => {
+                    self.state = State::AwaitingTextStart;
+                    Ok(())
+                }
+                (State::CancelQueued, EgressResolution::DeliveryUnknown) => {
+                    self.state = State::Complete;
+                    Ok(())
+                }
+                _ => Err(AdapterRuntimeError::EgressIntent),
+            };
+        }
         if token.request_id() != Some(1) {
             return Err(AdapterRuntimeError::EgressIntent);
         }
