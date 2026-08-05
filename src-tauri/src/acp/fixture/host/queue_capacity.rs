@@ -9,6 +9,7 @@ use crate::acp::{
     },
     fixture::generated_cases::FrozenCase,
     intent::{ExternalId, Prompt},
+    limits::LIMITS,
     runtime::{
         CancelIntent, DriverMailbox, DriverMailboxError, JournalError, JournalHandle, JournalLane,
         permissions::PermissionIntent,
@@ -22,7 +23,6 @@ pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &[
     "driver-data-messages-257",
     "driver-data-bytes-2097152",
     "driver-data-bytes-2097153",
-    "cancel-dispatch-at-capacity",
     "egress-frames-64",
     "egress-frames-65",
     "egress-data-cannot-consume-control-reserve",
@@ -34,6 +34,7 @@ pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &[
     "journal-bytes-4194304",
     "journal-bytes-4194305",
 ];
+pub(in crate::acp::fixture) const CANCEL_CASE_IDS: &[&str] = &["cancel-dispatch-at-capacity"];
 
 pub(in crate::acp::fixture) fn execute(case: &FrozenCase) -> Value {
     let steps: Vec<Value> = serde_json::from_str(case.steps_json).unwrap();
@@ -54,11 +55,10 @@ fn execute_cancel(steps: &[Value]) -> Value {
     assert_eq!(dispatch["op"], "dispatchCancel");
     let messages = field_u64(fill, "messages");
     let bytes = field_u64(fill, "bytes");
-    let deadline_ms = field_u64(dispatch, "deadlineMs");
-    assert_eq!(
-        messages,
-        crate::acp::limits::LIMITS.queues.driver_data_messages
-    );
+    let literal_deadline_ms = field_u64(dispatch, "deadlineMs");
+    let production_deadline_ms = LIMITS.deadlines_ms.cancel_dispatch;
+    assert_eq!(literal_deadline_ms, production_deadline_ms);
+    assert_eq!(messages, LIMITS.queues.driver_data_messages);
     assert_eq!(bytes, messages);
 
     let mailbox = DriverMailbox::new().unwrap();
@@ -66,14 +66,21 @@ fn execute_cancel(steps: &[Value]) -> Value {
         mailbox.try_push_chunk(vec![b'x']).unwrap();
     }
     let saturated_before = mailbox.try_push_chunk(vec![b'x']).is_err();
+    let intent = cancel_intent();
     let started = Instant::now();
-    let observed_cancel = mailbox.submit_cancel(cancel_intent(), deadline_ms).is_ok();
+    mailbox
+        .submit_cancel(intent.clone(), production_deadline_ms)
+        .unwrap();
     let saturated_with_control = mailbox.try_push_chunk(vec![b'x']).is_err();
-    assert!(observed_cancel);
-    assert!(started.elapsed() <= Duration::from_millis(deadline_ms));
+    let observed_intent = mailbox
+        .try_pop_cancel_for_fixture()
+        .expect("reserved cancel envelope");
+    let elapsed = started.elapsed();
+    assert_eq!(observed_intent, intent);
+    assert!(elapsed <= Duration::from_millis(literal_deadline_ms));
 
     json!({
-        "cancelDispatchMsMaximum": deadline_ms,
+        "cancelDispatchMsMaximum": production_deadline_ms,
         "controlCapacityBorrowed": !(saturated_before && saturated_with_control),
     })
 }
@@ -360,5 +367,16 @@ struct RejectingStore;
 impl AcpStore for RejectingStore {
     fn commit(&mut self, _batch: &[StoreMutation]) -> Result<StoreCommit, StoreError> {
         Err(StoreError::BatchShape)
+    }
+}
+
+#[test]
+fn corrected_cancel_capacity_case_matches_its_literal_oracle() {
+    for case_id in super::CANCEL_CASE_IDS {
+        let case = super::super::generated_cases::FROZEN_CASES
+            .iter()
+            .find(|case| case.id == *case_id)
+            .unwrap();
+        super::super::oracle::assert_literal(case, execute(case));
     }
 }

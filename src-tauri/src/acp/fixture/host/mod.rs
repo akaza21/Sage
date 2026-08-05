@@ -15,13 +15,16 @@ mod store_bounds;
 
 pub(super) use capacity::{CASE_IDS as CAPACITY_CASE_IDS, execute as execute_capacity};
 pub(super) use contract_bounds::{CASE_IDS as CONTRACT_CASE_IDS, execute as execute_contract};
+pub(super) use delivery_observer::CASE_IDS as DELIVERY_CASE_IDS;
 pub(super) use metadata_integrity::{CASE_IDS as METADATA_CASE_IDS, execute as execute_metadata};
 pub(super) use migration_recovery::{CASE_IDS as MIGRATION_CASE_IDS, execute as execute_migration};
 pub(super) use permission_failures::{
     CASE_IDS as PERMISSION_CASE_IDS, execute as execute_permission,
 };
 pub(super) use process_bounds::{CASE_IDS as PROCESS_CASE_IDS, execute as execute_process};
-pub(super) use queue_capacity::{CASE_IDS as QUEUE_CASE_IDS, execute as execute_queue};
+pub(super) use queue_capacity::{
+    CANCEL_CASE_IDS, CASE_IDS as QUEUE_CASE_IDS, execute as execute_queue,
+};
 pub(super) use resource_bounds::{CASE_IDS as RESOURCE_CASE_IDS, execute as execute_resource};
 pub(super) use schema::{CASE_IDS, execute};
 pub(in crate::acp::fixture) use store_bounds::execute_child_activity;

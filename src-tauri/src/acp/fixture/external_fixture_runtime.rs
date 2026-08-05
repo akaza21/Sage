@@ -8,12 +8,16 @@ use crate::{
         },
         fixture::adapter::FixtureAdapter,
         intent::{ExternalId, IntentSnapshot, Prompt},
-        process::{PlatformSupervisor, StdinEndpoint, TreeCapacityPool, TreeControl, TreeExit},
+        process::{
+            PlatformSupervisor, StdinEndpoint, StdoutEndpoint, TreeCapacityPool, TreeControl,
+            TreeExit,
+        },
         runtime::{
             ActivatedSession, ActivationJournal, BlockingStdoutReader,
             CompletedActivationDriverParts, CoordinatorActivationJournal, DriverClock,
-            DriverMailbox, IdleActivationParts, JournalHandle, PreparedProcessWrite,
-            SendCoordinator, SessionCoordinator, SqliteAdapterBatchJournal, SystemDriverClock,
+            DriverMailbox, HostPromptIntent, IdleActivationParts, JournalHandle,
+            PreparedProcessWrite, SendCoordinator, SessionCoordinator, SqliteAdapterBatchJournal,
+            SystemDriverClock,
         },
         scheduler::{RuntimeOwner, Scheduler},
         store::{
@@ -47,6 +51,7 @@ pub(super) struct ExternalPrepared {
     pub(super) started: SessionMutation,
     pub(super) epoch: RuntimeEpoch,
     pub(super) now_millis: i64,
+    pub(super) prompt_intent: HostPromptIntent,
     pub(super) publisher: Arc<CommitCheckingPublisher>,
     pub(super) journal: JournalHandle,
     pub(super) journal_task: tokio::task::JoinHandle<()>,
@@ -156,23 +161,11 @@ pub(super) async fn prepare_external_case(case: ExternalCase) -> ExternalPrepare
             .unwrap(),
     )
     .unwrap();
-    let (stdin, mut stdout, control) = tree.into_parts();
+    let (stdin, stdout, control) = tree.into_parts();
     let retained_control = control.clone();
     let mailbox = Arc::new(DriverMailbox::new().unwrap());
     let reader = if matches!(case, ExternalCase::ZeroByteFailure) {
-        let barrier = stdout
-            .read_frame()
-            .unwrap()
-            .expect("native stdin-close barrier");
-        let barrier: serde_json::Value = serde_json::from_slice(barrier.as_bytes()).unwrap();
-        assert_eq!(
-            barrier.get("method").and_then(serde_json::Value::as_str),
-            Some("fixture/stdinClosedBarrier")
-        );
-        assert!(matches!(
-            retained_control.wait_root_exit().unwrap(),
-            TreeExit::Exited { code: Some(8) }
-        ));
+        await_stdin_closed_barrier(stdout, &retained_control);
         None
     } else {
         let reader_mailbox = Arc::clone(&mailbox);
@@ -230,21 +223,22 @@ pub(super) async fn prepare_external_case(case: ExternalCase) -> ExternalPrepare
         publisher.clone(),
     );
     let prompt = Prompt::new("prompt", "read only").unwrap();
+    let prompt_command = PrepareTurnCommand {
+        project_id: project_id.clone(),
+        project_generation: ProjectGeneration::ZERO,
+        chat_id: chat_id.clone(),
+        session_id: started.session_id.clone(),
+        runtime_epoch: epoch,
+        expected_projection_revision: ready.projection_revision,
+        client_intent_id: ClientIntentId::parse("fixture-turn").unwrap(),
+        prompt: prompt.clone(),
+        now_millis: now + 3,
+    };
+    let prompt_intent = HostPromptIntent {
+        command: prompt_command.clone(),
+    };
     let prepared = completed
-        .prepare_first_turn(
-            &sends,
-            PrepareTurnCommand {
-                project_id: project_id.clone(),
-                project_generation: ProjectGeneration::ZERO,
-                chat_id: chat_id.clone(),
-                session_id: started.session_id.clone(),
-                runtime_epoch: epoch,
-                expected_projection_revision: ready.projection_revision,
-                client_intent_id: ClientIntentId::parse("fixture-turn").unwrap(),
-                prompt: prompt.clone(),
-                now_millis: now + 3,
-            },
-        )
+        .prepare_first_turn(&sends, prompt_command)
         .await
         .unwrap_or_else(|_| panic!("prepare first fixture Turn"));
     let running = prepared
@@ -262,6 +256,7 @@ pub(super) async fn prepare_external_case(case: ExternalCase) -> ExternalPrepare
         started,
         epoch,
         now_millis: now + 4,
+        prompt_intent,
         publisher,
         journal,
         journal_task,
@@ -272,4 +267,32 @@ pub(super) async fn prepare_external_case(case: ExternalCase) -> ExternalPrepare
         reader,
         active: PreparedProcessWrite::new(running, prompt),
     }
+}
+
+fn await_stdin_closed_barrier(mut stdout: StdoutEndpoint, control: &TreeControl) {
+    let exit = match control.wait_zero() {
+        Ok((exit, _proof)) => exit,
+        Err(error) => {
+            control
+                .terminate_zero(TreeExit::Deadline)
+                .unwrap_or_else(|force_error| {
+                    panic!(
+                        "native stdin-close barrier failed to converge after {error:?}: {force_error:?}"
+                    )
+                });
+            panic!("native stdin-close barrier process did not converge: {error:?}");
+        }
+    };
+    assert!(matches!(exit, TreeExit::Exited { code: Some(8) }));
+    // Zero-process convergence closes every inherited writer, so this bounded
+    // frame decoder can consume buffered output without an unbounded pipe wait.
+    let frame = stdout
+        .read_frame()
+        .unwrap()
+        .expect("native stdin-close barrier");
+    let barrier: serde_json::Value = serde_json::from_slice(frame.as_bytes()).unwrap();
+    assert_eq!(
+        barrier.get("method").and_then(serde_json::Value::as_str),
+        Some("fixture/stdinClosedBarrier")
+    );
 }

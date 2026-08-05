@@ -314,7 +314,7 @@ fn field_u64(value: &Value, field: &str) -> u64 {
 
 #[test]
 fn corrected_host_delivery_cases_match_their_literal_oracles() {
-    for case_id in CASE_IDS {
+    for case_id in super::DELIVERY_CASE_IDS {
         let case = super::super::generated_cases::FROZEN_CASES
             .iter()
             .find(|case| case.id == *case_id)
