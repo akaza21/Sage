@@ -1,10 +1,15 @@
 use serde_json::Value;
 
-use super::super::{generated_cases::FrozenCase, host, wire};
+use crate::acp::fixture::{generated_cases::FrozenCase, host, wire};
 
 pub(crate) const CASE_IDS: &[&str] = &["native-activity-depth-4", "native-activity-depth-5"];
 
 pub(crate) fn execute(case: &FrozenCase) -> Value {
+    assert!(CASE_IDS.contains(&case.id));
+    observe_depth(case)
+}
+
+fn observe_depth(case: &FrozenCase) -> Value {
     let steps: Vec<Value> = serde_json::from_str(case.steps_json).unwrap();
     let (stdout, _) = wire::capture_steps(&steps).unwrap();
     let frames = super::item_observer::decode(&stdout);

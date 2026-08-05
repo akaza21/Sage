@@ -3,15 +3,12 @@ use std::sync::{Arc, Mutex};
 use serde_json::{Value, json};
 
 use crate::acp::{
-    bindings::adapter::ResourceMapper,
-    contract::RequiredText,
     fixture::{generated_cases::FrozenCase, wire},
-    intent::{ExternalId, SafeResourceRef, UnavailableResourceReason},
     process::{LaunchError, TreeExit},
     runtime::{
-        ActiveTurnIntent, AdapterPump, DriverClock, DriverError, DriverMailbox, EgressTransport,
-        JournalHandle, ProcessAdapterDriver, ProcessTreeControl, ProjectionMailbox, PumpIntent,
-        SqliteAdapterBatchJournal, StdinTransport, TeardownCause, TreeLeaseOwner,
+        AdapterPump, DriverError, DriverMailbox, EgressTransport, JournalHandle,
+        ProcessAdapterDriver, ProcessTreeControl, ProjectionMailbox, SqliteAdapterBatchJournal,
+        StdinTransport, TeardownCause, TreeLeaseOwner,
     },
     scheduler::RuntimeOwner,
     transport::{FrameWriteOutcome, OutboundFrame},
@@ -20,9 +17,11 @@ use crate::acp::{
 use super::{
     permission_fixture_adapter::PermissionFixtureAdapter,
     permission_store_fixture::{BINDING_DIGEST, PermissionStoreFixture},
+    runtime_fixture::{FixtureClock, FixtureMapper, owner, pump_intent},
 };
 
 pub(crate) const CASE_IDS: &[&str] = &[
+    "permission-identical-live-duplicate",
     "permission-conflicting-duplicate",
     "permission-old-epoch-after-restart",
     "permission-payload-bytes-65536",
@@ -53,7 +52,7 @@ async fn observe(case: &FrozenCase) -> Value {
     };
     let (journal, runner) = JournalHandle::new(fixture.database_store());
     let journal_task = runner.spawn();
-    let intent = pump_intent(&fixture);
+    let intent = pump_intent(&fixture, "message-permission");
     let adapter = PermissionFixtureAdapter::new(
         BINDING_DIGEST,
         fixture.runtime_epoch(),
@@ -63,9 +62,9 @@ async fn observe(case: &FrozenCase) -> Value {
     let pump = AdapterPump::new(
         adapter,
         SqliteAdapterBatchJournal::new(journal.clone(), intent),
-        Mapper,
+        FixtureMapper,
         Arc::new(ProjectionMailbox::default()),
-        pump_intent(&fixture),
+        pump_intent(&fixture, "message-permission"),
     )
     .unwrap();
     let mut driver = ProcessAdapterDriver::new(
@@ -74,7 +73,7 @@ async fn observe(case: &FrozenCase) -> Value {
         control,
         Lease(owner.clone()),
         owner,
-        Arc::new(FixedClock(10)),
+        Arc::new(FixtureClock::new(10)),
     )
     .unwrap();
     let mailbox = DriverMailbox::new().unwrap();
@@ -108,6 +107,21 @@ async fn observe(case: &FrozenCase) -> Value {
     let permission_granted = egress.grants != 0;
 
     match case.id {
+        "permission-identical-live-duplicate" => json!({
+            "permission": if failure.is_none()
+                && zero_process.is_none()
+                && fixture.request_count() == 1
+                && fixture.request_state().as_deref() == Some("resolvedDeclined")
+                && fixture.runtime_epoch_state() == "running"
+                && fixture.live_head_count() == 1
+                && egress.exact_declines(2)
+            {
+                "declined"
+            } else {
+                "invalid"
+            },
+            "durableDeclineCount": fixture.decline_fact_count(),
+        }),
         "permission-conflicting-duplicate" => json!({
             "terminal": fixture.session_state(),
             "permissionGranted": permission_granted,
@@ -146,7 +160,7 @@ async fn observe(case: &FrozenCase) -> Value {
             "accepted": failure.is_none()
                 && zero_process.is_none()
                 && fixture.request_count() == 1
-                && fixture.request_state().as_deref() == Some("declineCommitted")
+                && fixture.request_state().as_deref() == Some("resolvedDeclined")
                 && fixture.decline_fact_count() == 1
                 && fixture.runtime_epoch_state() == "running"
                 && fixture.live_head_count() == 1
@@ -177,7 +191,7 @@ async fn drive_stdout(
     driver: &mut ProcessAdapterDriver<
         PermissionFixtureAdapter,
         SqliteAdapterBatchJournal,
-        Mapper,
+        FixtureMapper,
         MemoryTransport,
         RecordingControl,
         Lease,
@@ -194,53 +208,9 @@ async fn drive_stdout(
     None
 }
 
-fn pump_intent(fixture: &PermissionStoreFixture) -> PumpIntent {
-    PumpIntent {
-        binding_digest: BINDING_DIGEST,
-        project_id: fixture.project_id(),
-        chat_id: fixture.chat_id(),
-        session_id: fixture.session_id(),
-        external_session_id: ExternalId::new("externalSession", "fixture-session").unwrap(),
-        runtime_epoch: fixture.runtime_epoch(),
-        active_turn: ActiveTurnIntent {
-            turn_id: fixture.turn_id(),
-            external_turn_id: Some(ExternalId::new("externalTurn", "fixture-turn").unwrap()),
-            client_message_id: RequiredText::new("message", "message-permission").unwrap(),
-        },
-    }
-}
-
-fn owner(fixture: &PermissionStoreFixture) -> RuntimeOwner {
-    RuntimeOwner {
-        project_id: fixture.project_id(),
-        chat_id: fixture.chat_id(),
-        session_id: fixture.session_id(),
-        runtime_epoch: fixture.runtime_epoch(),
-    }
-}
-
 fn termination_exact(terminations: &Mutex<TerminationObservation>, expected: TreeExit) -> bool {
     let observed = terminations.lock().unwrap();
     observed.count == 1 && observed.last == Some(expected)
-}
-
-struct Mapper;
-
-impl ResourceMapper for Mapper {
-    fn map_existing(
-        &self,
-        _absolute_path: &str,
-    ) -> Result<SafeResourceRef, UnavailableResourceReason> {
-        Err(UnavailableResourceReason::Unsupported)
-    }
-}
-
-struct FixedClock(i64);
-
-impl DriverClock for FixedClock {
-    fn now_millis(&self) -> i64 {
-        self.0
-    }
 }
 
 struct Lease(RuntimeOwner);
@@ -339,8 +309,12 @@ struct EgressObservation {
 }
 
 impl EgressObservation {
+    fn exact_declines(self, expected: usize) -> bool {
+        self.count == expected && self.declines == expected && self.grants == 0 && self.invalid == 0
+    }
+
     fn exactly_one_decline(self) -> bool {
-        self.count == 1 && self.declines == 1 && self.grants == 0 && self.invalid == 0
+        self.exact_declines(1)
     }
 
     fn no_writes(self) -> bool {

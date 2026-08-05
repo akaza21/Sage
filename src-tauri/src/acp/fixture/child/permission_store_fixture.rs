@@ -17,48 +17,48 @@ use crate::{
     persistence::Database,
 };
 
-pub(super) const BINDING_DIGEST: [u8; 32] = [7; 32];
+pub(in crate::acp::fixture) const BINDING_DIGEST: [u8; 32] = [7; 32];
 
-pub(super) struct PermissionStoreFixture {
+pub(in crate::acp::fixture) struct PermissionStoreFixture {
     database: Database,
 }
 
 impl PermissionStoreFixture {
-    pub(super) fn new() -> Self {
+    pub(in crate::acp::fixture) fn new() -> Self {
         let database = Database::open(std::path::Path::new(":memory:")).unwrap();
         seed(&database);
         Self { database }
     }
 
-    pub(super) fn database_store(&self) -> DatabaseAcpStore {
+    pub(in crate::acp::fixture) fn database_store(&self) -> DatabaseAcpStore {
         DatabaseAcpStore::new(self.database.clone())
     }
 
-    pub(super) fn project_id(&self) -> SageProjectId {
+    pub(in crate::acp::fixture) fn project_id(&self) -> SageProjectId {
         SageProjectId::parse("project-permission").unwrap()
     }
 
-    pub(super) fn chat_id(&self) -> SageChatId {
+    pub(in crate::acp::fixture) fn chat_id(&self) -> SageChatId {
         SageChatId::parse("chat-permission").unwrap()
     }
 
-    pub(super) fn session_id(&self) -> SageAgentSessionId {
+    pub(in crate::acp::fixture) fn session_id(&self) -> SageAgentSessionId {
         SageAgentSessionId::parse("session-permission").unwrap()
     }
 
-    pub(super) fn turn_id(&self) -> SageTurnId {
+    pub(in crate::acp::fixture) fn turn_id(&self) -> SageTurnId {
         SageTurnId::parse("turn-permission").unwrap()
     }
 
-    pub(super) fn runtime_epoch(&self) -> RuntimeEpoch {
+    pub(in crate::acp::fixture) fn runtime_epoch(&self) -> RuntimeEpoch {
         RuntimeEpoch::new(1).unwrap()
     }
 
-    pub(super) fn recover(&self, now_millis: i64) -> RecoveryReport {
+    pub(in crate::acp::fixture) fn recover(&self, now_millis: i64) -> RecoveryReport {
         recover_after_restart(&mut self.database.connection(), now_millis).unwrap()
     }
 
-    pub(super) fn session_state(&self) -> String {
+    pub(in crate::acp::fixture) fn session_state(&self) -> String {
         self.text("SELECT state FROM agent_sessions WHERE id='session-permission'")
     }
 
@@ -98,6 +98,49 @@ impl PermissionStoreFixture {
             "SELECT COUNT(*) FROM chat_session_heads
              WHERE session_id='session-permission'",
         )
+    }
+
+    pub(in crate::acp::fixture) fn session_count(&self) -> i64 {
+        self.count("SELECT COUNT(*) FROM agent_sessions WHERE chat_id='chat-permission'")
+    }
+
+    pub(in crate::acp::fixture) fn activity_count(&self) -> i64 {
+        self.count("SELECT COUNT(*) FROM session_activities WHERE turn_id='turn-permission'")
+    }
+
+    pub(in crate::acp::fixture) fn has_projected_activity_text(
+        &self,
+        external_activity: &str,
+        parent_external_item: &str,
+        expected_text: &str,
+    ) -> bool {
+        let connection = self.database.connection();
+        let page =
+            crate::acp::store::load_chat_page(&connection, self.project_id(), self.chat_id(), None)
+                .unwrap();
+        let projected = page.turns.as_slice().iter().any(|turn| {
+            turn.items.as_slice().iter().any(|item| {
+                item.origin == crate::acp::projection::ItemOrigin::HarnessActivity
+                    && item.activity_id.is_some()
+                    && matches!(
+                        &item.content,
+                        crate::acp::projection::ItemContent::Text { text, .. }
+                            if text.as_str() == expected_text
+                    )
+            })
+        });
+        let linked: bool = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM items child
+                 JOIN session_activities activity ON activity.id=child.activity_id
+                 JOIN items parent ON parent.id=activity.parent_item_id
+                 WHERE child.turn_id='turn-permission' AND child.origin='harnessActivity'
+                   AND activity.external_activity_id=?1 AND parent.external_item_id=?2)",
+                [external_activity, parent_external_item],
+                |row| row.get(0),
+            )
+            .unwrap();
+        projected && linked
     }
 
     pub(super) fn probe_decline_replay(&self, now_millis: i64) -> ReplayProbe {
@@ -193,7 +236,7 @@ fn seed(database: &Database) {
     connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-permission','Permission fixture',1,1,1)",[]).unwrap();
     connection.execute("INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal) VALUES('root-permission','project-permission','C:/fixture','c:/fixture',0)",[]).unwrap();
     connection.execute("INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at) VALUES('chat-permission','project-permission',0,'Permission fixture',0,1,1)",[]).unwrap();
-    connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,legacy,revision,projection_revision,created_at,updated_at) VALUES('session-permission','project-permission','chat-permission',0,'fixture',?1,'fixture-session','{}','active','hot',0,0,0,1,1)",[hex(&BINDING_DIGEST)]).unwrap();
+    connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,legacy,revision,projection_revision,created_at,updated_at) VALUES('session-permission','project-permission','chat-permission',0,'fixture',?1,'fixture-session',?2,'active','hot',0,0,0,1,1)",rusqlite::params![hex(&BINDING_DIGEST), pending_capabilities()]).unwrap();
     connection.execute("INSERT INTO chat_session_heads(project_id,chat_id,session_id,installed_revision,installed_at) VALUES('project-permission','chat-permission','session-permission',0,1)",[]).unwrap();
     connection.execute("INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,artifact_digest,started_at) VALUES('project-permission','chat-permission','session-permission',1,'running',?1,1)",["d".repeat(64)]).unwrap();
     connection.execute("INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,state,delivery_state,revision,created_at,updated_at) VALUES('turn-permission','project-permission','chat-permission','session-permission',1,0,'message-permission','running','correlated',0,1,1)",[]).unwrap();
@@ -209,4 +252,8 @@ fn seed(database: &Database) {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn pending_capabilities() -> &'static str {
+    r#"{"schemaVersion":1,"protocolVersion":"pending","newSession":false,"resumeSession":false,"loadSession":false,"closeSession":false,"prompt":false,"cancel":false,"nativeSessionFork":false,"activeTurnSteer":false,"childConversationProjection":false,"childTranscriptRead":false,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#
 }

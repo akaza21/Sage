@@ -15,6 +15,15 @@ pub(super) struct PermissionFixtureAdapter {
     session_id: SageAgentSessionId,
     client_message_id: RequiredText<512>,
     first_request_digest: Option<[u8; 32]>,
+    decline_stage: Option<DeclineStage>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DeclineStage {
+    Prepared,
+    Committed,
+    Queued,
+    Written,
 }
 
 impl PermissionFixtureAdapter {
@@ -30,6 +39,7 @@ impl PermissionFixtureAdapter {
             session_id,
             client_message_id,
             first_request_digest: None,
+            decline_stage: None,
         }
     }
 
@@ -73,9 +83,17 @@ impl PermissionFixtureAdapter {
             if first != request_digest {
                 return Err(AdapterRuntimeError::MandatoryDenyTeardown);
             }
-            return Err(AdapterRuntimeError::Operation);
+            if self.decline_stage != Some(DeclineStage::Written) {
+                return Err(AdapterRuntimeError::MandatoryDenyTeardown);
+            }
+            return AdapterBatch::new(
+                vec![AdapterEvent::IgnoredDuplicate],
+                vec![decline_egress(true)?],
+            )
+            .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown);
         }
         self.first_request_digest = Some(request_digest);
+        self.decline_stage = Some(DeclineStage::Prepared);
         let turn_id = self.identity("permission-turn-envelope")?;
         let item_id = self.identity("permission-a")?;
         AdapterBatch::new(
@@ -92,7 +110,7 @@ impl PermissionFixtureAdapter {
                 },
                 request_payload_digest: request_digest,
             }],
-            vec![decline_egress()?],
+            vec![decline_egress(false)?],
         )
     }
 }
@@ -115,8 +133,12 @@ impl HarnessAdapter for PermissionFixtureAdapter {
     }
 
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
-        match token.deny_request() {
-            Some(("permission-a", _)) if self.first_request_digest.is_some() => Ok(()),
+        match (token.deny_request(), self.decline_stage) {
+            (Some(("permission-a", false)), Some(DeclineStage::Prepared)) => {
+                self.decline_stage = Some(DeclineStage::Committed);
+                Ok(())
+            }
+            (Some(("permission-a", true)), Some(DeclineStage::Written)) => Ok(()),
             _ => Err(AdapterRuntimeError::EgressIntent),
         }
     }
@@ -124,16 +146,37 @@ impl HarnessAdapter for PermissionFixtureAdapter {
     fn resolve_egress(
         &mut self,
         token: EgressToken,
-        _resolution: EgressResolution,
+        resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
-        match token.deny_request() {
-            Some(("permission-a", _)) => Ok(()),
+        match (token.deny_request(), resolution, self.decline_stage) {
+            (
+                Some(("permission-a", false)),
+                EgressResolution::Queued,
+                Some(DeclineStage::Committed),
+            ) => {
+                self.decline_stage = Some(DeclineStage::Queued);
+                Ok(())
+            }
+            (
+                Some(("permission-a", false)),
+                EgressResolution::Written,
+                Some(DeclineStage::Queued),
+            ) => {
+                self.decline_stage = Some(DeclineStage::Written);
+                Ok(())
+            }
+            (
+                Some(("permission-a", true)),
+                EgressResolution::Queued | EgressResolution::Written,
+                Some(DeclineStage::Written),
+            ) => Ok(()),
+            (Some(("permission-a", _)), _, _) => Err(AdapterRuntimeError::MandatoryDenyTeardown),
             _ => Err(AdapterRuntimeError::EgressIntent),
         }
     }
 }
 
-fn decline_egress() -> Result<AdapterEgress, AdapterRuntimeError> {
+fn decline_egress(replay: bool) -> Result<AdapterEgress, AdapterRuntimeError> {
     let request_id = ExternalId::new("fixturePermissionId", "permission-a")
         .map_err(|_| AdapterRuntimeError::Frame)?;
     Ok(AdapterEgress::new(
@@ -142,7 +185,7 @@ fn decline_egress() -> Result<AdapterEgress, AdapterRuntimeError> {
                 .to_vec(),
         )
         .map_err(|_| AdapterRuntimeError::Frame)?,
-        EgressToken::mandatory_deny(request_id, false),
+        EgressToken::mandatory_deny(request_id, replay),
     ))
 }
 

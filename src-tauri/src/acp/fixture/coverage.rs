@@ -14,13 +14,11 @@ const PATH_BOUND_CHILD_CASES: &[&str] = &[
     "send-correlated-then-exit",
     "resume-success-once",
     "resume-failure-no-second-attempt",
-];
-const OPEN_HOST_CASES: &[&str] = &["redaction-canaries-all-sinks"];
-const OPEN_CHILD_CASES: &[&str] = &[
-    "permission-identical-live-duplicate",
     "native-activity-child-text",
     "native-activity-foreign-parent",
 ];
+const OPEN_HOST_CASES: &[&str] = &["redaction-canaries-all-sinks"];
+const OPEN_CHILD_CASES: &[&str] = &[];
 
 #[test]
 fn foundation_literal_observer_registry_is_exact_and_nonoverlapping() {
@@ -56,7 +54,7 @@ fn foundation_literal_observer_registry_is_exact_and_nonoverlapping() {
     assert_eq!(host.len(), 104, "registered host literal observers changed");
     assert_eq!(
         child.len(),
-        53,
+        54,
         "registered child literal observers changed"
     );
 
