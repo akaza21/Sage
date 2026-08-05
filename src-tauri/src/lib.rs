@@ -40,6 +40,11 @@ fn initialize_tracing() {
     let _ = tracing_subscriber::registry().with(formatter).try_init();
 }
 
+#[cfg(any(
+    debug_assertions,
+    feature = "diagnostics",
+    all(test, feature = "acp-fixture")
+))]
 fn is_sage_target(metadata: &tracing::Metadata<'_>) -> bool {
     let target = metadata.target();
     target == "sage_lib" || target.starts_with("sage_lib::")
