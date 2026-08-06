@@ -142,15 +142,11 @@ export function ToolItem({ item, onOpenResource }: ToolItemProps) {
           {status}
         </span>
       </header>
-      <Presentation item={item} onOpenResource={onOpenResource} />
-      {detail ? (
-        <details className="acp-details">
-          <summary>
-            {item.kind === "toolCall" ? "Input summary" : "Result summary"}
-          </summary>
-          <p>{detail}</p>
-        </details>
-      ) : null}
+      <details className="acp-details">
+        <summary>Tool details</summary>
+        <Presentation item={item} onOpenResource={onOpenResource} />
+        {detail ? <p>{detail}</p> : null}
+      </details>
     </article>
   );
 }

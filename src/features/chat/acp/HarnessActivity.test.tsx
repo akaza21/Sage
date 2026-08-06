@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem, HarnessActivityProjection } from "../../../domain/acp";
 import { HarnessActivity } from "./HarnessActivity";
@@ -42,21 +42,8 @@ describe("HarnessActivity", () => {
       id: "item-child-2",
       payload: { ...firstItem.payload, label: "Second result" },
     } as typeof firstItem;
-    const activateResource = vi.fn();
-    render(
-      <HarnessActivity
-        activity={activity}
-        items={[firstItem, secondItem]}
-        renderItem={(item) => (
-          <button
-            className="acp-resource-action"
-            type="button"
-            onClick={() => activateResource(item.id)}
-          >
-            Open safe resource
-          </button>
-        )}
-      />,
+    const { rerender } = render(
+      <HarnessActivity activity={activity} items={[firstItem, secondItem]} />,
     );
     const disclosure = screen.getByText("Harness child").closest("summary");
     expect(disclosure).not.toBeNull();
@@ -84,11 +71,23 @@ describe("HarnessActivity", () => {
     expect(nodes[0]).toHaveFocus();
     fireEvent.keyDown(nodes[0], { key: "End" });
     expect(nodes[1]).toHaveFocus();
-    fireEvent.keyDown(nodes[1], { key: "Enter" });
-    expect(activateResource).toHaveBeenCalledWith("item-child-2");
     fireEvent.keyDown(nodes[1], { key: "ArrowLeft" });
     expect(disclosure).toHaveFocus();
-    expect(disclosure?.parentElement).not.toHaveAttribute("open");
+    expect(disclosure?.parentElement).toHaveAttribute("open");
+
+    nodes[1].focus();
+    rerender(<HarnessActivity activity={activity} items={[firstItem]} />);
+    expect(disclosure).toHaveFocus();
+    expect(screen.getAllByRole("treeitem")).toHaveLength(1);
+    expect(screen.getByRole("treeitem")).toHaveAttribute("tabindex", "0");
+
+    screen.getByRole("treeitem").focus();
+    rerender(<HarnessActivity activity={activity} items={[]} />);
+    expect(screen.queryByRole("treeitem")).toBeNull();
+    expect(disclosure).toHaveFocus();
+
+    rerender(<HarnessActivity activity={activity} items={[secondItem]} />);
+    expect(screen.getByRole("treeitem")).toHaveAttribute("tabindex", "0");
     expect(
       screen.getByText("Harness-owned child activity · depth 2"),
     ).toBeInTheDocument();

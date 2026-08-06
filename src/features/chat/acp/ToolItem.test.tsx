@@ -56,6 +56,7 @@ describe("ToolItem", () => {
         onOpenResource={onOpen}
       />,
     );
+    fireEvent.click(screen.getByText("Tool details"));
     fireEvent.click(
       screen.getByRole("button", { name: "Open file src/main.ts" }),
     );
@@ -82,6 +83,7 @@ describe("ToolItem", () => {
         onOpenResource={onOpen}
       />,
     );
+    fireEvent.click(screen.getByText("Tool details"));
     fireEvent.click(
       screen.getByRole("button", { name: "Open diff src/main.ts" }),
     );
@@ -89,6 +91,32 @@ describe("ToolItem", () => {
       { rootId: "root-b", relativePath: "src/main.ts" },
       "diff",
     );
+  });
+
+  it("keeps every tool's content and resources behind one disclosure", () => {
+    const item = tool({
+      kind: "file",
+      label: "Read file",
+      resources: [
+        {
+          kind: "resource",
+          resource: { rootId: "root-a", relativePath: "src/main.ts" },
+        },
+      ],
+    });
+    item.payload.inputSummary = null;
+    render(<ToolItem item={item} onOpenResource={vi.fn()} />);
+
+    const card = screen.getByRole("group", { name: "Read file" });
+    const disclosure = card.querySelector("summary");
+    expect(disclosure).not.toBeNull();
+    const details = disclosure?.parentElement;
+    expect(details).not.toHaveAttribute("open");
+    expect(details).toContainElement(
+      screen.getByRole("button", { name: "Open file src/main.ts" }),
+    );
+    fireEvent.click(disclosure!);
+    expect(details).toHaveAttribute("open");
   });
 
   it("uses one generic card for unknown tools and typed safe summaries", () => {

@@ -165,6 +165,16 @@ function Turn({
   onOpenResource?: AcpChatProjectionProps["onOpenResource"];
 }) {
   const primaryItems = turn.items.filter((item) => item.origin === "primary");
+  const activityIds = new Set(turn.activities.map((activity) => activity.id));
+  const itemActivities = new Map(
+    turn.items.map((item) => [item.id, item.activityId] as const),
+  );
+  const activityRoots = turn.activities.filter(
+    (activity) =>
+      !activity.parentActivityId ||
+      !activityIds.has(activity.parentActivityId) ||
+      itemActivities.get(activity.parentItemId) !== activity.parentActivityId,
+  );
   const status = turnStateLabels[turn.state];
   return (
     <section className="acp-turn" aria-label={`Turn ${turn.ordinal}`}>
@@ -185,10 +195,11 @@ function Turn({
         {primaryItems.map((item) => (
           <ItemView key={item.id} item={item} onOpenResource={onOpenResource} />
         ))}
-        {turn.activities.map((activity) => (
+        {activityRoots.map((activity) => (
           <HarnessActivity
             key={activity.id}
             activity={activity}
+            activities={turn.activities}
             items={turn.items}
             renderItem={(item) => (
               <ItemView item={item} onOpenResource={onOpenResource} />
