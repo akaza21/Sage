@@ -32,7 +32,8 @@
 .acp-turn__header,
 .acp-tool-card__header,
 .acp-permission header,
-.acp-unknown header {
+.acp-unknown header,
+.acp-collaboration header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -104,8 +105,6 @@
 }
 
 .acp-resource-action,
-.acp-cancel-action,
-.acp-deny-action,
 .acp-history-action {
   min-height: 32px;
   border: 1px solid var(--border-strong, #666);
@@ -120,25 +119,20 @@
   text-align: left;
 }
 
-.acp-cancel-action,
-.acp-deny-action,
 .acp-history-action {
   padding: 5px 9px;
 }
 
 .acp-resource-action:hover,
-.acp-cancel-action:hover,
-.acp-deny-action:hover:not(:disabled),
 .acp-history-action:hover:not(:disabled) {
   background: var(--surface-hover, #292929);
 }
 
 .acp-resource-action:focus-visible,
-.acp-cancel-action:focus-visible,
-.acp-deny-action:focus-visible,
 .acp-history-action:focus-visible,
 .acp-details summary:focus-visible,
-.acp-activity summary:focus-visible {
+.acp-activity summary:focus-visible,
+.acp-activity [role="treeitem"]:focus-visible {
   outline: 2px solid var(--accent, #9ad19b);
   outline-offset: 2px;
 }
@@ -150,7 +144,6 @@
   color: var(--text-soft, #c5c5c5);
 }
 
-.acp-deny-action:disabled,
 .acp-history-action:disabled {
   cursor: default;
   opacity: 0.72;
@@ -181,7 +174,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .acp-chat-projection * {
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
     scroll-behavior: auto;
+    transition-duration: 0s !important;
   }
 }
 

@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 import type { AcpItem, SafeResourceLocation } from "../../../domain/acp";
 import type { ResourceRef } from "../../../domain/workbench";
 
@@ -106,31 +108,45 @@ function Presentation({
 }
 
 export function ToolItem({ item, onOpenResource }: ToolItemProps) {
+  const descriptionId = useId();
   const detail =
     item.kind === "toolCall"
       ? item.payload.inputSummary
       : item.payload.outputSummary;
   const label = item.payload.presentation.label;
+  const status = toolStateLabels[item.toolState];
+  const terminal = ["completed", "failed", "declined", "cancelled"].includes(
+    item.toolState,
+  );
   return (
     <article
       className={`acp-tool-card acp-tool-card--${item.toolState}`}
-      aria-label={`${label} tool`}
+      role="group"
+      aria-label={label}
+      aria-describedby={detail ? descriptionId : undefined}
     >
+      {detail ? (
+        <span className="sr-only" id={descriptionId}>
+          {detail}
+        </span>
+      ) : null}
       <header className="acp-tool-card__header">
         <strong>{label}</strong>
-        <span className="acp-state" role="status" aria-live="polite">
-          {toolStateLabels[item.toolState]}
+        <span
+          className="acp-state"
+          role="status"
+          aria-label={terminal ? `${label}: ${status}` : status}
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {status}
         </span>
       </header>
-      <Presentation item={item} onOpenResource={onOpenResource} />
-      {detail ? (
-        <details className="acp-details">
-          <summary>
-            {item.kind === "toolCall" ? "Input summary" : "Result summary"}
-          </summary>
-          <p>{detail}</p>
-        </details>
-      ) : null}
+      <details className="acp-details">
+        <summary>Tool details</summary>
+        <Presentation item={item} onOpenResource={onOpenResource} />
+        {detail ? <p>{detail}</p> : null}
+      </details>
     </article>
   );
 }

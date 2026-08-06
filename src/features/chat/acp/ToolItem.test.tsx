@@ -10,6 +10,7 @@ type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
 
 function tool(
   presentation: ToolProjectionItem["payload"]["presentation"],
+  toolState: ToolProjectionItem["toolState"] = "inProgress",
 ): ToolProjectionItem {
   return {
     id: "item-1",
@@ -27,7 +28,7 @@ function tool(
     updatedAt: 1,
     terminalAt: null,
     kind: "toolCall",
-    toolState: "inProgress",
+    toolState,
     payload: { presentation, inputSummary: "Bounded retained input" },
   } as ToolProjectionItem;
 }
@@ -55,6 +56,7 @@ describe("ToolItem", () => {
         onOpenResource={onOpen}
       />,
     );
+    fireEvent.click(screen.getByText("Tool details"));
     fireEvent.click(
       screen.getByRole("button", { name: "Open file src/main.ts" }),
     );
@@ -81,6 +83,7 @@ describe("ToolItem", () => {
         onOpenResource={onOpen}
       />,
     );
+    fireEvent.click(screen.getByText("Tool details"));
     fireEvent.click(
       screen.getByRole("button", { name: "Open diff src/main.ts" }),
     );
@@ -88,6 +91,32 @@ describe("ToolItem", () => {
       { rootId: "root-b", relativePath: "src/main.ts" },
       "diff",
     );
+  });
+
+  it("keeps every tool's content and resources behind one disclosure", () => {
+    const item = tool({
+      kind: "file",
+      label: "Read file",
+      resources: [
+        {
+          kind: "resource",
+          resource: { rootId: "root-a", relativePath: "src/main.ts" },
+        },
+      ],
+    });
+    item.payload.inputSummary = null;
+    render(<ToolItem item={item} onOpenResource={vi.fn()} />);
+
+    const card = screen.getByRole("group", { name: "Read file" });
+    const disclosure = card.querySelector("summary");
+    expect(disclosure).not.toBeNull();
+    const details = disclosure?.parentElement;
+    expect(details).not.toHaveAttribute("open");
+    expect(details).toContainElement(
+      screen.getByRole("button", { name: "Open file src/main.ts" }),
+    );
+    fireEvent.click(disclosure!);
+    expect(details).toHaveAttribute("open");
   });
 
   it("uses one generic card for unknown tools and typed safe summaries", () => {
@@ -101,7 +130,10 @@ describe("ToolItem", () => {
       />,
     );
     expect(
-      screen.getByLabelText("Unknown provider tool tool"),
+      screen.getByRole("group", {
+        name: "Unknown provider tool",
+        description: "Bounded retained input",
+      }),
     ).toHaveTextContent("Normalized fallback");
     expect(screen.getByRole("status")).toHaveTextContent("In progress");
 
@@ -116,6 +148,27 @@ describe("ToolItem", () => {
       />,
     );
     expect(screen.getByText("Issue tracker · Read issue")).toBeInTheDocument();
+  });
+
+  it("announces a terminal tool state once using the tool label", () => {
+    render(
+      <ToolItem
+        item={tool(
+          {
+            kind: "generic",
+            label: "Unknown provider tool",
+            summary: "Normalized fallback",
+          },
+          "completed",
+        )}
+      />,
+    );
+    const status = screen.getByRole("status", {
+      name: "Unknown provider tool: Completed",
+    });
+    expect(status).toHaveTextContent("Completed");
+    expect(status).toHaveAttribute("aria-live", "polite");
+    expect(status).toHaveAttribute("aria-atomic", "true");
   });
 
   it("keeps canonical resources inert until a native open handler is wired", () => {

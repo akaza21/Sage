@@ -17,9 +17,19 @@ describe("UnknownItem", () => {
       },
     } as Extract<AcpItem, { kind: "unsupported" }>;
     render(<UnknownItem item={item} />);
-    expect(screen.getByLabelText("Unsupported agent item")).toHaveTextContent(
-      "A future item was retained safely.",
-    );
+    expect(
+      screen.getByRole("group", {
+        name: "Unsupported tool activity",
+        description: "This harness activity is not supported by Sage",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: "Unsupported" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Activity details")).toBeInTheDocument();
+    expect(
+      screen.getByText("A future item was retained safely."),
+    ).toBeInTheDocument();
     expect(screen.getByText("Summary truncated")).toBeInTheDocument();
   });
 });
