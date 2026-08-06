@@ -96,10 +96,11 @@ fn windows_descendant_overflow_literal_observer() {
 fn windows_job_overflow_literal_observer() {
     let (pool, tree, deadline) = launch_case("windows-job-processes-34", 4);
     let (_stdin, _stdout, control) = tree.into_parts();
-    wait_for_active_processes(&control, 33, deadline);
-    let job_maximum = control.active_processes().unwrap();
     let descendant_maximum = pool.usage().1;
     let (exit, _zero) = control.wait_zero_within(deadline.tree()).unwrap();
+    // This fixture retains every successful child until root exit, so stable
+    // total Job membership is its exact active-process maximum.
+    let job_maximum = control.total_processes().unwrap();
     let accepted = matches!(exit, TreeExit::Exited { code: Some(0) });
     let tree_must_exit = control.active_processes().unwrap() == 0;
 

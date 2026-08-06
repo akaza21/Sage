@@ -62,6 +62,19 @@ impl JobBoundary {
     /// Job accounting is the membership authority. No PID is reopened, so a
     /// recycled system PID can never make teardown wait on an unrelated process.
     pub(super) fn active_processes(&self, capacity: u32) -> Result<u32, LaunchError> {
+        let accounting = self.accounting()?;
+        if accounting.ActiveProcesses > capacity {
+            return Err(LaunchError::ContainmentFailure);
+        }
+        Ok(accounting.ActiveProcesses)
+    }
+
+    #[cfg(test)]
+    pub(super) fn total_processes(&self) -> Result<u32, LaunchError> {
+        Ok(self.accounting()?.TotalProcesses)
+    }
+
+    fn accounting(&self) -> Result<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, LaunchError> {
         let mut accounting = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
         // SAFETY: accounting is writable and the information class matches it.
         if unsafe {
@@ -77,10 +90,7 @@ impl JobBoundary {
         {
             return Err(LaunchError::ContainmentFailure);
         }
-        if accounting.ActiveProcesses > capacity {
-            return Err(LaunchError::ContainmentFailure);
-        }
-        Ok(accounting.ActiveProcesses)
+        Ok(accounting)
     }
 
     /// Teardown-only bounded convergence. No steady-state timer or polling is

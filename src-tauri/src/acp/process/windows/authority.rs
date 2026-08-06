@@ -130,6 +130,11 @@ impl TreeControl {
     pub(crate) fn active_processes(&self) -> Result<u32, LaunchError> {
         self.0.job.active_processes(self.0.active_process_limit)
     }
+
+    #[cfg(test)]
+    pub(crate) fn total_processes(&self) -> Result<u32, LaunchError> {
+        self.0.job.total_processes()
+    }
 }
 
 pub(super) struct TreeAuthority {
