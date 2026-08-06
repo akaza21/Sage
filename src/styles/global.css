@@ -541,6 +541,11 @@ textarea:focus-visible {
   border-right: 1px solid var(--border);
 }
 
+.sidebar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .sidebar__heading {
   display: flex;
   height: 42px;

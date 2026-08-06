@@ -10,7 +10,7 @@ import {
   ListChecks,
   RefreshCw,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from "react";
 
 import type { SidebarView } from "../app/store";
 import { useWorkbenchStore } from "../app/store";
@@ -37,6 +37,8 @@ const views: Array<{
   { id: "problems", label: "Problems", icon: ListChecks },
   { id: "outline", label: "Outline", icon: Braces },
 ];
+
+const sidebarPanelId = "project-tools-panel";
 
 function RootTree({ root }: { root: ProjectRootSummary }) {
   const selected = useWorkbenchStore((state) => state.selectedResource);
@@ -252,17 +254,66 @@ function SidebarContent({ view }: { view: SidebarView }) {
   );
 }
 
-export function RightSidebar() {
+export function RightSidebar({ compact }: { compact: boolean }) {
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const sidebarView = useWorkbenchStore((state) => state.sidebarView);
   const setSidebarView = useWorkbenchStore((state) => state.setSidebarView);
+  const toggleSidebar = useWorkbenchStore((state) => state.toggleSidebar);
+  const panelRef = useRef<HTMLElement>(null);
+  const railButtonRefs = useRef(new Map<SidebarView, HTMLButtonElement>());
+  const restoreRailFocus = useRef<SidebarView | null>(null);
+  const activeLabel =
+    views.find((view) => view.id === sidebarView)?.label ?? "Project";
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (
+      compact &&
+      sidebarOpen &&
+      panel &&
+      !panel.contains(document.activeElement)
+    ) {
+      panel.focus();
+    }
+  }, [compact, sidebarOpen, sidebarView]);
+
+  useEffect(() => {
+    const view = restoreRailFocus.current;
+    if (sidebarOpen || !view) return;
+    restoreRailFocus.current = null;
+    railButtonRefs.current.get(view)?.focus();
+  }, [sidebarOpen]);
+
+  function selectView(id: SidebarView) {
+    if (compact && sidebarOpen && sidebarView === id) {
+      panelRef.current?.focus();
+      return;
+    }
+    setSidebarView(id);
+  }
+
+  function handleDrawerKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (!compact || !sidebarOpen || event.key !== "Escape") return;
+    event.preventDefault();
+    restoreRailFocus.current = sidebarView;
+    toggleSidebar();
+  }
+
   return (
     <aside
       className={`right-region ${sidebarOpen ? "" : "right-region--collapsed"}`}
       aria-label="Project tools"
+      onKeyDown={handleDrawerKeyDown}
     >
       {sidebarOpen ? (
-        <section className="sidebar">
+        <section
+          ref={panelRef}
+          id={sidebarPanelId}
+          className="sidebar"
+          role={compact ? "dialog" : undefined}
+          aria-label={`${activeLabel} project tools`}
+          tabIndex={compact ? -1 : undefined}
+        >
           <SidebarContent view={sidebarView} />
         </section>
       ) : null}
@@ -275,10 +326,16 @@ export function RightSidebar() {
                 : ""
             }`}
             key={id}
+            ref={(element) => {
+              if (element) railButtonRefs.current.set(id, element);
+              else railButtonRefs.current.delete(id);
+            }}
             type="button"
             aria-label={label}
+            aria-controls={sidebarPanelId}
+            aria-expanded={sidebarOpen && sidebarView === id}
             title={label}
-            onClick={() => setSidebarView(id)}
+            onClick={() => selectView(id)}
           >
             <Icon size={19} strokeWidth={1.7} aria-hidden="true" />
           </button>

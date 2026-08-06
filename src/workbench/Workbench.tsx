@@ -8,12 +8,16 @@ import { PlaceholderSurface } from "./PlaceholderSurface";
 import { RightSidebar } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
 import { TabStrip } from "./TabStrip";
+import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 
 export function Workbench() {
   const project = useWorkbenchStore((state) => state.project);
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
+  const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+  const compact = useCompactWorkbenchLayout();
+  const drawerOpen = compact && sidebarOpen;
 
   return (
     <main className="workbench">
@@ -29,7 +33,11 @@ export function Workbench() {
       </header>
       <div className="workbench__body">
         <LeftSidebar />
-        <div className="center-region">
+        <div
+          className="center-region"
+          inert={drawerOpen}
+          aria-hidden={drawerOpen || undefined}
+        >
           <div className="workbench__tabs">
             <TabStrip />
           </div>
@@ -57,7 +65,7 @@ export function Workbench() {
             ) : null}
           </div>
         </div>
-        <RightSidebar />
+        <RightSidebar compact={compact} />
       </div>
       <StatusBar />
       <DirtyTabDialog />
