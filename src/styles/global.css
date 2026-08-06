@@ -1564,8 +1564,21 @@ textarea:focus-visible {
     --project-sidebar-width: 46px;
   }
 
+  .right-region {
+    position: relative;
+    overflow: visible;
+  }
+
   .right-region .sidebar {
-    display: none;
+    position: absolute;
+    z-index: 10;
+    top: 0;
+    right: 46px;
+    width: min(272px, calc(100vw - 92px));
+    height: 100%;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: -12px 0 28px rgb(0 0 0 / 0.32);
   }
 
   .project-sidebar__actions {
@@ -1622,6 +1635,48 @@ textarea:focus-visible {
   .composer {
     margin-right: 10px;
     margin-left: 10px;
+  }
+}
+
+@media (max-width: 760px) and (max-height: 320px) {
+  .surface-header {
+    align-items: center;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  .surface-header .eyebrow {
+    display: none;
+  }
+
+  .surface-header h1 {
+    margin: 0;
+    font-size: 15px;
+  }
+
+  .session-state {
+    padding-top: 0;
+  }
+
+  .message-list {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  .composer {
+    margin-bottom: 4px;
+    border-radius: 9px;
+  }
+
+  .composer textarea {
+    min-height: 36px;
+    max-height: 54px;
+    padding: 7px 10px 3px;
+  }
+
+  .composer__toolbar {
+    min-height: 36px;
+    padding: 2px 5px;
   }
 }
 
