@@ -19,13 +19,18 @@ pub(super) fn execute(invocation: FixtureInvocation) -> Result<i32, FixtureError
         return Err(FixtureError::InstructionLimit);
     }
     let mut exit_code = 0_i32;
+    let mut process_state = process_ops::ProcessState::new();
     let mut wire_state = wire::WireState::new();
     for step in &steps {
         let op = field_str(step, "op")?;
         match classify(op)? {
-            StepOwner::Process => {
-                process_ops::execute(step, invocation.case_id, invocation.seed, &mut exit_code)?
-            }
+            StepOwner::Process => process_ops::execute(
+                step,
+                invocation.case_id,
+                invocation.seed,
+                &mut exit_code,
+                &mut process_state,
+            )?,
             StepOwner::Wire => wire::execute(step, invocation.seed, &mut wire_state)?,
             StepOwner::HostOracle => return Err(FixtureError::HostOracleRequired),
         }

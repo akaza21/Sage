@@ -27,6 +27,8 @@ mod process_ops;
 mod resume_external_tests;
 #[cfg(test)]
 mod test_support;
+#[cfg(all(test, windows))]
+mod windows_literal_tests;
 mod wire;
 mod wire_payload;
 

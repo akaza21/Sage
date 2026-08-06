@@ -198,6 +198,8 @@ pub(crate) struct LaunchSpec {
     pub(crate) deadlines: ProcessDeadlines,
     #[cfg(test)]
     pub(crate) absolute_cleanup_deadline: Option<Instant>,
+    #[cfg(all(test, windows))]
+    pub(crate) test_after_artifact_verified: Option<Box<dyn Fn() + Send + Sync>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
