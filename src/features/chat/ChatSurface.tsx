@@ -40,7 +40,11 @@ export function ChatSurface() {
   const acpPage = useAcpChatProjection(useNativeAcp);
   const acpActions = useAcpChatActions();
   const acpHistory = useAcpChatHistory();
+  const surfaceRef = useRef<HTMLElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const priorCancellableTurn = useRef(acpActions.cancellableTurnId);
+  const terminalFocusPending = useRef(false);
 
   const harnessAvailable = selectedHarness?.installState === "available";
   const selectedAcpBindingId =
@@ -70,11 +74,36 @@ export function ChatSurface() {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length]);
 
+  useEffect(() => {
+    if (priorCancellableTurn.current && !acpActions.cancellableTurnId) {
+      terminalFocusPending.current = true;
+    } else if (acpActions.cancellableTurnId) {
+      terminalFocusPending.current = false;
+    }
+    priorCancellableTurn.current = acpActions.cancellableTurnId;
+    if (terminalFocusPending.current && !actionBusy && !projectTransitioning) {
+      const composer = composerRef.current;
+      const statuses =
+        surfaceRef.current?.querySelectorAll<HTMLElement>("[data-turn-status]");
+      const target =
+        composer && !composer.disabled
+          ? composer
+          : statuses?.item(statuses.length - 1);
+      target?.focus();
+      terminalFocusPending.current = !target;
+    }
+  }, [
+    acpActions.cancellableTurnId,
+    actionBusy,
+    canPrompt,
+    projectTransitioning,
+  ]);
+
   function submit(event: FormEvent) {
     event.preventDefault();
     const bindingId = selectedAcpBindingId;
     if (useNativeAcp) {
-      if (!bindingId) return;
+      if (!bindingId || acpActions.cancellableTurnId) return;
       void acpActions.submit(
         composerText,
         bindingId,
@@ -90,7 +119,7 @@ export function ChatSurface() {
   }
 
   return (
-    <section className="chat-surface" aria-label="Agent chat">
+    <section ref={surfaceRef} className="chat-surface" aria-label="Agent chat">
       <header className="surface-header">
         <div>
           <p className="eyebrow">Persistent agent session</p>
@@ -113,8 +142,6 @@ export function ChatSurface() {
               <AcpChatProjection
                 page={acpPage}
                 active
-                cancellableTurnId={acpActions.cancellableTurnId}
-                onCancelTurn={(turnId) => void acpActions.cancel(turnId)}
                 onOpenResource={openAcpResource}
                 hasEarlier={acpHistory.hasEarlier}
                 loadingEarlier={acpHistory.loadingEarlier}
@@ -171,10 +198,15 @@ export function ChatSurface() {
           </div>
         ) : null}
         <label className="sr-only" htmlFor="prompt">
-          Prompt
+          Message agent
         </label>
+        <span className="sr-only" id="prompt-description">
+          Send a message to the selected harness and model
+        </span>
         <textarea
+          ref={composerRef}
           id="prompt"
+          aria-describedby="prompt-description"
           value={composerText}
           rows={3}
           placeholder={
@@ -185,7 +217,11 @@ export function ChatSurface() {
           disabled={!canPrompt || actionBusy || projectTransitioning}
           onChange={(event) => setComposerText(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
+            if (
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !acpActions.cancellableTurnId
+            ) {
               event.preventDefault();
               event.currentTarget.form?.requestSubmit();
             }
@@ -249,19 +285,33 @@ export function ChatSurface() {
               Read-only policy
             </span>
           </div>
-          <button
-            className="send-button"
-            type="submit"
-            aria-label="Send prompt"
-            disabled={
-              projectTransitioning ||
-              !composerText.trim() ||
-              !canPrompt ||
-              actionBusy
-            }
-          >
-            <ArrowUp size={18} aria-hidden="true" />
-          </button>
+          {useNativeAcp && acpActions.cancellableTurnId ? (
+            <button
+              className="send-button"
+              type="button"
+              aria-label="Cancel turn"
+              disabled={actionBusy || projectTransitioning}
+              onClick={() =>
+                void acpActions.cancel(acpActions.cancellableTurnId!)
+              }
+            >
+              Cancel
+            </button>
+          ) : (
+            <button
+              className="send-button"
+              type="submit"
+              aria-label="Send message"
+              disabled={
+                projectTransitioning ||
+                !composerText.trim() ||
+                !canPrompt ||
+                actionBusy
+              }
+            >
+              <ArrowUp size={18} aria-hidden="true" />
+            </button>
+          )}
         </div>
       </form>
     </section>

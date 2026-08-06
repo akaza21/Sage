@@ -1,5 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpItem, HarnessActivityProjection } from "../../../domain/acp";
 import { HarnessActivity } from "./HarnessActivity";
@@ -7,7 +7,7 @@ import { HarnessActivity } from "./HarnessActivity";
 afterEach(cleanup);
 
 describe("HarnessActivity", () => {
-  it("groups bounded child items inside a disclosure", () => {
+  it("groups bounded child items in a roving keyboard tree", () => {
     const activity = {
       id: "activity-1",
       turnId: "turn-1",
@@ -25,10 +25,11 @@ describe("HarnessActivity", () => {
       },
       revision: "1",
     } as HarnessActivityProjection;
-    const item = {
+    const firstItem = {
       id: "item-child",
       kind: "collaboration",
       activityId: "activity-1",
+      lifecycle: "streaming",
       payload: {
         activityId: "activity-1",
         label: "Child result",
@@ -36,9 +37,58 @@ describe("HarnessActivity", () => {
         receiverLabels: [],
       },
     } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
-    render(<HarnessActivity activity={activity} items={[item]} />);
-    expect(screen.getByText("Harness child")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Completed");
+    const secondItem = {
+      ...firstItem,
+      id: "item-child-2",
+      payload: { ...firstItem.payload, label: "Second result" },
+    } as typeof firstItem;
+    const activateResource = vi.fn();
+    render(
+      <HarnessActivity
+        activity={activity}
+        items={[firstItem, secondItem]}
+        renderItem={(item) => (
+          <button
+            className="acp-resource-action"
+            type="button"
+            onClick={() => activateResource(item.id)}
+          >
+            Open safe resource
+          </button>
+        )}
+      />,
+    );
+    const disclosure = screen.getByText("Harness child").closest("summary");
+    expect(disclosure).not.toBeNull();
+    expect(screen.getByRole("status", { name: "Completed" })).toHaveTextContent(
+      "Completed",
+    );
+    fireEvent.click(disclosure!);
+    expect(
+      screen.getByRole("group", {
+        name: "Harness activity: Harness child",
+        description: "Bounded read-only child activity in the originating Turn",
+      }),
+    ).toBeInTheDocument();
+    const tree = screen.getByRole("tree");
+    const nodes = screen.getAllByRole("treeitem");
+    expect(nodes).toHaveLength(2);
+    expect(nodes[0]).toHaveAttribute("aria-level", "2");
+    expect(nodes[0]).toHaveAttribute("tabindex", "0");
+    expect(nodes[1]).toHaveAttribute("tabindex", "-1");
+    expect(tree.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
+    nodes[0].focus();
+    fireEvent.keyDown(nodes[0], { key: "ArrowDown" });
+    expect(nodes[1]).toHaveFocus();
+    fireEvent.keyDown(nodes[1], { key: "Home" });
+    expect(nodes[0]).toHaveFocus();
+    fireEvent.keyDown(nodes[0], { key: "End" });
+    expect(nodes[1]).toHaveFocus();
+    fireEvent.keyDown(nodes[1], { key: "Enter" });
+    expect(activateResource).toHaveBeenCalledWith("item-child-2");
+    fireEvent.keyDown(nodes[1], { key: "ArrowLeft" });
+    expect(disclosure).toHaveFocus();
+    expect(disclosure?.parentElement).not.toHaveAttribute("open");
     expect(
       screen.getByText("Harness-owned child activity · depth 2"),
     ).toBeInTheDocument();

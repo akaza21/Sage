@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
 import { PermissionItem } from "./PermissionItem";
@@ -38,28 +38,32 @@ function permission(
 }
 
 describe("PermissionItem", () => {
-  it("fails closed with a deny action and no allow action", () => {
-    const onDeny = vi.fn();
-    render(<PermissionItem item={permission("received")} onDeny={onDeny} />);
-    fireEvent.click(screen.getByRole("button", { name: "Deny permission" }));
-    expect(onDeny).toHaveBeenCalledWith("request-1");
-    expect(
-      screen.queryByRole("button", { name: /allow/i }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("disables repeat denial after the durable decline starts", () => {
-    render(<PermissionItem item={permission("declineCommitted")} />);
-    expect(screen.getByRole("button")).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Permission denial committed",
-    );
-  });
-
-  it("does not offer an actionable denial before the bridge is wired", () => {
+  it("exposes only fail-closed permission semantics and details", () => {
     render(<PermissionItem item={permission("received")} />);
     expect(
-      screen.getByRole("button", { name: "Deny permission" }),
-    ).toBeDisabled();
+      screen.getByRole("group", {
+        name: "Permission request",
+        description:
+          "Sage declines permission requests in this read-only foundation",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Declining" })).toHaveAttribute(
+      "aria-live",
+      "assertive",
+    );
+    expect(screen.getByText("Details")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /allow|approve|deny/i }),
+    ).toBeNull();
+  });
+
+  it("announces a durable decline exactly once with the terminal name", () => {
+    render(<PermissionItem item={permission("resolvedDeclined")} />);
+    const status = screen.getByRole("status", {
+      name: "Permission declined",
+    });
+    expect(status).toHaveTextContent("Declined");
+    expect(status).toHaveAttribute("aria-live", "assertive");
+    expect(status).toHaveAttribute("aria-atomic", "true");
   });
 });

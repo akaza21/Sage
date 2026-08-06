@@ -2,8 +2,6 @@ import type {
   AcpChatPage,
   AcpItem,
   FileChangeProjection,
-  SagePermissionRequestId,
-  SageTurnId,
   TurnProjection,
 } from "../../../domain/acp";
 import type { ResourceRef } from "../../../domain/workbench";
@@ -18,9 +16,6 @@ import "./acp-chat.css";
 interface AcpChatProjectionProps {
   page: AcpChatPage;
   active: boolean;
-  cancellableTurnId?: SageTurnId | null;
-  onCancelTurn?: (turnId: SageTurnId) => void;
-  onDenyPermission?: (requestId: SagePermissionRequestId) => void;
   onOpenResource?: (resource: ResourceRef, target: OpenResourceTarget) => void;
   hasEarlier?: boolean;
   loadingEarlier?: boolean;
@@ -35,7 +30,7 @@ const turnStateLabels = {
   waitingModel: "Waiting for model",
   waitingTool: "Waiting for tool",
   waitingApproval: "Waiting for approval",
-  waitingUser: "Waiting for you",
+  waitingUser: "Waiting for user",
   cancelling: "Cancelling",
   completed: "Completed",
   interrupted: "Interrupted",
@@ -43,16 +38,6 @@ const turnStateLabels = {
   failed: "Failed",
   deliveryUnknown: "Delivery unknown",
 } as const;
-
-const cancellableStates = new Set<TurnProjection["state"]>([
-  "queued",
-  "sending",
-  "running",
-  "waitingModel",
-  "waitingTool",
-  "waitingApproval",
-  "waitingUser",
-]);
 
 function ResourceChange({
   change,
@@ -90,11 +75,9 @@ function ResourceChange({
 
 function ItemView({
   item,
-  onDenyPermission,
   onOpenResource,
 }: {
   item: AcpItem;
-  onDenyPermission?: AcpChatProjectionProps["onDenyPermission"];
   onOpenResource?: AcpChatProjectionProps["onOpenResource"];
 }) {
   switch (item.kind) {
@@ -159,7 +142,7 @@ function ItemView({
         </p>
       );
     case "permissionRequest":
-      return <PermissionItem item={item} onDeny={onDenyPermission} />;
+      return <PermissionItem item={item} />;
     case "error":
       return (
         <article className="acp-error" role="alert">
@@ -176,45 +159,31 @@ function ItemView({
 
 function Turn({
   turn,
-  cancellableTurnId,
-  onCancelTurn,
-  onDenyPermission,
   onOpenResource,
 }: {
   turn: TurnProjection;
-  cancellableTurnId?: AcpChatProjectionProps["cancellableTurnId"];
-  onCancelTurn?: AcpChatProjectionProps["onCancelTurn"];
-  onDenyPermission?: AcpChatProjectionProps["onDenyPermission"];
   onOpenResource?: AcpChatProjectionProps["onOpenResource"];
 }) {
   const primaryItems = turn.items.filter((item) => item.origin === "primary");
+  const status = turnStateLabels[turn.state];
   return (
     <section className="acp-turn" aria-label={`Turn ${turn.ordinal}`}>
       <header className="acp-turn__header">
-        <span className="acp-state" role="status" aria-live="polite">
-          {turnStateLabels[turn.state]}
+        <span
+          className="acp-state"
+          role="status"
+          aria-label={status}
+          aria-live="polite"
+          aria-atomic="true"
+          data-turn-status
+          tabIndex={-1}
+        >
+          {status}
         </span>
-        {cancellableStates.has(turn.state) &&
-        cancellableTurnId === turn.id &&
-        onCancelTurn ? (
-          <button
-            type="button"
-            className="acp-cancel-action"
-            aria-label={`Cancel turn ${turn.ordinal}`}
-            onClick={() => onCancelTurn?.(turn.id)}
-          >
-            Cancel turn
-          </button>
-        ) : null}
       </header>
       <div className="acp-turn__items">
         {primaryItems.map((item) => (
-          <ItemView
-            key={item.id}
-            item={item}
-            onDenyPermission={onDenyPermission}
-            onOpenResource={onOpenResource}
-          />
+          <ItemView key={item.id} item={item} onOpenResource={onOpenResource} />
         ))}
         {turn.activities.map((activity) => (
           <HarnessActivity
@@ -222,11 +191,7 @@ function Turn({
             activity={activity}
             items={turn.items}
             renderItem={(item) => (
-              <ItemView
-                item={item}
-                onDenyPermission={onDenyPermission}
-                onOpenResource={onOpenResource}
-              />
+              <ItemView item={item} onOpenResource={onOpenResource} />
             )}
           />
         ))}
@@ -238,9 +203,6 @@ function Turn({
 export function AcpChatProjection({
   page,
   active,
-  cancellableTurnId,
-  onCancelTurn,
-  onDenyPermission,
   onOpenResource,
   hasEarlier = false,
   loadingEarlier = false,
@@ -274,14 +236,7 @@ export function AcpChatProjection({
         <p className="acp-empty">No turns in this chat yet.</p>
       ) : (
         page.turns.map((turn) => (
-          <Turn
-            key={turn.id}
-            turn={turn}
-            cancellableTurnId={cancellableTurnId}
-            onCancelTurn={onCancelTurn}
-            onDenyPermission={onDenyPermission}
-            onOpenResource={onOpenResource}
-          />
+          <Turn key={turn.id} turn={turn} onOpenResource={onOpenResource} />
         ))
       )}
     </section>

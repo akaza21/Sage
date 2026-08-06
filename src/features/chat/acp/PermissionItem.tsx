@@ -1,41 +1,46 @@
-import type { AcpItem, SagePermissionRequestId } from "../../../domain/acp";
+import { useId } from "react";
+
+import type { AcpItem } from "../../../domain/acp";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
-interface PermissionItemProps {
-  item: PermissionProjectionItem;
-  onDeny?: (requestId: SagePermissionRequestId) => void;
-}
-
 const permissionLabels = {
-  received: "Permission requested",
-  declinePending: "Denying permission",
-  declineCommitted: "Permission denial committed",
-  responseQueued: "Permission denial queued",
-  resolvedDeclined: "Permission denied",
+  received: "Declining",
+  declinePending: "Declining",
+  declineCommitted: "Declined",
+  responseQueued: "Declined",
+  resolvedDeclined: "Declined",
 } as const;
 
-export function PermissionItem({ item, onDeny }: PermissionItemProps) {
-  const canDeny = item.payload.state === "received" && Boolean(onDeny);
+export function PermissionItem({ item }: { item: PermissionProjectionItem }) {
+  const descriptionId = useId();
+  const status = permissionLabels[item.payload.state];
+  const terminal = item.payload.state === "resolvedDeclined";
   return (
-    <article className="acp-permission" aria-label="Permission request">
+    <article
+      className="acp-permission"
+      role="group"
+      aria-label="Permission request"
+      aria-describedby={descriptionId}
+    >
+      <span className="sr-only" id={descriptionId}>
+        Sage declines permission requests in this read-only foundation
+      </span>
       <header>
         <strong>{item.payload.label}</strong>
-        <span role="status" aria-live="assertive">
-          {permissionLabels[item.payload.state]}
+        <span
+          role="status"
+          aria-label={terminal ? "Permission declined" : status}
+          aria-live="assertive"
+          aria-atomic="true"
+        >
+          {status}
         </span>
       </header>
-      <p>{item.payload.summary}</p>
-      <button
-        type="button"
-        className="acp-deny-action"
-        disabled={!canDeny}
-        onClick={() => onDeny?.(item.payload.requestId)}
-      >
-        {item.payload.state === "received"
-          ? "Deny permission"
-          : permissionLabels[item.payload.state]}
-      </button>
+      <details className="acp-details">
+        <summary>Details</summary>
+        <p>{item.payload.summary}</p>
+      </details>
     </article>
   );
 }

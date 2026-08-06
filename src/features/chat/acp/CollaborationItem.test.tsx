@@ -10,6 +10,7 @@ describe("CollaborationItem", () => {
   it("projects harness-owned collaboration without creating Sage controls", () => {
     const item = {
       kind: "collaboration",
+      lifecycle: "streaming",
       payload: {
         activityId: "activity-1",
         label: "Research lane",
@@ -18,9 +19,13 @@ describe("CollaborationItem", () => {
       },
     } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
     render(<CollaborationItem item={item} />);
-    expect(screen.getByLabelText("Harness collaboration")).toHaveTextContent(
-      "Participants: Reviewer, Builder",
-    );
+    expect(
+      screen.getByRole("group", {
+        name: "Harness collaboration",
+        description: "Read-only activity owned and scheduled by the harness",
+      }),
+    ).toHaveTextContent("Participants: Reviewer, Builder");
+    expect(screen.getByRole("status", { name: "Active" })).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });

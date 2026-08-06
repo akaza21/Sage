@@ -43,48 +43,23 @@ function page(state: TurnProjection["state"]): AcpChatPage {
 }
 
 describe("AcpChatProjection", () => {
-  it("renders lifecycle state and exposes a keyboard-accessible cancel intent", () => {
-    const onCancel = vi.fn();
-    render(
-      <AcpChatProjection
-        page={page("waitingModel")}
-        active
-        cancellableTurnId={"turn-1" as never}
-        onCancelTurn={onCancel}
-      />,
-    );
+  it("exposes every Turn transition through the frozen atomic status semantics", () => {
+    render(<AcpChatProjection page={page("waitingUser")} active />);
+    const status = screen.getByRole("status", { name: "Waiting for user" });
+    expect(status).toHaveTextContent("Waiting for user");
+    expect(status).toHaveAttribute("aria-live", "polite");
+    expect(status).toHaveAttribute("aria-atomic", "true");
+  });
+
+  it("renders lifecycle state and normalized items", () => {
+    render(<AcpChatProjection page={page("waitingModel")} active />);
     expect(screen.getByRole("status")).toHaveTextContent("Waiting for model");
     expect(screen.getByText("Normalized answer")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel turn 1" }));
-    expect(onCancel).toHaveBeenCalledWith("turn-1");
   });
 
-  it("does not expose cancel for a terminal Turn", () => {
+  it("keeps cancellation out of the transcript projection", () => {
     render(<AcpChatProjection page={page("completed")} active />);
     expect(screen.getByRole("status")).toHaveTextContent("Completed");
-    expect(screen.queryByRole("button", { name: /cancel turn/i })).toBeNull();
-  });
-
-  it("does not expose an interactive cancel without a wired handler", () => {
-    render(
-      <AcpChatProjection
-        page={page("running")}
-        active
-        cancellableTurnId={"turn-1" as never}
-      />,
-    );
-    expect(screen.queryByRole("button", { name: /cancel turn/i })).toBeNull();
-  });
-
-  it("does not expose cancel for a different or ambiguous active Turn", () => {
-    render(
-      <AcpChatProjection
-        page={page("running")}
-        active
-        cancellableTurnId={"turn-other" as never}
-        onCancelTurn={vi.fn()}
-      />,
-    );
     expect(screen.queryByRole("button", { name: /cancel turn/i })).toBeNull();
   });
 

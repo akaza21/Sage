@@ -11,7 +11,7 @@ const hooks = vi.hoisted(() => ({
   actions: {
     busy: false,
     error: null,
-    cancellableTurnId: null,
+    cancellableTurnId: null as string | null,
     submit: vi.fn(),
     cancel: vi.fn(),
     close: vi.fn(),
@@ -121,6 +121,9 @@ function projection(): AcpChatPage {
 
 beforeEach(() => {
   hooks.page = projection();
+  hooks.actions.busy = false;
+  hooks.actions.error = null;
+  hooks.actions.cancellableTurnId = null;
   Element.prototype.scrollIntoView = vi.fn();
   useWorkbenchStore.setState({
     harnesses: [
@@ -145,12 +148,46 @@ afterEach(() => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
+  it("exposes the frozen composer names and replaces Send with Cancel for an active Turn", () => {
+    const { rerender } = render(<ChatSurface />);
+    const composer = screen.getByRole("textbox", {
+      name: "Message agent",
+      description: "Send a message to the selected harness and model",
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Send message" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel turn" })).toBeNull();
+
+    hooks.actions.cancellableTurnId = "turn-a";
+    rerender(<ChatSurface />);
+    expect(screen.queryByRole("button", { name: "Send message" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel turn" }));
+    expect(hooks.actions.cancel).toHaveBeenCalledWith("turn-a");
+
+    hooks.actions.cancellableTurnId = null;
+    rerender(<ChatSurface />);
+    expect(composer).toHaveFocus();
+
+    composer.blur();
+    hooks.actions.cancellableTurnId = "turn-a";
+    rerender(<ChatSurface />);
+    hooks.actions.busy = true;
+    hooks.actions.cancellableTurnId = null;
+    rerender(<ChatSurface />);
+    hooks.actions.busy = false;
+    hooks.actions.cancellableTurnId = "turn-a";
+    rerender(<ChatSurface />);
+    expect(composer).not.toHaveFocus();
+  });
+
   it("keeps ACP prompting disabled until authoritative Chat state loads", () => {
     hooks.page = null;
     render(<ChatSurface />);
 
-    expect(screen.getByRole("button", { name: "Send prompt" })).toBeDisabled();
-    expect(screen.getByLabelText("Prompt")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    expect(screen.getByLabelText("Message agent")).toBeDisabled();
   });
 
   it("does not let a stale ACP page mask simulator messages", () => {

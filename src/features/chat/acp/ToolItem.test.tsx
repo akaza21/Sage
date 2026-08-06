@@ -10,6 +10,7 @@ type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
 
 function tool(
   presentation: ToolProjectionItem["payload"]["presentation"],
+  toolState: ToolProjectionItem["toolState"] = "inProgress",
 ): ToolProjectionItem {
   return {
     id: "item-1",
@@ -27,7 +28,7 @@ function tool(
     updatedAt: 1,
     terminalAt: null,
     kind: "toolCall",
-    toolState: "inProgress",
+    toolState,
     payload: { presentation, inputSummary: "Bounded retained input" },
   } as ToolProjectionItem;
 }
@@ -101,7 +102,10 @@ describe("ToolItem", () => {
       />,
     );
     expect(
-      screen.getByLabelText("Unknown provider tool tool"),
+      screen.getByRole("group", {
+        name: "Unknown provider tool",
+        description: "Bounded retained input",
+      }),
     ).toHaveTextContent("Normalized fallback");
     expect(screen.getByRole("status")).toHaveTextContent("In progress");
 
@@ -116,6 +120,27 @@ describe("ToolItem", () => {
       />,
     );
     expect(screen.getByText("Issue tracker · Read issue")).toBeInTheDocument();
+  });
+
+  it("announces a terminal tool state once using the tool label", () => {
+    render(
+      <ToolItem
+        item={tool(
+          {
+            kind: "generic",
+            label: "Unknown provider tool",
+            summary: "Normalized fallback",
+          },
+          "completed",
+        )}
+      />,
+    );
+    const status = screen.getByRole("status", {
+      name: "Unknown provider tool: Completed",
+    });
+    expect(status).toHaveTextContent("Completed");
+    expect(status).toHaveAttribute("aria-live", "polite");
+    expect(status).toHaveAttribute("aria-atomic", "true");
   });
 
   it("keeps canonical resources inert until a native open handler is wired", () => {
