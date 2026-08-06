@@ -10,7 +10,9 @@ type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
 function permission(
   state: PermissionProjectionItem["payload"]["state"],
+  failedClosed = false,
 ): PermissionProjectionItem {
+  const declined = state === "resolvedDeclined" && !failedClosed;
   return {
     id: "permission-item",
     projectId: "project-1",
@@ -21,13 +23,17 @@ function permission(
     ordinal: 1,
     origin: "primary",
     activityId: null,
-    lifecycle: "streaming",
+    lifecycle: failedClosed ? "failed" : declined ? "completed" : "streaming",
     revision: "1",
     createdAt: 1,
     updatedAt: 1,
-    terminalAt: null,
+    terminalAt: failedClosed || declined ? 2 : null,
     kind: "permissionRequest",
-    toolState: "waitingForApproval",
+    toolState: failedClosed
+      ? "failed"
+      : declined
+        ? "declined"
+        : "waitingForApproval",
     payload: {
       requestId: "request-1",
       state,
@@ -65,5 +71,16 @@ describe("PermissionItem", () => {
     expect(status).toHaveTextContent("Declined");
     expect(status).toHaveAttribute("aria-live", "assertive");
     expect(status).toHaveAttribute("aria-atomic", "true");
+  });
+
+  it("announces an unresolved permission terminalized by teardown as failed closed", () => {
+    render(<PermissionItem item={permission("resolvedDeclined", true)} />);
+    const status = screen.getByRole("status", {
+      name: "Permission failed closed",
+    });
+    expect(status).toHaveTextContent("Failed closed");
+    expect(status).toHaveAttribute("aria-live", "assertive");
+    expect(status).toHaveAttribute("aria-atomic", "true");
+    expect(screen.queryByRole("button", { name: /allow|approve/i })).toBeNull();
   });
 });
