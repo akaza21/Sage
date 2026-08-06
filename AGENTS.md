@@ -34,6 +34,8 @@
   metadata.
 - Never introduce unbounded queues, scans, terminal buffers, transcripts, or
   frontend lists.
+- Update `docs/development/FEATURE-ROADMAP.md` in the same change whenever a
+  feature or task changes delivery status.
 
 ## Default engineering flow
 
