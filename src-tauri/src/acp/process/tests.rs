@@ -23,6 +23,7 @@ fn launch_spec(path: PathBuf) -> LaunchSpec {
         required_guarantee: RequiredContainment::EnforcedTree,
         limits: TreeLimits::ade_0006a(),
         deadlines: ProcessDeadlines::ade_0006a(),
+        absolute_cleanup_deadline: None,
     }
 }
 
@@ -259,6 +260,7 @@ fn verified_fixture_spec_at(case: &str, seed: u32, path: PathBuf) -> LaunchSpec 
         required_guarantee: RequiredContainment::EnforcedTree,
         limits: TreeLimits::ade_0006a(),
         deadlines: ProcessDeadlines::ade_0006a(),
+        absolute_cleanup_deadline: None,
     }
 }
 

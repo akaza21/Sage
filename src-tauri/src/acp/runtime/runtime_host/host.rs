@@ -24,8 +24,19 @@ pub(crate) struct RuntimeHost {
     thread: Mutex<Option<BoundedThread>>,
     lifecycle: AtomicU8,
     #[cfg(test)]
-    timeout_override: Option<Duration>,
+    timeout_override: Option<TimeoutOverride>,
 }
+
+#[cfg(test)]
+#[derive(Clone, Copy)]
+enum TimeoutOverride {
+    Duration(Duration),
+    Deadline {
+        operation: Instant,
+        cleanup: Instant,
+    },
+}
+
 impl RuntimeHost {
     pub(crate) fn start<E: RuntimeEngine>(engine: E) -> Result<Self, HostError> {
         Self::start_inner(engine, None)
@@ -36,12 +47,24 @@ impl RuntimeHost {
         engine: E,
         timeout: Duration,
     ) -> Result<Self, HostError> {
-        Self::start_inner(engine, Some(timeout))
+        Self::start_inner(engine, Some(TimeoutOverride::Duration(timeout)))
+    }
+
+    #[cfg(all(test, windows))]
+    pub(crate) fn start_with_deadline<E: RuntimeEngine>(
+        engine: E,
+        operation: Instant,
+        cleanup: Instant,
+    ) -> Result<Self, HostError> {
+        Self::start_inner(
+            engine,
+            Some(TimeoutOverride::Deadline { operation, cleanup }),
+        )
     }
 
     fn start_inner<E: RuntimeEngine>(
         engine: E,
-        #[cfg(test)] timeout_override: Option<Duration>,
+        #[cfg(test)] timeout_override: Option<TimeoutOverride>,
         #[cfg(not(test))] _timeout_override: Option<Duration>,
     ) -> Result<Self, HostError> {
         let mailbox = Arc::new(HostMailbox::new()?);
@@ -137,7 +160,7 @@ impl RuntimeHost {
 
     pub(crate) fn shutdown(&self) -> Result<(), HostError> {
         let started = Instant::now();
-        let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+        let budget = self.cleanup_timeout();
         match self.lifecycle.load(Ordering::Acquire) {
             HOST_JOINED => return Ok(()),
             HOST_AWAITING_EXIT | HOST_SHUTDOWN_ACKNOWLEDGED => {
@@ -224,15 +247,27 @@ impl RuntimeHost {
     fn response_timeout(&self, command: &HostCommand) -> Duration {
         #[cfg(test)]
         if let Some(timeout) = self.timeout_override {
-            return timeout;
+            return match timeout {
+                TimeoutOverride::Duration(duration) => duration,
+                TimeoutOverride::Deadline { operation, .. } => operation
+                    .saturating_duration_since(Instant::now())
+                    .min(Duration::from_millis(command.deadline_millis())),
+            };
         }
         Duration::from_millis(command.deadline_millis())
     }
 
     pub(super) fn join(&self) -> Result<(), HostError> {
-        self.join_with_timeout(Duration::from_millis(
-            crate::acp::limits::LIMITS.deadlines_ms.explicit_close,
-        ))
+        self.join_with_timeout(self.cleanup_timeout())
+    }
+
+    fn cleanup_timeout(&self) -> Duration {
+        let native = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+        #[cfg(test)]
+        if let Some(TimeoutOverride::Deadline { cleanup, .. }) = self.timeout_override {
+            return native.min(cleanup.saturating_duration_since(Instant::now()));
+        }
+        native
     }
 
     fn join_with_timeout(&self, timeout: Duration) -> Result<(), HostError> {
@@ -265,7 +300,7 @@ impl Drop for RuntimeHost {
             return;
         }
         let started = Instant::now();
-        let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+        let budget = self.cleanup_timeout();
         if self.lifecycle.load(Ordering::Acquire) == HOST_RUNNING
             && self.outcome(HostCommand::Shutdown).is_ok()
         {

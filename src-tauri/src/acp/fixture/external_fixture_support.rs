@@ -8,19 +8,17 @@ use crate::{
     acp::{
         contract::{ClientIntentId, RequiredText, SafeText, SageChatId, SageProjectId},
         process::{TreeControl, TreeExit},
-        runtime::{
-            BoundedThread, JournalHandle, JournalRunner, SessionCoordinator, ThreadWaitError,
-        },
+        runtime::{BoundedThread, JournalHandle, SessionCoordinator, ThreadWaitError},
         scheduler::Scheduler,
-        store::{AcpStore, DatabaseAcpStore, SessionMutation, StartSessionCommand, load_chat_page},
+        store::{DatabaseAcpStore, SessionMutation, StartSessionCommand, load_chat_page},
     },
     persistence::Database,
 };
 
 use super::external_fixture_adapters::{CommitCheckingPublisher, hex};
+use super::test_support::{FixtureDeadline, JournalCleanup};
 
 pub(super) const FIXTURE_BINDING_DIGEST: [u8; 32] = [7_u8; 32];
-const READER_DEADLINE: Duration = Duration::from_secs(5);
 
 pub(super) struct FixtureEnvironment {
     pub(super) project_root: PathBuf,
@@ -31,7 +29,7 @@ pub(super) struct FixtureEnvironment {
     pub(super) now_millis: i64,
     pub(super) publisher: Arc<CommitCheckingPublisher>,
     pub(super) journal: JournalHandle,
-    pub(super) journal_task: tokio::task::JoinHandle<()>,
+    pub(super) journal_cleanup: JournalCleanup,
     pub(super) scheduler: Scheduler,
     pub(super) sessions: SessionCoordinator,
     pub(super) started: SessionMutation,
@@ -43,6 +41,7 @@ pub(super) async fn prepare_fixture_environment(
     chat_id: &str,
     title: &str,
     start_intent: &str,
+    deadline: FixtureDeadline,
 ) -> FixtureEnvironment {
     let temp_root = TempRoot::new(prefix);
     let project_root = temp_root.path().join("project");
@@ -66,7 +65,7 @@ pub(super) async fn prepare_fixture_environment(
         terminal_seen_after_commit: Default::default(),
     });
     let (journal, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
-    let journal_task = runner.spawn();
+    let journal_cleanup = JournalCleanup::spawn(deadline, journal.clone(), runner).unwrap();
     let scheduler = Scheduler::new();
     let sessions = SessionCoordinator::new(journal.clone(), scheduler.clone(), publisher.clone());
     let initial = load_chat_page(
@@ -76,8 +75,9 @@ pub(super) async fn prepare_fixture_environment(
         None,
     )
     .unwrap();
-    let started = sessions
-        .start_session(StartSessionCommand {
+    let started = tokio::time::timeout(
+        deadline.operation_before_cleanup(),
+        sessions.start_session(StartSessionCommand {
             project_id: project_id.clone(),
             chat_id: chat_id.clone(),
             expected_projection_revision: initial.projection_revision,
@@ -87,9 +87,11 @@ pub(super) async fn prepare_fixture_environment(
             harness_version: Some(SafeText::new("harnessVersion", "fixture-1").unwrap()),
             model_id: None,
             now_millis,
-        })
-        .await
-        .unwrap();
+        }),
+    )
+    .await
+    .expect("fixture session start timed out")
+    .unwrap();
     FixtureEnvironment {
         project_root,
         database_path,
@@ -99,7 +101,7 @@ pub(super) async fn prepare_fixture_environment(
         now_millis,
         publisher,
         journal,
-        journal_task,
+        journal_cleanup,
         scheduler,
         sessions,
         started,
@@ -138,60 +140,24 @@ impl Drop for TempRoot {
     }
 }
 
-pub(super) struct JournalCleanup {
-    journal: JournalHandle,
-    thread: Option<BoundedThread>,
-}
-
-impl JournalCleanup {
-    pub(super) fn spawn<S: AcpStore + 'static>(
-        journal: JournalHandle,
-        runner: JournalRunner<S>,
-    ) -> std::io::Result<Self> {
-        let thread = BoundedThread::spawn("external-fixture-journal", move || {
-            runner.run_blocking();
-        })?;
-        Ok(Self {
-            journal,
-            thread: Some(thread),
-        })
-    }
-
-    pub(super) fn finish(mut self, timeout: Duration) -> Result<(), ThreadWaitError> {
-        self.journal.close_when_drained();
-        let result = self
-            .thread
-            .as_mut()
-            .expect("fixture journal thread retained")
-            .wait(timeout);
-        self.thread.take();
-        result
-    }
-}
-
-impl Drop for JournalCleanup {
-    fn drop(&mut self) {
-        self.journal.shutdown();
-        if let Some(thread) = &mut self.thread {
-            let deadline =
-                Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.tree_termination);
-            let _ = thread.wait(deadline);
-        }
-    }
-}
-
 pub(super) struct ProcessCleanup {
     control: TreeControl,
     reader: Option<BoundedThread>,
     zero: bool,
+    deadline: FixtureDeadline,
 }
 
 impl ProcessCleanup {
-    pub(super) fn new(control: TreeControl, reader: Option<BoundedThread>) -> Self {
+    pub(super) fn new(
+        control: TreeControl,
+        reader: Option<BoundedThread>,
+        deadline: FixtureDeadline,
+    ) -> Self {
         Self {
             control,
             reader,
             zero: false,
+            deadline,
         }
     }
 
@@ -200,7 +166,7 @@ impl ProcessCleanup {
     }
 
     pub(super) fn finish_after_zero(&mut self) -> Result<(), ThreadWaitError> {
-        self.finish_after_zero_within(READER_DEADLINE)
+        self.finish_after_zero_within(self.deadline.tree())
     }
 
     pub(super) fn finish_after_zero_within(
@@ -209,19 +175,22 @@ impl ProcessCleanup {
     ) -> Result<(), ThreadWaitError> {
         self.zero = true;
         let result = match &mut self.reader {
-            Some(reader) => reader.wait(timeout),
+            Some(reader) => reader.wait(timeout.min(self.deadline.tree())),
             None => Ok(()),
         };
-        self.reader.take();
+        if !matches!(result, Err(ThreadWaitError::Timeout)) {
+            self.reader.take();
+        }
         result
     }
 
     pub(super) fn wait_zero(&mut self) -> TreeExit {
+        let started = std::time::Instant::now();
         let (exit, _) = self
             .control
-            .wait_zero()
+            .wait_zero_within(self.deadline.tree())
             .unwrap_or_else(|error| panic!("fixture process did not converge: {error:?}"));
-        self.finish_after_zero()
+        self.finish_after_zero_within(self.deadline.tree_since(started))
             .unwrap_or_else(|error| panic!("fixture reader did not finish: {error:?}"));
         exit
     }
@@ -229,12 +198,13 @@ impl ProcessCleanup {
 
 impl Drop for ProcessCleanup {
     fn drop(&mut self) {
+        let started = std::time::Instant::now();
         if !self.zero {
             let _ = self.control.request_termination(TreeExit::Cancelled);
-            let _ = self.control.wait_zero();
+            let _ = self.control.wait_zero_within(self.deadline.tree());
         }
         if let Some(reader) = &mut self.reader {
-            let _ = reader.wait(READER_DEADLINE);
+            let _ = reader.wait(self.deadline.tree_since(started));
         }
     }
 }

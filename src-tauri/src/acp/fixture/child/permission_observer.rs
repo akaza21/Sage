@@ -19,6 +19,7 @@ use super::{
     permission_store_fixture::{BINDING_DIGEST, PermissionStoreFixture},
     runtime_fixture::{FixtureClock, FixtureMapper, owner, pump_intent},
 };
+use crate::acp::fixture::test_support::{FixtureDeadline, JournalCleanup};
 
 pub(crate) const CASE_IDS: &[&str] = &[
     "permission-identical-live-duplicate",
@@ -38,6 +39,7 @@ pub(crate) fn execute(case: &FrozenCase) -> Value {
 }
 
 async fn observe(case: &FrozenCase) -> Value {
+    let deadline = FixtureDeadline::new();
     let steps: Vec<Value> = serde_json::from_str(case.steps_json).unwrap();
     let (stdout, _) = wire::capture_steps(&steps).unwrap();
     let fixture = PermissionStoreFixture::new();
@@ -51,7 +53,7 @@ async fn observe(case: &FrozenCase) -> Value {
         terminations: Arc::clone(&terminations),
     };
     let (journal, runner) = JournalHandle::new(fixture.database_store());
-    let journal_task = runner.spawn();
+    let journal_cleanup = JournalCleanup::spawn(deadline, journal.clone(), runner).unwrap();
     let intent = pump_intent(&fixture, "message-permission");
     let adapter = PermissionFixtureAdapter::new(
         BINDING_DIGEST,
@@ -77,10 +79,21 @@ async fn observe(case: &FrozenCase) -> Value {
     )
     .unwrap();
     let mailbox = DriverMailbox::new().unwrap();
-    let mut failure = drive_stdout(&mut driver, &mailbox, &stdout).await;
+    let mut failure = tokio::time::timeout(
+        deadline.operation_before_cleanup(),
+        drive_stdout(&mut driver, &mailbox, &stdout),
+    )
+    .await
+    .expect("permission fixture driver timed out");
     if case.id == "permission-old-epoch-after-restart" && failure.is_none() {
         mailbox.signal_process_exit().unwrap();
-        failure = driver.run_next(&mailbox).await.err();
+        failure = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            driver.run_next(&mailbox),
+        )
+        .await
+        .expect("permission fixture process-exit wake timed out")
+        .err();
     }
     let zero_process = failure.map(|error| {
         let handoff = driver
@@ -92,8 +105,7 @@ async fn observe(case: &FrozenCase) -> Value {
             exit: handoff.exit,
         }
     });
-    journal.close_when_drained();
-    journal_task.await.unwrap();
+    journal_cleanup.finish().unwrap();
     let needs_recovery = matches!(
         case.id,
         "permission-conflicting-duplicate"

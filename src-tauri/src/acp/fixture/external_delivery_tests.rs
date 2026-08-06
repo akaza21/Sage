@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::Instant;
 
 use crate::{
     acp::{
@@ -6,8 +6,8 @@ use crate::{
         lifecycle::DeliveryState,
         recovery::recover_after_restart,
         runtime::{
-            DriverError, HostCancelIntent, HostError, HostOutcome, HostPromptIntent, HostState,
-            LiveRuntimeEngine, LiveRuntimePort, LiveWrite, RuntimeHost,
+            BoundedThread, DriverError, HostCancelIntent, HostError, HostOutcome, HostPromptIntent,
+            HostState, LiveRuntimeEngine, LiveRuntimePort, LiveWrite, RuntimeHost,
         },
         scheduler::RuntimeOwner,
         store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
@@ -18,6 +18,7 @@ use crate::{
 use super::{
     external_fixture_adapters::{ExternalCase, send_started},
     external_fixture_runtime::{ExternalActive, ExternalPrepared, prepare_external_case},
+    test_support::FixtureDeadline,
 };
 
 #[test]
@@ -39,16 +40,24 @@ fn native_zero_byte_failure_retries_once_without_delivery_unknown() {
 
 fn run(case: ExternalCase) {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let prepared = prepare_external_case(case).await;
+        let deadline = FixtureDeadline::new();
+        let prepared = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            prepare_external_case(case, deadline),
+        )
+        .await
+        .expect("delivery fixture preparation timed out");
         match case {
-            ExternalCase::ZeroByteFailure => observe_zero_bytes(prepared).await,
-            ExternalCase::CompleteDeliveryExit(_) => observe_complete_exit(prepared).await,
+            ExternalCase::ZeroByteFailure => observe_zero_bytes(prepared, deadline).await,
+            ExternalCase::CompleteDeliveryExit(_) => {
+                observe_complete_exit(prepared, deadline).await
+            }
             ExternalCase::TurnTextSuccess => unreachable!(),
         }
     });
 }
 
-async fn observe_zero_bytes(prepared: ExternalPrepared) {
+async fn observe_zero_bytes(prepared: ExternalPrepared, deadline: FixtureDeadline) {
     let ExternalPrepared {
         case_id,
         temp_root,
@@ -62,7 +71,7 @@ async fn observe_zero_bytes(prepared: ExternalPrepared) {
         prompt_intent,
         publisher,
         journal,
-        journal_task,
+        journal_cleanup,
         scheduler,
         process_capacity,
         process_cleanup,
@@ -76,22 +85,35 @@ async fn observe_zero_bytes(prepared: ExternalPrepared) {
         session_id: started.session_id.clone(),
         runtime_epoch: epoch,
     };
-    let host = RuntimeHost::start(LiveRuntimeEngine::new(PreparedZeroFixturePort {
-        owner: owner.clone(),
-        prompt_intent: prompt_intent.clone(),
-        active: Some(active),
-        runtime: tokio::runtime::Handle::current(),
-        now_millis: now,
-    }))
+    let host_deadline = deadline.operation_end_before_cleanup();
+    assert!(
+        host_deadline > Instant::now(),
+        "fixture cleanup deadline reached"
+    );
+    let host = RuntimeHost::start_with_deadline(
+        LiveRuntimeEngine::new(PreparedZeroFixturePort {
+            owner: owner.clone(),
+            prompt_intent: prompt_intent.clone(),
+            active: Some(active),
+            runtime: tokio::runtime::Handle::current(),
+            now_millis: now,
+        }),
+        host_deadline,
+        deadline.end(),
+    )
     .unwrap();
-    tokio::task::spawn_blocking(move || {
+    let mut host_thread = BoundedThread::spawn("zero-byte-fixture-host", move || {
         assert_eq!(host.activate(owner), Ok(HostOutcome::Activated));
         assert_eq!(host.send(prompt_intent), Err(HostError::RetryExhausted));
         assert_eq!(host.state(), Ok(HostState::Recovery));
         host.shutdown().unwrap();
     })
-    .await
     .unwrap();
+    let host_result = host_thread.wait(host_deadline.saturating_duration_since(Instant::now()));
+    if host_result.is_err() {
+        let _ = host_thread.wait(deadline.tree());
+    }
+    host_result.unwrap();
 
     let attempts = send_started(&database, &started.session_id);
     assert_eq!(attempts, 2);
@@ -110,8 +132,7 @@ async fn observe_zero_bytes(prepared: ExternalPrepared) {
     drop(publisher);
     drop(mailbox);
     drop(process_cleanup);
-    journal.close_when_drained();
-    journal_task.await.unwrap();
+    journal_cleanup.finish().unwrap();
     drop(journal);
     drop(database);
 
@@ -245,7 +266,7 @@ impl LiveRuntimePort for PreparedZeroFixturePort {
     }
 }
 
-async fn observe_complete_exit(prepared: ExternalPrepared) {
+async fn observe_complete_exit(prepared: ExternalPrepared, deadline: FixtureDeadline) {
     let ExternalPrepared {
         case_id,
         temp_root,
@@ -255,7 +276,7 @@ async fn observe_complete_exit(prepared: ExternalPrepared) {
         now_millis: now,
         publisher,
         journal,
-        journal_task,
+        journal_cleanup,
         scheduler,
         process_capacity,
         mut process_cleanup,
@@ -263,19 +284,25 @@ async fn observe_complete_exit(prepared: ExternalPrepared) {
         active,
         ..
     } = prepared;
-    let (active, write) = active
-        .dispatch_once(now)
-        .await
-        .unwrap_or_else(|failure| panic!("dispatch fixture prompt: {:?}", failure.error));
+    let (active, write) = tokio::time::timeout(
+        deadline.operation_before_cleanup(),
+        active.dispatch_once(now),
+    )
+    .await
+    .expect("delivery fixture prompt dispatch timed out")
+    .unwrap_or_else(|failure| panic!("dispatch fixture prompt: {:?}", failure.error));
     assert_eq!(write, LiveWrite::Complete);
-    let mut active = active
-        .observe(SendObservation::CompleteBytes, now + 1)
-        .await
-        .unwrap_or_else(|failure| panic!("observe fixture prompt: {:?}", failure.error));
+    let mut active = tokio::time::timeout(
+        deadline.operation_before_cleanup(),
+        active.observe(SendObservation::CompleteBytes, now + 1),
+    )
+    .await
+    .expect("delivery fixture send observation timed out")
+    .unwrap_or_else(|failure| panic!("observe fixture prompt: {:?}", failure.error));
     let mut teardown_observed = false;
     for _ in 0..4 {
         let wake = tokio::time::timeout(
-            Duration::from_secs(5),
+            deadline.tree_before_cleanup(),
             active.turn.driver.run_next(mailbox.as_ref()),
         )
         .await
@@ -306,8 +333,7 @@ async fn observe_complete_exit(prepared: ExternalPrepared) {
     drop(publisher);
     drop(mailbox);
     drop(process_cleanup);
-    journal.close_when_drained();
-    journal_task.await.unwrap();
+    journal_cleanup.finish().unwrap();
     drop(journal);
     drop(database);
 

@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
+#[cfg(test)]
+use std::time::Instant;
 
 use uuid::Uuid;
 
@@ -194,6 +196,8 @@ pub(crate) struct LaunchSpec {
     pub(crate) required_guarantee: RequiredContainment,
     pub(crate) limits: TreeLimits,
     pub(crate) deadlines: ProcessDeadlines,
+    #[cfg(test)]
+    pub(crate) absolute_cleanup_deadline: Option<Instant>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

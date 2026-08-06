@@ -1,5 +1,11 @@
+#[cfg(all(test, windows))]
+use std::time::Duration;
+
+#[cfg(all(test, windows))]
+use crate::acp::process::ZeroProcessToken;
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
+    process::{LaunchError, TreeExit},
     runtime::{ActivationJournal, ActivationTransport},
 };
 
@@ -116,6 +122,13 @@ where
     pub(crate) fn take_zero_process_handoff(
         self,
     ) -> ActivationDriverHandoff<ActivationZeroProcessHandoff<A, J, R, C::ZeroProof>, Self> {
+        self.take_zero_process_handoff_after(ProcessTreeControl::wait_zero)
+    }
+
+    fn take_zero_process_handoff_after(
+        self,
+        wait_zero: impl FnOnce(&C) -> Result<(TreeExit, C::ZeroProof), LaunchError>,
+    ) -> ActivationDriverHandoff<ActivationZeroProcessHandoff<A, J, R, C::ZeroProof>, Self> {
         let cause = match self.state {
             State::Teardown(cause) => cause,
             _ => {
@@ -134,7 +147,7 @@ where
             clock,
             ..
         } = self;
-        let (exit, proof) = match control.wait_zero() {
+        let (exit, proof) = match wait_zero(&control) {
             Ok(value) => value,
             Err(_) => {
                 return Err(Box::new(ActivationRebindFailure {
@@ -176,5 +189,22 @@ where
                 }))
             }
         }
+    }
+}
+
+#[cfg(all(test, windows))]
+impl<A, J, R, T> ActivationProcessDriver<A, J, R, T, crate::acp::process::TreeControl>
+where
+    A: HarnessAdapter,
+    J: ActivationJournal,
+    R: ResourceMapper,
+    T: StdinTransport + ActivationTransport,
+{
+    pub(crate) fn take_zero_process_handoff_within(
+        self,
+        timeout: Duration,
+    ) -> ActivationDriverHandoff<ActivationZeroProcessHandoff<A, J, R, ZeroProcessToken>, Self>
+    {
+        self.take_zero_process_handoff_after(|control| control.wait_zero_within(timeout))
     }
 }

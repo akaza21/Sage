@@ -12,7 +12,7 @@ use crate::{
         fixture::adapter::FixtureAdapter,
         intent::{ExternalId, Prompt},
         lifecycle::{DeliveryState, TurnState},
-        process::{PlatformSupervisor, TreeCapacityPool, TreeExit},
+        process::{TreeCapacityPool, TreeExit},
         runtime::{
             ActivationFlush, ActivationIntent, ActivationMode, ActivationPump,
             CoordinatorActivationHandoff, CoordinatorActivationJournal, SessionCoordinator,
@@ -31,6 +31,7 @@ use super::{
     super::{
         external_fixture_adapters::{Mapper, launch_spec},
         external_fixture_support::ProcessCleanup,
+        test_support::{FixtureDeadline, launch_with_deadline},
     },
     support::CompleteTransport,
 };
@@ -42,27 +43,42 @@ pub(super) struct HistoricalTurn {
     delivery_state: String,
 }
 
+pub(super) struct NewActivation<'a> {
+    pub(super) expected_projection_revision: ProjectionRevision,
+    pub(super) project_root: &'a Path,
+    pub(super) external_session: ExternalId,
+    pub(super) artifact_digest: &'a str,
+    pub(super) now_millis: i64,
+}
+
 pub(super) async fn activate_new(
     sessions: &SessionCoordinator,
     owner: &RuntimeOwner,
-    expected_projection_revision: ProjectionRevision,
-    project_root: &Path,
-    external_session: ExternalId,
-    artifact_digest: &str,
-    now_millis: i64,
+    activation: NewActivation<'_>,
+    deadline: FixtureDeadline,
 ) -> SessionTreeLease {
+    let NewActivation {
+        expected_projection_revision,
+        project_root,
+        external_session,
+        artifact_digest,
+        now_millis,
+    } = activation;
     let binding_digest = [7_u8; 32];
     let capabilities = FixtureAdapter::activation_capabilities();
-    let lease = sessions
-        .activate_session(activation_command(
+    let lease = tokio::time::timeout(
+        deadline.operation_before_cleanup(),
+        sessions.activate_session(activation_command(
             owner,
             expected_projection_revision,
             "resume-fixture-activate-1",
             artifact_digest,
             now_millis,
-        ))
-        .await
-        .unwrap();
+        )),
+    )
+    .await
+    .expect("initial resume fixture activation timed out")
+    .unwrap();
     let mut pump = ActivationPump::new(
         FixtureAdapter::new(
             binding_digest,
@@ -95,24 +111,32 @@ pub(super) async fn activate_new(
         pump.flush_one(&mut transport).unwrap(),
         ActivationFlush::Written
     );
-    pump.push_stdout_chunk(
-        &frame("initializeSuccess", serde_json::json!({})),
-        now_millis + 1,
+    tokio::time::timeout(
+        deadline.operation_before_cleanup(),
+        pump.push_stdout_chunk(
+            &frame("initializeSuccess", serde_json::json!({})),
+            now_millis + 1,
+        ),
     )
     .await
+    .expect("initial resume fixture initialize commit timed out")
     .unwrap();
     assert_eq!(
         pump.flush_one(&mut transport).unwrap(),
         ActivationFlush::Written
     );
-    pump.push_stdout_chunk(
-        &frame(
-            "newSessionSuccess",
-            serde_json::json!({"externalSessionId": external_session.as_str()}),
+    tokio::time::timeout(
+        deadline.operation_before_cleanup(),
+        pump.push_stdout_chunk(
+            &frame(
+                "newSessionSuccess",
+                serde_json::json!({"externalSessionId": external_session.as_str()}),
+            ),
+            now_millis + 2,
         ),
-        now_millis + 2,
     )
     .await
+    .expect("initial resume fixture session commit timed out")
     .unwrap();
     assert_eq!(
         (
@@ -146,6 +170,7 @@ pub(super) fn prove_prior_zero_process(
     artifact_digest: [u8; 32],
     fixture_byte_len: usize,
     owner: RuntimeOwner,
+    deadline: FixtureDeadline,
 ) -> (Arc<TreeCapacityPool>, ZeroProcessProof) {
     let capacity = TreeCapacityPool::isolated_ade_0006a();
     let spec = launch_spec(
@@ -155,15 +180,12 @@ pub(super) fn prove_prior_zero_process(
         artifact_digest,
         fixture_byte_len,
     );
-    let tree = PlatformSupervisor::launch(
-        &spec,
-        capacity.try_acquire(spec.limits.descendants).unwrap(),
-    )
-    .unwrap();
+    let process_lease = capacity.try_acquire(spec.limits.descendants).unwrap();
+    let tree = launch_with_deadline(spec, process_lease, deadline).unwrap();
     let (stdin, stdout, control) = tree.into_parts();
-    let mut cleanup = ProcessCleanup::new(control.clone(), None);
+    let mut cleanup = ProcessCleanup::new(control.clone(), None, deadline);
     control.request_termination(TreeExit::Cancelled).unwrap();
-    let (_, zero) = control.wait_zero().unwrap();
+    let (_, zero) = control.wait_zero_within(deadline.tree()).unwrap();
     cleanup.finish_after_zero().unwrap();
     drop((stdin, stdout, control, cleanup));
     let proof = ZeroProcessProof::from_supervisor(owner, &zero).unwrap();

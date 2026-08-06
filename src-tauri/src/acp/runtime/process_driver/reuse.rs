@@ -1,8 +1,10 @@
 use std::sync::Arc;
+#[cfg(all(test, windows))]
+use std::time::Duration;
 
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
-    process::{TreeExit, ZeroProcessToken},
+    process::{LaunchError, TreeExit, ZeroProcessToken},
     runtime::{
         ActiveDispatch, ActiveTurnIntent, AdapterBatchJournal, CompletedPumpParts, PrepareDispatch,
         PrepareRecovery, ProjectIntentAuthority, SendCoordinator, SessionTreeLease,
@@ -82,11 +84,18 @@ where
     pub(crate) fn take_zero_process_handoff(
         &mut self,
     ) -> Result<ZeroProcessHandoff<L, C::ZeroProof>, DriverError> {
+        self.take_zero_process_handoff_after(ProcessTreeControl::wait_zero)
+    }
+
+    fn take_zero_process_handoff_after(
+        &mut self,
+        wait_zero: impl FnOnce(&C) -> Result<(TreeExit, C::ZeroProof), LaunchError>,
+    ) -> Result<ZeroProcessHandoff<L, C::ZeroProof>, DriverError> {
         let cause = self.teardown_cause().ok_or(DriverError::Tree)?;
         if self.lease.is_none() {
             return Err(DriverError::Tree);
         }
-        let (exit, proof) = self.control.wait_zero().map_err(|_| DriverError::Tree)?;
+        let (exit, proof) = wait_zero(&self.control).map_err(|_| DriverError::Tree)?;
         let lease = self.lease.take().ok_or(DriverError::Tree)?;
         Ok(ZeroProcessHandoff {
             lease,
@@ -95,6 +104,23 @@ where
             cause,
             first_delivery_unknown: self.first_delivery_unknown,
         })
+    }
+}
+
+#[cfg(all(test, windows))]
+impl<A, J, R, T, L> ProcessAdapterDriver<A, J, R, T, crate::acp::process::TreeControl, L>
+where
+    A: HarnessAdapter,
+    J: AdapterBatchJournal,
+    R: ResourceMapper,
+    T: StdinTransport,
+    L: TreeLeaseOwner,
+{
+    pub(crate) fn take_zero_process_handoff_within(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<ZeroProcessHandoff<L, ZeroProcessToken>, DriverError> {
+        self.take_zero_process_handoff_after(|control| control.wait_zero_within(timeout))
     }
 }
 

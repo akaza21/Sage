@@ -25,6 +25,8 @@ mod oracle;
 mod process_ops;
 #[cfg(all(test, windows))]
 mod resume_external_tests;
+#[cfg(test)]
+mod test_support;
 mod wire;
 mod wire_payload;
 

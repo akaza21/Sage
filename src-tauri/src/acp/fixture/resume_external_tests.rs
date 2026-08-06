@@ -1,11 +1,11 @@
-use std::{sync::Arc, time::Duration};
+use std::{sync::Arc, time::Instant};
 
 use crate::acp::{
     contract::{RequiredText, RuntimeEpoch},
     fixture::adapter::FixtureAdapter,
     intent::ExternalId,
     lifecycle::SessionState,
-    process::{PlatformSupervisor, TreeCapacityPool},
+    process::TreeCapacityPool,
     runtime::{
         ActivationDriverError, ActivationIntent, ActivationMode, ActivationProcessDriver,
         ActivationPump, BoundedThread, CoordinatorActivationHandoff, CoordinatorActivationJournal,
@@ -21,13 +21,14 @@ use super::{
         FIXTURE_BINDING_DIGEST, FixtureEnvironment, ProcessCleanup, prepare_fixture_environment,
     },
     generated_cases::FROZEN_CASES,
+    test_support::{FixtureDeadline, launch_with_deadline},
 };
 
 mod setup;
 mod support;
 
 use setup::{
-    activate_new, activation_command, historical_turns, persisted_capabilities,
+    NewActivation, activate_new, activation_command, historical_turns, persisted_capabilities,
     prove_prior_zero_process, seed_historical_turn,
 };
 use support::{ObservedStdin, ResumeCase};
@@ -44,6 +45,7 @@ fn resume_cases_run_from_cold_through_supervisor_driver_and_sqlite() {
 
 fn run_resume_case(case: ResumeCase) {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let deadline = FixtureDeadline::new();
         let FixtureEnvironment {
             temp_root,
             project_root,
@@ -52,18 +54,23 @@ fn run_resume_case(case: ResumeCase) {
             chat_id,
             now_millis: now,
             journal,
-            journal_task,
+            journal_cleanup,
             scheduler,
             sessions,
             started,
             ..
-        } = prepare_fixture_environment(
-            "sage-resume-e2e",
-            "fixture-resume-chat",
-            "Resume fixture",
-            "resume-fixture-start",
+        } = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            prepare_fixture_environment(
+                "sage-resume-e2e",
+                "fixture-resume-chat",
+                "Resume fixture",
+                "resume-fixture-start",
+                deadline,
+            ),
         )
-        .await;
+        .await
+        .expect("resume fixture preparation timed out");
 
         let (fixture_path, artifact_digest, fixture_byte_len) = fixture_artifact();
         let artifact_hex = hex(&artifact_digest);
@@ -78,16 +85,23 @@ fn run_resume_case(case: ResumeCase) {
             session_id: started.session_id.clone(),
             runtime_epoch: first_epoch,
         };
-        let mut first_lease = activate_new(
-            &sessions,
-            &first_owner,
-            started.projection_revision,
-            &project_root,
-            external_session.clone(),
-            &artifact_hex,
-            now + 1,
+        let mut first_lease = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            activate_new(
+                &sessions,
+                &first_owner,
+                NewActivation {
+                    expected_projection_revision: started.projection_revision,
+                    project_root: &project_root,
+                    external_session: external_session.clone(),
+                    artifact_digest: &artifact_hex,
+                    now_millis: now + 1,
+                },
+                deadline,
+            ),
         )
-        .await;
+        .await
+        .expect("initial resume fixture setup timed out");
         let capabilities_before = persisted_capabilities(&database, &started.session_id);
         let history_before = seed_historical_turn(
             &database,
@@ -105,9 +119,11 @@ fn run_resume_case(case: ResumeCase) {
             artifact_digest,
             fixture_byte_len,
             first_owner,
+            deadline,
         );
-        let parked = first_lease
-            .park_after_zero_process(
+        let parked = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            first_lease.park_after_zero_process(
                 ParkSessionCommand {
                     project_id: project_id.clone(),
                     chat_id: chat_id.clone(),
@@ -117,9 +133,11 @@ fn run_resume_case(case: ResumeCase) {
                     now_millis: now + 7,
                 },
                 first_proof,
-            )
-            .await
-            .unwrap();
+            ),
+        )
+        .await
+        .expect("initial resume fixture park timed out")
+        .unwrap();
         drop(first_lease);
         let prior: (String, String) = database
             .connection()
@@ -140,16 +158,19 @@ fn run_resume_case(case: ResumeCase) {
             session_id: started.session_id.clone(),
             runtime_epoch: second_epoch,
         };
-        let second_lease = sessions
-            .activate_session(activation_command(
+        let second_lease = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            sessions.activate_session(activation_command(
                 &owner,
                 parked.projection_revision,
                 "resume-fixture-activate-2",
                 &artifact_hex,
                 now + 8,
-            ))
-            .await
-            .unwrap();
+            )),
+        )
+        .await
+        .expect("resume fixture reactivation timed out")
+        .unwrap();
         let second_spec = launch_spec(
             case.id(),
             second_epoch,
@@ -158,17 +179,15 @@ fn run_resume_case(case: ResumeCase) {
             fixture_byte_len,
         );
         let second_capacity = TreeCapacityPool::isolated_ade_0006a();
-        let second_tree = PlatformSupervisor::launch(
-            &second_spec,
-            second_capacity
-                .try_acquire(second_spec.limits.descendants)
-                .unwrap(),
-        )
-        .unwrap();
+        let second_process_lease = second_capacity
+            .try_acquire(second_spec.limits.descendants)
+            .unwrap();
+        let second_tree =
+            launch_with_deadline(second_spec, second_process_lease, deadline).unwrap();
         let (stdin, stdout, control) = second_tree.into_parts();
         let mailbox = Arc::new(DriverMailbox::new().unwrap());
         let reader_mailbox = Arc::clone(&mailbox);
-        let mut process_cleanup = ProcessCleanup::new(control.clone(), None);
+        let mut process_cleanup = ProcessCleanup::new(control.clone(), None, deadline);
         let reader = BoundedThread::spawn("resume-fixture-reader", move || {
             crate::acp::runtime::BlockingStdoutReader::new(stdout).run(reader_mailbox.as_ref());
         })
@@ -213,9 +232,12 @@ fn run_resume_case(case: ResumeCase) {
         driver.begin().unwrap();
         let mut teardown = false;
         for _ in 0..4 {
-            match tokio::time::timeout(Duration::from_secs(5), driver.run_next(mailbox.as_ref()))
-                .await
-                .expect("resume fixture driver wake timed out")
+            match tokio::time::timeout(
+                deadline.tree_before_cleanup(),
+                driver.run_next(mailbox.as_ref()),
+            )
+            .await
+            .expect("resume fixture driver wake timed out")
             {
                 Ok(_) => {}
                 Err(ActivationDriverError::TeardownRequired(_)) => {
@@ -234,19 +256,24 @@ fn run_resume_case(case: ResumeCase) {
             )
             .unwrap();
         if !teardown {
-            let result =
-                tokio::time::timeout(Duration::from_secs(5), driver.run_next(mailbox.as_ref()))
-                    .await
-                    .expect("resume fixture exit wake timed out");
+            let result = tokio::time::timeout(
+                deadline.tree_before_cleanup(),
+                driver.run_next(mailbox.as_ref()),
+            )
+            .await
+            .expect("resume fixture exit wake timed out");
             assert!(matches!(
                 result,
                 Err(ActivationDriverError::TeardownRequired(_))
             ));
         }
+        let zero_started = Instant::now();
         let zero_handoff = driver
-            .take_zero_process_handoff()
+            .take_zero_process_handoff_within(deadline.tree_since(zero_started))
             .unwrap_or_else(|_| panic!("resume fixture did not prove zero processes"));
-        process_cleanup.finish_after_zero().unwrap();
+        process_cleanup
+            .finish_after_zero_within(deadline.tree_since(zero_started))
+            .unwrap();
         let proof =
             ZeroProcessProof::from_supervisor(zero_handoff.owner.clone(), &zero_handoff.proof)
                 .unwrap();
@@ -266,8 +293,9 @@ fn run_resume_case(case: ResumeCase) {
         };
         match case {
             ResumeCase::Success => {
-                lease
-                    .park_after_zero_process(
+                tokio::time::timeout(
+                    deadline.operation_before_cleanup(),
+                    lease.park_after_zero_process(
                         ParkSessionCommand {
                             project_id: project_id.clone(),
                             chat_id: chat_id.clone(),
@@ -278,13 +306,16 @@ fn run_resume_case(case: ResumeCase) {
                             now_millis: now + 9,
                         },
                         proof,
-                    )
-                    .await
-                    .unwrap();
+                    ),
+                )
+                .await
+                .expect("resume fixture final park timed out")
+                .unwrap();
             }
             ResumeCase::Failure => {
-                lease
-                    .fail_activation_after_zero_process(
+                tokio::time::timeout(
+                    deadline.operation_before_cleanup(),
+                    lease.fail_activation_after_zero_process(
                         FailActivationCommand {
                             project_id: project_id.clone(),
                             chat_id: chat_id.clone(),
@@ -297,9 +328,11 @@ fn run_resume_case(case: ResumeCase) {
                             now_millis: now + 9,
                         },
                         proof,
-                    )
-                    .await
-                    .unwrap();
+                    ),
+                )
+                .await
+                .expect("resume fixture failure commit timed out")
+                .unwrap();
             }
         }
         assert_eq!(second_capacity.usage(), (0, 0));
@@ -356,8 +389,7 @@ fn run_resume_case(case: ResumeCase) {
         drop(lease);
         drop(process_cleanup);
         drop(sessions);
-        journal.close_when_drained();
-        journal_task.await.unwrap();
+        journal_cleanup.finish().unwrap();
         drop(journal);
         drop(database);
         temp_root.remove();

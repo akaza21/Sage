@@ -97,6 +97,15 @@ impl TreeControl {
         Ok((exit, ZeroProcessToken::new(self.0.runtime_epoch)))
     }
 
+    #[cfg(test)]
+    pub(crate) fn wait_zero_within(
+        &self,
+        timeout: Duration,
+    ) -> Result<(TreeExit, ZeroProcessToken), LaunchError> {
+        let exit = self.wait_until(Instant::now() + timeout.min(self.0.terminate_deadline))?;
+        Ok((exit, ZeroProcessToken::new(self.0.runtime_epoch)))
+    }
+
     pub(crate) fn terminate_zero(
         &self,
         reason: TreeExit,
@@ -132,6 +141,8 @@ pub(super) struct TreeAuthority {
     pub(super) lease: Mutex<Option<TreeCapacityLease>>,
     pub(super) active_process_limit: u32,
     pub(super) terminate_deadline: Duration,
+    #[cfg(test)]
+    pub(super) absolute_cleanup_deadline: Option<Instant>,
     pub(super) requested_exit: Mutex<Option<TreeExit>>,
     pub(super) convergence: Mutex<bool>,
     pub(super) runtime_epoch: u64,
@@ -165,7 +176,13 @@ impl TreeAuthority {
     }
 
     fn shutdown(&self) -> Result<(), LaunchError> {
-        let deadline = Instant::now() + self.terminate_deadline;
+        let native_deadline = Instant::now() + self.terminate_deadline;
+        #[cfg(test)]
+        let deadline = self
+            .absolute_cleanup_deadline
+            .map_or(native_deadline, |absolute| native_deadline.min(absolute));
+        #[cfg(not(test))]
+        let deadline = native_deadline;
         if *self
             .convergence
             .lock()

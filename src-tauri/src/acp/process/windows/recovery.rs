@@ -35,6 +35,8 @@ struct StartedRecovery {
     lease: Option<TreeCapacityLease>,
     active_process_limit: u32,
     deadline: Duration,
+    #[cfg(test)]
+    absolute_cleanup_deadline: Option<Instant>,
     assigned_to_job: bool,
     tracker: LaunchFailureTracker,
 }
@@ -67,6 +69,8 @@ impl LaunchRecovery {
                 lease: Some(lease),
                 active_process_limit: spec.limits.active_processes,
                 deadline: Duration::from_millis(spec.deadlines.spawn_ms),
+                #[cfg(test)]
+                absolute_cleanup_deadline: spec.absolute_cleanup_deadline,
                 assigned_to_job: false,
                 tracker: LaunchFailureTracker::child_created(spec.runtime_epoch),
             })),
@@ -166,6 +170,8 @@ impl LaunchRecovery {
                 ));
             }
         };
+        #[cfg(test)]
+        let absolute_cleanup_deadline = started.absolute_cleanup_deadline;
         let (
             process,
             thread,
@@ -188,6 +194,7 @@ impl LaunchRecovery {
                 deadline,
                 assigned_to_job: true,
                 tracker,
+                ..
             } => (
                 process,
                 thread,
@@ -217,6 +224,8 @@ impl LaunchRecovery {
             lease: Mutex::new(Some(lease)),
             active_process_limit,
             terminate_deadline: deadline,
+            #[cfg(test)]
+            absolute_cleanup_deadline,
             requested_exit: Mutex::new(None),
             convergence: Mutex::new(false),
             runtime_epoch: tracker.runtime_epoch(),
@@ -241,6 +250,13 @@ impl StartedRecovery {
         // SAFETY: the retained root handle is valid. This fallback also covers
         // failures that occur before successful Job assignment.
         unsafe { TerminateProcess(process.raw(), 1) };
+        #[cfg(test)]
+        let deadline = {
+            let native_deadline = Instant::now() + self.deadline;
+            self.absolute_cleanup_deadline
+                .map_or(native_deadline, |absolute| native_deadline.min(absolute))
+        };
+        #[cfg(not(test))]
         let deadline = Instant::now() + self.deadline;
         wait_until(process.raw(), deadline)?;
         if self.assigned_to_job {

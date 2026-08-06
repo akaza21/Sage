@@ -1,13 +1,13 @@
 use std::{
     sync::{Arc, atomic::Ordering},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use crate::acp::{
     contract::{ClientIntentId, RequiredText},
     intent::Prompt,
     lifecycle::{ItemLifecycle, TurnState},
-    process::{PlatformSupervisor, StdinEndpoint, TreeCapacityPool, TreeControl, TreeExit},
+    process::{StdinEndpoint, TreeCapacityPool, TreeControl, TreeExit},
     projection::ItemContent,
     runtime::{
         ActiveCloseBeginState, AdapterPump, BlockingStdoutReader, BoundedThread, DriverError,
@@ -23,7 +23,8 @@ use super::child::{ActivityFixtureAdapter, BINDING_DIGEST, PermissionStoreFixtur
 use super::{
     external_fixture_adapters::{ExternalCase, fixture_artifact, launch_spec},
     external_fixture_runtime::{ExternalPrepared, prepare_external_case},
-    external_fixture_support::{JournalCleanup, ProcessCleanup},
+    external_fixture_support::ProcessCleanup,
+    test_support::{FixtureDeadline, JournalCleanup, launch_with_deadline},
 };
 
 #[test]
@@ -73,11 +74,7 @@ enum ActivityOutcome {
 }
 
 async fn run_path_bound_activity(case_id: &'static str) -> serde_json::Value {
-    let deadline = Instant::now()
-        + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc);
-    let tree_budget =
-        Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.tree_termination);
-    let wal_budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.wal_convergence);
+    let deadline = FixtureDeadline::new();
     let fixture = PermissionStoreFixture::new();
     let initial_sessions = fixture.session_count();
     let owner = owner(&fixture);
@@ -94,17 +91,14 @@ async fn run_path_bound_activity(case_id: &'static str) -> serde_json::Value {
     );
     let process_capacity = TreeCapacityPool::isolated_ade_0006a();
     let (journal, runner) = JournalHandle::new(fixture.database_store());
-    let journal_cleanup = JournalCleanup::spawn(journal.clone(), runner).unwrap();
-    let tree = PlatformSupervisor::launch(
-        &spec,
-        process_capacity
-            .try_acquire(spec.limits.descendants)
-            .unwrap(),
-    )
-    .unwrap();
+    let journal_cleanup = JournalCleanup::spawn(deadline, journal.clone(), runner).unwrap();
+    let process_lease = process_capacity
+        .try_acquire(spec.limits.descendants)
+        .unwrap();
+    let tree = launch_with_deadline(spec, process_lease, deadline).unwrap();
     let (stdin, stdout, control) = tree.into_parts();
     let retained_control = control.clone();
-    let mut process_cleanup = ProcessCleanup::new(control.clone(), None);
+    let mut process_cleanup = ProcessCleanup::new(control.clone(), None, deadline);
     let mailbox = Arc::new(DriverMailbox::new().unwrap());
     let reader_mailbox = Arc::clone(&mailbox);
     let reader = BoundedThread::spawn("activity-fixture-reader", move || {
@@ -148,10 +142,13 @@ async fn run_path_bound_activity(case_id: &'static str) -> serde_json::Value {
             if fixture.activity_count() == 1 {
                 break;
             }
-            tokio::time::timeout(remaining(deadline), driver.run_next(mailbox.as_ref()))
-                .await
-                .expect("activity fixture driver wake timed out")
-                .unwrap();
+            tokio::time::timeout(
+                deadline.operation_before_cleanup(),
+                driver.run_next(mailbox.as_ref()),
+            )
+            .await
+            .expect("activity fixture driver wake timed out")
+            .unwrap();
             clock.set(100);
         }
         assert!(fixture.has_projected_activity_text(
@@ -167,28 +164,38 @@ async fn run_path_bound_activity(case_id: &'static str) -> serde_json::Value {
         assert!(!new_tree);
         let zero_started = Instant::now();
         driver.request_host_termination().unwrap();
-        let handoff = driver.take_zero_process_handoff().unwrap();
+        let handoff = driver
+            .take_zero_process_handoff_within(deadline.tree_since(zero_started))
+            .unwrap();
         assert_eq!(handoff.cause, TeardownCause::HostTermination);
         assert_eq!(handoff.exit, TreeExit::Cancelled);
         handoff.lease.0.zero_process_converged().unwrap();
         (ActivityOutcome::Child { new_tree }, zero_started)
     } else {
-        tokio::time::timeout(remaining(deadline), driver.run_next(mailbox.as_ref()))
-            .await
-            .expect("foreign-parent fixture frame timed out")
-            .unwrap();
+        tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            driver.run_next(mailbox.as_ref()),
+        )
+        .await
+        .expect("foreign-parent fixture frame timed out")
+        .unwrap();
         assert_eq!(retained_control.active_processes().unwrap(), 1);
         clock.set(100);
         let zero_started = Instant::now();
-        let error = tokio::time::timeout(remaining(deadline), driver.run_next(mailbox.as_ref()))
-            .await
-            .expect("foreign-parent durable rejection timed out")
-            .unwrap_err();
+        let error = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            driver.run_next(mailbox.as_ref()),
+        )
+        .await
+        .expect("foreign-parent durable rejection timed out")
+        .unwrap_err();
         assert_eq!(
             error,
             DriverError::TeardownRequired(TeardownCause::PumpFailure)
         );
-        let handoff = driver.take_zero_process_handoff().unwrap();
+        let handoff = driver
+            .take_zero_process_handoff_within(deadline.tree_since(zero_started))
+            .unwrap();
         assert_eq!(handoff.cause, TeardownCause::PumpFailure);
         assert_eq!(handoff.exit, TreeExit::ProtocolFailure);
         handoff.lease.0.zero_process_converged().unwrap();
@@ -201,15 +208,11 @@ async fn run_path_bound_activity(case_id: &'static str) -> serde_json::Value {
     };
 
     process_cleanup
-        .finish_after_zero_within(
-            remaining(deadline).min(tree_budget.saturating_sub(zero_started.elapsed())),
-        )
+        .finish_after_zero_within(deadline.tree_since(zero_started))
         .unwrap();
     assert!(scheduler.active().is_none());
     assert_eq!(process_capacity.usage(), (0, 0));
-    journal_cleanup
-        .finish(remaining(deadline).min(wal_budget))
-        .unwrap();
+    journal_cleanup.finish().unwrap();
     if case_id == "native-activity-foreign-parent" {
         assert_eq!(fixture.recover(200).recovered_sessions, 1);
         assert_eq!(fixture.session_state(), "failed");
@@ -229,12 +232,9 @@ async fn run_path_bound_activity(case_id: &'static str) -> serde_json::Value {
     }
 }
 
-fn remaining(deadline: Instant) -> Duration {
-    deadline.saturating_duration_since(Instant::now())
-}
-
 fn run_external_case(case: ExternalCase) {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let deadline = FixtureDeadline::new();
         let ExternalPrepared {
             temp_root,
             database,
@@ -244,31 +244,48 @@ fn run_external_case(case: ExternalCase) {
             epoch,
             now_millis: now,
             publisher,
-            journal,
-            journal_task,
+            journal: _,
+            journal_cleanup,
             scheduler,
             process_capacity,
             mut process_cleanup,
             mailbox,
             active,
             ..
-        } = prepare_external_case(case).await;
-        let (active, write) = active
-            .dispatch_once(now)
-            .await
-            .unwrap_or_else(|failure| panic!("dispatch fixture prompt: {:?}", failure.error));
+        } = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            prepare_external_case(case, deadline),
+        )
+        .await
+        .expect("fixture preparation timed out");
+        let (active, write) = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            active.dispatch_once(now),
+        )
+        .await
+        .expect("fixture prompt dispatch timed out")
+        .unwrap_or_else(|failure| panic!("dispatch fixture prompt: {:?}", failure.error));
         assert_eq!(write, LiveWrite::Complete);
-        let mut active = active
-            .observe(SendObservation::CompleteBytes, now + 1)
-            .await
-            .unwrap_or_else(|failure| panic!("observe fixture prompt: {:?}", failure.error));
+        let mut active = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            active.observe(SendObservation::CompleteBytes, now + 1),
+        )
+        .await
+        .expect("fixture send observation timed out")
+        .unwrap_or_else(|failure| panic!("observe fixture prompt: {:?}", failure.error));
         while active
             .turn
             .driver
             .latest_durable_turn_cursor()
             .is_none_or(|cursor| !cursor.state().is_terminal())
         {
-            active.turn.driver.run_next(mailbox.as_ref()).await.unwrap();
+            tokio::time::timeout(
+                deadline.tree_before_cleanup(),
+                active.turn.driver.run_next(mailbox.as_ref()),
+            )
+            .await
+            .expect("fixture driver terminal wake timed out")
+            .unwrap();
         }
         process_cleanup.wait_zero();
         assert!(publisher.terminal_seen_after_commit.load(Ordering::SeqCst));
@@ -321,24 +338,32 @@ fn run_external_case(case: ExternalCase) {
             runtime_epoch: epoch,
             now_millis: now + 2,
         };
-        let closing = ActiveCloseBeginState::new(active, close.clone())
-            .begin()
-            .await
-            .unwrap_or_else(|_| panic!("begin fixture close"));
-        let zero = closing
-            .converge_zero(1, now + 3)
-            .await
-            .unwrap_or_else(|_| panic!("converge fixture process tree"));
+        let closing = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            ActiveCloseBeginState::new(active, close.clone()).begin(),
+        )
+        .await
+        .expect("fixture close begin timed out")
+        .unwrap_or_else(|_| panic!("begin fixture close"));
+        let zero = tokio::time::timeout(
+            deadline.tree_before_cleanup(),
+            closing.converge_zero(1, now + 3),
+        )
+        .await
+        .expect("fixture close convergence timed out")
+        .unwrap_or_else(|_| panic!("converge fixture process tree"));
         let receipt = zero.receipt().clone();
-        let closed = zero
-            .finalize(&close, &receipt)
-            .await
-            .unwrap_or_else(|_| panic!("finalize fixture close"));
+        let closed = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            zero.finalize(&close, &receipt),
+        )
+        .await
+        .expect("fixture close finalization timed out")
+        .unwrap_or_else(|_| panic!("finalize fixture close"));
         drop(closed);
         assert!(scheduler.active().is_none());
         assert_eq!(process_capacity.usage(), (0, 0));
-        journal.close_when_drained();
-        journal_task.await.unwrap();
+        journal_cleanup.finish().unwrap();
         drop(scheduler);
         drop(publisher);
         drop(mailbox);

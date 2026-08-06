@@ -13,7 +13,11 @@ use crate::{
             ClientIntentId, ProjectGeneration, RequiredText, RuntimeEpoch, SageChatId,
             SageProjectId, SchemaVersionV1,
         },
-        fixture::{adapter::FixtureAdapter, generated_cases::FrozenCase},
+        fixture::{
+            adapter::FixtureAdapter,
+            generated_cases::FrozenCase,
+            test_support::{FixtureDeadline, JournalCleanup},
+        },
         intent::{CapabilitySnapshotV1, ExternalId, IntentSnapshot, ProjectionChangedV1, Prompt},
         lifecycle::DeliveryState,
         recovery::recover_after_restart,
@@ -51,6 +55,7 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
     let prompt_bytes = field_u64(send, "bytes") as usize;
 
     tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let deadline = FixtureDeadline::new();
         let root = std::env::temp_dir().join(format!("sage-partial-write-{}", Uuid::new_v4()));
         let project_root = root.join("project");
         std::fs::create_dir_all(&project_root).unwrap();
@@ -71,7 +76,7 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
 
         let publisher: Arc<dyn ProjectionPublisher> = Arc::new(Publisher);
         let (journal, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
-        let journal_task = runner.spawn();
+        let journal_cleanup = JournalCleanup::spawn(deadline, journal.clone(), runner).unwrap();
         let scheduler = Scheduler::new();
         let sessions = SessionCoordinator::new(journal.clone(), scheduler, publisher.clone());
         let initial = load_chat_page(
@@ -81,8 +86,9 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
             None,
         )
         .unwrap();
-        let started = sessions
-            .start_session(StartSessionCommand {
+        let started = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            sessions.start_session(StartSessionCommand {
                 project_id: project_id.clone(),
                 chat_id: chat_id.clone(),
                 expected_projection_revision: initial.projection_revision,
@@ -92,12 +98,15 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
                 harness_version: None,
                 model_id: None,
                 now_millis: now,
-            })
+            }),
+        )
             .await
+            .expect("partial-write fixture session start timed out")
             .unwrap();
         let epoch = RuntimeEpoch::new(1).unwrap();
-        let mut lease = sessions
-            .activate_session(ActivateSessionCommand {
+        let mut lease = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            sessions.activate_session(ActivateSessionCommand {
                 project_id: project_id.clone(),
                 chat_id: chat_id.clone(),
                 expected_projection_revision: started.projection_revision,
@@ -106,12 +115,15 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
                 runtime_epoch: epoch,
                 artifact_digest: "08".repeat(32),
                 now_millis: now + 1,
-            })
+            }),
+        )
             .await
+            .expect("partial-write fixture activation timed out")
             .unwrap();
         let external_session = ExternalId::new("external", "fixture-external").unwrap();
-        let ready = lease
-            .complete_activation(CompleteActivationCommand {
+        let ready = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            lease.complete_activation(CompleteActivationCommand {
                 project_id: project_id.clone(),
                 chat_id: chat_id.clone(),
                 session_id: started.session_id.clone(),
@@ -121,8 +133,10 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
                 external_session_id: external_session.clone(),
                 capabilities_json: serde_json::to_string(&capabilities()).unwrap(),
                 now_millis: now + 2,
-            })
+            }),
+        )
             .await
+            .expect("partial-write fixture activation commit timed out")
             .unwrap();
         let authority = Arc::new(Authority(IntentSnapshot {
             project_id: project_id.clone(),
@@ -137,8 +151,9 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
         }));
         let sends = SendCoordinator::new(authority, journal.clone(), publisher);
         let prompt = Prompt::new("prompt", "p".repeat(prompt_bytes)).unwrap();
-        let prepared = lease
-            .prepare_turn(
+        let prepared = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            lease.prepare_turn(
                 &sends,
                 PrepareTurnCommand {
                     project_id: project_id.clone(),
@@ -151,13 +166,21 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
                     prompt: prompt.clone(),
                     now_millis: now + 3,
                 },
-            )
+            ),
+        )
             .await
+            .expect("partial-write fixture turn preparation timed out")
             .unwrap();
         let PrepareDispatch::Applied(mut dispatch) = prepared else {
             panic!("fixture prompt must create one Turn");
         };
-        dispatch.begin_send(now + 4).await.unwrap();
+        tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            dispatch.begin_send(now + 4),
+        )
+        .await
+        .expect("partial-write fixture begin-send timed out")
+        .unwrap();
 
         let mut adapter = FixtureAdapter::new(
             [7; 32],
@@ -190,9 +213,12 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
         adapter
             .resolve_egress(egress.into_token(), EgressResolution::DeliveryUnknown)
             .unwrap();
-        let terminal = dispatch
-            .observe(SendObservation::PossibleBytes, now + 5)
+        let terminal = tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            dispatch.observe(SendObservation::PossibleBytes, now + 5),
+        )
             .await
+            .expect("partial-write fixture observation timed out")
             .unwrap();
         assert_eq!(terminal.delivery_state, DeliveryState::PossibleBytes);
 
@@ -201,8 +227,7 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
         drop(lease);
         drop(sends);
         drop(sessions);
-        journal.close_when_drained();
-        journal_task.await.unwrap();
+        journal_cleanup.finish().unwrap();
         drop(journal);
         drop(database);
 
