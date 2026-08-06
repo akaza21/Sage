@@ -251,6 +251,7 @@ export function HarnessActivity({
                 setActiveItemId(node.item.id);
             }}
             onFocusCapture={() => {
+              setActiveItemId(node.item.id);
               focusedItemRef.current = node.item.id;
             }}
             onBlurCapture={(event) => {

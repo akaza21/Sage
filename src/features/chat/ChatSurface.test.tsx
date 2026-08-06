@@ -119,6 +119,31 @@ function projection(): AcpChatPage {
   } as unknown as AcpChatPage;
 }
 
+function setTurnState(state: AcpChatPage["turns"][number]["state"]) {
+  const page = hooks.page!;
+  hooks.page = {
+    ...page,
+    projectionRevision: `${Number(page.projectionRevision) + 1}` as never,
+    turns: page.turns.map((turn, index) =>
+      index === 0
+        ? {
+            ...turn,
+            state,
+            terminalAt: [
+              "completed",
+              "interrupted",
+              "cancelled",
+              "failed",
+              "deliveryUnknown",
+            ].includes(state)
+              ? 3
+              : null,
+          }
+        : turn,
+    ),
+  };
+}
+
 beforeEach(() => {
   hooks.page = projection();
   hooks.actions.busy = false;
@@ -148,38 +173,56 @@ afterEach(() => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
-  it("exposes the frozen composer names and replaces Send with Cancel for an active Turn", () => {
+  it("separates active Turn prompting from the optional Cancel capability", () => {
+    useWorkbenchStore.setState({ composerText: "Follow up" });
     const { rerender } = render(<ChatSurface />);
     const composer = screen.getByRole("textbox", {
       name: "Message agent",
       description: "Send a message to the selected harness and model",
     });
 
-    expect(
-      screen.getByRole("button", { name: "Send message" }),
-    ).toBeInTheDocument();
+    expect(composer).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Cancel turn" })).toBeNull();
 
     hooks.actions.cancellableTurnId = "turn-a";
     rerender(<ChatSurface />);
     expect(screen.queryByRole("button", { name: "Send message" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel turn" }));
+    const cancel = screen.getByRole("button", { name: "Cancel turn" });
+    expect(cancel).toBeEnabled();
+    fireEvent.click(cancel);
     expect(hooks.actions.cancel).toHaveBeenCalledWith("turn-a");
 
     hooks.actions.cancellableTurnId = null;
+    setTurnState("cancelling");
     rerender(<ChatSurface />);
-    expect(composer).toHaveFocus();
+    expect(composer).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    expect(composer).not.toHaveFocus();
+  });
 
-    composer.blur();
+  it("restores focus only after the authoritative Turn becomes terminal", () => {
+    useWorkbenchStore.setState({ composerText: "Follow up" });
+    const { rerender } = render(<ChatSurface />);
+    const composer = screen.getByRole("textbox", { name: "Message agent" });
+
     hooks.actions.cancellableTurnId = "turn-a";
     rerender(<ChatSurface />);
     hooks.actions.busy = true;
     hooks.actions.cancellableTurnId = null;
     rerender(<ChatSurface />);
+    expect(composer).not.toHaveFocus();
+
     hooks.actions.busy = false;
-    hooks.actions.cancellableTurnId = "turn-a";
+    setTurnState("cancelling");
     rerender(<ChatSurface />);
     expect(composer).not.toHaveFocus();
+
+    setTurnState("completed");
+    rerender(<ChatSurface />);
+    expect(composer).toBeEnabled();
+    expect(composer).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
   });
 
   it("keeps ACP prompting disabled until authoritative Chat state loads", () => {

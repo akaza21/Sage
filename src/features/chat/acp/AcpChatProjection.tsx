@@ -185,7 +185,7 @@ function Turn({
           aria-label={status}
           aria-live="polite"
           aria-atomic="true"
-          data-turn-status
+          data-turn-status={turn.id}
           tabIndex={-1}
         >
           {status}

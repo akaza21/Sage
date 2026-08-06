@@ -184,7 +184,7 @@ describe("AcpChatProjection", () => {
       activity("activity-child", "activity-root", "root-tool", 2),
     ];
     const openResource = vi.fn();
-    render(
+    const { rerender } = render(
       <AcpChatProjection page={nested} active onOpenResource={openResource} />,
     );
 
@@ -237,6 +237,25 @@ describe("AcpChatProjection", () => {
     expect(rootNode).toHaveAttribute("aria-expanded", "false");
     expect(tree.querySelector('[data-sage-id="nested-unknown"]')).toBeNull();
     fireEvent.keyDown(rootNode!, { key: "ArrowLeft" });
+    expect(activityDisclosure).toHaveFocus();
+
+    rootNode!.focus();
+    fireEvent.keyDown(rootNode!, { key: "ArrowRight" });
+    const restoredChildNode = tree.querySelector<HTMLElement>(
+      '[data-sage-id="nested-unknown"]',
+    );
+    const nestedDisclosure = within(restoredChildNode!).getByText(
+      "Activity details",
+    );
+    nestedDisclosure.focus();
+    expect(nestedDisclosure).toHaveFocus();
+    nested.turns[0].items = nested.turns[0].items.filter(
+      (item) => item.id !== "nested-unknown",
+    );
+    nested.turns[0].activities = [nested.turns[0].activities[0]];
+    rerender(
+      <AcpChatProjection page={nested} active onOpenResource={openResource} />,
+    );
     expect(activityDisclosure).toHaveFocus();
   });
 });
