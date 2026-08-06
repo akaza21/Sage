@@ -24,6 +24,8 @@ fn launch_spec(path: PathBuf) -> LaunchSpec {
         limits: TreeLimits::ade_0006a(),
         deadlines: ProcessDeadlines::ade_0006a(),
         absolute_cleanup_deadline: None,
+        #[cfg(all(test, windows))]
+        test_after_artifact_verified: None,
     }
 }
 
@@ -261,6 +263,7 @@ fn verified_fixture_spec_at(case: &str, seed: u32, path: PathBuf) -> LaunchSpec 
         limits: TreeLimits::ade_0006a(),
         deadlines: ProcessDeadlines::ade_0006a(),
         absolute_cleanup_deadline: None,
+        test_after_artifact_verified: None,
     }
 }
 

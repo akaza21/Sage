@@ -54,6 +54,10 @@ pub(crate) fn launch(
         };
     }
     let artifact = pre_spawn!(VerifiedArtifact::open(spec));
+    #[cfg(test)]
+    if let Some(hook) = &spec.test_after_artifact_verified {
+        hook();
+    }
     pre_spawn!(validate_directory(spec.working_directory.as_path()));
     let job = pre_spawn!(JobBoundary::create(spec.limits.active_processes));
     let stdio = pre_spawn!(StdioSet::create());

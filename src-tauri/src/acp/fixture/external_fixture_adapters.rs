@@ -154,6 +154,7 @@ pub(super) fn launch_spec(
         limits: TreeLimits::ade_0006a(),
         deadlines: ProcessDeadlines::ade_0006a(),
         absolute_cleanup_deadline: None,
+        test_after_artifact_verified: None,
     }
 }
 
