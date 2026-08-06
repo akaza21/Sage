@@ -156,7 +156,7 @@ describe("useAcpChatProjection", () => {
     );
   });
 
-  it("recreates from native authority with exactly one live projection listener", async () => {
+  it("recreates its disposable projection with one live native listener", async () => {
     const restored = {
       ...projection,
       projectionRevision: "5",

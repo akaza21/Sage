@@ -29,11 +29,12 @@ export function LeftSidebar() {
         <button
           className="project-action project-action--primary"
           type="button"
+          title="New chat"
         >
           <SquarePen size={16} aria-hidden="true" />
           New chat
         </button>
-        <button className="project-action" type="button">
+        <button className="project-action" type="button" title="Search chats">
           <Search size={16} aria-hidden="true" />
           Search chats
         </button>
@@ -62,6 +63,7 @@ export function LeftSidebar() {
                   }`}
                   type="button"
                   aria-current={selected ? "page" : undefined}
+                  title={`Open project ${item.name}`}
                   onClick={() => void switchProject(item.id)}
                 >
                   <FolderOpen size={16} aria-hidden="true" />
@@ -82,6 +84,7 @@ export function LeftSidebar() {
                         }`}
                         key={tab.id}
                         type="button"
+                        title={`Open chat ${tab.title.replace(/^Chat:\s*/, "")}`}
                         onClick={() => void activateTab(tab.id)}
                       >
                         <MessageSquare size={14} aria-hidden="true" />
@@ -97,6 +100,7 @@ export function LeftSidebar() {
                     <button
                       className="project-chat project-chat--utility"
                       type="button"
+                      title="Add folder root"
                       onClick={() => void addProjectRoot()}
                     >
                       <FolderPlus size={14} aria-hidden="true" />
