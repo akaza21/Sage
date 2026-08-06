@@ -38,7 +38,7 @@ html,
 body,
 #root {
   width: 100%;
-  min-width: 720px;
+  min-width: 0;
   height: 100%;
   margin: 0;
   overflow: hidden;
@@ -539,6 +539,11 @@ textarea:focus-visible {
   min-width: 0;
   overflow: auto;
   border-right: 1px solid var(--border);
+}
+
+.sidebar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .sidebar__heading {
@@ -1558,13 +1563,135 @@ textarea:focus-visible {
   }
 }
 
+@media (max-width: 760px) {
+  :root {
+    --sidebar-width: 0px;
+    --project-sidebar-width: 46px;
+  }
+
+  .right-region {
+    position: relative;
+    overflow: visible;
+  }
+
+  .right-region .sidebar {
+    position: absolute;
+    z-index: 10;
+    top: 0;
+    right: 46px;
+    width: min(272px, calc(100vw - 92px));
+    height: 100%;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: -12px 0 28px rgb(0 0 0 / 0.32);
+  }
+
+  .project-sidebar__actions {
+    padding: 7px 5px;
+  }
+
+  .project-action,
+  .project-row,
+  .project-chat,
+  .project-empty-action {
+    width: 35px;
+    height: 35px;
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 0;
+  }
+
+  .project-section {
+    padding: 8px 5px 2px;
+  }
+
+  .project-section__title {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .project-section__title > span,
+  .project-row span,
+  .project-row > svg:last-child,
+  .project-chat span,
+  .project-sidebar__account > span {
+    display: none;
+  }
+
+  .project-chats {
+    gap: 3px;
+  }
+
+  .project-sidebar__account {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 0;
+  }
+
+  .surface-header,
+  .message-list {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .composer {
+    margin-right: 10px;
+    margin-left: 10px;
+  }
+}
+
+@media (max-width: 760px) and (max-height: 320px) {
+  .surface-header {
+    align-items: center;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  .surface-header .eyebrow {
+    display: none;
+  }
+
+  .surface-header h1 {
+    margin: 0;
+    font-size: 15px;
+  }
+
+  .session-state {
+    padding-top: 0;
+  }
+
+  .message-list {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  .composer {
+    margin-bottom: 4px;
+    border-radius: 9px;
+  }
+
+  .composer textarea {
+    min-height: 36px;
+    max-height: 54px;
+    padding: 7px 10px 3px;
+  }
+
+  .composer__toolbar {
+    min-height: 36px;
+    padding: 2px 5px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
-    animation-duration: 0.01ms !important;
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
     animation-iteration-count: 1 !important;
   }
 }

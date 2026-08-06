@@ -155,4 +155,54 @@ describe("useAcpChatProjection", () => {
       ),
     );
   });
+
+  it("recreates its disposable projection with one live native listener", async () => {
+    const restored = {
+      ...projection,
+      projectionRevision: "5",
+    } as AcpChatPage;
+    const load = vi
+      .spyOn(acpDesktop, "getChatPage")
+      .mockResolvedValueOnce(projection)
+      .mockResolvedValueOnce(restored);
+    const listeners: Array<(event: AcpProjectionChangedEvent) => void> = [];
+    const disposers: Array<ReturnType<typeof vi.fn>> = [];
+    const subscribe = vi
+      .spyOn(acpDesktop, "subscribeProjectionChanges")
+      .mockImplementation(async (callback) => {
+        const dispose = vi.fn();
+        listeners.push(callback);
+        disposers.push(dispose);
+        return dispose;
+      });
+
+    const firstRenderer = renderHook(() => useAcpChatProjection());
+    await waitFor(() =>
+      expect(firstRenderer.result.current?.projectionRevision).toBe("4"),
+    );
+    firstRenderer.rerender();
+    expect(subscribe).toHaveBeenCalledTimes(1);
+
+    firstRenderer.unmount();
+    expect(disposers[0]).toHaveBeenCalledTimes(1);
+    listeners[0]({
+      projectId: "project-1",
+      chatId: "chat-1",
+      sessionId: "session-1",
+      projectionRevision: "99",
+    } as AcpProjectionChangedEvent);
+    expect(load).toHaveBeenCalledTimes(1);
+
+    useAcpProjectionStore.getState().clear();
+    const recreatedRenderer = renderHook(() => useAcpChatProjection());
+    await waitFor(() =>
+      expect(recreatedRenderer.result.current?.projectionRevision).toBe("5"),
+    );
+    expect(subscribe).toHaveBeenCalledTimes(2);
+    expect(disposers[0]).toHaveBeenCalledTimes(1);
+    expect(disposers[1]).not.toHaveBeenCalled();
+
+    recreatedRenderer.unmount();
+    expect(disposers[1]).toHaveBeenCalledTimes(1);
+  });
 });
