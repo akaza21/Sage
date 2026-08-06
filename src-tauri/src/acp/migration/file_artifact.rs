@@ -81,7 +81,7 @@ fn file_fingerprint_with_cap(
     };
     let mut hash = Sha256::new();
     let mut bytes = 0_u64;
-    let mut buffer = [0_u8; 1_048_576];
+    let mut buffer = vec![0_u8; 1_048_576];
     loop {
         let read = file.read(&mut buffer)?;
         if read == 0 {

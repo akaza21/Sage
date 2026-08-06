@@ -87,10 +87,6 @@ impl MigrationPaths {
             &self.retired_live,
             &self.retired_wal,
             &self.retired_shm,
-            &self.probe_main,
-            &self.probe_wal,
-            &self.probe_shm,
-            &self.probe_manifest,
         ]
         .iter()
         .any(|path| path.exists())

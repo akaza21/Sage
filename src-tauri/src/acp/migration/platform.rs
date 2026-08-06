@@ -145,7 +145,7 @@ pub(super) fn copy_bounded_create_new(source: &Path, target: &Path, cap: u64) ->
     let mut input = source_options.open(source)?;
     let mut output = target_options.open(target)?;
     let mut total = 0_u64;
-    let mut buffer = [0_u8; 1_048_576];
+    let mut buffer = vec![0_u8; 1_048_576];
     loop {
         let read = input.read(&mut buffer)?;
         if read == 0 {

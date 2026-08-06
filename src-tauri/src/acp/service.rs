@@ -54,7 +54,10 @@ impl AcpService {
         database: Database,
         sink: Arc<dyn NotificationSink>,
     ) -> Result<Self, StoreError> {
-        let notifier = Arc::new(ProjectionNotifier::start(sink));
+        let runtime = tauri::async_runtime::handle();
+        let notifier = Arc::new(ProjectionNotifier::start_with(sink, move |worker| {
+            runtime.inner().spawn(worker)
+        }));
         Self::build(database, notifier.clone(), Some(notifier))
     }
 

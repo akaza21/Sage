@@ -5,6 +5,7 @@ description = "A small, persistent, ACP-native agent development environment."
 authors = ["Sage contributors"]
 edition = "2024"
 rust-version = "1.88"
+default-run = "sage"
 
 [lib]
 name = "sage_lib"

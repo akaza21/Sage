@@ -269,6 +269,15 @@ fn final_window_shutdown_returns_at_deadline_and_retries_the_same_actor() {
 }
 
 #[test]
+fn desktop_notifier_starts_without_an_entered_tokio_runtime() {
+    assert!(tokio::runtime::Handle::try_current().is_err());
+    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let service =
+        AcpService::new_with_notification_sink(database, Arc::new(GatedSink::default())).unwrap();
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
 fn running_turn_terminal_after_project_switch_is_durable_but_cannot_touch_active_projection() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let base = std::env::temp_dir().join(format!("sage-acp-switch-{}", uuid::Uuid::new_v4()));

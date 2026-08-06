@@ -395,6 +395,7 @@ fn identity_bound_probe_crash_prefixes_converge() {
         if prefix == "complete-with-shm" {
             fs::write(&paths.probe_shm, vec![0_u8; 32_768]).unwrap();
         }
+        assert!(!paths.has_replacement_artifact());
         assert_eq!(probe::classify_live(&paths).unwrap(), SchemaClass::LegacyV4);
         assert_probe_clean(&paths);
         drop(writer);
