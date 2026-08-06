@@ -235,7 +235,7 @@ fn terminalize_descendants(
     epoch: RuntimeEpoch,
     now: i64,
 ) -> Result<(), StoreError> {
-    transaction.execute("UPDATE items SET lifecycle='cancelled',tool_state=CASE WHEN tool_state IN ('pending','inProgress','waitingForApproval') THEN 'cancelled' ELSE tool_state END,revision=revision+1,updated_at=?3,terminal_at=?3 WHERE session_id=?1 AND runtime_epoch=?2 AND lifecycle IN ('started','streaming')",params![session.as_str(),epoch.get() as i64,now])?;
+    transaction.execute("UPDATE items SET lifecycle=CASE WHEN kind='permissionRequest' THEN 'failed' ELSE 'cancelled' END,tool_state=CASE WHEN kind='permissionRequest' THEN 'failed' WHEN tool_state IN ('pending','inProgress','waitingForApproval') THEN 'cancelled' ELSE tool_state END,revision=revision+1,updated_at=?3,terminal_at=?3 WHERE session_id=?1 AND runtime_epoch=?2 AND lifecycle IN ('started','streaming')",params![session.as_str(),epoch.get() as i64,now])?;
     transaction.execute("UPDATE session_activities SET lifecycle='cancelled',revision=revision+1,updated_at=?3,terminal_at=?3 WHERE session_id=?1 AND runtime_epoch=?2 AND lifecycle IN ('observed','active')",params![session.as_str(),epoch.get() as i64,now])?;
     for (old, next) in [
         ("received", "declinePending"),

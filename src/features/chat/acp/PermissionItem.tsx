@@ -14,8 +14,17 @@ const permissionLabels = {
 
 export function PermissionItem({ item }: { item: PermissionProjectionItem }) {
   const descriptionId = useId();
-  const status = permissionLabels[item.payload.state];
-  const terminal = item.payload.state === "resolvedDeclined";
+  const failedClosed =
+    item.lifecycle === "failed" && item.toolState === "failed";
+  const status = failedClosed
+    ? "Failed closed"
+    : permissionLabels[item.payload.state];
+  const terminal = failedClosed || item.payload.state === "resolvedDeclined";
+  const accessibleStatus = failedClosed
+    ? "Permission failed closed"
+    : terminal
+      ? "Permission declined"
+      : status;
   return (
     <article
       className="acp-permission"
@@ -30,7 +39,7 @@ export function PermissionItem({ item }: { item: PermissionProjectionItem }) {
         <strong>{item.payload.label}</strong>
         <span
           role="status"
-          aria-label={terminal ? "Permission declined" : status}
+          aria-label={accessibleStatus}
           aria-live="assertive"
           aria-atomic="true"
         >

@@ -488,6 +488,43 @@ fn chat_page_projects_more_than_the_live_permission_window_from_history() {
     )));
 }
 
+#[test]
+fn chat_page_preserves_a_durable_failed_closed_permission_terminal() {
+    let mut connection = setup();
+    let started = start_session(&mut connection, start(0, "start-failed-permission")).unwrap();
+    connection.execute("INSERT INTO session_runtime_epochs VALUES('project-one','chat-one',?1,1,'failed',NULL,0,2,'protocolFailure')",[started.session_id.as_str()]).unwrap();
+    connection.execute("INSERT INTO turns VALUES('turn-permission','project-one','chat-one',?1,1,0,'turn-intent','failed','correlated',0,1,2,2)",[started.session_id.as_str()]).unwrap();
+    let body = serde_json::to_string(&NormalizedPayload::PermissionRequest {
+        category: ToolCategory::Command,
+        summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
+    })
+    .unwrap();
+    let digest = super::facts::hex_digest(body.as_bytes());
+    connection.execute("INSERT INTO items VALUES('item-permission','project-one','chat-one',?1,'turn-permission',1,0,'primary',NULL,'permissionRequest','failed','failed','external',?2,?3,?4,1,1,2,2)",params![started.session_id.as_str(),body,body.len() as i64,digest]).unwrap();
+    connection.execute("INSERT INTO server_requests VALUES('request-one','project-one','chat-one',?1,'turn-permission',1,?2,'external','permission',1,?3,'resolvedDeclined',?4,1,1,2,2)",params![started.session_id.as_str(),"a".repeat(64),digest,body]).unwrap();
+
+    let page = load_chat_page(
+        &connection,
+        SageProjectId::parse("project-one").unwrap(),
+        SageChatId::parse("chat-one").unwrap(),
+        None,
+    )
+    .unwrap();
+    let item = &page.turns.as_slice()[0].items.as_slice()[0];
+    assert_eq!(item.lifecycle, crate::acp::lifecycle::ItemLifecycle::Failed);
+    assert_eq!(
+        item.tool_state,
+        Some(crate::acp::lifecycle::ToolState::Failed)
+    );
+    assert!(matches!(
+        item.content,
+        crate::acp::projection::ItemContent::PermissionRequest {
+            state: crate::acp::lifecycle::ServerRequestState::ResolvedDeclined,
+            ..
+        }
+    ));
+}
+
 pub(super) fn permission(session: &SageAgentSessionId) -> PermissionIntent {
     let normalized_payload_json = serde_json::to_string(&NormalizedPayload::PermissionRequest {
         category: ToolCategory::Command,
@@ -596,4 +633,12 @@ fn permission_receive_and_decline_are_durable_idempotent_and_write_ordered() {
         .query_row("SELECT state FROM server_requests", [], |r| r.get(0))
         .unwrap();
     assert_eq!(state, "resolvedDeclined");
+    let item: (String, String) = connection
+        .query_row(
+            "SELECT lifecycle,tool_state FROM items WHERE kind='permissionRequest'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(item, ("completed".into(), "declined".into()));
 }
