@@ -13,6 +13,7 @@ import "./workspace-search.css";
 
 interface WorkspaceSearchViewProps {
   projectId: string | null;
+  transitionEpoch: number;
   onOpenResource: (resource: ResourceRef) => void;
   gateway?: WorkspaceSearchGateway;
 }
@@ -29,11 +30,12 @@ const limitMessages: Record<WorkspaceSearchLimitReason, string> = {
 
 export function WorkspaceSearchView({
   projectId,
+  transitionEpoch,
   onOpenResource,
   gateway = workspaceSearchDesktop,
 }: WorkspaceSearchViewProps) {
   const { state, setQuery, setCaseSensitive, submit, cancel } =
-    useWorkspaceSearch({ projectId, gateway });
+    useWorkspaceSearch({ projectId, transitionEpoch, gateway });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

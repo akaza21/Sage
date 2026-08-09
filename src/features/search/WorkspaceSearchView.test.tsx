@@ -16,7 +16,9 @@ describe("Workspace Search view", () => {
   it("searches the active Project and opens a canonical result", async () => {
     const gateway: WorkspaceSearchGateway = {
       search: vi.fn().mockResolvedValue({
+        requestId: "request-a",
         projectId: "project-a",
+        transitionEpoch: 4,
         query: "needle",
         matches: [
           {
@@ -59,6 +61,7 @@ describe("Workspace Search view", () => {
     render(
       <WorkspaceSearchView
         projectId="project-a"
+        transitionEpoch={4}
         gateway={gateway}
         onOpenResource={open}
       />,
@@ -90,6 +93,7 @@ describe("Workspace Search view", () => {
     render(
       <WorkspaceSearchView
         projectId={null}
+        transitionEpoch={0}
         gateway={{ search: vi.fn() }}
         onOpenResource={vi.fn()}
       />,

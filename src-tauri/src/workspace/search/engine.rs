@@ -6,9 +6,9 @@ use crate::{
 };
 
 use super::types::{
-    MAX_QUERY_BYTES, SearchLimitReason, SearchLimits, SearchRoot, SearchRootReport,
+    MAX_RESOURCE_PATH_BYTES, SearchLimitReason, SearchLimits, SearchRoot, SearchRootReport,
     SearchRootSource, SearchRootState, WorkspaceSearchMatch, WorkspaceSearchRequest,
-    WorkspaceSearchResponse,
+    WorkspaceSearchResponse, validate_search_request,
 };
 
 pub struct SearchEngine {
@@ -42,17 +42,8 @@ impl SearchEngine {
         request: WorkspaceSearchRequest,
         roots: Vec<SearchRoot>,
     ) -> AppResult<WorkspaceSearchResponse> {
+        validate_search_request(&request)?;
         let query = request.query.trim();
-        if query.is_empty() {
-            return Err(AppError::InvalidRequest(
-                "workspace search query must not be empty".into(),
-            ));
-        }
-        if query.len() > MAX_QUERY_BYTES {
-            return Err(AppError::ResourceLimit(format!(
-                "workspace search query exceeds the {MAX_QUERY_BYTES}-byte limit"
-            )));
-        }
         if self.limits.max_results == 0
             || self.limits.max_files == 0
             || self.limits.max_total_bytes == 0
@@ -99,7 +90,9 @@ impl SearchEngine {
         }
 
         Ok(WorkspaceSearchResponse {
+            request_id: request.request_id,
             project_id: request.project_id,
+            transition_epoch: request.expected_transition_epoch,
             query: query.into(),
             truncated: !budget.reasons.is_empty()
                 || reports
@@ -202,6 +195,11 @@ impl SearchEngine {
                     continue;
                 }
                 let child_relative = contract_join(&relative, &name);
+                if child_relative.len() > MAX_RESOURCE_PATH_BYTES {
+                    counters.error_count += 1;
+                    counters.partial = true;
+                    continue;
+                }
                 let file_type = match entry.file_type() {
                     Ok(file_type) => file_type,
                     Err(_) => {
@@ -235,7 +233,6 @@ impl SearchEngine {
                 budget.files_seen += 1;
                 self.search_file(
                     workspace,
-                    entry.path(),
                     child_relative,
                     query,
                     case_sensitive,

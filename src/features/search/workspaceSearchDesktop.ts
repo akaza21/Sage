@@ -26,17 +26,29 @@ export function createWorkspaceSearchAdapter(
       const normalized = { ...request, query: request.query.trim() };
       validateWorkspaceSearchRequest(normalized);
       throwIfAborted(signal);
-      const response = parseWorkspaceSearchResponse(
-        await invoke("search_workspace", { request: normalized }),
-      );
-      throwIfAborted(signal);
-      if (
-        response.projectId !== normalized.projectId ||
-        response.query !== normalized.query
-      ) {
-        throw new Error("invalid workspace Search response");
+      const requestId = crypto.randomUUID();
+      const nativeRequest = { ...normalized, requestId };
+      const cancel = () => {
+        void invoke("cancel_workspace_search", { requestId }).catch(() => {});
+      };
+      signal?.addEventListener("abort", cancel, { once: true });
+      try {
+        const response = parseWorkspaceSearchResponse(
+          await invoke("search_workspace", { request: nativeRequest }),
+        );
+        throwIfAborted(signal);
+        if (
+          response.requestId !== requestId ||
+          response.projectId !== normalized.projectId ||
+          response.transitionEpoch !== normalized.expectedTransitionEpoch ||
+          response.query !== normalized.query
+        ) {
+          throw new Error("invalid workspace Search response");
+        }
+        return response;
+      } finally {
+        signal?.removeEventListener("abort", cancel);
       }
-      return response;
     },
   };
 }

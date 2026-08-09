@@ -17,6 +17,7 @@ export interface WorkspaceSearchState {
 
 interface UseWorkspaceSearchOptions {
   projectId: string | null;
+  transitionEpoch: number;
   gateway: WorkspaceSearchGateway;
 }
 
@@ -34,6 +35,7 @@ function errorMessage(error: unknown): string {
 
 export function useWorkspaceSearch({
   projectId,
+  transitionEpoch,
   gateway,
 }: UseWorkspaceSearchOptions) {
   const [state, setState] = useState<WorkspaceSearchState>(initialState);
@@ -46,7 +48,7 @@ export function useWorkspaceSearch({
     active.current = null;
     setState(initialState());
     return () => active.current?.abort();
-  }, [projectId]);
+  }, [projectId, transitionEpoch]);
 
   const setQuery = useCallback((query: string) => {
     setState((current) => ({ ...current, query, error: null }));
@@ -104,7 +106,12 @@ export function useWorkspaceSearch({
 
     try {
       const response = await gateway.search(
-        { projectId, query, caseSensitive: state.caseSensitive },
+        {
+          projectId,
+          expectedTransitionEpoch: transitionEpoch,
+          query,
+          caseSensitive: state.caseSensitive,
+        },
         controller.signal,
       );
       if (
@@ -135,7 +142,7 @@ export function useWorkspaceSearch({
         error: errorMessage(error),
       }));
     }
-  }, [gateway, projectId, state.caseSensitive, state.query]);
+  }, [gateway, projectId, state.caseSensitive, state.query, transitionEpoch]);
 
   return { state, setQuery, setCaseSensitive, submit, cancel };
 }

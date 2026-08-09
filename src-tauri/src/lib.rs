@@ -152,7 +152,9 @@ pub fn run() {
             commands::acp::activate_acp_session,
             commands::acp::send_acp_turn,
             commands::acp::cancel_acp_turn,
-            commands::acp::close_acp_session
+            commands::acp::close_acp_session,
+            workspace::search::command::search_workspace,
+            workspace::search::command::cancel_workspace_search
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Sage")
@@ -163,4 +165,8 @@ pub fn run() {
                 info!("Sage host exit requested");
             }
         });
+}
+
+pub fn run_workspace_search_helper_if_requested() {
+    workspace::search::run_stdio_helper_if_requested();
 }

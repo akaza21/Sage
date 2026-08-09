@@ -12,7 +12,9 @@ function deferred<T>() {
 
 function response(query: string): WorkspaceSearchResponse {
   return {
+    requestId: "request-a",
     projectId: "project-a",
+    transitionEpoch: 4,
     query,
     matches: [],
     roots: [],
@@ -31,7 +33,11 @@ describe("workspace Search state", () => {
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);
     const { result } = renderHook(() =>
-      useWorkspaceSearch({ projectId: "project-a", gateway: { search } }),
+      useWorkspaceSearch({
+        projectId: "project-a",
+        transitionEpoch: 4,
+        gateway: { search },
+      }),
     );
 
     act(() => result.current.setQuery("first"));
@@ -51,13 +57,19 @@ describe("workspace Search state", () => {
     const pending = deferred<WorkspaceSearchResponse>();
     const search = vi.fn().mockReturnValue(pending.promise);
     const { result, rerender } = renderHook(
-      ({ projectId }) => useWorkspaceSearch({ projectId, gateway: { search } }),
-      { initialProps: { projectId: "project-a" as string | null } },
+      ({ projectId, transitionEpoch }) =>
+        useWorkspaceSearch({ projectId, transitionEpoch, gateway: { search } }),
+      {
+        initialProps: {
+          projectId: "project-a" as string | null,
+          transitionEpoch: 4,
+        },
+      },
     );
     act(() => result.current.setQuery("needle"));
     act(() => void result.current.submit());
 
-    rerender({ projectId: "project-b" });
+    rerender({ projectId: "project-b", transitionEpoch: 5 });
 
     expect(search.mock.calls[0][1].aborted).toBe(true);
     expect(result.current.state).toMatchObject({ phase: "idle", query: "" });

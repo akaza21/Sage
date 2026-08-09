@@ -5,7 +5,9 @@ import { parseWorkspaceSearchResponse } from "./workspaceSearchDomain";
 describe("workspace Search domain", () => {
   it("accepts bounded canonical native results", () => {
     const result = parseWorkspaceSearchResponse({
+      requestId: "request-a",
       projectId: "project-a",
+      transitionEpoch: 4,
       query: "needle",
       matches: [
         {
@@ -47,7 +49,9 @@ describe("workspace Search domain", () => {
       preview: "needle",
     };
     const response = {
+      requestId: "request-a",
       projectId: "project-a",
+      transitionEpoch: 4,
       query: "needle",
       matches: [match],
       roots: [],
@@ -67,5 +71,81 @@ describe("workspace Search domain", () => {
         })),
       }),
     ).toThrow("invalid workspace Search response");
+  });
+
+  it("rejects contradictory root, match, and truncation semantics", () => {
+    const unavailable = {
+      rootId: "root-a",
+      rootName: "Missing",
+      state: "unavailable",
+      filesScanned: 0,
+      bytesScanned: 0,
+      entriesVisited: 0,
+      skippedFiles: 0,
+      errorCount: 1,
+      message: "root is missing",
+    };
+    const match = {
+      resource: { rootId: "root-a", relativePath: "safe.txt" },
+      lineNumber: 1,
+      columnNumber: 1,
+      preview: "needle",
+    };
+    const base = {
+      requestId: "request-a",
+      projectId: "project-a",
+      transitionEpoch: 4,
+      query: "needle",
+      matches: [],
+      roots: [unavailable],
+      truncated: false,
+      limitReasons: [],
+      elapsedMs: 1,
+    };
+
+    for (const response of [
+      { ...base, matches: [match] },
+      {
+        ...base,
+        roots: [
+          {
+            ...unavailable,
+            state: "complete",
+            message: "impossible complete root error",
+          },
+        ],
+      },
+      { ...base, truncated: false, limitReasons: ["timeLimit"] },
+      { ...base, roots: [], truncated: true },
+      {
+        ...base,
+        roots: [
+          {
+            ...unavailable,
+            rootId: "root-b",
+            state: "complete",
+            filesScanned: 20_000,
+            bytesScanned: 64 * 1024 * 1024,
+            entriesVisited: 50_000,
+            errorCount: 0,
+            message: null,
+          },
+          {
+            ...unavailable,
+            rootId: "root-c",
+            state: "complete",
+            filesScanned: 1,
+            bytesScanned: 1,
+            entriesVisited: 1,
+            errorCount: 0,
+            message: null,
+          },
+        ],
+      },
+    ]) {
+      expect(() => parseWorkspaceSearchResponse(response)).toThrow(
+        "invalid workspace Search response",
+      );
+    }
   });
 });

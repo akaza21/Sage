@@ -1,8 +1,9 @@
-use std::{fs::File, io::Read, path::PathBuf};
+use std::io::Read;
 
 use crate::{domain::ResourceRef, workspace::Workspace};
 
 use super::{
+    contained_file::{ContainedFile, open_contained_file},
     engine::{RootCounters, SearchBudget, SearchEngine, push_reason},
     types::{SearchLimitReason, WorkspaceSearchMatch},
 };
@@ -12,7 +13,6 @@ impl SearchEngine {
     pub(super) fn search_file(
         &self,
         workspace: &Workspace,
-        path: PathBuf,
         relative_path: String,
         query: &str,
         case_sensitive: bool,
@@ -20,8 +20,9 @@ impl SearchEngine {
         budget: &mut SearchBudget,
         counters: &mut RootCounters,
     ) {
-        let byte_len = match path.metadata() {
-            Ok(metadata) => metadata.len(),
+        let resource = workspace.resource_unchecked(&relative_path);
+        let ContainedFile { file, byte_len } = match open_contained_file(workspace, &resource) {
+            Ok(contained) => contained,
             Err(_) => {
                 counters.error_count += 1;
                 counters.partial = true;
@@ -41,10 +42,10 @@ impl SearchEngine {
         }
 
         let mut bytes = Vec::with_capacity(byte_len as usize);
-        let read_result = File::open(path).and_then(|file| {
+        let read_result = (|| {
             file.take(byte_len).read_to_end(&mut bytes)?;
-            Ok(())
-        });
+            std::io::Result::Ok(())
+        })();
         if read_result.is_err() {
             counters.error_count += 1;
             counters.partial = true;
@@ -64,7 +65,7 @@ impl SearchEngine {
             return;
         };
         self.collect_matches(
-            workspace.resource_unchecked(&relative_path),
+            resource,
             content,
             query,
             case_sensitive,
