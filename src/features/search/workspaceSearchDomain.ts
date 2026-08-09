@@ -177,6 +177,7 @@ export function parseWorkspaceSearchResponse(
     value.matches.length > MAX_WORKSPACE_SEARCH_RESULTS ||
     !value.matches.every(searchMatch) ||
     !Array.isArray(value.roots) ||
+    value.roots.length === 0 ||
     value.roots.length > WORKSPACE_SEARCH_LIMITS.projectRoots ||
     !value.roots.every(rootReport) ||
     typeof value.truncated !== "boolean" ||

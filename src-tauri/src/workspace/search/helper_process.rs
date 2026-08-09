@@ -3,6 +3,7 @@ use std::{
     future::{Future, poll_fn},
     path::PathBuf,
     process::Stdio,
+    sync::{Arc, Mutex as StdMutex, OnceLock},
     task::Poll,
     time::Duration,
 };
@@ -10,8 +11,9 @@ use std::{
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     process::Command,
-    sync::oneshot,
-    time::sleep,
+    sync::{OwnedSemaphorePermit, Semaphore, oneshot},
+    task::JoinHandle,
+    time::{sleep, timeout},
 };
 
 use crate::error::{AppError, AppResult};
@@ -24,12 +26,18 @@ use super::{
     types::WorkspaceSearchResponse,
 };
 
-pub(super) const COMMAND_DEADLINE: Duration = Duration::from_millis(2_500);
+pub(super) const COMMAND_DEADLINE: Duration = Duration::from_millis(2_200);
+const REAP_DEADLINE: Duration = Duration::from_millis(250);
+const IO_CLEANUP_DEADLINE: Duration = Duration::from_millis(50);
+const LIFECYCLE_QUEUE_WAIT: Duration = Duration::from_millis(250);
+static HELPER_LIFECYCLE: OnceLock<Arc<Semaphore>> = OnceLock::new();
+static REAPER_TASK: OnceLock<StdMutex<Option<JoinHandle<()>>>> = OnceLock::new();
 
 struct ProcessSpec {
     executable: PathBuf,
     arguments: Vec<OsString>,
     environment: Vec<(OsString, OsString)>,
+    clear_environment: bool,
 }
 
 impl ProcessSpec {
@@ -38,6 +46,7 @@ impl ProcessSpec {
             executable: std::env::current_exe()?,
             arguments: vec![HELPER_ARGUMENT.into()],
             environment: Vec::new(),
+            clear_environment: true,
         })
     }
 }
@@ -46,11 +55,19 @@ pub(super) async fn run(
     request: HelperRequest,
     cancellation: oneshot::Receiver<()>,
 ) -> AppResult<WorkspaceSearchResponse> {
+    let lifecycle_lease = timeout(LIFECYCLE_QUEUE_WAIT, helper_lifecycle().acquire_owned())
+        .await
+        .map_err(|_| {
+            AppError::ResourceLimit("workspace search helper cleanup is still in progress".into())
+        })?
+        .map_err(|_| AppError::InvalidRequest("workspace search helper is unavailable".into()))?;
     run_with_spec(
         request,
         cancellation,
         ProcessSpec::production()?,
         COMMAND_DEADLINE,
+        Some(REAP_DEADLINE),
+        lifecycle_lease,
     )
     .await
 }
@@ -60,6 +77,8 @@ async fn run_with_spec(
     cancellation: oneshot::Receiver<()>,
     spec: ProcessSpec,
     deadline: Duration,
+    reap_deadline: Option<Duration>,
+    lifecycle_lease: OwnedSemaphorePermit,
 ) -> AppResult<WorkspaceSearchResponse> {
     let input = serde_json::to_vec(&request).map_err(|_| {
         AppError::InvalidRequest("workspace search helper request could not be encoded".into())
@@ -69,10 +88,8 @@ async fn run_with_spec(
             "workspace search helper request exceeded its input bound".into(),
         ));
     }
-    let mut command = Command::new(spec.executable);
+    let mut command = configured_command(&spec);
     command
-        .args(spec.arguments)
-        .envs(spec.environment)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -101,6 +118,7 @@ async fn run_with_spec(
         Exited(std::process::ExitStatus),
         Cancelled,
         Deadline,
+        WaitFailed,
     }
     let completion = {
         let mut wait = Box::pin(child.wait());
@@ -108,27 +126,24 @@ async fn run_with_spec(
         let mut deadline = Box::pin(sleep(deadline));
         poll_fn(|context| {
             if let Poll::Ready(status) = wait.as_mut().poll(context) {
-                return Poll::Ready(status.map(Completion::Exited));
+                return Poll::Ready(match status {
+                    Ok(status) => Completion::Exited(status),
+                    Err(_) => Completion::WaitFailed,
+                });
             }
             if cancellation.as_mut().poll(context).is_ready() {
-                return Poll::Ready(Ok(Completion::Cancelled));
+                return Poll::Ready(Completion::Cancelled);
             }
             if deadline.as_mut().poll(context).is_ready() {
-                return Poll::Ready(Ok(Completion::Deadline));
+                return Poll::Ready(Completion::Deadline);
             }
             Poll::Pending
         })
-        .await?
+        .await
     };
     match completion {
         Completion::Exited(status) => {
-            let write_result = writer.await.map_err(|error| {
-                AppError::InvalidRequest(format!("workspace search helper writer failed: {error}"))
-            })?;
-            write_result?;
-            let output = reader.await.map_err(|error| {
-                AppError::InvalidRequest(format!("workspace search helper reader failed: {error}"))
-            })??;
+            let output = collect_output(writer, reader).await?;
             if !status.success() || output.len() > MAX_HELPER_OUTPUT_BYTES {
                 return Err(AppError::ResourceLimit(
                     "workspace search helper failed or exceeded its output bound".into(),
@@ -136,19 +151,35 @@ async fn run_with_spec(
             }
             decode_reply(&output)
         }
-        Completion::Cancelled | Completion::Deadline => {
-            let _ = child.start_kill();
-            let _ = child.wait().await;
+        Completion::Cancelled | Completion::Deadline | Completion::WaitFailed => {
             writer.abort();
             reader.abort();
-            let _ = writer.await;
-            let _ = reader.await;
+            let reaped =
+                terminate_and_reap(child, writer, reader, lifecycle_lease, reap_deadline).await;
             match completion {
                 Completion::Cancelled => Err(AppError::InvalidRequest(
-                    "workspace search was cancelled".into(),
+                    if reaped {
+                        "workspace search was cancelled"
+                    } else {
+                        "workspace search was cancelled; helper cleanup remains contained"
+                    }
+                    .into(),
                 )),
                 Completion::Deadline => Err(AppError::ResourceLimit(
-                    "workspace search exceeded its 2500 ms command deadline".into(),
+                    if reaped {
+                        "workspace search exceeded its 2500 ms command deadline"
+                    } else {
+                        "workspace search exceeded its deadline; helper cleanup remains contained"
+                    }
+                    .into(),
+                )),
+                Completion::WaitFailed => Err(AppError::InvalidRequest(
+                    if reaped {
+                        "workspace search helper wait failed"
+                    } else {
+                        "workspace search helper wait failed; cleanup remains contained"
+                    }
+                    .into(),
                 )),
                 Completion::Exited(_) => unreachable!(),
             }
@@ -156,71 +187,114 @@ async fn run_with_spec(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::workspace::search::{helper_protocol::HelperRequest, tests::request};
-
-    #[test]
-    fn sleeping_child_fixture() {
-        if std::env::var_os("SAGE_SEARCH_SLEEP_FIXTURE").is_some() {
-            std::thread::sleep(Duration::from_secs(30));
-        }
+fn configured_command(spec: &ProcessSpec) -> Command {
+    let mut command = Command::new(&spec.executable);
+    if spec.clear_environment {
+        command.env_clear();
     }
-
-    #[test]
-    fn deadline_kills_and_reaps_the_actual_helper_process() {
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
-            let executable = std::env::current_exe().unwrap();
-            let spec = ProcessSpec {
-                executable,
-                arguments: vec![
-                    "--exact".into(),
-                    "workspace::search::helper_process::tests::sleeping_child_fixture".into(),
-                    "--nocapture".into(),
-                ],
-                environment: vec![("SAGE_SEARCH_SLEEP_FIXTURE".into(), "1".into())],
-            };
-            let (_cancel, receiver) = oneshot::channel();
-            let error = run_with_spec(
-                HelperRequest::new(request("needle"), Vec::new()),
-                receiver,
-                spec,
-                Duration::from_millis(100),
-            )
-            .await
-            .unwrap_err();
-            assert!(error.to_string().contains("deadline"));
-        });
-    }
-
-    #[test]
-    fn cancellation_kills_and_reaps_the_actual_helper_process() {
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
-            let spec = ProcessSpec {
-                executable: std::env::current_exe().unwrap(),
-                arguments: vec![
-                    "--exact".into(),
-                    "workspace::search::helper_process::tests::sleeping_child_fixture".into(),
-                    "--nocapture".into(),
-                ],
-                environment: vec![("SAGE_SEARCH_SLEEP_FIXTURE".into(), "1".into())],
-            };
-            let (cancel, receiver) = oneshot::channel();
-            let cancellation = tokio::spawn(async move {
-                sleep(Duration::from_millis(100)).await;
-                let _ = cancel.send(());
-            });
-            let error = run_with_spec(
-                HelperRequest::new(request("needle"), Vec::new()),
-                receiver,
-                spec,
-                Duration::from_secs(5),
-            )
-            .await
-            .unwrap_err();
-            cancellation.await.unwrap();
-            assert!(error.to_string().contains("cancelled"));
-        });
-    }
+    command.args(&spec.arguments).envs(spec.environment.clone());
+    command
 }
+
+async fn terminate_and_reap(
+    mut child: tokio::process::Child,
+    writer: JoinHandle<std::io::Result<()>>,
+    reader: JoinHandle<std::io::Result<Vec<u8>>>,
+    lifecycle_lease: OwnedSemaphorePermit,
+    deadline: Option<Duration>,
+) -> bool {
+    let kill_failed = child.start_kill().is_err();
+    if let Some(deadline) = deadline
+        && bounded_reap(child.wait(), deadline).await
+    {
+        settle_io(writer, reader).await;
+        return true;
+    }
+    tracing::warn!(
+        kill_failed,
+        "workspace search helper cleanup moved to the bounded reaper owner"
+    );
+    handoff_reaper(child, writer, reader, lifecycle_lease);
+    false
+}
+
+async fn bounded_reap<F>(reap: F, deadline: Duration) -> bool
+where
+    F: Future<Output = std::io::Result<std::process::ExitStatus>>,
+{
+    matches!(timeout(deadline, reap).await, Ok(Ok(_)))
+}
+
+fn handoff_reaper(
+    mut child: tokio::process::Child,
+    writer: JoinHandle<std::io::Result<()>>,
+    reader: JoinHandle<std::io::Result<Vec<u8>>>,
+    lifecycle_lease: OwnedSemaphorePermit,
+) {
+    let previous = reaper_task()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .take();
+    let task = tokio::spawn(async move {
+        if let Some(previous) = previous {
+            let _ = previous.await;
+        }
+        let _lifecycle_lease = lifecycle_lease;
+        settle_io(writer, reader).await;
+        loop {
+            let _ = child.start_kill();
+            if child.wait().await.is_ok() {
+                break;
+            }
+            sleep(Duration::from_millis(100)).await;
+        }
+    });
+    *reaper_task()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(task);
+}
+
+async fn settle_io(
+    writer: JoinHandle<std::io::Result<()>>,
+    reader: JoinHandle<std::io::Result<Vec<u8>>>,
+) {
+    let _ = timeout(IO_CLEANUP_DEADLINE, async {
+        let _ = writer.await;
+        let _ = reader.await;
+    })
+    .await;
+}
+
+async fn collect_output(
+    writer: JoinHandle<std::io::Result<()>>,
+    reader: JoinHandle<std::io::Result<Vec<u8>>>,
+) -> AppResult<Vec<u8>> {
+    timeout(IO_CLEANUP_DEADLINE, async {
+        writer.await.map_err(|error| {
+            AppError::InvalidRequest(format!("workspace search helper writer failed: {error}"))
+        })??;
+        reader
+            .await
+            .map_err(|error| {
+                AppError::InvalidRequest(format!("workspace search helper reader failed: {error}"))
+            })?
+            .map_err(AppError::from)
+    })
+    .await
+    .map_err(|_| {
+        AppError::ResourceLimit("workspace search helper output did not close in time".into())
+    })?
+}
+
+fn helper_lifecycle() -> Arc<Semaphore> {
+    HELPER_LIFECYCLE
+        .get_or_init(|| Arc::new(Semaphore::new(1)))
+        .clone()
+}
+
+fn reaper_task() -> &'static StdMutex<Option<JoinHandle<()>>> {
+    REAPER_TASK.get_or_init(|| StdMutex::new(None))
+}
+
+#[cfg(test)]
+mod tests;

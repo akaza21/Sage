@@ -115,7 +115,7 @@ export function WorkspaceSearchView({
         {state.phase === "searching" ? (
           <p className="workspace-search__empty workspace-search__progress">
             <LoaderCircle size={14} aria-hidden="true" />
-            Searching the Project…
+            Searching the Project...
           </p>
         ) : null}
         {state.phase === "error" ? (
@@ -141,7 +141,7 @@ export function WorkspaceSearchView({
             ))}
             {matches.length === 0 ? (
               <p className="workspace-search__empty">
-                No matches found for “{state.response.query}”.
+                No matches found for "{state.response.query}".
               </p>
             ) : (
               <div className="workspace-search__results" role="list">

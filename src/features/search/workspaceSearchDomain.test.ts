@@ -25,7 +25,7 @@ describe("workspace Search domain", () => {
           filesScanned: 12,
           bytesScanned: 840,
           entriesVisited: 15,
-          skippedFiles: 0,
+          skippedFiles: 1,
           errorCount: 0,
           message: null,
         },
@@ -116,7 +116,7 @@ describe("workspace Search domain", () => {
         ],
       },
       { ...base, truncated: false, limitReasons: ["timeLimit"] },
-      { ...base, roots: [], truncated: true },
+      { ...base, roots: [] },
       {
         ...base,
         roots: [

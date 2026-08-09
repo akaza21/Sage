@@ -1,0 +1,142 @@
+use std::{sync::Arc, time::Instant};
+
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
+
+use super::*;
+use crate::workspace::search::{helper_protocol::HelperRequest, tests::request};
+
+#[test]
+fn sleeping_child_fixture() {
+    if std::env::var_os("SAGE_SEARCH_SLEEP_FIXTURE").is_some() {
+        std::thread::sleep(Duration::from_secs(30));
+    }
+}
+
+#[test]
+fn clean_environment_fixture() {
+    if std::env::var_os("SAGE_SEARCH_ASSERT_CLEAN_ENV").is_some() {
+        assert!(std::env::var_os("PATH").is_none());
+        assert!(std::env::var_os("SAGE_DISPOSABLE_PROFILE_ROOT").is_none());
+        assert!(std::env::var_os("SAGE_PROJECT_ROOT").is_none());
+    }
+}
+
+fn test_lease() -> OwnedSemaphorePermit {
+    Arc::new(Semaphore::new(1)).try_acquire_owned().unwrap()
+}
+
+fn sleeping_process() -> ProcessSpec {
+    ProcessSpec {
+        executable: std::env::current_exe().unwrap(),
+        arguments: vec![
+            "--exact".into(),
+            "workspace::search::helper_process::tests::sleeping_child_fixture".into(),
+            "--nocapture".into(),
+        ],
+        environment: vec![("SAGE_SEARCH_SLEEP_FIXTURE".into(), "1".into())],
+        clear_environment: true,
+    }
+}
+
+#[test]
+fn deadline_kills_and_reaps_the_actual_helper_process() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let started = Instant::now();
+        let (_cancel, receiver) = oneshot::channel();
+        let error = run_with_spec(
+            HelperRequest::new(request("needle"), Vec::new()),
+            receiver,
+            sleeping_process(),
+            Duration::from_millis(100),
+            Some(REAP_DEADLINE),
+            test_lease(),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("deadline"));
+        assert!(started.elapsed() < Duration::from_secs(1));
+    });
+}
+
+#[test]
+fn cancellation_kills_and_reaps_the_actual_helper_process() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let started = Instant::now();
+        let (cancel, receiver) = oneshot::channel();
+        let cancellation = tokio::spawn(async move {
+            sleep(Duration::from_millis(100)).await;
+            let _ = cancel.send(());
+        });
+        let error = run_with_spec(
+            HelperRequest::new(request("needle"), Vec::new()),
+            receiver,
+            sleeping_process(),
+            Duration::from_secs(5),
+            Some(REAP_DEADLINE),
+            test_lease(),
+        )
+        .await
+        .unwrap_err();
+        cancellation.await.unwrap();
+        assert!(error.to_string().contains("cancelled"));
+        assert!(started.elapsed() < Duration::from_secs(1));
+    });
+}
+
+#[test]
+fn forced_reap_handoff_keeps_the_process_under_a_registered_owner() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let started = Instant::now();
+        let (_cancel, receiver) = oneshot::channel();
+        let error = run_with_spec(
+            HelperRequest::new(request("needle"), Vec::new()),
+            receiver,
+            sleeping_process(),
+            Duration::from_millis(100),
+            None,
+            test_lease(),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("cleanup remains contained"));
+        assert!(started.elapsed() < Duration::from_secs(1));
+    });
+}
+
+#[test]
+fn stalled_reap_policy_returns_at_its_bound() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let started = Instant::now();
+        let reaped = bounded_reap(
+            std::future::pending::<std::io::Result<std::process::ExitStatus>>(),
+            Duration::from_millis(25),
+        )
+        .await;
+        assert!(!reaped);
+        assert!(started.elapsed() < Duration::from_secs(1));
+    });
+}
+
+#[test]
+fn exact_helper_process_receives_only_its_allowlisted_environment() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let spec = ProcessSpec {
+            executable: std::env::current_exe().unwrap(),
+            arguments: vec![
+                "--exact".into(),
+                "workspace::search::helper_process::tests::clean_environment_fixture".into(),
+                "--nocapture".into(),
+            ],
+            environment: vec![("SAGE_SEARCH_ASSERT_CLEAN_ENV".into(), "1".into())],
+            clear_environment: true,
+        };
+        let status = configured_command(&spec)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await
+            .unwrap();
+        assert!(status.success());
+    });
+}
