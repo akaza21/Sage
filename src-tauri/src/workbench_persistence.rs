@@ -4,6 +4,7 @@ use rusqlite::{OptionalExtension, params};
 use serde_json::json;
 
 use crate::{
+    chat_archive::archived_chats_in,
     chat_lifecycle::{attach_chat_tab_in, durable_chat_title_in},
     domain::{
         BootstrapSnapshot, ProjectLayoutRequest, ProjectRepositoryStatus, ProjectSwitchRequest,
@@ -43,14 +44,24 @@ impl Database {
         };
         let project = self.project_summary(&project_id)?;
         let roots = self.root_records(&project_id)?;
-        let (tabs, active_tab_id, selected_root_id, selected_resource, chat_id, session) = {
+        let (
+            tabs,
+            archived_chats,
+            active_tab_id,
+            selected_root_id,
+            selected_resource,
+            chat_id,
+            session,
+        ) = {
             let connection = self.connection();
             let restored = restore_layout(&connection, &project_id, &roots)?;
+            let archived_chats = archived_chats_in(&connection, &project_id)?;
             let chat_id =
                 load_chat_id(&connection, &project_id, restored.active_tab_id.as_deref())?;
             let session = load_session(&connection, &project_id, chat_id.as_deref())?;
             (
                 restored.tabs,
+                archived_chats,
                 restored.active_tab_id,
                 restored.selected_root_id,
                 restored.selected_resource,
@@ -79,6 +90,7 @@ impl Database {
             projects,
             project: Some(project),
             tabs,
+            archived_chats,
             active_tab_id,
             selected_root_id,
             selected_resource,
@@ -162,6 +174,7 @@ fn empty_snapshot(projects: Vec<crate::domain::ProjectListItem>) -> BootstrapSna
         projects,
         project: None,
         tabs: Vec::new(),
+        archived_chats: Vec::new(),
         active_tab_id: None,
         selected_root_id: None,
         selected_resource: None,

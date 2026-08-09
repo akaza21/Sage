@@ -29,6 +29,7 @@ export function TabStrip() {
   const closeTab = useWorkbenchStore((state) => state.closeTab);
   const createChat = useWorkbenchStore((state) => state.createChat);
   const project = useWorkbenchStore((state) => state.project);
+  const attachedChatCount = tabs.filter((tab) => tab.kind === "chat").length;
 
   return (
     <nav className="tab-strip" aria-label="Open tabs">
@@ -63,7 +64,8 @@ export function TabStrip() {
                 <button
                   className="tab__close"
                   type="button"
-                  aria-label={`Close ${tab.title}`}
+                  aria-label={`${tab.kind === "chat" ? "Archive" : "Close"} ${tab.title}`}
+                  disabled={tab.kind === "chat" && attachedChatCount <= 1}
                   onClick={() => closeTab(tab.id)}
                 >
                   <X size={14} aria-hidden="true" />

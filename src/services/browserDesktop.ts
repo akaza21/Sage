@@ -1,23 +1,24 @@
 import type {
-  BootstrapSnapshot,
+  ArchivedChatSummary,
+  ChatLifecycleRequest,
   ChatMessage,
-  DirectoryListing,
   FileDiff,
-  FileChange,
   ProjectLayoutRequest,
-  ProjectRepositoryStatus,
   RenameChatRequest,
   ProjectSwitchRequest,
   ProjectTransitionResult,
   ResourceRef,
   SimulatorTurnResult,
 } from "../domain/workbench";
+import { archiveChatLayout, restoreChatLayout } from "../domain/chatArchive";
 import { resourceKey } from "../domain/resourceIdentity";
 import {
   appendBrowserSimulatorTurn,
   assertBrowserChatActivation,
   assertBrowserChatCreation,
+  assertBrowserChatLifecycleIdentity,
   assertBrowserChatRenameIdentity,
+  assertExactBrowserChatAttachments,
   assertBrowserPrompt,
   browserChatRenameTitle,
   browserSessionId,
@@ -28,186 +29,13 @@ import {
 } from "./browserChat";
 import { browserEditor } from "./browserEditor";
 import { assertBrowserProjectLayout } from "./browserLayout";
+import {
+  browserDirectories as directories,
+  browserRepository as repository,
+  browserSnapshot as snapshot,
+} from "./browserWorkspaceFixture";
 
 export { appendBrowserSimulatorTurn } from "./browserChat";
-
-const rootId = "browser-root";
-const ref = (relativePath: string): ResourceRef => ({ rootId, relativePath });
-const changes: FileChange[] = [
-  {
-    resource: ref("src/workbench/Workbench.tsx"),
-    indexStatus: "unchanged",
-    worktreeStatus: "modified",
-    additions: 38,
-    deletions: 14,
-  },
-];
-const repository: ProjectRepositoryStatus = {
-  roots: [
-    {
-      rootId,
-      state: "repository",
-      branch: "main",
-      changes,
-      truncated: false,
-      elapsedMs: 18,
-      message: null,
-    },
-  ],
-  truncated: false,
-  elapsedMs: 18,
-};
-const snapshot: BootstrapSnapshot = {
-  transitionEpoch: 0,
-  projects: [
-    { id: "browser-project", name: "Sage", rootCount: 1, lastOpenedAt: 1 },
-  ],
-  project: {
-    id: "browser-project",
-    name: "Sage",
-    roots: [
-      {
-        id: rootId,
-        name: "Sage",
-        ordinal: 0,
-        availability: "available",
-        message: null,
-      },
-    ],
-  },
-  tabs: [
-    {
-      id: "tab-chat",
-      kind: "chat",
-      title: "Chat: Walking skeleton",
-      position: 0,
-      pinned: true,
-      dirty: false,
-      status: "idle",
-    },
-  ],
-  activeTabId: "tab-chat",
-  selectedRootId: rootId,
-  selectedResource: null,
-  harnesses: [
-    {
-      id: "codex",
-      name: "Codex",
-      description: "Curated ACP adapter, installed only when requested.",
-      installState: "notInstalled",
-      source: "builtIn",
-      transport: "acp",
-      bindingId: "codex-app-server",
-    },
-    {
-      id: "pi",
-      name: "Pi",
-      description: "Curated ACP adapter, installed only when requested.",
-      installState: "notInstalled",
-      source: "builtIn",
-      transport: "acp",
-      bindingId: null,
-    },
-    {
-      id: "claude-code",
-      name: "Claude Code",
-      description: "Curated ACP adapter, installed only when requested.",
-      installState: "notInstalled",
-      source: "builtIn",
-      transport: "acp",
-      bindingId: null,
-    },
-    {
-      id: "oh-my-pi",
-      name: "Oh My Pi",
-      description: "Curated native ACP binding, admitted last.",
-      installState: "notInstalled",
-      source: "builtIn",
-      transport: "acp",
-      bindingId: null,
-    },
-    {
-      id: "sage-simulator",
-      name: "Sage ACP Simulator",
-      description: "Deterministic development harness.",
-      installState: "available",
-      source: "development",
-      transport: "legacySimulator",
-      bindingId: null,
-    },
-  ],
-  sessionId: null,
-  selectedHarnessId: "sage-simulator",
-  selectedModelId: "sim-fast",
-  messages: [
-    {
-      id: "message-welcome",
-      sessionId: "session-walking-skeleton",
-      sequence: 1,
-      role: "assistant",
-      text: "The Sage walking skeleton is ready.",
-      createdAt: Date.now(),
-    },
-  ],
-  repositories: repository,
-  turnChanges: changes,
-  recoveredBuffers: [],
-  recoveryNotice: null,
-};
-
-const directories = new Map<string, DirectoryListing>([
-  [
-    resourceKey(ref("")),
-    {
-      resource: ref(""),
-      truncated: false,
-      entries: [
-        {
-          name: "src",
-          resource: ref("src"),
-          kind: "directory",
-          byteLen: null,
-        },
-        {
-          name: "README.md",
-          resource: ref("README.md"),
-          kind: "file",
-          byteLen: 1_840,
-        },
-      ],
-    },
-  ],
-  [
-    resourceKey(ref("src")),
-    {
-      resource: ref("src"),
-      truncated: false,
-      entries: [
-        {
-          name: "workbench",
-          resource: ref("src/workbench"),
-          kind: "directory",
-          byteLen: null,
-        },
-      ],
-    },
-  ],
-  [
-    resourceKey(ref("src/workbench")),
-    {
-      resource: ref("src/workbench"),
-      truncated: false,
-      entries: [
-        {
-          name: "Workbench.tsx",
-          resource: ref("src/workbench/Workbench.tsx"),
-          kind: "file",
-          byteLen: 2_180,
-        },
-      ],
-    },
-  ],
-]);
 
 const initialTabs = structuredClone(snapshot.tabs);
 const initialMessages = structuredClone(snapshot.messages);
@@ -223,6 +51,7 @@ let chatTitles = new Map([["tab-chat", snapshot.tabs[0].title]]);
 export function resetBrowserDesktopForTests() {
   snapshot.transitionEpoch = 0;
   snapshot.tabs = structuredClone(initialTabs);
+  snapshot.archivedChats = [];
   snapshot.activeTabId = "tab-chat";
   snapshot.sessionId = null;
   snapshot.selectedHarnessId = "sage-simulator";
@@ -242,6 +71,15 @@ function projectActiveChat() {
   snapshot.sessionId = session?.sessionId ?? null;
   snapshot.selectedHarnessId = "sage-simulator";
   snapshot.selectedModelId = session?.modelId ?? null;
+}
+
+function projectArchivedChats(): ArchivedChatSummary[] {
+  const attached = new Set(
+    snapshot.tabs.filter((tab) => tab.kind === "chat").map((tab) => tab.id),
+  );
+  return [...durableChatIds]
+    .filter((chatId) => !attached.has(chatId))
+    .map((id) => ({ id, title: chatTitles.get(id)! }));
 }
 
 export const browserDesktop = {
@@ -275,6 +113,7 @@ export const browserDesktop = {
     snapshot.activeTabId = request.activeTabId;
     snapshot.selectedRootId = request.selectedRootId;
     snapshot.selectedResource = structuredClone(request.selectedResource);
+    snapshot.archivedChats = projectArchivedChats();
     projectActiveChat();
   },
   async createChat(
@@ -347,6 +186,73 @@ export const browserDesktop = {
     chatTitles.set(request.chatId, title);
     Object.assign(snapshot, renamedLayout);
     projectActiveChat();
+    snapshot.transitionEpoch += 1;
+    return {
+      committed: true,
+      transitionEpoch: snapshot.transitionEpoch,
+      snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
+      recoveryError: null,
+    };
+  },
+  async archiveChat(
+    request: ChatLifecycleRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    assertBrowserChatLifecycleIdentity(
+      "archive",
+      request,
+      expectedTransitionEpoch,
+      snapshot.transitionEpoch,
+      snapshot.project?.id,
+      durableChatIds,
+    );
+    assertBrowserProjectLayout(
+      request.currentLayout,
+      request.projectId,
+      snapshot.project?.roots ?? [],
+    );
+    assertExactBrowserChatAttachments(request.currentLayout, snapshot.tabs);
+    const next = archiveChatLayout(request.currentLayout, request.chatId);
+    await this.persistProjectLayout(next);
+    snapshot.transitionEpoch += 1;
+    return {
+      committed: true,
+      transitionEpoch: snapshot.transitionEpoch,
+      snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
+      recoveryError: null,
+    };
+  },
+  async restoreChat(
+    request: ChatLifecycleRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    assertBrowserChatLifecycleIdentity(
+      "restore",
+      request,
+      expectedTransitionEpoch,
+      snapshot.transitionEpoch,
+      snapshot.project?.id,
+      durableChatIds,
+    );
+    assertBrowserProjectLayout(
+      request.currentLayout,
+      request.projectId,
+      snapshot.project?.roots ?? [],
+    );
+    assertExactBrowserChatAttachments(request.currentLayout, snapshot.tabs);
+    const archived = projectArchivedChats().find(
+      (chat) => chat.id === request.chatId,
+    );
+    if (!archived) {
+      throw new Error("Chat is already attached to the active Project");
+    }
+    const next = restoreChatLayout(request.currentLayout, archived);
+    assertBrowserProjectLayout(
+      next,
+      request.projectId,
+      snapshot.project?.roots ?? [],
+    );
+    await this.persistProjectLayout(next);
     snapshot.transitionEpoch += 1;
     return {
       committed: true,

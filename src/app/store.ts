@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { childResource, resourceKey } from "../domain/resourceIdentity";
 import type {
   ChatMessage,
+  ArchivedChatSummary,
   FileChange,
   HarnessDefinition,
   ModelOption,
@@ -16,6 +17,10 @@ import { preferredModelId } from "../features/harnesses/modelSelection";
 import { desktop } from "../services/desktop";
 import { createEditorSlice, type EditorSlice } from "./editorSlice";
 import { createChatSlice, type ChatSlice } from "./chatSlice";
+import {
+  createChatArchiveSlice,
+  type ChatArchiveSlice,
+} from "./chatArchiveSlice";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import { createProjectSlice, type ProjectSlice } from "./projectSlice";
 import { createResourceSlice, type ResourceSlice } from "./resourceSlice";
@@ -23,7 +28,7 @@ import {
   createSearchNavigationSlice,
   type SearchNavigationSlice,
 } from "./searchNavigationSlice";
-import { closeTab as closeTabState } from "./tabState";
+import { closeWorkbenchTab } from "./tabClosing";
 
 export type SidebarView =
   "explorer" | "search" | "sourceControl" | "problems" | "outline";
@@ -35,6 +40,7 @@ export type ResourceState<T> =
 export interface WorkbenchState
   extends
     ChatSlice,
+    ChatArchiveSlice,
     EditorSlice,
     ProjectSlice,
     ResourceSlice,
@@ -44,6 +50,7 @@ export interface WorkbenchState
   projects: ProjectListItem[];
   project: ProjectSummary | null;
   tabs: WorkbenchTab[];
+  archivedChats: ArchivedChatSummary[];
   activeTabId: string | null;
   selectedRootId: string | null;
   selectedResource: ResourceRef | null;
@@ -139,6 +146,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     projects: [],
     project: null,
     tabs: [],
+    archivedChats: [],
     activeTabId: null,
     selectedRootId: null,
     selectedResource: null,
@@ -162,6 +170,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     harnessRequestGeneration: 0,
     ...createProjectSlice(set, get, store),
     ...createChatSlice(set, get, store),
+    ...createChatArchiveSlice(set, get, store),
     ...createResourceSlice(set, get, store),
     ...createSearchNavigationSlice(set, get, store),
     ...createEditorSlice(set, get, store),
@@ -225,31 +234,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
       }
     },
 
-    closeTab: (tabId) => {
-      if (get().projectTransitioning) return;
-      const state = get();
-      const tab = state.tabs.find((candidate) => candidate.id === tabId);
-      if (tab?.dirty) {
-        set({ pendingCloseTabId: tabId });
-        return;
-      }
-      const result = closeTabState(state.tabs, state.activeTabId ?? "", tabId);
-      const next = result.tabs.find((item) => item.id === result.activeTabId);
-      if (tabId === state.activeTabId && next?.kind === "chat") {
-        void get().activateChat(next.id, result.tabs);
-        return;
-      }
-      set({
-        tabs: result.tabs,
-        activeTabId: result.activeTabId,
-        selectedResource: next?.resource ?? state.selectedResource,
-        selectedRootId: next?.resource?.rootId ?? state.selectedRootId,
-        activeEditor:
-          tabId === state.activeTabId && tab?.kind === "file"
-            ? null
-            : state.activeEditor,
-      });
-    },
+    closeTab: (tabId) => closeWorkbenchTab(set, get, tabId),
 
     refreshRepository: async () => {
       if (

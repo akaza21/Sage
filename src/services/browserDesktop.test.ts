@@ -234,6 +234,195 @@ describe("browser simulator history bounds", () => {
     });
   });
 
+  it("archives and restores a durable Chat without losing its history", async () => {
+    const initial = await browserDesktop.getBootstrapSnapshot();
+    const created = await browserDesktop.createChat(
+      {
+        projectId: initial.project!.id,
+        tabs: initial.tabs,
+        activeTabId: initial.activeTabId,
+        selectedRootId: initial.selectedRootId,
+        selectedResource: initial.selectedResource,
+      },
+      initial.transitionEpoch,
+    );
+    const secondChatId = created.snapshot!.activeTabId!;
+    const request = {
+      projectId: initial.project!.id,
+      chatId: initial.activeTabId!,
+      currentLayout: {
+        projectId: initial.project!.id,
+        tabs: created.snapshot!.tabs,
+        activeTabId: created.snapshot!.activeTabId,
+        selectedRootId: created.snapshot!.selectedRootId,
+        selectedResource: created.snapshot!.selectedResource,
+      },
+    };
+
+    const archived = await browserDesktop.archiveChat(
+      request,
+      created.transitionEpoch,
+    );
+    expect(archived.snapshot).toMatchObject({
+      activeTabId: secondChatId,
+      archivedChats: [
+        { id: initial.activeTabId, title: "Chat: Walking skeleton" },
+      ],
+    });
+    expect(archived.snapshot!.tabs.map((tab) => tab.id)).toEqual([
+      secondChatId,
+    ]);
+    await expect(
+      browserDesktop.restoreChat(request, created.transitionEpoch),
+    ).rejects.toThrow("project changed before the requested Chat restore");
+
+    const restored = await browserDesktop.restoreChat(
+      {
+        ...request,
+        currentLayout: {
+          ...request.currentLayout,
+          tabs: archived.snapshot!.tabs,
+          activeTabId: archived.snapshot!.activeTabId,
+        },
+      },
+      archived.transitionEpoch,
+    );
+    expect(restored.snapshot).toMatchObject({
+      activeTabId: initial.activeTabId,
+      archivedChats: [],
+      messages: initial.messages,
+    });
+  });
+
+  it("matches native archive selection and restore rejection boundaries", async () => {
+    const initial = await browserDesktop.getBootstrapSnapshot();
+    const firstChatId = initial.activeTabId!;
+    const second = await browserDesktop.createChat(
+      {
+        projectId: initial.project!.id,
+        tabs: initial.tabs,
+        activeTabId: initial.activeTabId,
+        selectedRootId: initial.selectedRootId,
+        selectedResource: initial.selectedResource,
+      },
+      initial.transitionEpoch,
+    );
+    const secondChatId = second.snapshot!.activeTabId!;
+    const third = await browserDesktop.createChat(
+      {
+        projectId: initial.project!.id,
+        tabs: second.snapshot!.tabs,
+        activeTabId: second.snapshot!.activeTabId,
+        selectedRootId: second.snapshot!.selectedRootId,
+        selectedResource: second.snapshot!.selectedResource,
+      },
+      second.transitionEpoch,
+    );
+    const thirdChatId = third.snapshot!.activeTabId!;
+    const archivedMiddle = await browserDesktop.archiveChat(
+      {
+        projectId: initial.project!.id,
+        chatId: secondChatId,
+        currentLayout: {
+          projectId: initial.project!.id,
+          tabs: third.snapshot!.tabs,
+          activeTabId: secondChatId,
+          selectedRootId: third.snapshot!.selectedRootId,
+          selectedResource: third.snapshot!.selectedResource,
+        },
+      },
+      third.transitionEpoch,
+    );
+    expect(archivedMiddle.snapshot!.activeTabId).toBe(thirdChatId);
+
+    const archivedLast = await browserDesktop.archiveChat(
+      {
+        projectId: initial.project!.id,
+        chatId: thirdChatId,
+        currentLayout: {
+          projectId: initial.project!.id,
+          tabs: archivedMiddle.snapshot!.tabs,
+          activeTabId: archivedMiddle.snapshot!.activeTabId,
+          selectedRootId: archivedMiddle.snapshot!.selectedRootId,
+          selectedResource: archivedMiddle.snapshot!.selectedResource,
+        },
+      },
+      archivedMiddle.transitionEpoch,
+    );
+    expect(archivedLast.snapshot!.activeTabId).toBe(firstChatId);
+    const oneChatLayout = {
+      projectId: initial.project!.id,
+      tabs: archivedLast.snapshot!.tabs,
+      activeTabId: archivedLast.snapshot!.activeTabId,
+      selectedRootId: archivedLast.snapshot!.selectedRootId,
+      selectedResource: archivedLast.snapshot!.selectedResource,
+    };
+    const beforeRejectedIdentities =
+      await browserDesktop.getBootstrapSnapshot();
+    await expect(
+      browserDesktop.archiveChat(
+        {
+          projectId: initial.project!.id,
+          chatId: firstChatId,
+          currentLayout: oneChatLayout,
+        },
+        archivedLast.transitionEpoch,
+      ),
+    ).rejects.toThrow("last attached Chat");
+    await expect(
+      browserDesktop.restoreChat(
+        {
+          projectId: initial.project!.id,
+          chatId: firstChatId,
+          currentLayout: oneChatLayout,
+        },
+        archivedLast.transitionEpoch,
+      ),
+    ).rejects.toThrow("already attached");
+    await expect(
+      browserDesktop.restoreChat(
+        {
+          projectId: initial.project!.id,
+          chatId: "chat:foreign",
+          currentLayout: oneChatLayout,
+        },
+        archivedLast.transitionEpoch,
+      ),
+    ).rejects.toThrow("does not belong");
+    expect(await browserDesktop.getBootstrapSnapshot()).toEqual(
+      beforeRejectedIdentities,
+    );
+
+    const fullLayout: ProjectLayoutRequest = {
+      ...oneChatLayout,
+      tabs: [
+        ...oneChatLayout.tabs,
+        ...Array.from({ length: 63 }, (_, index): WorkbenchTab => ({
+          id: `terminal-${index + 1}`,
+          kind: "terminal",
+          title: `Terminal ${index + 1}`,
+          position: index + 1,
+          pinned: false,
+          dirty: false,
+          status: "idle",
+        })),
+      ],
+    };
+    await browserDesktop.persistProjectLayout(fullLayout);
+    const beforePlusOne = await browserDesktop.getBootstrapSnapshot();
+    await expect(
+      browserDesktop.restoreChat(
+        {
+          projectId: initial.project!.id,
+          chatId: secondChatId,
+          currentLayout: fullLayout,
+        },
+        archivedLast.transitionEpoch,
+      ),
+    ).rejects.toThrow("at most 64 tabs");
+    expect(await browserDesktop.getBootstrapSnapshot()).toEqual(beforePlusOne);
+  });
+
   it("rejects stale foreign invalid and over-limit rename before mutation", async () => {
     const initial = await browserDesktop.getBootstrapSnapshot();
     const exact = "é".repeat(MAX_CHAT_TITLE_BYTES / 2);

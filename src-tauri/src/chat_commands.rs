@@ -95,7 +95,7 @@ async fn rename_chat_inner(
     .await
 }
 
-async fn execute_chat_transition(
+pub(crate) async fn execute_chat_transition(
     state: &AppState,
     expected_transition_epoch: u64,
     stale_message: &'static str,

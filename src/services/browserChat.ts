@@ -1,5 +1,6 @@
 import type {
   ChatMessage,
+  ChatLifecycleRequest,
   ProjectLayoutRequest,
   RenameChatRequest,
   WorkbenchTab,
@@ -115,6 +116,49 @@ export function assertBrowserChatRenameIdentity(
     throw new Error(
       "Chat rename layout does not belong to the requested Project",
     );
+  }
+}
+
+export function assertBrowserChatLifecycleIdentity(
+  action: "archive" | "restore",
+  request: ChatLifecycleRequest,
+  expectedTransitionEpoch: number,
+  transitionEpoch: number,
+  projectId: string | undefined,
+  durableChatIds: ReadonlySet<string>,
+) {
+  if (expectedTransitionEpoch !== transitionEpoch) {
+    throw new Error(`project changed before the requested Chat ${action}`);
+  }
+  assertBrowserChatIdentifier("Project ID", request.projectId);
+  assertBrowserChatIdentifier("Chat ID", request.chatId);
+  if (request.projectId !== projectId || !durableChatIds.has(request.chatId)) {
+    throw new Error("Chat does not belong to the active Project");
+  }
+  if (request.currentLayout.projectId !== request.projectId) {
+    throw new Error(
+      "Chat lifecycle layout does not belong to the requested Project",
+    );
+  }
+}
+
+export function assertExactBrowserChatAttachments(
+  currentLayout: ProjectLayoutRequest,
+  attachedTabs: WorkbenchTab[],
+) {
+  const requested = currentLayout.tabs
+    .filter((tab) => tab.kind === "chat")
+    .map((tab) => tab.id)
+    .sort();
+  const attached = attachedTabs
+    .filter((tab) => tab.kind === "chat")
+    .map((tab) => tab.id)
+    .sort();
+  if (
+    requested.length !== attached.length ||
+    requested.some((id, index) => id !== attached[index])
+  ) {
+    throw new Error("Chat attachments changed before the requested transition");
   }
 }
 

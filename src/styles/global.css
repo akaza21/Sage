@@ -440,7 +440,7 @@ textarea:focus-visible {
 
 .project-chat-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 26px;
+  grid-template-columns: minmax(0, 1fr) 26px 26px;
   align-items: center;
 }
 
@@ -459,6 +459,7 @@ textarea:focus-visible {
 }
 
 .project-chat__rename,
+.project-chat__archive,
 .project-chat-edit button {
   display: grid;
   width: 24px;
@@ -472,23 +473,96 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
-.project-chat__rename {
+.project-chat__rename,
+.project-chat__archive {
   opacity: 0;
 }
 
 .project-chat-row:hover .project-chat__rename,
-.project-chat-row:focus-within .project-chat__rename {
+.project-chat-row:hover .project-chat__archive,
+.project-chat-row:focus-within .project-chat__rename,
+.project-chat-row:focus-within .project-chat__archive {
   opacity: 1;
 }
 
 .project-chat__rename:hover,
+.project-chat__archive:hover,
 .project-chat-edit button:hover {
   color: var(--text);
   background: var(--surface-hover);
 }
 
 .project-chat__rename:disabled,
+.project-chat__archive:disabled,
 .project-chat-edit button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.archived-chats {
+  display: grid;
+  gap: 2px;
+}
+
+.archived-chats__disclosure {
+  width: 100%;
+  height: 28px;
+  gap: 7px;
+  padding: 0 9px 0 23px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.archived-chats__disclosure span:first-of-type {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archived-chat-list {
+  display: grid;
+  gap: 2px;
+}
+
+.archived-chat-row {
+  display: grid;
+  min-height: 28px;
+  grid-template-columns: auto minmax(0, 1fr) 26px;
+  align-items: center;
+  gap: 7px;
+  padding-left: 27px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.archived-chat-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archived-chat-row button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.archived-chat-row button:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.archived-chat-row button:disabled {
   cursor: default;
   opacity: 0.4;
 }

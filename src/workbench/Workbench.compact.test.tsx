@@ -47,6 +47,7 @@ beforeEach(() => {
     projects: [],
     project: null,
     tabs: [],
+    archivedChats: [],
     activeTabId: null,
     sidebarOpen: false,
     sidebarView: "explorer",
@@ -169,6 +170,62 @@ describe("compact Workbench project tools", () => {
         screen.getByRole("button", { name: "Rename chat B" }),
       ).toHaveFocus();
     });
+  });
+
+  it("exposes bounded archive and restore actions in the Chat navigation", async () => {
+    const archiveChat = vi.fn(async () => true);
+    const restoreChat = vi.fn(async () => true);
+    useWorkbenchStore.setState({
+      archiveChat,
+      restoreChat,
+      project: { id: "project-a", name: "A", roots: [] },
+      projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
+      tabs: [
+        {
+          id: "chat:a",
+          kind: "chat",
+          title: "Chat: A",
+          position: 0,
+          pinned: true,
+          dirty: false,
+        },
+        {
+          id: "chat:b",
+          kind: "chat",
+          title: "Chat: B",
+          position: 1,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      archivedChats: [{ id: "chat:old", title: "Chat: Old" }],
+      activeTabId: "chat:a",
+    });
+    render(<Workbench />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive chat B" }));
+    expect(archiveChat).toHaveBeenCalledWith("chat:b");
+    const disclosure = screen.getByRole("button", { name: "Archived chats" });
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(disclosure);
+    expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    const region = screen.getByRole("region", { name: "Archived chats" });
+    fireEvent.click(
+      within(region).getByRole("button", { name: "Restore chat Old" }),
+    );
+    expect(restoreChat).toHaveBeenCalledWith("chat:old");
+
+    act(() => {
+      useWorkbenchStore.setState({
+        tabs: [{ ...useWorkbenchStore.getState().tabs[0], pinned: false }],
+      });
+    });
+    expect(
+      screen.getByRole("button", { name: "Archive chat A" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Archive Chat: A" }),
+    ).toBeDisabled();
   });
 
   it("keeps invalid rename feedback visible and focused with a File active", async () => {

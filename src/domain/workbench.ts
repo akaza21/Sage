@@ -202,6 +202,17 @@ export interface RenameChatRequest {
   currentLayout: ProjectLayoutRequest;
 }
 
+export interface ChatLifecycleRequest {
+  projectId: string;
+  chatId: string;
+  currentLayout: ProjectLayoutRequest;
+}
+
+export interface ArchivedChatSummary {
+  id: string;
+  title: string;
+}
+
 export interface ProjectSwitchRequest {
   targetProjectId: string;
   currentLayout: ProjectLayoutRequest;
@@ -268,6 +279,7 @@ export interface BootstrapSnapshot {
   projects: ProjectListItem[];
   project: ProjectSummary | null;
   tabs: WorkbenchTab[];
+  archivedChats: ArchivedChatSummary[];
   activeTabId: string | null;
   selectedRootId: string | null;
   selectedResource: ResourceRef | null;

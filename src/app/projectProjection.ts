@@ -29,6 +29,7 @@ export function snapshotProjection(snapshot: BootstrapSnapshot) {
     projects: snapshot.projects,
     project: snapshot.project,
     tabs: snapshot.tabs,
+    archivedChats: snapshot.archivedChats,
     activeTabId: snapshot.activeTabId,
     selectedRootId: snapshot.selectedRootId,
     selectedResource: snapshot.selectedResource,

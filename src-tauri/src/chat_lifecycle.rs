@@ -51,7 +51,7 @@ pub(crate) fn canonical_chat_title(input: &str) -> AppResult<String> {
     Ok(format!("Chat: {title}"))
 }
 
-fn validate_chat_identifier(label: &str, value: &str) -> AppResult<()> {
+pub(crate) fn validate_chat_identifier(label: &str, value: &str) -> AppResult<()> {
     if value.is_empty() || value.len() > MAX_CHAT_ID_BYTES || value.chars().any(char::is_control) {
         return Err(AppError::InvalidRequest(format!(
             "{label} is not a valid bounded Chat identifier"

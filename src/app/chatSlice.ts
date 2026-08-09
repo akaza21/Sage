@@ -1,20 +1,21 @@
 import type { StateCreator } from "zustand";
 
 import { canonicalChatName, canonicalChatTitle } from "../domain/chatTitle";
-import { childResource } from "../domain/resourceIdentity";
-import type {
-  BootstrapSnapshot,
-  ProjectLayoutRequest,
-  WorkbenchTab,
-} from "../domain/workbench";
+import type { BootstrapSnapshot, WorkbenchTab } from "../domain/workbench";
 import { desktop } from "../services/desktop";
 import {
-  matchesProjectIntent,
   nextProjectGeneration,
   validateTransitionIntent,
 } from "./projectIntent";
-import { currentProjectLayout, snapshotProjection } from "./projectProjection";
+import { currentProjectLayout } from "./projectProjection";
 import type { WorkbenchState } from "./store";
+import {
+  createChatTransitionContext,
+  errorMessage,
+  matchesLayout,
+  matchesRenameProjection,
+  type ProjectionOutcome,
+} from "./chatTransitions";
 
 export interface ChatSlice {
   createChat: () => Promise<void>;
@@ -25,197 +26,14 @@ export interface ChatSlice {
   renameChat: (chatId: string, title: string) => Promise<boolean>;
 }
 
-const MAX_PROJECTION_ATTEMPTS = 2;
-type ProjectionOutcome = "committed" | "unchanged" | "diverged";
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function matchesLayout(
-  snapshot: BootstrapSnapshot,
-  layout: ProjectLayoutRequest,
-) {
-  if (
-    snapshot.project?.id !== layout.projectId ||
-    snapshot.activeTabId !== layout.activeTabId ||
-    snapshot.tabs.length !== layout.tabs.length
-  ) {
-    return false;
-  }
-  const requestedKinds = new Map(
-    layout.tabs.map((tab) => [tab.id, tab.kind] as const),
-  );
-  return snapshot.tabs.every((tab) => requestedKinds.get(tab.id) === tab.kind);
-}
-
-function matchesRenameProjection(
-  snapshot: BootstrapSnapshot,
-  current: ProjectLayoutRequest,
-  chatId: string,
-  title: string,
-) {
-  if (
-    !matchesLayout(snapshot, current) ||
-    snapshot.selectedRootId !== current.selectedRootId ||
-    snapshot.selectedResource?.rootId !== current.selectedResource?.rootId ||
-    snapshot.selectedResource?.relativePath !==
-      current.selectedResource?.relativePath
-  ) {
-    return false;
-  }
-  return current.tabs.every((tab) => {
-    const projected = snapshot.tabs.find(
-      (candidate) => candidate.id === tab.id,
-    );
-    return (
-      projected?.kind === tab.kind &&
-      projected.title === (tab.id === chatId ? title : tab.title) &&
-      projected.position === tab.position &&
-      projected.pinned === tab.pinned &&
-      projected.dirty === tab.dirty &&
-      projected.status === tab.status &&
-      projected.resource?.rootId === tab.resource?.rootId &&
-      projected.resource?.relativePath === tab.resource?.relativePath
-    );
-  });
-}
-
 export const createChatSlice: StateCreator<
   WorkbenchState,
   [],
   [],
   ChatSlice
 > = (set, get) => {
-  const applyProjection = async (
-    snapshot: BootstrapSnapshot,
-    generation: number,
-  ) => {
-    const projectId = snapshot.project?.id ?? null;
-    set({
-      ...snapshotProjection(snapshot),
-      projectGeneration: generation,
-      repositoryRequestGeneration: nextProjectGeneration(
-        get().repositoryRequestGeneration,
-      ),
-      harnessRequestGeneration: nextProjectGeneration(
-        get().harnessRequestGeneration,
-      ),
-      projectTransitioning: true,
-    });
-    const projectionLoads =
-      snapshot.project?.roots
-        .filter((root) => root.availability === "available")
-        .map((root) => get().loadDirectory(childResource(root.id))) ?? [];
-    if (projectId && snapshot.selectedHarnessId) {
-      projectionLoads.push(
-        get().loadHarnessModelsForProjection(
-          snapshot.selectedHarnessId,
-          snapshot.selectedModelId,
-          generation,
-          projectId,
-        ),
-      );
-    }
-    await Promise.all(projectionLoads);
-    if (!projectId || matchesProjectIntent(get(), generation, projectId)) {
-      set({ projectTransitioning: false });
-    }
-  };
-
-  const loadAuthoritativeProjection = async (
-    generation: number,
-    classify: (snapshot: BootstrapSnapshot) => ProjectionOutcome | null,
-  ) => {
-    let lastError: unknown = new Error(
-      "authoritative Chat projection unavailable",
-    );
-    for (let attempt = 0; attempt < MAX_PROJECTION_ATTEMPTS; attempt += 1) {
-      try {
-        const snapshot = await desktop.getBootstrapSnapshot();
-        const outcome = classify(snapshot);
-        if (!outcome) {
-          throw new Error(
-            "authoritative projection has an unexpected Chat layout",
-          );
-        }
-        await applyProjection(snapshot, generation);
-        return outcome;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-    throw lastError;
-  };
-
-  const runChatTransition = async (options: {
-    action: "activation" | "rename";
-    expectedTransitionEpoch: number;
-    invoke: () => ReturnType<typeof desktop.activateChat>;
-    classify: (snapshot: BootstrapSnapshot) => ProjectionOutcome;
-  }): Promise<ProjectionOutcome | null> => {
-    set({ projectTransitioning: true, error: null });
-    let committed = false;
-    try {
-      const result = await options.invoke();
-      validateTransitionIntent(result, options.expectedTransitionEpoch);
-      if (!result.committed) {
-        set({
-          projectTransitioning: false,
-          error:
-            result.recoveryError ??
-            `native Chat ${options.action} did not commit`,
-        });
-        return "unchanged";
-      }
-      committed = true;
-      const generation = nextProjectGeneration(get().projectGeneration);
-      set({ projectGeneration: generation, repositoryRefreshing: false });
-      if (result.snapshot) {
-        if (
-          result.snapshot.transitionEpoch !== result.transitionEpoch ||
-          options.classify(result.snapshot) !== "committed"
-        ) {
-          throw new Error(
-            `native Chat ${options.action} returned an invalid projection`,
-          );
-        }
-        await applyProjection(result.snapshot, generation);
-      } else {
-        await loadAuthoritativeProjection(generation, (snapshot) =>
-          options.classify(snapshot) === "committed" ? "committed" : null,
-        );
-      }
-      return "committed";
-    } catch (error) {
-      if (committed) {
-        set({
-          phase: "error",
-          projectTransitioning: false,
-          repositoryRefreshing: false,
-          error: `Chat ${options.action} committed but projection recovery failed: ${errorMessage(error)}`,
-        });
-        return null;
-      }
-      const generation = nextProjectGeneration(get().projectGeneration);
-      set({ projectGeneration: generation, repositoryRefreshing: false });
-      try {
-        const outcome = await loadAuthoritativeProjection(
-          generation,
-          options.classify,
-        );
-        if (outcome === "unchanged") set({ error: errorMessage(error) });
-        return outcome;
-      } catch (recoveryError) {
-        set({
-          phase: "error",
-          projectTransitioning: false,
-          error: `Chat ${options.action} state is unknown: ${errorMessage(recoveryError)}`,
-        });
-        return null;
-      }
-    }
-  };
+  const { applyProjection, loadAuthoritativeProjection, runChatTransition } =
+    createChatTransitionContext(set, get);
 
   return {
     activateChat: async (chatId, requestedTabs) => {

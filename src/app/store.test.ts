@@ -105,6 +105,7 @@ function snapshotB(): BootstrapSnapshot {
         dirty: false,
       },
     ],
+    archivedChats: [],
     activeTabId: "chat:b",
     selectedRootId: "root-b",
     selectedResource: null,
@@ -128,6 +129,7 @@ function chatProjection(
   messages: ChatMessage[],
   selectedRootId = "root-a",
   selectedResource: ResourceRef | null = null,
+  archivedChats: BootstrapSnapshot["archivedChats"] = [],
 ): BootstrapSnapshot {
   const state = useWorkbenchStore.getState();
   return {
@@ -135,6 +137,7 @@ function chatProjection(
     projects: state.projects,
     project: state.project,
     tabs,
+    archivedChats,
     activeTabId,
     selectedRootId,
     selectedResource,
@@ -177,6 +180,7 @@ describe("workbench resource and project navigation", () => {
         ],
       },
       tabs: [chatTab],
+      archivedChats: [],
       activeTabId: chatTab.id,
       selectedRootId: "root-a",
       selectedResource: null,
@@ -215,6 +219,7 @@ describe("workbench resource and project navigation", () => {
             projects: state.projects,
             project: state.project,
             tabs: currentLayout.tabs,
+            archivedChats: state.archivedChats,
             activeTabId: currentLayout.activeTabId,
             selectedRootId: currentLayout.selectedRootId,
             selectedResource: currentLayout.selectedResource,
@@ -296,6 +301,7 @@ describe("workbench resource and project navigation", () => {
       projects: useWorkbenchStore.getState().projects,
       project: useWorkbenchStore.getState().project,
       tabs: [chatTab, newChat],
+      archivedChats: [],
       activeTabId: newChat.id,
       selectedRootId: "root-a",
       selectedResource: null,
@@ -499,6 +505,323 @@ describe("workbench resource and project navigation", () => {
     });
   });
 
+  it("archives the active Chat through an editor-safe authoritative transition", async () => {
+    const archive = vi.spyOn(desktop, "archiveChat").mockResolvedValue({
+      committed: true,
+      transitionEpoch: 1,
+      snapshot: chatProjection(
+        [chatTabB],
+        chatTabB.id,
+        1,
+        null,
+        [],
+        "root-a",
+        null,
+        [{ id: chatTab.id, title: chatTab.title }],
+      ),
+      recoveryError: null,
+    });
+    useWorkbenchStore.setState({ tabs: [chatTab, chatTabB] });
+
+    const committed = await useWorkbenchStore
+      .getState()
+      .archiveChat(chatTab.id);
+
+    expect(committed).toBe(true);
+    expect(archive).toHaveBeenCalledWith(
+      {
+        projectId: "project-a",
+        chatId: chatTab.id,
+        currentLayout: expect.objectContaining({
+          tabs: [chatTab, chatTabB],
+          activeTabId: chatTab.id,
+        }),
+      },
+      0,
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      tabs: [chatTabB],
+      activeTabId: chatTabB.id,
+      archivedChats: [{ id: chatTab.id, title: chatTab.title }],
+      projectTransitioning: false,
+    });
+  });
+
+  it("flushes and freezes the active File editor before archiving an inactive Chat", async () => {
+    const selectedResource = resource("src/current.ts");
+    const fileTab: WorkbenchTab = {
+      id: "file:current",
+      kind: "file",
+      title: "current.ts",
+      position: 2,
+      pinned: false,
+      dirty: true,
+      status: "idle",
+      resource: selectedResource,
+    };
+    const snapshot = vi
+      .spyOn(desktop, "snapshotEditorBuffer")
+      .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
+    const pendingArchive =
+      deferred<Awaited<ReturnType<typeof desktop.archiveChat>>>();
+    const archive = vi
+      .spyOn(desktop, "archiveChat")
+      .mockReturnValue(pendingArchive.promise);
+    useWorkbenchStore.setState({
+      tabs: [chatTab, chatTabB, fileTab],
+      activeTabId: fileTab.id,
+      selectedResource,
+      activeEditor: {
+        phase: "ready",
+        resource: selectedResource,
+        document: document(selectedResource, "before archive", 0, false),
+        content: "latest unsnapshotted bytes",
+        revision: 1,
+        persistedRevision: 0,
+        persisting: false,
+        saving: false,
+        message: null,
+      },
+    });
+
+    const archiving = useWorkbenchStore.getState().archiveChat(chatTabB.id);
+    await vi.waitFor(() => expect(archive).toHaveBeenCalledOnce());
+    useWorkbenchStore
+      .getState()
+      .updateEditorContent("post-flush bytes must be rejected");
+    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+      phase: "ready",
+      content: "latest unsnapshotted bytes",
+      revision: 1,
+      persistedRevision: 1,
+    });
+    pendingArchive.resolve({
+      committed: true,
+      transitionEpoch: 1,
+      snapshot: chatProjection(
+        [chatTab, fileTab],
+        fileTab.id,
+        1,
+        null,
+        [],
+        "root-a",
+        selectedResource,
+        [{ id: chatTabB.id, title: chatTabB.title }],
+      ),
+      recoveryError: null,
+    });
+
+    expect(await archiving).toBe(true);
+    expect(snapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resource: selectedResource,
+        content: "latest unsnapshotted bytes",
+        revision: 1,
+      }),
+    );
+    expect(snapshot.mock.invocationCallOrder[0]).toBeLessThan(
+      archive.mock.invocationCallOrder[0],
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: fileTab.id,
+      archivedChats: [{ id: chatTabB.id, title: chatTabB.title }],
+      projectTransitioning: false,
+    });
+  });
+
+  it("restores and selects an archived Chat through the authoritative transition", async () => {
+    const restoredTab = {
+      ...chatTab,
+      position: 2,
+      pinned: false,
+      status: "idle" as const,
+    };
+    const restore = vi.spyOn(desktop, "restoreChat").mockResolvedValue({
+      committed: true,
+      transitionEpoch: 1,
+      snapshot: chatProjection(
+        [chatTabB, restoredTab],
+        restoredTab.id,
+        1,
+        "session-a",
+        [],
+      ),
+      recoveryError: null,
+    });
+    useWorkbenchStore.setState({
+      tabs: [chatTabB],
+      activeTabId: chatTabB.id,
+      archivedChats: [{ id: chatTab.id, title: chatTab.title }],
+    });
+
+    const committed = await useWorkbenchStore
+      .getState()
+      .restoreChat(chatTab.id);
+
+    expect(committed).toBe(true);
+    expect(restore).toHaveBeenCalledWith(
+      {
+        projectId: "project-a",
+        chatId: chatTab.id,
+        currentLayout: expect.objectContaining({
+          tabs: [chatTabB],
+          activeTabId: chatTabB.id,
+        }),
+      },
+      0,
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      tabs: [chatTabB, restoredTab],
+      activeTabId: restoredTab.id,
+      archivedChats: [],
+      projectTransitioning: false,
+    });
+  });
+
+  it("preserves the detached Chat when restore is not committed", async () => {
+    const restore = vi.spyOn(desktop, "restoreChat").mockResolvedValue({
+      committed: false,
+      transitionEpoch: 0,
+      snapshot: null,
+      recoveryError: "restore rejected",
+    });
+    useWorkbenchStore.setState({
+      tabs: [chatTabB],
+      activeTabId: chatTabB.id,
+      archivedChats: [{ id: chatTab.id, title: chatTab.title }],
+    });
+
+    expect(await useWorkbenchStore.getState().restoreChat(chatTab.id)).toBe(
+      false,
+    );
+    expect(restore).toHaveBeenCalledOnce();
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      tabs: [chatTabB],
+      activeTabId: chatTabB.id,
+      archivedChats: [{ id: chatTab.id, title: chatTab.title }],
+      projectTransitioning: false,
+      error: "restore rejected",
+    });
+  });
+
+  it("reloads the detached Chat authoritatively when restore throws", async () => {
+    vi.spyOn(desktop, "restoreChat").mockRejectedValue(
+      new Error("restore transport interrupted"),
+    );
+    const bootstrap = vi
+      .spyOn(desktop, "getBootstrapSnapshot")
+      .mockResolvedValue(
+        chatProjection([chatTabB], chatTabB.id, 0, null, [], "root-a", null, [
+          { id: chatTab.id, title: chatTab.title },
+        ]),
+      );
+    useWorkbenchStore.setState({
+      tabs: [chatTabB],
+      activeTabId: chatTabB.id,
+      archivedChats: [{ id: chatTab.id, title: chatTab.title }],
+    });
+
+    expect(await useWorkbenchStore.getState().restoreChat(chatTab.id)).toBe(
+      false,
+    );
+    expect(bootstrap).toHaveBeenCalled();
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      tabs: [chatTabB],
+      activeTabId: chatTabB.id,
+      archivedChats: [{ id: chatTab.id, title: chatTab.title }],
+      projectTransitioning: false,
+      error: "restore transport interrupted",
+    });
+  });
+
+  it("adopts a newer divergent projection after stale restore completion", async () => {
+    const restoredTab = {
+      ...chatTab,
+      position: 2,
+      pinned: false,
+      status: "idle" as const,
+    };
+    vi.spyOn(desktop, "restoreChat").mockResolvedValue({
+      committed: false,
+      transitionEpoch: 2,
+      snapshot: null,
+      recoveryError: "stale restore",
+    });
+    const bootstrap = vi
+      .spyOn(desktop, "getBootstrapSnapshot")
+      .mockResolvedValue(
+        chatProjection([chatTabB, restoredTab], chatTabB.id, 2, null, []),
+      );
+    useWorkbenchStore.setState({
+      tabs: [chatTabB],
+      activeTabId: chatTabB.id,
+      archivedChats: [{ id: chatTab.id, title: chatTab.title }],
+    });
+
+    expect(await useWorkbenchStore.getState().restoreChat(chatTab.id)).toBe(
+      false,
+    );
+    expect(bootstrap).toHaveBeenCalled();
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      nativeTransitionEpoch: 2,
+      tabs: [chatTabB, restoredTab],
+      activeTabId: chatTabB.id,
+      archivedChats: [],
+      projectTransitioning: false,
+    });
+  });
+
+  it("blocks restore when the active File editor cannot be snapshotted", async () => {
+    const selectedResource = resource("src/current.ts");
+    const fileTab: WorkbenchTab = {
+      id: "file:current",
+      kind: "file",
+      title: "current.ts",
+      position: 2,
+      pinned: false,
+      dirty: true,
+      status: "idle",
+      resource: selectedResource,
+    };
+    vi.spyOn(desktop, "snapshotEditorBuffer").mockRejectedValue(
+      new Error("snapshot unavailable"),
+    );
+    const restore = vi.spyOn(desktop, "restoreChat");
+    useWorkbenchStore.setState({
+      tabs: [chatTabB, fileTab],
+      activeTabId: fileTab.id,
+      selectedResource,
+      archivedChats: [{ id: chatTab.id, title: chatTab.title }],
+      activeEditor: {
+        phase: "ready",
+        resource: selectedResource,
+        document: document(selectedResource, "before restore", 0, false),
+        content: "must survive",
+        revision: 1,
+        persistedRevision: 0,
+        persisting: false,
+        saving: false,
+        message: null,
+      },
+    });
+
+    expect(await useWorkbenchStore.getState().restoreChat(chatTab.id)).toBe(
+      false,
+    );
+    expect(restore).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      projectTransitioning: false,
+      error: expect.stringContaining("snapshot unavailable"),
+      archivedChats: [{ id: chatTab.id, title: chatTab.title }],
+      activeEditor: {
+        phase: "ready",
+        content: "must survive",
+        revision: 1,
+        persistedRevision: 0,
+      },
+    });
+  });
+
   it("preserves Chat titles when rename is not committed", async () => {
     vi.spyOn(desktop, "renameChat").mockResolvedValue({
       committed: false,
@@ -649,10 +972,26 @@ describe("workbench resource and project navigation", () => {
     });
   });
 
-  it("settles only the matching send intent after its Chat tab closes", async () => {
+  it("does not let an archived Chat send overwrite the next Chat", async () => {
     const pending = deferred<Awaited<ReturnType<typeof desktop.sendPrompt>>>();
     vi.spyOn(desktop, "sendPrompt").mockReturnValue(pending.promise);
+    vi.spyOn(desktop, "archiveChat").mockResolvedValue({
+      committed: true,
+      transitionEpoch: 1,
+      snapshot: chatProjection(
+        [chatTabB],
+        chatTabB.id,
+        1,
+        null,
+        [],
+        "root-a",
+        null,
+        [{ id: chatTab.id, title: chatTab.title }],
+      ),
+      recoveryError: null,
+    });
     useWorkbenchStore.setState({
+      tabs: [chatTab, chatTabB],
       selectedHarnessId: "sage-simulator",
       selectedModelId: "sim-fast",
       composerText: "continue",
@@ -660,13 +999,16 @@ describe("workbench resource and project navigation", () => {
 
     const sending = useWorkbenchStore.getState().sendPrompt();
     useWorkbenchStore.getState().closeTab(chatTab.id);
+    await vi.waitFor(() =>
+      expect(useWorkbenchStore.getState().activeTabId).toBe(chatTabB.id),
+    );
     pending.resolve({ sessionId: "detached-session", messages: [] });
     await sending;
 
     expect(useWorkbenchStore.getState()).toMatchObject({
-      tabs: [],
+      tabs: [chatTabB],
       sending: false,
-      sessionId: "session-a",
+      sessionId: null,
       messages: [],
     });
   });
@@ -699,6 +1041,7 @@ describe("workbench resource and project navigation", () => {
       projects: useWorkbenchStore.getState().projects,
       project: useWorkbenchStore.getState().project,
       tabs: [chatTab, chatB],
+      archivedChats: [],
       activeTabId: active.id,
       selectedRootId: "root-a",
       selectedResource: null,
@@ -791,14 +1134,15 @@ describe("workbench resource and project navigation", () => {
         createdAt: 1,
       },
     ];
-    const activate = vi.mocked(desktop.activateChat).mockResolvedValueOnce({
+    const archive = vi.spyOn(desktop, "archiveChat").mockResolvedValueOnce({
       committed: true,
       transitionEpoch: 1,
       snapshot: {
         transitionEpoch: 1,
         projects: useWorkbenchStore.getState().projects,
         project: useWorkbenchStore.getState().project,
-        tabs: [{ ...chatB, position: 0 }],
+        tabs: [chatB],
+        archivedChats: [{ id: chatTab.id, title: chatTab.title }],
         activeTabId: chatB.id,
         selectedRootId: "root-a",
         selectedResource: null,
@@ -826,18 +1170,22 @@ describe("workbench resource and project navigation", () => {
         projectTransitioning: false,
       });
     });
-    expect(activate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tabs: [chatB],
-        activeTabId: chatB.id,
-      }),
+    expect(archive).toHaveBeenCalledWith(
+      {
+        projectId: "project-a",
+        chatId: chatTab.id,
+        currentLayout: expect.objectContaining({
+          tabs: [chatTab, chatB],
+          activeTabId: chatTab.id,
+        }),
+      },
       0,
     );
   });
 
   it("preserves the active Chat when transactional close is not committed", async () => {
     const bootstrap = vi.spyOn(desktop, "getBootstrapSnapshot");
-    const activate = vi.spyOn(desktop, "activateChat").mockResolvedValue({
+    const archive = vi.spyOn(desktop, "archiveChat").mockResolvedValue({
       committed: false,
       transitionEpoch: 0,
       snapshot: null,
@@ -850,11 +1198,15 @@ describe("workbench resource and project navigation", () => {
     await vi.waitFor(() => {
       expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
     });
-    expect(activate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tabs: [chatTabB],
-        activeTabId: chatTabB.id,
-      }),
+    expect(archive).toHaveBeenCalledWith(
+      {
+        projectId: "project-a",
+        chatId: chatTab.id,
+        currentLayout: expect.objectContaining({
+          tabs: [chatTab, chatTabB],
+          activeTabId: chatTab.id,
+        }),
+      },
       0,
     );
     expect(bootstrap).not.toHaveBeenCalled();
@@ -868,7 +1220,7 @@ describe("workbench resource and project navigation", () => {
   });
 
   it("restores the authoritative Chat when transactional close throws", async () => {
-    vi.spyOn(desktop, "activateChat").mockRejectedValue(
+    vi.spyOn(desktop, "archiveChat").mockRejectedValue(
       new Error("transport interrupted"),
     );
     const bootstrap = vi
@@ -904,7 +1256,7 @@ describe("workbench resource and project navigation", () => {
         createdAt: 1,
       },
     ];
-    vi.spyOn(desktop, "activateChat").mockResolvedValue({
+    vi.spyOn(desktop, "archiveChat").mockResolvedValue({
       committed: false,
       transitionEpoch: 2,
       snapshot: null,

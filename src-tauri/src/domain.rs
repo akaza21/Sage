@@ -260,6 +260,21 @@ pub struct RenameChatRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ChatLifecycleRequest {
+    pub project_id: String,
+    pub chat_id: String,
+    pub current_layout: ProjectLayoutRequest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchivedChatSummary {
+    pub id: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectSwitchRequest {
     pub target_project_id: String,
     pub current_layout: ProjectLayoutRequest,
@@ -347,6 +362,7 @@ pub struct BootstrapSnapshot {
     pub projects: Vec<ProjectListItem>,
     pub project: Option<ProjectSummary>,
     pub tabs: Vec<WorkbenchTab>,
+    pub archived_chats: Vec<ArchivedChatSummary>,
     pub active_tab_id: Option<String>,
     pub selected_root_id: Option<String>,
     pub selected_resource: Option<ResourceRef>,
