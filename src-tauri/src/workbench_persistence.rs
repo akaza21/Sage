@@ -180,7 +180,7 @@ fn empty_snapshot(projects: Vec<crate::domain::ProjectListItem>) -> BootstrapSna
     }
 }
 
-fn persist_layout_in(
+pub(crate) fn persist_layout_in(
     transaction: &rusqlite::Transaction<'_>,
     request: &ProjectLayoutRequest,
 ) -> AppResult<()> {

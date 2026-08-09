@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::*;
+use crate::acp::limits::LIMITS;
 
 fn database_with_project() -> (Database, String, String) {
     let database = Database::open(Path::new(":memory:")).unwrap();
@@ -361,4 +362,136 @@ fn durable_welcome_session(database: &Database, chat_id: &str) -> String {
             |row| row.get(0),
         )
         .unwrap()
+}
+
+#[test]
+fn creating_a_chat_is_atomic_isolated_and_survives_restart() {
+    let base = std::env::temp_dir().join(format!("sage-chat-create-{}", Uuid::new_v4()));
+    let root = base.join("root");
+    fs::create_dir_all(&root).unwrap();
+    let path = base.join("sage.db");
+    let database = Database::open(&path).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let initial = database.bootstrap_snapshot().unwrap();
+    let first_chat_id = initial.active_tab_id.clone().unwrap();
+
+    let second_chat_id = database
+        .create_chat(&ProjectLayoutRequest {
+            project_id: project.id.clone(),
+            tabs: initial.tabs,
+            active_tab_id: initial.active_tab_id,
+            selected_root_id: initial.selected_root_id,
+            selected_resource: initial.selected_resource,
+        })
+        .unwrap();
+
+    let created = database.bootstrap_snapshot().unwrap();
+    assert_ne!(second_chat_id, first_chat_id);
+    assert_eq!(
+        created.active_tab_id.as_deref(),
+        Some(second_chat_id.as_str())
+    );
+    assert_eq!(created.tabs.len(), 2);
+    assert!(created.messages.is_empty());
+    database
+        .append_simulator_turn(&second_chat_id, "second prompt", "second response")
+        .unwrap();
+    assert_eq!(database.messages_for_chat(&first_chat_id).unwrap().len(), 1);
+    assert_eq!(
+        database.messages_for_chat(&second_chat_id).unwrap().len(),
+        2
+    );
+    assert_eq!(
+        database
+            .connection()
+            .query_row("SELECT COUNT(*) FROM chat_lineage", [], |row| row
+                .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    drop(database);
+
+    let reopened = Database::open(&path).unwrap();
+    let restored = reopened.bootstrap_snapshot().unwrap();
+    assert_eq!(
+        restored.active_tab_id.as_deref(),
+        Some(second_chat_id.as_str())
+    );
+    assert_eq!(restored.tabs.len(), 2);
+    assert_eq!(restored.messages.len(), 2);
+    let first_tab = restored
+        .tabs
+        .iter()
+        .find(|tab| tab.id == first_chat_id)
+        .cloned()
+        .unwrap();
+    reopened
+        .persist_project_layout(&ProjectLayoutRequest {
+            project_id: project.id,
+            tabs: restored.tabs,
+            active_tab_id: Some(first_tab.id),
+            selected_root_id: restored.selected_root_id,
+            selected_resource: restored.selected_resource,
+        })
+        .unwrap();
+    let first_restored = reopened.bootstrap_snapshot().unwrap();
+    assert_eq!(first_restored.messages.len(), 1);
+    drop(reopened);
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn durable_chat_capacity_rejects_creation_without_changing_the_layout() {
+    let (database, project_id, first_chat_id) = database_with_project();
+    for ordinal in 1..LIMITS.durable.chats_per_project as i64 {
+        insert_empty_chat(
+            &database,
+            &project_id,
+            &format!("chat-capacity-{ordinal}"),
+            ordinal,
+        );
+    }
+    let snapshot = database.bootstrap_snapshot().unwrap();
+    let first_tab = snapshot
+        .tabs
+        .iter()
+        .find(|tab| tab.id == first_chat_id)
+        .cloned()
+        .unwrap();
+    database
+        .persist_project_layout(&ProjectLayoutRequest {
+            project_id: project_id.clone(),
+            tabs: vec![first_tab.clone()],
+            active_tab_id: Some(first_chat_id.clone()),
+            selected_root_id: snapshot.selected_root_id,
+            selected_resource: snapshot.selected_resource,
+        })
+        .unwrap();
+    let before = database.bootstrap_snapshot().unwrap();
+
+    let error = database
+        .create_chat(&ProjectLayoutRequest {
+            project_id: project_id.clone(),
+            tabs: before.tabs.clone(),
+            active_tab_id: before.active_tab_id.clone(),
+            selected_root_id: before.selected_root_id.clone(),
+            selected_resource: before.selected_resource.clone(),
+        })
+        .unwrap_err();
+
+    assert!(error.to_string().contains("64-Chat limit"));
+    let after = database.bootstrap_snapshot().unwrap();
+    assert_eq!(after.tabs.len(), 1);
+    assert_eq!(after.active_tab_id.as_deref(), Some(first_chat_id.as_str()));
+    assert_eq!(
+        database
+            .connection()
+            .query_row(
+                "SELECT chat_count FROM acp_project_usage WHERE project_id=?1",
+                [&project_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+        LIMITS.durable.chats_per_project as i64
+    );
 }

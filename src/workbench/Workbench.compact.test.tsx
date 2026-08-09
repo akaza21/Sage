@@ -57,6 +57,20 @@ afterEach(() => {
 });
 
 describe("compact Workbench project tools", () => {
+  it("routes both New Chat controls through one creation action", () => {
+    const createChat = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({
+      createChat,
+      project: { id: "project-a", name: "A", roots: [] },
+    });
+    render(<Workbench />);
+
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "New tab" }));
+
+    expect(createChat).toHaveBeenCalledTimes(2);
+  });
+
   it("uses one accessible drawer and restores its rail focus after Escape", () => {
     const { container } = render(<Workbench />);
     const center = container.querySelector(".center-region");

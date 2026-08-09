@@ -204,6 +204,68 @@ describe("workbench resource and project navigation", () => {
     });
   });
 
+  it("creates a Chat from the current layout and adopts its authoritative projection", async () => {
+    const newChat: WorkbenchTab = {
+      id: "chat:new",
+      kind: "chat",
+      title: "Chat: New chat 2",
+      position: 1,
+      pinned: false,
+      dirty: false,
+      status: "idle",
+    };
+    const createdSnapshot: BootstrapSnapshot = {
+      transitionEpoch: 1,
+      projects: useWorkbenchStore.getState().projects,
+      project: useWorkbenchStore.getState().project,
+      tabs: [chatTab, newChat],
+      activeTabId: newChat.id,
+      selectedRootId: "root-a",
+      selectedResource: null,
+      harnesses: [],
+      sessionId: null,
+      selectedHarnessId: null,
+      selectedModelId: null,
+      messages: [],
+      repositories: { roots: [], truncated: false, elapsedMs: 0 },
+      turnChanges: [],
+      recoveredBuffers: [],
+      recoveryNotice: null,
+    };
+    const create = vi.spyOn(desktop, "createChat").mockResolvedValue({
+      committed: true,
+      transitionEpoch: 1,
+      snapshot: createdSnapshot,
+      recoveryError: null,
+    });
+    vi.spyOn(desktop, "listDirectory").mockImplementation(async (target) => ({
+      resource: target,
+      entries: [],
+      truncated: false,
+    }));
+
+    await useWorkbenchStore.getState().createChat();
+
+    expect(create).toHaveBeenCalledWith(
+      {
+        projectId: "project-a",
+        tabs: [chatTab],
+        activeTabId: chatTab.id,
+        selectedRootId: "root-a",
+        selectedResource: null,
+      },
+      0,
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      nativeTransitionEpoch: 1,
+      activeTabId: newChat.id,
+      tabs: [chatTab, newChat],
+      sessionId: null,
+      messages: [],
+      projectTransitioning: false,
+    });
+  });
+
   it("settles the originating Chat send after switching to a File tab", async () => {
     const pending = deferred<Awaited<ReturnType<typeof desktop.sendPrompt>>>();
     vi.spyOn(desktop, "sendPrompt").mockReturnValue(pending.promise);

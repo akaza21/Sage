@@ -27,6 +27,8 @@ export function TabStrip() {
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const activateTab = useWorkbenchStore((state) => state.activateTab);
   const closeTab = useWorkbenchStore((state) => state.closeTab);
+  const createChat = useWorkbenchStore((state) => state.createChat);
+  const project = useWorkbenchStore((state) => state.project);
 
   return (
     <nav className="tab-strip" aria-label="Open tabs">
@@ -76,6 +78,8 @@ export function TabStrip() {
         type="button"
         aria-label="New tab"
         title="New tab"
+        disabled={!project}
+        onClick={() => void createChat()}
       >
         <Plus size={17} aria-hidden="true" />
       </button>

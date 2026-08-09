@@ -20,6 +20,7 @@ export function LeftSidebar() {
   const activateTab = useWorkbenchStore((state) => state.activateTab);
   const switchProject = useWorkbenchStore((state) => state.switchProject);
   const createProject = useWorkbenchStore((state) => state.createProject);
+  const createChat = useWorkbenchStore((state) => state.createChat);
   const addProjectRoot = useWorkbenchStore((state) => state.addProjectRoot);
   const chatTabs = tabs.filter((tab) => tab.kind === "chat");
 
@@ -30,6 +31,8 @@ export function LeftSidebar() {
           className="project-action project-action--primary"
           type="button"
           title="New chat"
+          disabled={!project}
+          onClick={() => void createChat()}
         >
           <SquarePen size={16} aria-hidden="true" />
           New chat

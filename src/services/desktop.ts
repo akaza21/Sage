@@ -127,6 +127,15 @@ export const desktop = {
         });
   },
 
+  createChat(
+    currentLayout: ProjectLayoutRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    return isTauriRuntime()
+      ? invoke("create_chat", { currentLayout, expectedTransitionEpoch })
+      : browserDesktop.createChat(currentLayout, expectedTransitionEpoch);
+  },
+
   persistProjectLayout(request: ProjectLayoutRequest): Promise<void> {
     return isTauriRuntime()
       ? invoke("persist_project_layout", { request })

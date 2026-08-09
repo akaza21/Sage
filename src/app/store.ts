@@ -15,6 +15,7 @@ import type {
 import { preferredModelId } from "../features/harnesses/modelSelection";
 import { desktop } from "../services/desktop";
 import { createEditorSlice, type EditorSlice } from "./editorSlice";
+import { createChatSlice, type ChatSlice } from "./chatSlice";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import { createProjectSlice, type ProjectSlice } from "./projectSlice";
 import { createResourceSlice, type ResourceSlice } from "./resourceSlice";
@@ -28,7 +29,7 @@ export type ResourceState<T> =
   | { phase: "error"; message: string };
 
 export interface WorkbenchState
-  extends EditorSlice, ProjectSlice, ResourceSlice {
+  extends ChatSlice, EditorSlice, ProjectSlice, ResourceSlice {
   phase: "booting" | "ready" | "error";
   error: string | null;
   projects: ProjectListItem[];
@@ -151,6 +152,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     repositoryRequestGeneration: 0,
     harnessRequestGeneration: 0,
     ...createProjectSlice(set, get, store),
+    ...createChatSlice(set, get, store),
     ...createResourceSlice(set, get, store),
     ...createEditorSlice(set, get, store),
 

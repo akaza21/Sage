@@ -1,4 +1,6 @@
 pub mod acp;
+mod chat_commands;
+mod chat_lifecycle;
 mod commands;
 mod domain;
 mod editor;
@@ -138,6 +140,7 @@ pub fn run() {
             resource_commands::discard_editor_buffer,
             project_commands::create_project_from_picker,
             project_commands::add_project_root_from_picker,
+            chat_commands::create_chat,
             project_commands::persist_project_layout,
             project_commands::persist_project_layout_and_close,
             project_commands::switch_project,

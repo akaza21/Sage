@@ -12,7 +12,10 @@ import type {
   SimulatorTurnResult,
 } from "../domain/workbench";
 import { resourceKey } from "../domain/resourceIdentity";
+import { appendBrowserSimulatorTurn } from "./browserChat";
 import { browserEditor } from "./browserEditor";
+
+export { appendBrowserSimulatorTurn } from "./browserChat";
 
 const rootId = "browser-root";
 const ref = (relativePath: string): ResourceRef => ({ rootId, relativePath });
@@ -192,73 +195,41 @@ const directories = new Map<string, DirectoryListing>([
   ],
 ]);
 
-let messages = [...snapshot.messages];
-let simulatorModelId: string | null = null;
-const MAX_BROWSER_MESSAGES = 500;
-const MAX_BROWSER_MESSAGE_BYTES = 4 * 1024 * 1024;
-
+const initialTabs = structuredClone(snapshot.tabs);
+const initialMessages = structuredClone(snapshot.messages);
+let messagesByChat = new Map<string, ChatMessage[]>([
+  ["tab-chat", structuredClone(initialMessages)],
+]);
+let simulatorSessions = new Map<
+  string,
+  { sessionId: string; modelId: string }
+>();
 export function resetBrowserDesktopForTests() {
+  snapshot.transitionEpoch = 0;
+  snapshot.tabs = structuredClone(initialTabs);
+  snapshot.activeTabId = "tab-chat";
   snapshot.sessionId = null;
+  snapshot.selectedHarnessId = "sage-simulator";
   snapshot.selectedModelId = "sim-fast";
-  simulatorModelId = null;
-  messages = [...snapshot.messages];
+  snapshot.messages = structuredClone(initialMessages);
+  messagesByChat = new Map([["tab-chat", structuredClone(initialMessages)]]);
+  simulatorSessions = new Map();
 }
 
-function browserMessageBytes(values: ChatMessage[]) {
-  const encoder = new TextEncoder();
-  return values.reduce(
-    (total, message) => total + encoder.encode(message.text).byteLength,
-    0,
-  );
+function activeMessages() {
+  return messagesByChat.get(snapshot.activeTabId ?? "") ?? [];
 }
 
-export function appendBrowserSimulatorTurn(
-  current: ChatMessage[],
-  request: {
-    sessionId: string;
-    modelId: string | null;
-    text: string;
-  },
-  ids: [string, string] = [crypto.randomUUID(), crypto.randomUUID()],
-  createdAt = Date.now(),
-) {
-  const sequence = (current.at(-1)?.sequence ?? 0) + 1;
-  const response = `Simulator acknowledged the prompt using ${
-    request.modelId ?? "the harness default"
-  }. The ACP supervisor remains a later phase.`;
-  const turn: ChatMessage[] = [
-    {
-      id: ids[0],
-      sessionId: request.sessionId,
-      sequence,
-      role: "user",
-      text: request.text,
-      createdAt,
-    },
-    {
-      id: ids[1],
-      sessionId: request.sessionId,
-      sequence: sequence + 1,
-      role: "assistant",
-      text: response,
-      createdAt,
-    },
-  ];
-  if (
-    current.length + turn.length > MAX_BROWSER_MESSAGES ||
-    browserMessageBytes(current) + browserMessageBytes(turn) >
-      MAX_BROWSER_MESSAGE_BYTES
-  ) {
-    throw new Error(
-      "browser session history capacity reached; existing messages were preserved",
-    );
-  }
-  return [...current, ...turn];
+function projectActiveChat() {
+  const session = simulatorSessions.get(snapshot.activeTabId ?? "");
+  snapshot.sessionId = session?.sessionId ?? null;
+  snapshot.selectedHarnessId = "sage-simulator";
+  snapshot.selectedModelId = session?.modelId ?? null;
 }
 
 export const browserDesktop = {
   async getBootstrapSnapshot() {
-    return structuredClone({ ...snapshot, messages });
+    return structuredClone({ ...snapshot, messages: activeMessages() });
   },
   async getRepositoryStatus() {
     return structuredClone(repository);
@@ -285,6 +256,48 @@ export const browserDesktop = {
     snapshot.activeTabId = request.activeTabId;
     snapshot.selectedRootId = request.selectedRootId;
     snapshot.selectedResource = structuredClone(request.selectedResource);
+    projectActiveChat();
+  },
+  async createChat(
+    currentLayout: ProjectLayoutRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    if (expectedTransitionEpoch !== snapshot.transitionEpoch) {
+      throw new Error("project changed before the requested Chat creation");
+    }
+    if (currentLayout.projectId !== snapshot.project?.id) {
+      throw new Error("Chat layout does not belong to the active Project");
+    }
+    if (currentLayout.tabs.length >= 64) {
+      throw new Error("project layout has reached its 64-tab limit");
+    }
+    await this.persistProjectLayout(currentLayout);
+    const chatCount = snapshot.tabs.filter((tab) => tab.kind === "chat").length;
+    const nextPosition =
+      Math.max(-1, ...snapshot.tabs.map((tab) => tab.position)) + 1;
+    const chat = {
+      id: crypto.randomUUID(),
+      kind: "chat" as const,
+      title: `Chat: New chat ${chatCount + 1}`,
+      position: nextPosition,
+      pinned: false,
+      dirty: false,
+      status: "idle" as const,
+    };
+    snapshot.tabs = [...snapshot.tabs, chat];
+    snapshot.activeTabId = chat.id;
+    snapshot.sessionId = null;
+    snapshot.selectedHarnessId = "sage-simulator";
+    snapshot.selectedModelId = null;
+    snapshot.messages = [];
+    messagesByChat.set(chat.id, []);
+    snapshot.transitionEpoch += 1;
+    return {
+      committed: true,
+      transitionEpoch: snapshot.transitionEpoch,
+      snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
+      recoveryError: null,
+    };
   },
   async switchProject(
     request: ProjectSwitchRequest,
@@ -301,7 +314,7 @@ export const browserDesktop = {
     return {
       committed: true,
       transitionEpoch: snapshot.transitionEpoch,
-      snapshot: structuredClone({ ...snapshot, messages }),
+      snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
       recoveryError: null,
     };
   },
@@ -319,8 +332,12 @@ export const browserDesktop = {
     modelId: string | null;
     text: string;
   }): Promise<SimulatorTurnResult> {
-    if (request.chatId !== snapshot.activeTabId) {
-      throw new Error("Chat is not active");
+    if (
+      !snapshot.tabs.some(
+        (tab) => tab.id === request.chatId && tab.kind === "chat",
+      )
+    ) {
+      throw new Error("Chat is not attached to the active Project");
     }
     if (
       request.harnessId !== "sage-simulator" ||
@@ -333,19 +350,22 @@ export const browserDesktop = {
       );
     }
     const modelId = request.modelId ?? "sim-fast";
+    const priorSession = simulatorSessions.get(request.chatId);
     const sessionId =
-      snapshot.sessionId && simulatorModelId === modelId
-        ? snapshot.sessionId
+      priorSession?.modelId === modelId
+        ? priorSession.sessionId
         : crypto.randomUUID();
-    const nextMessages = appendBrowserSimulatorTurn(messages, {
-      sessionId,
-      modelId: request.modelId,
-      text: request.text,
-    });
-    messages = nextMessages;
-    snapshot.sessionId = sessionId;
-    snapshot.selectedModelId = modelId;
-    simulatorModelId = modelId;
-    return structuredClone({ sessionId, messages });
+    const nextMessages = appendBrowserSimulatorTurn(
+      messagesByChat.get(request.chatId) ?? [],
+      {
+        sessionId,
+        modelId: request.modelId,
+        text: request.text,
+      },
+    );
+    messagesByChat.set(request.chatId, nextMessages);
+    simulatorSessions.set(request.chatId, { sessionId, modelId });
+    if (request.chatId === snapshot.activeTabId) projectActiveChat();
+    return structuredClone({ sessionId, messages: nextMessages });
   },
 };

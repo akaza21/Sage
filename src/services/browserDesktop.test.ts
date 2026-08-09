@@ -43,6 +43,46 @@ describe("browser simulator history bounds", () => {
     );
   });
 
+  it("creates and isolates two browser Chats through authoritative projections", async () => {
+    const initial = await browserDesktop.getBootstrapSnapshot();
+    const created = await browserDesktop.createChat(
+      {
+        projectId: initial.project!.id,
+        tabs: initial.tabs,
+        activeTabId: initial.activeTabId,
+        selectedRootId: initial.selectedRootId,
+        selectedResource: initial.selectedResource,
+      },
+      initial.transitionEpoch,
+    );
+    const secondChatId = created.snapshot!.activeTabId!;
+    const second = await browserDesktop.sendPrompt({
+      chatId: secondChatId,
+      harnessId: "sage-simulator",
+      modelId: "sim-fast",
+      text: "second-only",
+    });
+    const first = await browserDesktop.sendPrompt({
+      chatId: initial.activeTabId!,
+      harnessId: "sage-simulator",
+      modelId: "sim-fast",
+      text: "first-only",
+    });
+
+    expect(second.messages.map((message) => message.text)).toContain(
+      "second-only",
+    );
+    expect(second.messages.map((message) => message.text)).not.toContain(
+      "first-only",
+    );
+    expect(first.messages.map((message) => message.text)).toContain(
+      "first-only",
+    );
+    expect(first.messages.map((message) => message.text)).not.toContain(
+      "second-only",
+    );
+  });
+
   it("exposes the four curated harnesses in product admission order", async () => {
     const snapshot = await browserDesktop.getBootstrapSnapshot();
     expect(snapshot.harnesses.slice(0, 4).map((harness) => harness.id)).toEqual(
