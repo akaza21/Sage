@@ -23,7 +23,7 @@ pub(crate) struct AppServerClientIdentity {
 pub(crate) const APP_SERVER_CLIENT_IDENTITY: AppServerClientIdentity = AppServerClientIdentity {
     name: "sage",
     title: "Sage",
-    version: "0.1.0",
+    version: env!("CARGO_PKG_VERSION"),
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

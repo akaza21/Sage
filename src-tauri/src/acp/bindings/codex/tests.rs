@@ -697,7 +697,10 @@ fn all_outgoing_lifecycle_methods_are_exact_and_bounded() {
     assert_eq!(initialize_value["method"], "initialize");
     assert_eq!(initialize_value["params"]["clientInfo"]["name"], "sage");
     assert_eq!(initialize_value["params"]["clientInfo"]["title"], "Sage");
-    assert_eq!(initialize_value["params"]["clientInfo"]["version"], "0.1.0");
+    assert_eq!(
+        initialize_value["params"]["clientInfo"]["version"],
+        env!("CARGO_PKG_VERSION")
+    );
     assert!(!initialize.bytes.ends_with(b"\n"));
     candidate.ingest(&initialize_result(1), &Mapper).unwrap();
     assert_eq!(
