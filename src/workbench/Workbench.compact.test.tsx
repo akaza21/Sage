@@ -95,6 +95,42 @@ describe("compact Workbench project tools", () => {
     expect(activateTab).toHaveBeenCalledWith("chat:b");
   });
 
+  it("renames a Chat from the compact accessible sidebar action", async () => {
+    const activateTab = vi.fn(async () => undefined);
+    const renameChat = vi.fn(async () => true);
+    useWorkbenchStore.setState({
+      activateTab,
+      renameChat,
+      project: { id: "project-a", name: "A", roots: [] },
+      projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
+      tabs: [
+        {
+          id: "chat:b",
+          kind: "chat",
+          title: "Chat: B",
+          position: 0,
+          pinned: true,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat:b",
+    });
+    render(<Workbench />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Rename chat B" }));
+    const input = screen.getByRole("textbox", { name: "New name for B" });
+    fireEvent.change(input, { target: { value: "Release notes" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save chat name" }));
+
+    await vi.waitFor(() => {
+      expect(renameChat).toHaveBeenCalledWith("chat:b", "Release notes");
+      expect(
+        screen.queryByRole("textbox", { name: "New name for B" }),
+      ).toBeNull();
+    });
+    expect(activateTab).not.toHaveBeenCalled();
+  });
+
   it("routes both New Chat controls through one creation action", () => {
     const createChat = vi.fn(async () => undefined);
     useWorkbenchStore.setState({

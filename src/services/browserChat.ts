@@ -1,12 +1,21 @@
 import type {
   ChatMessage,
   ProjectLayoutRequest,
+  RenameChatRequest,
   WorkbenchTab,
 } from "../domain/workbench";
+import { canonicalChatTitle } from "../domain/chatTitle";
 
 const MAX_BROWSER_MESSAGES = 500;
 export const MAX_BROWSER_CHATS = 64;
 export const MAX_BROWSER_HISTORY_BYTES_PER_CHAT = 4 * 1024 * 1024;
+
+export interface BrowserPromptRequest {
+  chatId: string;
+  harnessId: string;
+  modelId: string | null;
+  text: string;
+}
 
 export function assertBrowserChatCreation(
   currentLayout: ProjectLayoutRequest,
@@ -67,6 +76,71 @@ export function assertBrowserChatActivation(
   ) {
     throw new Error("Chat activation target is not an attached Chat");
   }
+}
+
+export function browserChatRenameTitle(
+  request: RenameChatRequest,
+  expectedTransitionEpoch: number,
+  transitionEpoch: number,
+  projectId: string | undefined,
+  durableChatIds: ReadonlySet<string>,
+) {
+  if (expectedTransitionEpoch !== transitionEpoch) {
+    throw new Error("project changed before the requested Chat rename");
+  }
+  if (request.projectId !== projectId || !durableChatIds.has(request.chatId)) {
+    throw new Error("Chat does not belong to the active Project");
+  }
+  return canonicalChatTitle(request.title);
+}
+
+export function renameBrowserChatTabs(
+  tabs: WorkbenchTab[],
+  chatId: string,
+  title: string,
+) {
+  return tabs.map((tab) =>
+    tab.id === chatId && tab.kind === "chat" ? { ...tab, title } : tab,
+  );
+}
+
+export function projectBrowserChatTitles(
+  tabs: WorkbenchTab[],
+  titles: ReadonlyMap<string, string>,
+) {
+  return tabs.map((tab) =>
+    tab.kind === "chat" && titles.has(tab.id)
+      ? { ...tab, title: titles.get(tab.id)! }
+      : tab,
+  );
+}
+
+export function assertBrowserPrompt(
+  request: BrowserPromptRequest,
+  tabs: WorkbenchTab[],
+  durableChatIds: ReadonlySet<string>,
+) {
+  if (
+    !tabs.some((tab) => tab.id === request.chatId && tab.kind === "chat") ||
+    !durableChatIds.has(request.chatId)
+  ) {
+    throw new Error("Chat is not attached to the active Project");
+  }
+  if (
+    request.harnessId !== "sage-simulator" ||
+    (request.modelId !== null &&
+      request.modelId !== "sim-fast" &&
+      request.modelId !== "sim-deep")
+  ) {
+    throw new Error("Harness or model is not available in the browser fixture");
+  }
+}
+
+export function browserSessionId(
+  prior: { sessionId: string; modelId: string } | undefined,
+  modelId: string,
+) {
+  return prior?.modelId === modelId ? prior.sessionId : crypto.randomUUID();
 }
 
 function messageBytes(values: ChatMessage[]) {

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { MAX_CHAT_TITLE_BYTES } from "../domain/chatTitle";
 import type { ChatMessage } from "../domain/workbench";
 import {
   appendBrowserSimulatorTurn,
@@ -112,6 +113,142 @@ describe("browser simulator history bounds", () => {
       sessionId: second.sessionId,
       messages: second.messages,
     });
+  });
+
+  it("renames active and inactive Chats without changing identity or history", async () => {
+    const initial = await browserDesktop.getBootstrapSnapshot();
+    const created = await browserDesktop.createChat(
+      {
+        projectId: initial.project!.id,
+        tabs: initial.tabs,
+        activeTabId: initial.activeTabId,
+        selectedRootId: initial.selectedRootId,
+        selectedResource: initial.selectedResource,
+      },
+      initial.transitionEpoch,
+    );
+    const secondChatId = created.snapshot!.activeTabId!;
+    const turn = await browserDesktop.sendPrompt({
+      chatId: secondChatId,
+      harnessId: "sage-simulator",
+      modelId: "sim-fast",
+      text: "history stays",
+    });
+    const identity = created.snapshot!.tabs.map((tab) => ({
+      id: tab.id,
+      position: tab.position,
+    }));
+
+    const inactive = await browserDesktop.renameChat(
+      {
+        projectId: initial.project!.id,
+        chatId: initial.activeTabId!,
+        title: "  Research  ",
+      },
+      created.transitionEpoch,
+    );
+    expect(inactive.snapshot).toMatchObject({
+      activeTabId: secondChatId,
+      sessionId: turn.sessionId,
+      messages: turn.messages,
+    });
+    expect(
+      inactive.snapshot!.tabs.find((tab) => tab.id === initial.activeTabId)
+        ?.title,
+    ).toBe("Chat: Research");
+
+    const active = await browserDesktop.renameChat(
+      {
+        projectId: initial.project!.id,
+        chatId: secondChatId,
+        title: "Delivery",
+      },
+      inactive.transitionEpoch,
+    );
+    expect(active.snapshot).toMatchObject({
+      activeTabId: secondChatId,
+      sessionId: turn.sessionId,
+      messages: turn.messages,
+    });
+    expect(
+      active.snapshot!.tabs.map((tab) => ({
+        id: tab.id,
+        position: tab.position,
+      })),
+    ).toEqual(identity);
+    expect(
+      active.snapshot!.tabs.find((tab) => tab.id === secondChatId)?.title,
+    ).toBe("Chat: Delivery");
+  });
+
+  it("rejects stale foreign invalid and over-limit rename before mutation", async () => {
+    const initial = await browserDesktop.getBootstrapSnapshot();
+    const exact = "é".repeat(MAX_CHAT_TITLE_BYTES / 2);
+    const renamed = await browserDesktop.renameChat(
+      {
+        projectId: initial.project!.id,
+        chatId: initial.activeTabId!,
+        title: exact,
+      },
+      initial.transitionEpoch,
+    );
+    expect(renamed.snapshot!.tabs[0].title).toBe(`Chat: ${exact}`);
+
+    for (const [request, epoch] of [
+      [
+        {
+          projectId: initial.project!.id,
+          chatId: initial.activeTabId!,
+          title: `${exact}x`,
+        },
+        renamed.transitionEpoch,
+      ],
+      [
+        {
+          projectId: initial.project!.id,
+          chatId: initial.activeTabId!,
+          title: " \t ",
+        },
+        renamed.transitionEpoch,
+      ],
+      [
+        {
+          projectId: initial.project!.id,
+          chatId: initial.activeTabId!,
+          title: "bad\nname",
+        },
+        renamed.transitionEpoch,
+      ],
+      [
+        {
+          projectId: "foreign-project",
+          chatId: initial.activeTabId!,
+          title: "Foreign",
+        },
+        renamed.transitionEpoch,
+      ],
+      [
+        {
+          projectId: initial.project!.id,
+          chatId: "foreign-chat",
+          title: "Foreign",
+        },
+        renamed.transitionEpoch,
+      ],
+      [
+        {
+          projectId: initial.project!.id,
+          chatId: initial.activeTabId!,
+          title: "Stale",
+        },
+        initial.transitionEpoch,
+      ],
+    ] as const) {
+      await expect(browserDesktop.renameChat(request, epoch)).rejects.toThrow();
+      expect(await browserDesktop.getBootstrapSnapshot()).toEqual(
+        renamed.snapshot,
+      );
+    }
   });
 
   it("fails closed at 64 durable browser Chats without evicting detached history", async () => {

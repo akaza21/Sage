@@ -1,18 +1,26 @@
 import {
+  Check,
   ChevronDown,
   ChevronRight,
   FolderOpen,
   FolderPlus,
   MessageSquare,
+  Pencil,
   Plus,
   Search,
   Settings,
   SquarePen,
+  X,
 } from "lucide-react";
+import { useState, type FormEvent } from "react";
 
+import { chatDisplayTitle } from "../domain/chatTitle";
 import { useWorkbenchStore } from "../app/store";
 
 export function LeftSidebar() {
+  const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
   const projects = useWorkbenchStore((state) => state.projects);
   const project = useWorkbenchStore((state) => state.project);
   const tabs = useWorkbenchStore((state) => state.tabs);
@@ -21,8 +29,20 @@ export function LeftSidebar() {
   const switchProject = useWorkbenchStore((state) => state.switchProject);
   const createProject = useWorkbenchStore((state) => state.createProject);
   const createChat = useWorkbenchStore((state) => state.createChat);
+  const renameChat = useWorkbenchStore((state) => state.renameChat);
+  const projectTransitioning = useWorkbenchStore(
+    (state) => state.projectTransitioning,
+  );
   const addProjectRoot = useWorkbenchStore((state) => state.addProjectRoot);
   const chatTabs = tabs.filter((tab) => tab.kind === "chat");
+
+  const submitRename = async (event: FormEvent, chatId: string) => {
+    event.preventDefault();
+    setRenameSaving(true);
+    const committed = await renameChat(chatId, renameDraft);
+    setRenameSaving(false);
+    if (committed) setRenamingChatId(null);
+  };
 
   return (
     <aside className="project-sidebar" aria-label="Projects and chats">
@@ -80,26 +100,89 @@ export function LeftSidebar() {
                 </button>
                 {selected ? (
                   <div className="project-chats">
-                    {chatTabs.map((tab) => (
-                      <button
-                        className={`project-chat ${
-                          tab.id === activeTabId ? "project-chat--active" : ""
-                        }`}
-                        key={tab.id}
-                        type="button"
-                        title={`Open chat ${tab.title.replace(/^Chat:\s*/, "")}`}
-                        onClick={() => void activateTab(tab.id)}
-                      >
-                        <MessageSquare size={14} aria-hidden="true" />
-                        <span>{tab.title.replace(/^Chat:\s*/, "")}</span>
-                        {tab.status === "working" ? (
-                          <span
-                            className="project-chat__working"
-                            title="Working"
-                          />
-                        ) : null}
-                      </button>
-                    ))}
+                    {chatTabs.map((tab) => {
+                      const displayTitle = chatDisplayTitle(tab.title);
+                      if (renamingChatId === tab.id) {
+                        return (
+                          <form
+                            className="project-chat-edit"
+                            key={tab.id}
+                            onSubmit={(event) =>
+                              void submitRename(event, tab.id)
+                            }
+                          >
+                            <MessageSquare size={14} aria-hidden="true" />
+                            <input
+                              aria-label={`New name for ${displayTitle}`}
+                              autoFocus
+                              disabled={renameSaving}
+                              value={renameDraft}
+                              onChange={(event) =>
+                                setRenameDraft(event.currentTarget.value)
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key === "Escape") {
+                                  setRenamingChatId(null);
+                                }
+                              }}
+                            />
+                            <button
+                              type="submit"
+                              aria-label="Save chat name"
+                              title="Save chat name"
+                              disabled={renameSaving}
+                            >
+                              <Check size={13} aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label="Cancel chat rename"
+                              title="Cancel chat rename"
+                              disabled={renameSaving}
+                              onClick={() => setRenamingChatId(null)}
+                            >
+                              <X size={13} aria-hidden="true" />
+                            </button>
+                          </form>
+                        );
+                      }
+                      return (
+                        <div className="project-chat-row" key={tab.id}>
+                          <button
+                            className={`project-chat ${
+                              tab.id === activeTabId
+                                ? "project-chat--active"
+                                : ""
+                            }`}
+                            type="button"
+                            title={`Open chat ${displayTitle}`}
+                            onClick={() => void activateTab(tab.id)}
+                          >
+                            <MessageSquare size={14} aria-hidden="true" />
+                            <span>{displayTitle}</span>
+                            {tab.status === "working" ? (
+                              <span
+                                className="project-chat__working"
+                                title="Working"
+                              />
+                            ) : null}
+                          </button>
+                          <button
+                            className="project-chat__rename"
+                            type="button"
+                            aria-label={`Rename chat ${displayTitle}`}
+                            title={`Rename chat ${displayTitle}`}
+                            disabled={projectTransitioning}
+                            onClick={() => {
+                              setRenameDraft(displayTitle);
+                              setRenamingChatId(tab.id);
+                            }}
+                          >
+                            <Pencil size={12} aria-hidden="true" />
+                          </button>
+                        </div>
+                      );
+                    })}
                     <button
                       className="project-chat project-chat--utility"
                       type="button"

@@ -6,6 +6,7 @@ import type {
   FileChange,
   ProjectLayoutRequest,
   ProjectRepositoryStatus,
+  RenameChatRequest,
   ProjectSwitchRequest,
   ProjectTransitionResult,
   ResourceRef,
@@ -16,7 +17,13 @@ import {
   appendBrowserSimulatorTurn,
   assertBrowserChatActivation,
   assertBrowserChatCreation,
+  assertBrowserPrompt,
+  browserChatRenameTitle,
+  browserSessionId,
   createBrowserChatTab,
+  projectBrowserChatTitles,
+  renameBrowserChatTabs,
+  type BrowserPromptRequest,
 } from "./browserChat";
 import { browserEditor } from "./browserEditor";
 
@@ -210,6 +217,7 @@ let simulatorSessions = new Map<
   { sessionId: string; modelId: string }
 >();
 let durableChatIds = new Set(["tab-chat"]);
+let chatTitles = new Map([["tab-chat", snapshot.tabs[0].title]]);
 export function resetBrowserDesktopForTests() {
   snapshot.transitionEpoch = 0;
   snapshot.tabs = structuredClone(initialTabs);
@@ -220,6 +228,7 @@ export function resetBrowserDesktopForTests() {
   messagesByChat = new Map([["tab-chat", structuredClone(initialMessages)]]);
   simulatorSessions = new Map();
   durableChatIds = new Set(["tab-chat"]);
+  chatTitles = new Map([["tab-chat", initialTabs[0].title]]);
 }
 
 function activeMessages() {
@@ -258,7 +267,9 @@ export const browserDesktop = {
     return { resource, binary: false, truncated: false, hunks: [] };
   },
   async persistProjectLayout(request: ProjectLayoutRequest) {
-    snapshot.tabs = structuredClone(request.tabs);
+    snapshot.tabs = structuredClone(
+      projectBrowserChatTitles(request.tabs, chatTitles),
+    );
     snapshot.activeTabId = request.activeTabId;
     snapshot.selectedRootId = request.selectedRootId;
     snapshot.selectedResource = structuredClone(request.selectedResource);
@@ -284,6 +295,7 @@ export const browserDesktop = {
     snapshot.selectedHarnessId = "sage-simulator";
     snapshot.selectedModelId = null;
     durableChatIds.add(chat.id);
+    chatTitles.set(chat.id, chat.title);
     messagesByChat.set(chat.id, []);
     snapshot.transitionEpoch += 1;
     return {
@@ -304,6 +316,27 @@ export const browserDesktop = {
       durableChatIds,
     );
     await this.persistProjectLayout(currentLayout);
+    snapshot.transitionEpoch += 1;
+    return {
+      committed: true,
+      transitionEpoch: snapshot.transitionEpoch,
+      snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
+      recoveryError: null,
+    };
+  },
+  async renameChat(
+    request: RenameChatRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    const title = browserChatRenameTitle(
+      request,
+      expectedTransitionEpoch,
+      snapshot.transitionEpoch,
+      snapshot.project?.id,
+      durableChatIds,
+    );
+    chatTitles.set(request.chatId, title);
+    snapshot.tabs = renameBrowserChatTabs(snapshot.tabs, request.chatId, title);
     snapshot.transitionEpoch += 1;
     return {
       committed: true,
@@ -339,36 +372,13 @@ export const browserDesktop = {
         ]
       : [];
   },
-  async sendPrompt(request: {
-    chatId: string;
-    harnessId: string;
-    modelId: string | null;
-    text: string;
-  }): Promise<SimulatorTurnResult> {
-    if (
-      !snapshot.tabs.some(
-        (tab) => tab.id === request.chatId && tab.kind === "chat",
-      ) ||
-      !durableChatIds.has(request.chatId)
-    ) {
-      throw new Error("Chat is not attached to the active Project");
-    }
-    if (
-      request.harnessId !== "sage-simulator" ||
-      (request.modelId !== null &&
-        request.modelId !== "sim-fast" &&
-        request.modelId !== "sim-deep")
-    ) {
-      throw new Error(
-        "Harness or model is not available in the browser fixture",
-      );
-    }
+  async sendPrompt(
+    request: BrowserPromptRequest,
+  ): Promise<SimulatorTurnResult> {
+    assertBrowserPrompt(request, snapshot.tabs, durableChatIds);
     const modelId = request.modelId ?? "sim-fast";
     const priorSession = simulatorSessions.get(request.chatId);
-    const sessionId =
-      priorSession?.modelId === modelId
-        ? priorSession.sessionId
-        : crypto.randomUUID();
+    const sessionId = browserSessionId(priorSession, modelId);
     const nextMessages = appendBrowserSimulatorTurn(
       messagesByChat.get(request.chatId) ?? [],
       {

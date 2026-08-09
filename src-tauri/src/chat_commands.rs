@@ -1,7 +1,7 @@
 use tauri::State;
 
 use crate::{
-    domain::{ProjectLayoutRequest, ProjectTransitionResult},
+    domain::{ProjectLayoutRequest, ProjectTransitionResult, RenameChatRequest},
     error::{AppError, AppResult},
     persistence::Database,
     resource_commands::build_bootstrap_snapshot,
@@ -26,6 +26,15 @@ pub async fn activate_chat(
     expected_transition_epoch: u64,
 ) -> Result<ProjectTransitionResult, String> {
     Ok(activate_chat_inner(&state, current_layout, expected_transition_epoch).await)
+}
+
+#[tauri::command]
+pub async fn rename_chat(
+    state: State<'_, AppState>,
+    request: RenameChatRequest,
+    expected_transition_epoch: u64,
+) -> Result<ProjectTransitionResult, String> {
+    Ok(rename_chat_inner(&state, request, expected_transition_epoch).await)
 }
 
 async fn create_chat_inner(
@@ -68,6 +77,20 @@ async fn activate_chat_inner(
             }
             database.persist_project_layout(&current_layout)
         },
+    )
+    .await
+}
+
+async fn rename_chat_inner(
+    state: &AppState,
+    request: RenameChatRequest,
+    expected_transition_epoch: u64,
+) -> ProjectTransitionResult {
+    execute_chat_transition(
+        state,
+        expected_transition_epoch,
+        "project changed before the requested Chat rename",
+        move |database| database.rename_chat(&request),
     )
     .await
 }
@@ -126,7 +149,11 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::{domain::ProjectLayoutRequest, persistence::Database, state::AppState};
+    use crate::{
+        domain::{ProjectLayoutRequest, RenameChatRequest},
+        persistence::Database,
+        state::AppState,
+    };
 
     #[test]
     fn native_chat_creation_returns_the_committed_projection_and_rejects_stale_intents() {
@@ -155,6 +182,7 @@ mod tests {
                 snapshot.active_tab_id,
                 snapshot.tabs.last().map(|tab| tab.id.clone())
             );
+            let second_chat_id = snapshot.active_tab_id.clone().unwrap();
 
             let first_chat_id = layout.active_tab_id.clone().unwrap();
             let selected = activate_chat_inner(
@@ -178,9 +206,61 @@ mod tests {
             );
             assert_eq!(selected.messages.len(), 1);
 
+            let renamed = rename_chat_inner(
+                &state,
+                RenameChatRequest {
+                    project_id: layout.project_id.clone(),
+                    chat_id: second_chat_id.clone(),
+                    title: "  Inactive renamed  ".into(),
+                },
+                2,
+            )
+            .await;
+            assert!(renamed.committed);
+            assert_eq!(renamed.transition_epoch, 3);
+            let renamed_snapshot = renamed.snapshot.unwrap();
+            assert_eq!(
+                renamed_snapshot.active_tab_id.as_deref(),
+                Some(first_chat_id.as_str())
+            );
+            assert_eq!(renamed_snapshot.messages.len(), 1);
+            assert_eq!(
+                renamed_snapshot
+                    .tabs
+                    .iter()
+                    .find(|tab| tab.id == second_chat_id)
+                    .map(|tab| tab.title.as_str()),
+                Some("Chat: Inactive renamed")
+            );
+
+            let stale_rename = rename_chat_inner(
+                &state,
+                RenameChatRequest {
+                    project_id: layout.project_id.clone(),
+                    chat_id: second_chat_id.clone(),
+                    title: "Must not commit".into(),
+                },
+                2,
+            )
+            .await;
+            assert!(!stale_rename.committed);
+            assert_eq!(stale_rename.transition_epoch, 3);
+            assert_eq!(
+                state
+                    .database
+                    .connection()
+                    .query_row(
+                        "SELECT title FROM chats WHERE id=?1",
+                        [&second_chat_id],
+                        |row| row.get::<_, String>(0)
+                    )
+                    .unwrap(),
+                "Chat: Inactive renamed"
+            );
+
             let stale = create_chat_inner(&state, layout, 0).await;
             assert!(!stale.committed);
-            assert_eq!(stale.transition_epoch, 2);
+            assert_eq!(stale.transition_epoch, 3);
             assert!(stale.recovery_error.unwrap().contains("project changed"));
             assert_eq!(
                 state
@@ -199,6 +279,14 @@ mod tests {
                 Some(first_chat_id.as_str())
             );
             assert_eq!(restarted.messages.len(), 1);
+            assert_eq!(
+                restarted
+                    .tabs
+                    .iter()
+                    .find(|tab| tab.id == second_chat_id)
+                    .map(|tab| tab.title.as_str()),
+                Some("Chat: Inactive renamed")
+            );
             drop(reopened);
             fs::remove_dir_all(root).unwrap();
         });

@@ -1,13 +1,89 @@
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 use uuid::Uuid;
 
 use crate::{
     acp::limits::LIMITS,
-    domain::ProjectLayoutRequest,
+    domain::{ProjectLayoutRequest, RenameChatRequest},
     error::{AppError, AppResult},
     persistence::{Database, now_millis},
     workbench_persistence::{MAX_RESTORED_TABS, persist_layout_in},
 };
+
+pub const MAX_CHAT_TITLE_BYTES: usize = 128;
+const MAX_CHAT_ID_BYTES: usize = 512;
+
+pub(crate) fn canonical_chat_title(input: &str) -> AppResult<String> {
+    let title = input.trim();
+    if title.is_empty() {
+        return Err(AppError::InvalidRequest(
+            "Chat title must not be empty after trimming".into(),
+        ));
+    }
+    if title.len() > MAX_CHAT_TITLE_BYTES {
+        return Err(AppError::ResourceLimit(format!(
+            "Chat title may contain at most {MAX_CHAT_TITLE_BYTES} UTF-8 bytes"
+        )));
+    }
+    if title.chars().any(char::is_control) {
+        return Err(AppError::InvalidRequest(
+            "Chat title must not contain control characters".into(),
+        ));
+    }
+    Ok(format!("Chat: {title}"))
+}
+
+fn validate_chat_identifier(label: &str, value: &str) -> AppResult<()> {
+    if value.is_empty() || value.len() > MAX_CHAT_ID_BYTES || value.chars().any(char::is_control) {
+        return Err(AppError::InvalidRequest(format!(
+            "{label} is not a valid bounded Chat identifier"
+        )));
+    }
+    Ok(())
+}
+
+pub(crate) fn durable_chat_title_in(
+    transaction: &rusqlite::Transaction<'_>,
+    project_id: &str,
+    chat_id: &str,
+) -> AppResult<String> {
+    transaction
+        .query_row(
+            "SELECT title FROM chats WHERE project_id=?1 AND id=?2",
+            params![project_id, chat_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or_else(|| {
+            AppError::InvalidRequest("Chat tab does not reference an existing durable Chat".into())
+        })
+}
+
+pub(crate) fn attach_chat_tab_in(
+    transaction: &rusqlite::Transaction<'_>,
+    project_id: &str,
+    chat_id: &str,
+    attached_at: i64,
+) -> AppResult<()> {
+    transaction.execute(
+        "INSERT OR IGNORE INTO chat_tabs(project_id,chat_id,tab_id,attached_at)
+         VALUES (?1,?2,?2,?3)",
+        params![project_id, chat_id, attached_at],
+    )?;
+    let attached: bool = transaction.query_row(
+        "SELECT EXISTS(
+           SELECT 1 FROM chat_tabs
+           WHERE project_id=?1 AND chat_id=?2 AND tab_id=?2
+         )",
+        params![project_id, chat_id],
+        |row| row.get(0),
+    )?;
+    if !attached {
+        return Err(AppError::InvalidRequest(
+            "Chat tab identity conflicts with another attachment".into(),
+        ));
+    }
+    Ok(())
+}
 
 impl Database {
     pub(crate) fn create_chat(&self, current_layout: &ProjectLayoutRequest) -> AppResult<String> {
@@ -112,6 +188,68 @@ impl Database {
         transaction.commit()?;
         Ok(chat_id)
     }
+
+    pub(crate) fn rename_chat(&self, request: &RenameChatRequest) -> AppResult<()> {
+        validate_chat_identifier("Project ID", &request.project_id)?;
+        validate_chat_identifier("Chat ID", &request.chat_id)?;
+        let title = canonical_chat_title(&request.title)?;
+        let mut connection = self.write_connection()?;
+        let transaction = connection.transaction()?;
+        let active_project_id = transaction.query_row(
+            "SELECT active_project_id FROM app_state WHERE singleton=1",
+            [],
+            |row| row.get::<_, Option<String>>(0),
+        )?;
+        if active_project_id.as_deref() != Some(request.project_id.as_str()) {
+            return Err(AppError::InvalidRequest(
+                "Chat does not belong to the active Project".into(),
+            ));
+        }
+        let chat_exists: bool = transaction.query_row(
+            "SELECT EXISTS(
+               SELECT 1 FROM chats WHERE project_id=?1 AND id=?2
+             )",
+            params![request.project_id, request.chat_id],
+            |row| row.get(0),
+        )?;
+        if !chat_exists {
+            return Err(AppError::InvalidRequest(
+                "Chat does not belong to the active Project".into(),
+            ));
+        }
+        let attached_tab_id = transaction
+            .query_row(
+                "SELECT tab_id FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",
+                params![request.project_id, request.chat_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        let now = now_millis();
+        require_one(
+            transaction.execute(
+                "UPDATE chats SET title=?3,updated_at=?4
+                 WHERE project_id=?1 AND id=?2",
+                params![request.project_id, request.chat_id, title, now],
+            )?,
+            "Chat disappeared during rename",
+        )?;
+        if let Some(tab_id) = attached_tab_id {
+            require_one(
+                transaction.execute(
+                    "UPDATE workbench_tabs SET title=?4,updated_at=?5
+                     WHERE project_id=?1 AND id=?2 AND kind='chat'
+                       AND EXISTS(
+                         SELECT 1 FROM chat_tabs
+                         WHERE project_id=?1 AND chat_id=?3 AND tab_id=?2
+                       )",
+                    params![request.project_id, tab_id, request.chat_id, title, now],
+                )?,
+                "attached Chat tab disappeared during rename",
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
 }
 
 fn require_one(changed: usize, message: &str) -> AppResult<()> {
@@ -120,3 +258,6 @@ fn require_one(changed: usize, message: &str) -> AppResult<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

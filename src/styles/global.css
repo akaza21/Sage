@@ -438,6 +438,12 @@ textarea:focus-visible {
   padding-top: 2px;
 }
 
+.project-chat-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px;
+  align-items: center;
+}
+
 .project-chat {
   position: relative;
   width: 100%;
@@ -446,6 +452,66 @@ textarea:focus-visible {
   padding: 0 9px 0 25px;
   border-radius: 7px;
   font-size: 12px;
+}
+
+.project-chat-row .project-chat {
+  width: auto;
+}
+
+.project-chat__rename,
+.project-chat-edit button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.project-chat__rename {
+  opacity: 0;
+}
+
+.project-chat-row:hover .project-chat__rename,
+.project-chat-row:focus-within .project-chat__rename {
+  opacity: 1;
+}
+
+.project-chat__rename:hover,
+.project-chat-edit button:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.project-chat__rename:disabled,
+.project-chat-edit button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.project-chat-edit {
+  display: grid;
+  height: 32px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px;
+  padding: 0 2px 0 25px;
+}
+
+.project-chat-edit input {
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  color: var(--text);
+  outline: none;
+  background: var(--surface-active);
+  font: inherit;
 }
 
 .project-chat span:not(.project-chat__working) {

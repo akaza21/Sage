@@ -4,6 +4,7 @@ use rusqlite::{OptionalExtension, params};
 use serde_json::json;
 
 use crate::{
+    chat_lifecycle::{attach_chat_tab_in, durable_chat_title_in},
     domain::{
         BootstrapSnapshot, ProjectLayoutRequest, ProjectRepositoryStatus, ProjectSwitchRequest,
     },
@@ -187,6 +188,11 @@ pub(crate) fn persist_layout_in(
     validate_layout(transaction, request)?;
     let now = now_millis();
     for tab in &request.tabs {
+        let title = if tab.kind == "chat" {
+            durable_chat_title_in(transaction, &request.project_id, &tab.id)?
+        } else {
+            tab.title.clone()
+        };
         let metadata = tab
             .resource
             .as_ref()
@@ -209,7 +215,7 @@ pub(crate) fn persist_layout_in(
                 tab.id,
                 request.project_id,
                 tab.kind,
-                tab.title,
+                title,
                 tab.position,
                 i64::from(tab.pinned),
                 i64::from(tab.dirty),
@@ -219,36 +225,7 @@ pub(crate) fn persist_layout_in(
             ],
         )?;
         if tab.kind == "chat" {
-            let durable_chat: bool = transaction.query_row(
-                "SELECT EXISTS(
-                   SELECT 1 FROM chats WHERE project_id=?1 AND id=?2
-                 )",
-                params![request.project_id, tab.id],
-                |row| row.get(0),
-            )?;
-            if !durable_chat {
-                return Err(AppError::InvalidRequest(
-                    "Chat tab does not reference an existing durable Chat".into(),
-                ));
-            }
-            transaction.execute(
-                "INSERT OR IGNORE INTO chat_tabs(project_id,chat_id,tab_id,attached_at)
-                 VALUES (?1,?2,?2,?3)",
-                params![request.project_id, tab.id, now],
-            )?;
-            let attached: bool = transaction.query_row(
-                "SELECT EXISTS(
-                   SELECT 1 FROM chat_tabs
-                   WHERE project_id=?1 AND chat_id=?2 AND tab_id=?2
-                 )",
-                params![request.project_id, tab.id],
-                |row| row.get(0),
-            )?;
-            if !attached {
-                return Err(AppError::InvalidRequest(
-                    "Chat tab identity conflicts with another attachment".into(),
-                ));
-            }
+            attach_chat_tab_in(transaction, &request.project_id, &tab.id, now)?;
         } else {
             transaction.execute(
                 "DELETE FROM chat_tabs WHERE project_id=?1 AND tab_id=?2",

@@ -229,6 +229,14 @@ describe("workbench resource and project navigation", () => {
         };
       },
     );
+    vi.spyOn(desktop, "renameChat").mockImplementation(
+      async (_request, expectedTransitionEpoch) => ({
+        committed: false,
+        transitionEpoch: expectedTransitionEpoch,
+        snapshot: null,
+        recoveryError: "rename not configured",
+      }),
+    );
   });
 
   afterEach(() => vi.restoreAllMocks());
@@ -330,6 +338,122 @@ describe("workbench resource and project navigation", () => {
       messages: [],
       projectTransitioning: false,
     });
+  });
+
+  it("renames an inactive Chat from its authoritative projection", async () => {
+    const renamedTab = { ...chatTabB, title: "Chat: Focus" };
+    const rename = vi.spyOn(desktop, "renameChat").mockResolvedValue({
+      committed: true,
+      transitionEpoch: 1,
+      snapshot: chatProjection(
+        [chatTab, renamedTab],
+        chatTab.id,
+        1,
+        "session-a",
+        [],
+      ),
+      recoveryError: null,
+    });
+    useWorkbenchStore.setState({ tabs: [chatTab, chatTabB] });
+
+    const committed = await useWorkbenchStore
+      .getState()
+      .renameChat(chatTabB.id, "  Focus  ");
+
+    expect(committed).toBe(true);
+    expect(rename).toHaveBeenCalledWith(
+      {
+        projectId: "project-a",
+        chatId: chatTabB.id,
+        title: "Focus",
+      },
+      0,
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: chatTab.id,
+      tabs: [chatTab, renamedTab],
+      sessionId: "session-a",
+      messages: [],
+      projectTransitioning: false,
+    });
+  });
+
+  it("preserves Chat titles when rename is not committed", async () => {
+    vi.spyOn(desktop, "renameChat").mockResolvedValue({
+      committed: false,
+      transitionEpoch: 0,
+      snapshot: null,
+      recoveryError: "rename rejected",
+    });
+    useWorkbenchStore.setState({ tabs: [chatTab, chatTabB] });
+
+    const committed = await useWorkbenchStore
+      .getState()
+      .renameChat(chatTabB.id, "Focus");
+
+    expect(committed).toBe(false);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      tabs: [chatTab, chatTabB],
+      activeTabId: chatTab.id,
+      error: "rename rejected",
+      projectTransitioning: false,
+    });
+  });
+
+  it("reconciles ambiguous and stale rename completions authoritatively", async () => {
+    const renamedTab = { ...chatTabB, title: "Chat: Recovered" };
+    vi.spyOn(desktop, "renameChat")
+      .mockRejectedValueOnce(new Error("transport interrupted"))
+      .mockResolvedValueOnce({
+        committed: false,
+        transitionEpoch: 3,
+        snapshot: null,
+        recoveryError: "stale rename",
+      });
+    vi.spyOn(desktop, "getBootstrapSnapshot")
+      .mockResolvedValueOnce(
+        chatProjection([chatTab, renamedTab], chatTab.id, 1, "session-a", []),
+      )
+      .mockResolvedValueOnce(
+        chatProjection(
+          [chatTab, { ...chatTabB, title: "Chat: Newer" }],
+          chatTab.id,
+          3,
+          "session-a",
+          [],
+        ),
+      );
+    useWorkbenchStore.setState({ tabs: [chatTab, chatTabB] });
+
+    const recovered = await useWorkbenchStore
+      .getState()
+      .renameChat(chatTabB.id, "Recovered");
+    expect(recovered).toBe(true);
+    expect(useWorkbenchStore.getState().tabs).toEqual([chatTab, renamedTab]);
+
+    const stale = await useWorkbenchStore
+      .getState()
+      .renameChat(chatTabB.id, "Stale");
+    expect(stale).toBe(false);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      nativeTransitionEpoch: 3,
+      tabs: [chatTab, { ...chatTabB, title: "Chat: Newer" }],
+      activeTabId: chatTab.id,
+      sessionId: "session-a",
+    });
+  });
+
+  it("rejects invalid rename input before invoking the desktop", async () => {
+    const rename = vi.spyOn(desktop, "renameChat");
+    useWorkbenchStore.setState({ tabs: [chatTab, chatTabB] });
+
+    const committed = await useWorkbenchStore
+      .getState()
+      .renameChat(chatTabB.id, " \t ");
+
+    expect(committed).toBe(false);
+    expect(rename).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().error).toContain("not be empty");
   });
 
   it("does not project a Chat completion while a File tab is active", async () => {

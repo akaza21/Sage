@@ -195,6 +195,12 @@ export interface ProjectLayoutRequest {
   selectedResource: ResourceRef | null;
 }
 
+export interface RenameChatRequest {
+  projectId: string;
+  chatId: string;
+  title: string;
+}
+
 export interface ProjectSwitchRequest {
   targetProjectId: string;
   currentLayout: ProjectLayoutRequest;

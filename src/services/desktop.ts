@@ -9,6 +9,7 @@ import type {
   ModelOption,
   ProjectLayoutRequest,
   ProjectRepositoryStatus,
+  RenameChatRequest,
   ProjectSwitchRequest,
   ProjectTransitionResult,
   ResourceRef,
@@ -143,6 +144,15 @@ export const desktop = {
     return isTauriRuntime()
       ? invoke("activate_chat", { currentLayout, expectedTransitionEpoch })
       : browserDesktop.activateChat(currentLayout, expectedTransitionEpoch);
+  },
+
+  renameChat(
+    request: RenameChatRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    return isTauriRuntime()
+      ? invoke("rename_chat", { request, expectedTransitionEpoch })
+      : browserDesktop.renameChat(request, expectedTransitionEpoch);
   },
 
   persistProjectLayout(request: ProjectLayoutRequest): Promise<void> {
