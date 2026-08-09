@@ -10,13 +10,13 @@ use crate::acp::{
 
 use super::{
     incoming::{IncomingEvent, IngressDisposition},
-    manifest::ValidatedCandidate,
+    manifest::MetadataValidatedPacket,
     request::RequestKind,
     state::CodexAdapter,
 };
 
 #[cfg(test)]
-use super::manifest::{Platform, parse_candidate};
+use super::manifest::{Platform, parse_packet_metadata};
 
 #[path = "runtime/support.rs"]
 mod support;
@@ -34,32 +34,27 @@ pub(crate) struct CodexRuntime {
 }
 
 impl CodexRuntime {
-    pub(crate) fn from_candidate(
-        candidate: &ValidatedCandidate,
+    pub(crate) fn from_metadata_packet(
+        packet: &MetadataValidatedPacket,
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<Self, AdapterRuntimeError> {
-        candidate
-            .launch_status()
+        packet
+            .require_physical_admission()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        Ok(Self::new(
-            candidate,
-            binding_digest,
-            runtime_epoch,
-            session_id,
-        ))
+        Ok(Self::new(packet, binding_digest, runtime_epoch, session_id))
     }
 
     #[cfg(test)]
     pub(super) fn fixture(platform: Platform) -> Self {
         assert_eq!(platform, Platform::WindowsX86_64);
-        let candidate = parse_candidate(include_bytes!(
+        let packet = parse_packet_metadata(include_bytes!(
             "../../../../testdata/acp/codex/candidate-windows.json"
         ))
         .expect("pinned Codex fixture");
         Self::new(
-            &candidate,
+            &packet,
             [9; 32],
             RuntimeEpoch::new(1).expect("fixture epoch"),
             SageAgentSessionId::parse("session-codex-runtime").expect("fixture session"),
@@ -67,14 +62,14 @@ impl CodexRuntime {
     }
 
     fn new(
-        candidate: &ValidatedCandidate,
+        packet: &MetadataValidatedPacket,
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Self {
         Self {
-            inner: CodexAdapter::from_candidate(
-                candidate,
+            inner: CodexAdapter::from_metadata_packet(
+                packet,
                 binding_digest,
                 runtime_epoch,
                 session_id,

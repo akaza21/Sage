@@ -11,7 +11,7 @@ use crate::acp::{
 
 use super::{
     incoming::{IncomingEvent, IngressDisposition, ResourceMapper, ingest},
-    manifest::{CuratedCapabilityCeiling, Platform, ValidatedCandidate},
+    manifest::{CuratedCapabilityCeiling, MetadataValidatedPacket, Platform},
     request::{
         NativeProjectRoot, OutgoingRequest, RequestError, RequestKind, initialized_notification,
     },
@@ -110,8 +110,8 @@ pub(crate) struct CodexAdapter {
 }
 
 impl CodexAdapter {
-    pub(crate) fn from_candidate(
-        candidate: &ValidatedCandidate,
+    pub(crate) fn from_metadata_packet(
+        packet: &MetadataValidatedPacket,
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
@@ -120,10 +120,10 @@ impl CodexAdapter {
             binding_digest,
             runtime_epoch,
             session_id,
-            platform: candidate.binding().platform,
-            codex_home: candidate.codex_home().to_string_lossy().into_owned(),
-            runtime_version: candidate.binding().codex_runtime_version.clone(),
-            capability_ceiling: candidate.capability_ceiling().clone(),
+            platform: packet.metadata().platform,
+            codex_home: packet.codex_home().to_string_lossy().into_owned(),
+            runtime_version: packet.metadata().codex_runtime_version.clone(),
+            capability_ceiling: packet.capability_ceiling().clone(),
             pending: Vec::new(),
             negotiated: None,
             external_thread_id: None,

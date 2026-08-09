@@ -6,6 +6,7 @@ use crate::acp::{
 };
 
 use super::{AdapterError, CodexAdapter, NegotiatedMethods};
+use crate::acp::bindings::codex::request::APP_SERVER_CLIENT_IDENTITY;
 
 const INITIALIZE_RESULT_FIELDS: [&str; 4] =
     ["userAgent", "codexHome", "platformFamily", "platformOs"];
@@ -72,10 +73,12 @@ fn valid_user_agent(value: &str, runtime_version: &str) -> bool {
     {
         return false;
     }
-    let prefix = format!("Codex Desktop/{runtime_version} (Windows ");
+    let client = APP_SERVER_CLIENT_IDENTITY;
+    let prefix = format!("{}/{runtime_version} (Windows ", client.name);
+    let suffix = format!(" ({}; {})", client.name, client.version);
     let Some(middle) = value
         .strip_prefix(&prefix)
-        .and_then(|value| value.strip_suffix(" (sage; 0.1.0)"))
+        .and_then(|value| value.strip_suffix(&suffix))
     else {
         return false;
     };

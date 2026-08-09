@@ -86,7 +86,7 @@ pub(crate) struct Artifact {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct CuratedBinding {
+pub(crate) struct CuratedPacketMetadata {
     pub schema_version: u8,
     pub binding_id: String,
     pub platform: Platform,
@@ -142,15 +142,20 @@ pub(crate) enum WorkspacePolicy {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ValidatedCandidate(CuratedBinding);
+/// A bounded packet whose declared metadata matches Sage's exact lexical policy.
+///
+/// This type has not inspected the physical files. In particular, it does not
+/// prove canonical paths, file hashes, signatures, reparse-point safety, ACLs,
+/// immutability, or launch-time identity.
+pub(crate) struct MetadataValidatedPacket(CuratedPacketMetadata);
 
-impl ValidatedCandidate {
-    pub(crate) fn binding(&self) -> &CuratedBinding {
+impl MetadataValidatedPacket {
+    pub(crate) fn metadata(&self) -> &CuratedPacketMetadata {
         &self.0
     }
 
-    pub(crate) fn launch_status(&self) -> Result<(), BindingUnavailable> {
-        Err(BindingUnavailable::ArtifactNotAdmitted)
+    pub(crate) fn require_physical_admission(&self) -> Result<(), PhysicalAdmissionUnavailable> {
+        Err(PhysicalAdmissionUnavailable::ArtifactNotAdmitted)
     }
 
     pub(crate) fn codex_home(&self) -> &Path {
@@ -163,80 +168,83 @@ impl ValidatedCandidate {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum BindingUnavailable {
+pub(crate) enum PhysicalAdmissionUnavailable {
     #[error("the exact Codex artifact has not been independently admitted")]
     ArtifactNotAdmitted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum ManifestError {
-    #[error("candidate manifest exceeds its byte limit")]
+pub(crate) enum PacketMetadataError {
+    #[error("packet metadata exceeds its byte limit")]
     ManifestBytes,
-    #[error("candidate manifest is malformed or has an unknown field")]
+    #[error("packet metadata is malformed or has an unknown field")]
     Malformed,
-    #[error("candidate manifest identity is invalid")]
+    #[error("packet metadata identity is invalid")]
     Identity,
-    #[error("candidate artifact metadata is invalid")]
+    #[error("packet artifact metadata is invalid")]
     Artifact,
 }
 
-pub(crate) fn parse_candidate(bytes: &[u8]) -> Result<ValidatedCandidate, ManifestError> {
+/// Parses and validates packet claims without touching the filesystem.
+pub(crate) fn parse_packet_metadata(
+    bytes: &[u8],
+) -> Result<MetadataValidatedPacket, PacketMetadataError> {
     if bytes.len() > MANIFEST_BYTES {
-        return Err(ManifestError::ManifestBytes);
+        return Err(PacketMetadataError::ManifestBytes);
     }
-    let binding: CuratedBinding =
-        serde_json::from_slice(bytes).map_err(|_| ManifestError::Malformed)?;
-    validate_binding(&binding)?;
-    Ok(ValidatedCandidate(binding))
+    let metadata: CuratedPacketMetadata =
+        serde_json::from_slice(bytes).map_err(|_| PacketMetadataError::Malformed)?;
+    validate_packet_metadata(&metadata)?;
+    Ok(MetadataValidatedPacket(metadata))
 }
 
-fn validate_binding(binding: &CuratedBinding) -> Result<(), ManifestError> {
-    if binding.schema_version != 1
-        || binding.binding_id != "codex-app-server"
-        || binding.platform != Platform::WindowsX86_64
-        || binding.codex_source_commit != PINNED_CODEX_COMMIT
-        || binding.codex_runtime_version != PINNED_CODEX_VERSION
-        || binding.package_name != PINNED_PACKAGE_NAME
-        || binding.package_version != PINNED_PACKAGE_VERSION
-        || binding.package_tarball_sha1 != PINNED_PACKAGE_SHA1
-        || binding.package_integrity_sha512 != PINNED_PACKAGE_INTEGRITY
-        || binding.package_packed_byte_len != PINNED_PACKAGE_PACKED_BYTES
-        || binding.package_unpacked_byte_len != PINNED_PACKAGE_UNPACKED_BYTES
-        || binding.app_server_schema_sha256 != PINNED_SCHEMA_SHA256
-        || binding.supporting_artifacts.len() != PINNED_ARTIFACTS.len() - 1
-        || binding.supporting_artifacts.len() > ARTIFACTS_MAX - 1
-        || binding.capability_ceiling != pinned_capability_ceiling()
+fn validate_packet_metadata(metadata: &CuratedPacketMetadata) -> Result<(), PacketMetadataError> {
+    if metadata.schema_version != 1
+        || metadata.binding_id != "codex-app-server"
+        || metadata.platform != Platform::WindowsX86_64
+        || metadata.codex_source_commit != PINNED_CODEX_COMMIT
+        || metadata.codex_runtime_version != PINNED_CODEX_VERSION
+        || metadata.package_name != PINNED_PACKAGE_NAME
+        || metadata.package_version != PINNED_PACKAGE_VERSION
+        || metadata.package_tarball_sha1 != PINNED_PACKAGE_SHA1
+        || metadata.package_integrity_sha512 != PINNED_PACKAGE_INTEGRITY
+        || metadata.package_packed_byte_len != PINNED_PACKAGE_PACKED_BYTES
+        || metadata.package_unpacked_byte_len != PINNED_PACKAGE_UNPACKED_BYTES
+        || metadata.app_server_schema_sha256 != PINNED_SCHEMA_SHA256
+        || metadata.supporting_artifacts.len() != PINNED_ARTIFACTS.len() - 1
+        || metadata.supporting_artifacts.len() > ARTIFACTS_MAX - 1
+        || metadata.capability_ceiling != pinned_capability_ceiling()
     {
-        return Err(ManifestError::Identity);
+        return Err(PacketMetadataError::Identity);
     }
 
-    let mut total = validate_artifact(&binding.entrypoint, binding.platform)?;
-    let package_root = validate_expected_artifact(&binding.entrypoint, PINNED_ARTIFACTS[0])?;
+    let mut total = validate_artifact(&metadata.entrypoint, metadata.platform)?;
+    let package_root = validate_expected_artifact(&metadata.entrypoint, PINNED_ARTIFACTS[0])?;
     let mut paths = vec![normalized_path_key(
-        &binding.entrypoint.path,
-        binding.platform,
+        &metadata.entrypoint.path,
+        metadata.platform,
     )];
-    for (artifact, expected) in binding
+    for (artifact, expected) in metadata
         .supporting_artifacts
         .iter()
         .zip(PINNED_ARTIFACTS.iter().skip(1))
     {
         total = total
-            .checked_add(validate_artifact(artifact, binding.platform)?)
-            .ok_or(ManifestError::Artifact)?;
+            .checked_add(validate_artifact(artifact, metadata.platform)?)
+            .ok_or(PacketMetadataError::Artifact)?;
         if validate_expected_artifact(artifact, *expected)? != package_root {
-            return Err(ManifestError::Artifact);
+            return Err(PacketMetadataError::Artifact);
         }
-        let key = normalized_path_key(&artifact.path, binding.platform);
+        let key = normalized_path_key(&artifact.path, metadata.platform);
         if paths.iter().any(|existing| existing == &key) {
-            return Err(ManifestError::Artifact);
+            return Err(PacketMetadataError::Artifact);
         }
         paths.push(key);
     }
-    if total > ARTIFACT_BYTES_MAX || total != binding.package_unpacked_byte_len {
-        return Err(ManifestError::Artifact);
+    if total > ARTIFACT_BYTES_MAX || total != metadata.package_unpacked_byte_len {
+        return Err(PacketMetadataError::Artifact);
     }
-    validate_codex_home(&binding.codex_home, &package_root)?;
+    validate_codex_home(&metadata.codex_home, &package_root)?;
     Ok(())
 }
 
@@ -258,9 +266,9 @@ fn pinned_capability_ceiling() -> CuratedCapabilityCeiling {
 fn validate_expected_artifact(
     artifact: &Artifact,
     expected: ExpectedArtifact,
-) -> Result<String, ManifestError> {
+) -> Result<String, PacketMetadataError> {
     if artifact.sha256 != expected.sha256 || artifact.byte_len != expected.byte_len {
-        return Err(ManifestError::Artifact);
+        return Err(PacketMetadataError::Artifact);
     }
     let value = normalized_path_key(&artifact.path, Platform::WindowsX86_64);
     let suffix = format!(r"\{}", expected.relative_path.to_ascii_lowercase());
@@ -268,21 +276,21 @@ fn validate_expected_artifact(
         .len()
         .checked_sub(suffix.len())
         .filter(|_| value.ends_with(&suffix))
-        .ok_or(ManifestError::Artifact)?;
+        .ok_or(PacketMetadataError::Artifact)?;
     let root = value[..root_len].to_owned();
     if root.is_empty() || root.ends_with('\\') {
-        return Err(ManifestError::Artifact);
+        return Err(PacketMetadataError::Artifact);
     }
     Ok(root)
 }
 
-fn validate_codex_home(path: &Path, package_root: &str) -> Result<(), ManifestError> {
+fn validate_codex_home(path: &Path, package_root: &str) -> Result<(), PacketMetadataError> {
     let raw = path.as_os_str().to_string_lossy();
     if raw.is_empty()
         || raw.len() > PATH_BYTES_MAX
         || !absolute_normalized(path, Platform::WindowsX86_64)
     {
-        return Err(ManifestError::Artifact);
+        return Err(PacketMetadataError::Artifact);
     }
     let home = normalized_path_key(path, Platform::WindowsX86_64);
     if !home.ends_with(&format!(
@@ -291,7 +299,7 @@ fn validate_codex_home(path: &Path, package_root: &str) -> Result<(), ManifestEr
     )) || same_or_descendant(&home, package_root)
         || same_or_descendant(package_root, &home)
     {
-        return Err(ManifestError::Artifact);
+        return Err(PacketMetadataError::Artifact);
     }
     Ok(())
 }
@@ -300,7 +308,7 @@ fn same_or_descendant(path: &str, parent: &str) -> bool {
     path == parent || path.starts_with(&format!(r"{parent}\"))
 }
 
-fn validate_artifact(artifact: &Artifact, platform: Platform) -> Result<u64, ManifestError> {
+fn validate_artifact(artifact: &Artifact, platform: Platform) -> Result<u64, PacketMetadataError> {
     let path = artifact.path.as_os_str().to_string_lossy();
     if path.is_empty()
         || path.len() > PATH_BYTES_MAX
@@ -309,7 +317,7 @@ fn validate_artifact(artifact: &Artifact, platform: Platform) -> Result<u64, Man
         || !valid_hex(&artifact.sha256, 64)
         || !absolute_normalized(&artifact.path, platform)
     {
-        return Err(ManifestError::Artifact);
+        return Err(PacketMetadataError::Artifact);
     }
     Ok(artifact.byte_len)
 }

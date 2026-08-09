@@ -67,16 +67,23 @@ Review and Independent Test; it is not acceptance.
 ## Current Build evidence (2026-08-09)
 
 The first fail-closed packet slice exercises exact Windows package inventory
-admission, schema/source/package drift rejection, state/package separation,
-real initialize shape and identity validation, manifest-owned capability
-projection, and the unchanged `ArtifactNotAdmitted` production-launch gate.
-The focused command is:
+metadata matching, schema/source/package claim drift rejection, declared
+state/package separation (including equality and both containment directions),
+single declared package-root enforcement, real initialize shape and Sage
+identity validation, packet-owned capability projection, and the unchanged
+`ArtifactNotAdmitted` production-launch gate. This is lexical metadata
+validation only: it does not yet prove physical file existence, hashes,
+canonical paths, reparse-point safety, signatures, ACLs, immutability, or
+launch-time identity. The exact source inspection and minimal-environment
+executable run are recorded in
+[initialize evidence](initialize-0.145.0-build-evidence.md). The focused
+command is:
 
 ```text
 cargo test --lib acp::bindings::codex
 ```
 
-It passed 21 tests on the implementation workstation. This is developer
+It passed 23 tests on the implementation workstation. This is developer
 self-check evidence, not the clean-machine package reproduction, signature
 verification, hostile containment probe, fresh Review, or Independent Test
 required for Ready.

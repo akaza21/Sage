@@ -10,7 +10,7 @@ mod runtime;
 mod state;
 
 pub(crate) use incoming::{IncomingEvent, IngressDisposition, ResourceMapper};
-pub(crate) use manifest::{BindingUnavailable, Platform, parse_candidate};
+pub(crate) use manifest::{PhysicalAdmissionUnavailable, Platform, parse_packet_metadata};
 pub(crate) use runtime::CodexRuntime;
 pub(crate) use state::CodexAdapter;
 

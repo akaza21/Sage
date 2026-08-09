@@ -11,6 +11,11 @@ use super::{incoming::IngressError, state::AdapterError};
 
 struct Mapper;
 
+const PACKET_FIXTURE: &[u8] =
+    include_bytes!("../../../../testdata/acp/codex/candidate-windows.json");
+const PACKAGE_ROOT: &str = r"C:\SageHarnesses\Codex\0.145.0\package";
+const ISOLATED_CODEX_HOME: &str = r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167";
+
 impl ResourceMapper for Mapper {
     fn map_existing(
         &self,
@@ -25,23 +30,35 @@ impl ResourceMapper for Mapper {
 }
 
 fn adapter() -> CodexAdapter {
-    let candidate = parse_candidate(include_bytes!(
-        "../../../../testdata/acp/codex/candidate-windows.json"
-    ))
-    .unwrap();
-    CodexAdapter::from_candidate(
-        &candidate,
+    let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
+    CodexAdapter::from_metadata_packet(
+        &packet,
         [7; 32],
         RuntimeEpoch::new(1).unwrap(),
         SageAgentSessionId::parse("session-one").unwrap(),
     )
 }
 
+fn packet_value() -> Value {
+    serde_json::from_slice(PACKET_FIXTURE).unwrap()
+}
+
+fn relocate_package_root(packet: &mut Value, next_root: &str) {
+    let replace = |path: &mut Value| {
+        let current = path.as_str().unwrap();
+        *path = json!(current.replacen(PACKAGE_ROOT, next_root, 1));
+    };
+    replace(&mut packet["entrypoint"]["path"]);
+    for artifact in packet["supportingArtifacts"].as_array_mut().unwrap() {
+        replace(&mut artifact["path"]);
+    }
+}
+
 fn initialize_result(id: u64) -> Vec<u8> {
     serde_json::to_vec(&json!({
         "id": id,
         "result": {
-            "userAgent": "Codex Desktop/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
+            "userAgent": "sage/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
             "codexHome": "C:\\SageHarnesses\\CodexState\\codex-app-server-0.145.0-7b0ab167",
             "platformFamily": "windows",
             "platformOs": "windows"
@@ -81,31 +98,31 @@ fn arm_turn(adapter: &mut CodexAdapter, request_id: u64, client_id: &str) {
 }
 
 #[test]
-fn validates_only_the_exact_windows_packet_and_keeps_launch_fail_closed() {
-    let bytes = include_bytes!("../../../../testdata/acp/codex/candidate-windows.json");
-    let candidate = parse_candidate(bytes).unwrap();
-    assert_eq!(candidate.binding().binding_id, "codex-app-server");
-    assert_eq!(candidate.binding().codex_runtime_version, "0.145.0");
+fn lexically_validates_only_the_exact_windows_packet_and_keeps_launch_fail_closed() {
+    let bytes = PACKET_FIXTURE;
+    let packet = parse_packet_metadata(bytes).unwrap();
+    assert_eq!(packet.metadata().binding_id, "codex-app-server");
+    assert_eq!(packet.metadata().codex_runtime_version, "0.145.0");
     assert_eq!(
-        candidate.binding().codex_source_commit,
+        packet.metadata().codex_source_commit,
         "25af12f7e61572b0bc18ddb1008be543b91519b0"
     );
     assert_eq!(
-        candidate.binding().app_server_schema_sha256,
+        packet.metadata().app_server_schema_sha256,
         "7b0ab1679be705644a1b6c3f486f15e2f90e5f900486d90073b1dc5f0cf4c62c"
     );
-    assert_eq!(candidate.binding().supporting_artifacts.len(), 7);
+    assert_eq!(packet.metadata().supporting_artifacts.len(), 7);
     assert_eq!(
-        candidate.launch_status(),
-        Err(BindingUnavailable::ArtifactNotAdmitted)
+        packet.require_physical_admission(),
+        Err(PhysicalAdmissionUnavailable::ArtifactNotAdmitted)
     );
 
     let mut value: Value = serde_json::from_slice(bytes).unwrap();
     value["unexpected"] = json!(true);
-    assert!(parse_candidate(&serde_json::to_vec(&value).unwrap()).is_err());
+    assert!(parse_packet_metadata(&serde_json::to_vec(&value).unwrap()).is_err());
     value.as_object_mut().unwrap().remove("unexpected");
     value["entrypoint"]["path"] = json!(r"codex.exe");
-    assert!(parse_candidate(&serde_json::to_vec(&value).unwrap()).is_err());
+    assert!(parse_packet_metadata(&serde_json::to_vec(&value).unwrap()).is_err());
 
     for (pointer, replacement) in [
         ("/codexRuntimeVersion", json!("0.145.1")),
@@ -116,7 +133,7 @@ fn validates_only_the_exact_windows_packet_and_keeps_launch_fail_closed() {
     ] {
         let mut changed: Value = serde_json::from_slice(bytes).unwrap();
         *changed.pointer_mut(pointer).unwrap() = replacement;
-        assert!(parse_candidate(&serde_json::to_vec(&changed).unwrap()).is_err());
+        assert!(parse_packet_metadata(&serde_json::to_vec(&changed).unwrap()).is_err());
     }
 
     let mut incomplete: Value = serde_json::from_slice(bytes).unwrap();
@@ -124,18 +141,51 @@ fn validates_only_the_exact_windows_packet_and_keeps_launch_fail_closed() {
         .as_array_mut()
         .unwrap()
         .pop();
-    assert!(parse_candidate(&serde_json::to_vec(&incomplete).unwrap()).is_err());
+    assert!(parse_packet_metadata(&serde_json::to_vec(&incomplete).unwrap()).is_err());
 
     let mut oversized_home: Value = serde_json::from_slice(bytes).unwrap();
     oversized_home["codexHome"] = json!(format!(
         "C:\\{}\\CodexState\\codex-app-server-0.145.0-7b0ab167",
         "a".repeat(32 * 1024)
     ));
-    assert!(parse_candidate(&serde_json::to_vec(&oversized_home).unwrap()).is_err());
+    assert!(parse_packet_metadata(&serde_json::to_vec(&oversized_home).unwrap()).is_err());
 
     let mut mac: Value = serde_json::from_slice(bytes).unwrap();
     mac["platform"] = json!("macosAarch64");
-    assert!(parse_candidate(&serde_json::to_vec(&mac).unwrap()).is_err());
+    assert!(parse_packet_metadata(&serde_json::to_vec(&mac).unwrap()).is_err());
+}
+
+#[test]
+fn packet_metadata_rejects_a_supporting_artifact_outside_the_single_package_root() {
+    let mut packet = packet_value();
+    let path = packet["supportingArtifacts"][0]["path"]
+        .as_str()
+        .unwrap()
+        .replacen(PACKAGE_ROOT, r"D:\Foreign\Codex\package", 1);
+    packet["supportingArtifacts"][0]["path"] = json!(path);
+    assert!(parse_packet_metadata(&serde_json::to_vec(&packet).unwrap()).is_err());
+}
+
+#[test]
+fn packet_metadata_rejects_equal_nested_and_parent_codex_home_overlaps() {
+    let mut equal = packet_value();
+    relocate_package_root(&mut equal, ISOLATED_CODEX_HOME);
+    equal["codexHome"] = json!(ISOLATED_CODEX_HOME);
+    assert!(parse_packet_metadata(&serde_json::to_vec(&equal).unwrap()).is_err());
+
+    let mut home_inside_package = packet_value();
+    home_inside_package["codexHome"] = json!(format!(
+        r"{PACKAGE_ROOT}\CodexState\codex-app-server-0.145.0-7b0ab167"
+    ));
+    assert!(parse_packet_metadata(&serde_json::to_vec(&home_inside_package).unwrap()).is_err());
+
+    let mut package_inside_home = packet_value();
+    relocate_package_root(
+        &mut package_inside_home,
+        &format!(r"{ISOLATED_CODEX_HOME}\package"),
+    );
+    package_inside_home["codexHome"] = json!(ISOLATED_CODEX_HOME);
+    assert!(parse_packet_metadata(&serde_json::to_vec(&package_inside_home).unwrap()).is_err());
 }
 
 #[test]
@@ -177,7 +227,7 @@ fn initialize_requires_the_exact_runtime_home_and_windows_identity() {
         Err(AdapterError::CapabilityUnavailable)
     ));
     incomplete.initialize(1).unwrap();
-    let missing = br#"{"id":1,"result":{"userAgent":"Codex Desktop/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"}}"#;
+    let missing = br#"{"id":1,"result":{"userAgent":"sage/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"}}"#;
     assert!(matches!(
         incomplete.ingest(missing, &Mapper),
         Err(AdapterError::Ingress(IngressError::CapabilityUnavailable))
@@ -197,7 +247,11 @@ fn initialize_requires_the_exact_runtime_home_and_windows_identity() {
     for (pointer, replacement) in [
         (
             "/result/userAgent",
-            json!("Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"),
+            json!("sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"),
+        ),
+        (
+            "/result/userAgent",
+            json!("Codex Desktop/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"),
         ),
         ("/result/codexHome", json!(r"C:\Users\Username\.codex")),
         ("/result/platformFamily", json!("unix")),
@@ -639,10 +693,11 @@ fn all_outgoing_lifecycle_methods_are_exact_and_bounded() {
     let root = candidate.project_root(r"C:\repo".into()).unwrap();
     let external = ExternalId::new("external", "thread-1").unwrap();
     let initialize = candidate.initialize(1).unwrap();
-    assert_eq!(
-        serde_json::from_slice::<Value>(&initialize.bytes).unwrap()["method"],
-        "initialize"
-    );
+    let initialize_value = serde_json::from_slice::<Value>(&initialize.bytes).unwrap();
+    assert_eq!(initialize_value["method"], "initialize");
+    assert_eq!(initialize_value["params"]["clientInfo"]["name"], "sage");
+    assert_eq!(initialize_value["params"]["clientInfo"]["title"], "Sage");
+    assert_eq!(initialize_value["params"]["clientInfo"]["version"], "0.1.0");
     assert!(!initialize.bytes.ends_with(b"\n"));
     candidate.ingest(&initialize_result(1), &Mapper).unwrap();
     assert_eq!(

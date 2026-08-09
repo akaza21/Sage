@@ -13,6 +13,19 @@ use super::manifest::Platform;
 // existing bounded stdin endpoint without adapter-specific framing.
 const JSON_PAYLOAD_BYTES: usize = LIMITS.wire.frame_bytes as usize - 1;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AppServerClientIdentity {
+    pub(crate) name: &'static str,
+    pub(crate) title: &'static str,
+    pub(crate) version: &'static str,
+}
+
+pub(crate) const APP_SERVER_CLIENT_IDENTITY: AppServerClientIdentity = AppServerClientIdentity {
+    name: "sage",
+    title: "Sage",
+    version: "0.1.0",
+};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NativeProjectRoot(String);
 
@@ -77,11 +90,16 @@ impl OutgoingRequest {
     }
 
     pub(crate) fn initialize(id: u64) -> Result<Self, RequestError> {
+        let client = APP_SERVER_CLIENT_IDENTITY;
         Self::build(
             id,
             RequestKind::Initialize,
             json!({
-                "clientInfo": {"name": "sage", "title": "Sage", "version": "0.1.0"},
+                "clientInfo": {
+                    "name": client.name,
+                    "title": client.title,
+                    "version": client.version
+                },
                 "capabilities": {"experimentalApi": false}
             }),
         )

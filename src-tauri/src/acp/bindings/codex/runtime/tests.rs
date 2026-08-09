@@ -7,7 +7,7 @@ use crate::acp::{
             AdapterCommand, AdapterEvent, AdapterIdentity, AdapterRuntimeError, EgressResolution,
             HarnessAdapter,
         },
-        codex::{Platform, parse_candidate},
+        codex::{Platform, parse_packet_metadata},
     },
     contract::{RequiredText, SafeText, SageRootId},
     intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef},
@@ -67,7 +67,7 @@ fn initialize(runtime: &mut CodexRuntime) {
     let batch = runtime
         .ingest(
             &frame(json!({"id":id,"result":{
-                "userAgent":"Codex Desktop/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
+                "userAgent":"sage/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
                 "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.145.0-7b0ab167",
                 "platformFamily":"windows",
                 "platformOs":"windows"
@@ -126,13 +126,13 @@ fn running_turn(runtime: &mut CodexRuntime) {
 
 #[test]
 fn launch_stays_unavailable_without_exact_artifact_admission() {
-    let candidate = parse_candidate(include_bytes!(
+    let packet = parse_packet_metadata(include_bytes!(
         "../../../../../testdata/acp/codex/candidate-windows.json"
     ))
-    .expect("candidate identity");
+    .expect("packet metadata");
     assert!(
-        CodexRuntime::from_candidate(
-            &candidate,
+        CodexRuntime::from_metadata_packet(
+            &packet,
             [1; 32],
             RuntimeEpoch::new(1).expect("epoch"),
             SageAgentSessionId::parse("session-launch").expect("session")
