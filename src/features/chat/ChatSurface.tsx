@@ -9,6 +9,7 @@ import type {
   TurnProjection,
 } from "../../domain/acp";
 import type { ResourceRef } from "../../domain/workbench";
+import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { EditSummary } from "./EditSummary";
 import { ChatHandoffControl } from "./ChatHandoffControl";
 import {
@@ -50,6 +51,7 @@ export function ChatSurface() {
     (state) => state.projectTransitioning,
   );
   const error = useWorkbenchStore((state) => state.error);
+  const chatError = useWorkbenchStore((state) => state.chatError);
   const selectHarness = useWorkbenchStore((state) => state.selectHarness);
   const selectModel = useWorkbenchStore((state) => state.selectModel);
   const setComposerText = useWorkbenchStore((state) => state.setComposerText);
@@ -62,6 +64,7 @@ export function ChatSurface() {
   const useNativeAcp = selectedHarness?.transport === "acp";
   const acpPage = useAcpChatProjection(useNativeAcp);
   const acpActions = useAcpChatActions();
+  const foregroundError = acpActions.error ?? chatError;
   const acpHistory = useAcpChatHistory();
   const surfaceRef = useRef<HTMLElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -242,9 +245,14 @@ export function ChatSurface() {
         aria-busy={projectTransitioning}
         onSubmit={submit}
       >
-        {error || acpActions.error ? (
+        {error ? (
           <div className="composer__error" role="alert">
-            {acpActions.error?.message ?? error}
+            {error}
+          </div>
+        ) : null}
+        {foregroundError ? (
+          <div className="composer__error" role="alert">
+            {foregroundError}
           </div>
         ) : null}
         {!canPrompt ? (
@@ -263,6 +271,7 @@ export function ChatSurface() {
           id="prompt"
           aria-describedby="prompt-description"
           value={composerText}
+          maxLength={MAX_CHAT_COMPOSER_BYTES}
           rows={3}
           placeholder={
             canPrompt

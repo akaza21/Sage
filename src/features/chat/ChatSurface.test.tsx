@@ -180,6 +180,43 @@ afterEach(() => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
+  it("announces the active Chat failure and exposes the bounded composer", () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat: A",
+          position: 0,
+          pinned: true,
+          dirty: false,
+          status: "idle",
+        },
+      ],
+      activeTabId: "chat-a",
+      harnesses: [
+        {
+          id: "sage-simulator",
+          name: "Simulator",
+          description: "Development",
+          installState: "available",
+          source: "development",
+          transport: "legacySimulator",
+          bindingId: null,
+        },
+      ],
+      selectedHarnessId: "sage-simulator",
+      chatError: "Only Chat A failed",
+    });
+    render(<ChatSurface />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Only Chat A failed");
+    expect(
+      screen.getByRole("textbox", { name: "Message agent" }),
+    ).toHaveAttribute("maxlength", "16384");
+  });
+
   it("previews edits cancels and confirms a bounded unsent Chat Handoff", async () => {
     const handoffChat = vi.fn(async () => true);
     useWorkbenchStore.setState({

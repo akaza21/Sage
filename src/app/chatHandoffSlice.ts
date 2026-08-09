@@ -110,8 +110,12 @@ export const createChatHandoffSlice: StateCreator<
         (tab) => tab.id === intent.targetChatId && tab.kind === "chat",
       );
     if (committed) {
-      set({ composerText: draft });
-      return true;
+      const targetOwner = current.captureChatOwnership(intent.targetChatId);
+      if (targetOwner && current.setChatComposer(targetOwner, draft)) {
+        return true;
+      }
+      set({ error: "Chat Handoff target ownership changed after navigation" });
+      return false;
     }
     if (
       current.project?.id === intent.projectId &&

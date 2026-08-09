@@ -204,6 +204,11 @@ describe("workbench resource and project navigation", () => {
       selectedModelId: null,
       models: [],
       sendRequestGeneration: 0,
+      chatOwnershipEpoch: 0,
+      chatUiById: {},
+      chatError: null,
+      composerText: "",
+      sending: false,
       sessionId: "session-a",
       messages: [],
       recoveryNotice: null,
@@ -345,6 +350,10 @@ describe("workbench resource and project navigation", () => {
       nativeTransitionEpoch: 1,
       projectGeneration: 1,
     });
+    expect(useWorkbenchStore.getState().chatUiById).toMatchObject({
+      [chatTab.id]: { composerText: "source draft stays source-only" },
+      [chatTabB.id]: { composerText: "Edited handoff prompt" },
+    });
 
     vi.spyOn(desktop, "getBootstrapSnapshot").mockResolvedValue(
       targetProjection,
@@ -359,6 +368,10 @@ describe("workbench resource and project navigation", () => {
       activeTabId: chatTabB.id,
       messages: targetMessages,
       composerText: "",
+    });
+    expect(useWorkbenchStore.getState().chatUiById).toMatchObject({
+      [chatTab.id]: { composerText: "" },
+      [chatTabB.id]: { composerText: "" },
     });
   });
 

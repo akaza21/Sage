@@ -1,21 +1,19 @@
 import type { StateCreator } from "zustand";
 
-import { childResource } from "../domain/resourceIdentity";
 import type {
   BootstrapSnapshot,
   ProjectTransitionResult,
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
 import {
-  matchesProjectIntent,
   nextProjectGeneration,
   validateTransitionIntent,
 } from "./projectIntent";
 import {
   currentProjectLayout as layout,
   projectErrorMessage as errorMessage,
-  snapshotProjection,
 } from "./projectProjection";
+import { loadProjectProjection } from "./projectProjectionLoader";
 import type { WorkbenchState } from "./store";
 
 export interface ProjectSlice {
@@ -38,54 +36,6 @@ export const createProjectSlice: StateCreator<
   [],
   ProjectSlice
 > = (set, get) => {
-  const loadProjectProjection = async (
-    snapshot: BootstrapSnapshot,
-    generation: number,
-  ) => {
-    const projectId = snapshot.project?.id ?? null;
-    set({
-      ...snapshotProjection(snapshot),
-      projectGeneration: generation,
-      repositoryRequestGeneration: nextProjectGeneration(
-        get().repositoryRequestGeneration,
-      ),
-      harnessRequestGeneration: nextProjectGeneration(
-        get().harnessRequestGeneration,
-      ),
-      projectTransitioning: true,
-    });
-    const availableRoots =
-      snapshot.project?.roots.filter(
-        (root) => root.availability === "available",
-      ) ?? [];
-    const projectionLoads: Promise<void>[] = availableRoots.map((root) =>
-      get().loadDirectory(childResource(root.id)),
-    );
-    if (projectId && snapshot.selectedHarnessId) {
-      projectionLoads.push(
-        get().loadHarnessModelsForProjection(
-          snapshot.selectedHarnessId,
-          snapshot.selectedModelId,
-          generation,
-          projectId,
-        ),
-      );
-    }
-    await Promise.all(projectionLoads);
-    if (projectId && !matchesProjectIntent(get(), generation, projectId)) {
-      return;
-    }
-    const active = snapshot.tabs.find((tab) => tab.id === snapshot.activeTabId);
-    if (active?.kind === "file" && active.resource) {
-      await get().loadEditor(active.resource);
-    } else if (active?.kind === "diff" && active.resource) {
-      await get().loadDiff(active.resource);
-    }
-    if (!projectId || matchesProjectIntent(get(), generation, projectId)) {
-      set({ projectTransitioning: false });
-    }
-  };
-
   const beginProjectTransition = () => {
     if (get().projectTransitioning) {
       return false;
@@ -121,6 +71,7 @@ export const createProjectSlice: StateCreator<
   const loadCommittedProjection = async (
     generation: number,
     validate: (snapshot: BootstrapSnapshot) => boolean,
+    preserveChatOwnership: boolean,
   ) => {
     let lastError: unknown = new Error("authoritative projection unavailable");
     for (
@@ -133,7 +84,13 @@ export const createProjectSlice: StateCreator<
         if (!validate(snapshot)) {
           throw new Error("native project change returned an invalid project");
         }
-        await loadProjectProjection(snapshot, generation);
+        await loadProjectProjection(
+          set,
+          get,
+          snapshot,
+          generation,
+          preserveChatOwnership,
+        );
         return;
       } catch (error) {
         lastError = error;
@@ -146,6 +103,7 @@ export const createProjectSlice: StateCreator<
     result: ProjectTransitionResult,
     generation: number,
     validate: (snapshot: BootstrapSnapshot) => boolean,
+    preserveChatOwnership: boolean,
   ) => {
     if (!result.committed) {
       throw new Error("native project transition did not commit");
@@ -159,15 +117,22 @@ export const createProjectSlice: StateCreator<
       if (!validate(result.snapshot)) {
         throw new Error("native project change returned an invalid project");
       }
-      await loadProjectProjection(result.snapshot, generation);
+      await loadProjectProjection(
+        set,
+        get,
+        result.snapshot,
+        generation,
+        preserveChatOwnership,
+      );
       return;
     }
-    await loadCommittedProjection(generation, validate);
+    await loadCommittedProjection(generation, validate, preserveChatOwnership);
   };
 
   const recoverUnknownTransition = async (
     generation: number,
     classify: (snapshot: BootstrapSnapshot) => "committed" | "unchanged" | null,
+    preserveChatOwnership: boolean,
   ) => {
     let lastError: unknown = new Error(
       "authoritative transition state unavailable",
@@ -185,7 +150,13 @@ export const createProjectSlice: StateCreator<
             "authoritative projection does not match either transition state",
           );
         }
-        await loadProjectProjection(snapshot, generation);
+        await loadProjectProjection(
+          set,
+          get,
+          snapshot,
+          generation,
+          preserveChatOwnership,
+        );
         return outcome;
       } catch (error) {
         lastError = error;
@@ -205,8 +176,11 @@ export const createProjectSlice: StateCreator<
       set({ phase: "booting", error: null });
       try {
         await loadProjectProjection(
+          set,
+          get,
           await desktop.getBootstrapSnapshot(),
           generation,
+          false,
         );
       } catch (error) {
         set({
@@ -254,6 +228,7 @@ export const createProjectSlice: StateCreator<
             (snapshot) =>
               snapshot.project !== null &&
               snapshot.project.id !== previousProjectId,
+            false,
           );
         } else {
           if (result.recoveryError) {
@@ -278,6 +253,7 @@ export const createProjectSlice: StateCreator<
                     : previousProjectId === null
                       ? "unchanged"
                       : null,
+              false,
             );
             if (outcome === "unchanged") set({ error: errorMessage(error) });
           } catch (recoveryError) {
@@ -316,6 +292,7 @@ export const createProjectSlice: StateCreator<
             (snapshot) =>
               snapshot.project?.id === project.id &&
               snapshot.project.roots.length > previousRootCount,
+            true,
           );
         } else {
           if (result.recoveryError) {
@@ -340,6 +317,7 @@ export const createProjectSlice: StateCreator<
                     : snapshot.project.roots.length === previousRootCount
                       ? "unchanged"
                       : null,
+              true,
             );
             if (outcome === "unchanged") set({ error: errorMessage(error) });
           } catch (recoveryError) {
@@ -381,6 +359,7 @@ export const createProjectSlice: StateCreator<
           result,
           generation,
           (snapshot) => snapshot.project?.id === projectId,
+          false,
         );
       } catch (error) {
         if (committed) {
@@ -396,6 +375,7 @@ export const createProjectSlice: StateCreator<
                   : snapshot.project?.id === current.projectId
                     ? "unchanged"
                     : null,
+              false,
             );
             if (outcome === "unchanged") set({ error: errorMessage(error) });
           } catch (recoveryError) {

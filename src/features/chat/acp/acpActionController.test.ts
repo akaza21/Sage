@@ -132,13 +132,18 @@ async function nextMicrotask(): Promise<void> {
 function harness(initialPage: AcpChatPage) {
   let context: AcpActionContext | null = {
     scope,
+    ownershipEpoch: 1,
     commandProjectGeneration,
     page: initialPage,
   };
   const applied: AcpChatPage[] = [];
   const restored: string[] = [];
   const cleared: string[] = [];
-  const states: Array<{ scope: AcpProjectionScope | null; busy: boolean }> = [];
+  const states: Array<{
+    scope: AcpProjectionScope | null;
+    busy: boolean;
+    error: AcpDesktopError | null;
+  }> = [];
   let intent = 0;
   const commands = {
     startSession: vi.fn(),
@@ -155,10 +160,10 @@ function harness(initialPage: AcpChatPage) {
       if (context) context = { ...context, page: authoritative };
       return "accepted";
     },
-    clearComposer: (_scope, prompt) => cleared.push(prompt),
-    restoreComposer: (_scope, prompt) => restored.push(prompt),
+    clearComposer: (_context, prompt) => cleared.push(prompt),
+    restoreComposer: (_context, prompt) => restored.push(prompt),
     onStateChange: (state) =>
-      states.push({ scope: state.scope, busy: state.busy }),
+      states.push({ scope: state.scope, busy: state.busy, error: state.error }),
     createIntentId: () => `intent-${++intent}` as ClientIntentId,
   });
   return {
@@ -321,6 +326,7 @@ describe("ACP action controller", () => {
       await nextMicrotask();
       test.setContext({
         scope: nextScope,
+        ownershipEpoch: 1,
         commandProjectGeneration: "12" as ProjectGeneration,
         page: page("1", null),
       });
@@ -408,6 +414,7 @@ describe("ACP action controller", () => {
     await nextMicrotask();
     test.setContext({
       scope: nextScope,
+      ownershipEpoch: 1,
       commandProjectGeneration,
       page: nextPage,
     });
@@ -424,6 +431,58 @@ describe("ACP action controller", () => {
       projection: page("6", session("hot", "1", null)),
     });
     await expect(oldAction).resolves.toBe("ignoredStale");
+  });
+
+  it("reports a dispatched background failure only to its captured Chat", async () => {
+    const test = harness(page("5", session("hot", "1", null)));
+    const pending = deferred<{ projection: AcpChatPage }>();
+    vi.mocked(test.commands.sendTurn).mockReturnValue(pending.promise);
+    const action = test.controller.submit("retry in A", bindingId, modelId);
+    await nextMicrotask();
+    const nextScope = { ...scope, chatId: "chat-b" as SageChatId };
+    test.setContext({
+      scope: nextScope,
+      ownershipEpoch: 1,
+      commandProjectGeneration,
+      page: { ...page("1", null), chatId: nextScope.chatId },
+    });
+
+    pending.reject(
+      new AcpDesktopError({
+        kind: "conflict",
+        resource: "projectionRevision",
+        message: "A failed in background",
+      }),
+    );
+
+    await expect(action).resolves.toBe("rejected");
+    expect(test.restored).toEqual(["retry in A"]);
+    expect(test.states.at(-1)).toMatchObject({
+      scope,
+      busy: false,
+      error: { message: "A failed in background" },
+    });
+  });
+
+  it("rejects a completion from a retired Chat ownership epoch", async () => {
+    const test = harness(page("5", session("hot", "1", null)));
+    const pending = deferred<{ projection: AcpChatPage }>();
+    vi.mocked(test.commands.sendTurn).mockReturnValue(pending.promise);
+    const action = test.controller.submit("old renderer", bindingId, modelId);
+    await nextMicrotask();
+    test.setContext({
+      scope,
+      ownershipEpoch: 2,
+      commandProjectGeneration,
+      page: page("5", session("hot", "1", null)),
+    });
+
+    pending.resolve({
+      projection: page("6", session("hot", "1", null)),
+    });
+
+    await expect(action).resolves.toBe("ignoredStale");
+    expect(test.applied).toEqual([]);
   });
 
   it("exposes and cancels only the exact active Turn intent", async () => {

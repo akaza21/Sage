@@ -25,6 +25,10 @@ import {
   createChatHandoffSlice,
   type ChatHandoffSlice,
 } from "./chatHandoffSlice";
+import {
+  createChatOwnershipSlice,
+  type ChatOwnershipSlice,
+} from "./chatOwnershipSlice";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import { createProjectSlice, type ProjectSlice } from "./projectSlice";
 import { createResourceSlice, type ResourceSlice } from "./resourceSlice";
@@ -46,6 +50,7 @@ export interface WorkbenchState
     ChatSlice,
     ChatArchiveSlice,
     ChatHandoffSlice,
+    ChatOwnershipSlice,
     EditorSlice,
     ProjectSlice,
     ResourceSlice,
@@ -91,8 +96,6 @@ export interface WorkbenchState
     projectId: string,
   ) => Promise<void>;
   selectModel: (modelId: string) => void;
-  setComposerText: (text: string) => void;
-  sendPrompt: () => Promise<void>;
 }
 
 const emptyRepositories: ProjectRepositoryStatus = {
@@ -177,6 +180,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createChatSlice(set, get, store),
     ...createChatArchiveSlice(set, get, store),
     ...createChatHandoffSlice(set, get, store),
+    ...createChatOwnershipSlice(set, get, store),
     ...createResourceSlice(set, get, store),
     ...createSearchNavigationSlice(set, get, store),
     ...createEditorSlice(set, get, store),
@@ -316,84 +320,6 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     selectModel: (selectedModelId) => {
       if (get().models.some((model) => model.id === selectedModelId)) {
         set({ selectedModelId });
-      }
-    },
-    setComposerText: (composerText) => set({ composerText }),
-
-    sendPrompt: async () => {
-      const state = get();
-      const generation = state.projectGeneration;
-      const projectId = state.project?.id;
-      const activeChat = state.tabs.find(
-        (tab) => tab.id === state.activeTabId && tab.kind === "chat",
-      );
-      const text = state.composerText.trim();
-      if (
-        !text ||
-        !projectId ||
-        !activeChat ||
-        !state.selectedHarnessId ||
-        state.sending
-      )
-        return;
-      if (state.projectTransitioning) return;
-      const sendRequestGeneration = nextProjectGeneration(
-        state.sendRequestGeneration,
-      );
-      set({
-        sending: true,
-        sendRequestGeneration,
-        composerText: "",
-        error: null,
-      });
-      try {
-        const result = await desktop.sendPrompt({
-          chatId: activeChat.id,
-          harnessId: state.selectedHarnessId,
-          modelId: state.selectedModelId,
-          text,
-        });
-        const current = get();
-        if (
-          matchesProjectIntent(current, generation, projectId) &&
-          current.sendRequestGeneration === sendRequestGeneration
-        ) {
-          const chatStillActive =
-            current.activeTabId === activeChat.id &&
-            current.tabs.some(
-              (tab) => tab.id === activeChat.id && tab.kind === "chat",
-            );
-          set(
-            chatStillActive
-              ? {
-                  sessionId: result.sessionId,
-                  messages: result.messages,
-                  sending: false,
-                }
-              : { sending: false },
-          );
-        }
-      } catch (error) {
-        const current = get();
-        if (
-          matchesProjectIntent(current, generation, projectId) &&
-          current.sendRequestGeneration === sendRequestGeneration
-        ) {
-          const chatStillActive =
-            current.activeTabId === activeChat.id &&
-            current.tabs.some(
-              (tab) => tab.id === activeChat.id && tab.kind === "chat",
-            );
-          set(
-            chatStillActive
-              ? {
-                  sending: false,
-                  composerText: text,
-                  error: errorMessage(error),
-                }
-              : { sending: false },
-          );
-        }
       }
     },
   };

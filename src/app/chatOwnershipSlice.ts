@@ -1,0 +1,326 @@
+import type { StateCreator } from "zustand";
+
+import { desktop } from "../services/desktop";
+import {
+  boundedChatError,
+  validateChatComposerText,
+  type ChatOwnershipEntry,
+  type ChatOwnershipIntent,
+} from "../domain/chatOwnership";
+import type { WorkbenchState } from "./store";
+import { nextProjectGeneration } from "./projectIntent";
+import { emptyChatOwnershipEntry as emptyEntry } from "./chatOwnershipProjection";
+
+export interface ChatOwnershipSlice {
+  chatOwnershipEpoch: number;
+  chatUiById: Record<string, ChatOwnershipEntry>;
+  chatError: string | null;
+  captureChatOwnership: (chatId?: string) => ChatOwnershipIntent | null;
+  setChatComposer: (intent: ChatOwnershipIntent, text: string) => boolean;
+  clearChatComposer: (
+    intent: ChatOwnershipIntent,
+    expectedPrompt: string,
+  ) => boolean;
+  restoreChatComposer: (intent: ChatOwnershipIntent, prompt: string) => boolean;
+  setChatActionState: (
+    intent: ChatOwnershipIntent,
+    state: { sending: boolean; error: string | null },
+  ) => boolean;
+  clearActiveChatError: () => void;
+  setComposerText: (text: string) => void;
+  sendPrompt: () => Promise<void>;
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function activeChatId(state: WorkbenchState) {
+  return (
+    state.tabs.find(
+      (tab) => tab.id === state.activeTabId && tab.kind === "chat",
+    )?.id ?? null
+  );
+}
+
+function ownsChat(state: WorkbenchState, intent: ChatOwnershipIntent) {
+  // Chat activation advances projection/native generations, but it must not
+  // retire background work owned by the same Project lifetime. The dedicated
+  // ownership epoch changes only when that lifetime is authoritatively reset.
+  return (
+    state.project?.id === intent.projectId &&
+    state.chatOwnershipEpoch === intent.ownershipEpoch &&
+    (state.tabs.some(
+      (tab) => tab.id === intent.chatId && tab.kind === "chat",
+    ) ||
+      state.archivedChats.some((chat) => chat.id === intent.chatId))
+  );
+}
+
+export const createChatOwnershipSlice: StateCreator<
+  WorkbenchState,
+  [],
+  [],
+  ChatOwnershipSlice
+> = (set, get) => ({
+  chatOwnershipEpoch: 0,
+  chatUiById: {},
+  chatError: null,
+  captureChatOwnership: (requestedChatId) => {
+    const state = get();
+    const chatId = requestedChatId ?? activeChatId(state);
+    if (
+      !chatId ||
+      !state.project ||
+      !ownsChat(state, {
+        projectId: state.project.id,
+        ownershipEpoch: state.chatOwnershipEpoch,
+        chatId,
+        projectGeneration: state.projectGeneration,
+        transitionEpoch: state.nativeTransitionEpoch,
+      })
+    ) {
+      return null;
+    }
+    return {
+      projectId: state.project.id,
+      ownershipEpoch: state.chatOwnershipEpoch,
+      chatId,
+      projectGeneration: state.projectGeneration,
+      transitionEpoch: state.nativeTransitionEpoch,
+    };
+  },
+  setChatComposer: (intent, text) => {
+    const state = get();
+    if (!ownsChat(state, intent)) return false;
+    let composerText: string;
+    try {
+      composerText = validateChatComposerText(text);
+    } catch (error) {
+      const message = boundedChatError(errorMessage(error));
+      const entry = state.chatUiById[intent.chatId] ?? emptyEntry();
+      const active = activeChatId(state) === intent.chatId;
+      set({
+        chatUiById: {
+          ...state.chatUiById,
+          [intent.chatId]: { ...entry, error: message },
+        },
+        ...(active ? { chatError: message } : {}),
+      });
+      return false;
+    }
+    const entry = state.chatUiById[intent.chatId] ?? emptyEntry();
+    const updated = { ...entry, composerText };
+    const active = activeChatId(state) === intent.chatId;
+    set({
+      chatUiById: { ...state.chatUiById, [intent.chatId]: updated },
+      ...(active ? { composerText } : {}),
+    });
+    return true;
+  },
+  clearChatComposer: (intent, expectedPrompt) => {
+    const state = get();
+    if (!ownsChat(state, intent)) return false;
+    const entry = state.chatUiById[intent.chatId] ?? emptyEntry();
+    if (entry.composerText.trim() !== expectedPrompt) return false;
+    const updated = { ...entry, composerText: "" };
+    const active = activeChatId(state) === intent.chatId;
+    set({
+      chatUiById: { ...state.chatUiById, [intent.chatId]: updated },
+      ...(active ? { composerText: "" } : {}),
+    });
+    return true;
+  },
+  restoreChatComposer: (intent, prompt) => {
+    const state = get();
+    if (!ownsChat(state, intent)) return false;
+    const entry = state.chatUiById[intent.chatId] ?? emptyEntry();
+    if (entry.composerText) return false;
+    let composerText: string;
+    try {
+      composerText = validateChatComposerText(prompt);
+    } catch {
+      return false;
+    }
+    const updated = { ...entry, composerText };
+    const active = activeChatId(state) === intent.chatId;
+    set({
+      chatUiById: { ...state.chatUiById, [intent.chatId]: updated },
+      ...(active ? { composerText } : {}),
+    });
+    return true;
+  },
+  setChatActionState: (intent, actionState) => {
+    const state = get();
+    if (!ownsChat(state, intent)) return false;
+    const entry = state.chatUiById[intent.chatId] ?? emptyEntry();
+    const updated = {
+      ...entry,
+      sending: actionState.sending,
+      error:
+        actionState.error === null ? null : boundedChatError(actionState.error),
+    };
+    const active = activeChatId(state) === intent.chatId;
+    set({
+      chatUiById: { ...state.chatUiById, [intent.chatId]: updated },
+      ...(active ? { sending: updated.sending, chatError: updated.error } : {}),
+    });
+    return true;
+  },
+  clearActiveChatError: () => {
+    const state = get();
+    const chatId = activeChatId(state);
+    if (!chatId) return;
+    const entry = state.chatUiById[chatId] ?? emptyEntry();
+    set({
+      chatError: null,
+      chatUiById: {
+        ...state.chatUiById,
+        [chatId]: { ...entry, error: null },
+      },
+    });
+  },
+  setComposerText: (text) => {
+    try {
+      const composerText = validateChatComposerText(text);
+      const state = get();
+      const active = state.tabs.find(
+        (tab) => tab.id === state.activeTabId && tab.kind === "chat",
+      );
+      if (!active) return;
+      set({
+        composerText,
+        chatUiById: {
+          ...state.chatUiById,
+          [active.id]: {
+            ...(state.chatUiById[active.id] ?? emptyEntry()),
+            composerText,
+          },
+        },
+      });
+    } catch (error) {
+      const state = get();
+      const active = state.tabs.find(
+        (tab) => tab.id === state.activeTabId && tab.kind === "chat",
+      );
+      if (!active) return;
+      const message = boundedChatError(errorMessage(error));
+      set({
+        chatError: message,
+        chatUiById: {
+          ...state.chatUiById,
+          [active.id]: {
+            ...(state.chatUiById[active.id] ?? emptyEntry()),
+            composerText: state.composerText,
+            error: message,
+          },
+        },
+      });
+    }
+  },
+  sendPrompt: async () => {
+    const state = get();
+    const chatId = activeChatId(state);
+    const text = state.composerText.trim();
+    if (
+      !text ||
+      !chatId ||
+      !state.project ||
+      !state.selectedHarnessId ||
+      state.sending ||
+      state.projectTransitioning
+    ) {
+      return;
+    }
+    const currentEntry = {
+      ...(state.chatUiById[chatId] ?? emptyEntry()),
+      composerText: state.composerText,
+      sending: state.sending,
+      error: state.chatError,
+    };
+    const requestGeneration = nextProjectGeneration(
+      currentEntry.requestGeneration,
+    );
+    const owner: ChatOwnershipIntent = {
+      projectId: state.project.id,
+      ownershipEpoch: state.chatOwnershipEpoch,
+      chatId,
+      projectGeneration: state.projectGeneration,
+      transitionEpoch: state.nativeTransitionEpoch,
+    };
+    const pendingEntry: ChatOwnershipEntry = {
+      ...currentEntry,
+      composerText: "",
+      sending: true,
+      error: null,
+      requestGeneration,
+    };
+    set({
+      chatUiById: { ...state.chatUiById, [chatId]: pendingEntry },
+      composerText: "",
+      sending: true,
+      chatError: null,
+      sendRequestGeneration: requestGeneration,
+    });
+    try {
+      const result = await desktop.sendPrompt({
+        chatId,
+        harnessId: state.selectedHarnessId,
+        modelId: state.selectedModelId,
+        text,
+      });
+      const current = get();
+      const owned = current.chatUiById[chatId];
+      if (
+        !ownsChat(current, owner) ||
+        owned?.requestGeneration !== requestGeneration
+      ) {
+        return;
+      }
+      const completed = { ...owned, sending: false };
+      const active = activeChatId(current) === chatId;
+      set({
+        chatUiById: { ...current.chatUiById, [chatId]: completed },
+        ...(active
+          ? {
+              sessionId: result.sessionId,
+              messages: result.messages,
+              composerText: completed.composerText,
+              sending: false,
+              chatError: completed.error,
+            }
+          : activeChatId(current) === null
+            ? { sending: false, chatError: null }
+            : {}),
+      });
+    } catch (error) {
+      const current = get();
+      const owned = current.chatUiById[chatId];
+      if (
+        !ownsChat(current, owner) ||
+        owned?.requestGeneration !== requestGeneration
+      ) {
+        return;
+      }
+      const failed = {
+        ...owned,
+        composerText: owned.composerText || text,
+        sending: false,
+        error: boundedChatError(errorMessage(error)),
+      };
+      const active = activeChatId(current) === chatId;
+      set({
+        chatUiById: { ...current.chatUiById, [chatId]: failed },
+        ...(active
+          ? {
+              composerText: failed.composerText,
+              sending: false,
+              chatError: failed.error,
+            }
+          : activeChatId(current) === null
+            ? { sending: false, chatError: null }
+            : {}),
+      });
+    }
+  },
+});

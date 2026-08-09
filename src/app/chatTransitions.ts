@@ -12,6 +12,7 @@ import {
   validateTransitionIntent,
 } from "./projectIntent";
 import { snapshotProjection } from "./projectProjection";
+import { projectChatOwnership } from "./chatOwnershipProjection";
 import type { WorkbenchState } from "./store";
 
 export type ProjectionOutcome = "committed" | "unchanged" | "diverged";
@@ -112,6 +113,7 @@ export function createChatTransitionContext(
     const projectId = snapshot.project?.id ?? null;
     set({
       ...snapshotProjection(snapshot),
+      ...projectChatOwnership(get(), snapshot, true),
       projectGeneration: generation,
       repositoryRequestGeneration: nextProjectGeneration(
         get().repositoryRequestGeneration,

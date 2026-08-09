@@ -1,4 +1,4 @@
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAcpProjectionStore } from "../../../app/acpProjectionStore";
@@ -59,6 +59,62 @@ describe("useAcpChatProjection", () => {
       projectGeneration: "7",
       chatId: "chat-1",
     });
+  });
+
+  it("reloads durable activity when returning to a Chat after background work", async () => {
+    const chatB = {
+      ...projection,
+      chatId: "chat-2",
+      title: "Second chat",
+      projectionRevision: "2",
+    } as AcpChatPage;
+    const restoredA = {
+      ...projection,
+      projectionRevision: "6",
+      turns: [
+        {
+          id: "turn-background",
+          sessionId: "session-background",
+          runtimeEpoch: "1",
+          ordinal: 1,
+          state: "completed",
+          revision: "1",
+          createdAt: 1,
+          updatedAt: 2,
+          terminalAt: 2,
+          items: [],
+          activities: [],
+        },
+      ],
+    } as unknown as AcpChatPage;
+    let chatALoads = 0;
+    const load = vi
+      .spyOn(acpDesktop, "getChatPage")
+      .mockImplementation(async (request) => {
+        if (request.chatId === "chat-2") return chatB;
+        chatALoads += 1;
+        return chatALoads === 1 ? projection : restoredA;
+      });
+    vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockResolvedValue(
+      () => undefined,
+    );
+    useWorkbenchStore.setState({
+      tabs: [
+        { id: "chat-1", kind: "chat" },
+        { id: "chat-2", kind: "chat" },
+      ] as never,
+    });
+    const { result } = renderHook(() => useAcpChatProjection());
+
+    await waitFor(() => expect(result.current?.projectionRevision).toBe("4"));
+    act(() => useWorkbenchStore.setState({ activeTabId: "chat-2" }));
+    await waitFor(() => expect(result.current?.chatId).toBe("chat-2"));
+    act(() => useWorkbenchStore.setState({ activeTabId: "chat-1" }));
+
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(result.current?.projectionRevision).toBe("6"));
+    expect(result.current?.turns[0]?.id).toBe("turn-background");
+    expect(chatALoads).toBe(2);
   });
 
   it("clears and does not load while a project transition is blocking the UI", () => {

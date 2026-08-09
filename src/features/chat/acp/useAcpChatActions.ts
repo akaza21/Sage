@@ -1,9 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
-import {
-  type AcpProjectionScope,
-  useAcpProjectionStore,
-} from "../../../app/acpProjectionStore";
+import { useAcpProjectionStore } from "../../../app/acpProjectionStore";
 import { useWorkbenchStore } from "../../../app/store";
 import type {
   CuratedBindingId,
@@ -11,31 +8,13 @@ import type {
   ProjectGeneration,
   SageTurnId,
 } from "../../../domain/acp";
-import type { AcpDesktopError } from "../../../services/acpDesktop";
+import type { ChatOwnershipIntent } from "../../../domain/chatOwnership";
 import {
   type AcpActionContext,
   type AcpActionState,
   cancellableTurnId,
   createAcpActionController,
 } from "./acpActionController";
-
-const initialState: AcpActionState = {
-  scope: null,
-  busy: false,
-  cancellingTurnId: null,
-  error: null,
-};
-
-function sameScope(
-  left: AcpProjectionScope | null,
-  right: AcpProjectionScope,
-): boolean {
-  return (
-    left?.projectId === right.projectId &&
-    left.projectGeneration === right.projectGeneration &&
-    left.chatId === right.chatId
-  );
-}
 
 function currentContext(): AcpActionContext | null {
   const projection = useAcpProjectionStore.getState();
@@ -51,8 +30,11 @@ function currentContext(): AcpActionContext | null {
   ) {
     return null;
   }
+  const ownership = workbench.captureChatOwnership(projection.scope.chatId);
+  if (!ownership) return null;
   return {
     scope: projection.scope,
+    ownershipEpoch: ownership.ownershipEpoch,
     commandProjectGeneration: String(
       workbench.nativeTransitionEpoch,
     ) as ProjectGeneration,
@@ -60,13 +42,26 @@ function currentContext(): AcpActionContext | null {
   };
 }
 
+function ownershipIntent(context: AcpActionContext): ChatOwnershipIntent {
+  return {
+    projectId: context.scope.projectId,
+    ownershipEpoch: context.ownershipEpoch,
+    chatId: context.scope.chatId,
+    projectGeneration: Number(context.scope.projectGeneration),
+    transitionEpoch: Number(context.commandProjectGeneration),
+  };
+}
+
 export function useAcpChatActions() {
-  const [state, setState] = useState<AcpActionState>(initialState);
   const projectionRevision = useAcpProjectionStore(
     (projection) => projection.page?.projectionRevision ?? null,
   );
   const page = useAcpProjectionStore((projection) => projection.page);
-  const activeScope = useAcpProjectionStore((projection) => projection.scope);
+  const sending = useWorkbenchStore((state) => state.sending);
+  const chatError = useWorkbenchStore((state) => state.chatError);
+  const clearActiveChatError = useWorkbenchStore(
+    (state) => state.clearActiveChatError,
+  );
 
   const controller = useMemo(
     () =>
@@ -77,23 +72,32 @@ export function useAcpChatActions() {
             .getState()
             .applyAuthoritativePage(scope, authoritativePage);
         },
-        onStateChange: setState,
-        clearComposer: (scope, prompt) => {
-          const projection = useAcpProjectionStore.getState();
-          const workbench = useWorkbenchStore.getState();
+        onStateChange: (state: AcpActionState) => {
           if (
-            sameScope(projection.scope, scope) &&
-            workbench.composerText.trim() === prompt
-          ) {
-            useWorkbenchStore.setState({ composerText: "" });
-          }
-        },
-        restoreComposer: (scope, prompt) => {
-          const projection = useAcpProjectionStore.getState();
+            !state.scope ||
+            state.ownershipEpoch === null ||
+            state.transitionEpoch === null
+          )
+            return;
           const workbench = useWorkbenchStore.getState();
-          if (sameScope(projection.scope, scope) && !workbench.composerText) {
-            useWorkbenchStore.setState({ composerText: prompt });
-          }
+          workbench.setChatActionState(
+            {
+              projectId: state.scope.projectId,
+              ownershipEpoch: state.ownershipEpoch,
+              chatId: state.scope.chatId,
+              projectGeneration: Number(state.scope.projectGeneration),
+              transitionEpoch: state.transitionEpoch,
+            },
+            { sending: state.busy, error: state.error?.message ?? null },
+          );
+        },
+        clearComposer: (context, prompt) => {
+          const workbench = useWorkbenchStore.getState();
+          workbench.clearChatComposer(ownershipIntent(context), prompt);
+        },
+        restoreComposer: (context, prompt) => {
+          const workbench = useWorkbenchStore.getState();
+          workbench.restoreChatComposer(ownershipIntent(context), prompt);
         },
       }),
     [],
@@ -103,16 +107,10 @@ export function useAcpChatActions() {
   // exact cancellable Turn even though the controller itself is deliberately
   // detached from disposable React rendering state.
   void projectionRevision;
-  const stateIsCurrent =
-    activeScope !== null && sameScope(state.scope, activeScope);
-
   return {
-    busy: stateIsCurrent && state.busy,
-    error: stateIsCurrent ? state.error : null,
-    cancellableTurnId:
-      page && (!stateIsCurrent || !state.cancellingTurnId)
-        ? cancellableTurnId(page)
-        : null,
+    busy: sending,
+    error: chatError,
+    cancellableTurnId: page ? cancellableTurnId(page) : null,
     submit: (
       prompt: string,
       bindingId: CuratedBindingId,
@@ -120,10 +118,10 @@ export function useAcpChatActions() {
     ) => controller.submit(prompt, bindingId, modelId),
     cancel: (turnId: SageTurnId) => controller.cancel(turnId),
     close: () => controller.close(),
-    clearError: () => setState((current) => ({ ...current, error: null })),
+    clearError: clearActiveChatError,
   } satisfies {
     busy: boolean;
-    error: AcpDesktopError | null;
+    error: string | null;
     cancellableTurnId: SageTurnId | null;
     submit: typeof controller.submit;
     cancel: typeof controller.cancel;
