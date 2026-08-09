@@ -148,4 +148,60 @@ describe("workspace Search domain", () => {
       );
     }
   });
+
+  it("enforces native preview and result-limit semantics exactly", () => {
+    const root = {
+      rootId: "root-a",
+      rootName: "Sage",
+      state: "complete",
+      filesScanned: 1,
+      bytesScanned: 1,
+      entriesVisited: 1,
+      skippedFiles: 0,
+      errorCount: 0,
+      message: null,
+    };
+    const match = {
+      resource: { rootId: "root-a", relativePath: "safe.txt" },
+      lineNumber: 1,
+      columnNumber: 1,
+      preview: "😀".repeat(240),
+    };
+    const base = {
+      requestId: "request-a",
+      projectId: "project-a",
+      transitionEpoch: 4,
+      query: "needle",
+      matches: [match],
+      roots: [root],
+      truncated: false,
+      limitReasons: [],
+      elapsedMs: 1,
+    };
+
+    expect(parseWorkspaceSearchResponse(base).matches[0].preview).toBe(
+      match.preview,
+    );
+    expect(() =>
+      parseWorkspaceSearchResponse({
+        ...base,
+        matches: [{ ...match, preview: "a".repeat(241) }],
+      }),
+    ).toThrow("invalid workspace Search response");
+    expect(() =>
+      parseWorkspaceSearchResponse({
+        ...base,
+        matches: Array.from({ length: 500 }, () => match),
+      }),
+    ).toThrow("invalid workspace Search response");
+    expect(() =>
+      parseWorkspaceSearchResponse({
+        ...base,
+        matches: Array.from({ length: 499 }, () => match),
+        roots: [{ ...root, state: "partial", skippedFiles: 1 }],
+        truncated: true,
+        limitReasons: ["resultLimit"],
+      }),
+    ).toThrow("invalid workspace Search response");
+  });
 });

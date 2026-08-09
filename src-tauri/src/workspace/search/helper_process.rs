@@ -26,7 +26,7 @@ use super::{
     types::WorkspaceSearchResponse,
 };
 
-pub(super) const COMMAND_DEADLINE: Duration = Duration::from_millis(2_200);
+pub(super) const HELPER_RUN_DEADLINE: Duration = Duration::from_millis(2_200);
 const REAP_DEADLINE: Duration = Duration::from_millis(250);
 const IO_CLEANUP_DEADLINE: Duration = Duration::from_millis(50);
 const LIFECYCLE_QUEUE_WAIT: Duration = Duration::from_millis(250);
@@ -65,7 +65,7 @@ pub(super) async fn run(
         request,
         cancellation,
         ProcessSpec::production()?,
-        COMMAND_DEADLINE,
+        HELPER_RUN_DEADLINE,
         Some(REAP_DEADLINE),
         lifecycle_lease,
     )
@@ -165,14 +165,7 @@ async fn run_with_spec(
                     }
                     .into(),
                 )),
-                Completion::Deadline => Err(AppError::ResourceLimit(
-                    if reaped {
-                        "workspace search exceeded its 2500 ms command deadline"
-                    } else {
-                        "workspace search exceeded its deadline; helper cleanup remains contained"
-                    }
-                    .into(),
-                )),
+                Completion::Deadline => Err(AppError::ResourceLimit(deadline_error(reaped))),
                 Completion::WaitFailed => Err(AppError::InvalidRequest(
                     if reaped {
                         "workspace search helper wait failed"
@@ -185,6 +178,17 @@ async fn run_with_spec(
             }
         }
     }
+}
+
+fn deadline_error(reaped: bool) -> String {
+    let mut message = format!(
+        "workspace search exceeded its {} ms helper run deadline",
+        HELPER_RUN_DEADLINE.as_millis()
+    );
+    if !reaped {
+        message.push_str("; cleanup remains contained");
+    }
+    message
 }
 
 fn configured_command(spec: &ProcessSpec) -> Command {

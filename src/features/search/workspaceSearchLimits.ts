@@ -7,6 +7,7 @@ export const WORKSPACE_SEARCH_LIMITS = Object.freeze({
   totalBytes: 64 * 1024 * 1024,
   entries: 50_000,
   depth: 32,
+  previewCodePoints: 240,
   previewBytes: 2 * 1024,
   resourcePathBytes: 16 * 1024,
   responseElapsedMs: 2_500,

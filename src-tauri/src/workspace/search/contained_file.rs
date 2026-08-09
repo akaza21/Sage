@@ -1,4 +1,4 @@
-use std::{fs, fs::File, path::Path};
+use std::{fs::File, path::PathBuf};
 
 use crate::{
     domain::ResourceRef,
@@ -22,20 +22,14 @@ pub(super) fn open_contained_file(
     }
     validate_contract_path(&resource.relative_path, false)?;
     let path = workspace.root().join(&resource.relative_path);
-    if fs::symlink_metadata(&path)?.file_type().is_symlink() {
-        return Err(AppError::InvalidRequest(
-            "search does not follow linked files".into(),
-        ));
-    }
     let file = File::open(&path)?;
-    let byte_len = validate_opened_file(workspace, resource, &path, &file)?;
+    let byte_len = validate_opened_file(workspace, resource, &file)?;
     Ok(ContainedFile { file, byte_len })
 }
 
 fn validate_opened_file(
     workspace: &Workspace,
     resource: &ResourceRef,
-    path: &Path,
     file: &File,
 ) -> AppResult<u64> {
     let handle_metadata = file.metadata()?;
@@ -44,37 +38,29 @@ fn validate_opened_file(
             "search resource is not a regular file".into(),
         ));
     }
-    let canonical = workspace.canonical_resource_identity(resource, false)?;
-    if &canonical != resource {
+    if !handle_has_links(file)? {
         return Err(AppError::InvalidRequest(
-            "search resource identity changed while opening".into(),
+            "search resource handle is unlinked".into(),
         ));
     }
-    if !same_file_identity(file, path)? {
+    let handle_relative = handle_contract_relative(workspace, file)?;
+    if handle_relative != resource.relative_path {
         return Err(AppError::InvalidRequest(
-            "search resource was replaced while opening".into(),
+            "search resource handle does not match its root-relative identity".into(),
         ));
     }
     Ok(handle_metadata.len())
 }
 
 #[cfg(unix)]
-fn same_file_identity(file: &File, path: &Path) -> AppResult<bool> {
+fn handle_has_links(file: &File) -> AppResult<bool> {
     use std::os::unix::fs::MetadataExt;
 
-    let left = file.metadata()?;
-    let right = fs::metadata(path)?;
-    Ok(left.dev() == right.dev() && left.ino() == right.ino())
+    Ok(file.metadata()?.nlink() > 0)
 }
 
 #[cfg(windows)]
-fn same_file_identity(file: &File, path: &Path) -> AppResult<bool> {
-    let current = File::open(path)?;
-    Ok(windows_file_identity(file)? == windows_file_identity(&current)?)
-}
-
-#[cfg(windows)]
-fn windows_file_identity(file: &File) -> AppResult<(u32, u64)> {
+fn handle_has_links(file: &File) -> AppResult<bool> {
     use std::{mem::zeroed, os::windows::io::AsRawHandle};
     use windows_sys::Win32::Storage::FileSystem::{
         BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
@@ -87,14 +73,113 @@ fn windows_file_identity(file: &File) -> AppResult<(u32, u64)> {
     if succeeded == 0 {
         return Err(std::io::Error::last_os_error().into());
     }
-    let index =
-        (u64::from(information.nFileIndexHigh) << 32) | u64::from(information.nFileIndexLow);
-    Ok((information.dwVolumeSerialNumber, index))
+    Ok(information.nNumberOfLinks > 0)
 }
 
 #[cfg(not(any(unix, windows)))]
-fn same_file_identity(_file: &File, _path: &Path) -> AppResult<bool> {
+fn handle_has_links(_file: &File) -> AppResult<bool> {
     Ok(false)
+}
+
+fn handle_contract_relative(workspace: &Workspace, file: &File) -> AppResult<String> {
+    let path = handle_path(file)?;
+    let relative = path.strip_prefix(workspace.root()).map_err(|_| {
+        AppError::InvalidRequest("search file handle is outside the Workspace root".into())
+    })?;
+    let parts = relative
+        .components()
+        .map(|component| match component {
+            std::path::Component::Normal(value) => {
+                value.to_str().map(str::to_owned).ok_or_else(|| {
+                    AppError::InvalidRequest("search file handle path is not valid Unicode".into())
+                })
+            }
+            _ => Err(AppError::InvalidRequest(
+                "search file handle path is not root-relative".into(),
+            )),
+        })
+        .collect::<AppResult<Vec<_>>>()?;
+    let relative = parts.join("/");
+    validate_contract_path(&relative, false)?;
+    Ok(relative)
+}
+
+#[cfg(windows)]
+fn handle_path(file: &File) -> AppResult<PathBuf> {
+    use std::{ffi::OsString, os::windows::ffi::OsStringExt, os::windows::io::AsRawHandle};
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_NAME_NORMALIZED, GetFinalPathNameByHandleW, VOLUME_NAME_DOS,
+    };
+
+    let mut buffer = vec![0_u16; 32 * 1024];
+    let length = unsafe {
+        GetFinalPathNameByHandleW(
+            file.as_raw_handle(),
+            buffer.as_mut_ptr(),
+            u32::try_from(buffer.len()).map_err(|_| {
+                AppError::InvalidRequest("search file handle path is too long".into())
+            })?,
+            FILE_NAME_NORMALIZED | VOLUME_NAME_DOS,
+        )
+    };
+    let length = usize::try_from(length).map_err(|_| {
+        AppError::InvalidRequest("search file handle path length is invalid".into())
+    })?;
+    if length == 0 || length >= buffer.len() {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    Ok(PathBuf::from(OsString::from_wide(&buffer[..length])))
+}
+
+#[cfg(target_os = "linux")]
+fn handle_path(file: &File) -> AppResult<PathBuf> {
+    use std::os::fd::AsRawFd;
+
+    Ok(std::fs::read_link(format!(
+        "/proc/self/fd/{}",
+        file.as_raw_fd()
+    ))?)
+}
+
+#[cfg(target_os = "macos")]
+fn handle_path(file: &File) -> AppResult<PathBuf> {
+    use std::{ffi::OsString, os::fd::AsRawFd, os::unix::ffi::OsStringExt};
+
+    const F_GETPATH: i32 = 50;
+    const MAX_PATH_BYTES: usize = 1024;
+    unsafe extern "C" {
+        fn fcntl(file_descriptor: i32, command: i32, ...) -> i32;
+    }
+
+    let mut buffer = vec![0_u8; MAX_PATH_BYTES];
+    let result = unsafe { fcntl(file.as_raw_fd(), F_GETPATH, buffer.as_mut_ptr()) };
+    if result == -1 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let length = buffer.iter().position(|byte| *byte == 0).ok_or_else(|| {
+        AppError::InvalidRequest("search file handle path is not terminated".into())
+    })?;
+    if length == 0 {
+        return Err(AppError::InvalidRequest(
+            "search file handle path is empty".into(),
+        ));
+    }
+    buffer.truncate(length);
+    Ok(PathBuf::from(OsString::from_vec(buffer)))
+}
+
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+fn handle_path(_file: &File) -> AppResult<PathBuf> {
+    Err(AppError::InvalidRequest(
+        "search file handle containment is unsupported on this platform".into(),
+    ))
+}
+
+#[cfg(not(any(unix, windows)))]
+fn handle_path(_file: &File) -> AppResult<PathBuf> {
+    Err(AppError::InvalidRequest(
+        "search file handle containment is unsupported on this platform".into(),
+    ))
 }
 
 #[cfg(test)]
@@ -134,7 +219,7 @@ mod tests {
         fs::rename(&path, root.join("original.txt")).unwrap();
         fs::write(&path, "replacement\n").unwrap();
 
-        assert!(validate_opened_file(&workspace, &resource, &path, &file).is_err());
+        assert!(validate_opened_file(&workspace, &resource, &file).is_err());
         drop(file);
         fs::remove_dir_all(root).unwrap();
     }
@@ -152,7 +237,53 @@ mod tests {
         fs::rename(&path, root.join("original.txt")).unwrap();
         symlink(&outside, &path).unwrap();
 
-        assert!(validate_opened_file(&workspace, &resource, &path, &file).is_err());
+        assert!(validate_opened_file(&workspace, &resource, &file).is_err());
+        drop(file);
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_file(outside).unwrap();
+    }
+
+    #[test]
+    fn rejects_an_outside_handle_even_when_the_resource_path_is_inside() {
+        let (root, workspace, resource) = fixture();
+        let outside = root.with_extension("outside-handle.txt");
+        fs::write(&outside, "outside secret\n").unwrap();
+        let file = File::open(&outside).unwrap();
+
+        assert!(validate_opened_file(&workspace, &resource, &file).is_err());
+        drop(file);
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_file(outside).unwrap();
+    }
+
+    #[test]
+    fn rejects_an_unlinked_open_handle() {
+        let (root, workspace, resource) = fixture();
+        let path = root.join("inside.txt");
+        let file = File::open(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+
+        assert!(validate_opened_file(&workspace, &resource, &file).is_err());
+        drop(file);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_an_outside_link_handle_after_the_path_swaps_back_inside() {
+        use std::os::unix::fs::symlink;
+
+        let (root, workspace, resource) = fixture();
+        let outside = root.with_extension("outside-swap.txt");
+        fs::write(&outside, "outside secret\n").unwrap();
+        let path = root.join("inside.txt");
+        fs::remove_file(&path).unwrap();
+        symlink(&outside, &path).unwrap();
+        let file = File::open(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        fs::write(&path, "contained again\n").unwrap();
+
+        assert!(validate_opened_file(&workspace, &resource, &file).is_err());
         drop(file);
         fs::remove_dir_all(root).unwrap();
         fs::remove_file(outside).unwrap();

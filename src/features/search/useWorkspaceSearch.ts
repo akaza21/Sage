@@ -50,13 +50,39 @@ export function useWorkspaceSearch({
     return () => active.current?.abort();
   }, [projectId, transitionEpoch]);
 
-  const setQuery = useCallback((query: string) => {
-    setState((current) => ({ ...current, query, error: null }));
+  const retireCriteria = useCallback(() => {
+    generation.current += 1;
+    active.current?.abort();
+    active.current = null;
   }, []);
 
-  const setCaseSensitive = useCallback((caseSensitive: boolean) => {
-    setState((current) => ({ ...current, caseSensitive, error: null }));
-  }, []);
+  const setQuery = useCallback(
+    (query: string) => {
+      retireCriteria();
+      setState((current) => ({
+        ...current,
+        phase: "idle",
+        query,
+        response: null,
+        error: null,
+      }));
+    },
+    [retireCriteria],
+  );
+
+  const setCaseSensitive = useCallback(
+    (caseSensitive: boolean) => {
+      retireCriteria();
+      setState((current) => ({
+        ...current,
+        phase: "idle",
+        caseSensitive,
+        response: null,
+        error: null,
+      }));
+    },
+    [retireCriteria],
+  );
 
   const cancel = useCallback(() => {
     generation.current += 1;

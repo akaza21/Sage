@@ -74,4 +74,51 @@ describe("workspace Search state", () => {
     expect(search.mock.calls[0][1].aborted).toBe(true);
     expect(result.current.state).toMatchObject({ phase: "idle", query: "" });
   });
+
+  it("retires a pending response as soon as the query criteria changes", async () => {
+    const pending = deferred<WorkspaceSearchResponse>();
+    const search = vi.fn().mockReturnValue(pending.promise);
+    const { result } = renderHook(() =>
+      useWorkspaceSearch({
+        projectId: "project-a",
+        transitionEpoch: 4,
+        gateway: { search },
+      }),
+    );
+    act(() => result.current.setQuery("first"));
+    act(() => void result.current.submit());
+    const signal = search.mock.calls[0][1] as AbortSignal;
+
+    act(() => result.current.setQuery("second"));
+    expect(signal.aborted).toBe(true);
+    expect(result.current.state).toMatchObject({
+      phase: "idle",
+      query: "second",
+      response: null,
+    });
+
+    await act(async () => pending.resolve(response("first")));
+    expect(result.current.state.response).toBeNull();
+  });
+
+  it("retires visible results when case sensitivity changes", async () => {
+    const search = vi.fn().mockResolvedValue(response("needle"));
+    const { result } = renderHook(() =>
+      useWorkspaceSearch({
+        projectId: "project-a",
+        transitionEpoch: 4,
+        gateway: { search },
+      }),
+    );
+    act(() => result.current.setQuery("needle"));
+    await act(async () => void (await result.current.submit()));
+    expect(result.current.state.phase).toBe("results");
+
+    act(() => result.current.setCaseSensitive(true));
+    expect(result.current.state).toMatchObject({
+      phase: "idle",
+      caseSensitive: true,
+      response: null,
+    });
+  });
 });

@@ -110,7 +110,8 @@ function searchMatch(value: unknown): value is WorkspaceSearchMatch {
     canonicalResource(value.resource) &&
     safeCount(value.lineNumber, 1) &&
     safeCount(value.columnNumber, 1) &&
-    boundedString(value.preview, WORKSPACE_SEARCH_LIMITS.previewBytes, true)
+    boundedString(value.preview, WORKSPACE_SEARCH_LIMITS.previewBytes, true) &&
+    [...value.preview].length <= WORKSPACE_SEARCH_LIMITS.previewCodePoints
   );
 }
 
@@ -197,6 +198,7 @@ export function parseWorkspaceSearchResponse(
       .map((root) => root.rootId),
   );
   const hasPartialRoot = value.roots.some((root) => root.state === "partial");
+  const hasLimitReason = responseLimitReasons.length > 0;
   const expectedTruncated = responseLimitReasons.length > 0 || hasPartialRoot;
   const totalFiles = value.roots.reduce(
     (total, root) => total + root.filesScanned,
@@ -249,10 +251,11 @@ export function parseWorkspaceSearchResponse(
         unavailableRootIds.has(match.resource.rootId),
     ) ||
     value.truncated !== expectedTruncated ||
+    (hasLimitReason && !hasPartialRoot) ||
     contradictoryRoot ||
     value.elapsedMs > WORKSPACE_SEARCH_LIMITS.responseElapsedMs ||
-    (responseLimitReasons.includes("resultLimit") &&
-      value.matches.length !== WORKSPACE_SEARCH_LIMITS.results)
+    (value.matches.length === WORKSPACE_SEARCH_LIMITS.results) !==
+      responseLimitReasons.includes("resultLimit")
   ) {
     throw invalid();
   }
