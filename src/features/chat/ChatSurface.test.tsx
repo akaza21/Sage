@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
@@ -173,6 +180,308 @@ afterEach(() => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
+  it("previews edits cancels and confirms a bounded unsent Chat Handoff", async () => {
+    const handoffChat = vi.fn(async () => true);
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projectGeneration: 4,
+      nativeTransitionEpoch: 7,
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat: Architecture",
+          position: 0,
+          pinned: true,
+          dirty: false,
+          status: "idle",
+        },
+        {
+          id: "chat-b",
+          kind: "chat",
+          title: "Chat: Testing",
+          position: 1,
+          pinned: false,
+          dirty: false,
+          status: "idle",
+        },
+      ],
+      activeTabId: "chat-a",
+      harnesses: [
+        {
+          id: "sage-simulator",
+          name: "Simulator",
+          description: "Development",
+          installState: "available",
+          source: "development",
+          transport: "legacySimulator",
+          bindingId: null,
+        },
+      ],
+      selectedHarnessId: "sage-simulator",
+      messages: [
+        {
+          id: "message-a",
+          sessionId: "session-a",
+          sequence: 1,
+          role: "user",
+          text: "Keep SQLite authoritative.",
+          createdAt: 1,
+        },
+      ],
+      composerText: "source-only draft",
+      handoffChat,
+    });
+    render(<ChatSurface />);
+
+    const trigger = screen.getByRole("button", { name: "Hand off chat" });
+    fireEvent.click(trigger);
+    expect(
+      screen.getByRole("dialog", { name: "Hand off this Chat" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Target Chat" })).toHaveValue(
+      "chat-b",
+    );
+    const preview = screen.getByRole("textbox", {
+      name: "Handoff prompt",
+    });
+    expect((preview as HTMLTextAreaElement).value).toContain(
+      'Chat handoff from "Architecture"',
+    );
+    expect((preview as HTMLTextAreaElement).value).toContain(
+      "User: Keep SQLite authoritative.",
+    );
+    fireEvent.change(preview, { target: { value: "Edited ordinary prompt" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(handoffChat).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().composerText).toBe("source-only draft");
+    await waitFor(() => expect(trigger).toHaveFocus());
+
+    fireEvent.click(trigger);
+    act(() => useWorkbenchStore.setState({ projectTransitioning: true }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    act(() => useWorkbenchStore.setState({ projectTransitioning: false }));
+    fireEvent.click(trigger);
+    fireEvent.change(screen.getByRole("textbox", { name: "Handoff prompt" }), {
+      target: { value: "Edited ordinary prompt" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Place in target" }));
+    await waitFor(() =>
+      expect(handoffChat).toHaveBeenCalledWith({
+        projectId: "project-a",
+        projectGeneration: 4,
+        transitionEpoch: 7,
+        sourceChatId: "chat-a",
+        targetChatId: "chat-b",
+        draft: "Edited ordinary prompt",
+      }),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "Message agent" }),
+      ).toHaveFocus(),
+    );
+    expect(hooks.actions.submit).not.toHaveBeenCalled();
+  });
+
+  it("includes only primary ACP text in the Chat Handoff preview", () => {
+    const base = projection();
+    hooks.page = {
+      ...base,
+      turns: [
+        {
+          ...base.turns[0],
+          state: "completed",
+          terminalAt: 3,
+          items: [
+            {
+              ...itemBase("item-primary-text"),
+              kind: "text",
+              toolState: null,
+              payload: { role: "assistant", text: "Primary response" },
+            },
+            {
+              ...itemBase("item-child-text"),
+              origin: "harnessActivity",
+              activityId: "activity-child",
+              kind: "text",
+              toolState: null,
+              payload: { role: "assistant", text: "Private child work" },
+            },
+          ] as unknown as AcpItem[],
+        },
+      ],
+    };
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projectGeneration: 4,
+      nativeTransitionEpoch: 7,
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat: Architecture",
+          position: 0,
+          pinned: true,
+          dirty: false,
+          status: "idle",
+        },
+        {
+          id: "chat-b",
+          kind: "chat",
+          title: "Chat: Testing",
+          position: 1,
+          pinned: false,
+          dirty: false,
+          status: "idle",
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    render(<ChatSurface />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hand off chat" }));
+    const preview = screen.getByRole("textbox", { name: "Handoff prompt" });
+    expect((preview as HTMLTextAreaElement).value).toContain(
+      "Primary response",
+    );
+    expect((preview as HTMLTextAreaElement).value).not.toContain(
+      "Private child work",
+    );
+  });
+
+  it("contains modal focus at both boundaries and closes on Escape", async () => {
+    setTurnState("completed");
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projectGeneration: 4,
+      nativeTransitionEpoch: 7,
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat: Architecture",
+          position: 0,
+          pinned: true,
+          dirty: false,
+          status: "idle",
+        },
+        {
+          id: "chat-b",
+          kind: "chat",
+          title: "Chat: Testing",
+          position: 1,
+          pinned: false,
+          dirty: false,
+          status: "idle",
+        },
+      ],
+      activeTabId: "chat-a",
+      messages: [],
+    });
+    render(<ChatSurface />);
+
+    const trigger = screen.getByRole("button", { name: "Hand off chat" });
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "Hand off this Chat" });
+    const first = screen.getByRole("combobox", { name: "Target Chat" });
+    const last = screen.getByRole("button", { name: "Place in target" });
+    first.focus();
+    fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+    expect(last).toHaveFocus();
+    fireEvent.keyDown(last, { key: "Tab" });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it("shows construction failures and restores source focus after failed confirmation", async () => {
+    const handoffChat = vi.fn(async () => {
+      useWorkbenchStore.setState({ projectTransitioning: true });
+      await Promise.resolve();
+      useWorkbenchStore.setState({
+        projectTransitioning: false,
+        error: "Chat Handoff navigation failed",
+      });
+      return false;
+    });
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projectGeneration: 4,
+      nativeTransitionEpoch: 7,
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat: Architecture",
+          position: 0,
+          pinned: true,
+          dirty: false,
+          status: "idle",
+        },
+        {
+          id: "chat-b",
+          kind: "chat",
+          title: "Chat: Testing",
+          position: 1,
+          pinned: false,
+          dirty: false,
+          status: "idle",
+        },
+      ],
+      activeTabId: "chat-a",
+      harnesses: [
+        {
+          id: "sage-simulator",
+          name: "Simulator",
+          description: "Development",
+          installState: "available",
+          source: "development",
+          transport: "legacySimulator",
+          bindingId: null,
+        },
+      ],
+      selectedHarnessId: "sage-simulator",
+      messages: [
+        {
+          id: "message-a",
+          sessionId: "session-a",
+          sequence: 1,
+          role: "user",
+          text: "x".repeat(2049),
+          createdAt: 1,
+        },
+      ],
+      handoffChat,
+    });
+    render(<ChatSurface />);
+
+    const trigger = screen.getByRole("button", { name: "Hand off chat" });
+    fireEvent.click(trigger);
+    const constructionAlert = screen.getByRole("alert");
+    expect(constructionAlert).toHaveTextContent(
+      "Chat Handoff message bytes exceed 2048",
+    );
+    expect(constructionAlert).not.toHaveClass("sr-only");
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    act(() =>
+      useWorkbenchStore.setState({
+        messages: [],
+        error: null,
+      }),
+    );
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Place in target" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(
+      screen.getByRole("textbox", { name: "Message agent" }),
+    ).not.toHaveFocus();
+  });
+
   it("separates active Turn prompting from the optional Cancel capability", () => {
     useWorkbenchStore.setState({ composerText: "Follow up" });
     const { rerender } = render(<ChatSurface />);

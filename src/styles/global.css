@@ -1540,6 +1540,70 @@ textarea:focus-visible {
   margin-top: 20px;
 }
 
+.handoff-control {
+  position: relative;
+  display: flex;
+}
+
+.handoff-control__error {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 6px);
+  right: 0;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 8px 10px;
+  border: 1px solid #7f3434;
+  border-radius: 6px;
+  color: #ffd6d6;
+  background: #3a2020;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.handoff-dialog {
+  width: min(560px, calc(100vw - 32px));
+  margin: auto;
+  color: var(--text);
+}
+
+.handoff-dialog::backdrop {
+  background: rgb(0 0 0 / 0.52);
+}
+
+.handoff-dialog__form {
+  display: grid;
+  gap: 14px;
+}
+
+.handoff-dialog__field {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.handoff-dialog__field select,
+.handoff-dialog__field textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  outline: none;
+  background: var(--surface-active);
+  font: inherit;
+}
+
+.handoff-dialog__field textarea {
+  resize: vertical;
+}
+
+.handoff-dialog__field select:focus,
+.handoff-dialog__field textarea:focus {
+  border-color: var(--accent);
+}
+
 .composer:focus-within {
   border-color: #465248;
 }

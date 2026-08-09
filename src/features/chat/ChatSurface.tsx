@@ -10,6 +10,7 @@ import type {
 } from "../../domain/acp";
 import type { ResourceRef } from "../../domain/workbench";
 import { EditSummary } from "./EditSummary";
+import { ChatHandoffControl } from "./ChatHandoffControl";
 import {
   AcpChatProjection,
   type OpenResourceTarget,
@@ -159,6 +160,14 @@ export function ChatSurface() {
           <h1>Sage workbench</h1>
         </div>
         <div className="session-controls">
+          <ChatHandoffControl
+            acpPage={useNativeAcp ? acpPage : null}
+            messages={messages}
+            busy={actionBusy || Boolean(activeAcpTurn)}
+            onCommitted={() =>
+              queueMicrotask(() => composerRef.current?.focus())
+            }
+          />
           {canCloseSession ? (
             <button
               className="button button--compact"

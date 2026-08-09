@@ -286,6 +286,169 @@ describe("workbench resource and project navigation", () => {
     });
   });
 
+  it("hands an edited ordinary prompt to an authoritatively activated target without sending or copying history", async () => {
+    const send = vi.spyOn(desktop, "sendPrompt");
+    const targetMessages: ChatMessage[] = [
+      {
+        id: "target-only",
+        sessionId: "session-b",
+        sequence: 1,
+        role: "assistant",
+        text: "Target history",
+        createdAt: 1,
+      },
+    ];
+    const targetProjection = chatProjection(
+      [chatTab, chatTabB],
+      chatTabB.id,
+      1,
+      "session-b",
+      targetMessages,
+    );
+    vi.spyOn(desktop, "activateChat").mockResolvedValue({
+      committed: true,
+      transitionEpoch: 1,
+      snapshot: targetProjection,
+      recoveryError: null,
+    });
+    useWorkbenchStore.setState({
+      tabs: [chatTab, chatTabB],
+      activeTabId: chatTab.id,
+      composerText: "source draft stays source-only",
+      messages: [
+        {
+          id: "source-only",
+          sessionId: "session-a",
+          sequence: 1,
+          role: "user",
+          text: "Source history",
+          createdAt: 1,
+        },
+      ],
+    });
+
+    const committed = await useWorkbenchStore.getState().handoffChat({
+      projectId: "project-a",
+      projectGeneration: 0,
+      transitionEpoch: 0,
+      sourceChatId: chatTab.id,
+      targetChatId: chatTabB.id,
+      draft: "Edited handoff prompt",
+    });
+
+    expect(committed).toBe(true);
+    expect(send).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: chatTabB.id,
+      messages: targetMessages,
+      composerText: "Edited handoff prompt",
+      nativeTransitionEpoch: 1,
+      projectGeneration: 1,
+    });
+
+    vi.spyOn(desktop, "getBootstrapSnapshot").mockResolvedValue(
+      targetProjection,
+    );
+    vi.spyOn(desktop, "listDirectory").mockImplementation(async (target) => ({
+      resource: target,
+      entries: [],
+      truncated: false,
+    }));
+    await useWorkbenchStore.getState().initialize();
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: chatTabB.id,
+      messages: targetMessages,
+      composerText: "",
+    });
+  });
+
+  it("rejects stale empty foreign or changed-source handoff intents without navigation", async () => {
+    const activate = vi.spyOn(desktop, "activateChat");
+    useWorkbenchStore.setState({
+      tabs: [chatTab, chatTabB],
+      activeTabId: chatTab.id,
+      composerText: "source draft",
+    });
+    const valid = {
+      projectId: "project-a",
+      projectGeneration: 0,
+      transitionEpoch: 0,
+      sourceChatId: chatTab.id,
+      targetChatId: chatTabB.id,
+      draft: "Handoff prompt",
+    };
+
+    for (const intent of [
+      { ...valid, projectGeneration: 1 },
+      { ...valid, transitionEpoch: 1 },
+      { ...valid, sourceChatId: chatTabB.id },
+      { ...valid, targetChatId: "chat:foreign" },
+      { ...valid, targetChatId: chatTab.id },
+      { ...valid, draft: " \n " },
+    ]) {
+      expect(await useWorkbenchStore.getState().handoffChat(intent)).toBe(
+        false,
+      );
+    }
+    expect(activate).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: chatTab.id,
+      composerText: "source draft",
+      messages: [],
+    });
+  });
+
+  it("keeps source state isolated when handoff editor flush or navigation fails", async () => {
+    const selectedResource = resource("src/dirty.ts");
+    vi.spyOn(desktop, "snapshotEditorBuffer").mockRejectedValueOnce(
+      new Error("snapshot unavailable"),
+    );
+    const activate = vi.spyOn(desktop, "activateChat");
+    useWorkbenchStore.setState({
+      tabs: [chatTab, chatTabB],
+      activeTabId: chatTab.id,
+      composerText: "source draft",
+      activeEditor: {
+        phase: "ready",
+        resource: selectedResource,
+        document: document(selectedResource, "base", 0, false),
+        content: "dirty",
+        revision: 1,
+        persistedRevision: 0,
+        persisting: false,
+        saving: false,
+        message: null,
+      },
+    });
+    const intent = {
+      projectId: "project-a",
+      projectGeneration: 0,
+      transitionEpoch: 0,
+      sourceChatId: chatTab.id,
+      targetChatId: chatTabB.id,
+      draft: "Handoff prompt",
+    };
+
+    expect(await useWorkbenchStore.getState().handoffChat(intent)).toBe(false);
+    expect(activate).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().composerText).toBe("source draft");
+
+    useWorkbenchStore.setState({ activeEditor: null, error: null });
+    activate.mockResolvedValueOnce({
+      committed: false,
+      transitionEpoch: 0,
+      snapshot: null,
+      recoveryError: "activation rejected",
+    });
+    expect(await useWorkbenchStore.getState().handoffChat(intent)).toBe(false);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: chatTab.id,
+      composerText: "source draft",
+      messages: [],
+      projectTransitioning: false,
+    });
+  });
+
   it("creates a Chat from the current layout and adopts its authoritative projection", async () => {
     const newChat: WorkbenchTab = {
       id: "chat:new",

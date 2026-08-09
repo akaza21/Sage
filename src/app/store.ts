@@ -21,6 +21,10 @@ import {
   createChatArchiveSlice,
   type ChatArchiveSlice,
 } from "./chatArchiveSlice";
+import {
+  createChatHandoffSlice,
+  type ChatHandoffSlice,
+} from "./chatHandoffSlice";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import { createProjectSlice, type ProjectSlice } from "./projectSlice";
 import { createResourceSlice, type ResourceSlice } from "./resourceSlice";
@@ -41,6 +45,7 @@ export interface WorkbenchState
   extends
     ChatSlice,
     ChatArchiveSlice,
+    ChatHandoffSlice,
     EditorSlice,
     ProjectSlice,
     ResourceSlice,
@@ -171,6 +176,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createProjectSlice(set, get, store),
     ...createChatSlice(set, get, store),
     ...createChatArchiveSlice(set, get, store),
+    ...createChatHandoffSlice(set, get, store),
     ...createResourceSlice(set, get, store),
     ...createSearchNavigationSlice(set, get, store),
     ...createEditorSlice(set, get, store),
