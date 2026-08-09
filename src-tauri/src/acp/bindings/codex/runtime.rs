@@ -12,6 +12,7 @@ use super::{
     incoming::{IncomingEvent, IngressDisposition},
     manifest::MetadataValidatedPacket,
     policy::SecurityPolicyPrerequisite,
+    reproduction::ReproducedPackagePrerequisite,
     request::RequestKind,
     state::CodexAdapter,
 };
@@ -38,10 +39,14 @@ impl CodexRuntime {
     pub(crate) fn from_metadata_packet(
         packet: &MetadataValidatedPacket,
         security_policy: &SecurityPolicyPrerequisite,
+        reproduced_package: &ReproducedPackagePrerequisite,
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<Self, AdapterRuntimeError> {
+        reproduced_package
+            .revalidate(packet)
+            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         security_policy
             .revalidate(packet)
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;

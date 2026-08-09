@@ -74,7 +74,8 @@ identity validation, packet-owned capability projection, and the unchanged
 `ArtifactNotAdmitted` production-launch gate.
 
 The Windows physical-closure seam additionally exercises a bounded small-file
-stand-in for the exact eight-file closure: exact configured package-root
+stand-in and an explicitly environment-gated run over the offline-reproduced
+exact eight-file closure: exact configured package-root
 mapping; lossless native path identity; exact stored component spelling;
 canonical final handle paths; regular-file, size, SHA-256, aggregate, and
 closed-set enforcement; 64-entry/depth-8 exact and plus-one bounds;
@@ -83,8 +84,10 @@ rejection plus an OS-permitted symlink smoke; existing-writer and post-hash
 identity races; a late namespace entry between bounded observations; and
 component-by-component, no-follow canonical disjoint state, including a
 dangling directory symlink, without creating or mutating state. Non-Windows
-inspection remains unavailable. These tests prove verifier behavior, not that
-the real 427 MB artifact was independently inspected or admitted. Retained
+inspection remains unavailable. The production inspector processed the real
+427,151,500-byte package and retained its handles on the implementation
+workstation. These tests prove verifier behavior and one developer
+reproduction, not independent reproduction or admission. Retained
 handles do not freeze the directory namespace, which can change after the final
 observation. The tests do not prove Authenticode/signatures, SBOM/license
 closure, ACLs/ownership/immutability, provisioning, auth/state containment,
@@ -98,10 +101,30 @@ command is:
 cargo test --lib acp::bindings::codex
 ```
 
-It passed 40 tests on the implementation workstation. This is developer
-self-check evidence, not the clean-machine package reproduction, signature
+It passed 43 default tests on the implementation workstation. One additional
+ignored test is explicitly enabled with `SAGE_CODEX_0145_PACKAGE_ROOT` and
+passed against the exact extracted 427,151,500-byte package:
+
+```text
+cargo test --lib acp::bindings::codex::tests::exact_registry_package_satisfies_reproduction_prerequisite_without_launch_authority -- --ignored --exact --nocapture
+```
+
+The resulting 44 test declarations include malformed, unknown-field,
+exact-limit-plus-one, registry/verification-boundary drift, mismatched physical
+binding, mandatory-constructor, and real-package fail-closed coverage. This is
+developer self-check evidence, not the clean-machine package reproduction, signature
 verification, hostile containment probe, fresh Review, or Independent Test
 required for Ready.
+
+The reproduction-prerequisite increment requires exact raw archive and
+registry identities and preserves unresolved facts as typed fail-closed
+boundaries: npm signature and SLSA presence are unverified, Authenticode is a
+workstation observation, license/NOTICE closure is incomplete, the SBOM is
+unavailable, and ACL/ownership/immutability are unverified. The prerequisite
+must consume a physical proof for the same packet and is mandatory at runtime
+construction, but it grants no artifact admission or launch authority. Exact
+commands, results, and observed identities are in the
+[package-reproduction evidence](package-reproduction-0.145.0-build-evidence.md).
 
 The security-prerequisite increment adds exact and drift fixtures for the
 packet-bound isolated `CODEX_HOME`, file credential store, disabled ambient

@@ -47,6 +47,43 @@ pub(crate) struct PhysicallyInspectedPackage {
 }
 
 impl PhysicallyInspectedPackage {
+    pub(super) fn binds_packet(&self, packet: &MetadataValidatedPacket) -> bool {
+        #[cfg(windows)]
+        {
+            windows::proof_matches_packet(self, packet)
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = packet;
+            false
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn mismatched_fixture() -> Self {
+        Self {
+            package_root: PathBuf::from(r"C:\Foreign\Codex\package"),
+            artifact_count: EXPECTED_FILE_COUNT,
+            byte_len: 427_151_500,
+            _held_handles: Vec::new(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn matching_fixture(packet: &MetadataValidatedPacket) -> Self {
+        const ENTRYPOINT_SUFFIX: &str = r"\vendor\x86_64-pc-windows-msvc\bin\codex.exe";
+        let entrypoint = packet.metadata().entrypoint.path.to_string_lossy();
+        let package_root = entrypoint
+            .strip_suffix(ENTRYPOINT_SUFFIX)
+            .expect("pinned packet entrypoint suffix");
+        Self {
+            package_root: PathBuf::from(package_root),
+            artifact_count: packet.metadata().supporting_artifacts.len() + 1,
+            byte_len: packet.metadata().package_unpacked_byte_len,
+            _held_handles: Vec::new(),
+        }
+    }
+
     #[cfg(test)]
     fn package_root(&self) -> &Path {
         &self.package_root

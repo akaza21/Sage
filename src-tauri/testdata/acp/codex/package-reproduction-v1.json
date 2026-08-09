@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "bindingId": "codex-app-server",
+  "platform": "windowsX86_64",
+  "codexSourceCommit": "25af12f7e61572b0bc18ddb1008be543b91519b0",
+  "codexRuntimeVersion": "0.145.0",
+  "packageName": "@openai/codex",
+  "packageVersion": "0.145.0-win32-x64",
+  "registry": {
+    "tarballUrl": "https://registry.npmjs.org/@openai/codex/-/codex-0.145.0-win32-x64.tgz",
+    "tarballSha1": "b24ffe0d63bcac64fe802c4c7d79176fb42e8337",
+    "tarballIntegritySha512": "sha512-u0h9lk094CaXRSqE34SBW2dRaQTPa6fASXqehczWH9QdsU62mBsiAgAdp6tCG4i+YzPmmhjD8FdXNnYGNmwuMg==",
+    "tarballSha512Hex": "bb487d964d3de02697452a84df84815b67516904cf6ba7c0497a9e85ccd61fd41db14eb6981b2202001da7ab421b88be6333e69a18c3f05757367606366c2e32",
+    "packedByteLen": 150852388,
+    "unpackedByteLen": 427151500,
+    "fileCount": 8,
+    "npmSignature": {
+      "signatureBase64": "MEUCIFGOrmeSEuQQ4eixhUMkFJOXq3dHL6snqDoqMiDefnhuAiEAyOa/+cc1fXAKaoEMcVD8O1+srdGPlClPW25tsFw9GBk=",
+      "keyId": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+      "verificationStatus": "presenceRecordedUnverified"
+    },
+    "slsaProvenance": {
+      "attestationUrl": "https://registry.npmjs.org/-/npm/v1/attestations/@openai%2fcodex@0.145.0-win32-x64",
+      "predicateType": "https://slsa.dev/provenance/v1",
+      "verificationStatus": "presenceRecordedUnverified"
+    }
+  },
+  "packageMetadata": {
+    "declaredLicense": "Apache-2.0",
+    "licenseFile": "absent",
+    "noticeFile": "absent",
+    "licenseClosureStatus": "incomplete",
+    "sbomStatus": "unavailable"
+  },
+  "authenticodeObservation": {
+    "verificationStatus": "workstationObservationOnly",
+    "publisherCommonName": "OpenAI OpCo, LLC",
+    "certificateThumbprintSha1": "FDE3B5E925F89FC3DDB81F651855DFCBBDA471C3",
+    "signedFiles": [
+      "vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe",
+      "vendor\\x86_64-pc-windows-msvc\\bin\\codex-code-mode-host.exe",
+      "vendor\\x86_64-pc-windows-msvc\\codex-resources\\codex-command-runner.exe",
+      "vendor\\x86_64-pc-windows-msvc\\codex-resources\\codex-windows-sandbox-setup.exe"
+    ],
+    "unsignedFiles": ["vendor\\x86_64-pc-windows-msvc\\codex-path\\rg.exe"]
+  },
+  "managedStaging": {
+    "physicalInspection": "requiredAtRuntimeConstruction",
+    "aclOwnership": "unverified",
+    "immutability": "unverified"
+  }
+}

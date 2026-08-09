@@ -7,6 +7,7 @@ mod incoming;
 mod manifest;
 mod physical;
 mod policy;
+mod reproduction;
 mod request;
 mod runtime;
 mod state;
@@ -18,6 +19,9 @@ pub(crate) use physical::{
     inspect_managed_package,
 };
 pub(crate) use policy::{SecurityPolicyError, parse_security_policy};
+pub(crate) use reproduction::{
+    ReproductionError, bind_reproduced_package, parse_reproduction_requirements,
+};
 pub(crate) use runtime::CodexRuntime;
 pub(crate) use state::CodexAdapter;
 

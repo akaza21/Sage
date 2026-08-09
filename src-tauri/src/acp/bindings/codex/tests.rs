@@ -15,6 +15,8 @@ const PACKET_FIXTURE: &[u8] =
     include_bytes!("../../../../testdata/acp/codex/candidate-windows.json");
 const SECURITY_POLICY_FIXTURE: &[u8] =
     include_bytes!("../../../../testdata/acp/codex/security-policy-v1.json");
+const REPRODUCTION_FIXTURE: &[u8] =
+    include_bytes!("../../../../testdata/acp/codex/package-reproduction-v1.json");
 const PACKAGE_ROOT: &str = r"C:\SageHarnesses\Codex\0.145.0\package";
 const ISOLATED_CODEX_HOME: &str = r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167";
 
@@ -47,6 +49,10 @@ fn packet_value() -> Value {
 
 fn security_policy_value() -> Value {
     serde_json::from_slice(SECURITY_POLICY_FIXTURE).unwrap()
+}
+
+fn reproduction_value() -> Value {
+    serde_json::from_slice(REPRODUCTION_FIXTURE).unwrap()
 }
 
 fn relocate_package_root(packet: &mut Value, next_root: &str) {
@@ -277,6 +283,102 @@ fn security_policy_rejects_malformed_unknown_and_exact_plus_one_bytes() {
         parse_security_policy(&vec![b' '; policy::SECURITY_POLICY_BYTES + 1], &packet),
         Err(SecurityPolicyError::PolicyBytes)
     );
+}
+
+#[test]
+fn reproduction_requirements_bind_exact_registry_and_unverified_boundaries() {
+    let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
+    parse_reproduction_requirements(REPRODUCTION_FIXTURE, &packet).unwrap();
+
+    for (pointer, replacement, error) in [
+        (
+            "/registry/tarballSha512Hex",
+            json!("a".repeat(128)),
+            ReproductionError::Registry,
+        ),
+        (
+            "/registry/npmSignature/verificationStatus",
+            json!("verified"),
+            ReproductionError::VerificationBoundary,
+        ),
+        (
+            "/packageMetadata/licenseClosureStatus",
+            json!("complete"),
+            ReproductionError::VerificationBoundary,
+        ),
+        (
+            "/managedStaging/aclOwnership",
+            json!("verified"),
+            ReproductionError::VerificationBoundary,
+        ),
+    ] {
+        let mut changed = reproduction_value();
+        *changed.pointer_mut(pointer).unwrap() = replacement;
+        assert_eq!(
+            parse_reproduction_requirements(&serde_json::to_vec(&changed).unwrap(), &packet),
+            Err(error),
+            "pointer {pointer}"
+        );
+    }
+}
+
+#[test]
+fn reproduction_requirements_reject_malformed_unknown_and_exact_plus_one_bytes() {
+    let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
+    assert_eq!(
+        parse_reproduction_requirements(b"{", &packet),
+        Err(ReproductionError::Malformed)
+    );
+    let mut unknown = reproduction_value();
+    unknown["registry"]["ambientRegistryFallback"] = json!(true);
+    assert_eq!(
+        parse_reproduction_requirements(&serde_json::to_vec(&unknown).unwrap(), &packet),
+        Err(ReproductionError::Malformed)
+    );
+    assert_eq!(
+        parse_reproduction_requirements(&vec![b' '; reproduction::REPRODUCTION_BYTES + 1], &packet),
+        Err(ReproductionError::EvidenceBytes)
+    );
+}
+
+#[test]
+fn reproduction_prerequisite_rejects_an_inspection_for_a_different_packet_root() {
+    let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
+    let requirements = parse_reproduction_requirements(REPRODUCTION_FIXTURE, &packet).unwrap();
+    let inspection = PhysicallyInspectedPackage::mismatched_fixture();
+    assert!(matches!(
+        bind_reproduced_package(requirements, &packet, inspection),
+        Err(ReproductionError::PhysicalBinding)
+    ));
+}
+
+#[cfg(windows)]
+#[test]
+#[ignore = "requires SAGE_CODEX_0145_PACKAGE_ROOT pointing at the exact 427 MB package"]
+fn exact_registry_package_satisfies_reproduction_prerequisite_without_launch_authority() {
+    let package_root = std::env::var("SAGE_CODEX_0145_PACKAGE_ROOT")
+        .expect("set SAGE_CODEX_0145_PACKAGE_ROOT to the extracted 0.145.0-win32-x64 package");
+    let mut packet = packet_value();
+    relocate_package_root(&mut packet, &package_root);
+    let packet = parse_packet_metadata(&serde_json::to_vec(&packet).unwrap()).unwrap();
+    let requirements = parse_reproduction_requirements(REPRODUCTION_FIXTURE, &packet).unwrap();
+    let configured_root =
+        ConfiguredManagedPackageRoot::new(std::path::PathBuf::from(package_root)).unwrap();
+    let inspection = inspect_managed_package(&packet, &configured_root).unwrap();
+    let reproduced = bind_reproduced_package(requirements, &packet, inspection).unwrap();
+    let security_policy = parse_security_policy(SECURITY_POLICY_FIXTURE, &packet).unwrap();
+
+    assert!(matches!(
+        CodexRuntime::from_metadata_packet(
+            &packet,
+            &security_policy,
+            &reproduced,
+            [7; 32],
+            RuntimeEpoch::new(1).unwrap(),
+            SageAgentSessionId::parse("real-package-reproduction").unwrap(),
+        ),
+        Err(crate::acp::bindings::adapter::AdapterRuntimeError::LaunchUnavailable)
+    ));
 }
 
 #[test]

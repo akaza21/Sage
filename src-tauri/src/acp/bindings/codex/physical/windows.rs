@@ -63,6 +63,21 @@ pub(super) fn claims_from_packet(
     })
 }
 
+pub(super) fn proof_matches_packet(
+    proof: &PhysicallyInspectedPackage,
+    packet: &MetadataValidatedPacket,
+) -> bool {
+    let Ok(root) = ConfiguredManagedPackageRoot::new(proof.package_root.clone()) else {
+        return false;
+    };
+    let Ok(claims) = claims_from_packet(packet, &root) else {
+        return false;
+    };
+    claims.package_root == proof.package_root
+        && claims.files.len() == proof.artifact_count
+        && claims.aggregate_bytes == proof.byte_len
+}
+
 /// Matches exact packet-relative spelling while admitting only Windows root
 /// representation aliases: separators, verbatim-disk prefix, and drive case.
 fn packet_path_matches_root_and_relative(
