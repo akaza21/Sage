@@ -98,7 +98,23 @@ command is:
 cargo test --lib acp::bindings::codex
 ```
 
-It passed 38 tests on the implementation workstation. This is developer
+It passed 40 tests on the implementation workstation. This is developer
 self-check evidence, not the clean-machine package reproduction, signature
 verification, hostile containment probe, fresh Review, or Independent Test
 required for Ready.
+
+The security-prerequisite increment adds exact and drift fixtures for the
+packet-bound isolated `CODEX_HOME`, file credential store, disabled ambient
+config and update checks, one-live-tree ceiling, cleared five-key environment,
+zero secret keys, shared environment byte ceilings, and thread/resume/turn
+read-only request fields. It rejects normal-home, ambient config/environment,
+added secret or `PATH`, malformed/unknown policy fields, changed values, and
+both numeric and document-size exact-limit-plus-one cases. A valid prerequisite
+still returns `LaunchUnavailable` through the unchanged
+`ArtifactNotAdmitted` production gate, and the catalog assertion keeps Codex
+`notInstalled`.
+
+No test in this increment proves directory provisioning, ACLs, an adequate or
+enforced Codex writable-state disk/retention budget, authentication lifecycle
+or redaction, endpoint/proxy/TLS/offline behavior, telemetry, Windows
+containment, or launch authority. Those remain H1-03/H1-04 admission work.

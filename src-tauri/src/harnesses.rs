@@ -184,6 +184,7 @@ mod tests {
             ["codex", "pi", "claude-code", "oh-my-pi", SIMULATOR_ID]
         );
         assert_eq!(definitions[0].transport, HarnessTransport::Acp);
+        assert_eq!(definitions[0].install_state, "notInstalled");
         assert_eq!(
             definitions[0].binding_id.as_deref(),
             Some("codex-app-server")

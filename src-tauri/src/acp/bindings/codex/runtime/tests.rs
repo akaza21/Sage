@@ -7,7 +7,7 @@ use crate::acp::{
             AdapterCommand, AdapterEvent, AdapterIdentity, AdapterRuntimeError, EgressResolution,
             HarnessAdapter,
         },
-        codex::{Platform, parse_packet_metadata},
+        codex::{Platform, parse_packet_metadata, parse_security_policy},
     },
     contract::{RequiredText, SafeText, SageRootId},
     intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef},
@@ -130,14 +130,21 @@ fn launch_stays_unavailable_without_exact_artifact_admission() {
         "../../../../../testdata/acp/codex/candidate-windows.json"
     ))
     .expect("packet metadata");
-    assert!(
+    let policy = parse_security_policy(
+        include_bytes!("../../../../../testdata/acp/codex/security-policy-v1.json"),
+        &packet,
+    )
+    .expect("security policy prerequisite");
+    assert_eq!(
         CodexRuntime::from_metadata_packet(
             &packet,
+            &policy,
             [1; 32],
             RuntimeEpoch::new(1).expect("epoch"),
             SageAgentSessionId::parse("session-launch").expect("session")
         )
-        .is_err()
+        .err(),
+        Some(AdapterRuntimeError::LaunchUnavailable)
     );
 }
 

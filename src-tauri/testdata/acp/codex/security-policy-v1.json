@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "bindingId": "codex-app-server",
+  "protocolIdentity": "codex-app-server-0.145.0-7b0ab167",
+  "codexSourceCommit": "25af12f7e61572b0bc18ddb1008be543b91519b0",
+  "codexRuntimeVersion": "0.145.0",
+  "appServerSchemaSha256": "7b0ab1679be705644a1b6c3f486f15e2f90e5f900486d90073b1dc5f0cf4c62c",
+  "codexHome": "C:\\SageHarnesses\\CodexState\\codex-app-server-0.145.0-7b0ab167",
+  "state": {
+    "isolation": "isolatedBindingDirectory",
+    "inheritAmbientConfig": false,
+    "cliAuthCredentialsStore": "file",
+    "checkForUpdateOnStartup": false,
+    "maximumLiveProcessTrees": 1
+  },
+  "environment": {
+    "inheritAmbient": false,
+    "allowedKeys": ["CODEX_HOME", "SystemRoot", "TEMP", "TMP", "WINDIR"],
+    "allowedSecretKeys": [],
+    "maximumEntries": 5,
+    "maximumKeyBytes": 256,
+    "maximumValueBytes": 8192,
+    "maximumTotalBytes": 32768
+  },
+  "requestPolicy": {
+    "threadStart": {
+      "approvalPolicy": "never",
+      "sandbox": "readOnly"
+    },
+    "threadResume": {
+      "approvalPolicy": "never",
+      "sandbox": "readOnly"
+    },
+    "turnStart": {
+      "approvalPolicy": "never",
+      "sandboxPolicy": {
+        "type": "readOnly",
+        "networkAccess": false
+      }
+    }
+  }
+}

@@ -7,6 +7,7 @@ use crate::acp::{
 };
 
 use super::manifest::Platform;
+use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_NETWORK_ACCESS, SANDBOX_READ_ONLY};
 
 // The shared writer owns the single LF delimiter. Keeping the payload one
 // byte below the wire ceiling makes the eventual payload + LF write fit the
@@ -116,8 +117,8 @@ impl OutgoingRequest {
             json!({
                 "model": model.map(RequiredText::as_str),
                 "cwd": root.as_str(),
-                "approvalPolicy": "never",
-                "sandbox": "readOnly",
+                "approvalPolicy": APPROVAL_POLICY_NEVER,
+                "sandbox": SANDBOX_READ_ONLY,
                 "ephemeral": false
             }),
         )
@@ -136,8 +137,8 @@ impl OutgoingRequest {
                 "threadId": thread_id.as_str(),
                 "model": model.map(RequiredText::as_str),
                 "cwd": root.as_str(),
-                "approvalPolicy": "never",
-                "sandbox": "readOnly"
+                "approvalPolicy": APPROVAL_POLICY_NEVER,
+                "sandbox": SANDBOX_READ_ONLY
             }),
         )
     }
@@ -177,7 +178,12 @@ impl OutgoingRequest {
             json!({
                 "threadId": thread_id.as_str(),
                 "clientUserMessageId": client_message_id.as_str(),
-                "input": [{"type": "text", "text": prompt.as_str()}]
+                "input": [{"type": "text", "text": prompt.as_str()}],
+                "approvalPolicy": APPROVAL_POLICY_NEVER,
+                "sandboxPolicy": {
+                    "type": SANDBOX_READ_ONLY,
+                    "networkAccess": SANDBOX_NETWORK_ACCESS
+                }
             }),
         )
     }

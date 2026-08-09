@@ -11,6 +11,7 @@ use crate::acp::{
 use super::{
     incoming::{IncomingEvent, IngressDisposition},
     manifest::MetadataValidatedPacket,
+    policy::SecurityPolicyPrerequisite,
     request::RequestKind,
     state::CodexAdapter,
 };
@@ -36,10 +37,14 @@ pub(crate) struct CodexRuntime {
 impl CodexRuntime {
     pub(crate) fn from_metadata_packet(
         packet: &MetadataValidatedPacket,
+        security_policy: &SecurityPolicyPrerequisite,
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<Self, AdapterRuntimeError> {
+        security_policy
+            .revalidate(packet)
+            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         packet
             .require_physical_admission()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;

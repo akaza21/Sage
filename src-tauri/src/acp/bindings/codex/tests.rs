@@ -13,6 +13,8 @@ struct Mapper;
 
 const PACKET_FIXTURE: &[u8] =
     include_bytes!("../../../../testdata/acp/codex/candidate-windows.json");
+const SECURITY_POLICY_FIXTURE: &[u8] =
+    include_bytes!("../../../../testdata/acp/codex/security-policy-v1.json");
 const PACKAGE_ROOT: &str = r"C:\SageHarnesses\Codex\0.145.0\package";
 const ISOLATED_CODEX_HOME: &str = r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167";
 
@@ -41,6 +43,10 @@ fn adapter() -> CodexAdapter {
 
 fn packet_value() -> Value {
     serde_json::from_slice(PACKET_FIXTURE).unwrap()
+}
+
+fn security_policy_value() -> Value {
+    serde_json::from_slice(SECURITY_POLICY_FIXTURE).unwrap()
 }
 
 fn relocate_package_root(packet: &mut Value, next_root: &str) {
@@ -189,22 +195,128 @@ fn packet_metadata_rejects_equal_nested_and_parent_codex_home_overlaps() {
 }
 
 #[test]
+fn security_policy_accepts_only_the_pinned_isolated_state_and_environment() {
+    let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
+    parse_security_policy(SECURITY_POLICY_FIXTURE, &packet).unwrap();
+
+    for (pointer, replacement, error) in [
+        (
+            "/codexHome",
+            json!(r"C:\Users\Username\.codex"),
+            SecurityPolicyError::Identity,
+        ),
+        (
+            "/state/inheritAmbientConfig",
+            json!(true),
+            SecurityPolicyError::State,
+        ),
+        (
+            "/state/maximumLiveProcessTrees",
+            json!(2),
+            SecurityPolicyError::State,
+        ),
+        (
+            "/environment/inheritAmbient",
+            json!(true),
+            SecurityPolicyError::Environment,
+        ),
+        (
+            "/environment/maximumEntries",
+            json!(6),
+            SecurityPolicyError::Environment,
+        ),
+        (
+            "/requestPolicy/turnStart/sandboxPolicy/networkAccess",
+            json!(true),
+            SecurityPolicyError::Request,
+        ),
+    ] {
+        let mut changed = security_policy_value();
+        *changed.pointer_mut(pointer).unwrap() = replacement;
+        assert_eq!(
+            parse_security_policy(&serde_json::to_vec(&changed).unwrap(), &packet),
+            Err(error),
+            "pointer {pointer}"
+        );
+    }
+
+    let mut ambient_secret = security_policy_value();
+    ambient_secret["environment"]["allowedSecretKeys"] = json!(["OPENAI_API_KEY"]);
+    assert_eq!(
+        parse_security_policy(&serde_json::to_vec(&ambient_secret).unwrap(), &packet),
+        Err(SecurityPolicyError::Environment)
+    );
+
+    let mut allowlist_drift = security_policy_value();
+    allowlist_drift["environment"]["allowedKeys"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!("PATH"));
+    assert_eq!(
+        parse_security_policy(&serde_json::to_vec(&allowlist_drift).unwrap(), &packet),
+        Err(SecurityPolicyError::Environment)
+    );
+}
+
+#[test]
+fn security_policy_rejects_malformed_unknown_and_exact_plus_one_bytes() {
+    let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
+    assert_eq!(
+        parse_security_policy(b"{", &packet),
+        Err(SecurityPolicyError::Malformed)
+    );
+
+    let mut unknown = security_policy_value();
+    unknown["endpointPolicy"] = json!({"status": "unresolved"});
+    assert_eq!(
+        parse_security_policy(&serde_json::to_vec(&unknown).unwrap(), &packet),
+        Err(SecurityPolicyError::Malformed)
+    );
+
+    assert_eq!(
+        parse_security_policy(&vec![b' '; policy::SECURITY_POLICY_BYTES + 1], &packet),
+        Err(SecurityPolicyError::PolicyBytes)
+    );
+}
+
+#[test]
 fn builds_only_fixed_read_only_requests_and_single_root_ceiling() {
-    let mut adapter = adapter();
-    negotiate(&mut adapter);
-    let root = adapter.project_root(r"C:\repo".into()).unwrap();
-    let start = adapter.start(1, &root, None).unwrap();
+    let mut candidate = adapter();
+    negotiate(&mut candidate);
+    let root = candidate.project_root(r"C:\repo".into()).unwrap();
+    let start = candidate.start(1, &root, None).unwrap();
     let value: Value = serde_json::from_slice(&start.bytes).unwrap();
     assert_eq!(value["method"], "thread/start");
     assert_eq!(value["params"]["sandbox"], "readOnly");
     assert_eq!(value["params"]["approvalPolicy"], "never");
     assert!(value["params"].get("runtimeWorkspaceRoots").is_none());
-    let caps = adapter.effective_capabilities().unwrap();
+    candidate
+        .ingest(
+            br#"{"id":1,"result":{"thread":{"id":"thread-1"}}}"#,
+            &Mapper,
+        )
+        .unwrap();
+    let prompt = Prompt::new("prompt", "inspect").unwrap();
+    let client = RequiredText::new("client", "client-read-only").unwrap();
+    let turn = candidate.prompt(2, &prompt, &client).unwrap();
+    let turn: Value = serde_json::from_slice(&turn.bytes).unwrap();
+    assert_eq!(turn["params"]["approvalPolicy"], "never");
+    assert_eq!(turn["params"]["sandboxPolicy"]["type"], "readOnly");
+    assert_eq!(turn["params"]["sandboxPolicy"]["networkAccess"], false);
+
+    let mut resume_adapter = adapter();
+    negotiate(&mut resume_adapter);
+    let thread = RequiredText::new("thread", "thread-resume").unwrap();
+    let resume = resume_adapter.resume(3, &thread, &root, None).unwrap();
+    let resume: Value = serde_json::from_slice(&resume.bytes).unwrap();
+    assert_eq!(resume["params"]["approvalPolicy"], "never");
+    assert_eq!(resume["params"]["sandbox"], "readOnly");
+    let caps = candidate.effective_capabilities().unwrap();
     assert!(caps.new_session && caps.resume_session && caps.prompt && caps.cancel);
     assert!(caps.multi_root_extension_schema_id.is_none());
     assert!(!caps.native_session_fork && !caps.active_turn_steer);
-    assert!(adapter.project_root(r"repo".into()).is_err());
-    assert!(adapter.project_root(r"C:\repo\bad:name".into()).is_err());
+    assert!(candidate.project_root(r"repo".into()).is_err());
+    assert!(candidate.project_root(r"C:\repo\bad:name".into()).is_err());
 }
 
 #[test]
