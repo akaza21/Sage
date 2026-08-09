@@ -119,6 +119,29 @@ pub struct ProjectRepositoryStatus {
     pub elapsed_ms: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GitFileMutationAction {
+    Stage,
+    Unstage,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GitFileMutationRequest {
+    pub project_id: String,
+    pub resource: ResourceRef,
+    pub action: GitFileMutationAction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitFileMutationResult {
+    pub project_id: String,
+    pub transition_epoch: u64,
+    pub repositories: ProjectRepositoryStatus,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceEntry {

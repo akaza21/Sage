@@ -91,6 +91,20 @@ export interface ProjectRepositoryStatus {
   elapsedMs: number;
 }
 
+export type GitFileMutationAction = "stage" | "unstage";
+
+export interface GitFileMutationRequest {
+  projectId: string;
+  resource: ResourceRef;
+  action: GitFileMutationAction;
+}
+
+export interface GitFileMutationResult {
+  projectId: string;
+  transitionEpoch: number;
+  repositories: ProjectRepositoryStatus;
+}
+
 export type WorkspaceEntryKind = "directory" | "file" | "symlink" | "other";
 
 export interface WorkspaceEntry {

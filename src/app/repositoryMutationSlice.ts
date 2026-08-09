@@ -1,0 +1,108 @@
+import type { StateCreator } from "zustand";
+
+import { sameResource } from "../domain/resourceIdentity";
+import type { GitFileMutationAction, ResourceRef } from "../domain/workbench";
+import { desktop } from "../services/desktop";
+import { matchesResourceIntent } from "./projectIntent";
+import type { WorkbenchState } from "./store";
+
+export interface RepositoryMutation {
+  resource: ResourceRef;
+  action: GitFileMutationAction;
+}
+
+export interface RepositoryMutationSlice {
+  repositoryMutation: RepositoryMutation | null;
+  mutateRepositoryFile: (
+    resource: ResourceRef,
+    action: GitFileMutationAction,
+  ) => Promise<boolean>;
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function eligibleMutation(
+  state: WorkbenchState,
+  resource: ResourceRef,
+  action: GitFileMutationAction,
+) {
+  const change = state.repositories.roots
+    .find((root) => root.rootId === resource.rootId)
+    ?.changes.find((candidate) => sameResource(candidate.resource, resource));
+  if (
+    !change ||
+    change.indexStatus === "conflicted" ||
+    change.worktreeStatus === "conflicted"
+  ) {
+    return false;
+  }
+  return action === "stage"
+    ? change.worktreeStatus !== "unchanged" &&
+        change.worktreeStatus !== "unknown"
+    : change.indexStatus !== "unchanged" && change.indexStatus !== "unknown";
+}
+
+export const createRepositoryMutationSlice: StateCreator<
+  WorkbenchState,
+  [],
+  [],
+  RepositoryMutationSlice
+> = (set, get) => ({
+  repositoryMutation: null,
+  mutateRepositoryFile: async (resource, action) => {
+    const generation = get().projectGeneration;
+    const projectId = get().project?.id;
+    const transitionEpoch = get().nativeTransitionEpoch;
+    if (
+      !projectId ||
+      get().projectTransitioning ||
+      get().repositoryRefreshing ||
+      get().repositoryMutation ||
+      !matchesResourceIntent(get(), generation, projectId, resource) ||
+      !eligibleMutation(get(), resource, action)
+    ) {
+      return false;
+    }
+    const mutation: RepositoryMutation = { resource, action };
+    set({ repositoryMutation: mutation, error: null });
+    try {
+      const result = await desktop.mutateGitFile(
+        { projectId, resource, action },
+        transitionEpoch,
+      );
+      if (
+        get().repositoryMutation !== mutation ||
+        get().projectTransitioning ||
+        get().nativeTransitionEpoch !== transitionEpoch ||
+        result.projectId !== projectId ||
+        result.transitionEpoch !== transitionEpoch ||
+        !matchesResourceIntent(get(), generation, projectId, resource)
+      ) {
+        if (get().repositoryMutation === mutation) {
+          set({ repositoryMutation: null });
+        }
+        return false;
+      }
+      set({
+        repositories: result.repositories,
+        repositoryMutation: null,
+        error: null,
+      });
+      return true;
+    } catch (error) {
+      if (
+        get().repositoryMutation === mutation &&
+        !get().projectTransitioning &&
+        get().nativeTransitionEpoch === transitionEpoch &&
+        matchesResourceIntent(get(), generation, projectId, resource)
+      ) {
+        set({ repositoryMutation: null, error: errorMessage(error) });
+      } else if (get().repositoryMutation === mutation) {
+        set({ repositoryMutation: null });
+      }
+      return false;
+    }
+  },
+});

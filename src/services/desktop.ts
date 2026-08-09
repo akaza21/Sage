@@ -6,6 +6,8 @@ import type {
   EditorDocument,
   EditorSaveResult,
   FileDiff,
+  GitFileMutationRequest,
+  GitFileMutationResult,
   ModelOption,
   ProjectLayoutRequest,
   ProjectRepositoryStatus,
@@ -55,6 +57,15 @@ export const desktop = {
     return isTauriRuntime()
       ? invoke("get_file_diff", { resource })
       : browserDesktop.getFileDiff(resource);
+  },
+
+  mutateGitFile(
+    request: GitFileMutationRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitFileMutationResult> {
+    return isTauriRuntime()
+      ? invoke("mutate_git_file", { request, expectedTransitionEpoch })
+      : browserDesktop.mutateGitFile(request, expectedTransitionEpoch);
   },
 
   listDirectory(resource: ResourceRef): Promise<DirectoryListing> {

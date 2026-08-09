@@ -29,11 +29,21 @@ type NumstatByPath = HashMap<String, NumstatCounts>;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-struct GitOutput {
+pub(crate) struct GitOutput {
     status: ExitStatus,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
     stdout_truncated: bool,
+}
+
+impl GitOutput {
+    pub(crate) fn succeeded(&self) -> bool {
+        self.status.success()
+    }
+
+    pub(crate) fn exit_code(&self) -> Option<i32> {
+        self.status.code()
+    }
 }
 
 enum RepositoryBoundary {
@@ -278,10 +288,23 @@ async fn repository_boundary(root: &Path) -> AppResult<RepositoryBoundary> {
     }
 }
 
-async fn run_git(root: &Path, args: &[&str], stdout_limit: usize) -> AppResult<GitOutput> {
+pub(crate) async fn run_git(
+    root: &Path,
+    args: &[&str],
+    stdout_limit: usize,
+) -> AppResult<GitOutput> {
+    run_git_with_timeout(root, args, stdout_limit, GIT_TIMEOUT).await
+}
+
+pub(crate) async fn run_git_with_timeout(
+    root: &Path,
+    args: &[&str],
+    stdout_limit: usize,
+    command_timeout: Duration,
+) -> AppResult<GitOutput> {
     let root = root.to_owned();
     let arguments = args.iter().map(ToString::to_string).collect::<Vec<_>>();
-    timeout(GIT_TIMEOUT, async move {
+    timeout(command_timeout, async move {
         let mut command = Command::new("git");
         command
             .arg("--no-optional-locks")
@@ -324,7 +347,7 @@ async fn run_git(root: &Path, args: &[&str], stdout_limit: usize) -> AppResult<G
         })
     })
     .await
-    .map_err(|_| AppError::Git("Git command exceeded the 3-second limit".into()))?
+    .map_err(|_| AppError::Git("Git command exceeded its bounded deadline".into()))?
 }
 
 async fn read_bounded<R: AsyncRead + Unpin>(
@@ -349,7 +372,7 @@ async fn read_bounded<R: AsyncRead + Unpin>(
     Ok(result)
 }
 
-fn ensure_success(output: &GitOutput) -> AppResult<()> {
+pub(crate) fn ensure_success(output: &GitOutput) -> AppResult<()> {
     if output.status.success() {
         return Ok(());
     }

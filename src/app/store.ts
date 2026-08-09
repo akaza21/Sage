@@ -33,6 +33,10 @@ import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import { createProjectSlice, type ProjectSlice } from "./projectSlice";
 import { createResourceSlice, type ResourceSlice } from "./resourceSlice";
 import {
+  createRepositoryMutationSlice,
+  type RepositoryMutationSlice,
+} from "./repositoryMutationSlice";
+import {
   createSearchNavigationSlice,
   type SearchNavigationSlice,
 } from "./searchNavigationSlice";
@@ -53,6 +57,7 @@ export interface WorkbenchState
     ChatOwnershipSlice,
     EditorSlice,
     ProjectSlice,
+    RepositoryMutationSlice,
     ResourceSlice,
     SearchNavigationSlice {
   phase: "booting" | "ready" | "error";
@@ -181,6 +186,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createChatArchiveSlice(set, get, store),
     ...createChatHandoffSlice(set, get, store),
     ...createChatOwnershipSlice(set, get, store),
+    ...createRepositoryMutationSlice(set, get, store),
     ...createResourceSlice(set, get, store),
     ...createSearchNavigationSlice(set, get, store),
     ...createEditorSlice(set, get, store),
@@ -249,6 +255,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     refreshRepository: async () => {
       if (
         get().projectTransitioning ||
+        get().repositoryMutation !== null ||
         (get().repositoryRefreshing && get().repositoryRefreshSuperseded)
       )
         return;

@@ -2104,6 +2104,189 @@ describe("workbench resource and project navigation", () => {
     },
   );
 
+  it("stages only the exact root-qualified Source Control change and adopts native status", async () => {
+    const samePathA = resource("same.txt", "root-a");
+    const samePathB = resource("same.txt", "root-b");
+    const before: ProjectRepositoryStatus = {
+      roots: [
+        {
+          rootId: "root-a",
+          state: "repository",
+          branch: "main",
+          changes: [
+            {
+              resource: samePathA,
+              indexStatus: "unchanged",
+              worktreeStatus: "modified",
+              additions: 1,
+              deletions: 1,
+            },
+          ],
+          truncated: false,
+          elapsedMs: 1,
+          message: null,
+        },
+        {
+          rootId: "root-b",
+          state: "repository",
+          branch: "main",
+          changes: [
+            {
+              resource: samePathB,
+              indexStatus: "unchanged",
+              worktreeStatus: "modified",
+              additions: 2,
+              deletions: 0,
+            },
+          ],
+          truncated: false,
+          elapsedMs: 1,
+          message: null,
+        },
+      ],
+      truncated: false,
+      elapsedMs: 2,
+    };
+    const after: ProjectRepositoryStatus = {
+      ...before,
+      roots: [
+        {
+          ...before.roots[0],
+          changes: [
+            {
+              ...before.roots[0].changes[0],
+              indexStatus: "modified",
+              worktreeStatus: "unchanged",
+            },
+          ],
+        },
+        before.roots[1],
+      ],
+    };
+    const mutate = vi.spyOn(desktop, "mutateGitFile").mockResolvedValue({
+      projectId: "project-a",
+      transitionEpoch: 0,
+      repositories: after,
+    });
+    useWorkbenchStore.setState({ repositories: before });
+
+    await expect(
+      useWorkbenchStore.getState().mutateRepositoryFile(samePathA, "stage"),
+    ).resolves.toBe(true);
+
+    expect(mutate).toHaveBeenCalledWith(
+      {
+        projectId: "project-a",
+        resource: samePathA,
+        action: "stage",
+      },
+      0,
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      repositories: after,
+      repositoryMutation: null,
+      error: null,
+    });
+  });
+
+  it("preserves the prior Source Control projection and reports a Git mutation failure", async () => {
+    const target = resource("failed.txt");
+    const before: ProjectRepositoryStatus = {
+      roots: [
+        {
+          rootId: "root-a",
+          state: "repository",
+          branch: "main",
+          changes: [
+            {
+              resource: target,
+              indexStatus: "unchanged",
+              worktreeStatus: "modified",
+              additions: 1,
+              deletions: 0,
+            },
+          ],
+          truncated: false,
+          elapsedMs: 1,
+          message: null,
+        },
+      ],
+      truncated: false,
+      elapsedMs: 1,
+    };
+    vi.spyOn(desktop, "mutateGitFile").mockRejectedValue(
+      new Error("Git index is locked"),
+    );
+    useWorkbenchStore.setState({ repositories: before });
+
+    await expect(
+      useWorkbenchStore.getState().mutateRepositoryFile(target, "stage"),
+    ).resolves.toBe(false);
+
+    expect(useWorkbenchStore.getState().repositories).toBe(before);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      repositoryMutation: null,
+      error: "Git index is locked",
+    });
+  });
+
+  it("retires a Git mutation completion after its Project intent becomes stale", async () => {
+    const target = resource("stale.txt");
+    const before: ProjectRepositoryStatus = {
+      roots: [
+        {
+          rootId: "root-a",
+          state: "repository",
+          branch: "main",
+          changes: [
+            {
+              resource: target,
+              indexStatus: "unchanged",
+              worktreeStatus: "modified",
+              additions: 1,
+              deletions: 0,
+            },
+          ],
+          truncated: false,
+          elapsedMs: 1,
+          message: null,
+        },
+      ],
+      truncated: false,
+      elapsedMs: 1,
+    };
+    const pending =
+      deferred<Awaited<ReturnType<typeof desktop.mutateGitFile>>>();
+    vi.spyOn(desktop, "mutateGitFile").mockReturnValue(pending.promise);
+    useWorkbenchStore.setState({ repositories: before });
+
+    const mutation = useWorkbenchStore
+      .getState()
+      .mutateRepositoryFile(target, "stage");
+    await vi.waitFor(() =>
+      expect(useWorkbenchStore.getState().repositoryMutation).toMatchObject({
+        resource: target,
+        action: "stage",
+      }),
+    );
+    const next = snapshotB().repositories;
+    useWorkbenchStore.setState({
+      projectGeneration: 1,
+      nativeTransitionEpoch: 1,
+      repositories: next,
+      repositoryMutation: null,
+    });
+    pending.resolve({
+      projectId: "project-a",
+      transitionEpoch: 0,
+      repositories: before,
+    });
+
+    await expect(mutation).resolves.toBe(false);
+    expect(useWorkbenchStore.getState().repositories).toBe(next);
+    expect(useWorkbenchStore.getState().error).toBeNull();
+  });
+
   it("keeps the newest harness/model intent when an older load finishes last", async () => {
     const oldModels = deferred<ModelOption[]>();
     vi.spyOn(desktop, "listHarnessModels").mockImplementation((harnessId) =>

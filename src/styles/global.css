@@ -880,6 +880,12 @@ textarea:focus-visible {
   border-top: 1px solid var(--border);
 }
 
+.source-change-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
 .source-change {
   display: grid;
   width: 100%;
@@ -917,6 +923,36 @@ textarea:focus-visible {
 .source-change__counts {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+.source-change__actions {
+  display: flex;
+  gap: 2px;
+  padding-right: 3px;
+}
+
+.source-change__action {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.source-change__action:hover:not(:disabled),
+.source-change__action:focus-visible {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.source-change__action:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .activity-rail {

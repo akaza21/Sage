@@ -19,6 +19,8 @@ mod project_commands;
 mod project_migration;
 mod project_registry;
 mod repository;
+mod repository_mutation;
+mod repository_mutation_commands;
 mod repository_parse;
 mod resource_commands;
 mod session_events;
@@ -136,6 +138,7 @@ pub fn run() {
             resource_commands::get_bootstrap_snapshot,
             resource_commands::get_repository_status,
             resource_commands::get_file_diff,
+            repository_mutation_commands::mutate_git_file,
             resource_commands::list_directory,
             resource_commands::read_text_file,
             resource_commands::open_editor_document,

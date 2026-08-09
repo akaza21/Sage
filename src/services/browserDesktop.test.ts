@@ -9,6 +9,7 @@ import type {
 import { assertBrowserChatRenameIdentity } from "./browserChat";
 import {
   appendBrowserSimulatorTurn,
+  BrowserGitMutationUnavailableError,
   browserDesktop,
   resetBrowserDesktopForTests,
 } from "./browserDesktop";
@@ -25,6 +26,21 @@ function messages(count: number, text = "x"): ChatMessage[] {
 }
 
 const request = { sessionId: "session", modelId: "sim-fast", text: "hello" };
+
+describe("browser repository mutations", () => {
+  it("reports a typed native-only failure without simulating Git", async () => {
+    await expect(
+      browserDesktop.mutateGitFile(
+        {
+          projectId: "project-a",
+          resource: { rootId: "root-a", relativePath: "file.txt" },
+          action: "stage",
+        },
+        0,
+      ),
+    ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
+  });
+});
 
 describe("browser simulator history bounds", () => {
   beforeEach(() => resetBrowserDesktopForTests());

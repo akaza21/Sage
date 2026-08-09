@@ -3,6 +3,7 @@ import type {
   ChatLifecycleRequest,
   ChatMessage,
   FileDiff,
+  GitFileMutationRequest,
   ProjectLayoutRequest,
   RenameChatRequest,
   ProjectSwitchRequest,
@@ -36,6 +37,10 @@ import {
 } from "./browserWorkspaceFixture";
 
 export { appendBrowserSimulatorTurn } from "./browserChat";
+
+export class BrowserGitMutationUnavailableError extends Error {
+  override name = "BrowserGitMutationUnavailableError";
+}
 
 const initialTabs = structuredClone(snapshot.tabs);
 const initialMessages = structuredClone(snapshot.messages);
@@ -105,6 +110,14 @@ export const browserDesktop = {
   discardEditorBuffer: browserEditor.discard,
   async getFileDiff(resource: ResourceRef): Promise<FileDiff> {
     return { resource, binary: false, truncated: false, hunks: [] };
+  },
+  async mutateGitFile(
+    _request: GitFileMutationRequest,
+    _expectedTransitionEpoch: number,
+  ): Promise<never> {
+    throw new BrowserGitMutationUnavailableError(
+      "Git stage and unstage require the native Sage desktop",
+    );
   },
   async persistProjectLayout(request: ProjectLayoutRequest) {
     snapshot.tabs = structuredClone(

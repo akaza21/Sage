@@ -8,7 +8,6 @@ import {
   GitBranch,
   Link2,
   ListChecks,
-  RefreshCw,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from "react";
 
@@ -19,13 +18,10 @@ import {
   resourceKey,
   sameResource,
 } from "../domain/resourceIdentity";
-import type {
-  FileChange,
-  GitFileState,
-  ProjectRootSummary,
-} from "../domain/workbench";
+import type { ProjectRootSummary } from "../domain/workbench";
 import { flattenFileTree } from "../features/files/fileTree";
 import { WorkspaceSearchView } from "../features/search";
+import { SourceControlView } from "./SourceControlView";
 
 const views: Array<{
   id: SidebarView;
@@ -167,98 +163,6 @@ function SearchView() {
       transitionEpoch={transitionEpoch}
       onOpenMatch={(request) => void openSearchMatch(request)}
     />
-  );
-}
-
-const statusLabels: Record<GitFileState, string> = {
-  unchanged: "",
-  modified: "M",
-  typeChanged: "T",
-  added: "A",
-  deleted: "D",
-  renamed: "R",
-  copied: "C",
-  conflicted: "!",
-  untracked: "U",
-  unknown: "?",
-};
-
-function visibleStatus(change: FileChange): GitFileState {
-  return change.worktreeStatus !== "unchanged"
-    ? change.worktreeStatus
-    : change.indexStatus;
-}
-
-function SourceControlView() {
-  const project = useWorkbenchStore((state) => state.project);
-  const repositories = useWorkbenchStore((state) => state.repositories);
-  const selected = useWorkbenchStore((state) => state.selectedResource);
-  const refreshing = useWorkbenchStore((state) => state.repositoryRefreshing);
-  const refresh = useWorkbenchStore((state) => state.refreshRepository);
-  const openDiff = useWorkbenchStore((state) => state.openDiff);
-  const rootNames = new Map(
-    project?.roots.map((root) => [root.id, root.name]) ?? [],
-  );
-
-  return (
-    <>
-      <div className="sidebar__heading">
-        <span>Source Control</span>
-        <button
-          type="button"
-          aria-label="Refresh Source Control"
-          disabled={refreshing}
-          onClick={() => void refresh()}
-        >
-          <RefreshCw size={14} aria-hidden="true" />
-        </button>
-      </div>
-      <div className="source-control-list">
-        {repositories.roots.map((repository) => (
-          <section className="source-root" key={repository.rootId}>
-            <div className="source-control-list__group">
-              <span>{rootNames.get(repository.rootId) ?? "Root"}</span>
-              <span className="muted">
-                {repository.branch ??
-                  (repository.state === "notRepository"
-                    ? "Not a repository"
-                    : "Unavailable")}
-              </span>
-            </div>
-            {repository.message ? (
-              <p className="sidebar__empty">{repository.message}</p>
-            ) : null}
-            {repository.changes.slice(0, 300).map((change) => (
-              <button
-                className={`source-change ${
-                  sameResource(selected, change.resource)
-                    ? "source-change--selected"
-                    : ""
-                }`}
-                key={resourceKey(change.resource)}
-                type="button"
-                aria-label={`Open diff for ${change.resource.relativePath}`}
-                onClick={() => void openDiff(change.resource)}
-              >
-                <span className="source-change__status">
-                  {statusLabels[visibleStatus(change)]}
-                </span>
-                <span className="source-change__path">
-                  {change.resource.relativePath}
-                </span>
-                <span className="source-change__counts">
-                  {change.additions === null ? "" : `+${change.additions}`}
-                  {change.deletions === null ? "" : ` -${change.deletions}`}
-                </span>
-              </button>
-            ))}
-            {repository.truncated ? (
-              <p className="tree__limit">Change list capped at 300 files.</p>
-            ) : null}
-          </section>
-        ))}
-      </div>
-    </>
   );
 }
 
