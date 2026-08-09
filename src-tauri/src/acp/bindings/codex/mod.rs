@@ -5,12 +5,17 @@
 
 mod incoming;
 mod manifest;
+mod physical;
 mod request;
 mod runtime;
 mod state;
 
 pub(crate) use incoming::{IncomingEvent, IngressDisposition, ResourceMapper};
 pub(crate) use manifest::{PhysicalAdmissionUnavailable, Platform, parse_packet_metadata};
+pub(crate) use physical::{
+    ConfiguredManagedPackageRoot, PhysicalInspectionError, PhysicallyInspectedPackage,
+    inspect_managed_package,
+};
 pub(crate) use runtime::CodexRuntime;
 pub(crate) use state::CodexAdapter;
 

@@ -165,6 +165,18 @@ impl MetadataValidatedPacket {
     pub(crate) fn capability_ceiling(&self) -> &CuratedCapabilityCeiling {
         &self.0.capability_ceiling
     }
+
+    pub(super) fn physical_artifact_claims(
+        &self,
+    ) -> impl Iterator<Item = (&Artifact, &'static str)> {
+        std::iter::once((&self.0.entrypoint, PINNED_ARTIFACTS[0].relative_path)).chain(
+            self.0
+                .supporting_artifacts
+                .iter()
+                .zip(PINNED_ARTIFACTS.iter().skip(1))
+                .map(|(artifact, expected)| (artifact, expected.relative_path)),
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]

@@ -66,16 +66,26 @@ Review and Independent Test; it is not acceptance.
 
 ## Current Build evidence (2026-08-09)
 
-The first fail-closed packet slice exercises exact Windows package inventory
+The fail-closed packet slices exercise exact Windows package inventory
 metadata matching, schema/source/package claim drift rejection, declared
 state/package separation (including equality and both containment directions),
 single declared package-root enforcement, real initialize shape and Sage
 identity validation, packet-owned capability projection, and the unchanged
-`ArtifactNotAdmitted` production-launch gate. This is lexical metadata
-validation only: it does not yet prove physical file existence, hashes,
-canonical paths, reparse-point safety, signatures, ACLs, immutability, or
-launch-time identity. The exact source inspection and minimal-environment
-executable run are recorded in
+`ArtifactNotAdmitted` production-launch gate.
+
+The Windows physical-closure seam additionally exercises a bounded small-file
+stand-in for the exact eight-file closure: exact configured package-root
+mapping; canonical final handle paths; regular-file, size, SHA-256, aggregate,
+and closed-set enforcement; 64-entry/depth-8 exact and plus-one bounds;
+missing/extra/changed files; hard-link and reparse aliases; existing-writer and
+post-hash identity races; and canonical disjoint state without creating or
+mutating it. Non-Windows inspection remains unavailable. These tests prove
+verifier behavior, not that the real 427 MB artifact was independently
+inspected or admitted. They do not prove Authenticode/signatures, SBOM/license
+closure, ACLs/ownership/immutability, provisioning, auth/state containment,
+process/network containment, atomic check-to-launch, or macOS admission.
+
+The exact source inspection and minimal-environment executable run are recorded in
 [initialize evidence](initialize-0.145.0-build-evidence.md). The focused
 command is:
 
@@ -83,7 +93,7 @@ command is:
 cargo test --lib acp::bindings::codex
 ```
 
-It passed 23 tests on the implementation workstation. This is developer
+It passed 32 tests on the implementation workstation. This is developer
 self-check evidence, not the clean-machine package reproduction, signature
 verification, hostile containment probe, fresh Review, or Independent Test
 required for Ready.
