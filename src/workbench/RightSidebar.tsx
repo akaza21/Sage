@@ -25,6 +25,7 @@ import type {
   ProjectRootSummary,
 } from "../domain/workbench";
 import { flattenFileTree } from "../features/files/fileTree";
+import { WorkspaceSearchView } from "../features/search";
 
 const views: Array<{
   id: SidebarView;
@@ -153,6 +154,22 @@ function ExplorerView() {
   );
 }
 
+function SearchView() {
+  const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
+  const transitionEpoch = useWorkbenchStore(
+    (state) => state.nativeTransitionEpoch,
+  );
+  const openFile = useWorkbenchStore((state) => state.openFile);
+
+  return (
+    <WorkspaceSearchView
+      projectId={projectId}
+      transitionEpoch={transitionEpoch}
+      onOpenResource={(resource) => void openFile(resource)}
+    />
+  );
+}
+
 const statusLabels: Record<GitFileState, string> = {
   unchanged: "",
   modified: "M",
@@ -247,9 +264,9 @@ function SourceControlView() {
 
 function SidebarContent({ view }: { view: SidebarView }) {
   if (view === "explorer") return <ExplorerView />;
+  if (view === "search") return <SearchView />;
   if (view === "sourceControl") return <SourceControlView />;
   const labels = {
-    search: ["Search", "Project search is not part of ADE-0005."],
     problems: ["Problems", "No problems have been reported."],
     outline: ["Outline", "Open a source file to view its outline."],
   } as const;
