@@ -31,6 +31,16 @@ export interface WorkspaceSearchMatch {
   preview: string;
 }
 
+export interface WorkspaceSearchNavigationRequest {
+  projectId: string;
+  transitionEpoch: number;
+  resource: ResourceRef;
+  lineNumber: number;
+  columnNumber: number;
+  query: string;
+  caseSensitive: boolean;
+}
+
 export interface WorkspaceSearchRootReport {
   rootId: string;
   rootName: string;

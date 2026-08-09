@@ -21,7 +21,7 @@ afterEach(() => {
 
 describe("RightSidebar Search", () => {
   it("searches the active Project and opens a result through the workbench", async () => {
-    const openFile = vi.fn(async () => undefined);
+    const openSearchMatch = vi.fn(async () => undefined);
     const search = vi
       .spyOn(workspaceSearchDesktop, "search")
       .mockResolvedValue({
@@ -71,7 +71,7 @@ describe("RightSidebar Search", () => {
         ],
       },
       nativeTransitionEpoch: 7,
-      openFile,
+      openSearchMatch,
     });
 
     render(<RightSidebar compact={false} />);
@@ -97,9 +97,14 @@ describe("RightSidebar Search", () => {
     );
 
     fireEvent.click(result);
-    expect(openFile).toHaveBeenCalledWith({
-      rootId: "root-a",
-      relativePath: "src/main.ts",
+    expect(openSearchMatch).toHaveBeenCalledWith({
+      projectId: "project-a",
+      transitionEpoch: 7,
+      resource: { rootId: "root-a", relativePath: "src/main.ts" },
+      lineNumber: 9,
+      columnNumber: 3,
+      query: "needle",
+      caseSensitive: false,
     });
   });
 });

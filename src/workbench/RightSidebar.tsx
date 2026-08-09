@@ -159,13 +159,13 @@ function SearchView() {
   const transitionEpoch = useWorkbenchStore(
     (state) => state.nativeTransitionEpoch,
   );
-  const openFile = useWorkbenchStore((state) => state.openFile);
+  const openSearchMatch = useWorkbenchStore((state) => state.openSearchMatch);
 
   return (
     <WorkspaceSearchView
       projectId={projectId}
       transitionEpoch={transitionEpoch}
-      onOpenResource={(resource) => void openFile(resource)}
+      onOpenMatch={(request) => void openSearchMatch(request)}
     />
   );
 }

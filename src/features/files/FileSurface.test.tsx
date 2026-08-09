@@ -134,6 +134,141 @@ describe("FileSurface durability cadence", () => {
   });
 });
 
+describe("FileSurface Search navigation", () => {
+  it("selects the exact Unicode match range and clamps stale offsets", () => {
+    const content = "zero\n🙂 needle tail";
+    setReadyEditor(tab, content);
+    useWorkbenchStore.setState({
+      projectGeneration: 3,
+      nativeTransitionEpoch: 7,
+      fileNavigationTarget: {
+        projectId: "project-a",
+        projectGeneration: 3,
+        transitionEpoch: 7,
+        resource,
+        lineNumber: 2,
+        columnNumber: 3,
+        query: "needle",
+        caseSensitive: true,
+      },
+    });
+    render(<FileSurface tab={tab} />);
+    const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
+
+    expect(editor).toHaveFocus();
+    expect(editor).toHaveProperty("selectionStart", 8);
+    expect(editor).toHaveProperty("selectionEnd", 14);
+    expect(useWorkbenchStore.getState().fileNavigationTarget).toBeNull();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        fileNavigationTarget: {
+          projectId: "project-a",
+          projectGeneration: 3,
+          transitionEpoch: 7,
+          resource,
+          lineNumber: 0xffff_ffff,
+          columnNumber: 0xffff_ffff,
+          query: "needle",
+          caseSensitive: false,
+        },
+      });
+    });
+
+    expect(editor).toHaveProperty("selectionStart", content.length);
+    expect(editor).toHaveProperty("selectionEnd", content.length);
+    expect(useWorkbenchStore.getState().fileNavigationTarget).toBeNull();
+  });
+
+  it("does not reveal a Search target during a transition or after its epoch retires", () => {
+    setReadyEditor(tab, "alpha needle omega");
+    const target = {
+      projectId: "project-a",
+      projectGeneration: 3,
+      transitionEpoch: 7,
+      resource,
+      lineNumber: 1,
+      columnNumber: 7,
+      query: "needle",
+      caseSensitive: true,
+    };
+    useWorkbenchStore.setState({
+      projectGeneration: 3,
+      nativeTransitionEpoch: 7,
+      projectTransitioning: true,
+      fileNavigationTarget: target,
+    });
+    render(<FileSurface tab={tab} />);
+    const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
+
+    expect(editor).toHaveProperty("selectionStart", 0);
+    expect(useWorkbenchStore.getState().fileNavigationTarget).toBe(target);
+
+    act(() => {
+      useWorkbenchStore.setState({
+        nativeTransitionEpoch: 8,
+        projectTransitioning: false,
+      });
+    });
+
+    expect(editor).toHaveProperty("selectionStart", 0);
+    expect(useWorkbenchStore.getState().fileNavigationTarget).toBe(target);
+  });
+
+  it("never selects content beyond the bounded editor ceiling", () => {
+    const content = `${"a".repeat(MAX_EDITABLE_CONTENT_BYTES)}\nneedle`;
+    setReadyEditor(tab, content);
+    useWorkbenchStore.setState({
+      fileNavigationTarget: {
+        projectId: "project-a",
+        projectGeneration: useWorkbenchStore.getState().projectGeneration,
+        transitionEpoch: useWorkbenchStore.getState().nativeTransitionEpoch,
+        resource,
+        lineNumber: 1,
+        columnNumber: 0xffff_ffff,
+        query: "needle",
+        caseSensitive: true,
+      },
+    });
+    render(<FileSurface tab={tab} />);
+    const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
+
+    expect(editor).toHaveProperty("selectionStart", MAX_EDITABLE_CONTENT_BYTES);
+    expect(editor).toHaveProperty("selectionEnd", MAX_EDITABLE_CONTENT_BYTES);
+    expect(useWorkbenchStore.getState().fileNavigationTarget).toBeNull();
+  });
+
+  it("preserves an open Editor Find while revealing a Search match", () => {
+    setReadyEditor(tab, "alpha needle omega");
+    render(<FileSurface tab={tab} />);
+    const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
+    fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
+    const find = screen.getByRole("textbox", { name: "Find text" });
+    fireEvent.change(find, { target: { value: "alpha" } });
+
+    act(() => {
+      useWorkbenchStore.setState({
+        fileNavigationTarget: {
+          projectId: "project-a",
+          projectGeneration: useWorkbenchStore.getState().projectGeneration,
+          transitionEpoch: 0,
+          resource,
+          lineNumber: 1,
+          columnNumber: 7,
+          query: "needle",
+          caseSensitive: true,
+        },
+      });
+    });
+
+    expect(screen.getByRole("search", { name: "Find in file" })).toBeVisible();
+    expect(find).toHaveValue("alpha");
+    expect(editor).toHaveFocus();
+    expect(editor).toHaveProperty("selectionStart", 6);
+    expect(editor).toHaveProperty("selectionEnd", 12);
+  });
+});
+
 describe("FileSurface in-file find", () => {
   it("navigates literal matches with wrap, case control, and editor focus recovery", () => {
     setReadyEditor(tab, "Needle needle needle");

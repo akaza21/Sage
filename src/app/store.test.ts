@@ -188,6 +188,7 @@ describe("workbench resource and project navigation", () => {
       directoryListings: {},
       expandedDirectories: {},
       activeEditor: null,
+      fileNavigationTarget: null,
       pendingCloseTabId: null,
       diffs: {},
       requestGenerations: {},
@@ -952,6 +953,115 @@ describe("workbench resource and project navigation", () => {
       "root-b",
     ]);
     expect(resourceKey(left)).not.toBe(resourceKey(right));
+  });
+
+  it("opens the exact root-qualified Search match without losing a dirty editor", async () => {
+    const left = resource("src/main.rs", "root-a");
+    const right = resource("src/main.rs", "root-b");
+    const leftTab: WorkbenchTab = {
+      id: "file:left-main",
+      kind: "file",
+      title: "main.rs",
+      position: 1,
+      pinned: false,
+      dirty: true,
+      resource: left,
+    };
+    const rightTab: WorkbenchTab = {
+      ...leftTab,
+      id: "file:right-main",
+      position: 2,
+      dirty: false,
+      resource: right,
+    };
+    const snapshot = vi
+      .spyOn(desktop, "snapshotEditorBuffer")
+      .mockResolvedValue({ revision: 2, persistedAt: 1, dirty: true });
+    vi.spyOn(desktop, "openEditorDocument").mockResolvedValue(
+      document(right, "fn needle() {}\n", 0, false),
+    );
+    useWorkbenchStore.setState({
+      tabs: [chatTab, leftTab, rightTab],
+      activeTabId: leftTab.id,
+      selectedRootId: left.rootId,
+      selectedResource: left,
+      activeEditor: {
+        phase: "ready",
+        resource: left,
+        document: document(left, "saved\n", 0, false),
+        content: "unsaved local change\n",
+        revision: 2,
+        persistedRevision: 1,
+        persisting: false,
+        saving: false,
+        message: null,
+      },
+    });
+
+    await useWorkbenchStore.getState().openSearchMatch({
+      projectId: "project-a",
+      transitionEpoch: 0,
+      resource: right,
+      lineNumber: 1,
+      columnNumber: 4,
+      query: "needle",
+      caseSensitive: false,
+    });
+
+    expect(snapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resource: left,
+        content: "unsaved local change\n",
+        revision: 2,
+      }),
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: rightTab.id,
+      selectedRootId: "root-b",
+      selectedResource: right,
+      fileNavigationTarget: {
+        resource: right,
+        lineNumber: 1,
+        columnNumber: 4,
+        query: "needle",
+        caseSensitive: false,
+      },
+    });
+    expect(
+      useWorkbenchStore.getState().tabs.find((tab) => tab.id === leftTab.id),
+    ).toMatchObject({ dirty: true, resource: left });
+  });
+
+  it("retires Search navigation when its Project intent becomes stale", async () => {
+    const target = resource("src/stale.ts");
+    const pending = deferred<EditorDocument>();
+    vi.spyOn(desktop, "openEditorDocument").mockReturnValue(pending.promise);
+
+    const navigation = useWorkbenchStore.getState().openSearchMatch({
+      projectId: "project-a",
+      transitionEpoch: 0,
+      resource: target,
+      lineNumber: 2,
+      columnNumber: 3,
+      query: "needle",
+      caseSensitive: true,
+    });
+    await vi.waitFor(() =>
+      expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+        phase: "loading",
+        resource: target,
+      }),
+    );
+
+    useWorkbenchStore.setState({
+      projectGeneration: 1,
+      nativeTransitionEpoch: 1,
+      fileNavigationTarget: null,
+    });
+    pending.resolve(document(target, "one\nneedle\n", 0, false));
+    await navigation;
+
+    expect(useWorkbenchStore.getState().fileNavigationTarget).toBeNull();
   });
 
   it("opens a changed resource as a diff and focuses Explorer", async () => {

@@ -1,11 +1,12 @@
 import { CaseSensitive, FileSearch, LoaderCircle, X } from "lucide-react";
-import type { FormEvent } from "react";
+import type { FormEvent, KeyboardEvent } from "react";
 
-import type { ResourceRef } from "../../domain/workbench";
 import {
   MAX_WORKSPACE_SEARCH_RESULTS,
   type WorkspaceSearchGateway,
   type WorkspaceSearchLimitReason,
+  type WorkspaceSearchMatch,
+  type WorkspaceSearchNavigationRequest,
 } from "./workspaceSearchDomain";
 import { workspaceSearchDesktop } from "./workspaceSearchDesktop";
 import { useWorkspaceSearch } from "./useWorkspaceSearch";
@@ -14,7 +15,7 @@ import "./workspace-search.css";
 interface WorkspaceSearchViewProps {
   projectId: string | null;
   transitionEpoch: number;
-  onOpenResource: (resource: ResourceRef) => void;
+  onOpenMatch: (request: WorkspaceSearchNavigationRequest) => void;
   gateway?: WorkspaceSearchGateway;
 }
 
@@ -31,7 +32,7 @@ const limitMessages: Record<WorkspaceSearchLimitReason, string> = {
 export function WorkspaceSearchView({
   projectId,
   transitionEpoch,
-  onOpenResource,
+  onOpenMatch,
   gateway = workspaceSearchDesktop,
 }: WorkspaceSearchViewProps) {
   const { state, setQuery, setCaseSensitive, submit, cancel } =
@@ -40,6 +41,29 @@ export function WorkspaceSearchView({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void submit();
+  }
+
+  function openMatch(match: WorkspaceSearchMatch) {
+    const response = state.response;
+    if (!response) return;
+    onOpenMatch({
+      projectId: response.projectId,
+      transitionEpoch: response.transitionEpoch,
+      resource: match.resource,
+      lineNumber: match.lineNumber,
+      columnNumber: match.columnNumber,
+      query: response.query,
+      caseSensitive: state.caseSensitive,
+    });
+  }
+
+  function handleMatchKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+    match: WorkspaceSearchMatch,
+  ) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    openMatch(match);
   }
 
   const matches =
@@ -154,7 +178,8 @@ export function WorkspaceSearchView({
                       className="workspace-search__result"
                       type="button"
                       aria-label={`Open ${match.resource.relativePath} at line ${match.lineNumber}, column ${match.columnNumber}`}
-                      onClick={() => onOpenResource(match.resource)}
+                      onClick={() => openMatch(match)}
+                      onKeyDown={(event) => handleMatchKeyDown(event, match)}
                     >
                       <span className="workspace-search__path">
                         <strong>{match.resource.relativePath}</strong>

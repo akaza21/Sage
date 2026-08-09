@@ -46,6 +46,7 @@ export function snapshotProjection(snapshot: BootstrapSnapshot) {
     expandedDirectories: {},
     diffs: {},
     activeEditor: null,
+    fileNavigationTarget: null,
     pendingCloseTabId: null,
     requestGenerations: {},
     models: [],

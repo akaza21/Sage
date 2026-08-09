@@ -37,7 +37,6 @@ export interface ResourceSlice {
 
 const MAX_CACHED_RESOURCES = 32;
 export const MAX_CACHED_DIRECTORIES = 64;
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

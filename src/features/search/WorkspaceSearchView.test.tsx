@@ -63,7 +63,7 @@ describe("Workspace Search view", () => {
         projectId="project-a"
         transitionEpoch={4}
         gateway={gateway}
-        onOpenResource={open}
+        onOpenMatch={open}
       />,
     );
 
@@ -81,10 +81,17 @@ describe("Workspace Search view", () => {
     expect(
       screen.getByText("Missing: filesystem root is missing"),
     ).toBeVisible();
-    fireEvent.click(result);
+    result.focus();
+    fireEvent.keyDown(result, { key: "Enter" });
+    expect(result).toHaveFocus();
     expect(open).toHaveBeenCalledWith({
-      rootId: "root-b",
-      relativePath: "src/main.ts",
+      projectId: "project-a",
+      transitionEpoch: 4,
+      resource: { rootId: "root-b", relativePath: "src/main.ts" },
+      lineNumber: 9,
+      columnNumber: 3,
+      query: "needle",
+      caseSensitive: false,
     });
     await waitFor(() => expect(gateway.search).toHaveBeenCalledTimes(1));
   });
@@ -95,7 +102,7 @@ describe("Workspace Search view", () => {
         projectId={null}
         transitionEpoch={0}
         gateway={{ search: vi.fn() }}
-        onOpenResource={vi.fn()}
+        onOpenMatch={vi.fn()}
       />,
     );
 

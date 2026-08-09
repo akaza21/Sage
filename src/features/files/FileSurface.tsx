@@ -18,6 +18,7 @@ import {
   MAX_EDITABLE_CONTENT_BYTES,
   MAX_FIND_QUERY_LENGTH,
 } from "./inFileFind";
+import { fileNavigationSelection } from "./fileNavigation";
 
 const SNAPSHOT_DELAY_MS = 750;
 
@@ -49,6 +50,18 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
   const saveActiveEditor = useWorkbenchStore((state) => state.saveActiveEditor);
   const discardActiveEditor = useWorkbenchStore(
     (state) => state.discardActiveEditor,
+  );
+  const fileNavigationTarget = useWorkbenchStore(
+    (state) => state.fileNavigationTarget,
+  );
+  const projectGeneration = useWorkbenchStore(
+    (state) => state.projectGeneration,
+  );
+  const nativeTransitionEpoch = useWorkbenchStore(
+    (state) => state.nativeTransitionEpoch,
+  );
+  const consumeFileNavigationTarget = useWorkbenchStore(
+    (state) => state.consumeFileNavigationTarget,
   );
   const revision = editor?.phase === "ready" ? editor.revision : 0;
   const persistedRevision =
@@ -106,6 +119,37 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
       findInputRef.current?.select();
     }
   }, [findOpen]);
+
+  useEffect(() => {
+    const input = editorInputRef.current;
+    if (
+      !input ||
+      !fileNavigationTarget ||
+      projectTransitioning ||
+      fileNavigationTarget.transitionEpoch !== nativeTransitionEpoch ||
+      fileNavigationTarget.projectGeneration !== projectGeneration ||
+      editor?.phase !== "ready" ||
+      !sameResource(editor.resource, fileNavigationTarget.resource) ||
+      !sameResource(resource, fileNavigationTarget.resource)
+    ) {
+      return;
+    }
+    const selection = fileNavigationSelection(
+      editor.content,
+      fileNavigationTarget,
+    );
+    input.focus();
+    input.setSelectionRange(selection.start, selection.end);
+    consumeFileNavigationTarget(fileNavigationTarget);
+  }, [
+    consumeFileNavigationTarget,
+    editor,
+    fileNavigationTarget,
+    nativeTransitionEpoch,
+    projectGeneration,
+    projectTransitioning,
+    resource,
+  ]);
 
   useEffect(() => {
     if (!findOpen) {

@@ -19,6 +19,10 @@ import { createChatSlice, type ChatSlice } from "./chatSlice";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import { createProjectSlice, type ProjectSlice } from "./projectSlice";
 import { createResourceSlice, type ResourceSlice } from "./resourceSlice";
+import {
+  createSearchNavigationSlice,
+  type SearchNavigationSlice,
+} from "./searchNavigationSlice";
 import { closeTab as closeTabState } from "./tabState";
 
 export type SidebarView =
@@ -29,7 +33,12 @@ export type ResourceState<T> =
   | { phase: "error"; message: string };
 
 export interface WorkbenchState
-  extends ChatSlice, EditorSlice, ProjectSlice, ResourceSlice {
+  extends
+    ChatSlice,
+    EditorSlice,
+    ProjectSlice,
+    ResourceSlice,
+    SearchNavigationSlice {
   phase: "booting" | "ready" | "error";
   error: string | null;
   projects: ProjectListItem[];
@@ -154,6 +163,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createProjectSlice(set, get, store),
     ...createChatSlice(set, get, store),
     ...createResourceSlice(set, get, store),
+    ...createSearchNavigationSlice(set, get, store),
     ...createEditorSlice(set, get, store),
 
     selectRoot: (selectedRootId) => {
