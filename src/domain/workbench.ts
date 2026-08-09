@@ -99,10 +99,18 @@ export interface GitFileMutationRequest {
   action: GitFileMutationAction;
 }
 
+export type GitFileMutationErrorKind = "effectUnknown";
+
+export interface GitFileMutationError {
+  kind: GitFileMutationErrorKind;
+  message: string;
+}
+
 export interface GitFileMutationResult {
   projectId: string;
   transitionEpoch: number;
   repositories: ProjectRepositoryStatus;
+  error: GitFileMutationError | null;
 }
 
 export type WorkspaceEntryKind = "directory" | "file" | "symlink" | "other";

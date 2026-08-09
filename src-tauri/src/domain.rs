@@ -134,12 +134,26 @@ pub struct GitFileMutationRequest {
     pub action: GitFileMutationAction,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GitFileMutationErrorKind {
+    EffectUnknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitFileMutationError {
+    pub kind: GitFileMutationErrorKind,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitFileMutationResult {
     pub project_id: String,
     pub transition_epoch: u64,
     pub repositories: ProjectRepositoryStatus,
+    pub error: Option<GitFileMutationError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -21,6 +21,7 @@ use crate::{
 };
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(3);
+const GIT_REAP_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_STATUS_BYTES: usize = 4 * 1024 * 1024;
 const MAX_DIFF_BYTES: usize = 1024 * 1024;
 const MAX_STDERR_BYTES: usize = 64 * 1024;
@@ -293,7 +294,10 @@ pub(crate) async fn run_git(
     args: &[&str],
     stdout_limit: usize,
 ) -> AppResult<GitOutput> {
-    run_git_with_timeout(root, args, stdout_limit, GIT_TIMEOUT).await
+    match run_git_with_timeout(root, args, stdout_limit, GIT_TIMEOUT).await {
+        Err(AppError::GitEffectUnknown(message)) => Err(AppError::Git(message)),
+        result => result,
+    }
 }
 
 pub(crate) async fn run_git_with_timeout(
@@ -304,50 +308,70 @@ pub(crate) async fn run_git_with_timeout(
 ) -> AppResult<GitOutput> {
     let root = root.to_owned();
     let arguments = args.iter().map(ToString::to_string).collect::<Vec<_>>();
-    timeout(command_timeout, async move {
-        let mut command = Command::new("git");
-        command
-            .arg("--no-optional-locks")
-            .arg("-C")
-            .arg(root)
-            .args(arguments)
-            .env("GIT_PAGER", "cat")
-            .env("LC_ALL", "C")
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
-        #[cfg(windows)]
-        command.creation_flags(CREATE_NO_WINDOW);
-        let mut child = command.spawn().map_err(AppError::Io)?;
+    let mut command = Command::new("git");
+    command
+        .arg("--no-optional-locks")
+        .arg("--literal-pathspecs")
+        .arg("-C")
+        .arg(root)
+        .args(arguments)
+        .env_clear()
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_PAGER", "cat")
+        .env("LC_ALL", "C")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    let mut child = command.spawn().map_err(AppError::Io)?;
 
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| AppError::Git("Git stdout was not captured".into()))?;
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| AppError::Git("Git stderr was not captured".into()))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| AppError::Git("Git stdout was not captured".into()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| AppError::Git("Git stderr was not captured".into()))?;
 
-        let stdout_task = tokio::spawn(read_bounded(stdout, stdout_limit));
-        let stderr_task = tokio::spawn(read_bounded(stderr, MAX_STDERR_BYTES));
+    let mut stdout_task = tokio::spawn(read_bounded(stdout, stdout_limit));
+    let mut stderr_task = tokio::spawn(read_bounded(stderr, MAX_STDERR_BYTES));
+    let completed = timeout(command_timeout, async {
         let status = child.wait().await?;
-        let stdout = stdout_task
+        let stdout = (&mut stdout_task)
             .await
             .map_err(|error| AppError::Git(error.to_string()))??;
-        let stderr = stderr_task
+        let stderr = (&mut stderr_task)
             .await
             .map_err(|error| AppError::Git(error.to_string()))??;
-        Ok(GitOutput {
+        Ok::<GitOutput, AppError>(GitOutput {
             status,
             stdout: stdout.bytes,
             stderr: stderr.bytes,
             stdout_truncated: stdout.truncated,
         })
     })
-    .await
-    .map_err(|_| AppError::Git("Git command exceeded its bounded deadline".into()))?
+    .await;
+    if let Ok(result) = completed {
+        return result;
+    }
+
+    let kill_error = child.start_kill().err();
+    let reaped = matches!(timeout(GIT_REAP_TIMEOUT, child.wait()).await, Ok(Ok(_)));
+    stdout_task.abort();
+    stderr_task.abort();
+    let cleanup = if reaped {
+        "the Git process was terminated and reaped"
+    } else if kill_error.is_some() {
+        "Git termination and reap could not be confirmed"
+    } else {
+        "Git termination was requested but reap did not converge"
+    };
+    Err(AppError::GitEffectUnknown(format!(
+        "the post-spawn deadline expired; {cleanup}"
+    )))
 }
 
 async fn read_bounded<R: AsyncRead + Unpin>(

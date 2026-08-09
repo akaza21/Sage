@@ -2167,6 +2167,7 @@ describe("workbench resource and project navigation", () => {
       projectId: "project-a",
       transitionEpoch: 0,
       repositories: after,
+      error: null,
     });
     useWorkbenchStore.setState({ repositories: before });
 
@@ -2217,7 +2218,10 @@ describe("workbench resource and project navigation", () => {
     vi.spyOn(desktop, "mutateGitFile").mockRejectedValue(
       new Error("Git index is locked"),
     );
-    useWorkbenchStore.setState({ repositories: before });
+    useWorkbenchStore.setState({
+      repositories: before,
+      error: "Chat error stays scoped to Chat",
+    });
 
     await expect(
       useWorkbenchStore.getState().mutateRepositoryFile(target, "stage"),
@@ -2226,7 +2230,84 @@ describe("workbench resource and project navigation", () => {
     expect(useWorkbenchStore.getState().repositories).toBe(before);
     expect(useWorkbenchStore.getState()).toMatchObject({
       repositoryMutation: null,
-      error: "Git index is locked",
+      repositoryMutationError: {
+        resource: target,
+        action: "stage",
+        kind: "failed",
+        message: "Git index is locked",
+      },
+      error: "Chat error stays scoped to Chat",
+    });
+  });
+
+  it("applies authoritative status and scopes an effect-unknown mutation error", async () => {
+    const target = resource("timeout.txt");
+    const before: ProjectRepositoryStatus = {
+      roots: [
+        {
+          rootId: "root-a",
+          state: "repository",
+          branch: "main",
+          changes: [
+            {
+              resource: target,
+              indexStatus: "unchanged",
+              worktreeStatus: "modified",
+              additions: 1,
+              deletions: 0,
+            },
+          ],
+          truncated: false,
+          elapsedMs: 1,
+          message: null,
+        },
+      ],
+      truncated: false,
+      elapsedMs: 1,
+    };
+    const authoritative: ProjectRepositoryStatus = {
+      ...before,
+      roots: [
+        {
+          ...before.roots[0],
+          changes: [
+            {
+              ...before.roots[0].changes[0],
+              indexStatus: "modified",
+              worktreeStatus: "unchanged",
+            },
+          ],
+        },
+      ],
+    };
+    vi.spyOn(desktop, "mutateGitFile").mockResolvedValue({
+      projectId: "project-a",
+      transitionEpoch: 0,
+      repositories: authoritative,
+      error: {
+        kind: "effectUnknown",
+        message: "Git timed out; authoritative status was refreshed.",
+      },
+    });
+    useWorkbenchStore.setState({
+      repositories: before,
+      error: "Chat error stays scoped to Chat",
+    });
+
+    await expect(
+      useWorkbenchStore.getState().mutateRepositoryFile(target, "stage"),
+    ).resolves.toBe(false);
+
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      repositories: authoritative,
+      repositoryMutation: null,
+      repositoryMutationError: {
+        resource: target,
+        action: "stage",
+        kind: "effectUnknown",
+        message: "Git timed out; authoritative status was refreshed.",
+      },
+      error: "Chat error stays scoped to Chat",
     });
   });
 
@@ -2280,10 +2361,15 @@ describe("workbench resource and project navigation", () => {
       projectId: "project-a",
       transitionEpoch: 0,
       repositories: before,
+      error: {
+        kind: "effectUnknown",
+        message: "Stale Git timeout",
+      },
     });
 
     await expect(mutation).resolves.toBe(false);
     expect(useWorkbenchStore.getState().repositories).toBe(next);
+    expect(useWorkbenchStore.getState().repositoryMutationError).toBeNull();
     expect(useWorkbenchStore.getState().error).toBeNull();
   });
 

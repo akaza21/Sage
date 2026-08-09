@@ -18,7 +18,7 @@ pub(crate) async fn mutate_file(
     mutate_file_with_timeout(workspace, resource, action, Duration::from_secs(3)).await
 }
 
-async fn mutate_file_with_timeout(
+pub(crate) async fn mutate_file_with_timeout(
     workspace: &Workspace,
     resource: &ResourceRef,
     action: GitFileMutationAction,
@@ -119,7 +119,7 @@ fn validate_resource_identity(workspace: &Workspace, resource: &ResourceRef) -> 
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path, process::Command};
+    use std::{ffi::OsStr, fs, path::Path, process::Command};
 
     use uuid::Uuid;
 
@@ -136,6 +136,104 @@ mod tests {
                 .unwrap()
                 .success()
         );
+    }
+
+    fn ambient_fixture(root: &Path, environment: &[(&str, &OsStr)]) -> std::process::Output {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "repository_mutation::tests::ambient_git_mutation_fixture",
+                "--nocapture",
+            ])
+            .env("SAGE_GIT_AMBIENT_FIXTURE_ROOT", root);
+        for (name, value) in environment {
+            command.env(name, value);
+        }
+        command.output().unwrap()
+    }
+
+    #[test]
+    fn ambient_git_mutation_fixture() {
+        let Some(root) = std::env::var_os("SAGE_GIT_AMBIENT_FIXTURE_ROOT") else {
+            return;
+        };
+        let root = Path::new(&root);
+        let workspace = Workspace::open("project-a", "root-a", root).unwrap();
+        let resource = workspace.resource("target.txt").unwrap();
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(mutate_file(
+                &workspace,
+                &resource,
+                GitFileMutationAction::Stage,
+            ))
+            .unwrap();
+    }
+
+    #[test]
+    fn ambient_external_index_cannot_redirect_a_git_mutation() {
+        let base = std::env::temp_dir().join(format!("sage-git-mutate-{}", Uuid::new_v4()));
+        let root = base.join("repo");
+        let outside_index = base.join("outside.index");
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q"]);
+        fs::write(root.join("target.txt"), "actual\n").unwrap();
+
+        let output = ambient_fixture(&root, &[("GIT_INDEX_FILE", outside_index.as_os_str())]);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+        let projected = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(repository::status(&workspace))
+            .unwrap();
+
+        assert_eq!(projected.changes[0].index_status, "added");
+        assert_eq!(projected.changes[0].worktree_status, "unchanged");
+        assert!(!outside_index.exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn ambient_external_config_cannot_redirect_index_content() {
+        let base = std::env::temp_dir().join(format!("sage-git-mutate-{}", Uuid::new_v4()));
+        let root = base.join("repo");
+        let attributes = base.join("external.attributes");
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q"]);
+        fs::write(root.join("target.txt"), "actual\n").unwrap();
+        fs::write(&attributes, "target.txt filter=redirect\n").unwrap();
+        let attributes_string = attributes.to_string_lossy().into_owned();
+
+        let output = ambient_fixture(
+            &root,
+            &[
+                ("GIT_CONFIG_COUNT", OsStr::new("2")),
+                ("GIT_CONFIG_KEY_0", OsStr::new("core.attributesfile")),
+                ("GIT_CONFIG_VALUE_0", OsStr::new(&attributes_string)),
+                ("GIT_CONFIG_KEY_1", OsStr::new("filter.redirect.clean")),
+                ("GIT_CONFIG_VALUE_1", OsStr::new("git hash-object --stdin")),
+            ],
+        );
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let indexed = Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(["show", ":target.txt"])
+            .output()
+            .unwrap();
+
+        assert!(indexed.status.success());
+        assert_eq!(indexed.stdout, b"actual\n");
+        fs::remove_dir_all(base).unwrap();
     }
 
     #[test]
@@ -163,6 +261,130 @@ mod tests {
         assert_eq!(projected.changes[0].resource, resource);
         assert_eq!(projected.changes[0].index_status, "added");
         assert_eq!(projected.changes[0].worktree_status, "unchanged");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn stage_and_unstage_treat_a_glob_filename_as_one_literal_resource() {
+        let root = std::env::temp_dir().join(format!("sage-git-mutate-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q"]);
+        git(&root, &["config", "user.email", "sage@example.invalid"]);
+        git(&root, &["config", "user.name", "Sage Test"]);
+        git(&root, &["config", "core.autocrlf", "false"]);
+        let target = "literal[ab].txt";
+        let decoy = "literala.txt";
+        fs::write(root.join(target), "target base\n").unwrap();
+        fs::write(root.join(decoy), "decoy base\n").unwrap();
+        git(&root, &["add", "-A", "--"]);
+        git(&root, &["commit", "-q", "-m", "fixture"]);
+        fs::write(root.join(target), "target changed\n").unwrap();
+        fs::write(root.join(decoy), "decoy changed\n").unwrap();
+        let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+        let resource = workspace.resource(target).unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+
+        runtime
+            .block_on(mutate_file(
+                &workspace,
+                &resource,
+                GitFileMutationAction::Stage,
+            ))
+            .unwrap();
+        let staged = runtime.block_on(repository::status(&workspace)).unwrap();
+        let target_change = staged
+            .changes
+            .iter()
+            .find(|change| change.resource.relative_path == target)
+            .unwrap();
+        let decoy_change = staged
+            .changes
+            .iter()
+            .find(|change| change.resource.relative_path == decoy)
+            .unwrap();
+        assert_eq!(target_change.index_status, "modified");
+        assert_eq!(target_change.worktree_status, "unchanged");
+        assert_eq!(decoy_change.index_status, "unchanged");
+        assert_eq!(decoy_change.worktree_status, "modified");
+
+        git(&root, &["add", "--", decoy]);
+        runtime
+            .block_on(mutate_file(
+                &workspace,
+                &resource,
+                GitFileMutationAction::Unstage,
+            ))
+            .unwrap();
+        let unstaged = runtime.block_on(repository::status(&workspace)).unwrap();
+        let target_change = unstaged
+            .changes
+            .iter()
+            .find(|change| change.resource.relative_path == target)
+            .unwrap();
+        let decoy_change = unstaged
+            .changes
+            .iter()
+            .find(|change| change.resource.relative_path == decoy)
+            .unwrap();
+        assert_eq!(target_change.index_status, "unchanged");
+        assert_eq!(target_change.worktree_status, "modified");
+        assert_eq!(decoy_change.index_status, "modified");
+        assert_eq!(decoy_change.worktree_status, "unchanged");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn stages_real_tracked_modification_and_deletion_changes() {
+        let root = std::env::temp_dir().join(format!("sage-git-mutate-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q"]);
+        git(&root, &["config", "user.email", "sage@example.invalid"]);
+        git(&root, &["config", "user.name", "Sage Test"]);
+        git(&root, &["config", "core.autocrlf", "false"]);
+        fs::write(root.join("modified.txt"), "base\n").unwrap();
+        fs::write(root.join("deleted.txt"), "delete me\n").unwrap();
+        git(&root, &["add", "-A", "--"]);
+        git(&root, &["commit", "-q", "-m", "fixture"]);
+        fs::write(root.join("modified.txt"), "changed\n").unwrap();
+        fs::remove_file(root.join("deleted.txt")).unwrap();
+        let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+        let modified = workspace.resource("modified.txt").unwrap();
+        let deleted = ResourceRef {
+            root_id: "root-a".into(),
+            relative_path: "deleted.txt".into(),
+        };
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+
+        runtime
+            .block_on(mutate_file(
+                &workspace,
+                &modified,
+                GitFileMutationAction::Stage,
+            ))
+            .unwrap();
+        runtime
+            .block_on(mutate_file(
+                &workspace,
+                &deleted,
+                GitFileMutationAction::Stage,
+            ))
+            .unwrap();
+        let projected = runtime.block_on(repository::status(&workspace)).unwrap();
+        let modified = projected
+            .changes
+            .iter()
+            .find(|change| change.resource.relative_path == "modified.txt")
+            .unwrap();
+        let deleted = projected
+            .changes
+            .iter()
+            .find(|change| change.resource.relative_path == "deleted.txt")
+            .unwrap();
+
+        assert_eq!(modified.index_status, "modified");
+        assert_eq!(modified.worktree_status, "unchanged");
+        assert_eq!(deleted.index_status, "deleted");
+        assert_eq!(deleted.worktree_status, "unchanged");
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -346,7 +568,7 @@ mod tests {
     }
 
     #[test]
-    fn a_git_deadline_expires_without_mutating_the_index() {
+    fn a_post_spawn_git_deadline_reaps_before_return_and_never_mutates_later() {
         let root = std::env::temp_dir().join(format!("sage-git-mutate-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         git(&root, &["init", "-q"]);
@@ -364,9 +586,15 @@ mod tests {
             ))
             .unwrap_err();
 
-        assert!(error.to_string().contains("bounded deadline"));
-        let projected = runtime.block_on(repository::status(&workspace)).unwrap();
-        assert_eq!(projected.changes[0].worktree_status, "untracked");
+        assert!(matches!(error, AppError::GitEffectUnknown(_)));
+        assert!(!root.join(".git/index.lock").exists());
+        let immediate = runtime.block_on(repository::status(&workspace)).unwrap();
+        assert_eq!(immediate.changes[0].index_status, "unchanged");
+        assert_eq!(immediate.changes[0].worktree_status, "untracked");
+        std::thread::sleep(Duration::from_millis(200));
+        let later = runtime.block_on(repository::status(&workspace)).unwrap();
+        assert_eq!(later.changes[0].index_status, "unchanged");
+        assert_eq!(later.changes[0].worktree_status, "untracked");
         fs::remove_dir_all(root).unwrap();
     }
 }

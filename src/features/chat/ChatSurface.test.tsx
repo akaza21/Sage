@@ -519,6 +519,23 @@ describe("ChatSurface ACP resource integration", () => {
     ).not.toHaveFocus();
   });
 
+  it("does not leak a Source Control mutation error into the composer", () => {
+    useWorkbenchStore.setState({
+      repositoryMutationError: {
+        resource: { rootId: "root-a", relativePath: "src/main.ts" },
+        action: "stage",
+        kind: "failed",
+        message: "Git index is locked",
+      },
+      error: null,
+    });
+
+    render(<ChatSurface />);
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("Git index is locked")).toBeNull();
+  });
+
   it("separates active Turn prompting from the optional Cancel capability", () => {
     useWorkbenchStore.setState({ composerText: "Follow up" });
     const { rerender } = render(<ChatSurface />);

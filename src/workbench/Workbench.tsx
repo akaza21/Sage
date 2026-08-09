@@ -2,6 +2,7 @@ import { ChatSurface } from "../features/chat/ChatSurface";
 import { DiffSurface } from "../features/diff/DiffSurface";
 import { FileSurface } from "../features/files/FileSurface";
 import { useWorkbenchStore } from "../app/store";
+import { sameResource } from "../domain/resourceIdentity";
 import { DirtyTabDialog } from "./DirtyTabDialog";
 import { LeftSidebar } from "./LeftSidebar";
 import { PlaceholderSurface } from "./PlaceholderSurface";
@@ -15,7 +16,17 @@ export function Workbench() {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
+  const repositoryMutationError = useWorkbenchStore(
+    (state) => state.repositoryMutationError,
+  );
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+  const contextualMutationError =
+    activeTab?.resource &&
+    (activeTab.kind === "file" || activeTab.kind === "diff") &&
+    repositoryMutationError &&
+    sameResource(activeTab.resource, repositoryMutationError.resource)
+      ? repositoryMutationError
+      : null;
   const compact = useCompactWorkbenchLayout();
   const drawerOpen = compact && sidebarOpen;
 
@@ -42,6 +53,16 @@ export function Workbench() {
             <TabStrip />
           </div>
           <div className="active-canvas" role="tabpanel">
+            {contextualMutationError ? (
+              <div className="repository-mutation-alert" role="alert">
+                <strong>
+                  {contextualMutationError.kind === "effectUnknown"
+                    ? `Source Control could not confirm ${contextualMutationError.action} for ${contextualMutationError.resource.relativePath}`
+                    : `Source Control could not ${contextualMutationError.action} ${contextualMutationError.resource.relativePath}`}
+                </strong>
+                <span>{contextualMutationError.message}</span>
+              </div>
+            ) : null}
             {activeTab?.kind === "chat" ? <ChatSurface /> : null}
             {activeTab?.kind === "diff" ? (
               <DiffSurface tab={activeTab} />

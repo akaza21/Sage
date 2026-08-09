@@ -42,6 +42,7 @@ export function snapshotProjection(snapshot: BootstrapSnapshot) {
     repositoryRefreshing: false,
     repositoryRefreshSuperseded: false,
     repositoryMutation: null,
+    repositoryMutationError: null,
     turnChanges: snapshot.turnChanges,
     recoveryNotice: snapshot.recoveryNotice,
     directoryListings: {},

@@ -20,6 +20,9 @@ pub enum AppError {
 
     #[error("Git operation failed: {0}")]
     Git(String),
+
+    #[error("Git mutation effect is unknown: {0}")]
+    GitEffectUnknown(String),
 }
 
 pub type AppResult<T> = Result<T, AppError>;

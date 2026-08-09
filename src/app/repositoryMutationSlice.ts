@@ -11,8 +11,14 @@ export interface RepositoryMutation {
   action: GitFileMutationAction;
 }
 
+export interface RepositoryMutationError extends RepositoryMutation {
+  kind: "failed" | "effectUnknown";
+  message: string;
+}
+
 export interface RepositoryMutationSlice {
   repositoryMutation: RepositoryMutation | null;
+  repositoryMutationError: RepositoryMutationError | null;
   mutateRepositoryFile: (
     resource: ResourceRef,
     action: GitFileMutationAction,
@@ -51,6 +57,7 @@ export const createRepositoryMutationSlice: StateCreator<
   RepositoryMutationSlice
 > = (set, get) => ({
   repositoryMutation: null,
+  repositoryMutationError: null,
   mutateRepositoryFile: async (resource, action) => {
     const generation = get().projectGeneration;
     const projectId = get().project?.id;
@@ -66,7 +73,7 @@ export const createRepositoryMutationSlice: StateCreator<
       return false;
     }
     const mutation: RepositoryMutation = { resource, action };
-    set({ repositoryMutation: mutation, error: null });
+    set({ repositoryMutation: mutation, repositoryMutationError: null });
     try {
       const result = await desktop.mutateGitFile(
         { projectId, resource, action },
@@ -88,9 +95,11 @@ export const createRepositoryMutationSlice: StateCreator<
       set({
         repositories: result.repositories,
         repositoryMutation: null,
-        error: null,
+        repositoryMutationError: result.error
+          ? { ...mutation, ...result.error }
+          : null,
       });
-      return true;
+      return result.error === null;
     } catch (error) {
       if (
         get().repositoryMutation === mutation &&
@@ -98,7 +107,14 @@ export const createRepositoryMutationSlice: StateCreator<
         get().nativeTransitionEpoch === transitionEpoch &&
         matchesResourceIntent(get(), generation, projectId, resource)
       ) {
-        set({ repositoryMutation: null, error: errorMessage(error) });
+        set({
+          repositoryMutation: null,
+          repositoryMutationError: {
+            ...mutation,
+            kind: "failed",
+            message: errorMessage(error),
+          },
+        });
       } else if (get().repositoryMutation === mutation) {
         set({ repositoryMutation: null });
       }
