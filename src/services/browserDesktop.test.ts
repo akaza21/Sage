@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { MAX_CHAT_TITLE_BYTES } from "../domain/chatTitle";
-import type { ChatMessage } from "../domain/workbench";
+import type {
+  ChatMessage,
+  ProjectLayoutRequest,
+  WorkbenchTab,
+} from "../domain/workbench";
 import {
   appendBrowserSimulatorTurn,
   browserDesktop,
@@ -115,7 +119,7 @@ describe("browser simulator history bounds", () => {
     });
   });
 
-  it("renames active and inactive Chats without changing identity or history", async () => {
+  it("renames Chats while atomically preserving the current layout and history", async () => {
     const initial = await browserDesktop.getBootstrapSnapshot();
     const created = await browserDesktop.createChat(
       {
@@ -134,7 +138,28 @@ describe("browser simulator history bounds", () => {
       modelId: "sim-fast",
       text: "history stays",
     });
-    const identity = created.snapshot!.tabs.map((tab) => ({
+    const selectedResource = {
+      rootId: initial.selectedRootId!,
+      relativePath: "src/current.ts",
+    };
+    const fileTab: WorkbenchTab = {
+      id: "file:current",
+      kind: "file",
+      title: "current.ts",
+      position: 2,
+      pinned: false,
+      dirty: true,
+      status: "idle",
+      resource: selectedResource,
+    };
+    const currentLayout: ProjectLayoutRequest = {
+      projectId: initial.project!.id,
+      tabs: [...created.snapshot!.tabs, fileTab],
+      activeTabId: fileTab.id,
+      selectedRootId: selectedResource.rootId,
+      selectedResource,
+    };
+    const identity = currentLayout.tabs.map((tab) => ({
       id: tab.id,
       position: tab.position,
     }));
@@ -144,13 +169,16 @@ describe("browser simulator history bounds", () => {
         projectId: initial.project!.id,
         chatId: initial.activeTabId!,
         title: "  Research  ",
+        currentLayout,
       },
       created.transitionEpoch,
     );
     expect(inactive.snapshot).toMatchObject({
-      activeTabId: secondChatId,
-      sessionId: turn.sessionId,
-      messages: turn.messages,
+      activeTabId: fileTab.id,
+      selectedRootId: selectedResource.rootId,
+      selectedResource,
+      sessionId: null,
+      messages: [],
     });
     expect(
       inactive.snapshot!.tabs.find((tab) => tab.id === initial.activeTabId)
@@ -162,13 +190,21 @@ describe("browser simulator history bounds", () => {
         projectId: initial.project!.id,
         chatId: secondChatId,
         title: "Delivery",
+        currentLayout: {
+          projectId: initial.project!.id,
+          tabs: inactive.snapshot!.tabs,
+          activeTabId: inactive.snapshot!.activeTabId,
+          selectedRootId: inactive.snapshot!.selectedRootId,
+          selectedResource: inactive.snapshot!.selectedResource,
+        },
       },
       inactive.transitionEpoch,
     );
     expect(active.snapshot).toMatchObject({
-      activeTabId: secondChatId,
-      sessionId: turn.sessionId,
-      messages: turn.messages,
+      activeTabId: fileTab.id,
+      selectedResource,
+      sessionId: null,
+      messages: [],
     });
     expect(
       active.snapshot!.tabs.map((tab) => ({
@@ -179,6 +215,22 @@ describe("browser simulator history bounds", () => {
     expect(
       active.snapshot!.tabs.find((tab) => tab.id === secondChatId)?.title,
     ).toBe("Chat: Delivery");
+
+    const reactivated = await browserDesktop.activateChat(
+      {
+        projectId: initial.project!.id,
+        tabs: active.snapshot!.tabs,
+        activeTabId: secondChatId,
+        selectedRootId: active.snapshot!.selectedRootId,
+        selectedResource: active.snapshot!.selectedResource,
+      },
+      active.transitionEpoch,
+    );
+    expect(reactivated.snapshot).toMatchObject({
+      activeTabId: secondChatId,
+      sessionId: turn.sessionId,
+      messages: turn.messages,
+    });
   });
 
   it("rejects stale foreign invalid and over-limit rename before mutation", async () => {
@@ -189,17 +241,51 @@ describe("browser simulator history bounds", () => {
         projectId: initial.project!.id,
         chatId: initial.activeTabId!,
         title: exact,
+        currentLayout: {
+          projectId: initial.project!.id,
+          tabs: initial.tabs,
+          activeTabId: initial.activeTabId,
+          selectedRootId: initial.selectedRootId,
+          selectedResource: initial.selectedResource,
+        },
       },
       initial.transitionEpoch,
     );
     expect(renamed.snapshot!.tabs[0].title).toBe(`Chat: ${exact}`);
 
+    const currentLayout = {
+      projectId: initial.project!.id,
+      tabs: renamed.snapshot!.tabs,
+      activeTabId: renamed.snapshot!.activeTabId,
+      selectedRootId: renamed.snapshot!.selectedRootId,
+      selectedResource: renamed.snapshot!.selectedResource,
+    };
+    const failedFile: WorkbenchTab = {
+      id: "file:must-rollback",
+      kind: "file",
+      title: "must-rollback.ts",
+      position: 1,
+      pinned: false,
+      dirty: true,
+      status: "idle",
+      resource: {
+        rootId: initial.selectedRootId!,
+        relativePath: "src/must-rollback.ts",
+      },
+    };
+    const changedFailureLayout = {
+      ...currentLayout,
+      tabs: [...currentLayout.tabs, failedFile],
+      activeTabId: failedFile.id,
+      selectedResource: failedFile.resource!,
+    };
     for (const [request, epoch] of [
       [
         {
           projectId: initial.project!.id,
           chatId: initial.activeTabId!,
           title: `${exact}x`,
+          currentLayout: changedFailureLayout,
         },
         renamed.transitionEpoch,
       ],
@@ -208,6 +294,7 @@ describe("browser simulator history bounds", () => {
           projectId: initial.project!.id,
           chatId: initial.activeTabId!,
           title: " \t ",
+          currentLayout,
         },
         renamed.transitionEpoch,
       ],
@@ -216,6 +303,7 @@ describe("browser simulator history bounds", () => {
           projectId: initial.project!.id,
           chatId: initial.activeTabId!,
           title: "bad\nname",
+          currentLayout,
         },
         renamed.transitionEpoch,
       ],
@@ -224,6 +312,7 @@ describe("browser simulator history bounds", () => {
           projectId: "foreign-project",
           chatId: initial.activeTabId!,
           title: "Foreign",
+          currentLayout,
         },
         renamed.transitionEpoch,
       ],
@@ -232,6 +321,7 @@ describe("browser simulator history bounds", () => {
           projectId: initial.project!.id,
           chatId: "foreign-chat",
           title: "Foreign",
+          currentLayout,
         },
         renamed.transitionEpoch,
       ],
@@ -240,6 +330,7 @@ describe("browser simulator history bounds", () => {
           projectId: initial.project!.id,
           chatId: initial.activeTabId!,
           title: "Stale",
+          currentLayout,
         },
         initial.transitionEpoch,
       ],

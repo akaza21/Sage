@@ -126,6 +126,8 @@ function chatProjection(
   transitionEpoch: number,
   sessionId: string | null,
   messages: ChatMessage[],
+  selectedRootId = "root-a",
+  selectedResource: ResourceRef | null = null,
 ): BootstrapSnapshot {
   const state = useWorkbenchStore.getState();
   return {
@@ -134,8 +136,8 @@ function chatProjection(
     project: state.project,
     tabs,
     activeTabId,
-    selectedRootId: "root-a",
-    selectedResource: null,
+    selectedRootId,
+    selectedResource,
     harnesses: [],
     sessionId,
     selectedHarnessId: null,
@@ -342,19 +344,37 @@ describe("workbench resource and project navigation", () => {
 
   it("renames an inactive Chat from its authoritative projection", async () => {
     const renamedTab = { ...chatTabB, title: "Chat: Focus" };
+    const selectedResource = resource("src/current.ts", "root-b");
+    const fileTab: WorkbenchTab = {
+      id: "file:current",
+      kind: "file",
+      title: "current.ts",
+      position: 2,
+      pinned: false,
+      dirty: true,
+      status: "idle",
+      resource: selectedResource,
+    };
     const rename = vi.spyOn(desktop, "renameChat").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
       snapshot: chatProjection(
-        [chatTab, renamedTab],
-        chatTab.id,
+        [chatTab, renamedTab, fileTab],
+        fileTab.id,
         1,
-        "session-a",
+        null,
         [],
+        "root-b",
+        selectedResource,
       ),
       recoveryError: null,
     });
-    useWorkbenchStore.setState({ tabs: [chatTab, chatTabB] });
+    useWorkbenchStore.setState({
+      tabs: [chatTab, chatTabB, fileTab],
+      activeTabId: fileTab.id,
+      selectedRootId: "root-b",
+      selectedResource,
+    });
 
     const committed = await useWorkbenchStore
       .getState()
@@ -366,13 +386,22 @@ describe("workbench resource and project navigation", () => {
         projectId: "project-a",
         chatId: chatTabB.id,
         title: "Focus",
+        currentLayout: {
+          projectId: "project-a",
+          tabs: [chatTab, chatTabB, fileTab],
+          activeTabId: fileTab.id,
+          selectedRootId: "root-b",
+          selectedResource,
+        },
       },
       0,
     );
     expect(useWorkbenchStore.getState()).toMatchObject({
-      activeTabId: chatTab.id,
-      tabs: [chatTab, renamedTab],
-      sessionId: "session-a",
+      activeTabId: fileTab.id,
+      tabs: [chatTab, renamedTab, fileTab],
+      selectedRootId: "root-b",
+      selectedResource,
+      sessionId: null,
       messages: [],
       projectTransitioning: false,
     });
@@ -397,6 +426,35 @@ describe("workbench resource and project navigation", () => {
       activeTabId: chatTab.id,
       error: "rename rejected",
       projectTransitioning: false,
+    });
+  });
+
+  it("rejects a committed rename projection with mismatched selection", async () => {
+    const renamedTab = { ...chatTabB, title: "Chat: Focus" };
+    vi.spyOn(desktop, "renameChat").mockResolvedValue({
+      committed: true,
+      transitionEpoch: 1,
+      snapshot: chatProjection(
+        [chatTab, renamedTab],
+        chatTab.id,
+        1,
+        "session-a",
+        [],
+        "root-b",
+        resource("src/unexpected.ts", "root-b"),
+      ),
+      recoveryError: null,
+    });
+    useWorkbenchStore.setState({ tabs: [chatTab, chatTabB] });
+
+    const committed = await useWorkbenchStore
+      .getState()
+      .renameChat(chatTabB.id, "Focus");
+
+    expect(committed).toBe(false);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      phase: "error",
+      error: expect.stringContaining("invalid projection"),
     });
   });
 

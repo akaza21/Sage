@@ -495,7 +495,7 @@ textarea:focus-visible {
 
 .project-chat-edit {
   display: grid;
-  height: 32px;
+  min-height: 32px;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 4px;
@@ -512,6 +512,18 @@ textarea:focus-visible {
   outline: none;
   background: var(--surface-active);
   font: inherit;
+}
+
+.project-chat-edit input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.project-chat-edit__error {
+  grid-column: 2 / -1;
+  padding: 1px 4px 4px;
+  color: var(--danger);
+  font-size: 10px;
+  line-height: 1.25;
 }
 
 .project-chat span:not(.project-chat__working) {

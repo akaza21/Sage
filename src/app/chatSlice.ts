@@ -55,7 +55,15 @@ function matchesRenameProjection(
   chatId: string,
   title: string,
 ) {
-  if (!matchesLayout(snapshot, current)) return false;
+  if (
+    !matchesLayout(snapshot, current) ||
+    snapshot.selectedRootId !== current.selectedRootId ||
+    snapshot.selectedResource?.rootId !== current.selectedResource?.rootId ||
+    snapshot.selectedResource?.relativePath !==
+      current.selectedResource?.relativePath
+  ) {
+    return false;
+  }
   return current.tabs.every((tab) => {
     const projected = snapshot.tabs.find(
       (candidate) => candidate.id === tab.id,
@@ -268,7 +276,12 @@ export const createChatSlice: StateCreator<
         expectedTransitionEpoch,
         invoke: () =>
           desktop.renameChat(
-            { projectId: current.projectId, chatId, title: canonicalName },
+            {
+              projectId: current.projectId,
+              chatId,
+              title: canonicalName,
+              currentLayout: current,
+            },
             expectedTransitionEpoch,
           ),
         classify,

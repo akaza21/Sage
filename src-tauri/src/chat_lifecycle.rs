@@ -12,8 +12,26 @@ use crate::{
 pub const MAX_CHAT_TITLE_BYTES: usize = 128;
 const MAX_CHAT_ID_BYTES: usize = 512;
 
+fn is_chat_title_trim_character(value: char) -> bool {
+    matches!(
+        value,
+        '\u{0009}'..='\u{000d}'
+            | '\u{0020}'
+            | '\u{0085}'
+            | '\u{00a0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200a}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202f}'
+            | '\u{205f}'
+            | '\u{3000}'
+            | '\u{feff}'
+    )
+}
+
 pub(crate) fn canonical_chat_title(input: &str) -> AppResult<String> {
-    let title = input.trim();
+    let title = input.trim_matches(is_chat_title_trim_character);
     if title.is_empty() {
         return Err(AppError::InvalidRequest(
             "Chat title must not be empty after trimming".into(),
@@ -193,6 +211,21 @@ impl Database {
         validate_chat_identifier("Project ID", &request.project_id)?;
         validate_chat_identifier("Chat ID", &request.chat_id)?;
         let title = canonical_chat_title(&request.title)?;
+        if request.current_layout.project_id != request.project_id {
+            return Err(AppError::InvalidRequest(
+                "Chat rename layout does not belong to the requested Project".into(),
+            ));
+        }
+        if !request
+            .current_layout
+            .tabs
+            .iter()
+            .any(|tab| tab.id == request.chat_id && tab.kind == "chat")
+        {
+            return Err(AppError::InvalidRequest(
+                "Chat rename target is not attached to the current layout".into(),
+            ));
+        }
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
         let active_project_id = transaction.query_row(
@@ -217,13 +250,12 @@ impl Database {
                 "Chat does not belong to the active Project".into(),
             ));
         }
-        let attached_tab_id = transaction
-            .query_row(
-                "SELECT tab_id FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",
-                params![request.project_id, request.chat_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
+        persist_layout_in(&transaction, &request.current_layout)?;
+        let attached_tab_id = transaction.query_row(
+            "SELECT tab_id FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",
+            params![request.project_id, request.chat_id],
+            |row| row.get::<_, String>(0),
+        )?;
         let now = now_millis();
         require_one(
             transaction.execute(
@@ -233,20 +265,24 @@ impl Database {
             )?,
             "Chat disappeared during rename",
         )?;
-        if let Some(tab_id) = attached_tab_id {
-            require_one(
-                transaction.execute(
-                    "UPDATE workbench_tabs SET title=?4,updated_at=?5
-                     WHERE project_id=?1 AND id=?2 AND kind='chat'
-                       AND EXISTS(
-                         SELECT 1 FROM chat_tabs
-                         WHERE project_id=?1 AND chat_id=?3 AND tab_id=?2
-                       )",
-                    params![request.project_id, tab_id, request.chat_id, title, now],
-                )?,
-                "attached Chat tab disappeared during rename",
-            )?;
-        }
+        require_one(
+            transaction.execute(
+                "UPDATE workbench_tabs SET title=?4,updated_at=?5
+                 WHERE project_id=?1 AND id=?2 AND kind='chat'
+                   AND EXISTS(
+                     SELECT 1 FROM chat_tabs
+                     WHERE project_id=?1 AND chat_id=?3 AND tab_id=?2
+                   )",
+                params![
+                    request.project_id,
+                    attached_tab_id,
+                    request.chat_id,
+                    title,
+                    now
+                ],
+            )?,
+            "attached Chat tab disappeared during rename",
+        )?;
         transaction.commit()?;
         Ok(())
     }

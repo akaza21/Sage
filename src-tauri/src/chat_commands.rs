@@ -150,7 +150,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        domain::{ProjectLayoutRequest, RenameChatRequest},
+        domain::{ProjectLayoutRequest, RenameChatRequest, ResourceRef, WorkbenchTab},
         persistence::Database,
         state::AppState,
     };
@@ -206,12 +206,41 @@ mod tests {
             );
             assert_eq!(selected.messages.len(), 1);
 
+            fs::write(root.join("notes.txt"), "current selection").unwrap();
+            let selected_resource = ResourceRef {
+                root_id: selected.selected_root_id.clone().unwrap(),
+                relative_path: "notes.txt".into(),
+            };
+            let file_tab = WorkbenchTab {
+                id: "file:notes".into(),
+                kind: "file".into(),
+                title: "notes.txt".into(),
+                position: 2,
+                pinned: false,
+                dirty: true,
+                status: None,
+                resource: Some(selected_resource.clone()),
+            };
+            let current_layout = ProjectLayoutRequest {
+                project_id: layout.project_id.clone(),
+                tabs: selected
+                    .tabs
+                    .iter()
+                    .cloned()
+                    .chain(std::iter::once(file_tab.clone()))
+                    .collect(),
+                active_tab_id: Some(file_tab.id.clone()),
+                selected_root_id: Some(selected_resource.root_id.clone()),
+                selected_resource: Some(selected_resource.clone()),
+            };
+
             let renamed = rename_chat_inner(
                 &state,
                 RenameChatRequest {
                     project_id: layout.project_id.clone(),
                     chat_id: second_chat_id.clone(),
                     title: "  Inactive renamed  ".into(),
+                    current_layout: current_layout.clone(),
                 },
                 2,
             )
@@ -221,9 +250,18 @@ mod tests {
             let renamed_snapshot = renamed.snapshot.unwrap();
             assert_eq!(
                 renamed_snapshot.active_tab_id.as_deref(),
-                Some(first_chat_id.as_str())
+                Some(file_tab.id.as_str())
             );
-            assert_eq!(renamed_snapshot.messages.len(), 1);
+            assert_eq!(renamed_snapshot.selected_resource, Some(selected_resource));
+            let projected_file = renamed_snapshot
+                .tabs
+                .iter()
+                .find(|tab| tab.id == file_tab.id)
+                .unwrap();
+            assert_eq!(projected_file.title, file_tab.title);
+            assert_eq!(projected_file.position, file_tab.position);
+            assert_eq!(projected_file.dirty, file_tab.dirty);
+            assert_eq!(projected_file.resource.as_ref(), file_tab.resource.as_ref());
             assert_eq!(
                 renamed_snapshot
                     .tabs
@@ -239,6 +277,7 @@ mod tests {
                     project_id: layout.project_id.clone(),
                     chat_id: second_chat_id.clone(),
                     title: "Must not commit".into(),
+                    current_layout,
                 },
                 2,
             )
@@ -276,9 +315,12 @@ mod tests {
             let restarted = reopened.bootstrap_snapshot().unwrap();
             assert_eq!(
                 restarted.active_tab_id.as_deref(),
-                Some(first_chat_id.as_str())
+                Some(file_tab.id.as_str())
             );
-            assert_eq!(restarted.messages.len(), 1);
+            assert_eq!(
+                restarted.selected_resource.as_ref(),
+                file_tab.resource.as_ref()
+            );
             assert_eq!(
                 restarted
                     .tabs

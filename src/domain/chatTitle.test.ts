@@ -9,6 +9,9 @@ import {
 describe("Chat title contract", () => {
   it("trims the display title into the stored Chat projection", () => {
     expect(canonicalChatTitle("  Focus  ")).toBe("Chat: Focus");
+    expect(canonicalChatTitle("\ufeff\u0085\u2003 Focus \u3000\ufeff")).toBe(
+      "Chat: Focus",
+    );
     expect(chatDisplayTitle("Chat: Focus")).toBe("Focus");
     expect(chatDisplayTitle("Legacy title")).toBe("Legacy title");
   });
@@ -21,7 +24,12 @@ describe("Chat title contract", () => {
 
   it("rejects empty and control-bearing display titles", () => {
     expect(() => canonicalChatTitle("\u{2003} \t")).toThrow("not be empty");
+    expect(() => canonicalChatTitle("\ufeff")).toThrow("not be empty");
+    expect(() => canonicalChatTitle("\u0085")).toThrow("not be empty");
     expect(() => canonicalChatTitle("line\nbreak")).toThrow(
+      "control characters",
+    );
+    expect(() => canonicalChatTitle("Focus\u0085Later")).toThrow(
       "control characters",
     );
   });

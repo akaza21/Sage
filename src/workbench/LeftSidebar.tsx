@@ -12,7 +12,7 @@ import {
   SquarePen,
   X,
 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { chatDisplayTitle } from "../domain/chatTitle";
 import { useWorkbenchStore } from "../app/store";
@@ -21,6 +21,10 @@ export function LeftSidebar() {
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [renameSaving, setRenameSaving] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const renameTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
+  const pendingFocusChatId = useRef<string | null>(null);
   const projects = useWorkbenchStore((state) => state.projects);
   const project = useWorkbenchStore((state) => state.project);
   const tabs = useWorkbenchStore((state) => state.tabs);
@@ -36,12 +40,33 @@ export function LeftSidebar() {
   const addProjectRoot = useWorkbenchStore((state) => state.addProjectRoot);
   const chatTabs = tabs.filter((tab) => tab.kind === "chat");
 
+  useEffect(() => {
+    if (renamingChatId !== null || pendingFocusChatId.current === null) return;
+    const chatId = pendingFocusChatId.current;
+    pendingFocusChatId.current = null;
+    renameTriggerRefs.current.get(chatId)?.focus();
+  }, [renamingChatId]);
+
+  const closeRename = (chatId: string) => {
+    pendingFocusChatId.current = chatId;
+    setRenameError(null);
+    setRenamingChatId(null);
+  };
+
   const submitRename = async (event: FormEvent, chatId: string) => {
     event.preventDefault();
+    setRenameError(null);
     setRenameSaving(true);
     const committed = await renameChat(chatId, renameDraft);
     setRenameSaving(false);
-    if (committed) setRenamingChatId(null);
+    if (committed) {
+      closeRename(chatId);
+      return;
+    }
+    setRenameError(
+      useWorkbenchStore.getState().error ?? "Chat rename could not be saved",
+    );
+    renameInputRef.current?.focus();
   };
 
   return (
@@ -103,6 +128,7 @@ export function LeftSidebar() {
                     {chatTabs.map((tab) => {
                       const displayTitle = chatDisplayTitle(tab.title);
                       if (renamingChatId === tab.id) {
+                        const errorId = `chat-rename-error-${tab.id}`;
                         return (
                           <form
                             className="project-chat-edit"
@@ -113,7 +139,12 @@ export function LeftSidebar() {
                           >
                             <MessageSquare size={14} aria-hidden="true" />
                             <input
+                              ref={renameInputRef}
                               aria-label={`New name for ${displayTitle}`}
+                              aria-invalid={renameError ? true : undefined}
+                              aria-describedby={
+                                renameError ? errorId : undefined
+                              }
                               autoFocus
                               disabled={renameSaving}
                               value={renameDraft}
@@ -122,7 +153,8 @@ export function LeftSidebar() {
                               }
                               onKeyDown={(event) => {
                                 if (event.key === "Escape") {
-                                  setRenamingChatId(null);
+                                  event.preventDefault();
+                                  closeRename(tab.id);
                                 }
                               }}
                             />
@@ -139,10 +171,19 @@ export function LeftSidebar() {
                               aria-label="Cancel chat rename"
                               title="Cancel chat rename"
                               disabled={renameSaving}
-                              onClick={() => setRenamingChatId(null)}
+                              onClick={() => closeRename(tab.id)}
                             >
                               <X size={13} aria-hidden="true" />
                             </button>
+                            {renameError ? (
+                              <span
+                                className="project-chat-edit__error"
+                                id={errorId}
+                                role="alert"
+                              >
+                                {renameError}
+                              </span>
+                            ) : null}
                           </form>
                         );
                       }
@@ -168,12 +209,18 @@ export function LeftSidebar() {
                             ) : null}
                           </button>
                           <button
+                            ref={(node) => {
+                              if (node)
+                                renameTriggerRefs.current.set(tab.id, node);
+                              else renameTriggerRefs.current.delete(tab.id);
+                            }}
                             className="project-chat__rename"
                             type="button"
                             aria-label={`Rename chat ${displayTitle}`}
                             title={`Rename chat ${displayTitle}`}
                             disabled={projectTransitioning}
                             onClick={() => {
+                              setRenameError(null);
                               setRenameDraft(displayTitle);
                               setRenamingChatId(tab.id);
                             }}

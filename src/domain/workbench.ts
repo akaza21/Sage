@@ -199,6 +199,7 @@ export interface RenameChatRequest {
   projectId: string;
   chatId: string;
   title: string;
+  currentLayout: ProjectLayoutRequest;
 }
 
 export interface ProjectSwitchRequest {

@@ -127,8 +127,97 @@ describe("compact Workbench project tools", () => {
       expect(
         screen.queryByRole("textbox", { name: "New name for B" }),
       ).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Rename chat B" }),
+      ).toHaveFocus();
     });
     expect(activateTab).not.toHaveBeenCalled();
+  });
+
+  it("restores the same Chat rename trigger after Cancel and Escape", async () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
+      tabs: [
+        {
+          id: "chat:b",
+          kind: "chat",
+          title: "Chat: B",
+          position: 0,
+          pinned: true,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat:b",
+    });
+    render(<Workbench />);
+
+    let trigger = screen.getByRole("button", { name: "Rename chat B" });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel chat rename" }));
+    await vi.waitFor(() => {
+      trigger = screen.getByRole("button", { name: "Rename chat B" });
+      expect(trigger).toHaveFocus();
+    });
+
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "New name for B" }), {
+      key: "Escape",
+    });
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Rename chat B" }),
+      ).toHaveFocus();
+    });
+  });
+
+  it("keeps invalid rename feedback visible and focused with a File active", async () => {
+    const renameChat = vi.fn(async () => {
+      useWorkbenchStore.setState({
+        error: "Chat title must not be empty after trimming",
+      });
+      return false;
+    });
+    useWorkbenchStore.setState({
+      renameChat,
+      project: { id: "project-a", name: "A", roots: [] },
+      projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
+      tabs: [
+        {
+          id: "chat:b",
+          kind: "chat",
+          title: "Chat: B",
+          position: 0,
+          pinned: true,
+          dirty: false,
+        },
+        {
+          id: "file:a",
+          kind: "file",
+          title: "current.ts",
+          position: 1,
+          pinned: false,
+          dirty: true,
+          resource: { rootId: "root-a", relativePath: "src/current.ts" },
+        },
+      ],
+      activeTabId: "file:a",
+    });
+    render(<Workbench />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Rename chat B" }));
+    const input = screen.getByRole("textbox", { name: "New name for B" });
+    fireEvent.change(input, { target: { value: " \t " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save chat name" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Chat title must not be empty after trimming",
+    );
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(input).toHaveAttribute("aria-describedby", alert.id);
+    expect(input).toHaveFocus();
+    expect(useWorkbenchStore.getState().activeTabId).toBe("file:a");
   });
 
   it("routes both New Chat controls through one creation action", () => {

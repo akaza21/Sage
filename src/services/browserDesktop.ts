@@ -22,7 +22,7 @@ import {
   browserSessionId,
   createBrowserChatTab,
   projectBrowserChatTitles,
-  renameBrowserChatTabs,
+  renamedBrowserChatLayout,
   type BrowserPromptRequest,
 } from "./browserChat";
 import { browserEditor } from "./browserEditor";
@@ -335,8 +335,10 @@ export const browserDesktop = {
       snapshot.project?.id,
       durableChatIds,
     );
+    const renamedLayout = renamedBrowserChatLayout(request, title, chatTitles);
     chatTitles.set(request.chatId, title);
-    snapshot.tabs = renameBrowserChatTabs(snapshot.tabs, request.chatId, title);
+    Object.assign(snapshot, renamedLayout);
+    projectActiveChat();
     snapshot.transitionEpoch += 1;
     return {
       committed: true,

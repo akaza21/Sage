@@ -255,6 +255,7 @@ pub struct RenameChatRequest {
     pub project_id: String,
     pub chat_id: String,
     pub title: String,
+    pub current_layout: ProjectLayoutRequest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

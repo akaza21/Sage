@@ -91,6 +91,25 @@ export function browserChatRenameTitle(
   if (request.projectId !== projectId || !durableChatIds.has(request.chatId)) {
     throw new Error("Chat does not belong to the active Project");
   }
+  if (request.currentLayout.projectId !== request.projectId) {
+    throw new Error(
+      "Chat rename layout does not belong to the requested Project",
+    );
+  }
+  if (
+    !request.currentLayout.tabs.some(
+      (tab) => tab.id === request.chatId && tab.kind === "chat",
+    )
+  ) {
+    throw new Error("Chat rename target is not attached to the current layout");
+  }
+  if (
+    request.currentLayout.tabs.some(
+      (tab) => tab.kind === "chat" && !durableChatIds.has(tab.id),
+    )
+  ) {
+    throw new Error("Chat tab does not reference an existing durable Chat");
+  }
   return canonicalChatTitle(request.title);
 }
 
@@ -113,6 +132,23 @@ export function projectBrowserChatTitles(
       ? { ...tab, title: titles.get(tab.id)! }
       : tab,
   );
+}
+
+export function renamedBrowserChatLayout(
+  request: RenameChatRequest,
+  title: string,
+  titles: ReadonlyMap<string, string>,
+) {
+  return {
+    tabs: renameBrowserChatTabs(
+      projectBrowserChatTitles(request.currentLayout.tabs, titles),
+      request.chatId,
+      title,
+    ),
+    activeTabId: request.currentLayout.activeTabId,
+    selectedRootId: request.currentLayout.selectedRootId,
+    selectedResource: structuredClone(request.currentLayout.selectedResource),
+  };
 }
 
 export function assertBrowserPrompt(
