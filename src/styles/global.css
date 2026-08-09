@@ -1283,6 +1283,53 @@ textarea:focus-visible {
   background: #35201f;
 }
 
+.editor-find {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: #181b18;
+}
+
+.editor-find__query {
+  display: flex;
+  min-width: 100px;
+  flex: 1 1 220px;
+  max-width: 360px;
+}
+
+.editor-find__query input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  font-size: 12px;
+}
+
+.editor-find__status {
+  min-width: 88px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.editor-find__button {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+}
+
+.editor-find__button[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
 .editor-input {
   flex: 1 1 auto;
   min-width: 0;
