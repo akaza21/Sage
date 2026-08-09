@@ -11,6 +11,7 @@ import { useWorkbenchStore } from "../../app/store";
 import type { EditorDocument, WorkbenchTab } from "../../domain/workbench";
 import { desktop } from "../../services/desktop";
 import { FileSurface } from "./FileSurface";
+import { MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
 
 const path = "debounce.txt";
 const resource = { rootId: "root-a", relativePath: path };
@@ -122,6 +123,10 @@ describe("FileSurface in-file find", () => {
     const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
 
     editor.focus();
+    fireEvent.keyDown(editor, { key: "f", ctrlKey: true, shiftKey: true });
+    expect(screen.queryByRole("search", { name: "Find in file" })).toBeNull();
+    expect(editor).toHaveFocus();
+
     fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
     const query = screen.getByRole("textbox", { name: "Find text" });
     expect(query).toHaveFocus();
@@ -131,6 +136,14 @@ describe("FileSurface in-file find", () => {
     expect(screen.getByRole("status")).toHaveTextContent("1 of 3 matches");
     expect(editor).toHaveProperty("selectionStart", 0);
     expect(editor).toHaveProperty("selectionEnd", 6);
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous match" }));
+    expect(screen.getByRole("status")).toHaveTextContent("3 of 3 matches");
+    expect(editor).toHaveProperty("selectionStart", 14);
+
+    fireEvent.click(screen.getByRole("button", { name: "Next match" }));
+    expect(screen.getByRole("status")).toHaveTextContent("1 of 3 matches");
+    expect(editor).toHaveProperty("selectionStart", 0);
 
     fireEvent.keyDown(query, { key: "Enter", shiftKey: true });
     expect(screen.getByRole("status")).toHaveTextContent("3 of 3 matches");
@@ -158,7 +171,7 @@ describe("FileSurface in-file find", () => {
     expect(editor).toHaveFocus();
   });
 
-  it("reports no match and preserves the existing save shortcut", () => {
+  it("reports no match and saves while Find owns focus", () => {
     const save = vi.fn(async () => true);
     setReadyEditor();
     useWorkbenchStore.setState({ saveActiveEditor: save });
@@ -166,13 +179,38 @@ describe("FileSurface in-file find", () => {
     const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
 
     fireEvent.keyDown(editor, { key: "f", metaKey: true });
-    fireEvent.change(screen.getByRole("textbox", { name: "Find text" }), {
+    const query = screen.getByRole("textbox", { name: "Find text" });
+    expect(query).toHaveFocus();
+    fireEvent.change(query, {
       target: { value: "absent" },
     });
     expect(screen.getByRole("status")).toHaveTextContent("No matches");
 
-    fireEvent.keyDown(editor, { key: "s", ctrlKey: true });
+    fireEvent.keyDown(query, { key: "s", ctrlKey: true });
     expect(save).toHaveBeenCalledOnce();
+  });
+
+  it("fails closed when content exceeds the editor ceiling", () => {
+    setReadyEditor(tab, "a".repeat(MAX_EDITABLE_CONTENT_BYTES + 1));
+    render(<FileSurface tab={tab} />);
+    const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
+
+    expect(editor).toHaveAttribute(
+      "maxLength",
+      String(MAX_EDITABLE_CONTENT_BYTES),
+    );
+    fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
+    fireEvent.change(screen.getByRole("textbox", { name: "Find text" }), {
+      target: { value: "a" },
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "File exceeds the 1 MiB Find limit",
+    );
+    expect(
+      screen.getByRole("button", { name: "Previous match" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next match" })).toBeDisabled();
   });
 
   it("recomputes results for content changes and retires the index for a new resource", () => {

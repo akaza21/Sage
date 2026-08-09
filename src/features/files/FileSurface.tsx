@@ -13,7 +13,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import { resourceKey, sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
-import { findLiteralMatches, MAX_FIND_QUERY_LENGTH } from "./inFileFind";
+import {
+  findLiteralMatches,
+  MAX_EDITABLE_CONTENT_BYTES,
+  MAX_FIND_QUERY_LENGTH,
+} from "./inFileFind";
 
 const SNAPSHOT_DELAY_MS = 750;
 
@@ -55,7 +59,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
     () =>
       findOpen
         ? findLiteralMatches(findContent, findQuery, caseSensitive)
-        : { offsets: [], truncated: false },
+        : { offsets: [], truncated: false, contentLimitExceeded: false },
     [caseSensitive, findContent, findOpen, findQuery],
   );
   const resolvedMatchIndex =
@@ -163,9 +167,11 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
   const findStatus =
     findQuery.length === 0
       ? "No query"
-      : findMatches.offsets.length === 0
-        ? "No matches"
-        : `${resolvedMatchIndex + 1} of ${findMatches.offsets.length}${findMatches.truncated ? "+" : ""} ${findMatches.offsets.length === 1 && !findMatches.truncated ? "match" : "matches"}`;
+      : findMatches.contentLimitExceeded
+        ? "File exceeds the 1 MiB Find limit"
+        : findMatches.offsets.length === 0
+          ? "No matches"
+          : `${resolvedMatchIndex + 1} of ${findMatches.offsets.length}${findMatches.truncated ? "+" : ""} ${findMatches.offsets.length === 1 && !findMatches.truncated ? "match" : "matches"}`;
 
   if (
     !resource ||
@@ -202,6 +208,16 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
         if (
           (event.ctrlKey || event.metaKey) &&
           !event.altKey &&
+          event.key.toLowerCase() === "s"
+        ) {
+          event.preventDefault();
+          void saveActiveEditor();
+          return;
+        }
+        if (
+          (event.ctrlKey || event.metaKey) &&
+          !event.altKey &&
+          !event.shiftKey &&
           event.key.toLowerCase() === "f"
         ) {
           event.preventDefault();
@@ -326,15 +342,10 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
         className="editor-input"
         aria-label={`Edit ${path}`}
         value={editor.content}
+        maxLength={MAX_EDITABLE_CONTENT_BYTES}
         disabled={editor.saving}
         spellCheck={false}
         onChange={(event) => updateEditorContent(event.target.value)}
-        onKeyDown={(event) => {
-          if ((event.ctrlKey || event.metaKey) && event.key === "s") {
-            event.preventDefault();
-            void saveActiveEditor();
-          }
-        }}
       />
     </section>
   );
