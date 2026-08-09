@@ -849,6 +849,12 @@ textarea:focus-visible {
   font-size: 12px;
 }
 
+.session-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .session-state__dot {
   width: 7px;
   height: 7px;

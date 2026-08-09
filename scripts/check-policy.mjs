@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
-import { readFile, readdir } from "node:fs/promises";
+import { lstat, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+
+import { cargoPackageFeatureErrors } from "./ade0006a-package-policy.mjs";
 
 const root = process.cwd();
 const failures = [];
@@ -39,9 +41,33 @@ const ownershipManifest = await readJson(
   "docs/work-items/ADE-0006A-acp-session-foundation/contracts/ownership-manifest-v1.json",
 );
 const ownershipScope = new Set(ownershipManifest.ownedFileScopes ?? []);
+for (const file of ownershipManifest.ownedFileScopes ?? []) {
+  try {
+    const metadata = await lstat(path.join(root, file));
+    if (!metadata.isFile() || metadata.isSymbolicLink()) {
+      fail(`ADE-0006A owned file is not a regular file: ${file}`);
+    }
+  } catch {
+    fail(`ADE-0006A owned file is missing: ${file}`);
+  }
+}
 for (const directory of ownershipManifest.ownedDirectoryScopes ?? []) {
   for (const file of await filesBelow(directory)) {
     ownershipScope.add(canonicalRelative(file));
+  }
+}
+const adeScriptName =
+  /^(?:ade0006a|collect-ade0006a|validate-ade0006a|test-ade0006a)[a-z0-9.-]*\.(?:mjs|ps1)$/;
+for (const entry of await readdir(path.join(root, "scripts"), {
+  withFileTypes: true,
+})) {
+  const relativePath = `scripts/${entry.name}`;
+  if (
+    entry.isFile() &&
+    adeScriptName.test(entry.name) &&
+    !ownershipScope.has(relativePath)
+  ) {
+    fail(`ADE-0006A script is outside ownership: ${relativePath}`);
   }
 }
 const ownershipRules = ownershipManifest.rules ?? [];
@@ -122,8 +148,29 @@ if (
 }
 
 const tauriConfig = await readJson("src-tauri/tauri.conf.json");
+const tauriWindowsConfig = await readJson("src-tauri/tauri.windows.conf.json");
+const controlTauriConfig = await readJson(
+  "tools/footprint-control/tauri.conf.json",
+);
+const controlWindowsConfig = await readJson(
+  "tools/footprint-control/tauri.windows.package.conf.json",
+);
 const fixtureVectors = await readJson(
   "docs/work-items/ADE-0006A-acp-session-foundation/contracts/fixture-vectors-v1.json",
+);
+const packageContract = await readJson(
+  "docs/work-items/ADE-0006A-acp-session-foundation/contracts/package-contract-v1.json",
+);
+const evidencePolicy = await readJson(
+  "docs/work-items/ADE-0006A-acp-session-foundation/contracts/evidence-policy-v1.json",
+);
+const packageCargoToml = await readFile(
+  path.join(root, "src-tauri/Cargo.toml"),
+  "utf8",
+);
+const controlCargoToml = await readFile(
+  path.join(root, "tools/footprint-control/Cargo.toml"),
+  "utf8",
 );
 const csp = tauriConfig.app?.security?.csp;
 const devCsp = tauriConfig.app?.security?.devCsp;
@@ -164,6 +211,188 @@ if (
   "'self' ipc: http://ipc.localhost http://tauri.localhost ws://127.0.0.1:1420 http://127.0.0.1:1420"
 ) {
   fail("Development CSP must add only the exact loopback Vite origins.");
+}
+
+const expectedWindowsTargets = ["msi", "nsis"];
+const windowsBundle = tauriWindowsConfig.bundle;
+const windowsWebview = windowsBundle?.windows?.webviewInstallMode;
+if (
+  JSON.stringify(windowsBundle?.targets) !==
+    JSON.stringify(expectedWindowsTargets) ||
+  windowsWebview?.type !== "downloadBootstrapper" ||
+  windowsWebview?.silent !== true
+) {
+  fail(
+    "Windows production-default packaging must explicitly use MSI, NSIS, and the silent WebView2 download bootstrapper.",
+  );
+}
+
+const declaredPackageMembers = [
+  ...(tauriConfig.bundle?.resources ?? []),
+  ...(tauriConfig.bundle?.externalBin ?? []),
+  ...(windowsBundle?.resources ?? []),
+  ...(windowsBundle?.externalBin ?? []),
+];
+if (declaredPackageMembers.length !== 0) {
+  fail("Production package resources and external binaries must remain empty.");
+}
+
+const candidatePackage = packageContract.participants?.candidate;
+const controlPackage = packageContract.participants?.control;
+const packageArtifactKinds = candidatePackage?.artifacts?.map(
+  ({ kind }) => kind,
+);
+const packageArtifactPaths = candidatePackage?.artifacts?.map(
+  ({ relativePath }) => relativePath,
+);
+const controlArtifactPaths = controlPackage?.artifacts?.map(
+  ({ relativePath }) => relativePath,
+);
+const controlBundle = controlWindowsConfig.bundle;
+const controlWebview = controlBundle?.windows?.webviewInstallMode;
+if (
+  packageContract.schemaVersion !== 1 ||
+  packageContract.platform !== "windows" ||
+  packageContract.productionBuild?.profile !== "release" ||
+  packageContract.productionBuild?.defaultFeaturesEnabled !== true ||
+  JSON.stringify(packageContract.productionBuild?.enabledFeatures) !==
+    JSON.stringify(["custom-protocol"]) ||
+  JSON.stringify(packageContract.productionBuild?.bundleTargets) !==
+    JSON.stringify(expectedWindowsTargets) ||
+  candidatePackage?.applicationRoot !== "." ||
+  candidatePackage?.cargoManifest !== "src-tauri/Cargo.toml" ||
+  candidatePackage?.configuration?.base !== "src-tauri/tauri.conf.json" ||
+  candidatePackage?.configuration?.platformOverlay !==
+    "src-tauri/tauri.windows.conf.json" ||
+  controlPackage?.applicationRoot !== "tools/footprint-control" ||
+  controlPackage?.cargoManifest !== "tools/footprint-control/Cargo.toml" ||
+  controlPackage?.configuration?.base !==
+    "tools/footprint-control/tauri.conf.json" ||
+  controlPackage?.configuration?.platformOverlay !==
+    "tools/footprint-control/tauri.windows.package.conf.json" ||
+  JSON.stringify(packageArtifactKinds) !==
+    JSON.stringify(["executable", "msi", "nsis"]) ||
+  JSON.stringify(packageArtifactPaths) !==
+    JSON.stringify([
+      "release/sage.exe",
+      "release/bundle/msi/Sage_0.1.0_x64_en-US.msi",
+      "release/bundle/nsis/Sage_0.1.0_x64-setup.exe",
+    ]) ||
+  JSON.stringify(controlArtifactPaths) !==
+    JSON.stringify([
+      "release/sage-footprint-control.exe",
+      "release/bundle/msi/Sage Footprint Control_0.1.0_x64_en-US.msi",
+      "release/bundle/nsis/Sage Footprint Control_0.1.0_x64-setup.exe",
+    ]) ||
+  packageContract.artifactSet?.requiredCount !== 3 ||
+  JSON.stringify(controlBundle?.targets) !==
+    JSON.stringify(expectedWindowsTargets) ||
+  controlBundle?.active !== true ||
+  controlWebview?.type !== "downloadBootstrapper" ||
+  controlWebview?.silent !== true ||
+  JSON.stringify(controlTauriConfig.app?.security?.csp) !==
+    JSON.stringify(tauriConfig.app?.security?.csp) ||
+  packageContract.webviewProvisioning?.mode !== "downloadBootstrapper" ||
+  packageContract.webviewProvisioning?.silent !== true ||
+  packageContract.webviewProvisioning?.whenRuntimeAbsent !== true ||
+  packageContract.webviewProvisioning?.networkRequiredWhenTriggered !== true ||
+  packageContract.webviewProvisioning?.bundledPayloadCount !== 0 ||
+  packageContract.webviewProvisioning?.bundledPayloadBytes !== 0 ||
+  packageContract.fixtureExclusion?.productionFeatureSetContainsFixture !==
+    false ||
+  packageContract.fixtureExclusion?.canonicalFeature !== "acp-fixture" ||
+  JSON.stringify(packageContract.fixtureExclusion?.canonicalBasenames) !==
+    JSON.stringify([
+      "acp-adversarial-fixture.exe",
+      "acp-adversarial-fixture-x86_64-pc-windows-msvc.exe",
+    ]) ||
+  packageContract.fixtureExclusion?.metadataDeclarationCount !== 0 ||
+  packageContract.fixtureExclusion?.extractedMemberBasenameCountPerInstaller !==
+    0 ||
+  packageContract.fixtureExclusion
+    ?.extractedPayloadHashMatchesFixturePerInstaller !== 0 ||
+  packageContract.installedExecutableIdentity?.algorithm !==
+    "tauri-bundle-type-patch-v1" ||
+  packageContract.installedExecutableIdentity?.sourceMarker !==
+    "__TAURI_BUNDLE_TYPE_VAR_UNK" ||
+  packageContract.installedExecutableIdentity?.sourceMarkerOccurrenceCount !==
+    1 ||
+  packageContract.installedExecutableIdentity?.targetMarkers?.msi !==
+    "__TAURI_BUNDLE_TYPE_VAR_MSI" ||
+  packageContract.installedExecutableIdentity?.targetMarkers?.nsis !==
+    "__TAURI_BUNDLE_TYPE_VAR_NSS" ||
+  packageContract.inspection?.installedPayloadProjection?.msi?.method !==
+    "wix-dark-install-root-v1" ||
+  packageContract.inspection?.installedPayloadProjection?.nsis?.method !==
+    "nsis-installed-tree-v1" ||
+  packageContract.retention?.rawReservation?.sourceManifestFiles !== 1 ||
+  packageContract.retention?.rawReservation?.sourceManifestBytes !==
+    8 * 1024 * 1024 ||
+  packageContract.retention?.rawReservation?.sourceManifestEntries !== 4096 ||
+  packageContract.retention?.rawReservation?.installerMemberSets !== 4 ||
+  packageContract.retention?.rawReservation?.memberSidecarFiles !== 32 ||
+  packageContract.retention?.rawReservation?.memberSidecarBytes !==
+    24 * 1024 * 1024 ||
+  packageContract.retention?.rawReservation?.totalFiles !== 33 ||
+  packageContract.retention?.rawReservation?.totalBytes !== 32 * 1024 * 1024 ||
+  evidencePolicy.packageCampaignRetention?.ledgerBytes !== 64 * 1024 ||
+  evidencePolicy.packageCampaignRetention?.ledgerEntries !== 16 ||
+  evidencePolicy.packageCampaignRetention?.reservation?.rawFiles !== 33 ||
+  evidencePolicy.packageCampaignRetention?.reservation?.rawBytes !==
+    32 * 1024 * 1024 ||
+  evidencePolicy.packageCampaignRetention?.reservation
+    ?.sourceManifestEntries !== 4096 ||
+  evidencePolicy.packageCampaignRetention?.reservation?.curatedFiles !== 1 ||
+  evidencePolicy.packageCampaignRetention?.reservation?.curatedBytes !==
+    evidencePolicy.campaignBounds?.curatedBytes
+) {
+  fail("ADE-0006A package contract is internally inconsistent.");
+}
+for (const error of cargoPackageFeatureErrors(
+  packageCargoToml,
+  packageContract,
+  "candidate",
+)) {
+  fail(error);
+}
+for (const error of cargoPackageFeatureErrors(
+  controlCargoToml,
+  packageContract,
+  "control",
+)) {
+  fail(error);
+}
+
+const packageFixture = fixtureVectors.cases?.find(
+  ({ id }) => id === "default-package-fixture-exclusion",
+);
+const expectedPackageOracle = {
+  productionArtifactKinds: packageArtifactKinds,
+  fixtureExecutableCount: 0,
+  fixtureMetadataCount:
+    packageContract.fixtureExclusion.metadataDeclarationCount,
+  productionFeatureSetContainsAcpFixture:
+    packageContract.fixtureExclusion.productionFeatureSetContainsFixture,
+  extractedFixtureHashMatches:
+    packageContract.fixtureExclusion
+      .extractedPayloadHashMatchesFixturePerInstaller,
+  msiExecutableMatchesExpectedBundleProjection: true,
+  nsisExecutableMatchesExpectedBundleProjection: true,
+  webviewProvisioningMode: packageContract.webviewProvisioning.mode,
+  webviewProvisioningWhenRuntimeAbsent:
+    packageContract.webviewProvisioning.whenRuntimeAbsent,
+  webviewProvisioningNetworkRequired:
+    packageContract.webviewProvisioning.networkRequiredWhenTriggered,
+  bundledWebviewPayloadCount:
+    packageContract.webviewProvisioning.bundledPayloadCount,
+  bundledWebviewPayloadBytes:
+    packageContract.webviewProvisioning.bundledPayloadBytes,
+};
+if (
+  JSON.stringify(packageFixture?.oracle) !==
+  JSON.stringify(expectedPackageOracle)
+) {
+  fail("Package fixture oracle does not match the frozen package contract.");
 }
 
 const capabilities = await readJson("src-tauri/capabilities/main.json");
@@ -344,6 +573,7 @@ const windowsFeatures = [
   "Win32_Storage_FileSystem",
   "Win32_System_JobObjects",
   "Win32_System_Pipes",
+  "Win32_System_Performance",
   "Win32_System_Threading",
 ];
 const declaredWindowsFeatures = windowsDeclaration

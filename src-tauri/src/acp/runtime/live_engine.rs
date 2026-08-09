@@ -3,6 +3,7 @@ use crate::acp::{
     scheduler::RuntimeOwner,
     store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
 };
+use std::time::Instant;
 
 use super::{
     HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, PromptWrite, RuntimeEngine,
@@ -52,7 +53,7 @@ pub(crate) trait LiveRuntimePort: Send + 'static {
         command: &CloseSessionCommand,
         proof: Self::ZeroProof,
     ) -> Result<(), (HostError, Self::ZeroProof)>;
-    fn shutdown(&mut self) -> Result<(), HostError>;
+    fn shutdown(&mut self, deadline: Instant) -> Result<(), HostError>;
 }
 
 pub(crate) struct LiveRuntimeEngine<P: LiveRuntimePort> {
@@ -177,8 +178,8 @@ impl<P: LiveRuntimePort> RuntimeEngine for LiveRuntimeEngine<P> {
         }
     }
 
-    fn shutdown(&mut self) -> Result<(), HostError> {
-        self.port.shutdown()
+    fn shutdown(&mut self, deadline: Instant) -> Result<(), HostError> {
+        self.port.shutdown(deadline)
     }
 }
 

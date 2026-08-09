@@ -150,7 +150,7 @@ describe("ToolItem", () => {
     expect(screen.getByText("Issue tracker · Read issue")).toBeInTheDocument();
   });
 
-  it("announces a terminal tool state once using the tool label", () => {
+  it("keeps a terminal tool state accessible without replaying it", () => {
     render(
       <ToolItem
         item={tool(
@@ -167,7 +167,7 @@ describe("ToolItem", () => {
       name: "Unknown provider tool: Completed",
     });
     expect(status).toHaveTextContent("Completed");
-    expect(status).toHaveAttribute("aria-live", "polite");
+    expect(status).toHaveAttribute("aria-live", "off");
     expect(status).toHaveAttribute("aria-atomic", "true");
   });
 

@@ -69,6 +69,9 @@ pub(crate) struct SessionTreeLease {
     coordinator: SessionCoordinator,
     owner: RuntimeOwner,
     tree: Option<TreeLease>,
+    #[cfg(feature = "acp-fixture")]
+    characterization_observation:
+        Option<crate::acp::characterization_observation::CharacterizationObservation>,
 }
 
 pub(crate) struct ActivationFailure {
@@ -119,6 +122,8 @@ impl ActivationRecovery {
             coordinator: self.coordinator,
             owner: self.owner,
             tree: Some(self.tree),
+            #[cfg(feature = "acp-fixture")]
+            characterization_observation: None,
         })
     }
 
@@ -250,6 +255,8 @@ impl SessionCoordinator {
             coordinator: self.clone(),
             owner,
             tree: Some(tree),
+            #[cfg(feature = "acp-fixture")]
+            characterization_observation: None,
         })
     }
 

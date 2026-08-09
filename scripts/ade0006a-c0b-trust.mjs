@@ -1,81 +1,152 @@
 import {
   exactKeys,
-  HEX_ID,
   inspectSanitized,
   safeInteger,
   safeSlug,
   SHA256,
 } from "./ade0006a-c0b-common.mjs";
 
-const bindingKeys = [
-  "kind",
-  "sourceCommit",
-  "sourceTree",
-  "sourceAggregateSha256",
-  "sourceManifestSha256",
-  "sourceFileCount",
-  "sourceBytes",
-  "contractManifestSha256",
-  "cargoLockSha256",
-  "frontendLockSha256",
-  "executableSha256",
-  "executableBytes",
-  "featureSet",
-  "platform",
-  "architecture",
-  "dependencyGraphSha256",
-  "dependencyPackageCount",
-  "frontendRawBytes",
-  "productionPackageSha256",
-  "productionPackageBytes",
-  "installerSha256",
-  "installerBytes",
-  "installedCoreBytes",
-];
-
-function validateBinding(errors, binding, kind) {
-  exactKeys(errors, binding, bindingKeys, `trust.${kind}`);
-  if (binding?.kind !== kind) errors.push(`trust.${kind}.kind is wrong`);
-  if (!/^[0-9a-f]{40}$/.test(binding?.sourceCommit ?? "")) {
-    errors.push(`trust.${kind}.sourceCommit is invalid`);
-  }
-  if (!HEX_ID.test(binding?.sourceTree ?? "")) {
-    errors.push(`trust.${kind}.sourceTree is invalid`);
-  }
-  for (const key of bindingKeys.filter((key) => key.endsWith("Sha256"))) {
-    if (!SHA256.test(binding?.[key] ?? "")) {
-      errors.push(`trust.${kind}.${key} is invalid`);
-    }
-  }
-  for (const key of [
-    "sourceFileCount",
-    "sourceBytes",
-    "executableBytes",
-    "dependencyPackageCount",
-    "frontendRawBytes",
-    "productionPackageBytes",
-    "installerBytes",
-    "installedCoreBytes",
-  ]) {
-    safeInteger(errors, binding?.[key], `trust.${kind}.${key}`, 0, 2 ** 40);
-  }
+function validateCharacterization(errors, value, authenticatedPackage, frozen) {
+  exactKeys(
+    errors,
+    value,
+    [
+      "packageSourceParticipant",
+      "executableSha256",
+      "executableBytes",
+      "featureSet",
+      "buildFingerprintSha256",
+      "fixtureExecutableSha256",
+      "fixtureExecutableBytes",
+    ],
+    "trust.characterization",
+  );
   if (
-    !Array.isArray(binding?.featureSet) ||
-    binding.featureSet.length < 1 ||
-    binding.featureSet.length > 32 ||
-    binding.featureSet.some((entry) => !/^[a-z0-9][a-z0-9-]{0,63}$/.test(entry))
+    value?.packageSourceParticipant !== "candidate" ||
+    !SHA256.test(value?.executableSha256 ?? "") ||
+    !SHA256.test(value?.buildFingerprintSha256 ?? "") ||
+    JSON.stringify(value?.featureSet) !==
+      JSON.stringify(frozen.package.characterizationBuild.enabledFeatures) ||
+    value?.executableSha256 !==
+      authenticatedPackage.characterization.executableSha256 ||
+    value?.executableBytes !==
+      authenticatedPackage.characterization.executableBytes ||
+    JSON.stringify(value?.featureSet) !==
+      JSON.stringify(authenticatedPackage.characterization.featureSet) ||
+    value?.buildFingerprintSha256 !==
+      authenticatedPackage.characterization.buildFingerprintSha256 ||
+    value?.fixtureExecutableSha256 !==
+      authenticatedPackage.fixture.executableSha256 ||
+    value?.fixtureExecutableBytes !==
+      authenticatedPackage.fixture.executableBytes
   ) {
-    errors.push(`trust.${kind}.featureSet is invalid`);
+    errors.push("trust.characterization identity is invalid");
   }
-  safeSlug(errors, binding?.platform, `trust.${kind}.platform`);
-  safeSlug(errors, binding?.architecture, `trust.${kind}.architecture`);
+  safeInteger(
+    errors,
+    value?.executableBytes,
+    "trust.characterization.executableBytes",
+    1,
+    frozen.package.observerBounds.executableArtifactBytes,
+  );
+  safeInteger(
+    errors,
+    value?.fixtureExecutableBytes,
+    "trust.characterization.fixtureExecutableBytes",
+    1,
+    frozen.package.observerBounds.executableArtifactBytes,
+  );
+}
+
+function validateEnvironment(errors, value) {
+  const keys = [
+    "testOwner",
+    "reviewRole",
+    "hostClass",
+    "hardware",
+    "osVersion",
+    "platform",
+    "architecture",
+    "powerPolicy",
+    "webViewRuntime",
+  ];
+  exactKeys(errors, value, keys, "trust.environment");
+  for (const key of keys)
+    safeSlug(errors, value?.[key], `trust.environment.${key}`);
+  if (value?.platform !== "windows" || value?.architecture !== "x86_64") {
+    errors.push("trust.environment is not an admitted Windows x86_64 host");
+  }
+}
+
+function validateNamedDigests(errors, values, expectedNames, label) {
+  if (
+    !Array.isArray(values) ||
+    values.length !== expectedNames.length ||
+    values.map(({ name }) => name).join("\0") !== expectedNames.join("\0")
+  ) {
+    errors.push(`${label} is incomplete or out of order`);
+    return;
+  }
+  values.forEach((value, index) => {
+    exactKeys(errors, value, ["name", "sha256"], `${label}[${index}]`);
+    if (!SHA256.test(value?.sha256 ?? "")) {
+      errors.push(`${label}[${index}].sha256 is invalid`);
+    }
+  });
+}
+
+function validateCollector(errors, value, frozen) {
+  const contract = frozen.budgets.measurementContract.collectorProvenance;
+  exactKeys(
+    errors,
+    value,
+    ["entrypoint", "modules", "tools"],
+    "trust.collector",
+  );
+  exactKeys(
+    errors,
+    value?.entrypoint,
+    ["name", "sha256"],
+    "trust.collector.entrypoint",
+  );
+  if (
+    value?.entrypoint?.name !== contract.entrypoint ||
+    !SHA256.test(value?.entrypoint?.sha256 ?? "")
+  ) {
+    errors.push("trust.collector.entrypoint is invalid");
+  }
+  validateNamedDigests(
+    errors,
+    value?.modules,
+    contract.modules,
+    "trust.collector.modules",
+  );
+  if (
+    !Array.isArray(value?.tools) ||
+    value.tools.length !== contract.tools.length ||
+    value.tools.map(({ name }) => name).join("\0") !== contract.tools.join("\0")
+  ) {
+    errors.push("trust.collector.tools is incomplete or out of order");
+    return;
+  }
+  value.tools.forEach((tool, index) => {
+    const label = `trust.collector.tools[${index}]`;
+    exactKeys(errors, tool, ["name", "version", "sha256"], label);
+    if (
+      !/^[a-z0-9][a-z0-9.+_-]{0,63}$/i.test(tool?.version ?? "") ||
+      !SHA256.test(tool?.sha256 ?? "")
+    ) {
+      errors.push(`${label} identity is invalid`);
+    }
+  });
 }
 
 export function validateTrustManifest(
   trust,
   trustSha256,
-  expectedSha256,
+  expectedTrustSha256,
   frozen,
+  authenticatedPackage,
 ) {
   const errors = [];
   exactKeys(
@@ -85,59 +156,31 @@ export function validateTrustManifest(
       "schemaVersion",
       "workItem",
       "phase",
-      "candidate",
-      "control",
-      "provenance",
-      "tools",
+      "packageReceiptSha256",
+      "characterization",
+      "environment",
+      "collector",
     ],
     "trust",
   );
-  if (trustSha256 !== expectedSha256 || !SHA256.test(expectedSha256 ?? "")) {
-    errors.push("trust manifest does not match the independent expected hash");
-  }
   if (
     trust?.schemaVersion !== 1 ||
     trust?.workItem !== "ADE-0006A" ||
-    trust?.phase !== "C0-B"
+    trust?.phase !== "C0-B" ||
+    !SHA256.test(trustSha256 ?? "") ||
+    trustSha256 !== expectedTrustSha256 ||
+    trust?.packageReceiptSha256 !== authenticatedPackage.receiptSha256
   ) {
-    errors.push("trust manifest header is invalid");
+    errors.push("trust manifest header or package receipt binding is invalid");
   }
-  validateBinding(errors, trust?.candidate, "candidate");
-  validateBinding(errors, trust?.control, "control");
-  if (
-    trust?.candidate?.contractManifestSha256 !== frozen.contractManifestSha256
-  ) {
-    errors.push("candidate is not bound to the frozen contract manifest");
-  }
-  if (trust?.candidate?.executableSha256 === trust?.control?.executableSha256) {
-    errors.push("candidate and control executables must be distinct");
-  }
-  if (
-    trust?.candidate?.platform !== trust?.control?.platform ||
-    trust?.candidate?.architecture !== trust?.control?.architecture
-  ) {
-    errors.push("candidate and control platform/architecture are not matched");
-  }
-  if (
-    !Array.isArray(trust?.tools) ||
-    trust.tools.length < 1 ||
-    trust.tools.length > 32
-  ) {
-    errors.push("trust.tools must contain 1..32 authenticated tools");
-  } else {
-    const names = new Set();
-    trust.tools.forEach((tool, index) => {
-      exactKeys(errors, tool, ["name", "sha256"], `trust.tools[${index}]`);
-      safeSlug(errors, tool?.name, `trust.tools[${index}].name`);
-      if (!SHA256.test(tool?.sha256 ?? "")) {
-        errors.push(`trust.tools[${index}].sha256 is invalid`);
-      }
-      if (names.has(tool?.name)) {
-        errors.push("trust.tools contains a duplicate name");
-      }
-      names.add(tool?.name);
-    });
-  }
-  inspectSanitized(trust, errors, "trust");
+  validateCharacterization(
+    errors,
+    trust?.characterization,
+    authenticatedPackage,
+    frozen,
+  );
+  validateEnvironment(errors, trust?.environment);
+  validateCollector(errors, trust?.collector, frozen);
+  inspectSanitized(trust, errors, "trust", ["environment"]);
   return errors;
 }

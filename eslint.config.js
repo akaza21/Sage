@@ -24,7 +24,10 @@ export default tseslint.config(
     },
   },
   {
-    files: ["tools/footprint-control/dist/**/*.js"],
+    files: [
+      "tools/footprint-control/dist/**/*.js",
+      "tools/footprint-control/frontend/**/*.js",
+    ],
     languageOptions: {
       globals: globals.browser,
     },

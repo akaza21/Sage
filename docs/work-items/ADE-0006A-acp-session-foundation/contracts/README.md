@@ -1,7 +1,8 @@
 # ADE-0006A C0-S contract packet
 
-Status: proposed and awaiting fresh named review. These files freeze no
-production contract, authorize no source change, and admit no harness.
+Status: the 2026-08-09 Package comparator, ADE-wide campaign lock, and
+renderer-recreation observer amendments are user-approved and awaiting fresh
+named review. These files admit no harness by themselves.
 
 This directory makes the C0-S proposal mechanically reviewable:
 
@@ -20,11 +21,16 @@ This directory makes the C0-S proposal mechanically reviewable:
   vectors for absent/null/whitespace/order/escape/numeric distinctions.
 - `fixture-vectors-v1.json` lists every initial adversarial case and oracle.
 - `packaged-gestures-v1.json` lists the semantic packaged interaction matrix.
+- `package-contract-v1.json` freezes the Windows production-default EXE/MSI/
+  NSIS artifact set, the tracked ADE-0005 frontend-size baseline, WebView2
+  provisioning, fixture exclusion, observer bounds, and required artifact
+  binding.
 - `performance-budgets-v1.json` fixes proposed C0-S latency, resource,
   persistence, package-delta, and sampling ceilings before C1 measurement.
 - `protocol-contract-v1.json` owns lifecycle transitions, digest version 1,
   revision-only notification, IPC intent, and dormant native-thread semantics.
-- `evidence-policy-v1.json` owns evidence bounds, redaction, provenance, and
+- `evidence-policy-v1.json` owns the ADE-wide Package/C0-B admission lock,
+  evidence bounds, renderer-recreation evidence, redaction, provenance, and
   independence rules.
 - `dependency-admission-v1.json` records the schema-only selection, rejected
   runtime, Windows API features, and evidence still required for admission.

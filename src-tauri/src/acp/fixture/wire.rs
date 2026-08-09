@@ -115,6 +115,7 @@ fn emit_known(
         | "childActivityForeignParent"
         | "childActivityText"
         | "initializeSuccess"
+        | "newSessionSuccess"
         | "nativeForkSuccess"
         | "parentToolStart"
         | "permissionRequestA"
@@ -153,6 +154,9 @@ fn emit_known(
             "parentExternalItemId": field_str(step, "parentExternalItemId")?,
         }),
         "resumeSuccess" => serde_json::json!({
+            "externalSessionId": field_str(step, "externalSessionId")?,
+        }),
+        "newSessionSuccess" => serde_json::json!({
             "externalSessionId": field_str(step, "externalSessionId")?,
         }),
         _ => serde_json::json!({}),

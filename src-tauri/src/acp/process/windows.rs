@@ -11,9 +11,10 @@ use std::ptr::null;
 use std::time::{Duration, Instant};
 
 use windows_sys::Win32::Foundation::{HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT};
+use windows_sys::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 use windows_sys::Win32::System::Threading::{
     CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, CreateProcessW, EXTENDED_STARTUPINFO_PRESENT,
-    PROCESS_INFORMATION, STARTF_USESTDHANDLES, STARTUPINFOEXW, WaitForSingleObject,
+    INFINITE, PROCESS_INFORMATION, STARTF_USESTDHANDLES, STARTUPINFOEXW, WaitForSingleObject,
 };
 
 use self::artifact::{VerifiedArtifact, validate_directory};
@@ -25,6 +26,7 @@ use self::native::{AttributeList, NativeHandle, StdioSet};
 pub(crate) use self::recovery::LaunchRecovery;
 use self::recovery::{classify_started_failure, fail_pre_spawn};
 use super::capacity::TreeCapacityLease;
+use super::identity::SpawnTimingReceipt;
 use super::platform::LaunchFailure;
 use super::supervisor::{LaunchError, LaunchSpec, RequiredContainment};
 
@@ -80,6 +82,7 @@ pub(crate) fn launch(
     startup.StartupInfo.hStdError = child_handles[2];
     startup.lpAttributeList = attributes.pointer;
     let mut info = PROCESS_INFORMATION::default();
+    let (frequency_hz, spawn_started_tick) = pre_spawn!(performance_clock());
     // SAFETY: pointers are valid and the attribute list restricts inheritance.
     if unsafe {
         CreateProcessW(
@@ -98,30 +101,65 @@ pub(crate) fn launch(
     {
         return fail_pre_spawn(LaunchError::Io, lease, spec.runtime_epoch);
     }
+    let process_ready_tick = monotonic_tick();
     lease.activate();
+    let spawn_timing = match process_ready_tick
+        .and_then(|ready| SpawnTimingReceipt::new(frequency_hz, spawn_started_tick, ready))
+    {
+        Ok(receipt) => receipt,
+        Err(error) => {
+            close_thread_handle(info.hThread);
+            let process = NativeHandle::new(info.hProcess).ok();
+            let recovery =
+                LaunchRecovery::child_created(process, None, job, artifact, lease, None, spec);
+            return Err(classify_started_failure(error, recovery));
+        }
+    };
     let process = match NativeHandle::new(info.hProcess) {
         Ok(process) => process,
         Err(error) => {
             close_thread_handle(info.hThread);
             return Err(LaunchFailure::convergence_unknown(
                 error,
-                LaunchRecovery::child_created(None, None, job, artifact, lease, spec),
+                LaunchRecovery::child_created(
+                    None,
+                    None,
+                    job,
+                    artifact,
+                    lease,
+                    Some(spawn_timing),
+                    spec,
+                ),
             ));
         }
     };
     let thread = match NativeHandle::new(info.hThread) {
         Ok(thread) => thread,
         Err(error) => {
-            let recovery =
-                LaunchRecovery::child_created(Some(process), None, job, artifact, lease, spec);
+            let recovery = LaunchRecovery::child_created(
+                Some(process),
+                None,
+                job,
+                artifact,
+                lease,
+                Some(spawn_timing),
+                spec,
+            );
             return Err(classify_started_failure(error, recovery));
         }
     };
     drop(attributes);
     let (parent_stdin, parent_stdout, parent_stderr) = stdio.into_parent();
 
-    let mut recovery =
-        LaunchRecovery::child_created(Some(process), Some(thread), job, artifact, lease, spec);
+    let mut recovery = LaunchRecovery::child_created(
+        Some(process),
+        Some(thread),
+        job,
+        artifact,
+        lease,
+        Some(spawn_timing),
+        spec,
+    );
     if let Err(error) = recovery.assign_job() {
         return Err(classify_started_failure(error, recovery));
     }
@@ -136,6 +174,27 @@ pub(crate) fn launch(
     }
     recovery.use_termination_deadline(spec);
     recovery.into_running(parent_stdin, parent_stdout)
+}
+
+fn performance_clock() -> Result<(u64, u64), LaunchError> {
+    let mut frequency = 0_i64;
+    // SAFETY: the output points to initialized writable storage.
+    if unsafe { QueryPerformanceFrequency(&mut frequency) } == 0 || frequency <= 0 {
+        return Err(LaunchError::ContainmentFailure);
+    }
+    Ok((
+        u64::try_from(frequency).map_err(|_| LaunchError::ContainmentFailure)?,
+        monotonic_tick()?,
+    ))
+}
+
+pub(crate) fn monotonic_tick() -> Result<u64, LaunchError> {
+    let mut tick = 0_i64;
+    // SAFETY: the output points to initialized writable storage.
+    if unsafe { QueryPerformanceCounter(&mut tick) } == 0 || tick < 0 {
+        return Err(LaunchError::ContainmentFailure);
+    }
+    u64::try_from(tick).map_err(|_| LaunchError::ContainmentFailure)
 }
 
 fn close_thread_handle(handle: HANDLE) {
@@ -157,4 +216,14 @@ fn wait_handle(handle: HANDLE, timeout: Duration) -> Result<(), LaunchError> {
 
 fn wait_until(handle: HANDLE, deadline: Instant) -> Result<(), LaunchError> {
     wait_handle(handle, deadline.saturating_duration_since(Instant::now()))
+}
+
+fn observe_exit(handle: HANDLE) -> Result<(), LaunchError> {
+    // The watcher owns no teardown authority. The retained TreeControl does,
+    // and every runner exit requests job termination before joining this wait.
+    // SAFETY: the process handle remains live through the shared authority.
+    match unsafe { WaitForSingleObject(handle, INFINITE) } {
+        WAIT_OBJECT_0 => Ok(()),
+        _ => Err(LaunchError::ContainmentFailure),
+    }
 }

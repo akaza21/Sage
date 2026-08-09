@@ -282,9 +282,6 @@ pub(crate) fn validate_contract_path(relative_path: &str, allow_root: bool) -> A
 }
 
 pub fn development_workspace_root() -> Option<PathBuf> {
-    if let Some(configured) = std::env::var_os("SAGE_PROJECT_ROOT") {
-        return Some(PathBuf::from(configured));
-    }
     if cfg!(debug_assertions) {
         return std::env::current_dir().ok().and_then(|current| {
             current

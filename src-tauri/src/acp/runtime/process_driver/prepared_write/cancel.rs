@@ -38,6 +38,18 @@ where
                 error: PreparedWriteError::Intent,
             }));
         }
+        if let Some(cursor) = self.turn.driver.latest_durable_turn_cursor().cloned()
+            && let Err(error) = self.turn.dispatch.accept_adapter_commit(&cursor)
+        {
+            return Err(Box::new(PreparedWriteFailure {
+                state: self,
+                error: error.into(),
+            }));
+        }
+        if self.terminal_is_durable() {
+            self.cancel_intent = Some(intent.clone());
+            return Ok(self);
+        }
         if let Err(error) = self
             .turn
             .dispatch
@@ -70,6 +82,9 @@ where
                 state: self,
                 error: PreparedWriteError::Intent,
             }));
+        }
+        if self.terminal_is_durable() {
+            return Ok(self);
         }
         if self.cancel_wire != CancelWireState::NotAttempted {
             return Ok(self);
@@ -145,5 +160,14 @@ where
 
     pub(crate) fn cancel_requires_convergence(&self) -> bool {
         self.cancel_wire == CancelWireState::Teardown
+    }
+
+    fn terminal_is_durable(&self) -> bool {
+        self.turn
+            .driver
+            .latest_durable_turn_cursor()
+            .is_some_and(|cursor| {
+                cursor.turn_id() == self.turn.dispatch.turn_id() && cursor.state().is_terminal()
+            })
     }
 }

@@ -1,0 +1,492 @@
+{
+  "schemaVersion": 1,
+  "status": "proposed-package-contract",
+  "platform": "windows",
+  "architecture": "x86_64",
+  "authenticatedBuild": {
+    "recipe": "windows-package-build-v1",
+    "sourceStage": "exact-source-manifest-projection-v1",
+    "builtArtifactSnapshot": "Cargo target hardlinks are admitted only while copying through one stable handle into a unique scratch file; every consumed artifact and installer inspection uses that immutable snapshot",
+    "linkerTempDirectory": "the isolated TEMP directory contains one fixed sentinel before any child process so MSVC cannot lose an otherwise empty temp root",
+    "rust": {
+      "toolchainDirectoryName": "stable-2026-07-16-x86_64-pc-windows-msvc",
+      "release": "1.97.1",
+      "host": "x86_64-pc-windows-msvc",
+      "cargoCommit": "c980f4866141969fab6254a680546a277789d6f0",
+      "rustcCommit": "8bab26f4f68e0e26f0bb7960be334d5b520ea452"
+    },
+    "node": {
+      "version": "v22.18.0",
+      "npmVersion": "10.9.3"
+    },
+    "git": {
+      "directoryName": "git",
+      "sourceRuntimeRoot": "mingw64/bin",
+      "executable": "git.exe",
+      "runtimeFiles": [
+        "git.exe",
+        "libiconv-2.dll",
+        "libintl-8.dll",
+        "libpcre2-8-0.dll",
+        "libwinpthread-1.dll",
+        "zlib1.dll"
+      ],
+      "sourceHardLinkPolicy": "source aliases are admitted only for the exact declared runtime files while copying through one stable handle into unique scratch files; all scratch runtime files must have link count one",
+      "version": "2.50.0.windows.1"
+    },
+    "nativeTools": {
+      "msvc": {
+        "directoryName": "14.44.35207",
+        "inputRoots": [
+          { "label": "bin-x64", "relativePath": "bin/Hostx64/x64" },
+          { "label": "include", "relativePath": "include" },
+          { "label": "lib-x64", "relativePath": "lib/x64" }
+        ]
+      },
+      "windowsSdk": {
+        "version": "10.0.26100.0",
+        "inputRoots": [
+          { "label": "bin-x64", "relativePath": "bin/{version}/x64" },
+          {
+            "label": "include-cppwinrt",
+            "relativePath": "Include/{version}/cppwinrt"
+          },
+          {
+            "label": "include-shared",
+            "relativePath": "Include/{version}/shared"
+          },
+          { "label": "include-ucrt", "relativePath": "Include/{version}/ucrt" },
+          { "label": "include-um", "relativePath": "Include/{version}/um" },
+          {
+            "label": "include-winrt",
+            "relativePath": "Include/{version}/winrt"
+          },
+          { "label": "lib-ucrt-x64", "relativePath": "Lib/{version}/ucrt/x64" },
+          { "label": "lib-um-x64", "relativePath": "Lib/{version}/um/x64" }
+        ]
+      }
+    },
+    "npmCiArguments": [
+      "ci",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      "--include=dev",
+      "--include=optional",
+      "--install-strategy=hoisted"
+    ],
+    "launchers": {
+      "npm": "bin/npm-cli.js",
+      "typescript": "node_modules/typescript/bin/tsc",
+      "vite": "node_modules/vite/bin/vite.js",
+      "tauri": "node_modules/@tauri-apps/cli/tauri.js",
+      "tauriNative": "node_modules/@tauri-apps/cli-win32-x64-msvc/cli.win32-x64-msvc.node"
+    },
+    "environment": {
+      "inherit": [],
+      "systemInputs": ["SystemRoot", "ComSpec"],
+      "fixedValues": { "PATHEXT": ".COM;.EXE;.BAT;.CMD" },
+      "isolatedDirectories": { "viteCache": "build/vite-cache" },
+      "forbiddenAmbientPrefixes": [
+        "CARGO_",
+        "NODE_",
+        "NAPI_",
+        "RUST",
+        "TAURI_",
+        "npm_config_"
+      ],
+      "forbiddenAmbientNames": [
+        "ALL_PROXY",
+        "HTTPS_PROXY",
+        "HTTP_PROXY",
+        "NO_PROXY",
+        "PATH"
+      ]
+    },
+    "cargo": {
+      "locked": true,
+      "offline": true,
+      "incremental": false
+    },
+    "frontend": {
+      "typescriptArguments": ["--noEmit", "--project", "tsconfig.json"],
+      "viteArguments": [
+        "build",
+        ".",
+        "--outDir",
+        "dist",
+        "--emptyOutDir",
+        "--configLoader",
+        "runner"
+      ]
+    },
+    "tauri": {
+      "hooksDisabled": true,
+      "signingDisabled": true,
+      "useLocalToolsDir": true
+    },
+    "bundlers": {
+      "wix": {
+        "directoryName": "WixTools314",
+        "requiredExecutables": ["candle.exe", "light.exe", "dark.exe"]
+      },
+      "nsis": {
+        "directoryName": "NSIS",
+        "requiredExecutables": ["makensis.exe", "Bin/makensis.exe"]
+      },
+      "prePostTreeEquality": true
+    },
+    "bounds": {
+      "treeMembers": 65536,
+      "pathUtf8Bytes": 1024,
+      "rustToolchainBytes": 2147483648,
+      "cargoRegistryBytes": 2147483648,
+      "npmPackageBytes": 134217728,
+      "nodeModulesBytes": 1073741824,
+      "gitRuntimeBytes": 268435456,
+      "msvcInputBytes": 1073741824,
+      "windowsSdkInputBytes": 1073741824,
+      "wixToolsBytes": 268435456,
+      "nsisToolsBytes": 268435456
+    }
+  },
+  "productionBuild": {
+    "profile": "release",
+    "defaultFeaturesEnabled": true,
+    "enabledFeatures": ["custom-protocol"],
+    "bundleTargets": ["msi", "nsis"]
+  },
+  "characterizationBuild": {
+    "participant": "candidate",
+    "profile": "release",
+    "defaultFeaturesEnabled": true,
+    "enabledFeatures": ["acp-fixture", "custom-protocol"],
+    "binaryName": "sage",
+    "executableRelativePath": "release/sage.exe"
+  },
+  "frontendSizeBaseline": {
+    "kind": "tracked-curated-evidence",
+    "workItem": "ADE-0005",
+    "relativePath": "docs/work-items/ADE-0005-project-lifecycle/evidence/curated-summary.json",
+    "sha256": "1f9a723991c82039f794abff1bb6137acf01bb14be9abea56d911cf12aa64dfc",
+    "maximumEvidenceBytes": 1048576,
+    "sourceCommit": "b07910b9532586bf1770551348d456666a3a140b",
+    "sourceTree": "2ed268e29fb435c04c560d6c150f0b929c97f20e",
+    "jsonPointer": "/artifacts/freshIsolatedRebuild/frontendBytes",
+    "frontendRawBytes": 289190,
+    "comparison": "candidate frontendRawBytes minus this baseline; the static Tauri control is excluded from the frontend-size delta"
+  },
+  "participants": {
+    "candidate": {
+      "applicationRoot": ".",
+      "cargoPackageName": "sage",
+      "cargoBinaryName": "sage",
+      "cargoManifest": "src-tauri/Cargo.toml",
+      "configuration": {
+        "base": "src-tauri/tauri.conf.json",
+        "platformOverlay": "src-tauri/tauri.windows.conf.json"
+      },
+      "provenance": {
+        "cargoLock": "src-tauri/Cargo.lock",
+        "frontendDependencyMode": "npm-package-lock-v3",
+        "frontendLock": "package-lock.json",
+        "frontendDist": "dist"
+      },
+      "artifacts": [
+        {
+          "kind": "executable",
+          "relativePath": "release/sage.exe"
+        },
+        {
+          "kind": "msi",
+          "relativePath": "release/bundle/msi/Sage_0.1.0_x64_en-US.msi"
+        },
+        {
+          "kind": "nsis",
+          "relativePath": "release/bundle/nsis/Sage_0.1.0_x64-setup.exe"
+        }
+      ],
+      "installedExecutableLogicalPaths": {
+        "msi": "INSTALLDIR/sage.exe",
+        "nsis": "sage.exe"
+      }
+    },
+    "control": {
+      "applicationRoot": "tools/footprint-control",
+      "cargoPackageName": "sage-footprint-control",
+      "cargoBinaryName": "sage-footprint-control",
+      "cargoManifest": "tools/footprint-control/Cargo.toml",
+      "configuration": {
+        "base": "tools/footprint-control/tauri.conf.json",
+        "platformOverlay": "tools/footprint-control/tauri.windows.package.conf.json"
+      },
+      "provenance": {
+        "cargoLock": "tools/footprint-control/Cargo.lock",
+        "frontendDependencyMode": "static-no-package-manager",
+        "frontendLock": null,
+        "frontendDist": "tools/footprint-control/frontend"
+      },
+      "artifacts": [
+        {
+          "kind": "executable",
+          "relativePath": "release/sage-footprint-control.exe"
+        },
+        {
+          "kind": "msi",
+          "relativePath": "release/bundle/msi/Sage Footprint Control_0.1.0_x64_en-US.msi"
+        },
+        {
+          "kind": "nsis",
+          "relativePath": "release/bundle/nsis/Sage Footprint Control_0.1.0_x64-setup.exe"
+        }
+      ],
+      "installedExecutableLogicalPaths": {
+        "msi": "INSTALLDIR/sage-footprint-control.exe",
+        "nsis": "sage-footprint-control.exe"
+      }
+    }
+  },
+  "artifactSet": {
+    "ordering": ["executable", "msi", "nsis"],
+    "requiredCount": 3,
+    "setDigest": "sha256 of canonical JSON containing the ordered kind, relativePath, sha256, and bytes records"
+  },
+  "webviewProvisioning": {
+    "mode": "downloadBootstrapper",
+    "silent": true,
+    "whenRuntimeAbsent": true,
+    "networkRequiredWhenTriggered": true,
+    "bundledPayloadCount": 0,
+    "bundledPayloadBytes": 0,
+    "bundledPayloadBasenames": [
+      "MicrosoftEdgeWebview2Setup.exe",
+      "MicrosoftEdgeWebView2RuntimeInstallerX64.exe",
+      "MicrosoftEdgeWebView2RuntimeInstallerX86.exe",
+      "MicrosoftEdgeWebView2RuntimeInstallerARM64.exe"
+    ],
+    "runtimeDownloadBytes": "external-variable-not-a-budget"
+  },
+  "fixtureExclusion": {
+    "participant": "candidate",
+    "applicationRoot": ".",
+    "cargoManifest": "src-tauri/Cargo.toml",
+    "canonicalFeature": "acp-fixture",
+    "binaryName": "acp-adversarial-fixture",
+    "executableRelativePath": "release/acp-adversarial-fixture.exe",
+    "canonicalBasenames": [
+      "acp-adversarial-fixture.exe",
+      "acp-adversarial-fixture-x86_64-pc-windows-msvc.exe"
+    ],
+    "metadataDeclarationFields": ["bundle.resources", "bundle.externalBin"],
+    "productionFeatureSetContainsFixture": false,
+    "metadataDeclarationCount": 0,
+    "extractedMemberBasenameCountPerInstaller": 0,
+    "extractedPayloadHashMatchesFixturePerInstaller": 0
+  },
+  "installedExecutableIdentity": {
+    "algorithm": "tauri-bundle-type-patch-v1",
+    "sourceArtifactKind": "executable",
+    "sourceMarker": "__TAURI_BUNDLE_TYPE_VAR_UNK",
+    "sourceMarkerOccurrenceCount": 1,
+    "targetMarkers": {
+      "msi": "__TAURI_BUNDLE_TYPE_VAR_MSI",
+      "nsis": "__TAURI_BUNDLE_TYPE_VAR_NSS"
+    },
+    "requirements": [
+      "the complete source marker occurs exactly once in the standalone production executable",
+      "the installer target marker occurs at that exact byte offset in the extracted installed executable",
+      "the installed executable length equals the standalone production executable length",
+      "sha256 of the standalone executable with only that complete same-length marker replaced equals the exact installed executable sha256",
+      "the executable derivation is bound to the authenticated Tauri CLI tool identity"
+    ]
+  },
+  "retention": {
+    "allocationIdentity": "sha256 of canonical JSON containing source aggregate, contract and package hashes, candidate/control configuration hashes, production build feature contract, and authenticated build/extractor tool hashes",
+    "rawReservation": {
+      "sourceManifestFiles": 1,
+      "sourceManifestBytes": 8388608,
+      "sourceManifestEntries": 4096,
+      "installerMemberSets": 4,
+      "memberSidecarFiles": 32,
+      "memberSidecarBytes": 25165824,
+      "totalFiles": 33,
+      "totalBytes": 33554432
+    },
+    "ledgerStates": [
+      "active",
+      "completed-passed",
+      "completed-failed",
+      "failed-unsummarized"
+    ],
+    "preflightFailureCodes": [
+      "capacity-rejected",
+      "campaign-id-conflict",
+      "ledger-reconciliation-failed"
+    ],
+    "collectionFailureCodes": [
+      "build-failed",
+      "inspection-failed",
+      "source-drift",
+      "receipt-validation-failed",
+      "collection-failed"
+    ]
+  },
+  "observerBounds": {
+    "artifacts": 3,
+    "installers": 2,
+    "membersPerInstaller": 4096,
+    "pathUtf8Bytes": 1024,
+    "executableArtifactBytes": 268435456,
+    "msiArtifactBytes": 268435456,
+    "nsisArtifactBytes": 268435456,
+    "msiMetadataBytes": 262144,
+    "artifactSetBytes": 805306368,
+    "extractedBytesPerInstaller": 268435456,
+    "memberManifestBytesPerInstaller": 6291456,
+    "memberRecordsPerShard": 512,
+    "memberManifestShardsPerInstaller": 8,
+    "frontendMembers": 4096,
+    "frontendBytes": 16777216,
+    "lockfileBytes": 8388608,
+    "dependencyGraphBytes": 8388608,
+    "dependencyPackages": 4096,
+    "dependencyJsonNodes": 65536,
+    "toolStdoutBytes": 1048576,
+    "toolStderrBytes": 262144
+  },
+  "provenance": {
+    "cargoGraph": {
+      "command": "authenticated cargo metadata --locked --offline --format-version 1 --filter-platform x86_64-pc-windows-msvc with the frozen production feature set and participant manifest",
+      "projection": "resolved non-dev packages reachable from the participant workspace root; each canonical record contains ecosystem, name, version, normalized source, checksum, sorted activated features, and sorted dependency identity digests",
+      "workspaceSource": "workspace:{participant}:{source-root-relative-manifest-path}",
+      "ordering": "ascending canonical JSON byte order"
+    },
+    "frontendGraph": {
+      "npm-package-lock-v3": "project package-lock.json packages excluding the root record, with dependencies resolved by package-lock node_modules ancestry and projected into the same canonical record shape as Cargo",
+      "static-no-package-manager": "an empty frontend dependency graph and a null frontend lock hash",
+      "ordering": "ascending canonical JSON byte order"
+    },
+    "dependencyGraphDigest": "sha256 of canonical JSON containing ordered cargo and frontend canonical record arrays",
+    "frontendInventory": "post-build resolved frontendDist regular files and directories in normalized UTF-8 relative-path byte order using the installed-member traversal rules; links, reparse points, aliases, escaping paths, duplicates, and non-regular members are forbidden; frontendRawBytes is the exact sum of regular-file bytes and frontendTreeSha256 is the canonical record digest",
+    "installedPayloadSetDigest": "sha256 of canonical JSON containing MSI then NSIS records with kind, memberManifestSha256, installedExecutableSha256, installedExecutableBytes, and installedPayloadBytes",
+    "installedPayloadSetBytes": "the exact sum of MSI and NSIS installedPayloadBytes"
+  },
+  "requiredSharedBinding": [
+    "sourceCommit",
+    "sourceTree",
+    "sourceAggregateSha256",
+    "sourceManifestSha256",
+    "sourceFileCount",
+    "sourceBytes",
+    "contractManifestSha256",
+    "buildIdentitySha256",
+    "platform",
+    "architecture"
+  ],
+  "requiredParticipantBinding": [
+    "productionTauriBaseConfigSha256",
+    "productionTauriWindowsConfigSha256",
+    "cargoLockSha256",
+    "frontendLockSha256",
+    "dependencyGraphSha256",
+    "dependencyPackageCount",
+    "frontendRawBytes",
+    "frontendTreeSha256",
+    "productionFeatureSet",
+    "productionExecutableSha256",
+    "productionExecutableBytes",
+    "productionMsiSha256",
+    "productionMsiBytes",
+    "productionNsisSha256",
+    "productionNsisBytes",
+    "productionArtifactSetSha256",
+    "productionArtifactSetBytes",
+    "msiMemberManifestSha256",
+    "msiInstalledExecutableSha256",
+    "msiInstalledExecutableBytes",
+    "msiInstalledPayloadBytes",
+    "nsisMemberManifestSha256",
+    "nsisInstalledExecutableSha256",
+    "nsisInstalledExecutableBytes",
+    "nsisInstalledPayloadBytes",
+    "installedPayloadSetSha256",
+    "installedPayloadSetBytes"
+  ],
+  "requiredCandidateCharacterizationBinding": [
+    "characterizationExecutableSha256",
+    "characterizationExecutableBytes",
+    "characterizationFeatureSet"
+  ],
+  "requiredCandidateFixtureBinding": [
+    "featureSet",
+    "executableSha256",
+    "executableBytes"
+  ],
+  "inspection": {
+    "msi": "extract with authenticated WiX dark.exe into a fresh bounded directory",
+    "nsis": "extract with authenticated 7-Zip into a fresh bounded directory",
+    "sourceOfTruth": "typed semantic installed-member records in normalized relative-path byte order and exact file hashes; arbitrary payload byte scanning is forbidden; the sole binary transform verifier is the fixed installedExecutableIdentity algorithm above",
+    "memberTypes": ["directory", "regularFile"],
+    "forbiddenMembers": [
+      "absolute paths",
+      "dot or dot-dot path segments",
+      "duplicate paths",
+      "non-UTF-8 paths",
+      "reparse points",
+      "symlinks",
+      "devices",
+      "hard-link aliases"
+    ],
+    "memberSidecars": {
+      "resolutionRoot": "the separately supplied campaign raw-evidence root; its absolute value is never retained",
+      "relativeDirectory": "package/{participant}/{installer}",
+      "fileName": "members-{four-digit-shard-ordinal}.json",
+      "participants": ["candidate", "control"],
+      "installers": ["msi", "nsis"],
+      "documentKeys": [
+        "schemaVersion",
+        "participant",
+        "installer",
+        "shardOrdinal",
+        "firstRecordOrdinal",
+        "records"
+      ],
+      "directoryRecordKeys": ["ordinal", "relativePath", "type"],
+      "regularFileRecordKeys": [
+        "ordinal",
+        "relativePath",
+        "type",
+        "bytes",
+        "sha256"
+      ],
+      "recordOrdering": "contiguous ordinal in normalized relative-path UTF-8 byte order across all shards",
+      "shardDigest": "sha256 of the exact UTF-8 sidecar bytes",
+      "parentDigest": "sha256 of UTF-8 stableJson(records): arrays retain order, object keys use ascending ASCII lexical order, strings and scalars use JSON encoding, and no whitespace is inserted"
+    },
+    "installedPayloadProjection": {
+      "msi": {
+        "method": "wix-dark-install-root-v1",
+        "logicalRoot": "INSTALLDIR",
+        "payloadStreamRoot": "File",
+        "extractorMetadataRoots": ["Binary", "Icon"],
+        "rules": [
+          "parse the bounded authenticated dark.exe WXS output",
+          "map every extracted File stream exactly once through its File Source and Name under the unique INSTALLDIR Directory",
+          "reject missing, duplicate, escaping, unreferenced, or outside-INSTALLDIR File mappings",
+          "sidecars contain the logical installed tree and never the decompiler metadata tree",
+          "retain only the WXS sha256 and sanitized mapping digest; delete the WXS because it contains absolute workstation paths"
+        ]
+      },
+      "nsis": {
+        "method": "nsis-installed-tree-v1",
+        "extractorMetadataRoots": ["$PLUGINSDIR"],
+        "rules": [
+          "exclude only the exact $PLUGINSDIR extractor metadata subtree from semantic installed-member sidecars",
+          "reject every other top-level variable root",
+          "enforce extraction bounds across installed members and excluded extractor metadata"
+        ]
+      }
+    },
+    "buildIsolation": "fixture and production artifacts use distinct fresh target directories"
+  }
+}

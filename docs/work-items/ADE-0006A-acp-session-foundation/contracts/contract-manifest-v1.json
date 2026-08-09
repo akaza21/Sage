@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "status": "proposed-c0-specification",
+  "status": "user-approved-specify-amendment-awaiting-fresh-review",
   "hashAlgorithm": "sha256",
   "selfIncluded": false,
   "ordering": "relativePath ascending by UTF-8 byte order",
-  "fileCount": 14,
-  "logicalBytes": 185174,
+  "fileCount": 15,
+  "logicalBytes": 226616,
   "files": [
     {
       "relativePath": "README.md",
-      "bytes": 2957,
-      "sha256": "b36b8c03a324c8b7d7b3e06b5319768e977768d1829f8f6c33baba4c73675399"
+      "bytes": 3331,
+      "sha256": "264159cc0bbe7d8037a5b30fe6f85fccfa695995e2f7318ae2414e86ed4c0f2f"
     },
     {
       "relativePath": "c1-characterization-v1.json",
@@ -19,18 +19,18 @@
     },
     {
       "relativePath": "dependency-admission-v1.json",
-      "bytes": 2896,
-      "sha256": "e1ce0a9bc1a6cf06ebcc5980a4c3ae249e8a3670f18a43c7642cfd7c99699d7c"
+      "bytes": 2930,
+      "sha256": "dcb1ffa5b58f22739402930b83eb8faed9400dec2379a3a8eb0606555dedb522"
     },
     {
       "relativePath": "evidence-policy-v1.json",
-      "bytes": 3506,
-      "sha256": "ea8954ca29473c558d7db272e574446aac8bcec058e10c8c379c2918664742d2"
+      "bytes": 8029,
+      "sha256": "90a080df2471c9a958c396214a124a582dcc5065a451fd301dafd50691beb1f4"
     },
     {
       "relativePath": "fixture-vectors-v1.json",
-      "bytes": 59563,
-      "sha256": "dba01245c8b64602397456691974396f712dfabba1bf218fadef98156c1e5cf5"
+      "bytes": 60065,
+      "sha256": "a36ddc5101788e9471dec8ede00918590711695524f355f46bbd163ae4b57665"
     },
     {
       "relativePath": "limit-fixture-coverage-v1.json",
@@ -49,8 +49,13 @@
     },
     {
       "relativePath": "ownership-manifest-v1.json",
-      "bytes": 5850,
-      "sha256": "d62df206c0978e92a09100d0a94d8e4f44de75cb501cb02646d24c0dcc196a13"
+      "bytes": 14475,
+      "sha256": "89e20a0d0e93b211e1795981b043f9f07d70ba1aadb14f58613708386f1c2cb2"
+    },
+    {
+      "relativePath": "package-contract-v1.json",
+      "bytes": 18729,
+      "sha256": "bc4ebd9af4ab4ce04f50f5fe9b5d80dba41e26d309fbe3da8e53212636478708"
     },
     {
       "relativePath": "packaged-gestures-v1.json",
@@ -59,8 +64,8 @@
     },
     {
       "relativePath": "performance-budgets-v1.json",
-      "bytes": 8334,
-      "sha256": "e1156734180479446f381d82ca4b286b958598e3a842e5d8609fb8ce19fadbdd"
+      "bytes": 16989,
+      "sha256": "c2c490c7f2c3c34a318905976faafb4271460f60faa8451dddeae71e0badbd4c"
     },
     {
       "relativePath": "protocol-contract-v1.json",

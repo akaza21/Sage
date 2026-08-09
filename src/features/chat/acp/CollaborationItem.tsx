@@ -32,7 +32,7 @@ export function CollaborationItem({
       </span>
       <header>
         <strong>{item.payload.label}</strong>
-        <span role="status" aria-label={status}>
+        <span role="status" aria-label={status} aria-live="off">
           {status}
         </span>
       </header>

@@ -7,4 +7,6 @@ package-lock.json
 *.md
 work
 local-evidence
+# Retained evidence is byte-authenticated and must remain immutable.
+docs/work-items/ADE-0006A-acp-session-foundation/evidence/
 tools/footprint-control/gen

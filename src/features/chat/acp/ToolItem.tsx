@@ -2,6 +2,7 @@ import { useId } from "react";
 
 import type { AcpItem, SafeResourceLocation } from "../../../domain/acp";
 import type { ResourceRef } from "../../../domain/workbench";
+import { terminalToolStates, toolStateLabels } from "./statusSemantics";
 
 type ToolProjectionItem = Extract<
   AcpItem,
@@ -14,16 +15,6 @@ interface ToolItemProps {
   item: ToolProjectionItem;
   onOpenResource?: (resource: ResourceRef, target: OpenResourceTarget) => void;
 }
-
-const toolStateLabels = {
-  pending: "Pending",
-  inProgress: "In progress",
-  waitingForApproval: "Waiting for approval",
-  completed: "Completed",
-  failed: "Failed",
-  declined: "Declined",
-  cancelled: "Cancelled",
-} as const;
 
 function ResourceLocations({
   locations,
@@ -115,9 +106,7 @@ export function ToolItem({ item, onOpenResource }: ToolItemProps) {
       : item.payload.outputSummary;
   const label = item.payload.presentation.label;
   const status = toolStateLabels[item.toolState];
-  const terminal = ["completed", "failed", "declined", "cancelled"].includes(
-    item.toolState,
-  );
+  const terminal = terminalToolStates.has(item.toolState);
   return (
     <article
       className={`acp-tool-card acp-tool-card--${item.toolState}`}
@@ -136,7 +125,7 @@ export function ToolItem({ item, onOpenResource }: ToolItemProps) {
           className="acp-state"
           role="status"
           aria-label={terminal ? `${label}: ${status}` : status}
-          aria-live="polite"
+          aria-live="off"
           aria-atomic="true"
         >
           {status}

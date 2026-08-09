@@ -94,6 +94,13 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
             ref={isSelected ? selectedRow : undefined}
             type="button"
             role="treeitem"
+            aria-label={
+              directory
+                ? `Toggle folder ${entry.resource.relativePath}`
+                : file
+                  ? `Open file ${entry.resource.relativePath}`
+                  : `Unavailable resource ${entry.resource.relativePath}`
+            }
             aria-current={isSelected ? "page" : undefined}
             aria-expanded={directory ? Boolean(expanded[key]) : undefined}
             style={{ paddingLeft: 9 + entry.depth * 16 }}
@@ -213,6 +220,7 @@ function SourceControlView() {
                 }`}
                 key={resourceKey(change.resource)}
                 type="button"
+                aria-label={`Open diff for ${change.resource.relativePath}`}
                 onClick={() => void openDiff(change.resource)}
               >
                 <span className="source-change__status">

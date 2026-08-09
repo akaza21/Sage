@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use crate::acp::{scheduler::RuntimeOwner, store::AdapterTurnCursor};
 
 use super::{
@@ -63,7 +65,7 @@ impl<E: RuntimeEngine> Actor<E> {
     pub(super) fn run(mut self, mailbox: &HostMailbox) {
         while let Some(envelope) = mailbox.wait_next() {
             let stop = matches!(envelope.command, HostCommand::Shutdown);
-            let result = self.dispatch(envelope.command);
+            let result = self.dispatch(envelope.command, envelope.deadline);
             let stopped = stop && matches!(result, Ok(HostReply::Outcome(HostOutcome::Shutdown)));
             let _ = envelope.reply.send(result);
             if stopped {
@@ -73,10 +75,17 @@ impl<E: RuntimeEngine> Actor<E> {
         }
         // Engine ownership must never be leaked: dropping the process driver
         // retains the platform supervisor's bounded emergency teardown path.
-        let _ = self.engine.shutdown();
+        let _ = self.engine.shutdown(
+            Instant::now()
+                + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close),
+        );
     }
 
-    fn dispatch(&mut self, command: HostCommand) -> Result<HostReply, HostError> {
+    fn dispatch(
+        &mut self,
+        command: HostCommand,
+        deadline: Instant,
+    ) -> Result<HostReply, HostError> {
         match command {
             HostCommand::Activate(owner) => self.activate(owner),
             HostCommand::PreparePrompt(intent) => self.prepare_prompt(intent),
@@ -94,7 +103,7 @@ impl<E: RuntimeEngine> Actor<E> {
             HostCommand::BeginClose(intent) => self.begin_close(intent),
             HostCommand::FinishClose(intent) => self.finish_close(intent),
             HostCommand::RecoverClose(intent) => self.recover_close(intent),
-            HostCommand::Shutdown => self.shutdown(),
+            HostCommand::Shutdown => self.shutdown(deadline),
         }
     }
 
@@ -379,9 +388,9 @@ impl<E: RuntimeEngine> Actor<E> {
         self.finish_close(intent)
     }
 
-    fn shutdown(&mut self) -> Result<HostReply, HostError> {
+    fn shutdown(&mut self, deadline: Instant) -> Result<HostReply, HostError> {
         self.state = HostState::Draining;
-        match self.engine.shutdown() {
+        match self.engine.shutdown(deadline) {
             Ok(()) => {
                 self.owner = None;
                 self.active_turn = None;

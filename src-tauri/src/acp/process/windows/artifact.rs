@@ -105,6 +105,14 @@ impl VerifiedArtifact {
         }
         Ok(())
     }
+
+    pub(super) fn sha256(&self) -> [u8; 32] {
+        self.digest
+    }
+
+    pub(super) fn byte_len(&self) -> u64 {
+        self.bytes
+    }
 }
 
 pub(super) fn validate_directory(path: &Path) -> Result<(), LaunchError> {

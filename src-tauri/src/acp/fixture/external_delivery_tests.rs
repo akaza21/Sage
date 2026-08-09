@@ -260,7 +260,7 @@ impl LiveRuntimePort for PreparedZeroFixturePort {
         Err((HostError::State, proof))
     }
 
-    fn shutdown(&mut self) -> Result<(), HostError> {
+    fn shutdown(&mut self, _deadline: Instant) -> Result<(), HostError> {
         self.active.take();
         Ok(())
     }

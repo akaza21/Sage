@@ -31,7 +31,9 @@ pub(crate) async fn build_bootstrap_snapshot(
     state: &AppState,
     transition_epoch: u64,
 ) -> crate::error::AppResult<BootstrapSnapshot> {
-    let mut snapshot = state.database.bootstrap_snapshot()?;
+    let mut snapshot = state
+        .database
+        .bootstrap_snapshot_with_catalog(&state.harnesses)?;
     snapshot.transition_epoch = transition_epoch;
     snapshot.harnesses = state.harnesses.definitions();
     let Some(project) = &snapshot.project else {

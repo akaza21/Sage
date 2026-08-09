@@ -152,6 +152,13 @@ where
         journal: JournalHandle,
         publisher: Arc<dyn ProjectionPublisher>,
     ) -> FirstTurnDriverResult<A, R, T, C> {
+        #[cfg(feature = "acp-fixture")]
+        let characterization_observation = self
+            .parts
+            .parts
+            .journal()
+            .lease()
+            .characterization_observation();
         let session = self.parts.parts.session();
         let pump_intent = SessionPumpIntent {
             binding_digest: session.binding_digest,
@@ -256,9 +263,15 @@ where
                 )));
             }
         };
+        let adapter_journal = SqliteAdapterBatchJournal::new(journal, pump_intent.clone());
+        #[cfg(feature = "acp-fixture")]
+        let adapter_journal = match characterization_observation {
+            Some(observation) => adapter_journal.with_characterization_observation(observation),
+            None => adapter_journal,
+        };
         let pump = AdapterPump::from_admission(
             adapter,
-            SqliteAdapterBatchJournal::new(journal, pump_intent.clone()),
+            adapter_journal,
             resources,
             publisher,
             pump_intent,

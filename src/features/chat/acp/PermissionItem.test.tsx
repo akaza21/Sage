@@ -55,7 +55,7 @@ describe("PermissionItem", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "Declining" })).toHaveAttribute(
       "aria-live",
-      "assertive",
+      "off",
     );
     expect(screen.getByText("Details")).toBeInTheDocument();
     expect(
@@ -63,23 +63,23 @@ describe("PermissionItem", () => {
     ).toBeNull();
   });
 
-  it("announces a durable decline exactly once with the terminal name", () => {
+  it("retains a durable decline with the terminal name but live-off", () => {
     render(<PermissionItem item={permission("resolvedDeclined")} />);
     const status = screen.getByRole("status", {
       name: "Permission declined",
     });
     expect(status).toHaveTextContent("Declined");
-    expect(status).toHaveAttribute("aria-live", "assertive");
+    expect(status).toHaveAttribute("aria-live", "off");
     expect(status).toHaveAttribute("aria-atomic", "true");
   });
 
-  it("announces an unresolved permission terminalized by teardown as failed closed", () => {
+  it("retains an unresolved permission terminalized by teardown as failed closed", () => {
     render(<PermissionItem item={permission("resolvedDeclined", true)} />);
     const status = screen.getByRole("status", {
       name: "Permission failed closed",
     });
     expect(status).toHaveTextContent("Failed closed");
-    expect(status).toHaveAttribute("aria-live", "assertive");
+    expect(status).toHaveAttribute("aria-live", "off");
     expect(status).toHaveAttribute("aria-atomic", "true");
     expect(screen.queryByRole("button", { name: /allow|approve/i })).toBeNull();
   });

@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import {
   mkdirSync,
+  lstatSync,
   readFileSync,
   readdirSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -36,7 +36,25 @@ export const defaultPolicy = {
     "node_modules",
     "target",
   ],
+  bounds: {
+    files: 4096,
+    fileBytes: 16777216,
+    sourceBytes: 134217728,
+    manifestBytes: 8388608,
+    directoryDepth: 32,
+  },
 };
+
+function effectivePolicy(overrides) {
+  return {
+    ...defaultPolicy,
+    ...overrides,
+    bounds: {
+      ...defaultPolicy.bounds,
+      ...overrides?.bounds,
+    },
+  };
+}
 
 function codePointCompare(left, right) {
   const leftPoints = [...left].map((value) => value.codePointAt(0));
@@ -63,15 +81,23 @@ function normalizedRelative(root, absolutePath) {
   return relative;
 }
 
-function collectDirectory(root, relativeDirectory, policy, output) {
+function collectDirectory(root, relativeDirectory, policy, output, depth = 1) {
+  if (depth > policy.bounds.directoryDepth) {
+    throw new Error(
+      `manifest directory depth exceeds its bound: ${relativeDirectory}`,
+    );
+  }
   const absolute = path.join(root, relativeDirectory);
   for (const entry of readdirSync(absolute, { withFileTypes: true })) {
     if (policy.excludedSegments.includes(entry.name)) continue;
     const child = path.join(absolute, entry.name);
     const relative = normalizedRelative(root, child);
     if (entry.isDirectory()) {
-      collectDirectory(root, relative, policy, output);
+      collectDirectory(root, relative, policy, output, depth + 1);
     } else if (entry.isFile()) {
+      if (output.length >= policy.bounds.files) {
+        throw new Error("manifest file count exceeds its bound");
+      }
       output.push(relative);
     } else {
       throw new Error(`manifest input must be a regular file: ${relative}`);
@@ -79,12 +105,16 @@ function collectDirectory(root, relativeDirectory, policy, output) {
   }
 }
 
-export function buildSourceManifest(root, policy = defaultPolicy) {
+export function buildSourceManifest(root, overrides = defaultPolicy) {
+  const policy = effectivePolicy(overrides);
   const paths = [];
   for (const relative of policy.files) {
     const absolute = path.join(root, relative);
-    if (!statSync(absolute).isFile()) {
+    if (!lstatSync(absolute).isFile()) {
       throw new Error(`required manifest input is not a file: ${relative}`);
+    }
+    if (paths.length >= policy.bounds.files) {
+      throw new Error("manifest file count exceeds its bound");
     }
     paths.push(normalizedRelative(root, absolute));
   }
@@ -93,7 +123,12 @@ export function buildSourceManifest(root, policy = defaultPolicy) {
   }
   paths.sort(codePointCompare);
   const files = paths.map((relativePath) => {
-    const bytes = readFileSync(path.join(root, relativePath));
+    const absolutePath = path.join(root, relativePath);
+    const item = lstatSync(absolutePath);
+    if (!item.isFile() || item.size > policy.bounds.fileBytes) {
+      throw new Error(`manifest input exceeds its file bound: ${relativePath}`);
+    }
+    const bytes = readFileSync(absolutePath);
     return {
       path: relativePath,
       bytes: bytes.byteLength,
@@ -109,7 +144,11 @@ export function buildSourceManifest(root, policy = defaultPolicy) {
     aggregate.update(String(file.bytes), "utf8");
     aggregate.update("\n");
   }
-  return {
+  const totalBytes = files.reduce((total, file) => total + file.bytes, 0);
+  if (totalBytes > policy.bounds.sourceBytes) {
+    throw new Error("manifest source bytes exceed their bound");
+  }
+  const manifest = {
     schemaVersion: 1,
     policyVersion,
     pathFormat: "workspace-relative UTF-8 with slash separators",
@@ -122,9 +161,15 @@ export function buildSourceManifest(root, policy = defaultPolicy) {
       .digest("hex"),
     aggregateSha256: aggregate.digest("hex"),
     fileCount: files.length,
-    totalBytes: files.reduce((total, file) => total + file.bytes, 0),
+    totalBytes,
     files,
   };
+  if (
+    Buffer.byteLength(JSON.stringify(manifest)) > policy.bounds.manifestBytes
+  ) {
+    throw new Error("serialized source manifest exceeds its bound");
+  }
+  return manifest;
 }
 
 const defaultCandidateOptions = {

@@ -1,30 +1,13 @@
 import { useId } from "react";
 
 import type { AcpItem } from "../../../domain/acp";
+import { getPermissionStatus } from "./statusSemantics";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
-const permissionLabels = {
-  received: "Declining",
-  declinePending: "Declining",
-  declineCommitted: "Declined",
-  responseQueued: "Declined",
-  resolvedDeclined: "Declined",
-} as const;
-
 export function PermissionItem({ item }: { item: PermissionProjectionItem }) {
   const descriptionId = useId();
-  const failedClosed =
-    item.lifecycle === "failed" && item.toolState === "failed";
-  const status = failedClosed
-    ? "Failed closed"
-    : permissionLabels[item.payload.state];
-  const terminal = failedClosed || item.payload.state === "resolvedDeclined";
-  const accessibleStatus = failedClosed
-    ? "Permission failed closed"
-    : terminal
-      ? "Permission declined"
-      : status;
+  const status = getPermissionStatus(item);
   return (
     <article
       className="acp-permission"
@@ -39,11 +22,11 @@ export function PermissionItem({ item }: { item: PermissionProjectionItem }) {
         <strong>{item.payload.label}</strong>
         <span
           role="status"
-          aria-label={accessibleStatus}
-          aria-live="assertive"
+          aria-label={status.accessible}
+          aria-live="off"
           aria-atomic="true"
         >
-          {status}
+          {status.visual}
         </span>
       </header>
       <details className="acp-details">

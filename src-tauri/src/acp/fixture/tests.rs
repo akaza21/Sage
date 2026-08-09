@@ -26,6 +26,19 @@ fn fixture_accepts_only_exact_frozen_arguments() {
         )
         .is_ok()
     );
+    for case in [
+        "characterization-turn-success",
+        "characterization-turn-cancelled",
+    ] {
+        let invocation =
+            FixtureInvocation::parse(["--case", case, "--seed", "0"].map(OsString::from)).unwrap();
+        let steps: Vec<Value> = serde_json::from_str(invocation.steps_json).unwrap();
+        let (stdout, stderr) = super::wire::capture_steps(&steps).unwrap();
+        let stdout = String::from_utf8(stdout).unwrap();
+        assert!(stdout.contains("fixture/initializeSuccess"));
+        assert!(stdout.contains("fixture/newSessionSuccess"));
+        assert!(stderr.is_empty());
+    }
 }
 
 #[test]

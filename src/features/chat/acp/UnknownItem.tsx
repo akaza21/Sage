@@ -18,7 +18,7 @@ export function UnknownItem({ item }: { item: UnknownProjectionItem }) {
       </span>
       <header>
         <strong>Unsupported activity</strong>
-        <span role="status" aria-label="Unsupported">
+        <span role="status" aria-label="Unsupported" aria-live="off">
           Unsupported
         </span>
       </header>

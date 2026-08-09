@@ -4,6 +4,7 @@ use super::supervisor::{
     LaunchError, LaunchFailureTracker, LaunchSpec, TreeExit, ZeroProcessToken,
 };
 use crate::acp::{
+    process::ProcessIdentityReceipt,
     redaction::SafeDiagnostic,
     transport::{Frame, FrameError, FrameWriteOutcome, OutboundFrame},
 };
@@ -72,6 +73,10 @@ impl StdoutEndpoint {
 }
 
 impl TreeControl {
+    pub(crate) fn process_identity_receipt(&self) -> Result<ProcessIdentityReceipt, LaunchError> {
+        Err(LaunchError::PlatformUnavailable)
+    }
+
     pub(crate) fn request_termination(&self, _reason: TreeExit) -> Result<(), LaunchError> {
         Err(LaunchError::PlatformUnavailable)
     }
@@ -80,7 +85,18 @@ impl TreeControl {
         Err(LaunchError::PlatformUnavailable)
     }
 
+    pub(crate) fn observe_root_exit(&self) -> Result<TreeExit, LaunchError> {
+        Err(LaunchError::PlatformUnavailable)
+    }
+
     pub(crate) fn wait(&self) -> Result<TreeExit, LaunchError> {
+        Err(LaunchError::PlatformUnavailable)
+    }
+
+    pub(crate) fn wait_before(
+        &self,
+        _deadline: std::time::Instant,
+    ) -> Result<TreeExit, LaunchError> {
         Err(LaunchError::PlatformUnavailable)
     }
 

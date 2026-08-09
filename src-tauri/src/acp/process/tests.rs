@@ -277,6 +277,17 @@ fn windows_verified_fixture_streams_and_exits_cleanly() {
         PlatformSupervisor::launch(&spec, pool.try_acquire(spec.limits.descendants).unwrap())
             .unwrap();
     let (mut stdin, mut stdout, control) = tree.into_parts();
+    let identity = control.process_identity_receipt().unwrap();
+    assert_eq!(identity.runtime_epoch(), spec.runtime_epoch);
+    assert_ne!(identity.process_id(), 0);
+    assert_ne!(identity.creation_time_filetime_100ns(), 0);
+    assert_eq!(identity.executable_sha256(), spec.artifact.sha256);
+    assert_eq!(identity.executable_bytes(), spec.artifact.byte_len);
+    assert_eq!(control.process_identity_receipt().unwrap(), identity);
+    let spawn = control.spawn_timing_receipt();
+    assert!(spawn.frequency_hz() > 0);
+    assert!(spawn.process_ready_tick() >= spawn.spawn_started_tick());
+    assert!(spawn.duration_micros() > 0);
     let initialize = crate::acp::transport::OutboundFrame::new(
         b"{\"jsonrpc\":\"2.0\",\"method\":\"initialize\"}".to_vec(),
     )
@@ -301,6 +312,7 @@ fn windows_verified_fixture_streams_and_exits_cleanly() {
         control.wait(),
         Ok(TreeExit::Exited { code: Some(0) })
     ));
+    assert_eq!(control.process_identity_receipt().unwrap(), identity);
     assert_eq!(pool.usage(), (0, 0));
 }
 
@@ -385,5 +397,6 @@ fn windows_stderr_stdout_and_cancel_are_independent() {
 #[test]
 fn windows_job_convergence_never_reopens_process_ids() {
     assert!(!include_str!("windows.rs").contains("OpenProcess"));
+    assert!(!include_str!("windows/authority.rs").contains("OpenProcess"));
     assert!(!include_str!("windows/job.rs").contains("ProcessIdList"));
 }

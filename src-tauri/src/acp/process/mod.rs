@@ -3,14 +3,18 @@
 #![allow(dead_code, unused_imports)]
 
 mod capacity;
+mod identity;
 mod platform;
 mod supervisor;
 #[cfg(not(windows))]
 mod unavailable;
 #[cfg(windows)]
 mod windows;
+#[cfg(windows)]
+pub(crate) use windows::monotonic_tick;
 
 pub(crate) use capacity::{TreeCapacityLease, TreeCapacityPool};
+pub(crate) use identity::{ProcessIdentityReceipt, SpawnTimingReceipt};
 pub(crate) use platform::{
     LaunchFailure, LaunchRecovery, PlatformSupervisor, RunningTree, StdinEndpoint, StdoutEndpoint,
     TreeControl,

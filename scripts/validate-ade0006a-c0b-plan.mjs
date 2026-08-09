@@ -5,17 +5,16 @@ import {
   exactKeys,
   inspectSanitized,
   parseBoundedJson,
-  recordDigest,
-  safeSlug,
-  sameValue,
 } from "./ade0006a-c0b-common.mjs";
 import {
   defaultWorkspaceRoot,
   loadFrozenContracts,
 } from "./ade0006a-c0b-contracts.mjs";
+import { authenticatePackageReceipt } from "./ade0006a-c0b-package-reference.mjs";
 import { validateTrustManifest } from "./ade0006a-c0b-trust.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
+
 export function buildPairSchedule(count) {
   return Array.from({ length: count }, (_, index) => ({
     pairOrdinal: index + 1,
@@ -24,66 +23,47 @@ export function buildPairSchedule(count) {
   }));
 }
 
-function expectedCollection(frozen) {
+export function deriveC0BContract(frozen) {
   const samples = frozen.budgets.sampleContract;
-  const idle = frozen.budgets.measurementContract.readyIdle;
+  const measurement = frozen.budgets.measurementContract;
   return {
-    validPairs: samples.cleanResourceLaunches,
-    excludedWarmups:
-      frozen.budgets.measurementContract.runOrder.warmupCyclesExcluded,
-    percentileMethod: samples.percentileMethod,
-    runOrder: frozen.budgets.measurementContract.runOrder.order,
-    launchSamplesPerParticipant: samples.cleanResourceLaunches,
-    receiptToPaintSamplesPerParticipant: samples.receiptToPaintSamples,
-    inputToPaintSamplesPerParticipant: samples.inputToPaintSamples,
-    tabSwitchSamplesPerParticipant: samples.inputToPaintSamples,
-    cancelDispatchSamplesPerParticipant: samples.inputToPaintSamples,
-    readyIdleSamplesPerParticipant:
-      samples.cleanResourceLaunches * idle.samplesPerLaunch,
-    saturationCyclesPerBoundary: samples.saturationCyclesPerBoundary,
-    fairnessCycles: samples.saturationCyclesPerBoundary,
-    coalescingSamplesPerPolicy: samples.receiptToPaintSamples,
-    coalescingPolicies: ["16ms", "33ms", "50ms", "4kib"],
+    packagedFootprint: {
+      states: structuredClone(samples.packagedStates),
+      validPairsPerState: samples.validPairsPerPackagedState,
+      pairSchedule: buildPairSchedule(samples.validPairsPerPackagedState),
+      cadence: {
+        settleAfterSemanticReadyMs:
+          measurement.packagedFootprint.settleAfterSemanticReadyMs,
+        snapshotIntervalMs: measurement.packagedFootprint.snapshotIntervalMs,
+        snapshotCount: measurement.packagedFootprint.snapshotCount,
+        cpuIntervalCount: measurement.packagedFootprint.cpuIntervalCount,
+        minimumSamplingWindowMs:
+          measurement.packagedFootprint.minimumSamplingWindowMs,
+        adr0005ProjectionOrdinals: structuredClone(
+          measurement.packagedFootprint.adr0005ProjectionOrdinals,
+        ),
+      },
+    },
+    characterization: {
+      coreEpochs: samples.characterizationCoreEpochs,
+      coldFixtureCycles: samples.coldFixtureCycles,
+      receiptToPaintSamples: samples.receiptToPaintSamples,
+      inputToPaintSamples: samples.inputToPaintSamples,
+      saturationCyclesPerBoundary: samples.saturationCyclesPerBoundary,
+      fairnessCycles: samples.fairnessCycles,
+      coalescingEpochsPerPolicy: samples.coalescingEpochsPerPolicy,
+      coalescingPolicies: structuredClone(samples.coalescingPolicies),
+      cadence: {
+        settleAfterSemanticReadyMs:
+          measurement.characterization.settleAfterSemanticReadyMs,
+        snapshotIntervalMs: measurement.characterization.snapshotIntervalMs,
+        snapshotCount: measurement.characterization.snapshotCount,
+        cpuIntervalCount: measurement.characterization.cpuIntervalCount,
+        minimumSamplingWindowMs:
+          measurement.characterization.minimumSamplingWindowMs,
+      },
+    },
   };
-}
-
-function validateCommandTemplates(errors, plan, trust, frozen) {
-  const policy = frozen.evidence.commandTemplateContract;
-  if (
-    !Array.isArray(plan.commandTemplates) ||
-    plan.commandTemplates.length < 1 ||
-    plan.commandTemplates.length > policy.maximumEntries
-  ) {
-    errors.push("commandTemplates count is invalid");
-    return;
-  }
-  const tools = new Map(trust.tools.map((tool) => [tool.name, tool.sha256]));
-  plan.commandTemplates.forEach((template, index) => {
-    const label = `commandTemplates[${index}]`;
-    exactKeys(errors, template, policy.requiredFields, label);
-    safeSlug(errors, template?.tool, `${label}.tool`);
-    safeSlug(errors, template?.subcommand, `${label}.subcommand`);
-    if (template?.toolSha256 !== tools.get(template?.tool)) {
-      errors.push(
-        `${label}.toolSha256 is not authenticated by the trust manifest`,
-      );
-    }
-    for (const key of ["fixedFlags", "placeholderNames"]) {
-      if (!Array.isArray(template?.[key]) || template[key].length > 32) {
-        errors.push(`${label}.${key} is invalid`);
-      }
-    }
-    for (const flag of template?.fixedFlags ?? []) {
-      if (!/^(?:--?[a-z0-9][a-z0-9-]*|[a-z0-9][a-z0-9._-]*)$/.test(flag)) {
-        errors.push(`${label}.fixedFlags may contain option names only`);
-      }
-    }
-    for (const placeholder of template?.placeholderNames ?? []) {
-      if (!/^<[a-z][a-z0-9-]{0,62}>$/.test(placeholder)) {
-        errors.push(`${label}.placeholderNames is invalid`);
-      }
-    }
-  });
 }
 
 export function validateC0BPlan(
@@ -92,12 +72,14 @@ export function validateC0BPlan(
   trustSha256,
   expectedTrustSha256,
   frozen,
+  authenticatedPackage,
 ) {
   const errors = validateTrustManifest(
     trust,
     trustSha256,
     expectedTrustSha256,
     frozen,
+    authenticatedPackage,
   );
   exactKeys(
     errors,
@@ -109,153 +91,48 @@ export function validateC0BPlan(
       "phase",
       "trustManifestSha256",
       "contractManifestSha256",
-      "fixtureManifestSha256",
-      "limitsSha256",
-      "candidateBindingSha256",
-      "controlBindingSha256",
-      "provenance",
-      "collection",
-      "warmupPlan",
-      "anchors",
-      "processMembership",
-      "isolation",
-      "commandTemplates",
+      "packagedFootprint",
+      "characterization",
     ],
     "plan",
   );
+  exactKeys(
+    errors,
+    plan?.packagedFootprint,
+    ["installerKind"],
+    "plan.packagedFootprint",
+  );
+  exactKeys(
+    errors,
+    plan?.characterization,
+    ["participant"],
+    "plan.characterization",
+  );
   if (
     plan?.schemaVersion !== 1 ||
-    plan?.mode !== "dry-run" ||
+    plan?.mode !== "acceptance" ||
     plan?.workItem !== "ADE-0006A" ||
-    plan?.phase !== "C0-B"
-  )
-    errors.push("plan header is invalid");
-  if (plan?.trustManifestSha256 !== trustSha256)
-    errors.push("plan trust hash is stale");
-  if (
+    plan?.phase !== "C0-B" ||
+    plan?.trustManifestSha256 !== trustSha256 ||
     plan?.contractManifestSha256 !== frozen.contractManifestSha256 ||
-    plan?.fixtureManifestSha256 !== frozen.fixtureManifestSha256 ||
-    plan?.limitsSha256 !== frozen.limitsSha256
-  )
-    errors.push("plan frozen contract binding is stale");
-  if (
-    plan?.candidateBindingSha256 !== recordDigest(trust.candidate) ||
-    plan?.controlBindingSha256 !== recordDigest(trust.control)
-  )
-    errors.push("plan participant binding is stale");
-  validateProvenance(errors, plan, trust);
-  const collection = expectedCollection(frozen);
-  exactKeys(errors, plan?.collection, Object.keys(collection), "collection");
-  sameValue(errors, plan?.collection, collection, "collection");
-  const warmups = buildPairSchedule(collection.excludedWarmups).map(
-    ({ pairOrdinal, order }) => ({
-      warmupOrdinal: pairOrdinal,
-      order,
-      excluded: true,
-    }),
-  );
-  sameValue(errors, plan?.warmupPlan, warmups, "warmupPlan");
-  validateAnchors(errors, plan, frozen);
-  sameValue(
-    errors,
-    plan?.processMembership,
-    frozen.budgets.measurementContract.processMembership,
-    "processMembership",
-  );
-  validateIsolation(errors, plan, frozen);
-  validateCommandTemplates(errors, plan, trust, frozen);
+    plan?.packagedFootprint?.installerKind !==
+      authenticatedPackage.installerKind ||
+    plan?.characterization?.participant !== "candidate"
+  ) {
+    errors.push("plan header or derived participant selection is invalid");
+  }
   inspectSanitized(plan, errors, "plan", ["contractManifestSha256"]);
   return errors;
 }
 
-function validateProvenance(errors, plan, trust) {
-  const keys = [
-    "testOwner",
-    "reviewRole",
-    "hostClass",
-    "hardware",
-    "osVersion",
-    "platform",
-    "architecture",
-    "powerPolicy",
-    "webViewRuntime",
-    "toolchain",
-    "collector",
-  ];
-  exactKeys(errors, plan?.provenance, keys, "provenance");
-  sameValue(errors, plan?.provenance, trust.provenance, "provenance");
-  for (const key of keys.slice(0, 9))
-    safeSlug(errors, plan?.provenance?.[key], `provenance.${key}`);
-  if (
-    plan?.provenance?.platform !== trust.candidate.platform ||
-    plan?.provenance?.architecture !== trust.candidate.architecture
-  )
-    errors.push("provenance platform/architecture does not match participants");
-  exactKeys(
-    errors,
-    plan?.provenance?.toolchain,
-    ["node", "rustc", "cargo", "tauri"],
-    "provenance.toolchain",
-  );
-  for (const value of Object.values(plan?.provenance?.toolchain ?? {}))
-    if (!/^[a-z0-9][a-z0-9.+_-]{0,63}$/i.test(value))
-      errors.push("provenance.toolchain contains an invalid version");
-  exactKeys(
-    errors,
-    plan?.provenance?.collector,
-    ["name", "sha256"],
-    "provenance.collector",
-  );
-  const trustedTool = trust.tools.find(
-    (tool) => tool.name === plan?.provenance?.collector?.name,
-  );
-  if (
-    !trustedTool ||
-    trustedTool.sha256 !== plan?.provenance?.collector?.sha256
-  )
-    errors.push("collector is not authenticated by the trust manifest");
-}
-
-function validateAnchors(errors, plan, frozen) {
-  const contract = frozen.budgets.measurementContract.latencyAnchors;
-  const expected = {
-    spawnToProcessReady: contract.spawnToProcessReady,
-    initialize: contract.initialize,
-    firstNormalizedOutput: contract.firstNormalizedOutput,
-    nativeReceiptToPaint: contract.nativeReceiptToPaint,
-    inputToPaint: contract.inputToPaint,
-    tabSwitch:
-      "trusted tab activation through browser performance.now mark after resulting paint",
-    cancelDispatch: contract.cancelDispatch,
-    cancelTerminal: contract.cancelTerminal,
-    coldActivation: "activation receipt through durable ready projection",
-    explicitClose: contract.explicitClose,
-    forcedTeardown: "forced termination start through zero owned descendants",
-  };
-  exactKeys(errors, plan?.anchors, Object.keys(expected), "anchors");
-  sameValue(errors, plan?.anchors, expected, "anchors");
-}
-
-function validateIsolation(errors, plan, frozen) {
-  const expected = {
-    isolatedData: true,
-    normalSageDataAllowed: frozen.evidence.rootPolicy.normalSageDataAllowed,
-    defaultPackageArtifactsMutable:
-      frozen.evidence.rootPolicy.defaultPackageArtifactsMutable,
-    systemOrNetworkControlsAllowed:
-      frozen.evidence.rootPolicy.systemOrNetworkControlsAllowed,
-    installRequired: frozen.gestures.interactionPolicy.installRequired,
-  };
-  exactKeys(errors, plan?.isolation, Object.keys(expected), "isolation");
-  sameValue(errors, plan?.isolation, expected, "isolation");
-}
-
-export function loadPlanInputs(
+export async function loadPlanInputs({
   planPath,
   trustPath,
   expectedTrustSha256,
+  packageReceiptPath,
+  packageRawRoot,
   root = defaultWorkspaceRoot,
-) {
+}) {
   const frozen = loadFrozenContracts(root);
   const trust = parseBoundedJson(
     trustPath,
@@ -265,18 +142,26 @@ export function loadPlanInputs(
   );
   const plan = parseBoundedJson(
     planPath,
-    2 * 1024 * 1024,
+    1024 * 1024,
     frozen.limits.wire,
     "C0-B plan",
   );
+  const authenticatedPackage = await authenticatePackageReceipt({
+    receiptPath: packageReceiptPath,
+    rawRoot: packageRawRoot,
+    expectedReceiptSha256: trust.value.packageReceiptSha256,
+    installerKind: plan.value.packagedFootprint?.installerKind,
+    frozen,
+  });
   const errors = validateC0BPlan(
     plan.value,
     trust.value,
     trust.sha256,
     expectedTrustSha256,
     frozen,
+    authenticatedPackage,
   );
-  return { frozen, trust, plan, errors };
+  return { frozen, trust, plan, authenticatedPackage, errors };
 }
 
 function argument(name) {
@@ -285,33 +170,36 @@ function argument(name) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
-  const planPath = argument("--plan");
-  const trustPath = argument("--trust");
-  const expectedTrust = argument("--expected-trust-sha256");
+  const options = {
+    planPath: argument("--plan"),
+    trustPath: argument("--trust"),
+    expectedTrustSha256: argument("--expected-trust-sha256"),
+    packageReceiptPath: argument("--package-receipt"),
+    packageRawRoot: argument("--package-raw-root"),
+  };
   if (
     !process.argv.includes("--dry-run") ||
-    !planPath ||
-    !trustPath ||
-    !expectedTrust
+    Object.values(options).some((value) => !value)
   ) {
     console.error(
-      "usage: node scripts/validate-ade0006a-c0b-plan.mjs --dry-run --plan <plan.json> --trust <trusted.json> --expected-trust-sha256 <sha256>",
+      "usage: node scripts/validate-ade0006a-c0b-plan.mjs --dry-run --plan <plan.json> --trust <trusted.json> --expected-trust-sha256 <sha256> --package-receipt <receipt.json> --package-raw-root <raw-root>",
     );
     process.exitCode = 1;
   } else {
     try {
-      const bundle = loadPlanInputs(planPath, trustPath, expectedTrust);
+      const bundle = await loadPlanInputs(options);
       if (bundle.errors.length > 0) throw new Error(bundle.errors.join("\n"));
+      const contract = deriveC0BContract(bundle.frozen);
       console.log(
         JSON.stringify({
           status: "passed",
           mode: "dry-run",
           planSha256: bundle.plan.sha256,
           trustManifestSha256: bundle.trust.sha256,
-          contractManifestSha256: bundle.frozen.contractManifestSha256,
-          fixtureManifestSha256: bundle.frozen.fixtureManifestSha256,
-          queueBoundaries: [...bundle.frozen.queueBoundaries.keys()],
-          schedule: buildPairSchedule(bundle.plan.value.collection.validPairs),
+          packageReceiptSha256: bundle.authenticatedPackage.receiptSha256,
+          packagedStates: contract.packagedFootprint.states.length,
+          validPairsPerState: contract.packagedFootprint.validPairsPerState,
+          queueBoundaries: bundle.frozen.queueBoundaries.size,
         }),
       );
     } catch (error) {

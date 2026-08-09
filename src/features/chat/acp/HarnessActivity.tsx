@@ -212,6 +212,7 @@ export function HarnessActivity({
       role="group"
       aria-label={`Harness activity: ${safeLabel}`}
       aria-describedby={descriptionId}
+      data-sage-activity-id={activity.id}
     >
       <summary ref={disclosureRef}>
         <span>{safeLabel}</span>
@@ -219,6 +220,7 @@ export function HarnessActivity({
           className="acp-state"
           role="status"
           aria-label={lifecycleLabels[activity.lifecycle]}
+          aria-live="off"
         >
           {lifecycleLabels[activity.lifecycle]}
         </span>

@@ -30,7 +30,7 @@ impl AppState {
         Ok(Self {
             database,
             acp,
-            harnesses: HarnessCatalog,
+            harnesses: HarnessCatalog::default(),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(0),
         })
@@ -49,7 +49,52 @@ impl AppState {
         Ok(Self {
             database,
             acp,
-            harnesses: HarnessCatalog,
+            harnesses: HarnessCatalog::default(),
+            editor_operations: EditorOperationCoordinator::default(),
+            project_transitions: tokio::sync::Mutex::new(0),
+        })
+    }
+
+    #[cfg(all(windows, feature = "acp-fixture"))]
+    pub fn try_new_characterization_desktop(
+        database: Database,
+        app: tauri::AppHandle,
+        binding: crate::acp::service::CharacterizationBinding,
+    ) -> AppResult<Self> {
+        let acp = AcpService::new_with_characterization_sink(
+            database.clone(),
+            std::sync::Arc::new(DesktopProjectionSink(app)),
+            binding,
+        )
+        .map_err(|_| {
+            crate::error::AppError::InvalidRequest(
+                "bounded ACP restart recovery failed; durable history was preserved".into(),
+            )
+        })?;
+        Ok(Self {
+            database,
+            acp,
+            harnesses: HarnessCatalog::with_characterization(),
+            editor_operations: EditorOperationCoordinator::default(),
+            project_transitions: tokio::sync::Mutex::new(0),
+        })
+    }
+
+    #[cfg(all(test, windows, feature = "acp-fixture"))]
+    pub(crate) fn try_new_characterization(
+        database: Database,
+        binding: crate::acp::service::CharacterizationBinding,
+    ) -> AppResult<Self> {
+        let acp =
+            AcpService::new_characterization_for_test(database.clone(), binding).map_err(|_| {
+                crate::error::AppError::InvalidRequest(
+                    "bounded ACP restart recovery failed; durable history was preserved".into(),
+                )
+            })?;
+        Ok(Self {
+            database,
+            acp,
+            harnesses: HarnessCatalog::with_characterization(),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(0),
         })

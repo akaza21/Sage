@@ -8,7 +8,7 @@ pub(super) fn event_bytes(
     intent: &PumpIntent,
     activity: &DurableActivityItem,
 ) -> Result<usize, PumpJournalError> {
-    super::verify_scope(intent, &activity.scope)?;
+    super::command::verify_scope(intent, &activity.scope)?;
     activity
         .provenance
         .validate_for_persistence()
@@ -18,9 +18,10 @@ pub(super) fn event_bytes(
     if provenance_json.len() > LIMITS.wire.metadata_bytes as usize {
         return Err(PumpJournalError::Rejected);
     }
-    let payload_bytes = super::verify_payload(&activity.payload, &activity.payload_digest)?;
+    let payload_bytes =
+        super::command::verify_payload(&activity.payload, &activity.payload_digest)?;
     std::mem::size_of::<AdapterActivityItemCommand>()
-        .checked_add(super::scope_heap_bytes(&activity.scope))
+        .checked_add(super::command::scope_heap_bytes(&activity.scope))
         .and_then(|bytes| bytes.checked_add(activity.external_activity_id.as_str().len()))
         .and_then(|bytes| bytes.checked_add(activity.external_item_id.as_str().len()))
         .and_then(|bytes| {
@@ -42,7 +43,7 @@ pub(super) fn event_bytes(
 pub(super) fn convert(
     activity: DurableActivityItem,
 ) -> Result<AdapterInboundEvent, PumpJournalError> {
-    let provenance_digest = super::digest(
+    let provenance_digest = super::command::digest(
         serde_json::to_string(&activity.provenance)
             .map_err(|_| PumpJournalError::Rejected)?
             .as_bytes(),

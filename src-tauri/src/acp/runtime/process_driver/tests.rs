@@ -233,6 +233,7 @@ struct ControlState {
     requested: Vec<TreeExit>,
     zero: bool,
     waits: usize,
+    observations: usize,
 }
 
 #[derive(Clone)]
@@ -247,6 +248,11 @@ impl ProcessTreeControl for FakeControl {
     }
 
     fn wait_root_exit(&self) -> Result<TreeExit, LaunchError> {
+        Err(LaunchError::Deadline)
+    }
+
+    fn observe_root_exit(&self) -> Result<TreeExit, LaunchError> {
+        self.0.lock().expect("control").observations += 1;
         Ok(TreeExit::Exited { code: Some(0) })
     }
 
@@ -794,6 +800,7 @@ fn passive_root_exit_watcher_signals_without_consuming_zero_proof() {
         0,
         "root observation must not consume zero-process convergence"
     );
+    assert_eq!(control.lock().expect("control").observations, 1);
 }
 
 struct BlockingInput {

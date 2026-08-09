@@ -72,12 +72,13 @@ pub(crate) use process_driver::{
     CoordinatorZeroProcessHandoff, DriverAdmission, DriverClock, DriverError, DriverMailbox,
     DriverProgress, DriverStep, FirstDeliveryUnknown, FirstTurnBindError, FirstTurnBindFailure,
     FirstTurnDriverResult, FirstTurnRecoveryParts, FirstTurnWorkerContext, FirstTurnWorkerRecovery,
-    FirstTurnWorkerState, MailboxError as DriverMailboxError, PrepareActivationTurnError,
-    PrepareActivationTurnFailure, PrepareDriverTurnError, PrepareDriverTurnFailure,
-    PreparedActivationTurn, PreparedDriverTurn, PreparedProcessWrite, PreparedWriteError,
-    PreparedWriteFailure, ProcessAdapterDriver, ProcessExitWatcher, ProcessLivePort,
-    ProcessTreeControl, PromptIntent, ReaderTerminal, RebindFailure, RecoveryActivationDriverParts,
-    StdinTransport, SystemDriverClock, TeardownCause, TreeLeaseOwner, ZeroProcessHandoff,
+    FirstTurnWorkerState, LiveRunnerExit, LiveRunnerHandle, MailboxError as DriverMailboxError,
+    PrepareActivationTurnError, PrepareActivationTurnFailure, PrepareDriverTurnError,
+    PrepareDriverTurnFailure, PreparedActivationTurn, PreparedDriverTurn, PreparedProcessWrite,
+    PreparedWriteError, PreparedWriteFailure, ProcessAdapterDriver, ProcessExitWatcher,
+    ProcessLivePort, ProcessTreeControl, PromptIntent, ReaderTerminal, RebindFailure,
+    RecoveryActivationDriverParts, StdinTransport, SystemDriverClock, TeardownCause,
+    TreeLeaseOwner, ZeroProcessHandoff,
 };
 #[allow(unused_imports)]
 pub(crate) use projection_publisher::{
@@ -86,7 +87,7 @@ pub(crate) use projection_publisher::{
 #[allow(unused_imports)]
 pub(crate) use runtime_host::{
     HostCancelIntent, HostCloseIntent, HostError, HostOutcome, HostPromptIntent, HostState,
-    PromptWrite, RuntimeEngine, RuntimeHost,
+    PromptWrite, RuntimeEngine, RuntimeHost, TerminalNotification,
 };
 #[allow(unused_imports)]
 pub(crate) use session_coordinator::{

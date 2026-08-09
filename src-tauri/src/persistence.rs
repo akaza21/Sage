@@ -12,6 +12,42 @@ mod physical_storage;
 
 use physical_storage::{PhysicalStorage, StorageLimits};
 
+#[cfg(any(test, feature = "acp-fixture"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct WalConvergenceReceipt {
+    wal_bytes: u64,
+    checkpoint_target_bytes: u64,
+    checkpointed: bool,
+}
+
+#[cfg(any(test, feature = "acp-fixture"))]
+impl WalConvergenceReceipt {
+    pub(crate) fn wal_bytes(self) -> u64 {
+        self.wal_bytes
+    }
+
+    pub(crate) fn checkpoint_target_bytes(self) -> u64 {
+        self.checkpoint_target_bytes
+    }
+
+    pub(crate) fn checkpointed(self) -> bool {
+        self.checkpointed
+    }
+
+    #[cfg(all(test, feature = "acp-fixture"))]
+    pub(crate) fn test_only(
+        wal_bytes: u64,
+        checkpoint_target_bytes: u64,
+        checkpointed: bool,
+    ) -> Self {
+        Self {
+            wal_bytes,
+            checkpoint_target_bytes,
+            checkpointed,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Database {
     connection: Arc<Mutex<Connection>>,
@@ -53,6 +89,12 @@ impl Database {
             connection,
             physical_storage: &self.physical_storage,
         })
+    }
+
+    #[cfg(any(test, feature = "acp-fixture"))]
+    pub(crate) fn converge_wal_for_observation(&self) -> AppResult<WalConvergenceReceipt> {
+        let connection = self.connection();
+        self.physical_storage.converge_for_observation(&connection)
     }
 }
 
@@ -120,6 +162,109 @@ mod tests {
             .unwrap();
         assert_eq!(auto_checkpoint, 256);
         assert_eq!(journal_size_limit, 8 * 1024 * 1024);
+    }
+
+    #[test]
+    fn wal_observation_reports_a_below_target_disk_database_without_checkpointing() {
+        let directory =
+            std::env::temp_dir().join(format!("sage-wal-observation-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let database = Database::open_with_limits(
+            &directory.join("sage.db"),
+            StorageLimits::fixture(4 * 1024 * 1024, 16 * 1024 * 1024, 32 * 1024 * 1024),
+        )
+        .unwrap();
+
+        let receipt = database.converge_wal_for_observation().unwrap();
+
+        assert!(!receipt.checkpointed());
+        assert!(receipt.wal_bytes() < receipt.checkpoint_target_bytes());
+        drop(database);
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn wal_observation_truncates_once_when_the_physical_wal_reaches_the_target() {
+        let directory =
+            std::env::temp_dir().join(format!("sage-wal-observation-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let database = Database::open_with_limits(
+            &directory.join("sage.db"),
+            StorageLimits::fixture(4 * 1024 * 1024, 1, 32 * 1024 * 1024),
+        )
+        .unwrap();
+        {
+            let connection = database.write_connection().unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE wal_observation_truncate(id INTEGER PRIMARY KEY);
+                     INSERT INTO wal_observation_truncate DEFAULT VALUES;",
+                )
+                .unwrap();
+        }
+
+        let receipt = database.converge_wal_for_observation().unwrap();
+
+        assert!(receipt.checkpointed());
+        assert_eq!(receipt.wal_bytes(), 0);
+        assert_eq!(receipt.checkpoint_target_bytes(), 1);
+        drop(database);
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn wal_observation_fails_closed_while_a_reader_pins_the_wal() {
+        let directory =
+            std::env::temp_dir().join(format!("sage-wal-observation-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("sage.db");
+        let database = Database::open_with_limits(
+            &path,
+            StorageLimits::fixture(4 * 1024 * 1024, 1, 32 * 1024 * 1024),
+        )
+        .unwrap();
+        database.converge_wal_for_observation().unwrap();
+        {
+            let connection = database.write_connection().unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE wal_observation_fixture(id INTEGER PRIMARY KEY, value TEXT);
+                     INSERT INTO wal_observation_fixture(value) VALUES('base');",
+                )
+                .unwrap();
+        }
+        database.converge_wal_for_observation().unwrap();
+        let reader = Connection::open(&path).unwrap();
+        reader.execute_batch("BEGIN").unwrap();
+        let _: i64 = reader
+            .query_row("SELECT COUNT(*) FROM wal_observation_fixture", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        {
+            let connection = database.write_connection().unwrap();
+            connection
+                .execute(
+                    "INSERT INTO wal_observation_fixture(value) VALUES('pinned')",
+                    [],
+                )
+                .unwrap();
+        }
+        database
+            .connection()
+            .pragma_update(None, "busy_timeout", 1)
+            .unwrap();
+
+        assert!(matches!(
+            database.converge_wal_for_observation(),
+            Err(crate::error::AppError::ResourceLimit(_))
+        ));
+        drop(reader);
+        let receipt = database.converge_wal_for_observation().unwrap();
+        assert!(receipt.checkpointed());
+        assert_eq!(receipt.wal_bytes(), 0);
+        drop(database);
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]

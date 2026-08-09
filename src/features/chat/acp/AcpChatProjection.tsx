@@ -6,11 +6,13 @@ import type {
 } from "../../../domain/acp";
 import type { ResourceRef } from "../../../domain/workbench";
 
+import { AcpAnnouncementRegions } from "./AcpAnnouncementRegions";
 import { CollaborationItem } from "./CollaborationItem";
 import { HarnessActivity } from "./HarnessActivity";
 import { PermissionItem } from "./PermissionItem";
 import { ToolItem, type OpenResourceTarget } from "./ToolItem";
 import { UnknownItem } from "./UnknownItem";
+import { turnStateLabels } from "./statusSemantics";
 import "./acp-chat.css";
 
 interface AcpChatProjectionProps {
@@ -22,22 +24,6 @@ interface AcpChatProjectionProps {
   historyError?: string | null;
   onLoadEarlier?: () => void;
 }
-
-const turnStateLabels = {
-  queued: "Queued",
-  sending: "Sending",
-  running: "Running",
-  waitingModel: "Waiting for model",
-  waitingTool: "Waiting for tool",
-  waitingApproval: "Waiting for approval",
-  waitingUser: "Waiting for user",
-  cancelling: "Cancelling",
-  completed: "Completed",
-  interrupted: "Interrupted",
-  cancelled: "Cancelled",
-  failed: "Failed",
-  deliveryUnknown: "Delivery unknown",
-} as const;
 
 function ResourceChange({
   change,
@@ -145,7 +131,7 @@ function ItemView({
       return <PermissionItem item={item} />;
     case "error":
       return (
-        <article className="acp-error" role="alert">
+        <article className="acp-error" role="alert" aria-live="off">
           <strong>{item.payload.code}</strong>
           <p>{item.payload.message}</p>
         </article>
@@ -183,7 +169,7 @@ function Turn({
           className="acp-state"
           role="status"
           aria-label={status}
-          aria-live="polite"
+          aria-live="off"
           aria-atomic="true"
           data-turn-status={turn.id}
           tabIndex={-1}
@@ -227,6 +213,7 @@ export function AcpChatProjection({
       aria-label={`Agent chat ${page.title}`}
       data-projection-revision={page.projectionRevision}
     >
+      <AcpAnnouncementRegions page={page} />
       <h2 className="acp-chat-projection__title">{page.title}</h2>
       {hasEarlier && onLoadEarlier ? (
         <button
@@ -239,7 +226,7 @@ export function AcpChatProjection({
         </button>
       ) : null}
       {historyError ? (
-        <p className="acp-history-error" role="alert">
+        <p className="acp-history-error" role="alert" aria-live="off">
           Earlier history could not be loaded: {historyError}
         </p>
       ) : null}

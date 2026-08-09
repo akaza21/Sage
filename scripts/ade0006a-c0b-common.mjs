@@ -132,7 +132,12 @@ export function parseBoundedJson(filePath, maximumBytes, limits, label) {
   const bytes = readBoundedFile(filePath, maximumBytes, label);
   const value = JSON.parse(bytes);
   validateJsonShape(value, limits, label);
-  return { value, bytes: bytes.byteLength, sha256: sha256(bytes) };
+  return {
+    value,
+    buffer: bytes,
+    bytes: bytes.byteLength,
+    sha256: sha256(bytes),
+  };
 }
 
 export function isRecord(value) {
@@ -155,6 +160,40 @@ export function safeInteger(errors, value, label, minimum, maximum) {
   if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
     errors.push(`${label} must be an integer in ${minimum}..${maximum}`);
   }
+}
+
+export function finiteNumber(errors, value, label, minimum, maximum) {
+  if (!Number.isFinite(value) || value < minimum || value > maximum) {
+    errors.push(`${label} must be a finite number in ${minimum}..${maximum}`);
+  }
+}
+
+export function validUtcTimestamp(value) {
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)
+  ) {
+    return false;
+  }
+  const milliseconds = Date.parse(value);
+  return (
+    Number.isFinite(milliseconds) &&
+    new Date(milliseconds).toISOString() === value
+  );
+}
+
+export function nearestRank(values, percentile) {
+  if (
+    !Array.isArray(values) ||
+    values.length === 0 ||
+    !Number.isFinite(percentile) ||
+    percentile <= 0 ||
+    percentile > 1
+  ) {
+    return undefined;
+  }
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.ceil(percentile * sorted.length) - 1];
 }
 
 export function safeSlug(errors, value, label) {
@@ -197,7 +236,7 @@ export function inspectSanitized(value, errors, label, trustedKeys = []) {
       );
     } else if (isRecord(current.value)) {
       for (const [key, entry] of Object.entries(current.value)) {
-        if (unsafeKey.test(key))
+        if (unsafeKey.test(key) && !trusted.has(key))
           errors.push(`${current.label}.${key} is forbidden`);
         if (thresholdKey.test(key) && !trusted.has(key)) {
           errors.push(`${current.label}.${key} defines an untrusted threshold`);

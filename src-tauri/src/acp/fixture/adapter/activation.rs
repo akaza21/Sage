@@ -10,7 +10,7 @@ use crate::acp::{
 use super::{Envelope, FixtureAdapter, State};
 
 impl FixtureAdapter {
-    pub(in crate::acp::fixture) fn activation_capabilities() -> CapabilitySnapshotV1 {
+    pub(crate) fn activation_capabilities() -> CapabilitySnapshotV1 {
         CapabilitySnapshotV1 {
             schema_version: SchemaVersionV1,
             protocol_version: RequiredText::new("protocol", "fixture-1").unwrap(),

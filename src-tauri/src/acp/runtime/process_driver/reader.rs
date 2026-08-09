@@ -30,7 +30,7 @@ impl<C: ProcessTreeControl> ProcessExitWatcher<C> {
     /// Observes only the root handle. The serialized driver retains teardown
     /// authority and is the sole consumer of the linear zero-process proof.
     pub(crate) fn run(self, mailbox: &DriverMailbox) {
-        if self.control.wait_root_exit().is_ok() {
+        if self.control.observe_root_exit().is_ok() {
             let _ = mailbox.signal_process_exit();
         } else {
             let _ = mailbox.signal_reader_terminal(ReaderTerminal::Io);

@@ -189,6 +189,116 @@ fn cancel_after_activation_uses_the_next_request_identity() {
     adapter
         .resolve_egress(cancel.into_token(), EgressResolution::Written)
         .unwrap();
+    let terminal = adapter
+        .ingest(&frame("turnCancelled", serde_json::json!({})), &Mapper)
+        .unwrap();
+    assert!(matches!(
+        terminal.events(),
+        [AdapterEvent::Turn {
+            state: crate::acp::lifecycle::TurnState::Cancelled,
+            ..
+        }]
+    ));
+}
+
+#[test]
+fn output_before_cancel_converges_to_cancelled() {
+    let mut adapter = streaming_adapter();
+
+    let cancel = adapter.command(AdapterCommand::Cancel).unwrap();
+    adapter
+        .resolve_egress(cancel.token().clone(), EgressResolution::Queued)
+        .unwrap();
+    adapter
+        .resolve_egress(cancel.into_token(), EgressResolution::Written)
+        .unwrap();
+    let terminal = adapter
+        .ingest(&frame("turnCancelled", serde_json::json!({})), &Mapper)
+        .unwrap();
+    assert!(matches!(
+        terminal.events(),
+        [AdapterEvent::Turn {
+            state: crate::acp::lifecycle::TurnState::Cancelled,
+            ..
+        }]
+    ));
+}
+
+#[test]
+fn failed_streaming_cancel_delivery_restores_the_turn() {
+    for resolutions in [
+        &[EgressResolution::QueueRejected][..],
+        &[EgressResolution::Queued, EgressResolution::WriteZeroBytes][..],
+    ] {
+        let mut adapter = streaming_adapter();
+        let cancel = adapter.command(AdapterCommand::Cancel).unwrap();
+        let token = cancel.into_token();
+        for resolution in resolutions {
+            adapter.resolve_egress(token.clone(), *resolution).unwrap();
+        }
+
+        let delta = adapter
+            .ingest(&frame("textDelta", serde_json::json!({})), &Mapper)
+            .unwrap();
+        assert!(matches!(
+            delta.events(),
+            [AdapterEvent::Item {
+                lifecycle: crate::acp::lifecycle::ItemLifecycle::Streaming,
+                ..
+            }]
+        ));
+        assert!(adapter.command(AdapterCommand::Cancel).is_ok());
+    }
+}
+
+fn streaming_adapter() -> FixtureAdapter {
+    let external = ExternalId::new("externalSession", "fixture-persisted-session-1").unwrap();
+    let mut adapter = adapter(external.clone());
+    write_command(&mut adapter, AdapterCommand::Initialize);
+    adapter
+        .ingest(&frame("initializeSuccess", serde_json::json!({})), &Mapper)
+        .unwrap();
+    write_command(
+        &mut adapter,
+        AdapterCommand::NewSession {
+            native_root: "C:\\fixture".into(),
+            model: None,
+        },
+    );
+    adapter
+        .ingest(
+            &frame(
+                "newSessionSuccess",
+                serde_json::json!({"externalSessionId": external.as_str()}),
+            ),
+            &Mapper,
+        )
+        .unwrap();
+    write_command(
+        &mut adapter,
+        AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "fixture cold cycle").unwrap(),
+            client_message_id: RequiredText::new("message", "message-1").unwrap(),
+        },
+    );
+
+    let item = adapter
+        .ingest(&frame("textStart", serde_json::json!({})), &Mapper)
+        .unwrap();
+    assert!(matches!(
+        item.events(),
+        [
+            AdapterEvent::Turn {
+                state: crate::acp::lifecycle::TurnState::Running,
+                ..
+            },
+            AdapterEvent::Item {
+                lifecycle: crate::acp::lifecycle::ItemLifecycle::Started,
+                ..
+            }
+        ]
+    ));
+    adapter
 }
 
 #[test]

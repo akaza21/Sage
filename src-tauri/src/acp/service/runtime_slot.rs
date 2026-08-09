@@ -1,5 +1,3 @@
-#![allow(dead_code)] // Removed when native ACP operations claim the production slot.
-
 use std::sync::{Arc, Mutex};
 
 use crate::acp::{runtime::RuntimeHost, scheduler::RuntimeOwner};
@@ -18,6 +16,12 @@ pub(crate) enum RuntimeSlotError {
 
 enum State {
     Empty,
+    Starting {
+        owner: RuntimeOwner,
+    },
+    StartingRecovery {
+        owner: RuntimeOwner,
+    },
     Claimed {
         owner: RuntimeOwner,
         host: Arc<RuntimeHost>,
@@ -44,6 +48,7 @@ impl RuntimeSlot {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn claim(
         &self,
         owner: RuntimeOwner,
@@ -55,8 +60,71 @@ impl RuntimeSlot {
                 *state = State::Claimed { owner, host };
                 Ok(())
             }
-            State::Claimed { .. } | State::Recovery { .. } => Err(RuntimeSlotError::Occupied),
+            State::Starting { .. }
+            | State::StartingRecovery { .. }
+            | State::Claimed { .. }
+            | State::Recovery { .. } => Err(RuntimeSlotError::Occupied),
             State::Stopping { .. } | State::Stopped => Err(RuntimeSlotError::Stopping),
+        }
+    }
+
+    pub(crate) fn reserve_start(&self, owner: RuntimeOwner) -> Result<(), RuntimeSlotError> {
+        let mut state = self.lock();
+        match &*state {
+            State::Empty => {
+                *state = State::Starting { owner };
+                Ok(())
+            }
+            State::Starting { .. }
+            | State::StartingRecovery { .. }
+            | State::Claimed { .. }
+            | State::Recovery { .. } => Err(RuntimeSlotError::Occupied),
+            State::Stopping { .. } | State::Stopped => Err(RuntimeSlotError::Stopping),
+        }
+    }
+
+    pub(crate) fn finish_start(
+        &self,
+        owner: &RuntimeOwner,
+        host: Arc<RuntimeHost>,
+    ) -> Result<(), RuntimeSlotError> {
+        let mut state = self.lock();
+        match &*state {
+            State::Starting { owner: current } if current == owner => {
+                *state = State::Claimed {
+                    owner: current.clone(),
+                    host,
+                };
+                Ok(())
+            }
+            State::StartingRecovery { owner: current } if current == owner => {
+                Err(RuntimeSlotError::Recovery)
+            }
+            State::Stopping { .. } | State::Stopped => Err(RuntimeSlotError::Stopping),
+            State::Empty
+            | State::Starting { .. }
+            | State::StartingRecovery { .. }
+            | State::Claimed { .. }
+            | State::Recovery { .. } => Err(RuntimeSlotError::Foreign),
+        }
+    }
+
+    pub(crate) fn abandon_start(&self, owner: &RuntimeOwner) -> Result<(), RuntimeSlotError> {
+        let mut state = self.lock();
+        match &*state {
+            State::Starting { owner: current } if current == owner => {
+                *state = State::Empty;
+                Ok(())
+            }
+            State::StartingRecovery { owner: current } if current == owner => {
+                Err(RuntimeSlotError::Recovery)
+            }
+            State::Stopping { .. } | State::Stopped => Err(RuntimeSlotError::Stopping),
+            State::Empty
+            | State::Starting { .. }
+            | State::StartingRecovery { .. }
+            | State::Claimed { .. }
+            | State::Recovery { .. } => Err(RuntimeSlotError::Foreign),
         }
     }
 
@@ -72,40 +140,85 @@ impl RuntimeSlot {
             State::Recovery { owner: current, .. } if current == owner => {
                 Err(RuntimeSlotError::Recovery)
             }
-            State::Claimed { .. } | State::Recovery { .. } | State::Empty => {
-                Err(RuntimeSlotError::Foreign)
+            State::StartingRecovery { owner: current } if current == owner => {
+                Err(RuntimeSlotError::Recovery)
             }
+            State::Starting { .. }
+            | State::StartingRecovery { .. }
+            | State::Claimed { .. }
+            | State::Recovery { .. }
+            | State::Empty => Err(RuntimeSlotError::Foreign),
             State::Stopping { .. } | State::Stopped => Err(RuntimeSlotError::Stopping),
         }
     }
 
     pub(crate) fn mark_recovery(&self, owner: &RuntimeOwner) -> Result<(), RuntimeSlotError> {
         let mut state = self.lock();
-        let State::Claimed {
-            owner: current,
-            host,
-        } = &*state
-        else {
-            return match &*state {
-                State::Recovery { owner: current, .. } if current == owner => Ok(()),
-                State::Stopping { .. } | State::Stopped => Err(RuntimeSlotError::Stopping),
-                _ => Err(RuntimeSlotError::Foreign),
-            };
-        };
-        if current != owner {
-            return Err(RuntimeSlotError::Foreign);
+        match &*state {
+            State::Starting { owner: current } if current == owner => {
+                *state = State::StartingRecovery {
+                    owner: current.clone(),
+                };
+                Ok(())
+            }
+            State::Claimed {
+                owner: current,
+                host,
+            } if current == owner => {
+                *state = State::Recovery {
+                    owner: current.clone(),
+                    host: Arc::clone(host),
+                };
+                Ok(())
+            }
+            State::StartingRecovery { owner: current } | State::Recovery { owner: current, .. }
+                if current == owner =>
+            {
+                Ok(())
+            }
+            State::Stopping { .. } | State::Stopped => Err(RuntimeSlotError::Stopping),
+            State::Empty
+            | State::Starting { .. }
+            | State::StartingRecovery { .. }
+            | State::Claimed { .. }
+            | State::Recovery { .. } => Err(RuntimeSlotError::Foreign),
         }
-        *state = State::Recovery {
-            owner: current.clone(),
-            host: Arc::clone(host),
-        };
-        Ok(())
+    }
+
+    pub(crate) fn release(
+        &self,
+        owner: &RuntimeOwner,
+        host: &Arc<RuntimeHost>,
+    ) -> Result<(), RuntimeSlotError> {
+        let mut state = self.lock();
+        match &*state {
+            State::Claimed {
+                owner: current,
+                host: current_host,
+            } if current == owner && Arc::ptr_eq(current_host, host) => {
+                *state = State::Empty;
+                Ok(())
+            }
+            State::Recovery { owner: current, .. } if current == owner => {
+                Err(RuntimeSlotError::Recovery)
+            }
+            State::Stopping { .. } | State::Stopped => Err(RuntimeSlotError::Stopping),
+            State::Empty
+            | State::Starting { .. }
+            | State::StartingRecovery { .. }
+            | State::Claimed { .. }
+            | State::Recovery { .. } => Err(RuntimeSlotError::Foreign),
+        }
     }
 
     pub(crate) fn active(&self) -> Option<Arc<RuntimeHost>> {
         match &*self.lock() {
             State::Claimed { host, .. } | State::Recovery { host, .. } => Some(Arc::clone(host)),
-            State::Empty | State::Stopping { .. } | State::Stopped => None,
+            State::Empty
+            | State::Starting { .. }
+            | State::StartingRecovery { .. }
+            | State::Stopping { .. }
+            | State::Stopped => None,
         }
     }
 
@@ -117,7 +230,10 @@ impl RuntimeSlot {
         let mut state = self.lock();
         let retained = match &*state {
             State::Claimed { owner, host } | State::Recovery { owner, host } => {
-                Some((owner.clone(), Arc::clone(host)))
+                Some((owner.clone(), Some(Arc::clone(host))))
+            }
+            State::Starting { owner } | State::StartingRecovery { owner } => {
+                Some((owner.clone(), None))
             }
             State::Empty | State::Stopping { .. } | State::Stopped => None,
         };
@@ -129,10 +245,10 @@ impl RuntimeSlot {
         } else if let Some((owner, host)) = &retained {
             *state = State::Stopping {
                 owner: Some(owner.clone()),
-                host: Some(Arc::clone(host)),
+                host: host.as_ref().map(Arc::clone),
             };
         }
-        retained.map(|(_, host)| host)
+        retained.and_then(|(_, host)| host)
     }
 
     pub(crate) fn shutdown_failed(&self) -> Result<(), RuntimeSlotError> {
@@ -241,7 +357,7 @@ mod tests {
         fn finalize_close(&mut self, _: &HostCloseIntent) -> Result<(), HostError> {
             Ok(())
         }
-        fn shutdown(&mut self) -> Result<(), HostError> {
+        fn shutdown(&mut self, _deadline: std::time::Instant) -> Result<(), HostError> {
             match self
                 .0
                 .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |remaining| {
@@ -302,6 +418,31 @@ mod tests {
     }
 
     #[test]
+    fn start_reservation_serializes_construction_and_preserves_early_failure() {
+        let slot = RuntimeSlot::new();
+        let first = owner("session-starting");
+        let second = owner("session-second");
+        slot.reserve_start(first.clone()).unwrap();
+        assert_eq!(
+            slot.reserve_start(second.clone()),
+            Err(RuntimeSlotError::Occupied)
+        );
+        assert_eq!(
+            slot.finish_start(&second, host(&second)),
+            Err(RuntimeSlotError::Foreign)
+        );
+
+        slot.mark_recovery(&first).unwrap();
+        assert_eq!(
+            slot.finish_start(&first, host(&first)),
+            Err(RuntimeSlotError::Recovery)
+        );
+        assert_eq!(slot.abandon_start(&first), Err(RuntimeSlotError::Recovery));
+        assert!(slot.begin_shutdown().is_none());
+        slot.finish_shutdown().unwrap();
+    }
+
+    #[test]
     fn stopping_is_idempotent_and_rejects_late_claims() {
         let slot = RuntimeSlot::new();
         assert!(slot.begin_shutdown().is_none());
@@ -312,6 +453,30 @@ mod tests {
             slot.claim(owner.clone(), host(&owner)),
             Err(RuntimeSlotError::Stopping)
         ));
+    }
+
+    #[test]
+    fn release_requires_the_exact_owner_and_host_then_reopens_the_slot() {
+        let slot = RuntimeSlot::new();
+        let first = owner("session-first");
+        let first_host = host(&first);
+        slot.claim(first.clone(), Arc::clone(&first_host)).unwrap();
+        let foreign_host = host(&first);
+        assert_eq!(
+            slot.release(&first, &foreign_host),
+            Err(RuntimeSlotError::Foreign)
+        );
+        foreign_host.shutdown().unwrap();
+        first_host.shutdown().unwrap();
+        slot.release(&first, &first_host).unwrap();
+        assert!(!slot.is_active());
+
+        let second = owner("session-second");
+        let second_host = host(&second);
+        slot.claim(second.clone(), Arc::clone(&second_host))
+            .unwrap();
+        second_host.shutdown().unwrap();
+        slot.release(&second, &second_host).unwrap();
     }
 
     #[test]

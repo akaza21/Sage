@@ -1,4 +1,5 @@
 Set-StrictMode -Version Latest
+Import-Module (Join-Path $PSScriptRoot "DisposableProfile.psm1")
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -12,9 +13,6 @@ $script:MaxManifestBytes = 8MB
 $script:MaxManifestFiles = 4096
 $script:MaxManifestSourceBytes = 512MB
 $script:MaxDiagnosticStateFileBytes = 512MB
-$script:MaxNormalDataEntries = 4096
-$script:MaxNormalDataBytes = 512MB
-$script:MaxNormalDataPathBytes = 4MB
 $script:DiagnosticDataEnvironmentName = "SAGE_DIAGNOSTIC_DATA_DIR"
 $script:FixtureProjectEnvironmentName = "SAGE_PROJECT_ROOT"
 $script:MaxFixtureEntries = 64
@@ -125,11 +123,6 @@ function Invoke-FootprintBoundedProcess {
   }
 }
 
-function Get-FootprintNormalizedPath {
-  param([Parameter(Mandatory)][string]$Path)
-  return [IO.Path]::GetFullPath($Path).TrimEnd([char[]]@('\', '/'))
-}
-
 function Test-FootprintPathWithin {
   param(
     [Parameter(Mandatory)][string]$Path,
@@ -142,17 +135,6 @@ function Test-FootprintPathWithin {
   }
   $prefix = $parentKey + [IO.Path]::DirectorySeparatorChar
   return $pathKey.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
-}
-
-function Get-FootprintStringSha256 {
-  param([Parameter(Mandatory)][string]$Value)
-  $sha = [Security.Cryptography.SHA256]::Create()
-  try {
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Value)
-    return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace("-", "").ToLowerInvariant()
-  } finally {
-    $sha.Dispose()
-  }
 }
 
 function Assert-FootprintDiagnosticEnvironmentClear {
@@ -355,68 +337,8 @@ function Assert-FootprintDiagnosticStateChanged {
   return $true
 }
 
-function Get-FootprintBoundedDirectoryInventory {
-  param(
-    [Parameter(Mandatory)][string]$Path,
-    [Parameter(Mandatory)][string]$Label
-  )
-  $pathHash = Get-FootprintStringSha256 ((Get-FootprintNormalizedPath $Path).ToLowerInvariant())
-  if (-not (Test-Path -LiteralPath $Path)) {
-    return [ordered]@{ label = $Label; pathSha256 = $pathHash; exists = $false; entryCount = 0; totalFileBytes = 0; aggregateSha256 = Get-FootprintStringSha256 "absent" }
-  }
-  if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw "$Label is not a directory." }
-  $root = (Resolve-Path -LiteralPath $Path).Path
-  $items = @(Get-ChildItem -LiteralPath $root -Force -Recurse | Select-Object -First ($script:MaxNormalDataEntries + 1))
-  if ($items.Count -gt $script:MaxNormalDataEntries) {
-    throw "$Label exceeds its $($script:MaxNormalDataEntries)-entry inventory limit."
-  }
-  $records = @()
-  $totalBytes = [long]0
-  $pathBytes = [long]0
-  foreach ($item in $items) {
-    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "$Label contains a reparse point." }
-    $relative = $item.FullName.Substring($root.Length).TrimStart([char[]]@('\', '/')).Replace('\', '/')
-    $pathBytes += [Text.Encoding]::UTF8.GetByteCount($relative)
-    if ($pathBytes -gt $script:MaxNormalDataPathBytes) { throw "$Label exceeds its retained path-byte limit." }
-    if ($item.PSIsContainer) {
-      $records += "D`0$relative"
-      continue
-    }
-    $lengthBefore = [long]$item.Length
-    $totalBytes += $lengthBefore
-    if ($totalBytes -gt $script:MaxNormalDataBytes) { throw "$Label exceeds its $($script:MaxNormalDataBytes)-byte inventory limit." }
-    $hash = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-    $lengthAfter = [long](Get-Item -LiteralPath $item.FullName).Length
-    if ($lengthBefore -ne $lengthAfter) { throw "$Label changed while it was inventoried." }
-    $records += "F`0$relative`0$lengthBefore`0$hash"
-  }
-  $orderedRecords = @($records | Sort-Object)
-  return [ordered]@{
-    label = $Label
-    pathSha256 = $pathHash
-    exists = $true
-    entryCount = $items.Count
-    totalFileBytes = $totalBytes
-    aggregateSha256 = Get-FootprintStringSha256 ($orderedRecords -join "`n")
-  }
-}
-
 function Get-FootprintNormalDataInventory {
-  $roamingPath = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)) "ai.sage.desktop"
-  $localPath = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)) "ai.sage.desktop"
-  $durable = Get-FootprintBoundedDirectoryInventory $roamingPath "roaming-durable-ai.sage.desktop"
-  return [ordered]@{
-    schemaVersion = 2
-    durableRoaming = $durable
-    durableAggregateSha256 = $durable.aggregateSha256
-    disposableLocalCache = [ordered]@{
-      label = "local-webview-cache-ai.sage.desktop"
-      pathSha256 = Get-FootprintStringSha256 ((Get-FootprintNormalizedPath $localPath).ToLowerInvariant())
-      existsAtCapture = Test-Path -LiteralPath $localPath -PathType Container
-      policy = "disposable-uncontrolled-not-an-isolation-gate"
-      expectedChurn = "EBWebView and Tauri runtime cache may change during an isolated SQLite campaign"
-    }
-  }
+  return DisposableProfile\Get-FootprintNormalDataInventory
 }
 
 function Assert-FootprintNormalDataUnchanged {
@@ -424,10 +346,7 @@ function Assert-FootprintNormalDataUnchanged {
     [Parameter(Mandatory)][Collections.IDictionary]$Before,
     [Parameter(Mandatory)][Collections.IDictionary]$After
   )
-  if ($Before.durableAggregateSha256 -ne $After.durableAggregateSha256) {
-    throw "Normal durable Roaming Sage state changed during an isolated diagnostics launch."
-  }
-  return $true
+  return DisposableProfile\Assert-FootprintNormalDataUnchanged $Before $After
 }
 
 function Invoke-FootprintNormalDataGuardedAction {
@@ -436,30 +355,7 @@ function Invoke-FootprintNormalDataGuardedAction {
     [Parameter(Mandatory)][scriptblock]$Action,
     [Parameter(Mandatory)][scriptblock]$CaptureAfter
   )
-  $result = $null
-  $after = $null
-  $actionFailure = $null
-  $guardFailure = $null
-  try {
-    $result = & $Action
-  } catch {
-    $actionFailure = $_
-  } finally {
-    try {
-      $after = & $CaptureAfter
-      [void](Assert-FootprintNormalDataUnchanged $Before $after)
-    } catch {
-      $guardFailure = $_
-    }
-  }
-  if ($null -ne $guardFailure) {
-    if ($null -ne $actionFailure) {
-      throw "Setup failed: $($actionFailure.Exception.Message) Normal-data isolation guard also failed: $($guardFailure.Exception.Message)"
-    }
-    throw $guardFailure
-  }
-  if ($null -ne $actionFailure) { throw $actionFailure }
-  return [ordered]@{ result = $result; after = $after }
+  return DisposableProfile\Invoke-FootprintNormalDataGuardedAction $Before $Action $CaptureAfter
 }
 
 function Get-FootprintScenarioContract {

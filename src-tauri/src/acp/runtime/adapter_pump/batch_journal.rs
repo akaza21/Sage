@@ -54,6 +54,9 @@ pub(crate) trait AdapterBatchJournal: Send {
         Box::pin(async { Err(PumpJournalError::Rejected) })
     }
 
+    #[cfg(feature = "acp-fixture")]
+    fn first_normalized_item_accepted(&mut self) {}
+
     fn try_rebind(self, _intent: PumpIntent) -> Result<Self, (Self, PumpJournalError)>
     where
         Self: Sized,

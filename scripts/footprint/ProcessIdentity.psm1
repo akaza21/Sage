@@ -15,7 +15,10 @@ function Get-FootprintProcessLimits {
 }
 
 function Get-FootprintProcessSnapshot {
-  $rows = @(Get-CimInstance Win32_Process)
+  $rows = @(Get-CimInstance Win32_Process -Property @(
+    "ProcessId", "ParentProcessId", "Name", "ExecutablePath", "CreationDate", "CommandLine",
+    "PrivatePageCount", "WorkingSetSize", "KernelModeTime", "UserModeTime"
+  ))
   if ($rows.Count -gt $script:MaxProcessSnapshotRows) {
     throw "Process snapshot exceeds its $($script:MaxProcessSnapshotRows)-row limit."
   }
@@ -150,6 +153,37 @@ function Get-FootprintLaunchIdentity {
     ExecutablePath = $ExpectedExecutablePath
     CreationDate = $Process.StartTime
   })
+}
+
+function Get-FootprintNativeProcessIdentity {
+  param(
+    [Parameter(Mandatory)]$Process,
+    [Parameter(Mandatory)][string]$ExpectedExecutablePath,
+    [Parameter(Mandatory)][ValidatePattern("^[0-9a-f]{64}$")][string]$ExecutableIdentitySha256
+  )
+  $Process.Refresh()
+  if ($Process.HasExited) { throw "The launched process exited before its native identity was captured." }
+  $actualPath = [IO.Path]::GetFullPath([string]$Process.Path)
+  $expectedPath = [IO.Path]::GetFullPath($ExpectedExecutablePath)
+  if (-not [string]::Equals($actualPath, $expectedPath, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "The launched process object does not identify the expected executable."
+  }
+  $started = $Process.StartTime.ToUniversalTime()
+  $filetime = $started.ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture)
+  $canonical = '{"creationTimeFiletime100ns":"' + $filetime + '","executableIdentitySha256":"' +
+    $ExecutableIdentitySha256 + '","pid":' + ([int]$Process.Id).ToString([Globalization.CultureInfo]::InvariantCulture) + '}'
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    $digest = ([BitConverter]::ToString($hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace("-", "").ToLowerInvariant()
+  } finally {
+    $hasher.Dispose()
+  }
+  return [ordered]@{
+    pid = [int]$Process.Id
+    creationTimeUtc = $started.ToString("yyyy-MM-ddTHH:mm:ss.fff'Z'", [Globalization.CultureInfo]::InvariantCulture)
+    creationTimeFiletime100ns = $filetime
+    processIdentitySha256 = $digest
+  }
 }
 
 function Stop-FootprintLaunchedProcessObject {
@@ -359,6 +393,7 @@ Export-ModuleMember -Function @(
   "Get-FootprintDescendants",
   "Get-FootprintForceKillCandidates",
   "Get-FootprintLaunchIdentity",
+  "Get-FootprintNativeProcessIdentity",
   "Get-FootprintProcessLimits",
   "Get-FootprintProcessSnapshot",
   "Get-FootprintRootIdentity",

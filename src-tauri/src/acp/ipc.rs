@@ -259,7 +259,10 @@ pub fn validate_session_intent(
     if snapshot.session_id.as_ref() != Some(&request.session_id) {
         return Err(IntentError::ForeignSession);
     }
-    if snapshot.runtime_epoch != Some(request.runtime_epoch) {
+    // Activation opens the requested next epoch from a cold session. The
+    // store owns exact monotonically increasing epoch admission; an already
+    // open runtime here is necessarily stale for activation.
+    if snapshot.runtime_epoch.is_some() {
         return Err(IntentError::StaleRuntimeEpoch);
     }
     Ok(())

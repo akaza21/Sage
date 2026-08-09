@@ -2,6 +2,8 @@
 
 mod adapter;
 mod cases;
+#[cfg(all(test, windows))]
+mod characterization_external_tests;
 #[cfg(test)]
 mod child;
 #[cfg(test)]
@@ -35,6 +37,8 @@ mod wire_payload;
 use std::ffi::OsString;
 
 use self::cases::FixtureInvocation;
+
+pub(crate) use adapter::FixtureAdapter;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FixtureError {

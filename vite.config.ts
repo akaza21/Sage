@@ -5,6 +5,7 @@ const host = process.env.TAURI_DEV_HOST;
 const sourceMaps = process.env.SAGE_BUILD_SOURCEMAPS === "1";
 
 export default defineConfig({
+  cacheDir: process.env.SAGE_VITE_CACHE_DIR,
   plugins: [react()],
   clearScreen: false,
   server: {

@@ -3,6 +3,7 @@ mod activation_parts;
 mod close;
 mod driver;
 mod idle_close;
+mod live_runner;
 mod live_worker;
 mod mailbox;
 mod prepared_write;
@@ -21,6 +22,7 @@ pub(crate) use driver::{DriverAdmission, DriverStep, ProcessAdapterDriver};
 pub(crate) use idle_close::{
     IdleCloseBeginState, IdleCloseError, IdleCloseFailure, IdleClosingState, IdleZeroState,
 };
+pub(crate) use live_runner::{LiveRunnerExit, LiveRunnerHandle};
 pub(crate) use live_worker::{
     FirstTurnWorkerContext, FirstTurnWorkerRecovery, FirstTurnWorkerState,
 };

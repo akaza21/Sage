@@ -19,17 +19,38 @@ use super::{
     },
 };
 
+pub(crate) struct TerminalNotification {
+    response: mpsc::Receiver<Result<HostReply, HostError>>,
+    deadline: Instant,
+}
+
+impl TerminalNotification {
+    pub(crate) fn wait(self) -> Result<(), HostError> {
+        let remaining = self.deadline.saturating_duration_since(Instant::now());
+        match self.response.recv_timeout(remaining) {
+            Ok(Ok(HostReply::Outcome(HostOutcome::TurnTerminal))) => Ok(()),
+            Ok(Ok(HostReply::Outcome(_) | HostReply::Prepared(_) | HostReply::State(_))) => {
+                Err(HostError::State)
+            }
+            Ok(Err(error)) => Err(error),
+            Err(mpsc::RecvTimeoutError::Timeout) => Err(HostError::Deadline),
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(HostError::Closed),
+        }
+    }
+}
+
 pub(crate) struct RuntimeHost {
     pub(super) mailbox: Arc<HostMailbox>,
     thread: Mutex<Option<BoundedThread>>,
     lifecycle: AtomicU8,
-    #[cfg(test)]
+    #[cfg(any(test, all(windows, feature = "acp-fixture")))]
     timeout_override: Option<TimeoutOverride>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, all(windows, feature = "acp-fixture")))]
 #[derive(Clone, Copy)]
 enum TimeoutOverride {
+    #[cfg(test)]
     Duration(Duration),
     Deadline {
         operation: Instant,
@@ -50,7 +71,7 @@ impl RuntimeHost {
         Self::start_inner(engine, Some(TimeoutOverride::Duration(timeout)))
     }
 
-    #[cfg(all(test, windows))]
+    #[cfg(all(windows, feature = "acp-fixture"))]
     pub(crate) fn start_with_deadline<E: RuntimeEngine>(
         engine: E,
         operation: Instant,
@@ -64,8 +85,12 @@ impl RuntimeHost {
 
     fn start_inner<E: RuntimeEngine>(
         engine: E,
-        #[cfg(test)] timeout_override: Option<TimeoutOverride>,
-        #[cfg(not(test))] _timeout_override: Option<Duration>,
+        #[cfg(any(test, all(windows, feature = "acp-fixture")))] timeout_override: Option<
+            TimeoutOverride,
+        >,
+        #[cfg(not(any(test, all(windows, feature = "acp-fixture"))))] _timeout_override: Option<
+            Duration,
+        >,
     ) -> Result<Self, HostError> {
         let mailbox = Arc::new(HostMailbox::new()?);
         let actor_mailbox = Arc::clone(&mailbox);
@@ -77,7 +102,7 @@ impl RuntimeHost {
             mailbox,
             thread: Mutex::new(Some(thread)),
             lifecycle: AtomicU8::new(HOST_RUNNING),
-            #[cfg(test)]
+            #[cfg(any(test, all(windows, feature = "acp-fixture")))]
             timeout_override,
         })
     }
@@ -120,6 +145,36 @@ impl RuntimeHost {
         cursor: AdapterTurnCursor,
     ) -> Result<HostOutcome, HostError> {
         self.outcome(HostCommand::Terminal { owner, cursor })
+    }
+
+    /// Queues a durable terminal cursor without waiting for the host actor.
+    /// Process workers must use this path: the actor accepts the cursor by
+    /// calling back into that same worker, so a synchronous wait would deadlock.
+    pub(crate) fn try_notify_terminal(
+        &self,
+        owner: RuntimeOwner,
+        cursor: AdapterTurnCursor,
+    ) -> Result<TerminalNotification, HostError> {
+        match self.lifecycle.load(Ordering::Acquire) {
+            HOST_RUNNING => {}
+            HOST_AWAITING_EXIT => return Err(HostError::RecoveryRequired),
+            HOST_SHUTDOWN_ACKNOWLEDGED | HOST_JOINED => return Err(HostError::Closed),
+            _ => return Err(HostError::RecoveryRequired),
+        }
+        let command = HostCommand::Terminal { owner, cursor };
+        let timeout = self.response_timeout(&command);
+        if timeout.is_zero() {
+            self.fail_deadline();
+            return Err(HostError::Deadline);
+        }
+        let deadline = Instant::now() + timeout;
+        let (reply, response) = mpsc::sync_channel(1);
+        self.mailbox.try_push(Envelope {
+            command,
+            reply,
+            deadline,
+        })?;
+        Ok(TerminalNotification { response, deadline })
     }
 
     pub(crate) fn project_switched(
@@ -218,9 +273,14 @@ impl RuntimeHost {
             self.fail_deadline();
             return Err(HostError::Deadline);
         }
+        let deadline = started + timeout;
         let (reply, response) = mpsc::sync_channel(1);
-        self.mailbox.try_push(Envelope { command, reply })?;
-        match response.recv_timeout(timeout.saturating_sub(started.elapsed())) {
+        self.mailbox.try_push(Envelope {
+            command,
+            reply,
+            deadline,
+        })?;
+        match response.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
             Ok(reply) => reply,
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 self.fail_deadline();
@@ -245,9 +305,10 @@ impl RuntimeHost {
     }
 
     fn response_timeout(&self, command: &HostCommand) -> Duration {
-        #[cfg(test)]
+        #[cfg(any(test, all(windows, feature = "acp-fixture")))]
         if let Some(timeout) = self.timeout_override {
             return match timeout {
+                #[cfg(test)]
                 TimeoutOverride::Duration(duration) => duration,
                 TimeoutOverride::Deadline { operation, .. } => operation
                     .saturating_duration_since(Instant::now())
@@ -263,7 +324,7 @@ impl RuntimeHost {
 
     fn cleanup_timeout(&self) -> Duration {
         let native = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
-        #[cfg(test)]
+        #[cfg(any(test, all(windows, feature = "acp-fixture")))]
         if let Some(TimeoutOverride::Deadline { cleanup, .. }) = self.timeout_override {
             return native.min(cleanup.saturating_duration_since(Instant::now()));
         }

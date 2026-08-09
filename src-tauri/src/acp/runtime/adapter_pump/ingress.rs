@@ -214,6 +214,13 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 Err(error) => return self.fail_deferred_protocol(mode, error).await,
             };
             if let Some(fact) = fact {
+                #[cfg(feature = "acp-fixture")]
+                if matches!(
+                    &fact.event,
+                    DurableAdapterEvent::Item { .. } | DurableAdapterEvent::ActivityItem(_)
+                ) {
+                    self.journal.first_normalized_item_accepted();
+                }
                 if let DurableAdapterEvent::Turn { state, .. } = &fact.event
                     && state.is_terminal()
                 {

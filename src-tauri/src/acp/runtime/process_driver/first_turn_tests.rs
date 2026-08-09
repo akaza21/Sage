@@ -60,6 +60,8 @@ struct SequencedAdapter {
     external_session_id: ExternalId,
     pending_message: Option<RequiredText<512>>,
     prompt_ids: Arc<Mutex<Vec<String>>>,
+    cancel_count: Arc<AtomicUsize>,
+    terminal_states: Arc<Mutex<VecDeque<TurnState>>>,
     next_request: u64,
     next_external_turn: u64,
 }
@@ -109,15 +111,20 @@ impl HarnessAdapter for SequencedAdapter {
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
-        if let AdapterCommand::Prompt {
-            client_message_id, ..
-        } = command
-        {
-            self.prompt_ids
-                .lock()
-                .unwrap()
-                .push(client_message_id.as_str().to_owned());
-            self.pending_message = Some(client_message_id);
+        match command {
+            AdapterCommand::Prompt {
+                client_message_id, ..
+            } => {
+                self.prompt_ids
+                    .lock()
+                    .unwrap()
+                    .push(client_message_id.as_str().to_owned());
+                self.pending_message = Some(client_message_id);
+            }
+            AdapterCommand::Cancel => {
+                self.cancel_count.fetch_add(1, Ordering::SeqCst);
+            }
+            _ => {}
         }
         self.next_request += 1;
         Ok(AdapterEgress::new(
@@ -150,19 +157,24 @@ impl HarnessAdapter for SequencedAdapter {
             ),
             turn_client_message_id: Some(message),
         };
-        AdapterBatch::new(
-            vec![
-                AdapterEvent::Turn {
-                    id: identity.clone(),
-                    state: TurnState::Running,
-                },
-                AdapterEvent::Turn {
-                    id: identity,
-                    state: TurnState::Completed,
-                },
-            ],
-            Vec::new(),
-        )
+        let terminal = self
+            .terminal_states
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(TurnState::Completed);
+        let mut events = Vec::with_capacity(2);
+        if terminal != TurnState::Cancelled {
+            events.push(AdapterEvent::Turn {
+                id: identity.clone(),
+                state: TurnState::Running,
+            });
+        }
+        events.push(AdapterEvent::Turn {
+            id: identity,
+            state: terminal,
+        });
+        AdapterBatch::new(events, Vec::new())
     }
 
     fn commit_mandatory_egress(&mut self, _: &EgressToken) -> Result<(), AdapterRuntimeError> {
@@ -1224,6 +1236,7 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
             runtime_epoch: epoch,
         };
         let prompt_ids = Arc::new(Mutex::new(Vec::new()));
+        let cancel_count = Arc::new(AtomicUsize::new(0));
         let zero_waits = Arc::new(AtomicUsize::new(0));
         let completed = CompletedActivationDriverParts {
             parts: IdleActivationParts::new(
@@ -1234,6 +1247,11 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
                     external_session_id: external_session.clone(),
                     pending_message: None,
                     prompt_ids: Arc::clone(&prompt_ids),
+                    cancel_count: Arc::clone(&cancel_count),
+                    terminal_states: Arc::new(Mutex::new(VecDeque::from([
+                        TurnState::Completed,
+                        TurnState::Cancelled,
+                    ]))),
                     next_request: 0,
                     next_external_turn: 0,
                 },
@@ -1359,6 +1377,15 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
         assert_eq!(cursor_one.state(), TurnState::Completed);
         assert_eq!(cursor_one.delivery_state(), DeliveryState::Correlated);
         authority_state.lock().unwrap().projection_revision = cursor_one.projection_revision();
+        let terminal_first_cancel = HostCancelIntent {
+            owner: owner.clone(),
+            turn_id: turn_one.clone(),
+            client_intent_id: ClientIntentId::parse("intent-terminal-first-cancel").unwrap(),
+            now_millis: now + 4,
+        };
+        step!(WorkerCommand::BeginCancel(terminal_first_cancel.clone())).unwrap();
+        step!(WorkerCommand::DispatchCancel(terminal_first_cancel)).unwrap();
+        assert_eq!(cancel_count.load(Ordering::SeqCst), 0);
         let terminal_response = mailbox
             .submit_worker(WorkerCommand::AcceptTerminal {
                 owner: owner.clone(),
@@ -1412,6 +1439,13 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
             observation: crate::acp::store::SendObservation::CompleteBytes,
         })
         .unwrap();
+        let terminal_between_cancel = HostCancelIntent {
+            owner: owner.clone(),
+            turn_id: turn_two.clone(),
+            client_intent_id: ClientIntentId::parse("intent-terminal-between-cancel").unwrap(),
+            now_millis: now + 5,
+        };
+        step!(WorkerCommand::BeginCancel(terminal_between_cancel.clone())).unwrap();
         mailbox.try_push_chunk(b"{}\n".to_vec()).unwrap();
         let cursor_two = match state {
             FirstTurnWorkerState::Active(mut active) => {
@@ -1428,7 +1462,16 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
             _ => panic!("second active state"),
         };
         assert_eq!(cursor_two.turn_id(), &turn_two);
-        assert_eq!(cursor_two.state(), TurnState::Completed);
+        assert_eq!(cursor_two.state(), TurnState::Cancelled);
+        authority_state.lock().unwrap().projection_revision = cursor_two.projection_revision();
+        step!(WorkerCommand::DispatchCancel(terminal_between_cancel)).unwrap();
+        assert_eq!(cancel_count.load(Ordering::SeqCst), 0);
+        step!(WorkerCommand::AcceptTerminal {
+            owner: owner.clone(),
+            cursor: cursor_two.clone(),
+        })
+        .unwrap();
+        assert!(matches!(state, FirstTurnWorkerState::Reusable(_)));
 
         let close = crate::acp::store::CloseSessionCommand {
             project_id: project_id.clone(),
@@ -1437,7 +1480,7 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
             client_intent_id: ClientIntentId::parse("intent-two-close").unwrap(),
             session_id: started.session_id.clone(),
             runtime_epoch: epoch,
-            now_millis: now + 5,
+            now_millis: now + 6,
         };
         step!(WorkerCommand::BeginClose(close.clone())).unwrap();
         let WorkerReply::Zero(proof) = step!(WorkerCommand::WaitZero {
@@ -1483,9 +1526,16 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
             assert_eq!(rows.len(), 2);
             assert_eq!(rows[0].0, turn_one.as_str());
             assert_eq!(rows[1].0, turn_two.as_str());
-            for row in rows {
-                assert_eq!(row.1, "completed");
-                assert_eq!(row.2, "correlated");
+            for (index, row) in rows.into_iter().enumerate() {
+                assert_eq!(row.1, if index == 0 { "completed" } else { "cancelled" });
+                assert_eq!(
+                    row.2,
+                    if index == 0 {
+                        "correlated"
+                    } else {
+                        "completeBytes"
+                    }
+                );
                 assert!(row.3.is_some());
             }
             let facts: (i64, i64) = connection
@@ -1497,7 +1547,7 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .unwrap();
-            assert_eq!(facts, (1, 0));
+            assert_eq!(facts, (1, 1));
         }
 
         journal.close_when_drained();

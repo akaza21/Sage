@@ -1,4 +1,7 @@
-use std::sync::{Arc, Condvar, Mutex};
+use std::{
+    sync::{Arc, Condvar, Mutex},
+    time::{Duration, Instant},
+};
 
 use crate::acp::{
     contract::{
@@ -15,6 +18,11 @@ use super::types::HostCommand;
 use super::*;
 
 type PrepareGate = Arc<(Mutex<(bool, bool)>, Condvar)>;
+type TerminalGate = Arc<(Mutex<(bool, bool)>, Condvar)>;
+
+fn test_deadline() -> Instant {
+    Instant::now() + Duration::from_secs(1)
+}
 
 #[derive(Clone)]
 struct FakeEngine {
@@ -29,6 +37,7 @@ struct FakeEngine {
     begin_cancel_errors: Arc<Mutex<Vec<HostError>>>,
     begin_close_errors: Arc<Mutex<Vec<HostError>>>,
     prepare_gate: Option<PrepareGate>,
+    terminal_gate: Option<TerminalGate>,
 }
 
 impl FakeEngine {
@@ -47,6 +56,7 @@ impl FakeEngine {
             begin_cancel_errors: Arc::new(Mutex::new(Vec::new())),
             begin_close_errors: Arc::new(Mutex::new(Vec::new())),
             prepare_gate: None,
+            terminal_gate: None,
         }
     }
 
@@ -98,6 +108,11 @@ impl FakeEngine {
 
     fn with_prepare_gate(mut self, gate: Arc<(Mutex<(bool, bool)>, Condvar)>) -> Self {
         self.prepare_gate = Some(gate);
+        self
+    }
+
+    fn with_terminal_gate(mut self, gate: TerminalGate) -> Self {
+        self.terminal_gate = Some(gate);
         self
     }
 
@@ -193,6 +208,15 @@ impl RuntimeEngine for FakeEngine {
 
     fn accept_terminal(&mut self, _cursor: &AdapterTurnCursor) -> Result<(), HostError> {
         self.push("acceptTerminal");
+        if let Some(gate) = &self.terminal_gate {
+            let (state, ready) = &**gate;
+            let mut state = state.lock().unwrap();
+            state.0 = true;
+            ready.notify_all();
+            while !state.1 {
+                state = ready.wait(state).unwrap();
+            }
+        }
         if let Some(error) = self.terminal_errors.lock().unwrap().pop() {
             return Err(error);
         }
@@ -221,7 +245,7 @@ impl RuntimeEngine for FakeEngine {
         Ok(())
     }
 
-    fn shutdown(&mut self) -> Result<(), HostError> {
+    fn shutdown(&mut self, _deadline: std::time::Instant) -> Result<(), HostError> {
         self.push("shutdown");
         Ok(())
     }
@@ -589,6 +613,51 @@ fn terminal_cursor_returns_idle_and_close_orders_zero_before_finalize() {
 }
 
 #[test]
+fn worker_terminal_notification_never_waits_for_the_host_callback() {
+    use std::time::Duration;
+
+    let gate = Arc::new((Mutex::new((false, false)), Condvar::new()));
+    let engine =
+        FakeEngine::new([PromptWrite::Complete(turn())]).with_terminal_gate(Arc::clone(&gate));
+    let observed = engine.clone();
+    let host = RuntimeHost::start(engine).unwrap();
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+    host.send(prompt(&runtime)).unwrap();
+    let cursor = AdapterTurnCursor::test_only(
+        turn(),
+        TurnState::Completed,
+        DeliveryState::Correlated,
+        crate::acp::contract::EntityRevision::new(2).unwrap(),
+        crate::acp::contract::ProjectionRevision::new(3).unwrap(),
+    );
+
+    let notification = host.try_notify_terminal(runtime, cursor).unwrap();
+    let (state, ready) = &*gate;
+    let state = state.lock().unwrap();
+    let (mut state, timed) = ready
+        .wait_timeout_while(state, Duration::from_secs(1), |state| !state.0)
+        .unwrap();
+    assert!(!timed.timed_out());
+    state.1 = true;
+    ready.notify_all();
+    drop(state);
+
+    notification.wait().unwrap();
+    assert_eq!(host.state().unwrap(), HostState::Idle);
+    assert_eq!(
+        observed.events(),
+        [
+            "activate",
+            "preparePrompt",
+            "dispatchPrompt",
+            "acceptTerminal"
+        ]
+    );
+    host.shutdown().unwrap();
+}
+
+#[test]
 fn terminal_acceptance_failure_retries_only_the_exact_cursor_and_releases_once() {
     let engine = FakeEngine::new([PromptWrite::Complete(turn())])
         .with_terminal_errors([HostError::RecoveryRequired]);
@@ -725,6 +794,7 @@ fn shutdown_is_a_barrier_after_the_in_flight_call_and_rejects_queued_data() {
         .try_push(Envelope {
             command: HostCommand::PreparePrompt(prompt(&runtime)),
             reply: prepare_reply,
+            deadline: test_deadline(),
         })
         .unwrap();
     let (state, ready) = &*gate;
@@ -738,6 +808,7 @@ fn shutdown_is_a_barrier_after_the_in_flight_call_and_rejects_queued_data() {
         .try_push(Envelope {
             command: HostCommand::ProjectSwitched(SageProjectId::parse("project-b").unwrap()),
             reply: data_reply,
+            deadline: test_deadline(),
         })
         .unwrap();
     let (shutdown_reply, shutdown_response) = mpsc::sync_channel(1);
@@ -745,6 +816,7 @@ fn shutdown_is_a_barrier_after_the_in_flight_call_and_rejects_queued_data() {
         .try_push(Envelope {
             command: HostCommand::Shutdown,
             reply: shutdown_reply,
+            deadline: test_deadline(),
         })
         .unwrap();
     blocked.1 = true;
@@ -783,6 +855,7 @@ fn bounded_data_saturation_cannot_consume_reserved_control_capacity() {
                     SageProjectId::parse(format!("project-{index}")).unwrap(),
                 ),
                 reply,
+                deadline: test_deadline(),
             })
             .unwrap();
     }
@@ -791,6 +864,7 @@ fn bounded_data_saturation_cannot_consume_reserved_control_capacity() {
         mailbox.try_push(Envelope {
             command: HostCommand::ProjectSwitched(SageProjectId::parse("project-full").unwrap()),
             reply,
+            deadline: test_deadline(),
         }),
         Err(HostError::Capacity)
     ));
@@ -800,6 +874,7 @@ fn bounded_data_saturation_cannot_consume_reserved_control_capacity() {
         .try_push(Envelope {
             command: HostCommand::State,
             reply,
+            deadline: test_deadline(),
         })
         .unwrap();
     mailbox.close();
@@ -820,7 +895,13 @@ fn closing_the_host_mailbox_replies_closed_to_every_queued_caller() {
         HostCommand::Shutdown,
     ] {
         let (reply, response) = mpsc::sync_channel(1);
-        mailbox.try_push(Envelope { command, reply }).unwrap();
+        mailbox
+            .try_push(Envelope {
+                command,
+                reply,
+                deadline: test_deadline(),
+            })
+            .unwrap();
         responses.push(response);
     }
 

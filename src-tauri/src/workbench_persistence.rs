@@ -21,7 +21,15 @@ mod bootstrap;
 pub use crate::workbench_restore::MAX_RESTORED_TABS;
 
 impl Database {
+    #[cfg(test)]
     pub fn bootstrap_snapshot(&self) -> AppResult<BootstrapSnapshot> {
+        self.bootstrap_snapshot_with_catalog(&HarnessCatalog::default())
+    }
+
+    pub(crate) fn bootstrap_snapshot_with_catalog(
+        &self,
+        harnesses: &HarnessCatalog,
+    ) -> AppResult<BootstrapSnapshot> {
         let active_project_id = self.repair_active_project()?;
         let projects = self.project_list()?;
         if projects.len() > MAX_PROJECTS as usize {
@@ -55,7 +63,7 @@ impl Database {
         };
         let selected_harness_id = match &session {
             Some((_, binding_id, _)) => Some(
-                HarnessCatalog
+                harnesses
                     .harness_id_for_binding(binding_id)
                     .ok_or_else(|| {
                         AppError::InvalidRequest(

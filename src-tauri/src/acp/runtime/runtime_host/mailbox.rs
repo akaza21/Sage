@@ -10,6 +10,7 @@ use super::types::{HostCommand, HostError, HostReply};
 pub(super) struct Envelope {
     pub(super) command: HostCommand,
     pub(super) reply: SyncSender<Result<HostReply, HostError>>,
+    pub(super) deadline: Instant,
 }
 
 struct State {
@@ -44,7 +45,7 @@ impl HostMailbox {
         let bytes = envelope.command.actual_bytes();
         let control = envelope.command.is_control();
         let deadline_millis =
-            monotonic_deadline_millis(Duration::from_millis(envelope.command.deadline_millis()));
+            monotonic_deadline_millis(envelope.deadline.saturating_duration_since(Instant::now()));
         let mut retained = Some(envelope);
         let mut state = self.lock();
         if state.closed {

@@ -425,27 +425,32 @@ fn every_ipc_request_is_closed_and_uses_camel_case() {
 #[test]
 fn exact_intent_validation_rejects_each_stale_or_foreign_component() {
     let current = snapshot();
+    let mut cold = current.clone();
+    cold.runtime_epoch = None;
+    cold.turn_id = None;
+    cold.turn_state = None;
+    cold.turn_revision = None;
     let activate: ActivateAcpSessionRequest = serde_json::from_value(with(
         request_base(),
         json!({"sessionId": "session-a", "runtimeEpoch": "2"}),
     ))
     .unwrap();
-    assert_eq!(validate_session_intent(&activate, &current), Ok(()));
+    assert_eq!(validate_session_intent(&activate, &cold), Ok(()));
 
-    let mut stale = current.clone();
+    let mut stale = cold.clone();
     stale.project_generation = ProjectGeneration::new(4).unwrap();
     assert_eq!(
         validate_session_intent(&activate, &stale),
         Err(IntentError::StaleProjectGeneration)
     );
-    stale = current.clone();
+    stale = cold.clone();
     stale.projection_revision = ProjectionRevision::new(8).unwrap();
     assert_eq!(
         validate_session_intent(&activate, &stale),
         Err(IntentError::StaleProjectionRevision)
     );
-    stale = current.clone();
-    stale.runtime_epoch = Some(RuntimeEpoch::new(3).unwrap());
+    stale = cold.clone();
+    stale.runtime_epoch = Some(RuntimeEpoch::new(2).unwrap());
     assert_eq!(
         validate_session_intent(&activate, &stale),
         Err(IntentError::StaleRuntimeEpoch)

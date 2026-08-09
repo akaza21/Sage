@@ -51,6 +51,7 @@ pub(crate) enum WorkerReply {
 pub(crate) struct WorkerEnvelope {
     pub(crate) command: WorkerCommand,
     reply: mpsc::SyncSender<Result<WorkerReply, HostError>>,
+    deadline: Instant,
 }
 
 pub(crate) struct WorkerResponder(mpsc::SyncSender<Result<WorkerReply, HostError>>);
@@ -126,6 +127,10 @@ impl WorkerEnvelope {
     pub(crate) fn into_parts(self) -> (WorkerCommand, WorkerResponder) {
         (self.command, WorkerResponder(self.reply))
     }
+
+    pub(crate) fn deadline(&self) -> Instant {
+        self.deadline
+    }
 }
 
 impl WorkerResponder {
@@ -139,10 +144,19 @@ impl DriverMailbox {
         &self,
         command: WorkerCommand,
     ) -> Result<mpsc::Receiver<Result<WorkerReply, HostError>>, MailboxError> {
+        let deadline = Instant::now() + Duration::from_millis(command.deadline_millis());
+        self.submit_worker_until(command, deadline)
+    }
+
+    fn submit_worker_until(
+        &self,
+        command: WorkerCommand,
+        deadline: Instant,
+    ) -> Result<mpsc::Receiver<Result<WorkerReply, HostError>>, MailboxError> {
         let bytes = command.actual_bytes().ok_or(MailboxError::Full)?;
         let control = command.is_control();
         let deadline_millis =
-            monotonic_deadline_millis(Duration::from_millis(command.deadline_millis()));
+            monotonic_deadline_millis(deadline.saturating_duration_since(Instant::now()));
         let mut retained = Some(command);
         let mut response = None;
         let build = || {
@@ -151,6 +165,7 @@ impl DriverMailbox {
             ControlMessage::Worker(WorkerEnvelope {
                 command: retained.take().expect("worker command retained"),
                 reply,
+                deadline,
             })
         };
         if control {
@@ -174,6 +189,7 @@ pub(crate) struct ProcessLivePort {
     owner: RuntimeOwner,
     mailbox: Arc<DriverMailbox>,
     deadline_abort: Arc<dyn WorkerDeadlineAbort>,
+    managed_runner: Option<Arc<super::LiveRunnerHandle>>,
     #[cfg(test)]
     timeout_override_millis: Option<u64>,
 }
@@ -201,6 +217,20 @@ impl ProcessLivePort {
             owner,
             mailbox,
             deadline_abort,
+            managed_runner: None,
+            #[cfg(test)]
+            timeout_override_millis: None,
+        }
+    }
+
+    pub(crate) fn new_managed(owner: RuntimeOwner, runner: Arc<super::LiveRunnerHandle>) -> Self {
+        let mailbox = runner.mailbox();
+        let deadline_abort: Arc<dyn WorkerDeadlineAbort> = runner.clone();
+        Self {
+            owner,
+            mailbox,
+            deadline_abort,
+            managed_runner: Some(runner),
             #[cfg(test)]
             timeout_override_millis: None,
         }
@@ -217,18 +247,29 @@ impl ProcessLivePort {
             owner,
             mailbox,
             deadline_abort,
+            managed_runner: None,
             timeout_override_millis: Some(timeout_millis),
         }
     }
 
     fn call(&self, command: WorkerCommand) -> Result<WorkerReply, HostError> {
-        let started = Instant::now();
         let deadline_millis = command.deadline_millis();
-        let response = self.mailbox.submit_worker(command).map_err(map_mailbox)?;
         #[cfg(test)]
         let deadline_millis = self.timeout_override_millis.unwrap_or(deadline_millis);
-        let remaining = Duration::from_millis(deadline_millis).saturating_sub(started.elapsed());
-        match response.recv_timeout(remaining) {
+        let deadline = Instant::now() + Duration::from_millis(deadline_millis);
+        self.call_until(command, deadline)
+    }
+
+    fn call_until(
+        &self,
+        command: WorkerCommand,
+        deadline: Instant,
+    ) -> Result<WorkerReply, HostError> {
+        let response = self
+            .mailbox
+            .submit_worker_until(command, deadline)
+            .map_err(map_mailbox)?;
+        match response.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
             Ok(reply) => reply,
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 self.mailbox.close();
@@ -358,9 +399,12 @@ impl LiveRuntimePort for ProcessLivePort {
         }
     }
 
-    fn shutdown(&mut self) -> Result<(), HostError> {
-        match self.call(WorkerCommand::Shutdown)? {
-            WorkerReply::Unit => Ok(()),
+    fn shutdown(&mut self, deadline: Instant) -> Result<(), HostError> {
+        match self.call_until(WorkerCommand::Shutdown, deadline)? {
+            WorkerReply::Unit => match &self.managed_runner {
+                Some(runner) => runner.join_before(deadline),
+                None => Ok(()),
+            },
             WorkerReply::Prepared(_) | WorkerReply::Write(_) | WorkerReply::Zero(_) => {
                 Err(HostError::State)
             }

@@ -2134,9 +2134,18 @@
       "id": "default-package-fixture-exclusion",
       "steps": [{ "op": "inspectPackage", "build": "production-default" }],
       "oracle": {
+        "productionArtifactKinds": ["executable", "msi", "nsis"],
         "fixtureExecutableCount": 0,
         "fixtureMetadataCount": 0,
-        "runtimeDownloadBytes": 0
+        "productionFeatureSetContainsAcpFixture": false,
+        "extractedFixtureHashMatches": 0,
+        "msiExecutableMatchesExpectedBundleProjection": true,
+        "nsisExecutableMatchesExpectedBundleProjection": true,
+        "webviewProvisioningMode": "downloadBootstrapper",
+        "webviewProvisioningWhenRuntimeAbsent": true,
+        "webviewProvisioningNetworkRequired": true,
+        "bundledWebviewPayloadCount": 0,
+        "bundledWebviewPayloadBytes": 0
       }
     },
     {

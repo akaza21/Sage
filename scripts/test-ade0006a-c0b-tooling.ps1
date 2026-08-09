@@ -19,9 +19,15 @@ $staticSources = @(
   (Join-Path $scriptRoot "ade0006a-c0b-common.mjs") +
   (Join-Path $scriptRoot "ade0006a-c0b-contracts.mjs") +
   (Join-Path $scriptRoot "ade0006a-c0b-trust.mjs") +
-  (Join-Path $scriptRoot "ade0006a-c0b-metrics.mjs") +
-  (Join-Path $scriptRoot "ade0006a-c0b-runtime-evidence.mjs") +
-  (Join-Path $scriptRoot "ade0006a-c0b-artifact-evidence.mjs")
+  (Join-Path $scriptRoot "ade0006a-c0b-package-reference.mjs") +
+  (Join-Path $scriptRoot "ade0006a-c0b-envelope.mjs") +
+  (Join-Path $scriptRoot "ade0006a-c0b-observation-files.mjs") +
+  (Join-Path $scriptRoot "ade0006a-c0b-observation.mjs") +
+  (Join-Path $scriptRoot "ade0006a-c0b-footprint-evidence.mjs") +
+  (Join-Path $scriptRoot "ade0006a-c0b-characterization-epochs.mjs") +
+  (Join-Path $scriptRoot "ade0006a-c0b-characterization-evidence.mjs") +
+  (Join-Path $scriptRoot "ade0006a-c0b-characterization-load.mjs") +
+  (Join-Path $scriptRoot "ade0006a-c0b-characterization-artifacts.mjs")
 )
 
 foreach ($path in @($staticSources + $runner + $nodeTests)) {
@@ -122,7 +128,7 @@ function Invoke-BoundedNode {
   }
 }
 
-[void](Invoke-BoundedNode @("--test", $nodeTests) 0 "# pass 10")
+[void](Invoke-BoundedNode @("--test", $nodeTests) 0 "pass 20")
 foreach ($validator in $validators) {
   [void](Invoke-BoundedNode @($validator) 1 "usage:")
 }
@@ -131,6 +137,6 @@ foreach ($validator in $validators) {
   status = "passed"
   mode = "static-dry-run-only"
   validators = $validators.Count
-  nodeTests = 10
+  nodeTests = 20
   nativeExitSource = "bounded ProcessStartInfo result"
 } | ConvertTo-Json -Compress

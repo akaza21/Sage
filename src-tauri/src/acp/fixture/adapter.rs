@@ -40,7 +40,7 @@ enum State {
     Complete,
 }
 
-pub(super) struct FixtureAdapter {
+pub(crate) struct FixtureAdapter {
     binding_digest: [u8; 32],
     runtime_epoch: RuntimeEpoch,
     session_id: SageAgentSessionId,
@@ -49,6 +49,7 @@ pub(super) struct FixtureAdapter {
     capabilities: Option<CapabilitySnapshotV1>,
     next_request_id: u64,
     pending_request_id: Option<u64>,
+    cancel_restore_state: Option<State>,
     session_ready: bool,
     state: State,
 }
@@ -57,7 +58,7 @@ impl FixtureAdapter {
     // The constructor is consumed by the external feature-only runner; the
     // default library build deliberately has no admitted fixture binding.
     #[allow(dead_code)]
-    pub(super) fn new(
+    pub(crate) fn new(
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
@@ -75,6 +76,7 @@ impl FixtureAdapter {
             capabilities: None,
             next_request_id: 1,
             pending_request_id: None,
+            cancel_restore_state: None,
             session_ready: false,
             state: State::Idle,
         })
@@ -286,6 +288,13 @@ impl HarnessAdapter for FixtureAdapter {
                 vec![AdapterEvent::Turn {
                     id: self.identity("fixture-turn-envelope")?,
                     state: TurnState::Completed,
+                }]
+            }
+            (State::AwaitingTextStart, "fixture/turnCancelled", false) => {
+                self.state = State::Complete;
+                vec![AdapterEvent::Turn {
+                    id: self.identity("fixture-turn-envelope")?,
+                    state: TurnState::Cancelled,
                 }]
             }
             _ => return Err(AdapterRuntimeError::Operation),

@@ -443,6 +443,7 @@ $raw = [ordered]@{
     scriptSha256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
     processModuleSha256 = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot "footprint/WindowsFootprint.psm1") -Algorithm SHA256).Hash
     processIdentityModuleSha256 = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot "footprint/ProcessIdentity.psm1") -Algorithm SHA256).Hash
+    disposableProfileModuleSha256 = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot "footprint/DisposableProfile.psm1") -Algorithm SHA256).Hash
     scenarioModuleSha256 = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot "footprint/ScenarioEvidence.psm1") -Algorithm SHA256).Hash
     setupHelperSha256 = (Get-FileHash -LiteralPath $setupHelper -Algorithm SHA256).Hash
     boundedNodeRunnerSha256 = (Get-FileHash -LiteralPath $boundedNodeRunner -Algorithm SHA256).Hash

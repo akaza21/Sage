@@ -3,6 +3,7 @@ use crate::acp::{
     scheduler::RuntimeOwner,
     store::{AdapterTurnCursor, CloseSessionCommand, PrepareTurnCommand},
 };
+use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HostState {
@@ -128,7 +129,7 @@ pub(crate) trait RuntimeEngine: Send + 'static {
     fn begin_close(&mut self, intent: &HostCloseIntent) -> Result<(), HostError>;
     fn converge_zero(&mut self, intent: &HostCloseIntent) -> Result<(), HostError>;
     fn finalize_close(&mut self, intent: &HostCloseIntent) -> Result<(), HostError>;
-    fn shutdown(&mut self) -> Result<(), HostError>;
+    fn shutdown(&mut self, deadline: Instant) -> Result<(), HostError>;
 }
 
 pub(super) enum HostCommand {

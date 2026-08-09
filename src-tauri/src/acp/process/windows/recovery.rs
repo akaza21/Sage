@@ -5,11 +5,14 @@ use std::time::{Duration, Instant};
 use windows_sys::Win32::System::Threading::{ResumeThread, TerminateProcess};
 
 use super::artifact::VerifiedArtifact;
+#[cfg(feature = "acp-fixture")]
+use super::authority::CharacterizationObservationState;
 use super::authority::{RunningTree, TreeAuthority};
 use super::io::{StderrDrain, StdinEndpoint, StdoutEndpoint};
 use super::job::JobBoundary;
 use super::native::NativeHandle;
 use super::{LaunchError, LaunchSpec, TreeCapacityLease, wait_until};
+use crate::acp::process::SpawnTimingReceipt;
 use crate::acp::process::platform::LaunchFailure;
 use crate::acp::process::supervisor::{LaunchFailureTracker, ZeroProcessToken};
 
@@ -35,10 +38,11 @@ struct StartedRecovery {
     lease: Option<TreeCapacityLease>,
     active_process_limit: u32,
     deadline: Duration,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "acp-fixture"))]
     absolute_cleanup_deadline: Option<Instant>,
     assigned_to_job: bool,
     tracker: LaunchFailureTracker,
+    spawn_timing: Option<SpawnTimingReceipt>,
 }
 
 impl LaunchRecovery {
@@ -57,6 +61,7 @@ impl LaunchRecovery {
         job: JobBoundary,
         artifact: VerifiedArtifact,
         lease: TreeCapacityLease,
+        spawn_timing: Option<SpawnTimingReceipt>,
         spec: &LaunchSpec,
     ) -> Self {
         Self {
@@ -69,10 +74,11 @@ impl LaunchRecovery {
                 lease: Some(lease),
                 active_process_limit: spec.limits.active_processes,
                 deadline: Duration::from_millis(spec.deadlines.spawn_ms),
-                #[cfg(test)]
+                #[cfg(any(test, feature = "acp-fixture"))]
                 absolute_cleanup_deadline: spec.absolute_cleanup_deadline,
                 assigned_to_job: false,
                 tracker: LaunchFailureTracker::child_created(spec.runtime_epoch),
+                spawn_timing,
             })),
         }
     }
@@ -170,7 +176,7 @@ impl LaunchRecovery {
                 ));
             }
         };
-        #[cfg(test)]
+        #[cfg(any(test, feature = "acp-fixture"))]
         let absolute_cleanup_deadline = started.absolute_cleanup_deadline;
         let (
             process,
@@ -182,6 +188,7 @@ impl LaunchRecovery {
             active_process_limit,
             deadline,
             tracker,
+            spawn_timing,
         ) = match started {
             StartedRecovery {
                 process: Some(process),
@@ -194,6 +201,7 @@ impl LaunchRecovery {
                 deadline,
                 assigned_to_job: true,
                 tracker,
+                spawn_timing: Some(spawn_timing),
                 ..
             } => (
                 process,
@@ -205,6 +213,7 @@ impl LaunchRecovery {
                 active_process_limit,
                 deadline,
                 tracker,
+                spawn_timing,
             ),
             started => {
                 return Err(LaunchFailure::convergence_unknown(
@@ -224,11 +233,14 @@ impl LaunchRecovery {
             lease: Mutex::new(Some(lease)),
             active_process_limit,
             terminate_deadline: deadline,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "acp-fixture"))]
             absolute_cleanup_deadline,
             requested_exit: Mutex::new(None),
             convergence: Mutex::new(false),
+            #[cfg(feature = "acp-fixture")]
+            characterization_observation: Mutex::new(CharacterizationObservationState::default()),
             runtime_epoch: tracker.runtime_epoch(),
+            spawn_timing,
         };
         Ok(RunningTree::new(
             StdinEndpoint::new(parent_stdin),
@@ -250,13 +262,13 @@ impl StartedRecovery {
         // SAFETY: the retained root handle is valid. This fallback also covers
         // failures that occur before successful Job assignment.
         unsafe { TerminateProcess(process.raw(), 1) };
-        #[cfg(test)]
+        #[cfg(any(test, feature = "acp-fixture"))]
         let deadline = {
             let native_deadline = Instant::now() + self.deadline;
             self.absolute_cleanup_deadline
                 .map_or(native_deadline, |absolute| native_deadline.min(absolute))
         };
-        #[cfg(not(test))]
+        #[cfg(not(any(test, feature = "acp-fixture")))]
         let deadline = Instant::now() + self.deadline;
         wait_until(process.raw(), deadline)?;
         if self.assigned_to_job {

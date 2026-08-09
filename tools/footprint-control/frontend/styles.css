@@ -1,0 +1,212 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  color: #e8ebe6;
+  background: #101210;
+  --surface: #151815;
+  --raised: #181b18;
+  --border: #292e29;
+  --muted: #7e877e;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+body {
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr);
+  overflow: hidden;
+}
+button,
+input,
+textarea {
+  font: inherit;
+}
+button {
+  color: #b6bcb5;
+  border: 1px solid #343a34;
+  background: var(--raised);
+}
+
+.state-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: #0d0f0d;
+}
+.state-nav button {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 7px;
+}
+.state-nav button[aria-pressed="true"] {
+  color: #e8ebe6;
+  border-color: #54705a;
+  background: #253329;
+}
+#app {
+  min-width: 0;
+  min-height: 0;
+}
+
+.mock-workbench {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-rows: 42px minmax(0, 1fr) 24px;
+  background: #101210;
+  font-size: 12px;
+}
+.mock-title {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-toggle {
+  justify-self: end;
+  padding: 5px 9px;
+  border-radius: 6px;
+}
+.mock-body {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: 248px minmax(0, 1fr) 318px;
+}
+.mock-left {
+  min-height: 0;
+  padding: 12px 7px;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+.mock-left > strong {
+  display: block;
+  padding: 4px 8px 12px;
+}
+.mock-center {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: 42px minmax(0, 1fr);
+}
+.mock-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.mock-tabs button {
+  padding: 0 12px;
+  border-radius: 6px;
+}
+.mock-tabs button[aria-selected="true"] {
+  color: #e8ebe6;
+  border-color: #54705a;
+}
+.mock-surface {
+  min-height: 0;
+  padding: 18px;
+  overflow: auto;
+}
+.mock-empty {
+  display: grid;
+  place-content: center;
+  text-align: center;
+  color: var(--muted);
+}
+.mock-surface h1 {
+  margin: 0 0 16px;
+  font-size: 20px;
+}
+.mock-chat {
+  display: block;
+}
+.mock-editor {
+  width: 100%;
+  height: calc(100% - 48px);
+  min-height: 420px;
+  padding: 12px;
+  color: #d8ddd7;
+  background: #0e100e;
+  border: 0;
+  resize: none;
+}
+.mock-right {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: 272px 46px;
+  border-left: 1px solid var(--border);
+}
+.mock-sidebar {
+  min-height: 0;
+  padding: 10px 6px;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+  background: #131613;
+}
+.mock-sidebar h2 {
+  margin: 4px 8px 12px;
+  font-size: 13px;
+}
+.mock-sidebar--empty {
+  color: var(--muted);
+}
+.mock-rail {
+  padding: 7px 5px;
+  overflow: hidden;
+}
+.mock-row,
+.mock-diff-row {
+  display: flex;
+  min-height: 27px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+.mock-diff-row {
+  color: #a9c8aa;
+  border-bottom: 1px solid #202420;
+  font-family: ui-monospace, monospace;
+}
+.mock-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border-top: 1px solid var(--border);
+}
+.probe {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+}
+.probe input {
+  width: 190px;
+  height: 30px;
+  padding: 0 8px;
+  color: #e8ebe6;
+  border: 1px solid #343a34;
+  background: #101210;
+}

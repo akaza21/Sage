@@ -176,6 +176,9 @@ describe("ChatSurface ACP resource integration", () => {
   it("separates active Turn prompting from the optional Cancel capability", () => {
     useWorkbenchStore.setState({ composerText: "Follow up" });
     const { rerender } = render(<ChatSurface />);
+    expect(document.querySelector(".message-list")).not.toHaveAttribute(
+      "aria-live",
+    );
     const composer = screen.getByRole("textbox", {
       name: "Message agent",
       description: "Send a message to the selected harness and model",
@@ -223,6 +226,36 @@ describe("ChatSurface ACP resource integration", () => {
     expect(composer).toBeEnabled();
     expect(composer).toHaveFocus();
     expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
+  });
+
+  it("exposes the authoritative session close as a semantic control", () => {
+    setTurnState("completed");
+    hooks.page = {
+      ...hooks.page!,
+      currentSessionId: "session-a" as never,
+      sessions: [
+        {
+          id: "session-a",
+          ordinal: 0,
+          runtimeEpoch: "1",
+          nextRuntimeEpoch: null,
+          state: "active",
+          residency: "hot",
+          legacy: false,
+          bindingId: "codex-app-server",
+          modelId: null,
+          capabilities: { closeSession: true },
+          revision: "1",
+          projectionRevision: "2",
+        },
+      ],
+    } as unknown as AcpChatPage;
+
+    render(<ChatSurface />);
+    const close = screen.getByRole("button", { name: "Close session" });
+    expect(close).toBeEnabled();
+    fireEvent.click(close);
+    expect(hooks.actions.close).toHaveBeenCalledOnce();
   });
 
   it("keeps ACP prompting disabled until authoritative Chat state loads", () => {

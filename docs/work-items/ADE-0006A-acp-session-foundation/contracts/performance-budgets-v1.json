@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "status": "proposed-c0-s-ceilings",
-  "authorityRule": "C0-S fixes ceilings; independent C1 records candidate/control provenance and pass-fail only.",
+  "status": "user-approved-specify-amendment-awaiting-fresh-review",
+  "authorityRule": "C0-S fixes ceilings; Package and C0-B record authenticated observations and derived pass-fail only.",
   "latencyMs": {
     "spawnToProcessReadyP95": 2500,
     "initializeP95": 5000,
@@ -42,38 +42,41 @@
     "defaultProductionFixtureArtifactsBytes": 0,
     "defaultProductionChildProcesses": 0,
     "frontendRawBytesMaximum": 131072,
-    "productionExecutableBytesMaximum": 1048576,
-    "installedCoreBytesMaximum": 2097152,
-    "runtimeDownloadBytes": 0
+    "productionExecutableBytesMaximum": 3145728,
+    "msiInstallerBytesMaximum": 2097152,
+    "nsisInstallerBytesMaximum": 2097152,
+    "productionArtifactSetBytesMaximum": 5242880,
+    "msiInstalledPayloadBytesMaximum": 3145728,
+    "nsisInstalledPayloadBytesMaximum": 3145728,
+    "installedPayloadSetBytesMaximum": 6291456,
+    "bundledWebviewPayloadCount": 0,
+    "bundledWebviewPayloadBytes": 0
+  },
+  "packageDeltaSpecifyBasis": {
+    "receipts": ["package-pair-20260807-04", "package-pair-20260809-13"],
+    "disposition": "keep every numeric ceiling unchanged; compare candidate frontend raw bytes with the authenticated pre-ADE-0006A Sage frontend baseline, while retaining the static Tauri control for packaged runtime and all non-frontend package deltas"
   },
   "controlRegressionMax": {
     "latencyMs": {
       "spawnToProcessReadyP95": 250,
-      "initializeP95": 500,
-      "promptWriteCompleteToFirstNormalizedFixtureOutputP50": 50,
-      "promptWriteCompleteToFirstNormalizedFixtureOutputP95": 100,
-      "nativeReceiptToPaintP95": 10,
       "inputToPaintP95": 10,
       "tabSwitchP95": 20,
-      "cancelDispatchP95": 20,
-      "cancelTerminalP95": 250,
-      "coldActivationP50": 200,
-      "coldActivationP95": 300,
       "explicitCloseP95": 250
     },
     "resource": {
       "readyIdleCpuSingleCorePercentagePointsP95": 0.1,
-      "fixtureTreePrivateBytesP95": 67108864,
       "sageNativeAndRendererIncrementalPrivateBytesP95": 33554432,
       "orphanProcessesAfterClose": 0
     },
-    "persistence": {
-      "walBytes": 16777216,
-      "liveDatabaseBytes": 16777216,
-      "writesPerTextDelta": 0,
-      "ipcNotificationsPerTextDelta": 0
-    },
-    "absoluteOnly": [
+    "candidateOnly": [
+      "initializeP95",
+      "promptWriteCompleteToFirstNormalizedFixtureOutputP50",
+      "promptWriteCompleteToFirstNormalizedFixtureOutputP95",
+      "nativeReceiptToPaintP95",
+      "cancelDispatchP95",
+      "cancelTerminalP95",
+      "coldActivationP50",
+      "coldActivationP95",
       "forcedTeardownHardMaximum",
       "coldProcessCount",
       "coldSocketCount",
@@ -81,58 +84,154 @@
       "coldTimerCount",
       "operationalRuntimeTrees",
       "operationalRunningTurns",
+      "fixtureTreePrivateBytesP95",
+      "all persistence metrics",
       "all packageDelta metrics"
     ]
   },
   "sampleContract": {
-    "cleanResourceLaunches": 5,
+    "packagedStates": [
+      "shell",
+      "chat",
+      "file",
+      "diff",
+      "explorer",
+      "source-control"
+    ],
+    "validPairsPerPackagedState": 5,
+    "characterizationCoreEpochs": 5,
     "coldFixtureCycles": 30,
     "receiptToPaintSamples": 100,
     "inputToPaintSamples": 100,
     "saturationCyclesPerBoundary": 30,
+    "fairnessCycles": 30,
+    "coalescingEpochsPerPolicy": 5,
+    "coalescingSamplesPerEpoch": 20,
+    "coalescingPolicies": ["16ms", "33ms", "50ms", "4kib"],
+    "maximumInvalidFootprintAttempts": 60,
+    "maximumInvalidCharacterizationAttempts": 512,
+    "characterizationLatencySamples": {
+      "spawnToProcessReady": 30,
+      "initialize": 30,
+      "firstNormalizedOutput": 30,
+      "nativeReceiptToPaint": 100,
+      "inputToPaint": 100,
+      "cancelDispatch": 30,
+      "cancelTerminal": 30,
+      "coldActivation": 30,
+      "explicitClose": 30,
+      "forcedTeardown": 5
+    },
     "percentileMethod": "nearest-rank",
     "warmWakeApplicable": false,
-    "matchedAcceptedControlRequired": true,
+    "matchedControlScope": "packagedFootprint only",
     "candidateMayChangeCeiling": false,
     "testMayChangeCeiling": false
   },
   "samplePhase": {
-    "c1": [
-      "cleanResourceLaunches",
+    "packagedFootprint": ["packagedStates", "validPairsPerPackagedState"],
+    "characterization": [
+      "characterizationCoreEpochs",
       "coldFixtureCycles",
-      "saturationCyclesPerBoundary"
-    ],
-    "c0B": [
-      "cleanResourceLaunches",
       "receiptToPaintSamples",
       "inputToPaintSamples",
-      "saturationCyclesPerBoundary"
+      "saturationCyclesPerBoundary",
+      "fairnessCycles",
+      "coalescingEpochsPerPolicy",
+      "coalescingSamplesPerEpoch"
     ],
     "notApplicableSamplesAreOmittedNotZero": true
   },
   "measurementContract": {
-    "candidateAndControlIdentity": {
-      "candidate": "exact executable SHA-256 plus source tree, source manifest, contract manifest, lockfile hashes, feature set, OS, architecture, WebView runtime, and toolchain",
-      "control": "the independently accepted ADE-0005 executable and its exact source tree, source manifest, lockfile hashes, OS, architecture, WebView runtime, and toolchain",
-      "matchedHostRequired": true,
-      "matchedPowerPolicyRequired": true,
-      "invalidIfIdentityFieldMissing": true
+    "collectorProvenance": {
+      "entrypoint": "collect-ade0006a-c0b",
+      "modules": [
+        "disposable-profile",
+        "process-identity",
+        "semantic-uia",
+        "windows-footprint",
+        "c0b-observation"
+      ],
+      "tools": ["powershell", "node", "git"],
+      "moduleCountMaximum": 8,
+      "toolCountMaximum": 8
     },
-    "runOrder": {
+    "observationFiles": {
+      "rawRoot": "local-evidence/ade0006a-c0b/{campaignId}",
+      "inventory": [
+        "footprint-shell.json",
+        "footprint-chat.json",
+        "footprint-file.json",
+        "footprint-diff.json",
+        "footprint-explorer.json",
+        "footprint-source-control.json",
+        "characterization-core.json",
+        "characterization-cold.json",
+        "saturation-driverDataMessages.json",
+        "saturation-driverDataBytes.json",
+        "saturation-driverControlMessages.json",
+        "saturation-driverControlBytes.json",
+        "saturation-egressDataFrames.json",
+        "saturation-egressDataBytes.json",
+        "saturation-egressControlFrames.json",
+        "saturation-egressControlBytes.json",
+        "saturation-journalDataBatches.json",
+        "saturation-journalDataBytes.json",
+        "saturation-journalControlBatches.json",
+        "saturation-journalControlBytes.json",
+        "saturation-pageReadsPerOwner.json",
+        "saturation-pageReadsGlobal.json",
+        "characterization-fairness.json",
+        "characterization-coalescing.json",
+        "characterization-persistence.json",
+        "characterization-gestures.json"
+      ],
+      "eachFile": "one regular non-symlink file whose exact bytes and SHA-256 are authenticated by the curated results descriptor",
+      "inventoryRule": "the C0-B raw root contains exactly the ordered inventory and no other entry"
+    },
+    "packageReceiptIdentity": {
+      "authority": "one exact Package receipt revalidated with its retained raw sidecars",
+      "requiredResult": "passed",
+      "selectedInstaller": "the C0-B plan selects exactly one of msi or nsis for both participants",
+      "installedExecutableBinding": "digest of receipt SHA-256, participant, installer kind, member-manifest SHA-256, installed executable SHA-256, and installed executable bytes",
+      "duplicatePackageFactsInC0B": false
+    },
+    "packagedFootprint": {
+      "states": ["shell", "chat", "file", "diff", "explorer", "source-control"],
+      "stateSetup": "exact-PID UI Automation with semantic controls only; screen coordinates, global input, debug ports, and CDP are forbidden",
       "order": "alternating-control-candidate",
       "firstPairOrder": "seed-0-even-control-first",
       "subsequentPairs": "alternate first participant",
-      "cleanResourceLaunch": "new isolated data directory, no prior Sage process, OS file cache left natural and recorded",
-      "warmupCyclesExcluded": 3,
-      "invalidLaunch": "discard the whole control/candidate pair, record typed reason, and rerun; never substitute or interpolate"
+      "cleanLaunch": "fresh marked disposable durable and WebView profile, no prior participant process, OS file cache left natural and recorded",
+      "settleAfterSemanticReadyMs": 8000,
+      "snapshotIntervalMs": 250,
+      "snapshotCount": 41,
+      "cpuIntervalCount": 40,
+      "minimumSamplingWindowMs": 10000,
+      "deadlineRule": "schedule each snapshot from one absolute monotonic baseline; capturedTick must be greater than or equal to dueTick and strictly less than the next dueTick, using dueTick plus one interval for the final snapshot; any missing, duplicated, nonmonotonic, or out-of-window snapshot invalidates the whole pair",
+      "adr0005ProjectionOrdinals": [0, 4, 8, 12, 16],
+      "adr0005Projection": "five one-second-spaced points after the eight-second settle; each launch contributes its median and the campaign reports median plus nearest-rank P95",
+      "cpuAggregation": "nearest-rank P95 across all 200 valid per-interval candidate samples and separately across all 200 control samples",
+      "privateBytesGate": "for each state, derive candidate P95 and control P95 from the 25 ADR-0005 projection values per participant; the incremental observation is candidate P95 minus control P95 and must not exceed the frozen incremental private-byte ceiling",
+      "latencyBinding": "every launch records one QPC-domain spawn-start/window-ready, trusted-input/result-paint, and trusted-tab-activation/result-paint span inside that launch's close boundary; the three reported durations are derived exactly from those spans and the authenticated campaign QPC frequency",
+      "invalidAttempt": "retain only typed sanitized disposition, discard the entire attempted pair, and collect a fresh replacement; never substitute or interpolate"
     },
-    "readyIdle": {
+    "characterization": {
+      "participant": "candidate only",
+      "freshEpoch": "every core run, cold fixture cycle, saturation cycle, fairness cycle, and coalescing policy run owns a unique marked disposable profile and PID-creation identity",
+      "coldNativeReceipt": "every cold fixture cycle embeds exactly one create-new schema-v2 native receipt bound to case cold-cycle, runtime epoch 1, the admitted fixture hash and bytes, PID plus full process creation FILETIME, QPC frequency, initialize/ready/prompt/output/cancel/close/job-zero/close-commit anchors, and typed WAL convergence",
+      "coldSampleOwnership": "each 30-sample cold metric contains exactly one sample from every one of the 30 cold epochs; spawnToProcessReady, initialize, firstNormalizedOutput, cancelDispatch, and cancelTerminal are derived from that epoch's native receipt; coldActivation is derived from the epoch activation receipt through visible-ready after native ready commit; explicitClose is derived from the outer close receipt through the later of zero owned descendants and WAL convergence",
+      "coreLatencyBinding": "each core paint sample owns a unique QPC-domain start/end span inside one of exactly five core epochs and is derived from the authenticated campaign QPC frequency; every core epoch owns exactly 20 native-receipt-to-paint samples, 20 input-to-paint samples, and one forced-teardown span whose anchors are exactly close-requested through zero descendants",
+      "invalidAttempt": "retain only typed sanitized disposition and bind it to a fresh replacement epoch; no invalid observations contribute to metrics",
       "entry": "initialize committed ready, projection revision observed by WebView, no Turn active, ingress/egress/journal queues empty, WAL converged below checkpoint target",
-      "settleMs": 5000,
-      "sampleIntervalMs": 250,
-      "samplesPerLaunch": 40,
+      "settleAfterSemanticReadyMs": 8000,
+      "snapshotIntervalMs": 250,
+      "snapshotCount": 41,
+      "cpuIntervalCount": 40,
+      "minimumSamplingWindowMs": 10000,
+      "deadlineRule": "schedule each snapshot from one absolute monotonic baseline; capturedTick must be greater than or equal to dueTick and strictly less than the next dueTick, using dueTick plus one interval for the final snapshot; any missing, duplicated, nonmonotonic, or out-of-window snapshot invalidates the whole epoch",
       "cpuFormula": "sum process CPU-time delta across the owned tree divided by wall-time delta and one logical core, multiplied by 100",
-      "cpuAggregation": "nearest-rank P95 across all valid per-interval samples; intervals spanning spawn or exit are invalid"
+      "cpuAggregation": "nearest-rank P95 across all valid per-interval samples; intervals spanning spawn, exit, or membership change are invalid"
     },
     "processMembership": {
       "nativeAndRenderer": "candidate Sage parent plus descendants whose parent chain reaches that exact PID and process creation time",
@@ -147,19 +246,21 @@
       "firstNormalizedOutput": "last prompt request byte written through first structurally validated normalized Item accepted by Rust",
       "nativeReceiptToPaint": "Rust frame receipt monotonic timestamp through browser performance.now mark after the projection paint containing that revision",
       "inputToPaint": "trusted semantic input event timestamp through browser performance.now mark after resulting paint",
+      "tabSwitch": "trusted semantic tab activation through browser performance.now mark after the selected tab panel paint",
       "cancelDispatch": "trusted Cancel activation through final cancel byte write or typed local no-write disposition",
       "cancelTerminal": "trusted Cancel activation through durable terminal Turn commit",
-      "explicitClose": "close request receipt through zero owned process descendants and WAL convergence"
+      "coldActivation": "trusted activation receipt for a cold session through durable ready commit and visible ready projection",
+      "explicitClose": "close request receipt through zero owned process descendants and WAL convergence",
+      "forcedTeardown": "forced teardown request through zero exact owned descendants"
     },
     "deltaFormulas": {
-      "latency": "candidate percentile minus matched control percentile in milliseconds; metrics present in controlRegressionMax must pass both that value and the absolute ceiling, while metrics listed in absoluteOnly use only the absolute ceiling",
-      "bytes": "candidate retained or package bytes minus matched control bytes",
-      "processes": "candidate owned process count minus matched control owned process count",
-      "wal": "candidate WAL bytes at matching lifecycle marker minus control WAL bytes at the same marker",
+      "pairedPackaged": "candidate percentile minus the matched packaged control percentile; paired metrics must pass both the absolute candidate ceiling and controlRegressionMax",
+      "candidateCharacterization": "candidate-only ACP metrics pass their absolute ceiling; no static-control value or regression delta exists",
+      "package": "frontendRawBytes is candidate frontend raw bytes minus the authenticated frontendSizeBaseline; every other package delta is candidate minus the matched static Tauri control; all are derived only by the authenticated Package receipt and C0-B does not reproduce them",
       "percentile": "sort ascending and select element ceil(p*n), one-indexed; no interpolation"
     },
     "saturation": {
-      "eachBoundary": "run exact-limit then limit-plus-one in one fresh runtime epoch",
+      "eachBoundary": "run exact-limit then limit-plus-one in one unique fresh candidate runtime epoch",
       "cycles": 30,
       "requiredObservations": [
         "accepted count",
@@ -171,32 +272,54 @@
         "zero orphan descendants"
       ],
       "invalidIfPollingDetected": true
+    },
+    "coalescing": {
+      "samplesPerEpoch": 20,
+      "samplesPerPolicy": 100,
+      "selectionRule": "lowest nearest-rank P95 with zero saturation observations and zero SQLite writes per text delta",
+      "tieBreak": "first policy in sampleContract.coalescingPolicies order"
+    },
+    "persistence": {
+      "participant": "candidate only",
+      "markers": ["fresh", "after-100-turns", "after-close-reopen"],
+      "profileCount": 1,
+      "restartCount": 1,
+      "markerBinding": "each ordered marker belongs to one of two non-overlapping launches and records an in-launch QPC checkpoint-start/completion span; duration is derived exactly from the authenticated campaign QPC frequency, WAL after checkpoint cannot exceed WAL before checkpoint and must be below the frozen target, and convergence must be true"
+    },
+    "epochLedger": {
+      "uniqueFields": [
+        "epochId",
+        "epochOrdinal",
+        "disposableProfileIdentitySha256",
+        "sage PID plus creation time"
+      ],
+      "fixtureIdentity": "fixture PID plus creation time when the contracted purpose spawns the fixture",
+      "closeGate": "zero exact descendants and zero normal Sage-data mutations before an epoch is valid",
+      "crossPurposeReuseAllowed": false
     }
   },
-  "requiredC1Provenance": [
-    "sourceCommit",
-    "sourceTree",
-    "sourceManifestSha256",
+  "requiredC0BProvenance": [
+    "packageReceiptSha256",
     "contractManifestSha256",
-    "fixtureManifestSha256",
-    "cargoLockSha256",
-    "frontendLockSha256",
     "operatingSystem",
     "architecture",
     "hardware",
     "powerPolicy",
     "WebViewRuntime",
     "toolchain",
-    "candidateExecutableSha256",
-    "controlExecutableSha256",
+    "collectorEntrypointSha256",
+    "collectorModuleSha256s",
+    "selectedInstalledCandidateExecutableBindingSha256",
+    "selectedInstalledControlExecutableBindingSha256",
+    "characterizationExecutableSha256",
+    "fixtureExecutableSha256",
     "sampleCounts",
     "percentileMethod",
     "runOrder",
-    "warmupCycles",
-    "readyIdleDefinition",
-    "cpuSampleIntervalMs",
-    "cpuSampleCount",
+    "settleAfterSemanticReadyMs",
+    "cpuSnapshotIntervalMs",
+    "cpuSnapshotCount",
     "processMembershipMethod",
-    "invalidPairCountAndReasons"
+    "invalidAttemptCountAndReasons"
   ]
 }

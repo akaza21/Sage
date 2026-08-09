@@ -1,0 +1,101 @@
+use crate::acp::{
+    contract::SafeText,
+    intent::{
+        AcpCapacityResource, AcpConflictResource, AcpIpcError, AcpUnavailableReason, IntentError,
+    },
+    page_admission::PageAdmissionError,
+    store::StoreError,
+};
+
+pub(super) fn binding_unavailable() -> AcpIpcError {
+    AcpIpcError::Unavailable {
+        reason: AcpUnavailableReason::BindingUnavailable,
+        message: safe_message("No curated ACP harness binding is admitted in this build."),
+    }
+}
+
+pub(super) fn page_admission_error(error: PageAdmissionError) -> AcpIpcError {
+    let limit = match error {
+        PageAdmissionError::Owner => {
+            crate::acp::limits::LIMITS
+                .durable
+                .outstanding_page_reads_per_session
+        }
+        PageAdmissionError::Global => {
+            crate::acp::limits::LIMITS
+                .durable
+                .outstanding_page_reads_global
+        }
+    };
+    AcpIpcError::Capacity {
+        resource: AcpCapacityResource::PageRead,
+        limit,
+        message: safe_message("Too many ACP history pages are already being read."),
+    }
+}
+
+pub(super) fn safe_message(message: &'static str) -> SafeText<8192> {
+    SafeText::new("message", message).expect("static ACP message is bounded")
+}
+
+pub(super) fn session_unavailable() -> AcpIpcError {
+    AcpIpcError::Unavailable {
+        reason: AcpUnavailableReason::SessionUnavailable,
+        message: safe_message("The requested ACP runtime tree is not live."),
+    }
+}
+
+pub(super) fn internal_error() -> AcpIpcError {
+    AcpIpcError::Internal {
+        message: safe_message("The ACP request failed safely."),
+    }
+}
+
+pub(super) fn store_error(error: StoreError) -> AcpIpcError {
+    match error {
+        StoreError::Capacity { limit, .. } => AcpIpcError::Capacity {
+            resource: AcpCapacityResource::History,
+            limit,
+            message: safe_message("Durable ACP history capacity has been reached."),
+        },
+        StoreError::Conflict { .. } => AcpIpcError::Conflict {
+            resource: AcpConflictResource::Session,
+            message: safe_message("The requested ACP projection is stale or foreign."),
+        },
+        StoreError::CommitUnknown => AcpIpcError::RecoveryRequired {
+            message: safe_message("The durable outcome is unknown; reload authoritative history."),
+        },
+        StoreError::Corrupt(_) => AcpIpcError::RecoveryRequired {
+            message: safe_message("Durable ACP history failed bounded validation."),
+        },
+        StoreError::PayloadTooLarge | StoreError::BatchShape => AcpIpcError::InvalidRequest {
+            message: safe_message("The ACP request violates its bounded contract."),
+        },
+        StoreError::Database(_)
+        | StoreError::InvalidTransition { .. }
+        | StoreError::TerminalConflict { .. }
+        | StoreError::CounterExhausted => internal_error(),
+    }
+}
+
+pub(super) fn intent_error(error: IntentError) -> AcpIpcError {
+    let resource = match error {
+        IntentError::ForeignProject | IntentError::StaleProjectGeneration => {
+            AcpConflictResource::ProjectGeneration
+        }
+        IntentError::ForeignChat | IntentError::StaleProjectionRevision => {
+            AcpConflictResource::ProjectionRevision
+        }
+        IntentError::ForeignSession => AcpConflictResource::Session,
+        IntentError::StaleRuntimeEpoch => AcpConflictResource::RuntimeEpoch,
+        IntentError::ForeignTurn | IntentError::UnexpectedTurnState => {
+            AcpConflictResource::TurnState
+        }
+        IntentError::StaleTurnRevision => AcpConflictResource::TurnRevision,
+        IntentError::InvalidProjectionRevision => AcpConflictResource::ProjectionRevision,
+    };
+    AcpIpcError::Conflict {
+        resource,
+        message: safe_message("The ACP intent is stale or belongs to another resource."),
+    }
+}

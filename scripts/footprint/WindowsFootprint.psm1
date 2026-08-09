@@ -34,6 +34,75 @@ function Get-FootprintCpuPercent {
   return [Math]::Round(($delta / $WallSeconds) * 100, 6)
 }
 
+function Get-FootprintMonotonicClock {
+  return [ordered]@{
+    frequencyHz = [long][Diagnostics.Stopwatch]::Frequency
+    tick = [long][Diagnostics.Stopwatch]::GetTimestamp()
+  }
+}
+
+function Get-FootprintMonotonicDurationUs {
+  param(
+    [Parameter(Mandatory)][long]$StartTick,
+    [Parameter(Mandatory)][long]$EndTick,
+    [Parameter(Mandatory)][ValidateRange(1, [long]::MaxValue)][long]$FrequencyHz
+  )
+  if ($StartTick -lt 0 -or $EndTick -lt $StartTick) {
+    throw "A monotonic duration requires ordered nonnegative ticks."
+  }
+  $numerator = [Numerics.BigInteger]::Multiply(
+    [Numerics.BigInteger]::new($EndTick - $StartTick),
+    [Numerics.BigInteger]::new(1000000)
+  )
+  $duration = [Numerics.BigInteger]::Divide(
+    $numerator + [Numerics.BigInteger]::new($FrequencyHz - 1),
+    [Numerics.BigInteger]::new($FrequencyHz)
+  )
+  if ($duration -gt [long]::MaxValue) { throw "The monotonic duration exceeds Int64." }
+  return [long]$duration
+}
+
+function Invoke-FootprintAbsoluteCadence {
+  param(
+    [Parameter(Mandatory)][ValidateRange(0, [long]::MaxValue)][long]$BaselineTick,
+    [Parameter(Mandatory)][ValidateRange(1, 60000)][int]$IntervalMs,
+    [Parameter(Mandatory)][ValidateRange(1, 512)][int]$Count,
+    [Parameter(Mandatory)][scriptblock]$Capture
+  )
+  $frequency = [long][Diagnostics.Stopwatch]::Frequency
+  $intervalTicks = [long][Math]::Round(
+    ([double]$IntervalMs * $frequency) / 1000,
+    [MidpointRounding]::AwayFromZero
+  )
+  if ($intervalTicks -lt 1 -or $BaselineTick -gt [long]::MaxValue - (($Count - 1) * $intervalTicks)) {
+    throw "The absolute cadence cannot be represented safely."
+  }
+  $samples = [Collections.Generic.List[object]]::new($Count)
+  for ($ordinal = 0; $ordinal -lt $Count; $ordinal += 1) {
+    $dueTick = $BaselineTick + $ordinal * $intervalTicks
+    while (($now = [long][Diagnostics.Stopwatch]::GetTimestamp()) -lt $dueTick) {
+      $remainingMs = [Math]::Floor((($dueTick - $now) * 1000.0) / $frequency)
+      if ($remainingMs -gt 1) {
+        Start-Sleep -Milliseconds ([Math]::Min(50, $remainingMs - 1))
+      } else {
+        [Threading.Thread]::SpinWait(64)
+      }
+    }
+    $value = & $Capture $ordinal $dueTick
+    $capturedTick = [long][Diagnostics.Stopwatch]::GetTimestamp()
+    if ($capturedTick -lt $dueTick -or $capturedTick -ge $dueTick + $intervalTicks) {
+      throw "Cadence capture $ordinal missed its absolute QPC window."
+    }
+    $samples.Add([ordered]@{
+      ordinal = $ordinal
+      dueTick = $dueTick
+      capturedTick = $capturedTick
+      value = $value
+    })
+  }
+  return $samples.ToArray()
+}
+
 function Get-FootprintCpuMeasurement {
   param(
     [Parameter(Mandatory)][Collections.IDictionary]$FirstSample,
@@ -153,31 +222,26 @@ function Get-FootprintTreeSample {
   $identityBytes = [long]0
   $limits = Get-FootprintProcessLimits
   foreach ($member in $members) {
-    try {
-      $process = Get-Process -Id ([int]$member.ProcessId) -ErrorAction Stop
-      $role = Get-FootprintProcessRole $member.Name $member.CommandLine ([int]$member.ProcessId -eq $RootProcessId)
-      $coreIncluded = $role -in @("native-host", "browser", "renderer", "gpu", "utility-network", "utility-storage", "utility-other", "crashpad", "webview-unknown")
-      $identity = ConvertTo-FootprintProcessIdentity $member
-      $identityBytes += $identity.identityBytes
-      if ($identityBytes -gt $limits.retainedIdentityBytes) {
-        throw "Sampled process identities exceed their $($limits.retainedIdentityBytes)-byte limit."
-      }
-      $records += [pscustomobject][ordered]@{
-        processId = [int]$member.ProcessId
-        parentProcessId = [int]$member.ParentProcessId
-        name = [string]$member.Name
-        executablePath = if ($member.ExecutablePath) { [string]$member.ExecutablePath } else { $null }
-        creationDate = $identity.creationDate
-        identityKey = "$($identity.processId)`0$($identity.executablePath.ToLowerInvariant())`0$($identity.creationDate)"
-        commandLine = if ($member.CommandLine) { [string]$member.CommandLine } else { $null }
-        role = $role
-        coreIncluded = $coreIncluded
-        privateBytes = [long]$process.PrivateMemorySize64
-        workingSetBytes = [long]$process.WorkingSet64
-        cpuSeconds = if ($null -eq $process.CPU) { 0.0 } else { [double]$process.CPU }
-      }
-    } catch [Microsoft.PowerShell.Commands.ProcessCommandException] {
-      # Membership is refreshed on the next bounded sample.
+    $role = Get-FootprintProcessRole $member.Name $member.CommandLine ([int]$member.ProcessId -eq $RootProcessId)
+    $coreIncluded = $role -in @("native-host", "browser", "renderer", "gpu", "utility-network", "utility-storage", "utility-other", "crashpad", "webview-unknown")
+    $identity = ConvertTo-FootprintProcessIdentity $member
+    $identityBytes += $identity.identityBytes
+    if ($identityBytes -gt $limits.retainedIdentityBytes) {
+      throw "Sampled process identities exceed their $($limits.retainedIdentityBytes)-byte limit."
+    }
+    $records += [pscustomobject][ordered]@{
+      processId = [int]$member.ProcessId
+      parentProcessId = [int]$member.ParentProcessId
+      name = [string]$member.Name
+      executablePath = [string]$member.ExecutablePath
+      creationDate = $identity.creationDate
+      identityKey = "$($identity.processId)`0$($identity.executablePath.ToLowerInvariant())`0$($identity.creationDate)"
+      commandLine = if ($member.CommandLine) { [string]$member.CommandLine } else { $null }
+      role = $role
+      coreIncluded = $coreIncluded
+      privateBytes = [long]$member.PrivatePageCount
+      workingSetBytes = [long]$member.WorkingSetSize
+      cpuSeconds = ([double]$member.KernelModeTime + [double]$member.UserModeTime) / 10000000.0
     }
   }
   $core = @($records | Where-Object coreIncluded)
@@ -214,6 +278,36 @@ function Get-FootprintTreeSample {
   }
 }
 
+function Get-C0BSanitizedTreeSnapshot {
+  param([Parameter(Mandatory)][ValidateRange(1, [int]::MaxValue)][int]$RootProcessId)
+  $sample = Get-FootprintTreeSample $RootProcessId
+  $keys = @($sample.coreProcessIdentityKeys)
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    $membership = ([BitConverter]::ToString($hasher.ComputeHash(
+      [Text.Encoding]::UTF8.GetBytes(($keys -join "`0"))
+    ))).Replace("-", "").ToLowerInvariant()
+  } finally {
+    $hasher.Dispose()
+  }
+  $cpu100ns = [long]0
+  foreach ($process in @($sample.processes | Where-Object coreIncluded)) {
+    $ticks = [Math]::Round([double]$process.cpuSeconds * 10000000, [MidpointRounding]::AwayFromZero)
+    if ($ticks -lt 0 -or $cpu100ns -gt [long]::MaxValue - [long]$ticks) {
+      throw "C0-B CPU accounting overflowed Int64."
+    }
+    $cpu100ns += [long]$ticks
+  }
+  return [ordered]@{
+    membershipSha256 = $membership
+    coreProcessCount = $keys.Count
+    unknownProcessCount = [int]$sample.unknownProcessCount
+    coreCpuTime100ns = $cpu100ns
+    corePrivateBytes = [long]$sample.corePrivateBytes
+    coreWorkingSetBytes = [long]$sample.coreWorkingSetBytes
+  }
+}
+
 function Wait-FootprintWindow {
   param(
     [Parameter(Mandatory)][int]$ProcessId,
@@ -236,9 +330,13 @@ Export-ModuleMember -Function @(
   "Assert-FootprintStableCpuSamples",
   "Get-FootprintCpuMeasurement",
   "Get-FootprintCpuPercent",
+  "Get-C0BSanitizedTreeSnapshot",
+  "Get-FootprintMonotonicClock",
+  "Get-FootprintMonotonicDurationUs",
   "Get-FootprintMedian",
   "Get-FootprintPercentile",
   "Get-FootprintProcessRole",
   "Get-FootprintTreeSample",
+  "Invoke-FootprintAbsoluteCadence",
   "Wait-FootprintWindow"
 )

@@ -117,7 +117,7 @@ impl LiveRuntimePort for Port {
         Ok(())
     }
 
-    fn shutdown(&mut self) -> Result<(), HostError> {
+    fn shutdown(&mut self, _deadline: std::time::Instant) -> Result<(), HostError> {
         self.trace.push("worker:shutdown");
         Ok(())
     }

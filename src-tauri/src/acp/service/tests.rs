@@ -31,6 +31,69 @@ use crate::{
 
 use super::AcpService;
 
+#[test]
+fn renderer_recreation_snapshot_covers_the_exact_native_invariance_boundary() {
+    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    database
+        .connection()
+        .execute_batch(
+            "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at)
+             VALUES('project-reload','Reload',1,1,1);
+             INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at)
+             VALUES('chat-reload','project-reload',0,'Reload',7,1,1);",
+        )
+        .unwrap();
+    let service = AcpService::new(database.clone()).unwrap();
+    let project_id = SageProjectId::parse("project-reload").unwrap();
+    let chat_id = SageChatId::parse("chat-reload").unwrap();
+
+    let before = service
+        .renderer_recreation_native_snapshot(&project_id, &chat_id)
+        .unwrap();
+    let evidence_policy: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../docs/work-items/ADE-0006A-acp-session-foundation/contracts/evidence-policy-v1.json"
+    ))
+    .unwrap();
+    let observation = &evidence_policy["rendererRecreationObservation"];
+    let contracted_tables = observation["sqliteTables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|name| name.as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        before.table_names().as_slice(),
+        contracted_tables.as_slice()
+    );
+    assert_eq!(
+        before.maximum_rows_per_table(),
+        observation["maximumRowsPerTable"].as_u64().unwrap()
+    );
+    assert_eq!(before.table_rows("chats"), Some(1));
+    assert_eq!(before.chat_projection_revision(), 7);
+    assert_eq!(before.runtime_slot_active(), 0);
+    assert_eq!(before.live_process_tree_reservations(), 0);
+    assert_eq!(
+        before,
+        service
+            .renderer_recreation_native_snapshot(&project_id, &chat_id)
+            .unwrap()
+    );
+
+    database
+        .connection()
+        .execute(
+            "UPDATE chats SET title='Changed' WHERE id='chat-reload'",
+            [],
+        )
+        .unwrap();
+    let changed = service
+        .renderer_recreation_native_snapshot(&project_id, &chat_id)
+        .unwrap();
+    assert_ne!(before, changed);
+    assert_eq!(changed.chat_projection_revision(), 7);
+}
+
 struct StaticAuthority(IntentSnapshot);
 
 impl ProjectIntentAuthority for StaticAuthority {
@@ -131,7 +194,7 @@ impl RuntimeEngine for Engine {
     fn finalize_close(&mut self, _: &HostCloseIntent) -> Result<(), HostError> {
         Ok(())
     }
-    fn shutdown(&mut self) -> Result<(), HostError> {
+    fn shutdown(&mut self, _deadline: std::time::Instant) -> Result<(), HostError> {
         self.0.lock().unwrap().push("shutdown");
         Ok(())
     }
@@ -188,7 +251,7 @@ impl RuntimeEngine for BlockingShutdownEngine {
     fn finalize_close(&mut self, _: &HostCloseIntent) -> Result<(), HostError> {
         Ok(())
     }
-    fn shutdown(&mut self) -> Result<(), HostError> {
+    fn shutdown(&mut self, _deadline: std::time::Instant) -> Result<(), HostError> {
         let (released, ready) = &*self.0;
         let mut released = released.lock().unwrap();
         while !*released {

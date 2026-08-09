@@ -6,13 +6,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use rusqlite::{OptionalExtension, params};
-
 use crate::{
     acp::{
-        contract::{
-            EntityRevision, ProjectGeneration, RuntimeEpoch, SageChatId, SageProjectId, SageTurnId,
-        },
+        contract::{ProjectGeneration, SageChatId, SageProjectId},
         intent::{AcpChatPage, IntentSnapshot, PageCursor},
         page_admission::{PageAdmissionError, PageReadAdmission, PageReadLease},
         runtime::{
@@ -25,9 +21,30 @@ use crate::{
     persistence::Database,
 };
 
+#[cfg(all(windows, feature = "acp-fixture"))]
+mod characterization;
+mod intent_snapshot;
+#[cfg(any(test, feature = "acp-fixture"))]
+#[allow(dead_code)] // The packaged reload orchestrator consumes this next.
+mod renderer_recreation;
 mod runtime_slot;
 
+#[cfg(all(windows, feature = "acp-fixture"))]
+pub(crate) use characterization::{
+    BINDING_DIGEST_HEX as CHARACTERIZATION_BINDING_DIGEST,
+    BINDING_ID as CHARACTERIZATION_BINDING_ID, CharacterizationArtifact, CharacterizationBinding,
+    CharacterizationCase, CharacterizationError,
+};
+use intent_snapshot::load_intent_snapshot;
+#[cfg(any(test, feature = "acp-fixture"))]
+use renderer_recreation::RendererRecreationNativeSnapshot;
 use runtime_slot::RuntimeSlot;
+
+#[derive(Default)]
+struct ServiceConfiguration {
+    #[cfg(all(windows, feature = "acp-fixture"))]
+    characterization: Option<CharacterizationBinding>,
+}
 
 pub(crate) struct AcpService {
     database: Database,
@@ -35,9 +52,12 @@ pub(crate) struct AcpService {
     journal: JournalHandle,
     journal_thread: Mutex<Option<BoundedThread>>,
     sessions: SessionCoordinator,
-    runtime: RuntimeSlot,
+    runtime: Arc<RuntimeSlot>,
+    publisher: Arc<dyn ProjectionPublisher>,
     notifier: Option<Arc<ProjectionNotifier>>,
     page_reads: PageReadAdmission,
+    #[cfg(all(windows, feature = "acp-fixture"))]
+    characterization: Option<CharacterizationBinding>,
 }
 
 impl AcpService {
@@ -47,6 +67,7 @@ impl AcpService {
             database,
             Arc::new(crate::acp::runtime::ProjectionMailbox::default()),
             None,
+            ServiceConfiguration::default(),
         )
     }
 
@@ -58,13 +79,54 @@ impl AcpService {
         let notifier = Arc::new(ProjectionNotifier::start_with(sink, move |worker| {
             runtime.inner().spawn(worker)
         }));
-        Self::build(database, notifier.clone(), Some(notifier))
+        Self::build(
+            database,
+            notifier.clone(),
+            Some(notifier),
+            ServiceConfiguration::default(),
+        )
+    }
+
+    #[cfg(all(windows, feature = "acp-fixture"))]
+    pub(crate) fn new_with_characterization_sink(
+        database: Database,
+        sink: Arc<dyn NotificationSink>,
+        binding: CharacterizationBinding,
+    ) -> Result<Self, StoreError> {
+        let runtime = tauri::async_runtime::handle();
+        let notifier = Arc::new(ProjectionNotifier::start_with(sink, move |worker| {
+            runtime.inner().spawn(worker)
+        }));
+        Self::build(
+            database,
+            notifier.clone(),
+            Some(notifier),
+            ServiceConfiguration {
+                characterization: Some(binding),
+            },
+        )
+    }
+
+    #[cfg(all(test, windows, feature = "acp-fixture"))]
+    pub(crate) fn new_characterization_for_test(
+        database: Database,
+        binding: CharacterizationBinding,
+    ) -> Result<Self, StoreError> {
+        Self::build(
+            database,
+            Arc::new(crate::acp::runtime::ProjectionMailbox::default()),
+            None,
+            ServiceConfiguration {
+                characterization: Some(binding),
+            },
+        )
     }
 
     fn build(
         database: Database,
         publisher: Arc<dyn ProjectionPublisher>,
         notifier: Option<Arc<ProjectionNotifier>>,
+        configuration: ServiceConfiguration,
     ) -> Result<Self, StoreError> {
         let store = DatabaseAcpStore::new(database.clone());
         let (journal, runner) = JournalHandle::new(store);
@@ -110,9 +172,12 @@ impl AcpService {
             journal,
             journal_thread: Mutex::new(Some(journal_thread)),
             sessions,
-            runtime: RuntimeSlot::new(),
+            runtime: Arc::new(RuntimeSlot::new()),
+            publisher,
             notifier,
             page_reads: PageReadAdmission::default(),
+            #[cfg(all(windows, feature = "acp-fixture"))]
+            characterization: configuration.characterization,
         })
     }
 
@@ -139,88 +204,7 @@ impl AcpService {
         project_generation: ProjectGeneration,
         chat_id: SageChatId,
     ) -> Result<IntentSnapshot, StoreError> {
-        type SnapshotRow = (
-            i64,
-            Option<String>,
-            Option<i64>,
-            Option<String>,
-            Option<String>,
-            Option<i64>,
-        );
-        let row: SnapshotRow = self
-            .database
-            .connection()
-            .query_row(
-                "SELECT c.projection_revision, h.session_id, e.runtime_epoch,
-                        t.id, t.state, t.revision
-                 FROM chats c
-                 LEFT JOIN chat_session_heads h
-                   ON h.project_id=c.project_id AND h.chat_id=c.id
-                 LEFT JOIN session_runtime_epochs e
-                   ON e.project_id=c.project_id AND e.chat_id=c.id
-                  AND e.session_id=h.session_id
-                  AND e.state IN ('starting','running','terminating')
-                 LEFT JOIN turns t
-                   ON t.project_id=c.project_id AND t.chat_id=c.id
-                  AND t.session_id=h.session_id
-                  AND t.state IN (
-                    'queued','sending','running','waitingModel','waitingTool',
-                    'waitingApproval','waitingUser','cancelling'
-                  )
-                 WHERE c.project_id=?1 AND c.id=?2",
-                params![project_id.as_str(), chat_id.as_str()],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get(4)?,
-                        row.get(5)?,
-                    ))
-                },
-            )
-            .optional()?
-            .ok_or(StoreError::Conflict { resource: "chat" })?;
-        Ok(IntentSnapshot {
-            project_id,
-            project_generation,
-            chat_id,
-            projection_revision: crate::acp::contract::ProjectionRevision::new(checked_counter(
-                row.0,
-                "projection revision",
-            )?)
-            .map_err(|_| StoreError::Corrupt("projection revision"))?,
-            session_id: row
-                .1
-                .map(crate::acp::contract::SageAgentSessionId::parse)
-                .transpose()
-                .map_err(|_| StoreError::Corrupt("session id"))?,
-            runtime_epoch: row
-                .2
-                .map(|value| {
-                    RuntimeEpoch::new(checked_counter(value, "runtime epoch")?)
-                        .map_err(|_| StoreError::Corrupt("runtime epoch"))
-                })
-                .transpose()?,
-            turn_id: row
-                .3
-                .map(SageTurnId::parse)
-                .transpose()
-                .map_err(|_| StoreError::Corrupt("turn id"))?,
-            turn_state: row
-                .4
-                .as_deref()
-                .map(crate::acp::store::parse_turn_state)
-                .transpose()?,
-            turn_revision: row
-                .5
-                .map(|value| {
-                    EntityRevision::new(checked_counter(value, "turn revision")?)
-                        .map_err(|_| StoreError::Corrupt("turn revision"))
-                })
-                .transpose()?,
-        })
+        load_intent_snapshot(&self.database, project_id, project_generation, chat_id)
     }
 
     pub(crate) fn project_switched(&self, active_project: &SageProjectId) {
@@ -238,6 +222,25 @@ impl AcpService {
         if let Some(notifier) = &self.notifier {
             let _ = notifier.acknowledge_authoritative_bootstrap();
         }
+    }
+
+    #[cfg(any(test, feature = "acp-fixture"))]
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn renderer_recreation_native_snapshot(
+        &self,
+        project_id: &SageProjectId,
+        chat_id: &SageChatId,
+    ) -> Result<RendererRecreationNativeSnapshot, StoreError> {
+        let (live_trees, live_descendants) =
+            crate::acp::process::TreeCapacityPool::global().observation_usage();
+        RendererRecreationNativeSnapshot::capture(
+            &self.database.connection(),
+            project_id,
+            chat_id,
+            u8::from(self.runtime.is_active()),
+            live_trees,
+            live_descendants,
+        )
     }
 
     pub(crate) fn shutdown_blocking(&self) -> Result<(), crate::acp::runtime::HostError> {
@@ -372,10 +375,6 @@ fn journal_store_error(error: JournalError) -> StoreError {
             StoreError::Corrupt("recovery journal")
         }
     }
-}
-
-fn checked_counter(value: i64, resource: &'static str) -> Result<u64, StoreError> {
-    u64::try_from(value).map_err(|_| StoreError::Corrupt(resource))
 }
 
 #[cfg(test)]

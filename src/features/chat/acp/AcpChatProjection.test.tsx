@@ -103,23 +103,27 @@ function activityItem(
 }
 
 describe("AcpChatProjection", () => {
-  it("exposes every Turn transition through the frozen atomic status semantics", () => {
+  it("keeps retained Turn status accessible without replaying it", () => {
     render(<AcpChatProjection page={page("waitingUser")} active />);
     const status = screen.getByRole("status", { name: "Waiting for user" });
     expect(status).toHaveTextContent("Waiting for user");
-    expect(status).toHaveAttribute("aria-live", "polite");
+    expect(status).toHaveAttribute("aria-live", "off");
     expect(status).toHaveAttribute("aria-atomic", "true");
   });
 
   it("renders lifecycle state and normalized items", () => {
     render(<AcpChatProjection page={page("waitingModel")} active />);
-    expect(screen.getByRole("status")).toHaveTextContent("Waiting for model");
+    expect(
+      screen.getByRole("status", { name: "Waiting for model" }),
+    ).toHaveTextContent("Waiting for model");
     expect(screen.getByText("Normalized answer")).toBeInTheDocument();
   });
 
   it("keeps cancellation out of the transcript projection", () => {
     render(<AcpChatProjection page={page("completed")} active />);
-    expect(screen.getByRole("status")).toHaveTextContent("Completed");
+    expect(screen.getByRole("status", { name: "Completed" })).toHaveTextContent(
+      "Completed",
+    );
     expect(screen.queryByRole("button", { name: /cancel turn/i })).toBeNull();
   });
 
@@ -191,6 +195,10 @@ describe("AcpChatProjection", () => {
     const activityGroup = screen.getByRole("group", {
       name: "Harness activity: Root activity",
     });
+    expect(activityGroup).toHaveAttribute(
+      "data-sage-activity-id",
+      "activity-root",
+    );
     const activityDisclosure = within(activityGroup)
       .getByText("Root activity")
       .closest("summary");

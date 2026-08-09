@@ -1,8 +1,12 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+Import-Module (Join-Path $PSScriptRoot "footprint/C0BObservation.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "footprint/WindowsFootprint.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "footprint/ProcessIdentity.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "footprint/WindowsJob.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "footprint/DisposableProfile.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "footprint/SemanticUia.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "footprint/ScenarioEvidence.psm1") -Force
 
 $script:CheckCount = 0
@@ -29,7 +33,28 @@ function Assert-Throws {
   throw $Message
 }
 
+$profileTestRoot = Join-Path ([IO.Path]::GetTempPath()) ("sage-c0b-profile-test-{0}" -f [Guid]::NewGuid().ToString("N"))
+[void][IO.Directory]::CreateDirectory($profileTestRoot)
+try {
+  $profile = New-C0BDisposableProfile $profileTestRoot "epoch-0001"
+  Assert-True ([IO.Path]::IsPathRooted($profile.root)) "Disposable profile did not return an absolute root."
+  Assert-True ($profile.identitySha256 -match '^[0-9a-f]{64}$') "Disposable profile identity is invalid."
+  Assert-Equal "sage-disposable-profile-v1`n" ([Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $profile.root ".sage-disposable-profile-v1")))) "Disposable profile marker bytes changed."
+  Assert-Throws { New-C0BDisposableProfile $profileTestRoot "epoch-0001" } "A disposable profile identity was reused."
+  Assert-True (Test-Path -LiteralPath $profile.root -PathType Container) "A duplicate creator deleted the owned profile."
+  $blockedClaim = Join-Path $profileTestRoot ".epoch-0002.sage-profile-claim"
+  [IO.File]::WriteAllBytes($blockedClaim, [byte[]]@())
+  Assert-Throws { New-C0BDisposableProfile $profileTestRoot "epoch-0002" } "A claimed profile identity was reused."
+  Assert-True (-not (Test-Path -LiteralPath (Join-Path $profileTestRoot "epoch-0002"))) "A failed claimant created or deleted another profile."
+  Remove-Item -LiteralPath $blockedClaim -Force
+  Remove-C0BDisposableProfile $profileTestRoot $profile.root
+  Assert-True (-not (Test-Path -LiteralPath $profile.root)) "A marked disposable profile was not removed."
+} finally {
+  Remove-Item -LiteralPath $profileTestRoot -Recurse -Force
+}
+
 Assert-Equal 2.5 (Get-FootprintMedian @(4.0, 1.0)) "Even median failed."
+Assert-Throws { Get-C0BSemanticWindow ([IntPtr]::Zero) $PID "Sage" } "Semantic UIA accepted a zero window handle."
 Assert-Equal 3.0 (Get-FootprintMedian @(3.0, 1.0, 9.0)) "Odd median failed."
 Assert-Equal 5.0 (Get-FootprintPercentile @(1.0, 2.0, 3.0, 4.0, 5.0) 0.95) "Nearest-rank P95 failed."
 Assert-Equal 0.5 (Get-FootprintCpuPercent 10.0 10.02 4.0) "Raw CPU arithmetic failed."
@@ -63,6 +88,21 @@ Assert-Throws { Assert-FootprintStableCpuSamples @($stableFirst, $churnMiddle, $
 $negativeMiddle = [ordered]@{ coreCpuSeconds = 9.9; sampleElapsedSeconds = 2.0; coreProcessIdentityKeys = @($coreIdentity); processes = @([pscustomobject]@{ identityKey = $coreIdentity; cpuSeconds = 9.9; coreIncluded = $true }) }
 Assert-Throws { Assert-FootprintStableCpuSamples @($stableFirst, $negativeMiddle, $stableLast) } "An intermediate negative CPU delta did not invalidate the launch."
 Assert-True (Assert-FootprintStableCpuSamples @($stableFirst, $stableLast)) "Stable canonical process membership was rejected."
+$currentProcess = [Diagnostics.Process]::GetCurrentProcess()
+$currentExecutableSha256 = (Get-FileHash -LiteralPath $currentProcess.Path -Algorithm SHA256).Hash.ToLowerInvariant()
+$nativeIdentity = Get-FootprintNativeProcessIdentity $currentProcess $currentProcess.Path $currentExecutableSha256
+Assert-Equal $currentProcess.Id $nativeIdentity.pid "Native process identity changed the launched PID."
+Assert-Equal ($currentProcess.StartTime.ToUniversalTime().ToFileTimeUtc().ToString()) $nativeIdentity.creationTimeFiletime100ns "Native process identity lost FILETIME precision."
+Assert-True ($nativeIdentity.processIdentitySha256 -match '^[0-9a-f]{64}$') "Native process identity digest is invalid."
+$sanitizedTree = Get-C0BSanitizedTreeSnapshot $currentProcess.Id
+Assert-Equal "membershipSha256,coreProcessCount,unknownProcessCount,coreCpuTime100ns,corePrivateBytes,coreWorkingSetBytes" (($sanitizedTree.Keys) -join ",") "C0-B tree snapshot exposed uncontracted process details."
+Assert-True ($sanitizedTree.membershipSha256 -match '^[0-9a-f]{64}$') "C0-B tree membership digest is invalid."
+$monotonic = Get-FootprintMonotonicClock
+$cadenceBaseline = $monotonic.tick + [long][Math]::Ceiling($monotonic.frequencyHz / 50.0)
+$cadence = @(Invoke-FootprintAbsoluteCadence $cadenceBaseline 50 3 { param($ordinal, $dueTick) return "$ordinal`0$dueTick" })
+Assert-Equal 3 $cadence.Count "Absolute QPC cadence returned the wrong sample count."
+Assert-True ($cadence[0].capturedTick -ge $cadence[0].dueTick) "Absolute QPC cadence captured before its due tick."
+Assert-Equal 100000 (Get-FootprintMonotonicDurationUs $cadence[0].dueTick $cadence[2].dueTick $monotonic.frequencyHz) "QPC duration derivation is not exact."
 $processLimits = Get-FootprintProcessLimits
 Assert-Equal 5 $processLimits.postKillWaitSeconds "Post-kill convergence wait is not mechanically bounded."
 $creationBase = [DateTime]::Parse("2026-08-01T09:11:07.8910000Z").ToUniversalTime()
@@ -236,6 +276,55 @@ Assert-Throws {
 Assert-Equal 0 $samePathReuseStore.Count "A same-path PID reuse or its descendants were remembered for kill."
 Assert-True (-not $script:reusedProcessKillAttempted) "A same-path PID reuse reached a Process-object kill method."
 Assert-True (-not $script:reusedProcessObjectExited) "A same-path PID reuse was killed through the launched Process object."
+
+$jobTestRoot = Join-Path ([IO.Path]::GetTempPath()) ("sage-job-test-" + [Guid]::NewGuid().ToString("N"))
+[void][IO.Directory]::CreateDirectory($jobTestRoot)
+$jobFixture = Join-Path $jobTestRoot "early-exit-fixture.exe"
+$jobLaunch = $null
+try {
+  Add-Type -TypeDefinition @'
+using System;
+using System.Diagnostics;
+using System.Threading;
+
+public static class SageJobEarlyExitFixture {
+  public static int Main() {
+    if (Environment.GetEnvironmentVariable("SAGE_JOB_TEST_CHILD") == "1") {
+      Thread.Sleep(30000);
+      return 0;
+    }
+    string executable = Process.GetCurrentProcess().MainModule.FileName;
+    var start = new ProcessStartInfo(executable) { UseShellExecute = false };
+    start.EnvironmentVariables["SAGE_JOB_TEST_CHILD"] = "1";
+    using (Process child = Process.Start(start)) { return child == null ? 1 : 0; }
+  }
+}
+'@ -OutputAssembly $jobFixture -OutputType ConsoleApplication
+  $jobStart = [Diagnostics.ProcessStartInfo]::new()
+  $jobStart.FileName = $jobFixture
+  $jobStart.WorkingDirectory = $jobTestRoot
+  $jobStart.UseShellExecute = $false
+  $jobStart.EnvironmentVariables["SAGE_JOB_TEST_CHILD"] = "0"
+  $jobLaunch = Start-FootprintJobProcess $jobStart 2
+  Assert-True ($jobLaunch.process.WaitForExit(5000)) "The Job test root did not exit."
+  Start-Sleep -Milliseconds 100
+  Assert-Equal 1 $jobLaunch.boundary.ActiveProcesses() "The early-exit child escaped the native Job."
+  $jobCleanup = Stop-FootprintJobProcess $jobLaunch.process $jobLaunch.boundary 0 200
+  Assert-True $jobCleanup.forced "The early-exit child did not require authoritative Job termination."
+  Assert-True $jobCleanup.treeBoundaryVerified "The native Job cleanup did not verify its tree boundary."
+  Assert-Equal 0 $jobCleanup.orphanProcessesAfterClose "The native Job retained an orphan."
+  Assert-True (
+    $jobCleanup.orphanCheckCompletedTick - $jobCleanup.closeRequestedTick -ge
+      [long][Math]::Ceiling(([double][Diagnostics.Stopwatch]::Frequency * 200) / 1000.0)
+  ) "The native Job did not remain empty through the complete orphan window."
+} finally {
+  if ($null -ne $jobLaunch) {
+    try { $jobLaunch.boundary.Terminate() } catch {}
+    $jobLaunch.boundary.Dispose()
+    $jobLaunch.process.Dispose()
+  }
+  Remove-Item -LiteralPath $jobTestRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 $recordBoundStore = New-FootprintIdentityStore
 for ($index = 0; $index -lt 128; $index += 1) {
@@ -657,11 +746,37 @@ try {
   } finally {
     Remove-Item -LiteralPath $outsideFixture -Recurse -Force
   }
-  $normalBefore = [ordered]@{ durableAggregateSha256 = "a" * 64 }
-  $normalSame = [ordered]@{ durableAggregateSha256 = "a" * 64 }
-  $normalChanged = [ordered]@{ durableAggregateSha256 = "b" * 64 }
+  function New-TestNormalInventory([string]$Digest = ("a" * 64), [int]$SchemaVersion = 2, [string]$PathDigest = ("c" * 64)) {
+    return [ordered]@{
+      schemaVersion = $SchemaVersion
+      durableRoaming = [ordered]@{
+        label = "roaming-durable-ai.sage.desktop"
+        pathSha256 = $PathDigest
+        exists = $true
+        entryCount = 1
+        totalFileBytes = 4
+        aggregateSha256 = $Digest
+      }
+      durableAggregateSha256 = $Digest
+      disposableLocalCache = [ordered]@{
+        label = "local-webview-cache-ai.sage.desktop"
+        pathSha256 = "d" * 64
+        existsAtCapture = $false
+        policy = "disposable-uncontrolled-not-an-isolation-gate"
+        expectedChurn = "EBWebView and Tauri runtime cache may change during an isolated SQLite campaign"
+      }
+    }
+  }
+  $normalBefore = New-TestNormalInventory
+  $normalSame = New-TestNormalInventory
+  $normalChanged = New-TestNormalInventory ("b" * 64)
   Assert-True (Assert-FootprintNormalDataUnchanged $normalBefore $normalSame) "Identical durable Roaming inventories were rejected."
   Assert-Throws { Assert-FootprintNormalDataUnchanged $normalBefore $normalChanged } "Durable Roaming mutation did not fail isolation."
+  Assert-Throws { Assert-FootprintNormalDataUnchanged $normalBefore (New-TestNormalInventory ("a" * 64) 1) } "A stale normal-data inventory schema was accepted."
+  Assert-Throws { Assert-FootprintNormalDataUnchanged $normalBefore (New-TestNormalInventory ("a" * 64) 2 ("e" * 64)) } "A different normal-data path identity was accepted."
+  $guardedSuccess = Invoke-FootprintNormalDataGuardedAction $normalBefore { return "ok" } { return $normalSame }
+  Assert-Equal "ok" $guardedSuccess.result "A successful guarded action lost its result."
+  Assert-Throws { Invoke-FootprintNormalDataGuardedAction $normalBefore { return "ok" } { throw "capture failed" } } "A failed post-action inventory capture was accepted."
   $setupGuardProbe = [pscustomobject]@{ ran = $false }
   $guardedFailure = $null
   try {
@@ -676,6 +791,30 @@ try {
   Assert-True ($guardedFailure.Contains("Normal-data isolation guard also failed")) "Guarded setup did not fail on the simulated normal-data mutation."
 } finally {
   Remove-Item -LiteralPath $provenanceRoot -Recurse -Force
+}
+
+$inventoryTestRoot = Join-Path ([IO.Path]::GetTempPath()) ("sage-inventory-test-" + [Guid]::NewGuid().ToString("N"))
+$absentInventory = Get-FootprintBoundedDirectoryInventory $inventoryTestRoot "inventory-test"
+Assert-True (-not $absentInventory.exists) "An absent directory inventory was reported as present."
+[void][IO.Directory]::CreateDirectory($inventoryTestRoot)
+try {
+  [IO.File]::WriteAllText((Join-Path $inventoryTestRoot "value.txt"), "before")
+  $presentInventory = Get-FootprintBoundedDirectoryInventory $inventoryTestRoot "inventory-test"
+  Assert-True $presentInventory.exists "A present directory inventory was reported as absent."
+  Assert-Equal 1 $presentInventory.entryCount "A bounded directory inventory counted the wrong entries."
+  [IO.File]::WriteAllText((Join-Path $inventoryTestRoot "value.txt"), "after")
+  $changedInventory = Get-FootprintBoundedDirectoryInventory $inventoryTestRoot "inventory-test"
+  Assert-True ($changedInventory.aggregateSha256 -ne $presentInventory.aggregateSha256) "A file-content mutation retained the same inventory digest."
+} finally {
+  Remove-Item -LiteralPath $inventoryTestRoot -Recurse -Force
+}
+
+$invalidObservationRequest = Join-Path ([IO.Path]::GetTempPath()) ("sage-c0b-invalid-" + [Guid]::NewGuid().ToString("N") + ".json")
+try {
+  [IO.File]::WriteAllText($invalidObservationRequest, '{"schemaVersion":1}', [Text.UTF8Encoding]::new($false))
+  Assert-Throws { Invoke-C0BObservationRequest $invalidObservationRequest } "The C0-B collector accepted an incomplete launch request."
+} finally {
+  Remove-Item -LiteralPath $invalidObservationRequest -Force -ErrorAction SilentlyContinue
 }
 
 $nodeTestRoot = Join-Path ([IO.Path]::GetTempPath()) ("sage-bounded-node-" + [Guid]::NewGuid().ToString("N"))
@@ -740,8 +879,12 @@ $measureSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "measure-wind
 $matrixSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "measure-windows-footprint-matrix.ps1") -Raw
 $setupSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "footprint/prepare-sage-scenario.mjs") -Raw
 $windowsFootprintSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "footprint/WindowsFootprint.psm1") -Raw
+$processIdentitySource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "footprint/ProcessIdentity.psm1") -Raw
 $scenarioEvidenceSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "footprint/ScenarioEvidence.psm1") -Raw
+$disposableProfileSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "footprint/DisposableProfile.psm1") -Raw
 Assert-True $windowsFootprintSource.Contains("Footprint sample captured no core candidate process") "Zero-core sampling is not rejected with a typed diagnostic."
+Assert-True $processIdentitySource.Contains('Get-CimInstance Win32_Process -Property @(') "Process sampling is not limited to the fields used by the cadence collector."
+Assert-True $windowsFootprintSource.Contains('privateBytes = [long]$member.PrivatePageCount') "Cadence sampling reopens each process instead of using one bounded CIM observation."
 Assert-True $windowsFootprintSource.Contains('$records += [pscustomobject][ordered]@{') "Process samples are not represented as measurable property objects."
 Assert-True $windowsFootprintSource.Contains('$excludedPrivateBytes = [long]0') "Empty excluded-role samples do not have a deterministic zero-byte aggregate."
 Assert-True (-not $windowsFootprintSource.Contains('Measure-Object privateBytes -Sum')) "Sample aggregation still depends on missing strict-mode Sum properties."
@@ -749,8 +892,8 @@ Assert-True $scenarioEvidenceSource.Contains('processId = $ExpectedProcessId') "
 Assert-True $scenarioEvidenceSource.Contains("Measured Chat state retained an Explorer heavy view") "Live Chat evidence does not reject a mounted Explorer heavy view."
 Assert-True $scenarioEvidenceSource.Contains("[Windows.Automation.InvokePattern]::Pattern") "Measured Chat launch does not use semantic UI Automation invocation."
 Assert-True $scenarioEvidenceSource.Contains('[int]$current.Current.ProcessId -eq $ExpectedProcessId') "Measured Chat transition is not bound to the exact process identity."
-Assert-True $scenarioEvidenceSource.Contains("Normal durable Roaming Sage state changed during an isolated diagnostics launch") "Normal durable-data mutation does not fail closed."
-Assert-True $scenarioEvidenceSource.Contains("disposable-uncontrolled-not-an-isolation-gate") "Local WebView cache is not explicitly recorded as disposable and uncontrolled."
+Assert-True $disposableProfileSource.Contains("Normal durable Roaming Sage state changed during an isolated launch") "Normal durable-data mutation does not fail closed."
+Assert-True $disposableProfileSource.Contains("disposable-uncontrolled-not-an-isolation-gate") "Local WebView cache is not explicitly recorded as disposable and uncontrolled."
 Assert-True $setupSource.Contains('button[aria-label="Show right sidebar"]') "Chat setup does not prove that the right sidebar is closed."
 Assert-True $setupSource.Contains("finalState.explorerSidebarCount === 0") "Chat setup does not prove that the Explorer heavy view is unmounted."
 Assert-True $setupSource.Contains("if(chats.length!==1)return false") "Setup does not require exactly one native-seeded project Chat."
@@ -773,6 +916,7 @@ Assert-True $setupSource.Contains('targetSummaries: targetDiagnostics') "Setup f
 Assert-True $setupSource.Contains('target.url === "http://tauri.localhost/"') "Target discovery does not retain the exact authoritative Tauri origin."
 Assert-True $setupSource.Contains('pages.length === 1 && pages[0].title === "Sage"') "Target readiness does not distinguish page selection from title readiness."
 Assert-True $measureSource.Contains('Invoke-FootprintNormalDataGuardedAction $normalDataInitial') "Setup failure paths do not always run the normal-data isolation guard."
+Assert-True $measureSource.Contains('disposableProfileModuleSha256 =') "Legacy footprint evidence does not bind the normal-data guard module."
 Assert-True $measureSource.Contains('[Environment]::SetEnvironmentVariable("SAGE_PROJECT_ROOT", $fixtureProject.path, "Process")') "Native fixture seeding is not process-scoped to the exact setup launch."
 Assert-True $measureSource.Contains('[Environment]::SetEnvironmentVariable("SAGE_PROJECT_ROOT", $null, "Process")') "Native fixture seeding is not always cleared."
 Assert-True ([regex]::Matches($measureSource, 'Start-ExactFootprintProcess -SeedProject').Count -eq 1) "Fixture seeding is not limited to the initial setup launch."

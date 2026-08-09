@@ -11,6 +11,9 @@ use crate::{
     error::{AppError, AppResult},
 };
 
+#[cfg(any(test, feature = "acp-fixture"))]
+use super::WalConvergenceReceipt;
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct StorageLimits {
     main_bytes: u64,
@@ -116,17 +119,41 @@ impl PhysicalStorage {
         }
     }
 
+    #[cfg(any(test, feature = "acp-fixture"))]
+    pub(super) fn converge_for_observation(
+        &self,
+        connection: &Connection,
+    ) -> AppResult<WalConvergenceReceipt> {
+        let path = self.path.as_ref().ok_or_else(|| {
+            AppError::InvalidRequest("WAL observation requires a disk database".into())
+        })?;
+        let initial = sidecar_len(path, "-wal")?;
+        let checkpointed = initial >= self.limits.checkpoint_bytes;
+        if checkpointed && checkpoint(connection, "TRUNCATE")? {
+            return storage_limit("SQLite WAL checkpoint remained busy during observation");
+        }
+        let wal_bytes = sidecar_len(path, "-wal")?;
+        if wal_bytes >= self.limits.checkpoint_bytes {
+            return storage_limit("SQLite WAL did not converge below its observation target");
+        }
+        Ok(WalConvergenceReceipt {
+            wal_bytes,
+            checkpoint_target_bytes: self.limits.checkpoint_bytes,
+            checkpointed,
+        })
+    }
+
     #[cfg(test)]
     pub(super) fn recovery_required(&self) -> bool {
         lock(&self.state).recovery_required
     }
 }
 
-fn checkpoint(connection: &Connection, mode: &str) -> AppResult<()> {
+fn checkpoint(connection: &Connection, mode: &str) -> AppResult<bool> {
     let sql = format!("PRAGMA wal_checkpoint({mode})");
-    let _: (i64, i64, i64) =
+    let result: (i64, i64, i64) =
         connection.query_row(&sql, [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
-    Ok(())
+    Ok(result.0 != 0)
 }
 
 fn physical_bytes(path: &Path) -> AppResult<(u64, u64)> {

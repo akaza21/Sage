@@ -22,6 +22,25 @@ impl SessionTreeLease {
         &self.owner
     }
 
+    #[cfg(feature = "acp-fixture")]
+    pub(crate) fn set_characterization_observation(
+        &mut self,
+        observation: crate::acp::characterization_observation::CharacterizationObservation,
+    ) -> Result<(), SessionCoordinatorError> {
+        if self.tree.is_none() || self.characterization_observation.is_some() {
+            return Err(SessionCoordinatorError::Intent);
+        }
+        self.characterization_observation = Some(observation);
+        Ok(())
+    }
+
+    #[cfg(feature = "acp-fixture")]
+    pub(crate) fn characterization_observation(
+        &self,
+    ) -> Option<crate::acp::characterization_observation::CharacterizationObservation> {
+        self.characterization_observation.clone()
+    }
+
     /// Prepares a Turn through the exact tree lease retained by this live
     /// session. The store remains the only Sage Turn-ID authority and the
     /// scheduler reservation never escapes the session owner.
@@ -75,6 +94,14 @@ impl SessionTreeLease {
             )
             .await?;
         validate_mutation(&self.owner, &mutation)?;
+        #[cfg(feature = "acp-fixture")]
+        if mutation.disposition == crate::acp::store::MutationDisposition::Applied
+            && let Some(observation) = &self.characterization_observation
+        {
+            observation.record(
+                crate::acp::characterization_observation::CharacterizationObservationEvent::ReadyCommitted,
+            );
+        }
         self.coordinator
             .publish(&self.owner.project_id, &self.owner.chat_id, &mutation)?;
         Ok(mutation)
@@ -156,6 +183,14 @@ impl SessionTreeLease {
         };
         if let Err(error) = validate_mutation(&self.owner, &committed) {
             return Err((error, proof));
+        }
+        #[cfg(feature = "acp-fixture")]
+        if committed.disposition == crate::acp::store::MutationDisposition::Applied
+            && let Some(observation) = &self.characterization_observation
+        {
+            observation.record(
+                crate::acp::characterization_observation::CharacterizationObservationEvent::CloseCommitted,
+            );
         }
         if let Err(error) =
             self.coordinator

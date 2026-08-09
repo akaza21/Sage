@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sage Footprint Control</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <nav class="state-nav" aria-label="Footprint control states">
+      <button type="button" data-state="shell">Shell</button>
+      <button type="button" data-state="chat">Chat</button>
+      <button type="button" data-state="file">File</button>
+      <button type="button" data-state="diff">Diff</button>
+      <button type="button" data-state="explorer">Explorer</button>
+      <button type="button" data-state="source-control">Source Control</button>
+    </nav>
+    <div id="app"></div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

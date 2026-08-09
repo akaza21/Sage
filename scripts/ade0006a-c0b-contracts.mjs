@@ -7,6 +7,7 @@ import {
   readBoundedFile,
   sha256,
 } from "./ade0006a-c0b-common.mjs";
+import { loadAuthenticatedFrontendBaseline } from "./ade0006a-package-binding.mjs";
 
 const scriptRoot = path.dirname(fileURLToPath(import.meta.url));
 export const defaultWorkspaceRoot = path.resolve(scriptRoot, "..");
@@ -257,6 +258,12 @@ export function loadFrozenContracts(root = defaultWorkspaceRoot) {
       "performance-budgets-v1.json",
       wire,
     ),
+    package: readManifestMember(
+      directory,
+      manifestRecord.value,
+      "package-contract-v1.json",
+      wire,
+    ),
     gestures: readManifestMember(
       directory,
       manifestRecord.value,
@@ -284,7 +291,15 @@ export function loadFrozenContracts(root = defaultWorkspaceRoot) {
     frozen.manifest,
     "packaged-gestures-v1.json",
   ).sha256;
+  frozen.packageContractSha256 = manifestEntry(
+    frozen.manifest,
+    "package-contract-v1.json",
+  ).sha256;
   frozen.limitsSha256 = manifestEntry(frozen.manifest, "limits-v1.json").sha256;
   frozen.queueBoundaries = deriveQueueBoundaries(frozen.limits);
+  frozen.frontendBaseline = loadAuthenticatedFrontendBaseline({
+    sourceRoot: root,
+    frozen,
+  });
   return frozen;
 }

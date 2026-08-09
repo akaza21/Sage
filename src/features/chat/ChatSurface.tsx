@@ -13,18 +13,12 @@ import { EditSummary } from "./EditSummary";
 import {
   AcpChatProjection,
   type OpenResourceTarget,
+  terminalTurnStates,
   useAcpChatActions,
   useAcpChatHistory,
   useAcpChatProjection,
+  useRendererRecreationFocus,
 } from "./acp";
-
-const terminalTurnStates = new Set<TurnProjection["state"]>([
-  "completed",
-  "interrupted",
-  "cancelled",
-  "failed",
-  "deliveryUnknown",
-]);
 
 function currentNonterminalTurn(
   page: AcpChatPage | null,
@@ -73,6 +67,7 @@ export function ChatSurface() {
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const priorActiveTurnId = useRef<TurnProjection["id"] | null>(null);
   const terminalFocusTurnId = useRef<TurnProjection["id"] | null>(null);
+  useRendererRecreationFocus(surfaceRef, acpPage);
 
   const harnessAvailable = selectedHarness?.installState === "available";
   const selectedAcpBindingId =
@@ -89,6 +84,12 @@ export function ChatSurface() {
   );
   const actionBusy = useNativeAcp ? acpActions.busy : sending;
   const activeAcpTurn = useNativeAcp ? currentNonterminalTurn(acpPage) : null;
+  const canCloseSession = Boolean(
+    useNativeAcp &&
+    currentAcpSession?.runtimeEpoch &&
+    currentAcpSession.capabilities.closeSession &&
+    !activeAcpTurn,
+  );
   const canPrompt = useNativeAcp
     ? Boolean(
         acpPage &&
@@ -157,13 +158,26 @@ export function ChatSurface() {
           <p className="eyebrow">Persistent agent session</p>
           <h1>Sage workbench</h1>
         </div>
-        <div className="session-state">
-          <span className="session-state__dot" />
-          Live
+        <div className="session-controls">
+          {canCloseSession ? (
+            <button
+              className="button button--compact"
+              type="button"
+              aria-label="Close session"
+              disabled={actionBusy || projectTransitioning}
+              onClick={() => void acpActions.close()}
+            >
+              Close session
+            </button>
+          ) : null}
+          <div className="session-state">
+            <span className="session-state__dot" />
+            Live
+          </div>
         </div>
       </header>
 
-      <div className="message-list" aria-live="polite">
+      <div className="message-list">
         {projectTransitioning ? (
           <div className="composer__notice" role="status">
             Loading the authoritative project…
