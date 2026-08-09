@@ -247,7 +247,12 @@ export const createEditorSlice: StateCreator<
     updateEditorContent: (content) => {
       set((state) => {
         const editor = state.activeEditor;
-        if (!editor || editor.phase !== "ready" || editor.saving) {
+        if (
+          state.projectTransitioning ||
+          !editor ||
+          editor.phase !== "ready" ||
+          editor.saving
+        ) {
           return {};
         }
         return {

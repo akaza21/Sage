@@ -114,6 +114,24 @@ describe("FileSurface durability cadence", () => {
       expect.objectContaining({ resource, content: "edited\n", revision: 1 }),
     );
   });
+
+  it("freezes editor input while a Project transition owns the projection", () => {
+    setReadyEditor();
+    useWorkbenchStore.setState({ projectTransitioning: true });
+    render(<FileSurface tab={tab} />);
+
+    expect(
+      screen.getByRole("textbox", { name: `Edit ${path}` }),
+    ).toBeDisabled();
+    act(() => {
+      useWorkbenchStore.getState().updateEditorContent("must not be accepted");
+    });
+    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+      phase: "ready",
+      content: document.buffer.content,
+      revision: 0,
+    });
+  });
 });
 
 describe("FileSurface in-file find", () => {

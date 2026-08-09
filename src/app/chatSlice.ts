@@ -245,11 +245,12 @@ export const createChatSlice: StateCreator<
     },
 
     renameChat: async (chatId, title) => {
-      const current = currentProjectLayout(get());
-      const target = current?.tabs.find(
+      const initial = currentProjectLayout(get());
+      const initialTarget = initial?.tabs.find(
         (tab) => tab.id === chatId && tab.kind === "chat",
       );
-      if (!current || !target || get().projectTransitioning) return false;
+      if (!initial || !initialTarget || get().projectTransitioning)
+        return false;
       let canonicalName: string;
       let canonicalTitle: string;
       try {
@@ -257,6 +258,27 @@ export const createChatSlice: StateCreator<
         canonicalTitle = canonicalChatTitle(canonicalName);
       } catch (error) {
         set({ error: errorMessage(error) });
+        return false;
+      }
+      set({ projectTransitioning: true, error: null });
+      try {
+        await get().flushActiveEditor();
+      } catch (error) {
+        set({
+          projectTransitioning: false,
+          error: `Chat rename blocked by editor snapshot failure: ${errorMessage(error)}`,
+        });
+        return false;
+      }
+      const current = currentProjectLayout(get());
+      const target = current?.tabs.find(
+        (tab) => tab.id === chatId && tab.kind === "chat",
+      );
+      if (!current || !target) {
+        set({
+          projectTransitioning: false,
+          error: "Chat rename target disappeared before mutation",
+        });
         return false;
       }
       const expectedTransitionEpoch = get().nativeTransitionEpoch;

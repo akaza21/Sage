@@ -7,6 +7,7 @@ use crate::{
     error::{AppError, AppResult},
     persistence::{Database, now_millis},
     workbench_persistence::{MAX_RESTORED_TABS, persist_layout_in},
+    workbench_restore::validate_tab_projection,
 };
 
 pub const MAX_CHAT_TITLE_BYTES: usize = 128;
@@ -216,6 +217,7 @@ impl Database {
                 "Chat rename layout does not belong to the requested Project".into(),
             ));
         }
+        validate_tab_projection(&request.current_layout.tabs)?;
         if !request
             .current_layout
             .tabs

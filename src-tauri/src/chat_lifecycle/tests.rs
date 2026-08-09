@@ -3,7 +3,7 @@ use std::fs;
 use uuid::Uuid;
 
 use super::*;
-use crate::domain::RenameChatRequest;
+use crate::domain::{RenameChatRequest, WorkbenchTab};
 
 fn layout(snapshot: &crate::domain::BootstrapSnapshot) -> ProjectLayoutRequest {
     ProjectLayoutRequest {
@@ -55,6 +55,43 @@ fn chat_title_contract_trims_and_bounds_utf8_bytes() {
     }
     let paired = serde_json::from_str::<RenameChatRequest>(&request(r#""\ud83d\ude80""#)).unwrap();
     assert_eq!(paired.title, "🚀");
+}
+
+#[test]
+fn rename_rejects_an_over_limit_layout_before_searching_for_the_target() {
+    let root = std::env::temp_dir().join(format!("sage-chat-rename-bound-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let database = Database::open(&root.join("sage.db")).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let snapshot = database.bootstrap_snapshot().unwrap();
+    let chat_id = snapshot.active_tab_id.unwrap();
+    let template = snapshot.tabs[0].clone();
+    let tabs = (0..=crate::workbench_persistence::MAX_RESTORED_TABS)
+        .map(|index| WorkbenchTab {
+            id: format!("unattached-{index}"),
+            position: index as i64,
+            ..template.clone()
+        })
+        .collect();
+
+    let error = database
+        .rename_chat(&RenameChatRequest {
+            project_id: project.id.clone(),
+            chat_id,
+            title: "Bounded".into(),
+            current_layout: ProjectLayoutRequest {
+                project_id: project.id,
+                tabs,
+                active_tab_id: None,
+                selected_root_id: snapshot.selected_root_id,
+                selected_resource: snapshot.selected_resource,
+            },
+        })
+        .unwrap_err();
+
+    assert!(matches!(error, AppError::ResourceLimit(_)));
+    drop(database);
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

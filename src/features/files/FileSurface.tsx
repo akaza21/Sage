@@ -36,6 +36,9 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
     index: 0,
   });
   const editor = useWorkbenchStore((state) => state.activeEditor);
+  const projectTransitioning = useWorkbenchStore(
+    (state) => state.projectTransitioning,
+  );
   const loadEditor = useWorkbenchStore((state) => state.loadEditor);
   const updateEditorContent = useWorkbenchStore(
     (state) => state.updateEditorContent,
@@ -239,7 +242,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
           <button
             className="button button--compact"
             type="button"
-            disabled={!tab.dirty || editor.saving}
+            disabled={!tab.dirty || editor.saving || projectTransitioning}
             onClick={() => void discardActiveEditor()}
           >
             <Undo2 size={14} aria-hidden="true" />
@@ -248,7 +251,12 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
           <button
             className="button button--compact button--primary"
             type="button"
-            disabled={!tab.dirty || editor.saving || editor.persisting}
+            disabled={
+              !tab.dirty ||
+              editor.saving ||
+              editor.persisting ||
+              projectTransitioning
+            }
             onClick={() => void saveActiveEditor()}
           >
             <Save size={14} aria-hidden="true" />
@@ -343,7 +351,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
         aria-label={`Edit ${path}`}
         value={editor.content}
         maxLength={MAX_EDITABLE_CONTENT_BYTES}
-        disabled={editor.saving}
+        disabled={editor.saving || projectTransitioning}
         spellCheck={false}
         onChange={(event) => updateEditorContent(event.target.value)}
       />

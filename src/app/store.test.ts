@@ -355,7 +355,47 @@ describe("workbench resource and project navigation", () => {
       status: "idle",
       resource: selectedResource,
     };
-    const rename = vi.spyOn(desktop, "renameChat").mockResolvedValue({
+    const snapshot = vi
+      .spyOn(desktop, "snapshotEditorBuffer")
+      .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
+    const pendingRename =
+      deferred<Awaited<ReturnType<typeof desktop.renameChat>>>();
+    const rename = vi
+      .spyOn(desktop, "renameChat")
+      .mockReturnValue(pendingRename.promise);
+    useWorkbenchStore.setState({
+      tabs: [chatTab, chatTabB, fileTab],
+      activeTabId: fileTab.id,
+      selectedRootId: "root-b",
+      selectedResource,
+      activeEditor: {
+        phase: "ready",
+        resource: selectedResource,
+        document: document(selectedResource, "before rename", 0, false),
+        content: "latest unsnapshotted bytes",
+        revision: 1,
+        persistedRevision: 0,
+        persisting: false,
+        saving: false,
+        message: null,
+      },
+    });
+
+    const renaming = useWorkbenchStore
+      .getState()
+      .renameChat(chatTabB.id, "  Focus  ");
+
+    await vi.waitFor(() => expect(rename).toHaveBeenCalledOnce());
+    useWorkbenchStore
+      .getState()
+      .updateEditorContent("post-flush bytes must be rejected");
+    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+      phase: "ready",
+      content: "latest unsnapshotted bytes",
+      revision: 1,
+      persistedRevision: 1,
+    });
+    pendingRename.resolve({
       committed: true,
       transitionEpoch: 1,
       snapshot: chatProjection(
@@ -369,18 +409,19 @@ describe("workbench resource and project navigation", () => {
       ),
       recoveryError: null,
     });
-    useWorkbenchStore.setState({
-      tabs: [chatTab, chatTabB, fileTab],
-      activeTabId: fileTab.id,
-      selectedRootId: "root-b",
-      selectedResource,
-    });
-
-    const committed = await useWorkbenchStore
-      .getState()
-      .renameChat(chatTabB.id, "  Focus  ");
+    const committed = await renaming;
 
     expect(committed).toBe(true);
+    expect(snapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resource: selectedResource,
+        content: "latest unsnapshotted bytes",
+        revision: 1,
+      }),
+    );
+    expect(snapshot.mock.invocationCallOrder[0]).toBeLessThan(
+      rename.mock.invocationCallOrder[0],
+    );
     expect(rename).toHaveBeenCalledWith(
       {
         projectId: "project-a",
@@ -404,6 +445,56 @@ describe("workbench resource and project navigation", () => {
       sessionId: null,
       messages: [],
       projectTransitioning: false,
+    });
+  });
+
+  it("blocks Chat rename when the newest editor snapshot fails", async () => {
+    const selectedResource = resource("src/unsnapshotted.ts");
+    const fileTab: WorkbenchTab = {
+      id: "file:unsnapshotted",
+      kind: "file",
+      title: "unsnapshotted.ts",
+      position: 2,
+      pinned: false,
+      dirty: true,
+      resource: selectedResource,
+    };
+    vi.spyOn(desktop, "snapshotEditorBuffer").mockRejectedValue(
+      new Error("snapshot unavailable"),
+    );
+    const rename = vi.spyOn(desktop, "renameChat");
+    useWorkbenchStore.setState({
+      tabs: [chatTab, chatTabB, fileTab],
+      activeTabId: fileTab.id,
+      selectedResource,
+      activeEditor: {
+        phase: "ready",
+        resource: selectedResource,
+        document: document(selectedResource, "before rename", 0, false),
+        content: "must survive",
+        revision: 1,
+        persistedRevision: 0,
+        persisting: false,
+        saving: false,
+        message: null,
+      },
+    });
+
+    const committed = await useWorkbenchStore
+      .getState()
+      .renameChat(chatTabB.id, "Blocked");
+
+    expect(committed).toBe(false);
+    expect(rename).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      projectTransitioning: false,
+      error: expect.stringContaining("snapshot unavailable"),
+      activeEditor: {
+        phase: "ready",
+        content: "must survive",
+        revision: 1,
+        persistedRevision: 0,
+      },
     });
   });
 
