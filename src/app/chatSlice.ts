@@ -1,7 +1,11 @@
 import type { StateCreator } from "zustand";
 
 import { childResource } from "../domain/resourceIdentity";
-import type { BootstrapSnapshot } from "../domain/workbench";
+import type {
+  BootstrapSnapshot,
+  ProjectLayoutRequest,
+  WorkbenchTab,
+} from "../domain/workbench";
 import { desktop } from "../services/desktop";
 import {
   matchesProjectIntent,
@@ -13,13 +17,34 @@ import type { WorkbenchState } from "./store";
 
 export interface ChatSlice {
   createChat: () => Promise<void>;
-  activateChat: (chatId: string) => Promise<void>;
+  activateChat: (
+    chatId: string,
+    requestedTabs?: WorkbenchTab[],
+  ) => Promise<void>;
 }
 
 const MAX_PROJECTION_ATTEMPTS = 2;
+type ProjectionOutcome = "committed" | "unchanged" | "diverged";
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function matchesLayout(
+  snapshot: BootstrapSnapshot,
+  layout: ProjectLayoutRequest,
+) {
+  if (
+    snapshot.project?.id !== layout.projectId ||
+    snapshot.activeTabId !== layout.activeTabId ||
+    snapshot.tabs.length !== layout.tabs.length
+  ) {
+    return false;
+  }
+  const requestedKinds = new Map(
+    layout.tabs.map((tab) => [tab.id, tab.kind] as const),
+  );
+  return snapshot.tabs.every((tab) => requestedKinds.get(tab.id) === tab.kind);
 }
 
 export const createChatSlice: StateCreator<
@@ -66,7 +91,7 @@ export const createChatSlice: StateCreator<
 
   const loadAuthoritativeProjection = async (
     generation: number,
-    classify: (snapshot: BootstrapSnapshot) => "committed" | "unchanged" | null,
+    classify: (snapshot: BootstrapSnapshot) => ProjectionOutcome | null,
   ) => {
     let lastError: unknown = new Error(
       "authoritative Chat projection unavailable",
@@ -90,28 +115,23 @@ export const createChatSlice: StateCreator<
   };
 
   return {
-    activateChat: async (chatId) => {
+    activateChat: async (chatId, requestedTabs) => {
       const current = currentProjectLayout(get());
+      const tabs = requestedTabs ?? current?.tabs;
       if (
         !current ||
+        !tabs ||
         get().projectTransitioning ||
-        !current.tabs.some((tab) => tab.id === chatId && tab.kind === "chat")
+        !tabs.some((tab) => tab.id === chatId && tab.kind === "chat")
       ) {
         return;
       }
       const expectedTransitionEpoch = get().nativeTransitionEpoch;
-      const requested = { ...current, activeTabId: chatId };
+      const requested = { ...current, tabs, activeTabId: chatId };
       const classify = (snapshot: BootstrapSnapshot) => {
-        if (snapshot.project?.id !== current.projectId) return null;
-        if (
-          snapshot.activeTabId === chatId &&
-          snapshot.tabs.some((tab) => tab.id === chatId && tab.kind === "chat")
-        ) {
-          return "committed" as const;
-        }
-        return snapshot.activeTabId === current.activeTabId
-          ? ("unchanged" as const)
-          : null;
+        if (matchesLayout(snapshot, requested)) return "committed" as const;
+        if (matchesLayout(snapshot, current)) return "unchanged" as const;
+        return "diverged" as const;
       };
       set({ projectTransitioning: true, error: null });
       let committed = false;
@@ -145,7 +165,9 @@ export const createChatSlice: StateCreator<
           }
           await applyProjection(result.snapshot, generation);
         } else {
-          await loadAuthoritativeProjection(generation, classify);
+          await loadAuthoritativeProjection(generation, (snapshot) =>
+            classify(snapshot) === "committed" ? "committed" : null,
+          );
         }
       } catch (error) {
         if (committed) {

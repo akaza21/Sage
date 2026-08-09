@@ -12,13 +12,17 @@ import type {
   SimulatorTurnResult,
 } from "../domain/workbench";
 import { resourceKey } from "../domain/resourceIdentity";
-import { appendBrowserSimulatorTurn } from "./browserChat";
+import {
+  appendBrowserSimulatorTurn,
+  assertBrowserChatActivation,
+  assertBrowserChatCreation,
+  createBrowserChatTab,
+} from "./browserChat";
 import { browserEditor } from "./browserEditor";
 
 export { appendBrowserSimulatorTurn } from "./browserChat";
 
 const rootId = "browser-root";
-const MAX_BROWSER_CHATS = 64;
 const ref = (relativePath: string): ResourceRef => ({ rootId, relativePath });
 const changes: FileChange[] = [
   {
@@ -264,35 +268,16 @@ export const browserDesktop = {
     currentLayout: ProjectLayoutRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
-    if (expectedTransitionEpoch !== snapshot.transitionEpoch) {
-      throw new Error("project changed before the requested Chat creation");
-    }
-    if (currentLayout.projectId !== snapshot.project?.id) {
-      throw new Error("Chat layout does not belong to the active Project");
-    }
-    if (currentLayout.tabs.length >= MAX_BROWSER_CHATS) {
-      throw new Error(
-        `project layout has reached its ${MAX_BROWSER_CHATS}-tab limit`,
-      );
-    }
-    if (durableChatIds.size >= MAX_BROWSER_CHATS) {
-      throw new Error(
-        `Browser Project has reached its ${MAX_BROWSER_CHATS}-Chat limit; existing Chats were preserved`,
-      );
-    }
+    assertBrowserChatCreation(
+      currentLayout,
+      expectedTransitionEpoch,
+      snapshot.transitionEpoch,
+      snapshot.project?.id,
+      durableChatIds.size,
+    );
     await this.persistProjectLayout(currentLayout);
     const chatCount = durableChatIds.size;
-    const nextPosition =
-      Math.max(-1, ...snapshot.tabs.map((tab) => tab.position)) + 1;
-    const chat = {
-      id: crypto.randomUUID(),
-      kind: "chat" as const,
-      title: `Chat: New chat ${chatCount + 1}`,
-      position: nextPosition,
-      pinned: false,
-      dirty: false,
-      status: "idle" as const,
-    };
+    const chat = createBrowserChatTab(snapshot.tabs, chatCount);
     snapshot.tabs = [...snapshot.tabs, chat];
     snapshot.activeTabId = chat.id;
     snapshot.sessionId = null;
@@ -312,19 +297,12 @@ export const browserDesktop = {
     currentLayout: ProjectLayoutRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
-    if (expectedTransitionEpoch !== snapshot.transitionEpoch) {
-      throw new Error("project changed before the requested Chat activation");
-    }
-    const activeChatId = currentLayout.activeTabId;
-    if (
-      !activeChatId ||
-      !durableChatIds.has(activeChatId) ||
-      !currentLayout.tabs.some(
-        (tab) => tab.id === activeChatId && tab.kind === "chat",
-      )
-    ) {
-      throw new Error("Chat activation target is not an attached Chat");
-    }
+    assertBrowserChatActivation(
+      currentLayout,
+      expectedTransitionEpoch,
+      snapshot.transitionEpoch,
+      durableChatIds,
+    );
     await this.persistProjectLayout(currentLayout);
     snapshot.transitionEpoch += 1;
     return {

@@ -28,6 +28,15 @@ const chatTab: WorkbenchTab = {
   pinned: true,
   dirty: false,
 };
+const chatTabB: WorkbenchTab = {
+  id: "chat:b",
+  kind: "chat",
+  title: "Chat: B",
+  position: 1,
+  pinned: false,
+  dirty: false,
+  status: "idle",
+};
 
 function document(
   target: ResourceRef,
@@ -104,6 +113,34 @@ function snapshotB(): BootstrapSnapshot {
     selectedHarnessId: null,
     selectedModelId: null,
     messages: [],
+    repositories: { roots: [], truncated: false, elapsedMs: 0 },
+    turnChanges: [],
+    recoveredBuffers: [],
+    recoveryNotice: null,
+  };
+}
+
+function chatProjection(
+  tabs: WorkbenchTab[],
+  activeTabId: string,
+  transitionEpoch: number,
+  sessionId: string | null,
+  messages: ChatMessage[],
+): BootstrapSnapshot {
+  const state = useWorkbenchStore.getState();
+  return {
+    transitionEpoch,
+    projects: state.projects,
+    project: state.project,
+    tabs,
+    activeTabId,
+    selectedRootId: "root-a",
+    selectedResource: null,
+    harnesses: [],
+    sessionId,
+    selectedHarnessId: null,
+    selectedModelId: null,
+    messages,
     repositories: { roots: [], truncated: false, elapsedMs: 0 },
     turnChanges: [],
     recoveredBuffers: [],
@@ -522,6 +559,109 @@ describe("workbench resource and project navigation", () => {
       }),
       0,
     );
+  });
+
+  it("preserves the active Chat when transactional close is not committed", async () => {
+    const bootstrap = vi.spyOn(desktop, "getBootstrapSnapshot");
+    const activate = vi.spyOn(desktop, "activateChat").mockResolvedValue({
+      committed: false,
+      transitionEpoch: 0,
+      snapshot: null,
+      recoveryError: "close rejected",
+    });
+    useWorkbenchStore.setState({ tabs: [chatTab, chatTabB] });
+
+    useWorkbenchStore.getState().closeTab(chatTab.id);
+
+    await vi.waitFor(() => {
+      expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+    });
+    expect(activate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tabs: [chatTabB],
+        activeTabId: chatTabB.id,
+      }),
+      0,
+    );
+    expect(bootstrap).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      tabs: [chatTab, chatTabB],
+      activeTabId: chatTab.id,
+      sessionId: "session-a",
+      messages: [],
+      error: "close rejected",
+    });
+  });
+
+  it("restores the authoritative Chat when transactional close throws", async () => {
+    vi.spyOn(desktop, "activateChat").mockRejectedValue(
+      new Error("transport interrupted"),
+    );
+    const bootstrap = vi
+      .spyOn(desktop, "getBootstrapSnapshot")
+      .mockResolvedValue(
+        chatProjection([chatTab, chatTabB], chatTab.id, 0, "session-a", []),
+      );
+    useWorkbenchStore.setState({ tabs: [chatTab, chatTabB] });
+
+    useWorkbenchStore.getState().closeTab(chatTab.id);
+
+    await vi.waitFor(() => {
+      expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+    });
+    expect(bootstrap).toHaveBeenCalled();
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      tabs: [chatTab, chatTabB],
+      activeTabId: chatTab.id,
+      sessionId: "session-a",
+      messages: [],
+      error: "transport interrupted",
+    });
+  });
+
+  it("adopts divergent authoritative state after a stale close completion", async () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "b-message",
+        sessionId: "session-b",
+        sequence: 1,
+        role: "assistant",
+        text: "B won",
+        createdAt: 1,
+      },
+    ];
+    vi.spyOn(desktop, "activateChat").mockResolvedValue({
+      committed: false,
+      transitionEpoch: 2,
+      snapshot: null,
+      recoveryError: "stale close",
+    });
+    const bootstrap = vi
+      .spyOn(desktop, "getBootstrapSnapshot")
+      .mockResolvedValue(
+        chatProjection(
+          [chatTab, chatTabB],
+          chatTabB.id,
+          2,
+          "session-b",
+          messages,
+        ),
+      );
+    useWorkbenchStore.setState({ tabs: [chatTab, chatTabB] });
+
+    useWorkbenchStore.getState().closeTab(chatTab.id);
+
+    await vi.waitFor(() => {
+      expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+    });
+    expect(bootstrap).toHaveBeenCalled();
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      nativeTransitionEpoch: 2,
+      tabs: [chatTab, chatTabB],
+      activeTabId: chatTabB.id,
+      sessionId: "session-b",
+      messages,
+    });
   });
 
   it("keeps the same relative path in two roots as distinct tabs and caches", async () => {

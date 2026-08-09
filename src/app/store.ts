@@ -225,6 +225,10 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
       }
       const result = closeTabState(state.tabs, state.activeTabId ?? "", tabId);
       const next = result.tabs.find((item) => item.id === result.activeTabId);
+      if (tabId === state.activeTabId && next?.kind === "chat") {
+        void get().activateChat(next.id, result.tabs);
+        return;
+      }
       set({
         tabs: result.tabs,
         activeTabId: result.activeTabId,
@@ -235,9 +239,6 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
             ? null
             : state.activeEditor,
       });
-      if (tabId === state.activeTabId && next?.kind === "chat") {
-        void get().activateChat(next.id);
-      }
     },
 
     refreshRepository: async () => {
