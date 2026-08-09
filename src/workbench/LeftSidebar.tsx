@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
-import { chatDisplayTitle } from "../domain/chatTitle";
+import { MAX_CHAT_TITLE_BYTES, chatDisplayTitle } from "../domain/chatTitle";
 import { useWorkbenchStore } from "../app/store";
 
 export function LeftSidebar() {
@@ -47,6 +47,12 @@ export function LeftSidebar() {
     renameTriggerRefs.current.get(chatId)?.focus();
   }, [renamingChatId]);
 
+  useEffect(() => {
+    if (renamingChatId !== null && renameError && !renameSaving) {
+      renameInputRef.current?.focus();
+    }
+  }, [renameError, renameSaving, renamingChatId]);
+
   const closeRename = (chatId: string) => {
     pendingFocusChatId.current = chatId;
     setRenameError(null);
@@ -66,7 +72,6 @@ export function LeftSidebar() {
     setRenameError(
       useWorkbenchStore.getState().error ?? "Chat rename could not be saved",
     );
-    renameInputRef.current?.focus();
   };
 
   return (
@@ -147,6 +152,7 @@ export function LeftSidebar() {
                               }
                               autoFocus
                               disabled={renameSaving}
+                              maxLength={MAX_CHAT_TITLE_BYTES}
                               value={renameDraft}
                               onChange={(event) =>
                                 setRenameDraft(event.currentTarget.value)

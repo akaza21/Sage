@@ -26,6 +26,7 @@ import {
   type BrowserPromptRequest,
 } from "./browserChat";
 import { browserEditor } from "./browserEditor";
+import { assertBrowserProjectLayout } from "./browserLayout";
 
 export { appendBrowserSimulatorTurn } from "./browserChat";
 
@@ -334,6 +335,11 @@ export const browserDesktop = {
       snapshot.transitionEpoch,
       snapshot.project?.id,
       durableChatIds,
+    );
+    assertBrowserProjectLayout(
+      request.currentLayout,
+      request.projectId,
+      snapshot.project?.roots ?? [],
     );
     const renamedLayout = renamedBrowserChatLayout(request, title, chatTitles);
     chatTitles.set(request.chatId, title);

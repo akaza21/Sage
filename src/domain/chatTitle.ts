@@ -29,10 +29,27 @@ function trimChatTitleEdges(input: string) {
   return input.slice(start, end);
 }
 
+function hasUnpairedUtf16Surrogate(input: string) {
+  for (let index = 0; index < input.length; index += 1) {
+    const codeUnit = input.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = input.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function canonicalChatName(input: string): string {
   const title = trimChatTitleEdges(input);
   if (!title) {
     throw new Error("Chat title must not be empty after trimming");
+  }
+  if (hasUnpairedUtf16Surrogate(title)) {
+    throw new Error("Chat title must not contain an unpaired UTF-16 surrogate");
   }
   if (new TextEncoder().encode(title).byteLength > MAX_CHAT_TITLE_BYTES) {
     throw new Error(

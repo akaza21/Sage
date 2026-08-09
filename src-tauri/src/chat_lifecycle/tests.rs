@@ -44,6 +44,17 @@ fn chat_title_contract_trims_and_bounds_utf8_bytes() {
         );
     }
     assert!(canonical_chat_title(&two_byte.repeat(65)).is_err());
+
+    let request = |title: &str| {
+        format!(
+            r#"{{"projectId":"p","chatId":"c","title":{title},"currentLayout":{{"projectId":"p","tabs":[],"activeTabId":null,"selectedRootId":null,"selectedResource":null}}}}"#
+        )
+    };
+    for malformed in [r#""\ud800""#, r#""\udc00""#] {
+        assert!(serde_json::from_str::<RenameChatRequest>(&request(malformed)).is_err());
+    }
+    let paired = serde_json::from_str::<RenameChatRequest>(&request(r#""\ud83d\ude80""#)).unwrap();
+    assert_eq!(paired.title, "🚀");
 }
 
 #[test]

@@ -32,5 +32,11 @@ describe("Chat title contract", () => {
     expect(() => canonicalChatTitle("Focus\u0085Later")).toThrow(
       "control characters",
     );
+    for (const malformed of ["Focus\ud800", "Focus\udc00"]) {
+      expect(() => canonicalChatTitle(malformed)).toThrow(
+        "unpaired UTF-16 surrogate",
+      );
+    }
+    expect(canonicalChatTitle("Focus \ud83d\ude80")).toBe("Chat: Focus 🚀");
   });
 });

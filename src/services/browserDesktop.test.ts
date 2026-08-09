@@ -342,6 +342,202 @@ describe("browser simulator history bounds", () => {
     }
   });
 
+  it("rejects native-invalid rename layouts before mutating browser state", async () => {
+    const initial = await browserDesktop.getBootstrapSnapshot();
+    const chat = initial.tabs[0];
+    const rootId = initial.selectedRootId!;
+    const validLayout: ProjectLayoutRequest = {
+      projectId: initial.project!.id,
+      tabs: initial.tabs,
+      activeTabId: chat.id,
+      selectedRootId: rootId,
+      selectedResource: null,
+    };
+    const terminal = (id: string, position: number): WorkbenchTab => ({
+      id,
+      kind: "terminal",
+      title: id,
+      position,
+      pinned: false,
+      dirty: false,
+    });
+    const invalidLayouts: Array<[ProjectLayoutRequest, string]> = [
+      [
+        { ...validLayout, tabs: [chat, { ...terminal(chat.id, 1) }] },
+        "duplicate tab identity or position",
+      ],
+      [
+        { ...validLayout, tabs: [chat, terminal("terminal:duplicate", 0)] },
+        "duplicate tab identity or position",
+      ],
+      [
+        {
+          ...validLayout,
+          tabs: [chat, terminal("terminal:unsafe", 2 ** 53)],
+        },
+        "tab position must be a safe integer",
+      ],
+      [
+        {
+          ...validLayout,
+          tabs: [
+            chat,
+            {
+              ...terminal("terminal:oversized", 1),
+              title: "x".repeat(2 * 1024 * 1024 + 1),
+            },
+          ],
+        },
+        "tab projection exceeds its metadata byte limit",
+      ],
+      [{ ...validLayout, activeTabId: "missing-tab" }, "active tab is absent"],
+      [
+        {
+          ...validLayout,
+          tabs: [
+            chat,
+            ...Array.from({ length: 64 }, (_, index) =>
+              terminal(`terminal:${index}`, index + 1),
+            ),
+          ],
+        },
+        "at most 64 tabs",
+      ],
+      [
+        {
+          ...validLayout,
+          tabs: [
+            chat,
+            {
+              ...terminal("file:missing-resource", 1),
+              kind: "file",
+            },
+          ],
+        },
+        "File and Diff tabs require a resource identity",
+      ],
+      [
+        {
+          ...validLayout,
+          tabs: [
+            chat,
+            {
+              ...terminal("diff:foreign-root", 1),
+              kind: "diff",
+              resource: { rootId: "foreign-root", relativePath: "a.ts" },
+            },
+          ],
+        },
+        "layout resource root does not belong",
+      ],
+      [
+        {
+          ...validLayout,
+          tabs: [
+            chat,
+            {
+              ...terminal("file:malformed-resource", 1),
+              kind: "file",
+              resource: {
+                rootId: 7,
+                relativePath: "a.ts",
+              } as unknown as WorkbenchTab["resource"],
+            },
+          ],
+        },
+        "resource identity must use strings",
+      ],
+      [
+        {
+          ...validLayout,
+          tabs: [
+            {
+              ...chat,
+              resource: { rootId, relativePath: "a.ts" },
+            },
+          ],
+        },
+        "only File and Diff tabs may carry a resource",
+      ],
+      [
+        {
+          ...validLayout,
+          tabs: [
+            chat,
+            {
+              ...terminal("file:non-canonical", 1),
+              kind: "file",
+              resource: { rootId, relativePath: "src/../a.ts" },
+            },
+          ],
+        },
+        "canonical root-relative spelling",
+      ],
+      [
+        {
+          ...validLayout,
+          tabs: [
+            chat,
+            {
+              ...terminal("file:drive-relative", 1),
+              kind: "file",
+              resource: { rootId, relativePath: "C:a.ts" },
+            },
+          ],
+        },
+        "canonical root-relative spelling",
+      ],
+      [
+        { ...validLayout, selectedRootId: "foreign-root" },
+        "layout resource root does not belong",
+      ],
+      [
+        {
+          ...validLayout,
+          selectedRootId: "foreign-root",
+          selectedResource: {
+            rootId: "foreign-root",
+            relativePath: "a.ts",
+          },
+        },
+        "layout resource root does not belong",
+      ],
+      [
+        {
+          ...validLayout,
+          selectedResource: {
+            rootId,
+            relativePath: "src/../a.ts",
+          },
+        },
+        "canonical root-relative spelling",
+      ],
+      [
+        {
+          ...validLayout,
+          selectedRootId: null,
+          selectedResource: { rootId, relativePath: "a.ts" },
+        },
+        "selected resource and selected root do not match",
+      ],
+    ];
+
+    for (const [currentLayout, error] of invalidLayouts) {
+      await expect(
+        browserDesktop.renameChat(
+          {
+            projectId: initial.project!.id,
+            chatId: chat.id,
+            title: "Must not commit",
+            currentLayout,
+          },
+          initial.transitionEpoch,
+        ),
+      ).rejects.toThrow(error);
+      expect(await browserDesktop.getBootstrapSnapshot()).toEqual(initial);
+    }
+  });
+
   it("fails closed at 64 durable browser Chats without evicting detached history", async () => {
     const initial = await browserDesktop.getBootstrapSnapshot();
     const initialTab = initial.tabs[0];

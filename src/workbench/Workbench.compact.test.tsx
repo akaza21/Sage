@@ -172,11 +172,11 @@ describe("compact Workbench project tools", () => {
   });
 
   it("keeps invalid rename feedback visible and focused with a File active", async () => {
-    const renameChat = vi.fn(async () => {
-      useWorkbenchStore.setState({
-        error: "Chat title must not be empty after trimming",
+    let resolveRename!: (committed: boolean) => void;
+    const renameChat = vi.fn(() => {
+      return new Promise<boolean>((resolve) => {
+        resolveRename = resolve;
       });
-      return false;
     });
     useWorkbenchStore.setState({
       renameChat,
@@ -207,8 +207,17 @@ describe("compact Workbench project tools", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Rename chat B" }));
     const input = screen.getByRole("textbox", { name: "New name for B" });
+    expect(input).toHaveAttribute("maxlength", "128");
     fireEvent.change(input, { target: { value: " \t " } });
     fireEvent.click(screen.getByRole("button", { name: "Save chat name" }));
+    expect(input).toBeDisabled();
+
+    await act(async () => {
+      useWorkbenchStore.setState({
+        error: "Chat title must not be empty after trimming",
+      });
+      resolveRename(false);
+    });
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(
@@ -216,6 +225,7 @@ describe("compact Workbench project tools", () => {
     );
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(input).toHaveAttribute("aria-describedby", alert.id);
+    expect(input).not.toBeDisabled();
     expect(input).toHaveFocus();
     expect(useWorkbenchStore.getState().activeTabId).toBe("file:a");
   });
