@@ -67,13 +67,10 @@ fn initialize(runtime: &mut CodexRuntime) {
     let batch = runtime
         .ingest(
             &frame(json!({"id":id,"result":{
-                "protocolVersion":"codex-app-server-c42ea41",
-                "capabilities":{
-                    "threadStart":true,"threadResume":true,"threadRead":true,
-                    "threadUnsubscribe":true,"turnStart":true,"turnInterrupt":true,
-                    "modelList":true,"childConversationProjection":true,
-                    "collaborationEventProjection":true
-                }
+                "userAgent":"Codex Desktop/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
+                "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.145.0-7b0ab167",
+                "platformFamily":"windows",
+                "platformOs":"windows"
             }})),
             &Mapper,
         )
@@ -129,21 +126,10 @@ fn running_turn(runtime: &mut CodexRuntime) {
 
 #[test]
 fn launch_stays_unavailable_without_exact_artifact_admission() {
-    let manifest = serde_json::to_vec(&json!({
-        "schemaVersion":1,
-        "bindingId":"codex-app-server",
-        "platform":"windowsX86_64",
-        "codexSourceCommit":"c42ea41ee0b836539a2a5d24f3faff96cc48db40",
-        "codexRuntimeVersion":"0.1.0",
-        "appServerSchemaSha256":"a".repeat(64),
-        "entrypoint":{"path":"C:\\Sage\\codex.exe","sha256":"b".repeat(64),"byteLen":1},
-        "supportingArtifacts":[],
-        "statePolicy":"isolatedBindingDirectory",
-        "transport":"stdioJsonl",
-        "workspacePolicy":"singleRootOnly"
-    }))
-    .expect("manifest");
-    let candidate = parse_candidate(&manifest).expect("candidate identity");
+    let candidate = parse_candidate(include_bytes!(
+        "../../../../../testdata/acp/codex/candidate-windows.json"
+    ))
+    .expect("candidate identity");
     assert!(
         CodexRuntime::from_candidate(
             &candidate,

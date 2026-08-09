@@ -25,11 +25,15 @@ impl ResourceMapper for Mapper {
 }
 
 fn adapter() -> CodexAdapter {
-    CodexAdapter::new(
+    let candidate = parse_candidate(include_bytes!(
+        "../../../../testdata/acp/codex/candidate-windows.json"
+    ))
+    .unwrap();
+    CodexAdapter::from_candidate(
+        &candidate,
         [7; 32],
         RuntimeEpoch::new(1).unwrap(),
         SageAgentSessionId::parse("session-one").unwrap(),
-        Platform::WindowsX86_64,
     )
 }
 
@@ -37,18 +41,10 @@ fn initialize_result(id: u64) -> Vec<u8> {
     serde_json::to_vec(&json!({
         "id": id,
         "result": {
-            "protocolVersion": "codex-app-server-c42ea41",
-            "capabilities": {
-                "threadStart": true,
-                "threadResume": true,
-                "threadRead": true,
-                "threadUnsubscribe": true,
-                "turnStart": true,
-                "turnInterrupt": true,
-                "modelList": true,
-                "childConversationProjection": true,
-                "collaborationEventProjection": true
-            }
+            "userAgent": "Codex Desktop/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
+            "codexHome": "C:\\SageHarnesses\\CodexState\\codex-app-server-0.145.0-7b0ab167",
+            "platformFamily": "windows",
+            "platformOs": "windows"
         }
     }))
     .unwrap()
@@ -85,10 +81,20 @@ fn arm_turn(adapter: &mut CodexAdapter, request_id: u64, client_id: &str) {
 }
 
 #[test]
-fn validates_closed_candidate_but_keeps_launch_fail_closed() {
+fn validates_only_the_exact_windows_packet_and_keeps_launch_fail_closed() {
     let bytes = include_bytes!("../../../../testdata/acp/codex/candidate-windows.json");
     let candidate = parse_candidate(bytes).unwrap();
     assert_eq!(candidate.binding().binding_id, "codex-app-server");
+    assert_eq!(candidate.binding().codex_runtime_version, "0.145.0");
+    assert_eq!(
+        candidate.binding().codex_source_commit,
+        "25af12f7e61572b0bc18ddb1008be543b91519b0"
+    );
+    assert_eq!(
+        candidate.binding().app_server_schema_sha256,
+        "7b0ab1679be705644a1b6c3f486f15e2f90e5f900486d90073b1dc5f0cf4c62c"
+    );
+    assert_eq!(candidate.binding().supporting_artifacts.len(), 7);
     assert_eq!(
         candidate.launch_status(),
         Err(BindingUnavailable::ArtifactNotAdmitted)
@@ -101,12 +107,34 @@ fn validates_closed_candidate_but_keeps_launch_fail_closed() {
     value["entrypoint"]["path"] = json!(r"codex.exe");
     assert!(parse_candidate(&serde_json::to_vec(&value).unwrap()).is_err());
 
+    for (pointer, replacement) in [
+        ("/codexRuntimeVersion", json!("0.145.1")),
+        ("/appServerSchemaSha256", json!("a".repeat(64))),
+        ("/supportingArtifacts/0/sha256", json!("b".repeat(64))),
+        ("/capabilityCeiling/prompt", json!(false)),
+        ("/codexHome", json!(r"C:\Users\Username\.codex")),
+    ] {
+        let mut changed: Value = serde_json::from_slice(bytes).unwrap();
+        *changed.pointer_mut(pointer).unwrap() = replacement;
+        assert!(parse_candidate(&serde_json::to_vec(&changed).unwrap()).is_err());
+    }
+
+    let mut incomplete: Value = serde_json::from_slice(bytes).unwrap();
+    incomplete["supportingArtifacts"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    assert!(parse_candidate(&serde_json::to_vec(&incomplete).unwrap()).is_err());
+
+    let mut oversized_home: Value = serde_json::from_slice(bytes).unwrap();
+    oversized_home["codexHome"] = json!(format!(
+        "C:\\{}\\CodexState\\codex-app-server-0.145.0-7b0ab167",
+        "a".repeat(32 * 1024)
+    ));
+    assert!(parse_candidate(&serde_json::to_vec(&oversized_home).unwrap()).is_err());
+
     let mut mac: Value = serde_json::from_slice(bytes).unwrap();
     mac["platform"] = json!("macosAarch64");
-    mac["entrypoint"]["path"] = json!("/opt/sage/codex");
-    mac["supportingArtifacts"] = json!([]);
-    assert!(parse_candidate(&serde_json::to_vec(&mac).unwrap()).is_ok());
-    mac["entrypoint"]["path"] = json!("/opt/../codex");
     assert!(parse_candidate(&serde_json::to_vec(&mac).unwrap()).is_err());
 }
 
@@ -142,14 +170,14 @@ fn request_ledger_is_bounded_and_rejects_duplicate_ids() {
 }
 
 #[test]
-fn initialize_requires_complete_pinned_capability_evidence() {
+fn initialize_requires_the_exact_runtime_home_and_windows_identity() {
     let mut incomplete = adapter();
     assert!(matches!(
         incomplete.effective_capabilities(),
         Err(AdapterError::CapabilityUnavailable)
     ));
     incomplete.initialize(1).unwrap();
-    let missing = br#"{"id":1,"result":{"protocolVersion":"codex-app-server-c42ea41","capabilities":{"threadStart":true}}}"#;
+    let missing = br#"{"id":1,"result":{"userAgent":"Codex Desktop/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"}}"#;
     assert!(matches!(
         incomplete.ingest(missing, &Mapper),
         Err(AdapterError::Ingress(IngressError::CapabilityUnavailable))
@@ -161,20 +189,37 @@ fn initialize_requires_complete_pinned_capability_evidence() {
     assert!(capabilities.new_session && capabilities.prompt && capabilities.cancel);
     assert!(capabilities.collaboration_event_projection);
     assert!(!capabilities.native_session_fork && !capabilities.active_turn_steer);
+    assert_eq!(
+        capabilities.protocol_version.as_str(),
+        "codex-app-server-0.145.0-7b0ab167"
+    );
 
-    let mut disabled = adapter();
-    disabled.initialize(2).unwrap();
-    let mut response: Value = serde_json::from_slice(&initialize_result(2)).unwrap();
-    response["result"]["capabilities"]["turnStart"] = json!(false);
-    disabled
-        .ingest(&serde_json::to_vec(&response).unwrap(), &Mapper)
-        .unwrap();
-    assert!(!disabled.effective_capabilities().unwrap().prompt);
-    let prompt = Prompt::new("prompt", "hello").unwrap();
-    let client = RequiredText::new("client", "client-disabled").unwrap();
+    for (pointer, replacement) in [
+        (
+            "/result/userAgent",
+            json!("Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"),
+        ),
+        ("/result/codexHome", json!(r"C:\Users\Username\.codex")),
+        ("/result/platformFamily", json!("unix")),
+        ("/result/platformOs", json!("linux")),
+    ] {
+        let mut rejected = adapter();
+        rejected.initialize(2).unwrap();
+        let mut response: Value = serde_json::from_slice(&initialize_result(2)).unwrap();
+        *response.pointer_mut(pointer).unwrap() = replacement;
+        assert!(matches!(
+            rejected.ingest(&serde_json::to_vec(&response).unwrap(), &Mapper),
+            Err(AdapterError::Ingress(IngressError::CapabilityUnavailable))
+        ));
+    }
+
+    let mut extra = adapter();
+    extra.initialize(3).unwrap();
+    let mut response: Value = serde_json::from_slice(&initialize_result(3)).unwrap();
+    response["result"]["capabilities"] = json!({"turnStart": true});
     assert!(matches!(
-        disabled.prompt(3, &prompt, &client),
-        Err(AdapterError::CapabilityUnavailable)
+        extra.ingest(&serde_json::to_vec(&response).unwrap(), &Mapper),
+        Err(AdapterError::Ingress(IngressError::CapabilityUnavailable))
     ));
 }
 

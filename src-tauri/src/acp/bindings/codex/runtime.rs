@@ -10,10 +10,13 @@ use crate::acp::{
 
 use super::{
     incoming::{IncomingEvent, IngressDisposition},
-    manifest::{Platform, ValidatedCandidate},
+    manifest::ValidatedCandidate,
     request::RequestKind,
     state::CodexAdapter,
 };
+
+#[cfg(test)]
+use super::manifest::{Platform, parse_candidate};
 
 #[path = "runtime/support.rs"]
 mod support;
@@ -41,31 +44,41 @@ impl CodexRuntime {
             .launch_status()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         Ok(Self::new(
+            candidate,
             binding_digest,
             runtime_epoch,
             session_id,
-            candidate.binding().platform,
         ))
     }
 
     #[cfg(test)]
     pub(super) fn fixture(platform: Platform) -> Self {
+        assert_eq!(platform, Platform::WindowsX86_64);
+        let candidate = parse_candidate(include_bytes!(
+            "../../../../testdata/acp/codex/candidate-windows.json"
+        ))
+        .expect("pinned Codex fixture");
         Self::new(
+            &candidate,
             [9; 32],
             RuntimeEpoch::new(1).expect("fixture epoch"),
             SageAgentSessionId::parse("session-codex-runtime").expect("fixture session"),
-            platform,
         )
     }
 
     fn new(
+        candidate: &ValidatedCandidate,
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
-        platform: Platform,
     ) -> Self {
         Self {
-            inner: CodexAdapter::new(binding_digest, runtime_epoch, session_id, platform),
+            inner: CodexAdapter::from_candidate(
+                candidate,
+                binding_digest,
+                runtime_epoch,
+                session_id,
+            ),
             next_request_id: 0,
             snapshots: ItemSnapshots::new(),
             poisoned: false,

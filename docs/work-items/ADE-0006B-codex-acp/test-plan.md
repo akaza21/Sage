@@ -1,6 +1,7 @@
 # ADE-0006B test plan: Codex ACP
 
-Status: Proposed; Not Ready; no test execution authorized.
+Status: Active Build evidence; Not Ready; artifact admission and release Test
+remain unauthorized.
 
 ## Provenance and launch
 
@@ -62,3 +63,20 @@ Status: Proposed; Not Ready; no test execution authorized.
 Exact commands, counts, hashes, machine identity, limitations, and raw-evidence
 provenance belong in a later `results.md`. Build evidence is followed by fresh
 Review and Independent Test; it is not acceptance.
+
+## Current Build evidence (2026-08-09)
+
+The first fail-closed packet slice exercises exact Windows package inventory
+admission, schema/source/package drift rejection, state/package separation,
+real initialize shape and identity validation, manifest-owned capability
+projection, and the unchanged `ArtifactNotAdmitted` production-launch gate.
+The focused command is:
+
+```text
+cargo test --lib acp::bindings::codex
+```
+
+It passed 21 tests on the implementation workstation. This is developer
+self-check evidence, not the clean-machine package reproduction, signature
+verification, hostile containment probe, fresh Review, or Independent Test
+required for Ready.

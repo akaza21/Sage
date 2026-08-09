@@ -6,7 +6,67 @@ const MANIFEST_BYTES: usize = 64 * 1024;
 const ARTIFACTS_MAX: usize = 64;
 const ARTIFACT_BYTES_MAX: u64 = 1024 * 1024 * 1024;
 const PATH_BYTES_MAX: usize = 32 * 1024;
-const PINNED_CODEX_COMMIT: &str = "c42ea41ee0b836539a2a5d24f3faff96cc48db40";
+const PINNED_CODEX_COMMIT: &str = "25af12f7e61572b0bc18ddb1008be543b91519b0";
+const PINNED_CODEX_VERSION: &str = "0.145.0";
+const PINNED_PACKAGE_NAME: &str = "@openai/codex";
+const PINNED_PACKAGE_VERSION: &str = "0.145.0-win32-x64";
+const PINNED_PACKAGE_SHA1: &str = "b24ffe0d63bcac64fe802c4c7d79176fb42e8337";
+const PINNED_PACKAGE_INTEGRITY: &str = "sha512-u0h9lk094CaXRSqE34SBW2dRaQTPa6fASXqehczWH9QdsU62mBsiAgAdp6tCG4i+YzPmmhjD8FdXNnYGNmwuMg==";
+const PINNED_PACKAGE_PACKED_BYTES: u64 = 150_852_388;
+const PINNED_PACKAGE_UNPACKED_BYTES: u64 = 427_151_500;
+const PINNED_SCHEMA_SHA256: &str =
+    "7b0ab1679be705644a1b6c3f486f15e2f90e5f900486d90073b1dc5f0cf4c62c";
+const PINNED_CODEX_HOME_SUFFIX: &str = r"CodexState\codex-app-server-0.145.0-7b0ab167";
+
+#[derive(Clone, Copy)]
+struct ExpectedArtifact {
+    relative_path: &'static str,
+    sha256: &'static str,
+    byte_len: u64,
+}
+
+const PINNED_ARTIFACTS: [ExpectedArtifact; 8] = [
+    ExpectedArtifact {
+        relative_path: r"vendor\x86_64-pc-windows-msvc\bin\codex.exe",
+        sha256: "83751f15cb6a0a7b97df67752c001e3fe1c20e18ffbfec3ff63567296205eb6c",
+        byte_len: 359_245_096,
+    },
+    ExpectedArtifact {
+        relative_path: r"vendor\x86_64-pc-windows-msvc\bin\codex-code-mode-host.exe",
+        sha256: "de58d3bd9fb88c44555de1104d06fba78e207bce7115d92691b42f6b0f87f3b7",
+        byte_len: 53_605_168,
+    },
+    ExpectedArtifact {
+        relative_path: r"vendor\x86_64-pc-windows-msvc\codex-resources\codex-command-runner.exe",
+        sha256: "09531442d178aefb4c849745e95a000f52d5910a13944638269d9991cb08319b",
+        byte_len: 1_271_088,
+    },
+    ExpectedArtifact {
+        relative_path: r"vendor\x86_64-pc-windows-msvc\codex-resources\codex-windows-sandbox-setup.exe",
+        sha256: "c981b438d0959e33f90f6b8b1a9656c4f803a1b82ebdd97e2150d2b8543a0c31",
+        byte_len: 8_807_728,
+    },
+    ExpectedArtifact {
+        relative_path: r"vendor\x86_64-pc-windows-msvc\codex-path\rg.exe",
+        sha256: "14231169855ec5205cf5a1b6f1db358ff4aed4247c86b69ce8aae647c77f6680",
+        byte_len: 4_218_880,
+    },
+    ExpectedArtifact {
+        relative_path: r"vendor\x86_64-pc-windows-msvc\codex-package.json",
+        sha256: "d15dd152401ec63697fb4888d3dec75a849ac85c11aa69256bccc0355e0b7ddd",
+        byte_len: 215,
+    },
+    ExpectedArtifact {
+        relative_path: "package.json",
+        sha256: "74c94696f460ad5dd07371a813a49ac2604121569e075a7e938d2f60b6de76a2",
+        byte_len: 511,
+    },
+    ExpectedArtifact {
+        relative_path: "README.md",
+        sha256: "8ef3dd9dd00c7dd39d1f0b77de69d25cff4dd3fe7768ec3a3cd1fc9c0aa5b76c",
+        byte_len: 2_814,
+    },
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,12 +92,35 @@ pub(crate) struct CuratedBinding {
     pub platform: Platform,
     pub codex_source_commit: String,
     pub codex_runtime_version: String,
+    pub package_name: String,
+    pub package_version: String,
+    pub package_tarball_sha1: String,
+    pub package_integrity_sha512: String,
+    pub package_packed_byte_len: u64,
+    pub package_unpacked_byte_len: u64,
     pub app_server_schema_sha256: String,
     pub entrypoint: Artifact,
     pub supporting_artifacts: Vec<Artifact>,
+    pub codex_home: PathBuf,
     pub state_policy: StatePolicy,
     pub transport: Transport,
     pub workspace_policy: WorkspacePolicy,
+    pub capability_ceiling: CuratedCapabilityCeiling,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct CuratedCapabilityCeiling {
+    pub protocol_identity: String,
+    pub new_session: bool,
+    pub resume_session: bool,
+    pub load_session: bool,
+    pub close_session: bool,
+    pub prompt: bool,
+    pub cancel: bool,
+    pub model_list: bool,
+    pub child_conversation_projection: bool,
+    pub collaboration_event_projection: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -68,6 +151,14 @@ impl ValidatedCandidate {
 
     pub(crate) fn launch_status(&self) -> Result<(), BindingUnavailable> {
         Err(BindingUnavailable::ArtifactNotAdmitted)
+    }
+
+    pub(crate) fn codex_home(&self) -> &Path {
+        &self.0.codex_home
+    }
+
+    pub(crate) fn capability_ceiling(&self) -> &CuratedCapabilityCeiling {
+        &self.0.capability_ceiling
     }
 }
 
@@ -102,33 +193,111 @@ pub(crate) fn parse_candidate(bytes: &[u8]) -> Result<ValidatedCandidate, Manife
 fn validate_binding(binding: &CuratedBinding) -> Result<(), ManifestError> {
     if binding.schema_version != 1
         || binding.binding_id != "codex-app-server"
+        || binding.platform != Platform::WindowsX86_64
         || binding.codex_source_commit != PINNED_CODEX_COMMIT
-        || !valid_version(&binding.codex_runtime_version)
-        || !valid_hex(&binding.app_server_schema_sha256, 64)
+        || binding.codex_runtime_version != PINNED_CODEX_VERSION
+        || binding.package_name != PINNED_PACKAGE_NAME
+        || binding.package_version != PINNED_PACKAGE_VERSION
+        || binding.package_tarball_sha1 != PINNED_PACKAGE_SHA1
+        || binding.package_integrity_sha512 != PINNED_PACKAGE_INTEGRITY
+        || binding.package_packed_byte_len != PINNED_PACKAGE_PACKED_BYTES
+        || binding.package_unpacked_byte_len != PINNED_PACKAGE_UNPACKED_BYTES
+        || binding.app_server_schema_sha256 != PINNED_SCHEMA_SHA256
+        || binding.supporting_artifacts.len() != PINNED_ARTIFACTS.len() - 1
         || binding.supporting_artifacts.len() > ARTIFACTS_MAX - 1
+        || binding.capability_ceiling != pinned_capability_ceiling()
     {
         return Err(ManifestError::Identity);
     }
 
     let mut total = validate_artifact(&binding.entrypoint, binding.platform)?;
+    let package_root = validate_expected_artifact(&binding.entrypoint, PINNED_ARTIFACTS[0])?;
     let mut paths = vec![normalized_path_key(
         &binding.entrypoint.path,
         binding.platform,
     )];
-    for artifact in &binding.supporting_artifacts {
+    for (artifact, expected) in binding
+        .supporting_artifacts
+        .iter()
+        .zip(PINNED_ARTIFACTS.iter().skip(1))
+    {
         total = total
             .checked_add(validate_artifact(artifact, binding.platform)?)
             .ok_or(ManifestError::Artifact)?;
+        if validate_expected_artifact(artifact, *expected)? != package_root {
+            return Err(ManifestError::Artifact);
+        }
         let key = normalized_path_key(&artifact.path, binding.platform);
         if paths.iter().any(|existing| existing == &key) {
             return Err(ManifestError::Artifact);
         }
         paths.push(key);
     }
-    if total > ARTIFACT_BYTES_MAX {
+    if total > ARTIFACT_BYTES_MAX || total != binding.package_unpacked_byte_len {
+        return Err(ManifestError::Artifact);
+    }
+    validate_codex_home(&binding.codex_home, &package_root)?;
+    Ok(())
+}
+
+fn pinned_capability_ceiling() -> CuratedCapabilityCeiling {
+    CuratedCapabilityCeiling {
+        protocol_identity: "codex-app-server-0.145.0-7b0ab167".into(),
+        new_session: true,
+        resume_session: true,
+        load_session: true,
+        close_session: true,
+        prompt: true,
+        cancel: true,
+        model_list: true,
+        child_conversation_projection: true,
+        collaboration_event_projection: true,
+    }
+}
+
+fn validate_expected_artifact(
+    artifact: &Artifact,
+    expected: ExpectedArtifact,
+) -> Result<String, ManifestError> {
+    if artifact.sha256 != expected.sha256 || artifact.byte_len != expected.byte_len {
+        return Err(ManifestError::Artifact);
+    }
+    let value = normalized_path_key(&artifact.path, Platform::WindowsX86_64);
+    let suffix = format!(r"\{}", expected.relative_path.to_ascii_lowercase());
+    let root_len = value
+        .len()
+        .checked_sub(suffix.len())
+        .filter(|_| value.ends_with(&suffix))
+        .ok_or(ManifestError::Artifact)?;
+    let root = value[..root_len].to_owned();
+    if root.is_empty() || root.ends_with('\\') {
+        return Err(ManifestError::Artifact);
+    }
+    Ok(root)
+}
+
+fn validate_codex_home(path: &Path, package_root: &str) -> Result<(), ManifestError> {
+    let raw = path.as_os_str().to_string_lossy();
+    if raw.is_empty()
+        || raw.len() > PATH_BYTES_MAX
+        || !absolute_normalized(path, Platform::WindowsX86_64)
+    {
+        return Err(ManifestError::Artifact);
+    }
+    let home = normalized_path_key(path, Platform::WindowsX86_64);
+    if !home.ends_with(&format!(
+        r"\{}",
+        PINNED_CODEX_HOME_SUFFIX.to_ascii_lowercase()
+    )) || same_or_descendant(&home, package_root)
+        || same_or_descendant(package_root, &home)
+    {
         return Err(ManifestError::Artifact);
     }
     Ok(())
+}
+
+fn same_or_descendant(path: &str, parent: &str) -> bool {
+    path == parent || path.starts_with(&format!(r"{parent}\"))
 }
 
 fn validate_artifact(artifact: &Artifact, platform: Platform) -> Result<u64, ManifestError> {
@@ -186,12 +355,4 @@ fn valid_hex(value: &str, bytes: usize) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-}
-
-fn valid_version(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'+'))
 }
