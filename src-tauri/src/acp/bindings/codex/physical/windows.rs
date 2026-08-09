@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
-use std::path::PathBuf;
+use std::os::windows::ffi::OsStrExt;
+use std::path::{Component, Path, PathBuf, Prefix};
 
 use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_DIRECTORY;
 
@@ -45,7 +46,7 @@ pub(super) fn claims_from_packet(
     let mut files = Vec::with_capacity(EXPECTED_FILE_COUNT);
     for (artifact, relative) in packet.physical_artifact_claims() {
         let relative_path = PathBuf::from(relative);
-        if path_key(&artifact.path) != path_key(&root.join(&relative_path)) {
+        if !packet_path_matches_root_and_relative(&artifact.path, root, &relative_path) {
             return Err(PhysicalInspectionError::PacketRootMismatch);
         }
         files.push(ExpectedPhysicalFile {
@@ -60,6 +61,62 @@ pub(super) fn claims_from_packet(
         files,
         aggregate_bytes: packet.metadata().package_unpacked_byte_len,
     })
+}
+
+/// Matches exact packet-relative spelling while admitting only Windows root
+/// representation aliases: separators, verbatim-disk prefix, and drive case.
+fn packet_path_matches_root_and_relative(
+    artifact_path: &Path,
+    configured_root: &Path,
+    pinned_relative: &Path,
+) -> bool {
+    let artifact_components: Vec<_> = artifact_path.components().collect();
+    let relative_components: Vec<_> = pinned_relative.components().collect();
+    let Some(root_len) = artifact_components
+        .len()
+        .checked_sub(relative_components.len())
+    else {
+        return false;
+    };
+    if root_len == 0
+        || !artifact_components[root_len..]
+            .iter()
+            .zip(&relative_components)
+            .all(|(declared, expected)| exact_normal_component(declared, expected))
+    {
+        return false;
+    }
+    let configured_components: Vec<_> = configured_root.components().collect();
+    artifact_components[..root_len].len() == configured_components.len()
+        && artifact_components[..root_len]
+            .iter()
+            .zip(&configured_components)
+            .all(|(declared, configured)| matching_root_component(declared, configured))
+}
+
+fn exact_normal_component(declared: &Component<'_>, expected: &Component<'_>) -> bool {
+    match (declared, expected) {
+        (Component::Normal(declared), Component::Normal(expected)) => {
+            declared.encode_wide().eq(expected.encode_wide())
+        }
+        _ => false,
+    }
+}
+
+fn matching_root_component(declared: &Component<'_>, configured: &Component<'_>) -> bool {
+    match (declared, configured) {
+        (Component::Prefix(declared), Component::Prefix(configured)) => {
+            let drive = |prefix: Prefix<'_>| match prefix {
+                Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => Some(letter),
+                _ => None,
+            };
+            drive(declared.kind())
+                .zip(drive(configured.kind()))
+                .is_some_and(|(declared, configured)| declared.eq_ignore_ascii_case(&configured))
+        }
+        (Component::RootDir, Component::RootDir) => true,
+        _ => exact_normal_component(declared, configured),
+    }
 }
 
 pub(super) fn inspect_claims(

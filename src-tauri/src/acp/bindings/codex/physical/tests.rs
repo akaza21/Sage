@@ -343,7 +343,7 @@ fn an_entry_added_after_initial_enumeration_is_rejected_before_proof() {
 }
 
 #[test]
-fn configured_package_root_must_match_every_packet_path_exactly() {
+fn configured_package_root_and_packet_relative_spelling_must_match_exactly() {
     let packet = crate::acp::bindings::codex::parse_packet_metadata(include_bytes!(
         "../../../../../testdata/acp/codex/candidate-windows.json"
     ))
@@ -353,6 +353,13 @@ fn configured_package_root_must_match_every_packet_path_exactly() {
         inspect_managed_package(&packet, &wrong).unwrap_err(),
         PhysicalInspectionError::PacketRootMismatch
     );
+    let wrong_component_case =
+        ConfiguredManagedPackageRoot::new(PathBuf::from(r"C:\sageHarnesses\Codex\0.145.0\package"))
+            .unwrap();
+    assert_eq!(
+        super::windows::claims_from_packet(&packet, &wrong_component_case).unwrap_err(),
+        PhysicalInspectionError::PacketRootMismatch
+    );
 
     let exact_path = PathBuf::from(r"C:\SageHarnesses\Codex\0.145.0\package");
     let exact = ConfiguredManagedPackageRoot::new(exact_path.clone()).unwrap();
@@ -360,6 +367,24 @@ fn configured_package_root_must_match_every_packet_path_exactly() {
     assert_eq!(claims.package_root, exact_path);
     assert_eq!(claims.files.len(), EXPECTED_FILE_COUNT);
     assert_eq!(claims.aggregate_bytes, 427_151_500);
+
+    let represented = ConfiguredManagedPackageRoot::new(PathBuf::from(
+        r"\\?\c:\SageHarnesses\Codex\0.145.0\package",
+    ))
+    .unwrap();
+    assert!(super::windows::claims_from_packet(&packet, &represented).is_ok());
+
+    let wrong_case = String::from_utf8(
+        include_bytes!("../../../../../testdata/acp/codex/candidate-windows.json").to_vec(),
+    )
+    .unwrap()
+    .replace("README.md", "README.MD");
+    let wrong_case_packet =
+        crate::acp::bindings::codex::parse_packet_metadata(wrong_case.as_bytes()).unwrap();
+    assert_eq!(
+        super::windows::claims_from_packet(&wrong_case_packet, &exact).unwrap_err(),
+        PhysicalInspectionError::PacketRootMismatch
+    );
 }
 
 #[test]
