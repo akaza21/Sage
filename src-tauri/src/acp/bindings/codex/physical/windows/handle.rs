@@ -1,7 +1,7 @@
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
-use std::os::windows::ffi::OsStringExt;
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
 use std::os::windows::io::AsRawHandle;
 use std::path::{Component, Path, PathBuf, Prefix};
@@ -10,8 +10,9 @@ use sha2::{Digest, Sha256};
 use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::Storage::FileSystem::{
     BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
-    FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_NAME_NORMALIZED,
-    FILE_SHARE_READ, FILE_TYPE_DISK, GetFileInformationByHandle, GetFileType,
+    FILE_BASIC_INFO, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+    FILE_NAME_NORMALIZED, FILE_SHARE_READ, FILE_TYPE_DISK, FileBasicInfo,
+    GetFileInformationByHandle, GetFileInformationByHandleEx, GetFileType,
     GetFinalPathNameByHandleW, VOLUME_NAME_DOS,
 };
 
@@ -27,9 +28,15 @@ pub(super) struct NativeInfo {
     pub(super) attributes: u32,
     pub(super) links: u32,
     pub(super) bytes: u64,
+    change_time: i64,
 }
 
-pub(super) fn open_root(path: &Path) -> Result<(PathBuf, File), PhysicalInspectionError> {
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct PathKey(Vec<u16>);
+
+pub(super) fn open_root(
+    path: &Path,
+) -> Result<(PathBuf, File, NativeInfo), PhysicalInspectionError> {
     if !local_absolute_normalized(path) {
         return Err(PhysicalInspectionError::ConfiguredRoot);
     }
@@ -43,7 +50,7 @@ pub(super) fn open_root(path: &Path) -> Result<(PathBuf, File), PhysicalInspecti
     {
         return Err(PhysicalInspectionError::ConfiguredRoot);
     }
-    Ok((canonical, handle))
+    Ok((canonical, handle, info))
 }
 
 pub(super) fn open_node(
@@ -63,10 +70,15 @@ pub(super) fn open_node(
         return Err(PhysicalInspectionError::Identity);
     }
     let info = native_info(raw)?;
-    if info.attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+    reject_reparse_attributes(info.attributes)?;
+    Ok((file, info, final_path(raw)?))
+}
+
+fn reject_reparse_attributes(attributes: u32) -> Result<(), PhysicalInspectionError> {
+    if attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
         return Err(PhysicalInspectionError::Alias);
     }
-    Ok((file, info, final_path(raw)?))
+    Ok(())
 }
 
 pub(super) fn verify_file(
@@ -101,17 +113,25 @@ pub(super) fn verify_file(
     }
     #[cfg(test)]
     run_after_hash(path);
-    let raw = file.as_raw_handle() as HANDLE;
-    let after = native_info(raw)?;
-    if before != after
-        || observed != expected.byte_len
-        || path_key(path) != path_key(&final_path(raw)?)
-    {
+    if observed != expected.byte_len {
         return Err(PhysicalInspectionError::ChangedDuringInspection);
     }
+    verify_unchanged(path, file, before)?;
     let digest: [u8; 32] = hasher.finalize().into();
     if digest != expected.sha256 {
         return Err(PhysicalInspectionError::Digest);
+    }
+    Ok(())
+}
+
+pub(super) fn verify_unchanged(
+    path: &Path,
+    file: &File,
+    before: NativeInfo,
+) -> Result<(), PhysicalInspectionError> {
+    let raw = file.as_raw_handle() as HANDLE;
+    if before != native_info(raw)? || path_key(path) != path_key(&final_path(raw)?) {
+        return Err(PhysicalInspectionError::ChangedDuringInspection);
     }
     Ok(())
 }
@@ -122,12 +142,27 @@ fn native_info(handle: HANDLE) -> Result<NativeInfo, PhysicalInspectionError> {
     if unsafe { GetFileInformationByHandle(handle, &mut info) } == 0 {
         return Err(PhysicalInspectionError::Io);
     }
+    let mut basic = FILE_BASIC_INFO::default();
+    // SAFETY: basic is writable and handle is live for the call.
+    if unsafe {
+        GetFileInformationByHandleEx(
+            handle,
+            FileBasicInfo,
+            (&raw mut basic).cast(),
+            u32::try_from(std::mem::size_of::<FILE_BASIC_INFO>())
+                .map_err(|_| PhysicalInspectionError::Identity)?,
+        )
+    } == 0
+    {
+        return Err(PhysicalInspectionError::Io);
+    }
     let result = NativeInfo {
         volume: info.dwVolumeSerialNumber,
         index: (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow),
         attributes: info.dwFileAttributes,
         links: info.nNumberOfLinks,
         bytes: (u64::from(info.nFileSizeHigh) << 32) | u64::from(info.nFileSizeLow),
+        change_time: basic.ChangeTime,
     };
     #[cfg(test)]
     let result = FORCE_NEXT_INFO_CHANGE.with(|forced| {
@@ -178,45 +213,56 @@ fn normalize_without_creating(path: &Path) -> Result<PathBuf, PhysicalInspection
     if !local_absolute_normalized(path) {
         return Err(PhysicalInspectionError::StatePath);
     }
-    let exact_exists = path
-        .try_exists()
-        .map_err(|_| PhysicalInspectionError::StatePath)?;
-    let mut existing = path;
-    let mut missing = Vec::new();
-    while !existing
-        .try_exists()
-        .map_err(|_| PhysicalInspectionError::StatePath)?
-    {
-        missing.push(
-            existing
-                .file_name()
-                .ok_or(PhysicalInspectionError::StatePath)?
-                .to_owned(),
-        );
-        existing = existing
-            .parent()
-            .ok_or(PhysicalInspectionError::StatePath)?;
-    }
-    let metadata =
-        fs::symlink_metadata(existing).map_err(|_| PhysicalInspectionError::StatePath)?;
-    if (exact_exists && !metadata.file_type().is_dir())
-        || metadata.file_type().is_symlink()
-        || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
-    {
-        return Err(PhysicalInspectionError::StatePath);
-    }
-    let canonical = fs::canonicalize(existing).map_err(|_| PhysicalInspectionError::StatePath)?;
-    if path_key(existing) != path_key(&canonical) {
-        return Err(PhysicalInspectionError::StatePath);
-    }
-    let mut normalized = canonical;
-    for component in missing.into_iter().rev() {
-        normalized.push(component);
+    let mut components = path.components();
+    let mut probe = PathBuf::new();
+    probe.push(
+        components
+            .next()
+            .ok_or(PhysicalInspectionError::StatePath)?
+            .as_os_str(),
+    );
+    probe.push(
+        components
+            .next()
+            .ok_or(PhysicalInspectionError::StatePath)?
+            .as_os_str(),
+    );
+    let mut normalized = inspect_existing_state_directory(&probe)?;
+    let mut missing = false;
+    for component in components {
+        probe.push(component.as_os_str());
+        if missing {
+            normalized.push(component.as_os_str());
+            continue;
+        }
+        match fs::symlink_metadata(&probe) {
+            Ok(_) => normalized = inspect_existing_state_directory(&probe)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                missing = true;
+                normalized.push(component.as_os_str());
+            }
+            Err(_) => return Err(PhysicalInspectionError::StatePath),
+        }
     }
     if path_key(path) != path_key(&normalized) {
         return Err(PhysicalInspectionError::StatePath);
     }
     Ok(normalized)
+}
+
+fn inspect_existing_state_directory(path: &Path) -> Result<PathBuf, PhysicalInspectionError> {
+    let metadata = fs::symlink_metadata(path).map_err(|_| PhysicalInspectionError::StatePath)?;
+    if !metadata.file_type().is_dir()
+        || metadata.file_type().is_symlink()
+        || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    {
+        return Err(PhysicalInspectionError::StatePath);
+    }
+    let canonical = fs::canonicalize(path).map_err(|_| PhysicalInspectionError::StatePath)?;
+    if path_key(path) != path_key(&canonical) {
+        return Err(PhysicalInspectionError::StatePath);
+    }
+    Ok(canonical)
 }
 
 pub(super) fn validate_relative(path: &Path) -> Result<(), PhysicalInspectionError> {
@@ -248,24 +294,39 @@ pub(super) fn local_absolute_normalized(path: &Path) -> bool {
         && components.all(|part| matches!(part, Component::Normal(_)))
 }
 
-pub(super) fn relative_key(path: &Path) -> String {
-    path.as_os_str()
-        .to_string_lossy()
-        .replace('/', "\\")
-        .to_ascii_lowercase()
+pub(super) fn path_key(path: &Path) -> PathKey {
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .map(|unit| {
+            if unit == b'/' as u16 {
+                b'\\' as u16
+            } else {
+                unit
+            }
+        })
+        .collect();
+    let start = if wide.starts_with(&[b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16]) {
+        4
+    } else {
+        0
+    };
+    let mut value = wide[start..].to_vec();
+    while value.last() == Some(&(b'\\' as u16)) {
+        value.pop();
+    }
+    for unit in &mut value {
+        if (*unit >= b'A' as u16) && (*unit <= b'Z' as u16) {
+            *unit += u16::from(b'a' - b'A');
+        }
+    }
+    PathKey(value)
 }
 
-pub(super) fn path_key(path: &Path) -> String {
-    let value = relative_key(path);
-    value
-        .strip_prefix(r"\\?\")
-        .unwrap_or(&value)
-        .trim_end_matches('\\')
-        .to_owned()
-}
-
-fn same_or_descendant(path: &str, parent: &str) -> bool {
-    path == parent || path.starts_with(&format!(r"{parent}\"))
+fn same_or_descendant(path: &PathKey, parent: &PathKey) -> bool {
+    path == parent
+        || (path.0.starts_with(&parent.0)
+            && path.0.get(parent.0.len()).copied() == Some(b'\\' as u16))
 }
 
 #[cfg(test)]
@@ -310,4 +371,38 @@ where
 #[cfg(test)]
 pub(super) fn force_next_info_change() {
     FORCE_NEXT_INFO_CHANGE.with(|forced| forced.set(true));
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+
+    use super::*;
+
+    #[test]
+    fn native_path_keys_do_not_collapse_distinct_non_unicode_names() {
+        let first = PathBuf::from(OsString::from_wide(&[
+            b'C' as u16,
+            b':' as u16,
+            b'\\' as u16,
+            0xd800,
+        ]));
+        let second = PathBuf::from(OsString::from_wide(&[
+            b'C' as u16,
+            b':' as u16,
+            b'\\' as u16,
+            0xd801,
+        ]));
+
+        assert_ne!(path_key(&first), path_key(&second));
+    }
+
+    #[test]
+    fn reparse_attribute_is_always_rejected() {
+        assert_eq!(
+            reject_reparse_attributes(FILE_ATTRIBUTE_REPARSE_POINT),
+            Err(PhysicalInspectionError::Alias)
+        );
+    }
 }

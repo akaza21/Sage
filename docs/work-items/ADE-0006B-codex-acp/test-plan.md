@@ -75,13 +75,18 @@ identity validation, packet-owned capability projection, and the unchanged
 
 The Windows physical-closure seam additionally exercises a bounded small-file
 stand-in for the exact eight-file closure: exact configured package-root
-mapping; canonical final handle paths; regular-file, size, SHA-256, aggregate,
-and closed-set enforcement; 64-entry/depth-8 exact and plus-one bounds;
-missing/extra/changed files; hard-link and reparse aliases; existing-writer and
-post-hash identity races; and canonical disjoint state without creating or
-mutating it. Non-Windows inspection remains unavailable. These tests prove
-verifier behavior, not that the real 427 MB artifact was independently
-inspected or admitted. They do not prove Authenticode/signatures, SBOM/license
+mapping; lossless native path identity; exact stored component spelling;
+canonical final handle paths; regular-file, size, SHA-256, aggregate, and
+closed-set enforcement; 64-entry/depth-8 exact and plus-one bounds;
+missing/extra/changed files; hard-link rejection; deterministic reparse-attribute
+rejection plus an OS-permitted symlink smoke; existing-writer and post-hash
+identity races; a late namespace entry between bounded observations; and
+component-by-component, no-follow canonical disjoint state, including a
+dangling directory symlink, without creating or mutating state. Non-Windows
+inspection remains unavailable. These tests prove verifier behavior, not that
+the real 427 MB artifact was independently inspected or admitted. Retained
+handles do not freeze the directory namespace, which can change after the final
+observation. The tests do not prove Authenticode/signatures, SBOM/license
 closure, ACLs/ownership/immutability, provisioning, auth/state containment,
 process/network containment, atomic check-to-launch, or macOS admission.
 
@@ -93,7 +98,7 @@ command is:
 cargo test --lib acp::bindings::codex
 ```
 
-It passed 32 tests on the implementation workstation. This is developer
+It passed 38 tests on the implementation workstation. This is developer
 self-check evidence, not the clean-machine package reproduction, signature
 verification, hostile containment probe, fresh Review, or Independent Test
 required for Ready.

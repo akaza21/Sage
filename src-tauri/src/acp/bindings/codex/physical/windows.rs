@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
+use std::fs::{self, File};
 use std::path::PathBuf;
 
 use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_DIRECTORY;
@@ -7,8 +7,8 @@ use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_DIRECTORY;
 #[path = "windows/handle.rs"]
 mod handle;
 use handle::{
-    local_absolute_normalized, open_node, open_root, path_key, relative_key,
-    require_disjoint_state, validate_relative, verify_file,
+    NativeInfo, local_absolute_normalized, open_node, open_root, path_key, require_disjoint_state,
+    validate_relative, verify_file, verify_unchanged,
 };
 
 use super::{
@@ -17,6 +17,14 @@ use super::{
     decode_digest,
 };
 use crate::acp::bindings::codex::manifest::MetadataValidatedPacket;
+
+#[derive(Debug)]
+struct HeldNode {
+    relative_path: PathBuf,
+    path: PathBuf,
+    handle: File,
+    initial: NativeInfo,
+}
 
 pub(super) fn inspect(
     packet: &MetadataValidatedPacket,
@@ -60,14 +68,14 @@ pub(super) fn inspect_claims(
     if claims.files.len() != EXPECTED_FILE_COUNT {
         return Err(PhysicalInspectionError::Closure);
     }
-    let (package_root, root_handle) = open_root(&claims.package_root)?;
+    let (package_root, root_handle, root_info) = open_root(&claims.package_root)?;
     require_disjoint_state(&claims.codex_home, &package_root)?;
 
     let mut expected_files = BTreeMap::new();
     let mut expected_directories = BTreeSet::new();
     for expected in claims.files {
         validate_relative(&expected.relative_path)?;
-        let key = relative_key(&expected.relative_path);
+        let key = expected.relative_path.clone();
         if expected_files.insert(key, expected).is_some() {
             return Err(PhysicalInspectionError::Closure);
         }
@@ -75,20 +83,26 @@ pub(super) fn inspect_claims(
     for expected in expected_files.values() {
         let mut parent = expected.relative_path.parent();
         while let Some(path) = parent.filter(|path| !path.as_os_str().is_empty()) {
-            expected_directories.insert(relative_key(path));
+            expected_directories.insert(path.to_owned());
             parent = path.parent();
         }
     }
 
-    let mut held_handles = vec![root_handle];
-    let mut pending = vec![PathBuf::new()];
+    let mut held_directories = Vec::new();
+    let mut held_files = Vec::new();
+    let mut pending = vec![HeldNode {
+        relative_path: PathBuf::new(),
+        path: package_root.clone(),
+        handle: root_handle,
+        initial: root_info,
+    }];
+    let mut observed_namespace = BTreeSet::new();
     let mut entry_count = 0_usize;
     let mut artifact_count = 0_usize;
     let mut aggregate_bytes = 0_u64;
     let mut unexpected = false;
-    while let Some(relative_directory) = pending.pop() {
-        let directory = package_root.join(&relative_directory);
-        for entry in fs::read_dir(&directory).map_err(|_| PhysicalInspectionError::Io)? {
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(&directory.path).map_err(|_| PhysicalInspectionError::Io)? {
             let entry = entry.map_err(|_| PhysicalInspectionError::Io)?;
             entry_count = entry_count
                 .checked_add(1)
@@ -96,7 +110,7 @@ pub(super) fn inspect_claims(
             if entry_count > PACKAGE_ENTRY_MAX {
                 return Err(PhysicalInspectionError::EntryLimit);
             }
-            let relative = relative_directory.join(entry.file_name());
+            let relative = directory.relative_path.join(entry.file_name());
             let depth = relative.components().count();
             if depth > PACKAGE_DEPTH_MAX {
                 return Err(PhysicalInspectionError::DepthLimit);
@@ -106,26 +120,46 @@ pub(super) fn inspect_claims(
             if path_key(&path) != path_key(&final_path) {
                 return Err(PhysicalInspectionError::Alias);
             }
-            let key = relative_key(&relative);
+            if !observed_namespace.insert(relative.clone()) {
+                return Err(PhysicalInspectionError::ChangedDuringInspection);
+            }
+            let key = relative.clone();
             if before.attributes & FILE_ATTRIBUTE_DIRECTORY != 0 {
                 if !expected_directories.remove(&key) {
                     unexpected = true;
                 }
-                pending.push(relative);
+                pending.push(HeldNode {
+                    relative_path: relative,
+                    path,
+                    handle,
+                    initial: before,
+                });
             } else if let Some(expected) = expected_files.remove(&key) {
                 verify_file(&path, &mut handle, before, &expected)?;
                 aggregate_bytes = aggregate_bytes
                     .checked_add(before.bytes)
                     .ok_or(PhysicalInspectionError::Identity)?;
                 artifact_count += 1;
+                held_files.push(HeldNode {
+                    relative_path: relative,
+                    path,
+                    handle,
+                    initial: before,
+                });
             } else {
                 if before.links != 1 {
                     return Err(PhysicalInspectionError::Alias);
                 }
                 unexpected = true;
+                held_files.push(HeldNode {
+                    relative_path: relative,
+                    path,
+                    handle,
+                    initial: before,
+                });
             }
-            held_handles.push(handle);
         }
+        held_directories.push(directory);
     }
     if unexpected
         || !expected_files.is_empty()
@@ -135,12 +169,55 @@ pub(super) fn inspect_claims(
     {
         return Err(PhysicalInspectionError::Closure);
     }
+    #[cfg(test)]
+    run_before_namespace_recheck();
+    recheck_namespace(&held_directories, &held_files, &observed_namespace)?;
+    let held_handles = held_directories
+        .into_iter()
+        .chain(held_files)
+        .map(|node| node.handle)
+        .collect();
     Ok(PhysicallyInspectedPackage {
         package_root,
         artifact_count,
         byte_len: aggregate_bytes,
         _held_handles: held_handles,
     })
+}
+
+fn recheck_namespace(
+    directories: &[HeldNode],
+    files: &[HeldNode],
+    observed_namespace: &BTreeSet<PathBuf>,
+) -> Result<(), PhysicalInspectionError> {
+    let mut reobserved = BTreeSet::new();
+    let mut entry_count = 0_usize;
+    for directory in directories {
+        verify_unchanged(&directory.path, &directory.handle, directory.initial)?;
+        for entry in fs::read_dir(&directory.path).map_err(|_| PhysicalInspectionError::Io)? {
+            let entry = entry.map_err(|_| PhysicalInspectionError::Io)?;
+            entry_count = entry_count
+                .checked_add(1)
+                .ok_or(PhysicalInspectionError::EntryLimit)?;
+            if entry_count > PACKAGE_ENTRY_MAX {
+                return Err(PhysicalInspectionError::EntryLimit);
+            }
+            let relative = directory.relative_path.join(entry.file_name());
+            if relative.components().count() > PACKAGE_DEPTH_MAX {
+                return Err(PhysicalInspectionError::DepthLimit);
+            }
+            if !reobserved.insert(relative) {
+                return Err(PhysicalInspectionError::ChangedDuringInspection);
+            }
+        }
+    }
+    if &reobserved != observed_namespace {
+        return Err(PhysicalInspectionError::ChangedDuringInspection);
+    }
+    for node in directories.iter().chain(files) {
+        verify_unchanged(&node.path, &node.handle, node.initial)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -154,4 +231,34 @@ where
 #[cfg(test)]
 pub(super) fn force_next_info_change() {
     handle::force_next_info_change();
+}
+
+#[cfg(test)]
+thread_local! {
+    static BEFORE_NAMESPACE_RECHECK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const {
+        std::cell::RefCell::new(None)
+    };
+}
+
+#[cfg(test)]
+pub(super) fn inject_before_namespace_recheck<F>(hook: F)
+where
+    F: FnOnce() + 'static,
+{
+    BEFORE_NAMESPACE_RECHECK.with(|slot| {
+        assert!(
+            slot.borrow().is_none(),
+            "namespace-recheck test hook already set"
+        );
+        *slot.borrow_mut() = Some(Box::new(hook));
+    });
+}
+
+#[cfg(test)]
+fn run_before_namespace_recheck() {
+    BEFORE_NAMESPACE_RECHECK.with(|slot| {
+        if let Some(hook) = slot.borrow_mut().take() {
+            hook();
+        }
+    });
 }

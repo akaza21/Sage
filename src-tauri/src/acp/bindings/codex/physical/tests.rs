@@ -197,7 +197,30 @@ fn missing_extra_size_digest_and_aggregate_drift_all_fail_closed() {
 }
 
 #[test]
-fn hard_link_and_file_reparse_aliases_are_rejected() {
+fn physical_component_spelling_must_exactly_match_the_declared_closure() {
+    let file = TestPackage::new();
+    let declared = file.package.join("README.md");
+    let different_spelling = file.package.join("README.MD");
+    fs::remove_file(&declared).unwrap();
+    fs::write(&different_spelling, b"h").unwrap();
+
+    assert_eq!(
+        inspect_claims(file.claims()).unwrap_err(),
+        PhysicalInspectionError::Closure
+    );
+
+    let directory = TestPackage::new();
+    let temporary = directory.package.join("vendor-temporary");
+    fs::rename(directory.package.join("vendor"), &temporary).unwrap();
+    fs::rename(temporary, directory.package.join("VENDOR")).unwrap();
+    assert_eq!(
+        inspect_claims(directory.claims()).unwrap_err(),
+        PhysicalInspectionError::Closure
+    );
+}
+
+#[test]
+fn hard_link_is_rejected() {
     let hard_link = TestPackage::new();
     fs::hard_link(
         hard_link.package.join("README.md"),
@@ -208,22 +231,27 @@ fn hard_link_and_file_reparse_aliases_are_rejected() {
         inspect_claims(hard_link.claims()).unwrap_err(),
         PhysicalInspectionError::Alias
     );
+}
 
+#[test]
+fn file_symlink_smoke_rejects_when_the_os_permits_fixture_creation() {
     let reparse = TestPackage::new();
     let target = reparse.base.join("outside-target");
     fs::write(&target, b"h").unwrap();
     let linked = reparse.package.join("README.md");
     fs::remove_file(&linked).unwrap();
-    if std::os::windows::fs::symlink_file(&target, &linked).is_ok() {
-        assert_eq!(
-            inspect_claims(reparse.claims()).unwrap_err(),
-            PhysicalInspectionError::Alias
-        );
+    if let Err(error) = std::os::windows::fs::symlink_file(&target, &linked) {
+        eprintln!("optional Windows file-symlink smoke unavailable: {error}");
+        return;
     }
+    assert_eq!(
+        inspect_claims(reparse.claims()).unwrap_err(),
+        PhysicalInspectionError::Alias
+    );
 }
 
 #[test]
-fn codex_home_equal_nested_parent_and_alias_paths_are_rejected_without_mutation() {
+fn codex_home_equal_nested_parent_and_file_paths_are_rejected_without_mutation() {
     for home in [
         |fixture: &TestPackage| fixture.package.clone(),
         |fixture: &TestPackage| fixture.package.join("state"),
@@ -253,6 +281,21 @@ fn codex_home_equal_nested_parent_and_alias_paths_are_rejected_without_mutation(
 }
 
 #[test]
+fn dangling_state_reparse_is_not_treated_as_a_missing_component() {
+    let fixture = TestPackage::new();
+    let dangling = fixture.base.join("dangling-state-link");
+    std::os::windows::fs::symlink_dir(fixture.base.join("missing-target"), &dangling)
+        .expect("Windows physical-verifier tests require unprivileged symlink support");
+    let mut claims = fixture.claims();
+    claims.codex_home = dangling.join("child");
+
+    assert_eq!(
+        inspect_claims(claims).unwrap_err(),
+        PhysicalInspectionError::StatePath
+    );
+}
+
+#[test]
 fn an_existing_open_writer_prevents_inspection() {
     use windows_sys::Win32::Storage::FileSystem::{
         FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
@@ -279,6 +322,20 @@ fn a_post_hash_identity_race_is_rejected_before_proof() {
     super::windows::inject_after_hash(target, |_| {
         super::windows::force_next_info_change();
     });
+    assert_eq!(
+        inspect_claims(fixture.claims()).unwrap_err(),
+        PhysicalInspectionError::ChangedDuringInspection
+    );
+}
+
+#[test]
+fn an_entry_added_after_initial_enumeration_is_rejected_before_proof() {
+    let fixture = TestPackage::new();
+    let late_entry = fixture.package.join("late-entry");
+    super::windows::inject_before_namespace_recheck(move || {
+        fs::write(late_entry, b"late").unwrap();
+    });
+
     assert_eq!(
         inspect_claims(fixture.claims()).unwrap_err(),
         PhysicalInspectionError::ChangedDuringInspection
@@ -340,7 +397,7 @@ fn traversal_entry_and_depth_limits_accept_exact_and_reject_plus_one() {
 }
 
 #[test]
-fn configured_root_is_bounded_and_root_or_state_reparse_aliases_fail_closed() {
+fn configured_root_is_bounded_and_optional_root_or_state_symlink_smokes_fail_closed() {
     let oversized = PathBuf::from(format!(r"C:\{}", "a".repeat(CONFIGURED_PATH_BYTES_MAX)));
     assert_eq!(
         ConfiguredManagedPackageRoot::new(oversized).unwrap_err(),
@@ -349,25 +406,31 @@ fn configured_root_is_bounded_and_root_or_state_reparse_aliases_fail_closed() {
 
     let root_alias = TestPackage::new();
     let linked_root = root_alias.base.join("package-link");
-    if std::os::windows::fs::symlink_dir(&root_alias.package, &linked_root).is_ok() {
-        let mut claims = root_alias.claims();
-        claims.package_root = linked_root;
-        assert_eq!(
-            inspect_claims(claims).unwrap_err(),
-            PhysicalInspectionError::Alias
-        );
+    match std::os::windows::fs::symlink_dir(&root_alias.package, &linked_root) {
+        Ok(()) => {
+            let mut claims = root_alias.claims();
+            claims.package_root = linked_root;
+            assert_eq!(
+                inspect_claims(claims).unwrap_err(),
+                PhysicalInspectionError::Alias
+            );
+        }
+        Err(error) => eprintln!("optional Windows root-symlink smoke unavailable: {error}"),
     }
 
     let state_alias = TestPackage::new();
     let state_target = state_alias.base.join("state-target");
     fs::create_dir(&state_target).unwrap();
     let linked_state = state_alias.base.join("state-link");
-    if std::os::windows::fs::symlink_dir(&state_target, &linked_state).is_ok() {
-        let mut claims = state_alias.claims();
-        claims.codex_home = linked_state;
-        assert_eq!(
-            inspect_claims(claims).unwrap_err(),
-            PhysicalInspectionError::StatePath
-        );
+    match std::os::windows::fs::symlink_dir(&state_target, &linked_state) {
+        Ok(()) => {
+            let mut claims = state_alias.claims();
+            claims.codex_home = linked_state;
+            assert_eq!(
+                inspect_claims(claims).unwrap_err(),
+                PhysicalInspectionError::StatePath
+            );
+        }
+        Err(error) => eprintln!("optional Windows state-symlink smoke unavailable: {error}"),
     }
 }
