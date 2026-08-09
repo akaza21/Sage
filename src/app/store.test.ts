@@ -4,6 +4,7 @@ import { resourceKey } from "../domain/resourceIdentity";
 import type {
   BootstrapSnapshot,
   BufferSnapshotAck,
+  ChatMessage,
   DirectoryListing,
   EditorDocument,
   FileDiff,
@@ -163,6 +164,34 @@ describe("workbench resource and project navigation", () => {
       messages: [],
       recoveryNotice: null,
     });
+    vi.spyOn(desktop, "activateChat").mockImplementation(
+      async (currentLayout, expectedTransitionEpoch) => {
+        const state = useWorkbenchStore.getState();
+        return {
+          committed: true,
+          transitionEpoch: expectedTransitionEpoch + 1,
+          snapshot: {
+            transitionEpoch: expectedTransitionEpoch + 1,
+            projects: state.projects,
+            project: state.project,
+            tabs: currentLayout.tabs,
+            activeTabId: currentLayout.activeTabId,
+            selectedRootId: currentLayout.selectedRootId,
+            selectedResource: currentLayout.selectedResource,
+            harnesses: state.harnesses,
+            sessionId: null,
+            selectedHarnessId: null,
+            selectedModelId: null,
+            messages: [],
+            repositories: state.repositories,
+            turnChanges: state.turnChanges,
+            recoveredBuffers: [],
+            recoveryNotice: null,
+          },
+          recoveryError: null,
+        };
+      },
+    );
   });
 
   afterEach(() => vi.restoreAllMocks());
@@ -266,7 +295,7 @@ describe("workbench resource and project navigation", () => {
     });
   });
 
-  it("settles the originating Chat send after switching to a File tab", async () => {
+  it("does not project a Chat completion while a File tab is active", async () => {
     const pending = deferred<Awaited<ReturnType<typeof desktop.sendPrompt>>>();
     vi.spyOn(desktop, "sendPrompt").mockReturnValue(pending.promise);
     const fileTab: WorkbenchTab = {
@@ -304,7 +333,7 @@ describe("workbench resource and project navigation", () => {
 
     expect(useWorkbenchStore.getState()).toMatchObject({
       activeTabId: fileTab.id,
-      sessionId: "session-new",
+      sessionId: "session-a",
       sending: false,
     });
   });
@@ -329,6 +358,170 @@ describe("workbench resource and project navigation", () => {
       sessionId: "session-a",
       messages: [],
     });
+  });
+
+  it("never lets Chat A completion overwrite Chat B and reloads A authoritatively", async () => {
+    const chatB: WorkbenchTab = {
+      id: "chat:b",
+      kind: "chat",
+      title: "Chat: B",
+      position: 1,
+      pinned: false,
+      dirty: false,
+      status: "idle",
+    };
+    const message = (id: string, sessionId: string, text: string) => ({
+      id,
+      sessionId,
+      sequence: 1,
+      role: "assistant" as const,
+      text,
+      createdAt: 1,
+    });
+    const projection = (
+      active: WorkbenchTab,
+      transitionEpoch: number,
+      messages: ChatMessage[],
+      sessionId: string,
+    ): BootstrapSnapshot => ({
+      transitionEpoch,
+      projects: useWorkbenchStore.getState().projects,
+      project: useWorkbenchStore.getState().project,
+      tabs: [chatTab, chatB],
+      activeTabId: active.id,
+      selectedRootId: "root-a",
+      selectedResource: null,
+      harnesses: [],
+      sessionId,
+      selectedHarnessId: null,
+      selectedModelId: null,
+      messages,
+      repositories: { roots: [], truncated: false, elapsedMs: 0 },
+      turnChanges: [],
+      recoveredBuffers: [],
+      recoveryNotice: null,
+    });
+    const pending = deferred<Awaited<ReturnType<typeof desktop.sendPrompt>>>();
+    vi.spyOn(desktop, "sendPrompt").mockReturnValue(pending.promise);
+    const chatBMessages = [message("b-message", "session-b", "B only")];
+    const chatAMessages = [message("a-message", "session-a2", "A complete")];
+    const activate = vi
+      .spyOn(desktop, "activateChat")
+      .mockResolvedValueOnce({
+        committed: true,
+        transitionEpoch: 1,
+        snapshot: projection(chatB, 1, chatBMessages, "session-b"),
+        recoveryError: null,
+      })
+      .mockResolvedValueOnce({
+        committed: true,
+        transitionEpoch: 2,
+        snapshot: projection(chatTab, 2, chatAMessages, "session-a2"),
+        recoveryError: null,
+      });
+    vi.spyOn(desktop, "listDirectory").mockImplementation(async (target) => ({
+      resource: target,
+      entries: [],
+      truncated: false,
+    }));
+    useWorkbenchStore.setState({
+      tabs: [chatTab, chatB],
+      selectedHarnessId: "sage-simulator",
+      selectedModelId: "sim-fast",
+      composerText: "run A",
+    });
+
+    const sendingA = useWorkbenchStore.getState().sendPrompt();
+    await useWorkbenchStore.getState().activateTab(chatB.id);
+    pending.resolve({ sessionId: "session-a2", messages: chatAMessages });
+    await sendingA;
+
+    expect(activate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ activeTabId: chatB.id }),
+      0,
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: chatB.id,
+      sessionId: "session-b",
+      messages: chatBMessages,
+    });
+
+    await useWorkbenchStore.getState().activateTab(chatTab.id);
+    expect(activate).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ activeTabId: chatTab.id }),
+      1,
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: chatTab.id,
+      sessionId: "session-a2",
+      messages: chatAMessages,
+    });
+  });
+
+  it("reloads the next Chat authoritatively when the active Chat closes", async () => {
+    const chatB: WorkbenchTab = {
+      id: "chat:b",
+      kind: "chat",
+      title: "Chat: B",
+      position: 1,
+      pinned: false,
+      dirty: false,
+      status: "idle",
+    };
+    const messages: ChatMessage[] = [
+      {
+        id: "b-message",
+        sessionId: "session-b",
+        sequence: 1,
+        role: "assistant",
+        text: "B only",
+        createdAt: 1,
+      },
+    ];
+    const activate = vi.mocked(desktop.activateChat).mockResolvedValueOnce({
+      committed: true,
+      transitionEpoch: 1,
+      snapshot: {
+        transitionEpoch: 1,
+        projects: useWorkbenchStore.getState().projects,
+        project: useWorkbenchStore.getState().project,
+        tabs: [{ ...chatB, position: 0 }],
+        activeTabId: chatB.id,
+        selectedRootId: "root-a",
+        selectedResource: null,
+        harnesses: [],
+        sessionId: "session-b",
+        selectedHarnessId: null,
+        selectedModelId: null,
+        messages,
+        repositories: { roots: [], truncated: false, elapsedMs: 0 },
+        turnChanges: [],
+        recoveredBuffers: [],
+        recoveryNotice: null,
+      },
+      recoveryError: null,
+    });
+    useWorkbenchStore.setState({ tabs: [chatTab, chatB] });
+
+    useWorkbenchStore.getState().closeTab(chatTab.id);
+
+    await vi.waitFor(() => {
+      expect(useWorkbenchStore.getState()).toMatchObject({
+        activeTabId: chatB.id,
+        sessionId: "session-b",
+        messages,
+        projectTransitioning: false,
+      });
+    });
+    expect(activate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tabs: [chatB],
+        activeTabId: chatB.id,
+      }),
+      0,
+    );
   });
 
   it("keeps the same relative path in two roots as distinct tabs and caches", async () => {

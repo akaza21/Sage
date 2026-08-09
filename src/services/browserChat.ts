@@ -1,7 +1,7 @@
 import type { ChatMessage } from "../domain/workbench";
 
 const MAX_BROWSER_MESSAGES = 500;
-const MAX_BROWSER_MESSAGE_BYTES = 4 * 1024 * 1024;
+export const MAX_BROWSER_HISTORY_BYTES_PER_CHAT = 4 * 1024 * 1024;
 
 function messageBytes(values: ChatMessage[]) {
   const encoder = new TextEncoder();
@@ -45,7 +45,8 @@ export function appendBrowserSimulatorTurn(
   ];
   if (
     current.length + turn.length > MAX_BROWSER_MESSAGES ||
-    messageBytes(current) + messageBytes(turn) > MAX_BROWSER_MESSAGE_BYTES
+    messageBytes(current) + messageBytes(turn) >
+      MAX_BROWSER_HISTORY_BYTES_PER_CHAT
   ) {
     throw new Error(
       "browser session history capacity reached; existing messages were preserved",

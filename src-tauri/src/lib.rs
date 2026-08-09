@@ -141,6 +141,7 @@ pub fn run() {
             project_commands::create_project_from_picker,
             project_commands::add_project_root_from_picker,
             chat_commands::create_chat,
+            chat_commands::activate_chat,
             project_commands::persist_project_layout,
             project_commands::persist_project_layout_and_close,
             project_commands::switch_project,

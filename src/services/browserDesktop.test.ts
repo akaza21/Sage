@@ -81,6 +81,84 @@ describe("browser simulator history bounds", () => {
     expect(first.messages.map((message) => message.text)).not.toContain(
       "second-only",
     );
+
+    const firstProjection = await browserDesktop.activateChat(
+      {
+        projectId: initial.project!.id,
+        tabs: created.snapshot!.tabs,
+        activeTabId: initial.activeTabId,
+        selectedRootId: initial.selectedRootId,
+        selectedResource: initial.selectedResource,
+      },
+      created.transitionEpoch,
+    );
+    expect(firstProjection.snapshot).toMatchObject({
+      activeTabId: initial.activeTabId,
+      sessionId: first.sessionId,
+      messages: first.messages,
+    });
+    const secondProjection = await browserDesktop.activateChat(
+      {
+        projectId: initial.project!.id,
+        tabs: created.snapshot!.tabs,
+        activeTabId: secondChatId,
+        selectedRootId: initial.selectedRootId,
+        selectedResource: initial.selectedResource,
+      },
+      firstProjection.transitionEpoch,
+    );
+    expect(secondProjection.snapshot).toMatchObject({
+      activeTabId: secondChatId,
+      sessionId: second.sessionId,
+      messages: second.messages,
+    });
+  });
+
+  it("fails closed at 64 durable browser Chats without evicting detached history", async () => {
+    const initial = await browserDesktop.getBootstrapSnapshot();
+    const initialTab = initial.tabs[0];
+    let transitionEpoch = initial.transitionEpoch;
+    let lastProjection = initial;
+    for (let index = 1; index < 64; index += 1) {
+      const created = await browserDesktop.createChat(
+        {
+          projectId: initial.project!.id,
+          tabs: [initialTab],
+          activeTabId: initialTab.id,
+          selectedRootId: initial.selectedRootId,
+          selectedResource: null,
+        },
+        transitionEpoch,
+      );
+      transitionEpoch = created.transitionEpoch;
+      lastProjection = created.snapshot!;
+    }
+
+    await expect(
+      browserDesktop.createChat(
+        {
+          projectId: initial.project!.id,
+          tabs: [initialTab],
+          activeTabId: initialTab.id,
+          selectedRootId: initial.selectedRootId,
+          selectedResource: null,
+        },
+        transitionEpoch,
+      ),
+    ).rejects.toThrow("64-Chat limit; existing Chats were preserved");
+    expect(await browserDesktop.getBootstrapSnapshot()).toEqual(lastProjection);
+
+    const restored = await browserDesktop.activateChat(
+      {
+        projectId: initial.project!.id,
+        tabs: [initialTab],
+        activeTabId: initialTab.id,
+        selectedRootId: initial.selectedRootId,
+        selectedResource: null,
+      },
+      transitionEpoch,
+    );
+    expect(restored.snapshot!.messages).toEqual(initial.messages);
   });
 
   it("exposes the four curated harnesses in product admission order", async () => {

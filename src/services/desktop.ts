@@ -136,6 +136,15 @@ export const desktop = {
       : browserDesktop.createChat(currentLayout, expectedTransitionEpoch);
   },
 
+  activateChat(
+    currentLayout: ProjectLayoutRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    return isTauriRuntime()
+      ? invoke("activate_chat", { currentLayout, expectedTransitionEpoch })
+      : browserDesktop.activateChat(currentLayout, expectedTransitionEpoch);
+  },
+
   persistProjectLayout(request: ProjectLayoutRequest): Promise<void> {
     return isTauriRuntime()
       ? invoke("persist_project_layout", { request })

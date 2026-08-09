@@ -13,6 +13,7 @@ import type { WorkbenchState } from "./store";
 
 export interface ChatSlice {
   createChat: () => Promise<void>;
+  activateChat: (chatId: string) => Promise<void>;
 }
 
 const MAX_PROJECTION_ATTEMPTS = 2;
@@ -89,6 +90,93 @@ export const createChatSlice: StateCreator<
   };
 
   return {
+    activateChat: async (chatId) => {
+      const current = currentProjectLayout(get());
+      if (
+        !current ||
+        get().projectTransitioning ||
+        !current.tabs.some((tab) => tab.id === chatId && tab.kind === "chat")
+      ) {
+        return;
+      }
+      const expectedTransitionEpoch = get().nativeTransitionEpoch;
+      const requested = { ...current, activeTabId: chatId };
+      const classify = (snapshot: BootstrapSnapshot) => {
+        if (snapshot.project?.id !== current.projectId) return null;
+        if (
+          snapshot.activeTabId === chatId &&
+          snapshot.tabs.some((tab) => tab.id === chatId && tab.kind === "chat")
+        ) {
+          return "committed" as const;
+        }
+        return snapshot.activeTabId === current.activeTabId
+          ? ("unchanged" as const)
+          : null;
+      };
+      set({ projectTransitioning: true, error: null });
+      let committed = false;
+      let mutationInvoked = false;
+      try {
+        mutationInvoked = true;
+        const result = await desktop.activateChat(
+          requested,
+          expectedTransitionEpoch,
+        );
+        validateTransitionIntent(result, expectedTransitionEpoch);
+        if (!result.committed) {
+          set({
+            projectTransitioning: false,
+            error:
+              result.recoveryError ?? "native Chat activation did not commit",
+          });
+          return;
+        }
+        committed = true;
+        const generation = nextProjectGeneration(get().projectGeneration);
+        set({ projectGeneration: generation, repositoryRefreshing: false });
+        if (result.snapshot) {
+          if (
+            result.snapshot.transitionEpoch !== result.transitionEpoch ||
+            classify(result.snapshot) !== "committed"
+          ) {
+            throw new Error(
+              "native Chat activation returned an invalid projection",
+            );
+          }
+          await applyProjection(result.snapshot, generation);
+        } else {
+          await loadAuthoritativeProjection(generation, classify);
+        }
+      } catch (error) {
+        if (committed) {
+          set({
+            phase: "error",
+            projectTransitioning: false,
+            repositoryRefreshing: false,
+            error: `Chat activation committed but projection recovery failed: ${errorMessage(error)}`,
+          });
+        } else if (mutationInvoked) {
+          const generation = nextProjectGeneration(get().projectGeneration);
+          set({ projectGeneration: generation, repositoryRefreshing: false });
+          try {
+            const outcome = await loadAuthoritativeProjection(
+              generation,
+              classify,
+            );
+            if (outcome === "unchanged") set({ error: errorMessage(error) });
+          } catch (recoveryError) {
+            set({
+              phase: "error",
+              projectTransitioning: false,
+              error: `Chat activation state is unknown: ${errorMessage(recoveryError)}`,
+            });
+          }
+        } else {
+          set({ projectTransitioning: false, error: errorMessage(error) });
+        }
+      }
+    },
+
     createChat: async () => {
       const current = currentProjectLayout(get());
       if (!current || get().projectTransitioning) return;

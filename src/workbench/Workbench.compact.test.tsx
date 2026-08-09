@@ -16,6 +16,10 @@ let compactViewport = true;
 let setCompactViewport: (compact: boolean) => void;
 
 beforeEach(() => {
+  Object.defineProperty(Element.prototype, "scrollIntoView", {
+    configurable: true,
+    value: vi.fn(),
+  });
   compactViewport = true;
   const listeners = new Set<() => void>();
   setCompactViewport = (compact) => {
@@ -53,10 +57,44 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  Reflect.deleteProperty(Element.prototype, "scrollIntoView");
   useWorkbenchStore.setState(initialState, true);
 });
 
 describe("compact Workbench project tools", () => {
+  it("routes Chat navigation from the sidebar through authoritative activation", () => {
+    const activateTab = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({
+      activateTab,
+      project: { id: "project-a", name: "A", roots: [] },
+      projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
+      tabs: [
+        {
+          id: "chat:a",
+          kind: "chat",
+          title: "Chat: A",
+          position: 0,
+          pinned: true,
+          dirty: false,
+        },
+        {
+          id: "chat:b",
+          kind: "chat",
+          title: "Chat: B",
+          position: 1,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat:a",
+    });
+    render(<Workbench />);
+
+    fireEvent.click(screen.getByTitle("Open chat B"));
+
+    expect(activateTab).toHaveBeenCalledWith("chat:b");
+  });
+
   it("routes both New Chat controls through one creation action", () => {
     const createChat = vi.fn(async () => undefined);
     useWorkbenchStore.setState({

@@ -18,6 +18,7 @@ import { browserEditor } from "./browserEditor";
 export { appendBrowserSimulatorTurn } from "./browserChat";
 
 const rootId = "browser-root";
+const MAX_BROWSER_CHATS = 64;
 const ref = (relativePath: string): ResourceRef => ({ rootId, relativePath });
 const changes: FileChange[] = [
   {
@@ -204,6 +205,7 @@ let simulatorSessions = new Map<
   string,
   { sessionId: string; modelId: string }
 >();
+let durableChatIds = new Set(["tab-chat"]);
 export function resetBrowserDesktopForTests() {
   snapshot.transitionEpoch = 0;
   snapshot.tabs = structuredClone(initialTabs);
@@ -211,9 +213,9 @@ export function resetBrowserDesktopForTests() {
   snapshot.sessionId = null;
   snapshot.selectedHarnessId = "sage-simulator";
   snapshot.selectedModelId = "sim-fast";
-  snapshot.messages = structuredClone(initialMessages);
   messagesByChat = new Map([["tab-chat", structuredClone(initialMessages)]]);
   simulatorSessions = new Map();
+  durableChatIds = new Set(["tab-chat"]);
 }
 
 function activeMessages() {
@@ -268,11 +270,18 @@ export const browserDesktop = {
     if (currentLayout.projectId !== snapshot.project?.id) {
       throw new Error("Chat layout does not belong to the active Project");
     }
-    if (currentLayout.tabs.length >= 64) {
-      throw new Error("project layout has reached its 64-tab limit");
+    if (currentLayout.tabs.length >= MAX_BROWSER_CHATS) {
+      throw new Error(
+        `project layout has reached its ${MAX_BROWSER_CHATS}-tab limit`,
+      );
+    }
+    if (durableChatIds.size >= MAX_BROWSER_CHATS) {
+      throw new Error(
+        `Browser Project has reached its ${MAX_BROWSER_CHATS}-Chat limit; existing Chats were preserved`,
+      );
     }
     await this.persistProjectLayout(currentLayout);
-    const chatCount = snapshot.tabs.filter((tab) => tab.kind === "chat").length;
+    const chatCount = durableChatIds.size;
     const nextPosition =
       Math.max(-1, ...snapshot.tabs.map((tab) => tab.position)) + 1;
     const chat = {
@@ -289,8 +298,34 @@ export const browserDesktop = {
     snapshot.sessionId = null;
     snapshot.selectedHarnessId = "sage-simulator";
     snapshot.selectedModelId = null;
-    snapshot.messages = [];
+    durableChatIds.add(chat.id);
     messagesByChat.set(chat.id, []);
+    snapshot.transitionEpoch += 1;
+    return {
+      committed: true,
+      transitionEpoch: snapshot.transitionEpoch,
+      snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
+      recoveryError: null,
+    };
+  },
+  async activateChat(
+    currentLayout: ProjectLayoutRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    if (expectedTransitionEpoch !== snapshot.transitionEpoch) {
+      throw new Error("project changed before the requested Chat activation");
+    }
+    const activeChatId = currentLayout.activeTabId;
+    if (
+      !activeChatId ||
+      !durableChatIds.has(activeChatId) ||
+      !currentLayout.tabs.some(
+        (tab) => tab.id === activeChatId && tab.kind === "chat",
+      )
+    ) {
+      throw new Error("Chat activation target is not an attached Chat");
+    }
+    await this.persistProjectLayout(currentLayout);
     snapshot.transitionEpoch += 1;
     return {
       committed: true,
@@ -335,7 +370,8 @@ export const browserDesktop = {
     if (
       !snapshot.tabs.some(
         (tab) => tab.id === request.chatId && tab.kind === "chat",
-      )
+      ) ||
+      !durableChatIds.has(request.chatId)
     ) {
       throw new Error("Chat is not attached to the active Project");
     }

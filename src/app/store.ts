@@ -186,6 +186,10 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
         ) {
           return;
         }
+        if (tab.kind === "chat") {
+          await get().activateChat(tab.id);
+          return;
+        }
         set({
           activeTabId: tab.id,
           selectedRootId: tab.resource?.rootId ?? get().selectedRootId,
@@ -231,6 +235,9 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
             ? null
             : state.activeEditor,
       });
+      if (tabId === state.activeTabId && next?.kind === "chat") {
+        void get().activateChat(next.id);
+      }
     },
 
     refreshRepository: async () => {
@@ -349,11 +356,13 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
           matchesProjectIntent(current, generation, projectId) &&
           current.sendRequestGeneration === sendRequestGeneration
         ) {
-          const chatStillAttached = current.tabs.some(
-            (tab) => tab.id === activeChat.id && tab.kind === "chat",
-          );
+          const chatStillActive =
+            current.activeTabId === activeChat.id &&
+            current.tabs.some(
+              (tab) => tab.id === activeChat.id && tab.kind === "chat",
+            );
           set(
-            chatStillAttached
+            chatStillActive
               ? {
                   sessionId: result.sessionId,
                   messages: result.messages,
@@ -368,11 +377,13 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
           matchesProjectIntent(current, generation, projectId) &&
           current.sendRequestGeneration === sendRequestGeneration
         ) {
-          const chatStillAttached = current.tabs.some(
-            (tab) => tab.id === activeChat.id && tab.kind === "chat",
-          );
+          const chatStillActive =
+            current.activeTabId === activeChat.id &&
+            current.tabs.some(
+              (tab) => tab.id === activeChat.id && tab.kind === "chat",
+            );
           set(
-            chatStillAttached
+            chatStillActive
               ? {
                   sending: false,
                   composerText: text,
