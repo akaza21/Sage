@@ -1,0 +1,217 @@
+.workspace-search {
+  display: grid;
+  min-height: 0;
+  height: 100%;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.workspace-search__form {
+  display: grid;
+  gap: 8px;
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-search__input {
+  display: grid;
+  min-width: 0;
+  height: 30px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 0 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--muted);
+  background: var(--surface-raised);
+}
+
+.workspace-search__input:focus-within {
+  border-color: #526354;
+}
+
+.workspace-search__input input {
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  background: transparent;
+  font-size: 11px;
+}
+
+.workspace-search__input button,
+.workspace-search__controls button {
+  display: inline-grid;
+  min-height: 24px;
+  padding: 0 7px;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  color: var(--text-soft);
+  background: transparent;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.workspace-search__input button:hover,
+.workspace-search__controls button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.workspace-search__controls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.workspace-search__controls > button {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+}
+
+.workspace-search__controls button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.workspace-search__case {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.workspace-search__case input {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.workspace-search__body,
+.workspace-search__results {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.workspace-search__summary {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 9px;
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.workspace-search__empty,
+.workspace-search__error,
+.workspace-search__notice {
+  margin: 0;
+  padding: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.workspace-search__error {
+  color: var(--danger);
+}
+
+.workspace-search__notice {
+  padding-top: 5px;
+  padding-bottom: 5px;
+  border-top: 1px solid var(--border);
+  color: var(--warning);
+}
+
+.workspace-search__progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workspace-search__progress svg {
+  animation: workspace-search-spin 900ms linear infinite;
+}
+
+.workspace-search__result {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 8px;
+  padding: 7px 9px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  color: var(--text-soft);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspace-search__result:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.workspace-search__path {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.workspace-search__path strong,
+.workspace-search__preview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-search__path strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.workspace-search__path span,
+.workspace-search__position {
+  color: var(--muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.workspace-search__preview {
+  grid-column: 1 / 2;
+  color: var(--muted);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+}
+
+.workspace-search__position {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: center;
+}
+
+@keyframes workspace-search-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-search__progress svg {
+    animation: none;
+  }
+}

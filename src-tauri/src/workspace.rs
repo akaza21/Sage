@@ -9,6 +9,10 @@ use crate::{
     error::{AppError, AppResult},
 };
 
+// The integration owner registers this isolated command in the Tauri handler.
+#[allow(dead_code)]
+pub(crate) mod search;
+
 const MAX_DIRECTORY_ENTRIES: usize = 500;
 const MAX_TEXT_FILE_BYTES: u64 = 2 * 1024 * 1024;
 

@@ -1,0 +1,331 @@
+use std::{collections::VecDeque, fs, time::Instant};
+
+use crate::{
+    error::{AppError, AppResult},
+    workspace::Workspace,
+};
+
+use super::types::{
+    MAX_QUERY_BYTES, SearchLimitReason, SearchLimits, SearchRoot, SearchRootReport,
+    SearchRootSource, SearchRootState, WorkspaceSearchMatch, WorkspaceSearchRequest,
+    WorkspaceSearchResponse,
+};
+
+pub struct SearchEngine {
+    pub(super) limits: SearchLimits,
+}
+
+pub(super) struct SearchBudget {
+    pub(super) started_at: Instant,
+    pub(super) files_seen: u64,
+    pub(super) bytes_scanned: u64,
+    pub(super) entries_visited: u64,
+    pub(super) reasons: Vec<SearchLimitReason>,
+}
+
+pub(super) struct RootCounters {
+    pub(super) files_scanned: u64,
+    pub(super) bytes_scanned: u64,
+    pub(super) entries_visited: u64,
+    pub(super) skipped_files: u64,
+    pub(super) error_count: u64,
+    pub(super) partial: bool,
+}
+
+impl SearchEngine {
+    pub fn new(limits: SearchLimits) -> Self {
+        Self { limits }
+    }
+
+    pub fn search(
+        &self,
+        request: WorkspaceSearchRequest,
+        roots: Vec<SearchRoot>,
+    ) -> AppResult<WorkspaceSearchResponse> {
+        let query = request.query.trim();
+        if query.is_empty() {
+            return Err(AppError::InvalidRequest(
+                "workspace search query must not be empty".into(),
+            ));
+        }
+        if query.len() > MAX_QUERY_BYTES {
+            return Err(AppError::ResourceLimit(format!(
+                "workspace search query exceeds the {MAX_QUERY_BYTES}-byte limit"
+            )));
+        }
+        if self.limits.max_results == 0
+            || self.limits.max_files == 0
+            || self.limits.max_total_bytes == 0
+            || self.limits.max_file_bytes == 0
+            || self.limits.max_entries == 0
+            || self.limits.max_preview_chars == 0
+        {
+            return Err(AppError::InvalidRequest(
+                "workspace search limits must be positive".into(),
+            ));
+        }
+
+        let mut matches = Vec::new();
+        let mut reports = Vec::with_capacity(roots.len());
+        let mut budget = SearchBudget {
+            started_at: Instant::now(),
+            files_seen: 0,
+            bytes_scanned: 0,
+            entries_visited: 0,
+            reasons: Vec::new(),
+        };
+
+        for root in roots {
+            let SearchRoot {
+                root_id,
+                root_name,
+                source,
+            } = root;
+            let report = match source {
+                SearchRootSource::Unavailable(message) => {
+                    unavailable_report(root_id, root_name, message)
+                }
+                SearchRootSource::Available(workspace) => self.search_root(
+                    &root_id,
+                    root_name,
+                    &workspace,
+                    query,
+                    request.case_sensitive,
+                    &mut matches,
+                    &mut budget,
+                ),
+            };
+            reports.push(report);
+        }
+
+        Ok(WorkspaceSearchResponse {
+            project_id: request.project_id,
+            query: query.into(),
+            truncated: !budget.reasons.is_empty()
+                || reports
+                    .iter()
+                    .any(|report| report.state == SearchRootState::Partial),
+            limit_reasons: budget.reasons,
+            matches,
+            roots: reports,
+            elapsed_ms: elapsed_millis(budget.started_at),
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn search_root(
+        &self,
+        root_id: &str,
+        root_name: String,
+        workspace: &Workspace,
+        query: &str,
+        case_sensitive: bool,
+        matches: &mut Vec<WorkspaceSearchMatch>,
+        budget: &mut SearchBudget,
+    ) -> SearchRootReport {
+        if workspace.root_id() != root_id {
+            return SearchRootReport {
+                root_id: root_id.into(),
+                root_name,
+                state: SearchRootState::Unavailable,
+                files_scanned: 0,
+                bytes_scanned: 0,
+                entries_visited: 0,
+                skipped_files: 0,
+                error_count: 1,
+                message: Some("search root identity does not match its Workspace".into()),
+            };
+        }
+
+        let mut counters = RootCounters {
+            files_scanned: 0,
+            bytes_scanned: 0,
+            entries_visited: 0,
+            skipped_files: 0,
+            error_count: 0,
+            partial: false,
+        };
+        let mut directories = VecDeque::from([(workspace.root().to_path_buf(), String::new(), 0)]);
+
+        while let Some((directory, relative, depth)) = directories.pop_front() {
+            if self.limit_reached(budget, matches.len()) {
+                counters.partial = true;
+                break;
+            }
+            let read_directory = match fs::read_dir(&directory) {
+                Ok(entries) => entries,
+                Err(_) => {
+                    counters.error_count += 1;
+                    counters.partial = true;
+                    continue;
+                }
+            };
+            let mut entries = Vec::new();
+            for entry in read_directory {
+                if self.limit_reached(budget, matches.len()) {
+                    counters.partial = true;
+                    break;
+                }
+                if budget.entries_visited == self.limits.max_entries {
+                    push_reason(&mut budget.reasons, SearchLimitReason::Entries);
+                    counters.partial = true;
+                    break;
+                }
+                budget.entries_visited += 1;
+                counters.entries_visited += 1;
+                match entry {
+                    Ok(entry) => entries.push(entry),
+                    Err(_) => {
+                        counters.error_count += 1;
+                        counters.partial = true;
+                    }
+                }
+            }
+            entries.sort_unstable_by_key(|entry| entry.file_name());
+
+            for entry in entries {
+                if self.limit_reached(budget, matches.len()) {
+                    counters.partial = true;
+                    break;
+                }
+                if entry.file_name() == ".git" {
+                    continue;
+                }
+                let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                    counters.error_count += 1;
+                    counters.partial = true;
+                    continue;
+                };
+                if name.contains('\\') || name.contains('/') {
+                    counters.error_count += 1;
+                    counters.partial = true;
+                    continue;
+                }
+                let child_relative = contract_join(&relative, &name);
+                let file_type = match entry.file_type() {
+                    Ok(file_type) => file_type,
+                    Err(_) => {
+                        counters.error_count += 1;
+                        counters.partial = true;
+                        continue;
+                    }
+                };
+                if file_type.is_symlink() {
+                    counters.skipped_files += 1;
+                    continue;
+                }
+                if file_type.is_dir() {
+                    if depth == self.limits.max_depth {
+                        push_reason(&mut budget.reasons, SearchLimitReason::Depth);
+                        counters.partial = true;
+                    } else {
+                        directories.push_back((entry.path(), child_relative, depth + 1));
+                    }
+                    continue;
+                }
+                if !file_type.is_file() {
+                    counters.skipped_files += 1;
+                    continue;
+                }
+                if budget.files_seen == self.limits.max_files {
+                    push_reason(&mut budget.reasons, SearchLimitReason::FileCount);
+                    counters.partial = true;
+                    break;
+                }
+                budget.files_seen += 1;
+                self.search_file(
+                    workspace,
+                    entry.path(),
+                    child_relative,
+                    query,
+                    case_sensitive,
+                    matches,
+                    budget,
+                    &mut counters,
+                );
+            }
+        }
+
+        let state = if counters.partial || counters.error_count > 0 {
+            SearchRootState::Partial
+        } else {
+            SearchRootState::Complete
+        };
+        let message = if counters.error_count > 0 {
+            Some(format!(
+                "{} filesystem entr{} could not be searched",
+                counters.error_count,
+                if counters.error_count == 1 {
+                    "y"
+                } else {
+                    "ies"
+                }
+            ))
+        } else {
+            None
+        };
+        SearchRootReport {
+            root_id: root_id.into(),
+            root_name,
+            state,
+            files_scanned: counters.files_scanned,
+            bytes_scanned: counters.bytes_scanned,
+            entries_visited: counters.entries_visited,
+            skipped_files: counters.skipped_files,
+            error_count: counters.error_count,
+            message,
+        }
+    }
+
+    fn limit_reached(&self, budget: &mut SearchBudget, result_count: usize) -> bool {
+        if result_count >= self.limits.max_results {
+            push_reason(&mut budget.reasons, SearchLimitReason::Results);
+            return true;
+        }
+        if budget.files_seen >= self.limits.max_files {
+            push_reason(&mut budget.reasons, SearchLimitReason::FileCount);
+            return true;
+        }
+        if budget.entries_visited >= self.limits.max_entries {
+            push_reason(&mut budget.reasons, SearchLimitReason::Entries);
+            return true;
+        }
+        if budget.started_at.elapsed() >= self.limits.max_duration {
+            push_reason(&mut budget.reasons, SearchLimitReason::Time);
+            return true;
+        }
+        false
+    }
+}
+
+fn unavailable_report(root_id: String, root_name: String, message: String) -> SearchRootReport {
+    SearchRootReport {
+        root_id,
+        root_name,
+        state: SearchRootState::Unavailable,
+        files_scanned: 0,
+        bytes_scanned: 0,
+        entries_visited: 0,
+        skipped_files: 0,
+        error_count: 1,
+        message: Some(message),
+    }
+}
+
+fn contract_join(parent: &str, name: &str) -> String {
+    if parent.is_empty() {
+        name.into()
+    } else {
+        format!("{parent}/{name}")
+    }
+}
+
+pub(super) fn push_reason(reasons: &mut Vec<SearchLimitReason>, reason: SearchLimitReason) {
+    if !reasons.contains(&reason) {
+        reasons.push(reason);
+    }
+}
+
+fn elapsed_millis(started_at: Instant) -> u64 {
+    u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
