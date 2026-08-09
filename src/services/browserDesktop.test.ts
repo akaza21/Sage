@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MAX_CHAT_TITLE_BYTES } from "../domain/chatTitle";
 import type {
@@ -6,6 +6,7 @@ import type {
   ProjectLayoutRequest,
   WorkbenchTab,
 } from "../domain/workbench";
+import { assertBrowserChatRenameIdentity } from "./browserChat";
 import {
   appendBrowserSimulatorTurn,
   browserDesktop,
@@ -617,6 +618,67 @@ describe("browser simulator history bounds", () => {
       ),
     ).rejects.toThrow("project layout may contain at most 64 tabs");
     expect(await browserDesktop.getBootstrapSnapshot()).toEqual(initial);
+  });
+
+  it("bounds rename identifiers before durable lookup or layout access", () => {
+    const neverHas = vi.fn(() => {
+      throw new Error("rename hashed an unbounded Chat ID");
+    });
+    const durableChatIds = {
+      has: neverHas,
+    } as unknown as ReadonlySet<string>;
+    const unreadableTabs = new Proxy([] as WorkbenchTab[], {
+      get() {
+        throw new Error(
+          "rename inspected layout tabs during identity preflight",
+        );
+      },
+    });
+    const request = {
+      projectId: "browser-project",
+      chatId: "chat",
+      title: "Must not commit",
+      currentLayout: {
+        projectId: "browser-project",
+        tabs: unreadableTabs,
+        activeTabId: null,
+        selectedRootId: null,
+        selectedResource: null,
+      },
+    };
+    const validate = (
+      projectId: string,
+      chatId: string,
+      ids: ReadonlySet<string> = durableChatIds,
+    ) =>
+      assertBrowserChatRenameIdentity(
+        { ...request, projectId, chatId },
+        0,
+        0,
+        "browser-project",
+        ids,
+      );
+
+    for (const chatId of [
+      "x".repeat(2 * 1024 * 1024),
+      "",
+      "\u00e9".repeat(257),
+      "bad\nid",
+    ]) {
+      expect(() => validate("browser-project", chatId)).toThrow(
+        "Chat ID is not a valid bounded Chat identifier",
+      );
+    }
+    expect(neverHas).not.toHaveBeenCalled();
+
+    const exact = "x".repeat(512);
+    expect(() =>
+      validate("browser-project", exact, new Set([exact])),
+    ).not.toThrow();
+    expect(() => validate("x".repeat(2 * 1024 * 1024), "chat")).toThrow(
+      "Project ID is not a valid bounded Chat identifier",
+    );
+    expect(neverHas).not.toHaveBeenCalled();
   });
 
   it("fails closed at 64 durable browser Chats without evicting detached history", async () => {

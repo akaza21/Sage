@@ -9,12 +9,30 @@ import { canonicalChatTitle } from "../domain/chatTitle";
 const MAX_BROWSER_MESSAGES = 500;
 export const MAX_BROWSER_CHATS = 64;
 export const MAX_BROWSER_HISTORY_BYTES_PER_CHAT = 4 * 1024 * 1024;
+const MAX_CHAT_IDENTIFIER_BYTES = 512;
+const CONTROL_CHARACTER = /\p{Cc}/u;
 
 export interface BrowserPromptRequest {
   chatId: string;
   harnessId: string;
   modelId: string | null;
   text: string;
+}
+
+function assertBrowserChatIdentifier(label: string, value: unknown) {
+  if (
+    typeof value !== "string" ||
+    !value ||
+    value.length > MAX_CHAT_IDENTIFIER_BYTES
+  ) {
+    throw new Error(`${label} is not a valid bounded Chat identifier`);
+  }
+  if (
+    new TextEncoder().encode(value).byteLength > MAX_CHAT_IDENTIFIER_BYTES ||
+    CONTROL_CHARACTER.test(value)
+  ) {
+    throw new Error(`${label} is not a valid bounded Chat identifier`);
+  }
 }
 
 export function assertBrowserChatCreation(
@@ -88,6 +106,8 @@ export function assertBrowserChatRenameIdentity(
   if (expectedTransitionEpoch !== transitionEpoch) {
     throw new Error("project changed before the requested Chat rename");
   }
+  assertBrowserChatIdentifier("Project ID", request.projectId);
+  assertBrowserChatIdentifier("Chat ID", request.chatId);
   if (request.projectId !== projectId || !durableChatIds.has(request.chatId)) {
     throw new Error("Chat does not belong to the active Project");
   }
