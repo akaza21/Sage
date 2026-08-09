@@ -41,6 +41,7 @@ impl ConfiguredManagedPackageRoot {
 #[derive(Debug)]
 pub(crate) struct PhysicallyInspectedPackage {
     package_root: PathBuf,
+    codex_home: PathBuf,
     artifact_count: usize,
     byte_len: u64,
     _held_handles: Vec<File>,
@@ -63,6 +64,9 @@ impl PhysicallyInspectedPackage {
     pub(super) fn mismatched_fixture() -> Self {
         Self {
             package_root: PathBuf::from(r"C:\Foreign\Codex\package"),
+            codex_home: PathBuf::from(
+                r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167",
+            ),
             artifact_count: EXPECTED_FILE_COUNT,
             byte_len: 427_151_500,
             _held_handles: Vec::new(),
@@ -78,6 +82,7 @@ impl PhysicallyInspectedPackage {
             .expect("pinned packet entrypoint suffix");
         Self {
             package_root: PathBuf::from(package_root),
+            codex_home: packet.codex_home().to_owned(),
             artifact_count: packet.metadata().supporting_artifacts.len() + 1,
             byte_len: packet.metadata().package_unpacked_byte_len,
             _held_handles: Vec::new(),

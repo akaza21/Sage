@@ -101,7 +101,7 @@ command is:
 cargo test --lib acp::bindings::codex
 ```
 
-It passed 43 default tests on the implementation workstation. One additional
+It passed 44 default tests on the implementation workstation. One additional
 ignored test is explicitly enabled with `SAGE_CODEX_0145_PACKAGE_ROOT` and
 passed against the exact extracted 427,151,500-byte package:
 
@@ -109,9 +109,10 @@ passed against the exact extracted 427,151,500-byte package:
 cargo test --lib acp::bindings::codex::tests::exact_registry_package_satisfies_reproduction_prerequisite_without_launch_authority -- --ignored --exact --nocapture
 ```
 
-The resulting 44 test declarations include malformed, unknown-field,
+The resulting 45 test declarations include malformed, unknown-field,
 exact-limit-plus-one, registry/verification-boundary drift, mismatched physical
-binding, mandatory-constructor, and real-package fail-closed coverage. This is
+package-root and isolated-state-root binding, mandatory-constructor, and
+real-package fail-closed coverage. This is
 developer self-check evidence, not the clean-machine package reproduction, signature
 verification, hostile containment probe, fresh Review, or Independent Test
 required for Ready.

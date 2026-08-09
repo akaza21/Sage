@@ -74,6 +74,7 @@ pub(super) fn proof_matches_packet(
         return false;
     };
     claims.package_root == proof.package_root
+        && claims.codex_home == proof.codex_home
         && claims.files.len() == proof.artifact_count
         && claims.aggregate_bytes == proof.byte_len
 }
@@ -251,6 +252,7 @@ pub(super) fn inspect_claims(
         .collect();
     Ok(PhysicallyInspectedPackage {
         package_root,
+        codex_home: claims.codex_home,
         artifact_count,
         byte_len: aggregate_bytes,
         _held_handles: held_handles,

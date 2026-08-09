@@ -352,6 +352,22 @@ fn reproduction_prerequisite_rejects_an_inspection_for_a_different_packet_root()
     ));
 }
 
+#[test]
+fn reproduction_prerequisite_rejects_an_inspection_for_a_different_codex_home() {
+    let inspected_packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
+    let inspection = PhysicallyInspectedPackage::matching_fixture(&inspected_packet);
+    let mut changed = packet_value();
+    changed["codexHome"] = json!(r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167");
+    let changed_packet = parse_packet_metadata(&serde_json::to_vec(&changed).unwrap()).unwrap();
+    let requirements =
+        parse_reproduction_requirements(REPRODUCTION_FIXTURE, &changed_packet).unwrap();
+
+    assert!(matches!(
+        bind_reproduced_package(requirements, &changed_packet, inspection),
+        Err(ReproductionError::PhysicalBinding)
+    ));
+}
+
 #[cfg(windows)]
 #[test]
 #[ignore = "requires SAGE_CODEX_0145_PACKAGE_ROOT pointing at the exact 427 MB package"]
