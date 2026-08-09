@@ -106,6 +106,9 @@ export function assertBrowserProjectLayout(
     if (!Number.isSafeInteger(tab.position)) {
       throw new Error("tab position must be a safe integer");
     }
+    if (typeof tab.pinned !== "boolean" || typeof tab.dirty !== "boolean") {
+      throw new Error("tab pinned and dirty fields must be booleans");
+    }
     if (ids.has(tab.id) || positions.has(tab.position)) {
       throw new Error(
         "project layout contains duplicate tab identity or position",

@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   MAX_CHAT_TITLE_BYTES,
+  canonicalChatName,
   canonicalChatTitle,
   chatDisplayTitle,
 } from "./chatTitle";
@@ -20,6 +21,21 @@ describe("Chat title contract", () => {
     const exact = "é".repeat(MAX_CHAT_TITLE_BYTES / 2);
     expect(canonicalChatTitle(exact)).toBe(`Chat: ${exact}`);
     expect(() => canonicalChatTitle(`${exact}x`)).toThrow("128 UTF-8 bytes");
+  });
+
+  it("rejects raw overlength input before UTF-8 encoding", () => {
+    const encode = vi.spyOn(TextEncoder.prototype, "encode");
+    try {
+      expect(() => canonicalChatName("x".repeat(129))).toThrow(
+        "128 UTF-8 bytes",
+      );
+      expect(() => canonicalChatName("x".repeat(2 * 1024 * 1024))).toThrow(
+        "128 UTF-8 bytes",
+      );
+      expect(encode).not.toHaveBeenCalled();
+    } finally {
+      encode.mockRestore();
+    }
   });
 
   it("rejects empty and control-bearing display titles", () => {

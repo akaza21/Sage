@@ -48,6 +48,11 @@ export function canonicalChatName(input: string): string {
   if (!title) {
     throw new Error("Chat title must not be empty after trimming");
   }
+  if (title.length > MAX_CHAT_TITLE_BYTES) {
+    throw new Error(
+      `Chat title may contain at most ${MAX_CHAT_TITLE_BYTES} UTF-8 bytes`,
+    );
+  }
   if (hasUnpairedUtf16Surrogate(title)) {
     throw new Error("Chat title must not contain an unpaired UTF-16 surrogate");
   }

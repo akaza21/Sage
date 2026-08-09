@@ -78,7 +78,7 @@ export function assertBrowserChatActivation(
   }
 }
 
-export function browserChatRenameTitle(
+export function assertBrowserChatRenameIdentity(
   request: RenameChatRequest,
   expectedTransitionEpoch: number,
   transitionEpoch: number,
@@ -96,6 +96,12 @@ export function browserChatRenameTitle(
       "Chat rename layout does not belong to the requested Project",
     );
   }
+}
+
+export function browserChatRenameTitle(
+  request: RenameChatRequest,
+  durableChatIds: ReadonlySet<string>,
+) {
   if (
     !request.currentLayout.tabs.some(
       (tab) => tab.id === request.chatId && tab.kind === "chat",

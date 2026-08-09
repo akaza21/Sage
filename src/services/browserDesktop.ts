@@ -17,6 +17,7 @@ import {
   appendBrowserSimulatorTurn,
   assertBrowserChatActivation,
   assertBrowserChatCreation,
+  assertBrowserChatRenameIdentity,
   assertBrowserPrompt,
   browserChatRenameTitle,
   browserSessionId,
@@ -329,7 +330,7 @@ export const browserDesktop = {
     request: RenameChatRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
-    const title = browserChatRenameTitle(
+    assertBrowserChatRenameIdentity(
       request,
       expectedTransitionEpoch,
       snapshot.transitionEpoch,
@@ -341,6 +342,7 @@ export const browserDesktop = {
       request.projectId,
       snapshot.project?.roots ?? [],
     );
+    const title = browserChatRenameTitle(request, durableChatIds);
     const renamedLayout = renamedBrowserChatLayout(request, title, chatTitles);
     chatTitles.set(request.chatId, title);
     Object.assign(snapshot, renamedLayout);

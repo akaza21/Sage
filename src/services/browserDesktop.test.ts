@@ -383,6 +383,32 @@ describe("browser simulator history bounds", () => {
           tabs: [
             chat,
             {
+              ...terminal("terminal:pinned-string", 1),
+              pinned: "false" as unknown as boolean,
+            },
+          ],
+        },
+        "tab pinned and dirty fields must be booleans",
+      ],
+      [
+        {
+          ...validLayout,
+          tabs: [
+            chat,
+            {
+              ...terminal("terminal:dirty-number", 1),
+              dirty: 0 as unknown as boolean,
+            },
+          ],
+        },
+        "tab pinned and dirty fields must be booleans",
+      ],
+      [
+        {
+          ...validLayout,
+          tabs: [
+            chat,
+            {
               ...terminal("terminal:oversized", 1),
               title: "x".repeat(2 * 1024 * 1024 + 1),
             },
@@ -536,6 +562,61 @@ describe("browser simulator history bounds", () => {
       ).rejects.toThrow(error);
       expect(await browserDesktop.getBootstrapSnapshot()).toEqual(initial);
     }
+  });
+
+  it("checks cheap rename identity before bounding layout and scanning tabs", async () => {
+    const initial = await browserDesktop.getBootstrapSnapshot();
+    const request = {
+      projectId: initial.project!.id,
+      chatId: initial.activeTabId!,
+      title: "Must not commit",
+      currentLayout: {
+        projectId: initial.project!.id,
+        tabs: new Proxy(initial.tabs, {
+          get() {
+            throw new Error("stale rename inspected its layout");
+          },
+        }),
+        activeTabId: initial.activeTabId,
+        selectedRootId: initial.selectedRootId,
+        selectedResource: initial.selectedResource,
+      },
+    };
+    await expect(
+      browserDesktop.renameChat(request, initial.transitionEpoch + 1),
+    ).rejects.toThrow("project changed before the requested Chat rename");
+
+    const oversizedTabs = new Proxy(
+      [
+        initial.tabs[0],
+        ...Array.from({ length: 64 }, (_, index): WorkbenchTab => ({
+          id: `terminal:bounded:${index}`,
+          kind: "terminal",
+          title: "Terminal",
+          position: index + 1,
+          pinned: false,
+          dirty: false,
+        })),
+      ],
+      {
+        get(target, property, receiver) {
+          if (property === "some") {
+            throw new Error("rename scanned tabs before bounding the layout");
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      },
+    );
+    await expect(
+      browserDesktop.renameChat(
+        {
+          ...request,
+          currentLayout: { ...request.currentLayout, tabs: oversizedTabs },
+        },
+        initial.transitionEpoch,
+      ),
+    ).rejects.toThrow("project layout may contain at most 64 tabs");
+    expect(await browserDesktop.getBootstrapSnapshot()).toEqual(initial);
   });
 
   it("fails closed at 64 durable browser Chats without evicting detached history", async () => {
