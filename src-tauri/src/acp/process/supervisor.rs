@@ -401,9 +401,14 @@ impl SupervisorLifecycle {
 
 fn validate_absolute_normalized(path: &Path) -> Result<(), LaunchError> {
     if !path.is_absolute()
-        || path
-            .components()
-            .any(|part| matches!(part, Component::CurDir | Component::ParentDir))
+        || path.components().any(|part| match part {
+            Component::CurDir | Component::ParentDir => true,
+            // Windows verbatim paths intentionally disable ordinary
+            // component normalization, so `.` and `..` may arrive as
+            // Normal rather than CurDir/ParentDir.
+            Component::Normal(value) => matches!(value.to_str(), Some(".") | Some("..")),
+            Component::Prefix(_) | Component::RootDir => false,
+        })
     {
         return Err(LaunchError::InvalidAbsolutePath);
     }

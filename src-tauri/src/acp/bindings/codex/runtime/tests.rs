@@ -193,6 +193,123 @@ fn runtime_retains_admission_authority_and_frozen_environment_until_teardown() {
     assert!(retained.upgrade().is_none());
 }
 
+#[cfg(windows)]
+#[test]
+fn admitted_runtime_builds_the_exact_contained_app_server_launch_contract() {
+    use std::ffi::OsStr;
+
+    use crate::acp::process::RequiredContainment;
+
+    let registration = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
+    let binding = registration.refresh().unwrap();
+    let expected_entrypoint = binding.entrypoint().path.clone();
+    let expected_sha256 = binding.entrypoint().sha256;
+    let expected_bytes = binding.entrypoint().byte_len;
+    let expected_environment = binding.environment().entries().to_vec();
+    let working_directory = std::env::current_dir().unwrap().canonicalize().unwrap();
+    let runtime = CodexRuntime::from_admitted_binding(
+        binding,
+        RuntimeEpoch::new(23).expect("epoch"),
+        SageAgentSessionId::parse("session-launch-contract").expect("session"),
+    )
+    .unwrap();
+
+    let spec = runtime
+        .launch_spec(working_directory.clone())
+        .expect("admitted launch contract");
+
+    assert_eq!(spec.runtime_epoch, 23);
+    assert!(!spec.binding_id.is_nil());
+    assert!(!spec.artifact.artifact_id.is_nil());
+    assert_ne!(spec.binding_id, spec.artifact.artifact_id);
+    assert_eq!(spec.artifact.canonical_absolute_path, expected_entrypoint);
+    assert_eq!(spec.artifact.sha256, expected_sha256);
+    assert_eq!(spec.artifact.byte_len, expected_bytes);
+    assert_eq!(spec.fixed_args.as_slice(), [OsStr::new("app-server")]);
+    assert_eq!(
+        spec.environment
+            .as_slice()
+            .iter()
+            .map(|(key, value)| {
+                (
+                    key.to_string_lossy().into_owned(),
+                    value.to_string_lossy().into_owned(),
+                )
+            })
+            .collect::<Vec<_>>(),
+        expected_environment
+    );
+    assert_eq!(
+        spec.environment
+            .as_slice()
+            .iter()
+            .map(|(key, _)| key.to_string_lossy().into_owned())
+            .collect::<Vec<_>>(),
+        ["CODEX_HOME", "SystemRoot", "TEMP", "TMP", "WINDIR"]
+    );
+    for inherited in ["HOME", "USERPROFILE", "PATH", "OPENAI_API_KEY"] {
+        assert!(
+            spec.environment
+                .as_slice()
+                .iter()
+                .all(|(key, _)| !key.eq_ignore_ascii_case(OsStr::new(inherited)))
+        );
+    }
+    assert_eq!(spec.working_directory.as_path(), working_directory);
+    assert_eq!(spec.required_guarantee, RequiredContainment::EnforcedTree);
+    assert_eq!(
+        spec.limits.active_processes,
+        spec.limits.descendants.saturating_add(1)
+    );
+}
+
+#[test]
+fn metadata_only_runtime_cannot_build_a_process_launch_contract() {
+    let runtime = fixture_runtime();
+    let working_directory = std::env::current_dir().unwrap().canonicalize().unwrap();
+
+    assert_eq!(
+        runtime.launch_spec(working_directory).err(),
+        Some(AdapterRuntimeError::LaunchUnavailable)
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn launch_contract_rejects_noncanonical_working_roots_and_admission_drift() {
+    let registration = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
+    let binding = registration.refresh().unwrap();
+    let runtime = CodexRuntime::from_admitted_binding(
+        binding,
+        RuntimeEpoch::new(24).expect("epoch"),
+        SageAgentSessionId::parse("session-launch-drift").expect("session"),
+    )
+    .unwrap();
+    let canonical = std::env::current_dir().unwrap().canonicalize().unwrap();
+
+    assert_eq!(
+        runtime.launch_spec("relative-root".into()).err(),
+        Some(AdapterRuntimeError::LaunchUnavailable)
+    );
+    assert_eq!(
+        runtime
+            .launch_spec(std::path::PathBuf::from(r"\\?\C:\repo\..\escape"))
+            .err(),
+        Some(AdapterRuntimeError::LaunchUnavailable)
+    );
+
+    registration.induce_drift_for_test();
+    assert_eq!(
+        runtime.launch_spec(canonical).err(),
+        Some(AdapterRuntimeError::LaunchUnavailable)
+    );
+    assert_eq!(
+        registration.refresh().err(),
+        Some(crate::acp::bindings::codex::CodexAdmissionUnavailable::Drift)
+    );
+    assert!(!registration.is_available());
+}
+
 #[test]
 fn initialize_session_prompt_stream_tool_usage_cancel_and_terminal_are_normalized() {
     let mut runtime = fixture_runtime();

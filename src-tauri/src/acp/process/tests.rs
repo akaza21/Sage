@@ -74,6 +74,15 @@ fn launch_inputs_reject_nul_invalid_environment_and_case_aliases() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn canonical_native_directory_rejects_verbatim_parent_traversal() {
+    assert_eq!(
+        CanonicalNativeDirectory::new(PathBuf::from(r"\\?\C:\repo\..\escape")).err(),
+        Some(LaunchError::InvalidAbsolutePath)
+    );
+}
+
 #[cfg(not(windows))]
 #[test]
 fn unsupported_platform_fails_before_artifact_access() {

@@ -225,6 +225,26 @@ runtime. Concurrent refreshes converge on the same typed `Drift` state. A
 `Weak` lifetime proof shows that an admitted runtime retains the Binding and
 frozen launch environment until runtime teardown, but not afterward.
 
+The admitted-launch-contract increment adds focused Windows tests proving that
+only an admitted runtime can produce the shared supervisor input; the contract
+contains the exact entrypoint identity, one `app-server` argument, runtime
+epoch, canonical Project working root, enforced tree containment, and exactly
+`CODEX_HOME`, `SystemRoot`, `TEMP`, `TMP`, and `WINDIR`. It proves the absence
+of inherited `HOME`, `USERPROFILE`, `PATH`, and `OPENAI_API_KEY`, rejects
+relative and verbatim-parent-traversal roots, and fails closed after authority
+drift. The existing shared-registration refresh remains the bounded transition
+that invalidates service and catalog availability. A local supervisor
+regression separately covers verbatim Windows `..` components.
+
+The contract test deliberately does not spawn. The generic Windows supervisor
+remains the only executor and reopens/hashes the exact image, validates the
+working directory, and enforces the Job boundary at spawn. A real ignored
+Codex campaign was not run because `SAGE_CODEX_0145_PACKAGE_ROOT` and
+`SAGE_CODEX_0145_STATE_ROOT` are unset and both canonical managed roots are
+absent. No model, Turn, restart, RSS, WAL, latency, or admission claim follows
+from these local tests.
+[Build evidence](live-runtime-launch-contract-0.145.0-build-evidence.md)
+
 No test in these increments proves a live elevated executable/UAC boundary or
 the exact candidate's applied canonical-root ACLs, an adequate or
 enforced Codex writable-state disk/retention budget, authentication lifecycle

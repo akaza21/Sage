@@ -144,6 +144,10 @@ impl CodexAdapter {
             .ok_or(AdapterError::CapabilityUnavailable)
     }
 
+    pub(crate) fn runtime_epoch(&self) -> RuntimeEpoch {
+        self.runtime_epoch
+    }
+
     pub(crate) fn project_root(&self, value: String) -> Result<NativeProjectRoot, AdapterError> {
         NativeProjectRoot::new(self.platform, value).map_err(AdapterError::Request)
     }

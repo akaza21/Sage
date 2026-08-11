@@ -31,6 +31,9 @@ use support::*;
 #[path = "runtime/admission.rs"]
 mod admission;
 
+#[path = "runtime/launch.rs"]
+mod launch;
+
 #[path = "runtime/snapshots.rs"]
 mod snapshots;
 use snapshots::ItemSnapshots;
