@@ -100,7 +100,7 @@ export function ChatSurface() {
   const visibleHarnesses = harnesses.filter(
     (harness) =>
       harness.installState === "available" ||
-      harness.source === "builtIn" ||
+      harness.source === "development" ||
       harness.id === selectedHarnessId,
   );
   const selectedMatchesCurrentSession = Boolean(
