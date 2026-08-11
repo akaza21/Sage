@@ -1,12 +1,8 @@
-import type {
-  AcpChatPage,
-  AcpItem,
-  FileChangeProjection,
-  TurnProjection,
-} from "../../../domain/acp";
+import type { AcpChatPage, AcpItem, TurnProjection } from "../../../domain/acp";
 import type { ResourceRef } from "../../../domain/workbench";
 
 import { AcpAnnouncementRegions } from "./AcpAnnouncementRegions";
+import { TurnEditSummary } from "./TurnEditSummary";
 import { CollaborationItem } from "./CollaborationItem";
 import { HarnessActivity } from "./HarnessActivity";
 import { PermissionItem } from "./PermissionItem";
@@ -23,40 +19,7 @@ interface AcpChatProjectionProps {
   loadingEarlier?: boolean;
   historyError?: string | null;
   onLoadEarlier?: () => void;
-}
-
-function ResourceChange({
-  change,
-  onOpenResource,
-}: {
-  change: FileChangeProjection;
-  onOpenResource?: AcpChatProjectionProps["onOpenResource"];
-}) {
-  const resource = change.resource;
-  return (
-    <li>
-      {resource.kind === "resource" ? (
-        onOpenResource ? (
-          <button
-            type="button"
-            className="acp-resource-action"
-            aria-label={`Open diff ${resource.resource.relativePath}`}
-            onClick={() => onOpenResource(resource.resource, "diff")}
-          >
-            {resource.resource.relativePath}
-          </button>
-        ) : (
-          <span>{resource.resource.relativePath}</span>
-        )
-      ) : (
-        <span className="acp-resource-unavailable">
-          {resource.label} · unavailable
-        </span>
-      )}
-      <span className="acp-change-operation">{change.operation}</span>
-      <span>{change.summary}</span>
-    </li>
-  );
+  rootNames?: Readonly<Record<string, string>>;
 }
 
 function ItemView({
@@ -106,19 +69,9 @@ function ItemView({
       return <ToolItem item={item} onOpenResource={onOpenResource} />;
     case "fileChangeDiff":
       return (
-        <section className="acp-file-changes" aria-label="Files changed">
-          <strong>Changed files</strong>
-          <ul>
-            {item.payload.changes.map((change, index) => (
-              <ResourceChange
-                key={`${index}:${change.summary}`}
-                change={change}
-                onOpenResource={onOpenResource}
-              />
-            ))}
-          </ul>
-          {item.payload.truncated ? <span>Summary truncated</span> : null}
-        </section>
+        <p className="acp-activity__edit-reference">
+          Edit included in the Turn changed-file summary
+        </p>
       );
     case "usage":
       return (
@@ -144,13 +97,19 @@ function ItemView({
 }
 
 function Turn({
+  page,
   turn,
+  rootNames,
   onOpenResource,
 }: {
+  page: AcpChatPage;
   turn: TurnProjection;
+  rootNames: Readonly<Record<string, string>>;
   onOpenResource?: AcpChatProjectionProps["onOpenResource"];
 }) {
-  const primaryItems = turn.items.filter((item) => item.origin === "primary");
+  const primaryItems = turn.items.filter(
+    (item) => item.origin === "primary" && item.kind !== "fileChangeDiff",
+  );
   const activityIds = new Set(turn.activities.map((activity) => activity.id));
   const itemActivities = new Map(
     turn.items.map((item) => [item.id, item.activityId] as const),
@@ -192,6 +151,16 @@ function Turn({
             )}
           />
         ))}
+        <TurnEditSummary
+          page={page}
+          turn={turn}
+          rootNames={rootNames}
+          onOpenDiff={
+            onOpenResource
+              ? (resource) => onOpenResource(resource, "diff")
+              : undefined
+          }
+        />
       </div>
     </section>
   );
@@ -205,6 +174,7 @@ export function AcpChatProjection({
   loadingEarlier = false,
   historyError = null,
   onLoadEarlier,
+  rootNames = {},
 }: AcpChatProjectionProps) {
   if (!active) return null;
   return (
@@ -234,7 +204,13 @@ export function AcpChatProjection({
         <p className="acp-empty">No turns in this chat yet.</p>
       ) : (
         page.turns.map((turn) => (
-          <Turn key={turn.id} turn={turn} onOpenResource={onOpenResource} />
+          <Turn
+            key={turn.id}
+            page={page}
+            turn={turn}
+            rootNames={rootNames}
+            onOpenResource={onOpenResource}
+          />
         ))
       )}
     </section>

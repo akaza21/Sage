@@ -93,6 +93,34 @@
   justify-content: space-between;
 }
 
+.acp-file-changes__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.acp-file-changes__disclosure {
+  margin: 8px 0 0;
+  color: var(--text-soft, #c5c5c5);
+  font-size: 0.78rem;
+}
+
+.acp-activity__edit-reference {
+  margin: 0;
+  color: var(--text-soft, #c5c5c5);
+  font-size: 0.78rem;
+}
+
+.acp-resource-root {
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--text-soft, #c5c5c5);
+}
+
+.acp-resource-root::after {
+  content: " /";
+}
+
 .acp-details summary,
 .acp-activity summary {
   cursor: pointer;

@@ -50,6 +50,7 @@ export function ChatSurface() {
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
+  const project = useWorkbenchStore((state) => state.project);
   const error = useWorkbenchStore((state) => state.error);
   const chatError = useWorkbenchStore((state) => state.chatError);
   const selectHarness = useWorkbenchStore((state) => state.selectHarness);
@@ -90,7 +91,6 @@ export function ChatSurface() {
     currentAcpSession.modelId === selectedModelId
       ? currentAcpSession
       : null;
-  const selectedMatchesCurrentSession = Boolean(selectedCurrentSession);
   const harnessStatus = !selectedHarness
     ? "No harness"
     : selectedHarness.source === "development"
@@ -123,8 +123,7 @@ export function ChatSurface() {
         acpPage &&
         harnessAvailable &&
         selectedAcpBindingId &&
-        (!selectedMatchesCurrentSession ||
-          currentAcpSession?.capabilities.prompt),
+        (!selectedCurrentSession || selectedCurrentSession.capabilities.prompt),
       )
     : harnessAvailable;
   const composerEnabled = canPrompt && !activeAcpTurn;
@@ -229,6 +228,9 @@ export function ChatSurface() {
               <AcpChatProjection
                 page={acpPage}
                 active
+                rootNames={Object.fromEntries(
+                  (project?.roots ?? []).map((root) => [root.id, root.name]),
+                )}
                 onOpenResource={openAcpResource}
                 hasEarlier={acpHistory.hasEarlier}
                 loadingEarlier={acpHistory.loadingEarlier}
@@ -264,7 +266,7 @@ export function ChatSurface() {
                 ))}
               </>
             )}
-            <EditSummary />
+            {!useNativeAcp ? <EditSummary /> : null}
           </>
         )}
         <div ref={endRef} />

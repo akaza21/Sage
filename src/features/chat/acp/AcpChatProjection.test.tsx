@@ -13,6 +13,7 @@ import type {
   HarnessActivityProjection,
   TurnProjection,
 } from "../../../domain/acp";
+import { MAX_AGENT_EDIT_SUMMARY_FILES } from "./agentEditSummary";
 import { AcpChatProjection } from "./AcpChatProjection";
 
 afterEach(cleanup);
@@ -102,6 +103,48 @@ function activityItem(
   } as AcpItem;
 }
 
+function editItem(
+  id: string,
+  ordinal: number,
+  rootId: string,
+  summary: string,
+  overrides: Partial<AcpItem> = {},
+): AcpItem {
+  return {
+    id,
+    projectId: "project-1",
+    chatId: "chat-1",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    runtimeEpoch: "2",
+    ordinal,
+    origin: "primary",
+    activityId: null,
+    lifecycle: "completed",
+    revision: "1",
+    createdAt: ordinal,
+    updatedAt: ordinal,
+    terminalAt: ordinal,
+    kind: "fileChangeDiff",
+    toolState: null,
+    payload: {
+      changes: [
+        {
+          resource: {
+            kind: "resource",
+            resource: { rootId, relativePath: "src/main.ts" },
+          },
+          operation: "updated",
+          originalResource: null,
+          summary,
+        },
+      ],
+      truncated: false,
+    },
+    ...overrides,
+  } as AcpItem;
+}
+
 describe("AcpChatProjection", () => {
   it("keeps retained Turn status accessible without replaying it", () => {
     render(<AcpChatProjection page={page("waitingUser")} active />);
@@ -150,6 +193,154 @@ describe("AcpChatProjection", () => {
       screen.getByRole("button", { name: "Load earlier history" }),
     );
     expect(loadEarlier).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders one root-qualified edit summary and opens the existing per-file Diff target", () => {
+    const edited = page("completed");
+    edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
+    edited.turns[0].items = [
+      textItem(),
+      editItem("left-old", 1, "root-left", "old left event"),
+      editItem("right", 2, "root-right", "right event"),
+      editItem("left-new", 3, "root-left", "latest left event"),
+    ];
+    const openResource = vi.fn();
+
+    render(
+      <AcpChatProjection
+        page={edited}
+        active
+        rootNames={{
+          "root-left": "Client",
+          "root-right": "Server",
+        }}
+        onOpenResource={openResource}
+      />,
+    );
+
+    const summary = screen.getByRole("region", {
+      name: "Files edited in turn 1",
+    });
+    expect(within(summary).getAllByRole("button")).toHaveLength(2);
+    expect(within(summary).queryByText("old left event")).toBeNull();
+    const server = within(summary).getByRole("button", {
+      name: "Open diff Server / src/main.ts",
+    });
+    fireEvent.click(server);
+    expect(openResource).toHaveBeenCalledWith(
+      { rootId: "root-right", relativePath: "src/main.ts" },
+      "diff",
+    );
+  });
+
+  it("discloses the rendered-file cap and rejected stale entries without enabling them", () => {
+    const edited = page("completed");
+    edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
+    const items: AcpItem[] = Array.from(
+      { length: MAX_AGENT_EDIT_SUMMARY_FILES + 1 },
+      (_, index) => {
+        const item = editItem(
+          `extra-${index}`,
+          index,
+          "root-extra",
+          `extra ${index}`,
+        );
+        if (item.kind === "fileChangeDiff") {
+          item.payload = {
+            ...item.payload,
+            changes: [
+              {
+                ...item.payload.changes[0],
+                resource: {
+                  kind: "resource",
+                  resource: {
+                    rootId: "root-extra",
+                    relativePath: `src/extra-${index}.ts`,
+                  },
+                },
+              },
+            ],
+          };
+        }
+        return item;
+      },
+    );
+    items.push(
+      editItem("stale", 100, "root-stale", "stale", {
+        chatId: "chat-other" as never,
+      }),
+    );
+    edited.turns[0].items = items;
+
+    render(<AcpChatProjection page={edited} active />);
+
+    const summary = screen.getByRole("region", {
+      name: "Files edited in turn 1",
+    });
+    expect(within(summary).getAllByRole("listitem")).toHaveLength(
+      MAX_AGENT_EDIT_SUMMARY_FILES,
+    );
+    expect(
+      within(summary).getByText(/1 additional changed files not shown/i),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).getByText(
+        /unsafe or stale change records were not shown/i,
+      ),
+    ).toBeInTheDocument();
+    expect(within(summary).queryByText("stale")).toBeNull();
+  });
+
+  it("keeps unavailable and wholly stale edit records noninteractive", () => {
+    const edited = page("completed");
+    edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
+    const unavailable = editItem("unavailable", 1, "root-a", "unavailable");
+    if (unavailable.kind === "fileChangeDiff") {
+      unavailable.payload = {
+        changes: [
+          {
+            resource: {
+              kind: "unavailable",
+              reason: "foreign",
+              label: "Path is outside this Project",
+            },
+            operation: "unknown",
+            originalResource: null,
+            summary: "No safe Project resource",
+          },
+        ],
+        truncated: false,
+      };
+    }
+    const stale = editItem("stale-only", 2, "root-a", "stale", {
+      chatId: "chat-other" as never,
+    });
+    edited.turns[0].items = [unavailable, stale];
+    const openResource = vi.fn();
+    const { rerender } = render(
+      <AcpChatProjection page={edited} active onOpenResource={openResource} />,
+    );
+
+    let summary = screen.getByRole("region", {
+      name: "Files edited in turn 1",
+    });
+    expect(within(summary).queryByRole("button")).toBeNull();
+    expect(
+      within(summary).getByText(/outside this Project/i),
+    ).toBeInTheDocument();
+
+    edited.turns[0].items = [stale];
+    rerender(
+      <AcpChatProjection page={edited} active onOpenResource={openResource} />,
+    );
+    summary = screen.getByRole("region", { name: "Files edited in turn 1" });
+    expect(within(summary).queryByRole("list")).toBeNull();
+    expect(
+      within(summary).getByText(
+        /unsafe or stale change records were not shown/i,
+      ),
+    ).toBeInTheDocument();
+    expect(openResource).not.toHaveBeenCalled();
   });
 
   it("navigates real nested activity items without removing their controls from Tab order", () => {

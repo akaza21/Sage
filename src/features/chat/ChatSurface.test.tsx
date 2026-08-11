@@ -107,7 +107,7 @@ function projection(): AcpChatPage {
     title: "Durable chat",
     projectionRevision: "2",
     currentSessionId: null,
-    sessions: [],
+    sessions: [{ id: "session-a", ordinal: 0 }] as never,
     turns: [
       {
         id: "turn-a",
@@ -877,7 +877,7 @@ describe("ChatSurface ACP resource integration", () => {
       screen.getByRole("button", { name: "Open file src/main.ts" }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Open diff src/main.ts" }),
+      screen.getByRole("button", { name: "Open diff root-b / src/main.ts" }),
     );
 
     expect(openFile).toHaveBeenCalledWith({
@@ -890,7 +890,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
   });
 
-  it("retains the bounded legacy edit summary beside an ACP projection", () => {
+  it("does not mix the global legacy edit summary into an ACP Chat", () => {
     const resource: ResourceRef = {
       rootId: "root-c",
       relativePath: "legacy/change.ts",
@@ -912,8 +912,45 @@ describe("ChatSurface ACP resource integration", () => {
 
     render(<ChatSurface />);
     expect(
-      screen.getByRole("region", { name: "Files edited in this turn" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", {
+        name: "Open diff for legacy/change.ts",
+      }),
+    ).toBeNull();
+    expect(openDiff).not.toHaveBeenCalled();
+  });
+
+  it("keeps the bounded global edit summary for the development simulator", () => {
+    const resource: ResourceRef = {
+      rootId: "root-c",
+      relativePath: "legacy/change.ts",
+    };
+    const openDiff = vi.fn().mockResolvedValue(undefined);
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "sage-simulator",
+          name: "Simulator",
+          description: "Legacy simulator",
+          installState: "available",
+          source: "development",
+          transport: "legacySimulator",
+          bindingId: null,
+        },
+      ],
+      selectedHarnessId: "sage-simulator",
+      openDiff,
+      turnChanges: [
+        {
+          resource,
+          indexStatus: "unchanged",
+          worktreeStatus: "modified",
+          additions: 2,
+          deletions: 1,
+        },
+      ],
+    });
+
+    render(<ChatSurface />);
     fireEvent.click(
       screen.getByRole("button", {
         name: "Open diff for legacy/change.ts",
