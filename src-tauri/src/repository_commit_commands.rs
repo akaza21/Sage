@@ -143,7 +143,7 @@ async fn commit_git_repository_inner_with_policy_override(
         project_id: request.project_id,
         root_id: request.root_id,
         transition_epoch: *transition_epoch,
-        repositories: repository::project_status(repository_roots).await,
+        repositories: crate::repository_index_status::project_status(repository_roots).await,
         error,
     })
 }

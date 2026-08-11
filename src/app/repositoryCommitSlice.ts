@@ -96,7 +96,6 @@ export const createRepositoryCommitSlice: StateCreator<
       get().repositoryRefreshing ||
       get().repositoryMutation ||
       get().repositoryCommit ||
-      get().repositories.truncated ||
       !hasStagedChanges(root) ||
       !get().project?.roots.some((candidate) => candidate.id === rootId)
     ) {

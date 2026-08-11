@@ -226,4 +226,31 @@ describe("repository commit store", () => {
     expect(useWorkbenchStore.getState().repositories).toBe(nextRepositories);
     expect(useWorkbenchStore.getState().repositoryCommitError).toBeNull();
   });
+
+  it("commits one complete root when an unrelated root truncates the aggregate", async () => {
+    const commit = vi.spyOn(desktop, "commitGitRepository").mockResolvedValue({
+      projectId: "project-a",
+      rootId: "root-a",
+      transitionEpoch: 7,
+      repositories: afterRepositories,
+      error: null,
+    });
+    useWorkbenchStore.setState({
+      repositories: {
+        ...beforeRepositories,
+        truncated: true,
+        roots: [
+          beforeRepositories.roots[0],
+          { ...beforeRepositories.roots[1], truncated: true },
+        ],
+      },
+    });
+
+    await expect(
+      useWorkbenchStore
+        .getState()
+        .commitRepository("root-a", "complete root only"),
+    ).resolves.toBe(true);
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
 });

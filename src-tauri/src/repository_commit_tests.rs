@@ -1,4 +1,4 @@
-use std::{fs, path::Path, process::Command};
+use std::{ffi::OsStr, fs, path::Path, process::Command};
 
 use uuid::Uuid;
 
@@ -55,6 +55,25 @@ fn git_stdout(root: &Path, args: &[&str]) -> String {
     String::from_utf8(output.stdout).unwrap()
 }
 
+fn git_succeeds(root: &Path, args: &[&str]) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .status()
+        .unwrap()
+        .success()
+}
+
+fn git_path(root: &Path, marker: &str) -> std::path::PathBuf {
+    git_stdout(
+        root,
+        &["rev-parse", "--path-format=absolute", "--git-path", marker],
+    )
+    .trim()
+    .into()
+}
+
 fn write_executable(path: &Path, body: &str) {
     fs::write(path, body).unwrap();
     #[cfg(unix)]
@@ -62,6 +81,33 @@ fn write_executable(path: &Path, body: &str) {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
     }
+}
+
+fn ambient_fixture(root: &Path, environment: &[(&str, &OsStr)]) -> std::process::Output {
+    let mut command = Command::new(std::env::current_exe().unwrap());
+    command
+        .args([
+            "--exact",
+            "repository_commit::tests::ambient_git_commit_fixture",
+            "--nocapture",
+        ])
+        .env("SAGE_GIT_COMMIT_AMBIENT_FIXTURE_ROOT", root);
+    for (name, value) in environment {
+        command.env(name, value);
+    }
+    command.output().unwrap()
+}
+
+#[test]
+fn ambient_git_commit_fixture() {
+    let Some(root) = std::env::var_os("SAGE_GIT_COMMIT_AMBIENT_FIXTURE_ROOT") else {
+        return;
+    };
+    let workspace = Workspace::open("project-a", "root-a", Path::new(&root)).unwrap();
+    tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(commit_staged(&workspace, "ambient isolation"))
+        .unwrap();
 }
 
 #[test]
@@ -194,6 +240,193 @@ fn repository_config_cannot_launch_hooks_signing_editor_or_fsmonitor() {
     );
 }
 
+#[test]
+fn repository_content_filters_cannot_launch_during_commit_projection() {
+    let repository = TestRepository::new();
+    fs::write(
+        repository.root.join(".gitattributes"),
+        "*.txt filter=sentinel\n",
+    )
+    .unwrap();
+    fs::write(repository.root.join("partial.txt"), "base\n").unwrap();
+    git(
+        &repository.root,
+        &["add", "--", ".gitattributes", "partial.txt"],
+    );
+    git(&repository.root, &["commit", "-q", "-m", "fixture"]);
+
+    fs::write(repository.root.join("partial.txt"), "staged\n").unwrap();
+    git(&repository.root, &["add", "--", "partial.txt"]);
+    fs::write(repository.root.join("partial.txt"), "unstaged\n").unwrap();
+    let sentinel = repository.root.join("filter-ran");
+    let filter = repository.root.join("sentinel-filter");
+    let sentinel_path = sentinel.to_string_lossy().replace('\\', "/");
+    write_executable(
+        &filter,
+        &format!("#!/bin/sh\necho ran > \"{sentinel_path}\"\n/usr/bin/cat\n"),
+    );
+    let filter_command = format!("\"{}\"", filter.to_string_lossy().replace('\\', "/"));
+    git(
+        &repository.root,
+        &["config", "filter.sentinel.clean", &filter_command],
+    );
+    git(
+        &repository.root,
+        &["config", "filter.sentinel.required", "true"],
+    );
+    tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(commit_staged(&repository.workspace(), "safe commit"))
+        .unwrap();
+
+    assert!(!sentinel.exists());
+    assert_eq!(
+        git_stdout(&repository.root, &["show", "HEAD:partial.txt"]),
+        "staged\n"
+    );
+    assert_eq!(
+        fs::read_to_string(repository.root.join("partial.txt")).unwrap(),
+        "unstaged\n"
+    );
+}
+
+#[test]
+fn ambient_git_redirections_cannot_escape_the_selected_repository() {
+    let repository = TestRepository::new();
+    seed_then_stage(&repository);
+    let outside = repository.base.join("outside");
+    fs::create_dir(&outside).unwrap();
+    git(&outside, &["init", "-q"]);
+    git(
+        &outside,
+        &["config", "user.email", "outside@example.invalid"],
+    );
+    git(&outside, &["config", "user.name", "Outside"]);
+    fs::write(outside.join("outside.txt"), "outside\n").unwrap();
+    git(&outside, &["add", "--", "outside.txt"]);
+
+    let hooks = repository.base.join("ambient-hooks");
+    fs::create_dir(&hooks).unwrap();
+    let sentinel = repository.base.join("ambient-hook-ran");
+    let sentinel_path = sentinel.to_string_lossy().replace('\\', "/");
+    write_executable(
+        &hooks.join("post-commit"),
+        &format!("#!/bin/sh\necho ran > \"{sentinel_path}\"\n"),
+    );
+    let config = repository.base.join("ambient.gitconfig");
+    fs::write(
+        &config,
+        format!(
+            "[core]\n\thooksPath = {}\n",
+            hooks.to_string_lossy().replace('\\', "/")
+        ),
+    )
+    .unwrap();
+    let outside_git = outside.join(".git");
+    let outside_index = outside_git.join("index");
+    let outside_objects = outside_git.join("objects");
+    let hooks_text = hooks.to_string_lossy().into_owned();
+    let output = ambient_fixture(
+        &repository.root,
+        &[
+            ("GIT_DIR", outside_git.as_os_str()),
+            ("GIT_WORK_TREE", outside.as_os_str()),
+            ("GIT_INDEX_FILE", outside_index.as_os_str()),
+            ("GIT_OBJECT_DIRECTORY", outside_objects.as_os_str()),
+            (
+                "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+                outside_objects.as_os_str(),
+            ),
+            ("GIT_CONFIG", config.as_os_str()),
+            ("GIT_CONFIG_GLOBAL", config.as_os_str()),
+            ("GIT_CONFIG_SYSTEM", config.as_os_str()),
+            ("GIT_CONFIG_COUNT", OsStr::new("1")),
+            ("GIT_CONFIG_KEY_0", OsStr::new("core.hooksPath")),
+            ("GIT_CONFIG_VALUE_0", OsStr::new(&hooks_text)),
+        ],
+    );
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        git_stdout(&repository.root, &["log", "-1", "--format=%s"]),
+        "ambient isolation\n"
+    );
+    assert!(!git_succeeds(
+        &outside,
+        &["rev-parse", "--verify", "--quiet", "HEAD"]
+    ));
+    assert!(!sentinel.exists());
+}
+
+#[test]
+fn missing_promisor_object_cannot_launch_a_lazy_fetch() {
+    let repository = TestRepository::new();
+    fs::write(repository.root.join("tracked.txt"), "base\n").unwrap();
+    git(&repository.root, &["add", "--", "tracked.txt"]);
+    git(&repository.root, &["commit", "-q", "-m", "fixture"]);
+    fs::write(repository.root.join("tracked.txt"), "staged\n").unwrap();
+    git(&repository.root, &["add", "--", "tracked.txt"]);
+    let missing_oid = git_stdout(&repository.root, &["rev-parse", ":tracked.txt"])
+        .trim()
+        .to_owned();
+
+    let sentinel = repository.root.join("lazy-fetch-ran");
+    let upload_pack = repository.root.join("sentinel-upload-pack");
+    let sentinel_path = sentinel.to_string_lossy().replace('\\', "/");
+    write_executable(
+        &upload_pack,
+        &format!("#!/bin/sh\necho ran > \"{sentinel_path}\"\nexit 91\n"),
+    );
+    let upload_pack_command = format!("\"{}\"", upload_pack.to_string_lossy().replace('\\', "/"));
+    let root_text = repository.root.to_string_lossy().into_owned();
+    git(
+        &repository.root,
+        &["config", "remote.origin.url", &root_text],
+    );
+    git(
+        &repository.root,
+        &["config", "remote.origin.uploadpack", &upload_pack_command],
+    );
+    git(
+        &repository.root,
+        &["config", "remote.origin.promisor", "true"],
+    );
+    git(
+        &repository.root,
+        &["config", "remote.origin.partialclonefilter", "blob:none"],
+    );
+    let object_path = repository
+        .root
+        .join(".git/objects")
+        .join(&missing_oid[..2])
+        .join(&missing_oid[2..]);
+    fs::remove_file(object_path).unwrap();
+
+    let control = Command::new("git")
+        .arg("-C")
+        .arg(&repository.root)
+        .args(["cat-file", "-p", &missing_oid])
+        .output()
+        .unwrap();
+    assert!(!control.status.success());
+    assert!(
+        sentinel.exists(),
+        "promisor fixture did not attempt its remote"
+    );
+    fs::remove_file(&sentinel).unwrap();
+
+    let error = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(commit_staged(&repository.workspace(), "must not fetch"))
+        .unwrap_err();
+    assert!(!error.to_string().is_empty());
+    assert!(!sentinel.exists());
+}
+
 fn seed_then_stage(repository: &TestRepository) -> String {
     fs::write(repository.root.join("tracked.txt"), "base\n").unwrap();
     git(&repository.root, &["add", "--", "tracked.txt"]);
@@ -245,6 +478,78 @@ fn rejects_detached_and_unfinished_history_workflows_before_commit() {
             git_stdout(&repository.root, &["rev-parse", "HEAD"]).trim(),
             head
         );
+    }
+}
+
+#[test]
+fn ordinary_branches_named_like_workflow_markers_remain_committable() {
+    let repository = TestRepository::new();
+    seed_then_stage(&repository);
+    for branch in [
+        "MERGE_HEAD",
+        "CHERRY_PICK_HEAD",
+        "REVERT_HEAD",
+        "REBASE_HEAD",
+    ] {
+        git(&repository.root, &["branch", branch]);
+    }
+
+    tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(commit_staged(
+            &repository.workspace(),
+            "marker branches are ordinary refs",
+        ))
+        .unwrap();
+
+    assert_eq!(
+        git_stdout(&repository.root, &["log", "-1", "--format=%s"]),
+        "marker branches are ordinary refs\n"
+    );
+}
+
+#[test]
+fn rejects_worktree_git_path_files_and_directories() {
+    let repository = TestRepository::new();
+    fs::write(repository.root.join("tracked.txt"), "base\n").unwrap();
+    git(&repository.root, &["add", "--", "tracked.txt"]);
+    git(&repository.root, &["commit", "-q", "-m", "fixture"]);
+    let linked = repository.base.join("linked");
+    let linked_text = linked.to_string_lossy().into_owned();
+    git(
+        &repository.root,
+        &["worktree", "add", "-q", "-b", "linked-branch", &linked_text],
+    );
+    fs::write(linked.join("tracked.txt"), "staged\n").unwrap();
+    git(&linked, &["add", "--", "tracked.txt"]);
+    let workspace = Workspace::open("project-a", "root-a", &linked).unwrap();
+    let head = git_stdout(&linked, &["rev-parse", "HEAD"]);
+
+    for marker in ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD"] {
+        let path = git_path(&linked, marker);
+        fs::write(&path, &head).unwrap();
+        let error = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(commit_staged(&workspace, "must fail"))
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("unfinished"),
+            "{marker}: {error}"
+        );
+        fs::remove_file(path).unwrap();
+    }
+    for marker in ["rebase-merge", "rebase-apply"] {
+        let path = git_path(&linked, marker);
+        fs::create_dir(&path).unwrap();
+        let error = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(commit_staged(&workspace, "must fail"))
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("unfinished"),
+            "{marker}: {error}"
+        );
+        fs::remove_dir(path).unwrap();
     }
 }
 

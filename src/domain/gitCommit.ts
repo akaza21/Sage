@@ -3,18 +3,25 @@ import type { RootRepositoryStatus } from "./workbench";
 
 export const MAX_GIT_COMMIT_MESSAGE_BYTES = 8_192;
 
-export function normalizeGitCommitMessage(message: string): string {
+export function gitCommitMessageError(message: string): string | null {
   const normalized = message.trim();
-  if (!normalized) throw new Error("Commit message is required");
+  if (!normalized) return "Commit message is required";
   if (normalized.includes("\0")) {
-    throw new Error("Commit message cannot contain a null character");
+    return "Commit message cannot contain a null character";
   }
   if (
     new TextEncoder().encode(normalized).byteLength >
     MAX_GIT_COMMIT_MESSAGE_BYTES
   ) {
-    throw new Error("Commit message must be 8192 UTF-8 bytes or fewer");
+    return "Commit message must be 8192 UTF-8 bytes or fewer";
   }
+  return null;
+}
+
+export function normalizeGitCommitMessage(message: string): string {
+  const error = gitCommitMessageError(message);
+  if (error) throw new Error(error);
+  const normalized = message.trim();
   return normalized;
 }
 

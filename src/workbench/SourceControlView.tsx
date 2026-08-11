@@ -205,9 +205,13 @@ export function SourceControlView() {
   const openDiff = useWorkbenchStore((state) => state.openDiff);
   const controlsDisabled =
     refreshing || transitioning || mutation !== null || commit !== null;
-  const rootNames = new Map(
-    project?.roots.map((root) => [root.id, root.name]) ?? [],
+  const projectRoots = new Map(
+    project?.roots.map((root) => [root.id, root]) ?? [],
   );
+  const rootNameCounts = new Map<string, number>();
+  for (const root of project?.roots ?? []) {
+    rootNameCounts.set(root.name, (rootNameCounts.get(root.name) ?? 0) + 1);
+  }
 
   return (
     <>
@@ -224,7 +228,12 @@ export function SourceControlView() {
       </div>
       <div className="source-control-list">
         {repositories.roots.map((repository) => {
-          const rootName = rootNames.get(repository.rootId) ?? "Root";
+          const projectRoot = projectRoots.get(repository.rootId);
+          const rootName = projectRoot?.name ?? "Root";
+          const rootLabel =
+            (rootNameCounts.get(rootName) ?? 0) > 1
+              ? `${rootName} (root ${(projectRoot?.ordinal ?? 0) + 1})`
+              : rootName;
           return (
             <section className="source-root" key={repository.rootId}>
               <div className="source-control-list__group">
@@ -242,9 +251,8 @@ export function SourceControlView() {
               {repository.state === "repository" ? (
                 <RepositoryCommitControl
                   repository={repository}
-                  rootName={rootName}
+                  rootLabel={rootLabel}
                   controlsDisabled={controlsDisabled}
-                  projectStatusTruncated={repositories.truncated}
                 />
               ) : null}
               {repository.changes.slice(0, 300).map((change) => {
@@ -260,7 +268,7 @@ export function SourceControlView() {
                   />
                 );
               })}
-              {repository.truncated ? (
+              {repository.truncated && !repository.message ? (
                 <p className="tree__limit">Change list capped at 300 files.</p>
               ) : null}
             </section>

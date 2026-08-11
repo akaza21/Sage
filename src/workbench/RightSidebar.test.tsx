@@ -191,8 +191,17 @@ describe("RightSidebar Source Control mutations", () => {
       }),
     ).toBeDisabled();
 
+    fireEvent.change(alphaMessage, { target: { value: "é".repeat(4_096) } });
+    expect(alphaCommit).toBeEnabled();
+    fireEvent.change(alphaMessage, { target: { value: "é".repeat(4_097) } });
+    expect(alphaCommit).toBeDisabled();
+    expect(alphaMessage).toHaveAttribute("aria-invalid", "true");
+    expect(
+      screen.getByRole("alert", { name: "Alpha commit message invalid" }),
+    ).toHaveTextContent("8192 UTF-8 bytes or fewer");
+
     fireEvent.change(alphaMessage, { target: { value: "  Root A only  " } });
-    fireEvent.submit(alphaMessage.closest("form")!);
+    fireEvent.keyDown(alphaMessage, { key: "Enter", ctrlKey: true });
     await vi.waitFor(() =>
       expect(commitRepository).toHaveBeenCalledWith(
         "root-a",
@@ -220,6 +229,70 @@ describe("RightSidebar Source Control mutations", () => {
     expect(alphaMessage).toHaveValue("Retry me");
     expect(alphaMessage).toHaveFocus();
     expect(useWorkbenchStore.getState().error).toBeNull();
+  });
+
+  it("disambiguates duplicate root names in every commit control", () => {
+    useWorkbenchStore.setState({
+      sidebarOpen: true,
+      sidebarView: "sourceControl",
+      project: {
+        id: "project-a",
+        name: "A",
+        roots: [
+          {
+            id: "root-a",
+            name: "Shared",
+            ordinal: 0,
+            availability: "available",
+            message: null,
+          },
+          {
+            id: "root-b",
+            name: "Shared",
+            ordinal: 1,
+            availability: "available",
+            message: null,
+          },
+        ],
+      },
+      repositories: {
+        roots: [
+          {
+            rootId: "root-a",
+            state: "repository",
+            branch: "main",
+            changes: [],
+            truncated: false,
+            elapsedMs: 1,
+            message: null,
+          },
+          {
+            rootId: "root-b",
+            state: "repository",
+            branch: "main",
+            changes: [],
+            truncated: false,
+            elapsedMs: 1,
+            message: null,
+          },
+        ],
+        truncated: false,
+        elapsedMs: 2,
+      },
+    });
+
+    render(<RightSidebar compact={false} />);
+
+    expect(
+      screen.getByRole("textbox", {
+        name: "Commit message for Shared (root 1)",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", {
+        name: "Commit message for Shared (root 2)",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("stages and unstages exact root-qualified changes with accessible actions", () => {

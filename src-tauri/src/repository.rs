@@ -34,7 +34,7 @@ impl GitOutput {
     }
 }
 
-enum RepositoryBoundary {
+pub(crate) enum RepositoryBoundary {
     Exact,
     Nested,
     NotRepository,
@@ -91,7 +91,14 @@ pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         let base = repository_diff_base(workspace.root()).await?;
         let output = run_git(
             workspace.root(),
-            &["diff", "--numstat", "-z", "--no-ext-diff", &base],
+            &[
+                "diff",
+                "--numstat",
+                "-z",
+                "--no-ext-diff",
+                "--no-textconv",
+                &base,
+            ],
             MAX_STATUS_BYTES,
         )
         .await?;
@@ -216,7 +223,7 @@ pub async fn project_status(
     }
 }
 
-async fn repository_diff_base(root: &Path) -> AppResult<String> {
+pub(crate) async fn repository_diff_base(root: &Path) -> AppResult<String> {
     let head = run_git(root, &["rev-parse", "--verify", "--quiet", "HEAD"], 256).await?;
     if head.status.success() {
         return Ok("HEAD".into());
@@ -251,7 +258,7 @@ async fn is_untracked(root: &Path, relative_path: &str) -> AppResult<bool> {
     Ok(output.stdout.starts_with(b"? "))
 }
 
-async fn repository_boundary(root: &Path) -> AppResult<RepositoryBoundary> {
+pub(crate) async fn repository_boundary(root: &Path) -> AppResult<RepositoryBoundary> {
     let output = run_git(root, &["rev-parse", "--show-toplevel"], 32 * 1024).await?;
     if !output.status.success() {
         return Ok(RepositoryBoundary::NotRepository);

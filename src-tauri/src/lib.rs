@@ -24,6 +24,7 @@ mod project_registry;
 mod repository;
 mod repository_commit;
 mod repository_commit_commands;
+mod repository_index_status;
 mod repository_mutation;
 mod repository_mutation_commands;
 mod repository_parse;

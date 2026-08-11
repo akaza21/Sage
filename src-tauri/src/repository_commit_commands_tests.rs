@@ -65,6 +65,15 @@ fn subject(root: &Path) -> String {
     String::from_utf8(output.stdout).unwrap()
 }
 
+fn write_executable(path: &Path, body: &str) {
+    fs::write(path, body).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
 #[test]
 fn commits_only_the_requested_root_and_returns_all_authoritative_statuses() {
     let fixture = TwoRootProject::new();
@@ -103,6 +112,65 @@ fn commits_only_the_requested_root_and_returns_all_authoritative_statuses() {
     assert_eq!(
         result.repositories.roots[1].changes[0].index_status,
         "modified"
+    );
+}
+
+#[test]
+fn commit_and_post_commit_projection_never_launch_content_filters() {
+    let fixture = TwoRootProject::new();
+    fs::write(
+        fixture.root_a.join(".gitattributes"),
+        "*.txt filter=sentinel\n",
+    )
+    .unwrap();
+    git(&fixture.root_a, &["add", "--", ".gitattributes"]);
+    fs::write(fixture.root_a.join("same.txt"), "unstaged\n").unwrap();
+    let sentinel = fixture.root_a.join("filter-ran");
+    let filter = fixture.root_a.join("sentinel-filter");
+    let sentinel_path = sentinel.to_string_lossy().replace('\\', "/");
+    write_executable(
+        &filter,
+        &format!("#!/bin/sh\necho ran > \"{sentinel_path}\"\n/usr/bin/cat\n"),
+    );
+    let filter_command = format!("\"{}\"", filter.to_string_lossy().replace('\\', "/"));
+    git(
+        &fixture.root_a,
+        &["config", "filter.sentinel.clean", &filter_command],
+    );
+    git(
+        &fixture.root_a,
+        &["config", "filter.sentinel.required", "true"],
+    );
+
+    let database = Database::open(&fixture.base.join("sage.db")).unwrap();
+    let project = database.create_project_from_root(&fixture.root_a).unwrap();
+    database
+        .add_project_root(&project.id, &fixture.root_b)
+        .unwrap();
+    let root_id = database.root_records(&project.id).unwrap()[0].id.clone();
+    let state = AppState::new(database);
+    let result = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(commit_git_repository_inner(
+            &state,
+            GitRepositoryCommitRequest {
+                project_id: project.id,
+                root_id,
+                message: "filter-free commit".into(),
+            },
+            0,
+        ))
+        .unwrap();
+
+    assert!(!sentinel.exists());
+    assert!(result.repositories.truncated);
+    assert!(result.repositories.roots[0].truncated);
+    assert!(
+        result.repositories.roots[0]
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("index-only")
     );
 }
 
