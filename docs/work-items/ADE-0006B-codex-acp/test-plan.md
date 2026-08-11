@@ -166,7 +166,7 @@ The elevated-helper core increment adds request exact-limit/plus-one and
 truncation cases; secret, authenticator, helper version/hash/byte drift; nonce,
 source-proof, manifest order/hash/byte, target, and ACL drift; authenticated
 journal truncation/plus-one/tamper and replay/collision cases; and failpoints
-after initial journal creation, state creation, state phase persistence,
+after atomic initial journal creation, native state publication, state phase persistence,
 package publication, and package phase persistence. It also proves convergent
 rollback for ACL, publication, and final-proof failures, plus journal-retaining
 retry when only post-commit cleanup fails. The concrete Windows adapter is
@@ -174,7 +174,12 @@ compiled and routes ACL writes through handles whose volume/file identities
 match the retained no-follow inspection, then uses the existing managed ACL
 inspector for stage/state/final proof. No test manufactures an elevated-process
 capability. A Windows lock fixture also proves a second helper owner is rejected
-and a post-drop recovery owner can reacquire. See the
+and a post-drop recovery owner can reacquire. Native adversarial fixtures prove
+same-user state replacement is rejected against the journaled file identity,
+package publish/rollback follows the retained source handle despite pathname
+substitution, a torn synchronized journal temp recovers through atomic
+no-replace publication, and stage/cleanup enumeration rejects exact-limit plus
+one without an unbounded collection. See the
 [helper-core evidence](provisioning-helper-0.145.0-build-evidence.md).
 
 The security-prerequisite increment adds exact and drift fixtures for the

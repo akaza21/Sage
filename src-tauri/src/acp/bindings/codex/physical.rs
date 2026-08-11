@@ -131,6 +131,12 @@ impl PhysicallyInspectedPackage {
     pub(super) fn held_nodes(&self) -> &[HeldPhysicalNode] {
         &self.held_nodes
     }
+
+    pub(super) fn root_node(&self) -> Option<&HeldPhysicalNode> {
+        self.held_nodes
+            .iter()
+            .find(|node| node.directory && node.path == self.package_root)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]

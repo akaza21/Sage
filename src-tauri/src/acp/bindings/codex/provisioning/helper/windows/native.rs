@@ -1,0 +1,277 @@
+use std::collections::BTreeSet;
+use std::ffi::{OsStr, OsString};
+use std::fs::{self, File, OpenOptions};
+use std::io::Write;
+use std::os::windows::ffi::OsStrExt;
+use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+use std::os::windows::io::AsRawHandle;
+use std::path::{Component, Path, PathBuf};
+
+use windows_sys::Win32::Foundation::{GENERIC_WRITE, HANDLE};
+use windows_sys::Win32::Storage::FileSystem::{
+    BY_HANDLE_FILE_INFORMATION, DELETE, FILE_ADD_FILE, FILE_ADD_SUBDIRECTORY,
+    FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+    FILE_READ_ATTRIBUTES, FILE_RENAME_INFO, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    FILE_TRAVERSE, GetFileInformationByHandle, READ_CONTROL, WRITE_DAC, WRITE_OWNER,
+};
+
+use super::super::ElevatedHelperError;
+use super::super::transaction::NodeIdentity;
+use crate::acp::bindings::codex::physical::open_exact_state_root;
+
+const NEXT_SUFFIX: &str = ".next";
+// FILE_INFORMATION_CLASS::FileRenameInformation from the Windows native API.
+const FILE_RENAME_INFORMATION_CLASS: i32 = 10;
+const STATUS_OBJECT_NAME_COLLISION: i32 = 0xc000_0035_u32 as i32;
+
+#[repr(C)]
+union IoStatus {
+    status: i32,
+    _pointer: *mut std::ffi::c_void,
+}
+
+#[repr(C)]
+struct IoStatusBlock {
+    status: IoStatus,
+    information: usize,
+}
+
+#[link(name = "ntdll")]
+unsafe extern "system" {
+    fn NtSetInformationFile(
+        file_handle: HANDLE,
+        io_status_block: *mut IoStatusBlock,
+        file_information: *mut std::ffi::c_void,
+        length: u32,
+        file_information_class: i32,
+    ) -> i32;
+}
+
+pub(super) fn node_identity(file: &File) -> Result<NodeIdentity, ElevatedHelperError> {
+    let mut info = BY_HANDLE_FILE_INFORMATION::default();
+    // SAFETY: `file` remains live and `info` is writable for the call.
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle() as HANDLE, &mut info) } == 0
+        || info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    {
+        return Err(ElevatedHelperError::Drift);
+    }
+    Ok(NodeIdentity {
+        volume_serial: info.dwVolumeSerialNumber,
+        file_id: (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow),
+    })
+}
+
+pub(super) fn open_mutation_directory(
+    path: &Path,
+    expected: Option<NodeIdentity>,
+) -> Result<(File, NodeIdentity), ElevatedHelperError> {
+    let mut options = OpenOptions::new();
+    options
+        .access_mode(DELETE | FILE_READ_ATTRIBUTES | READ_CONTROL | WRITE_DAC | WRITE_OWNER)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
+    let file = options.open(path).map_err(|_| ElevatedHelperError::Drift)?;
+    let identity = node_identity(&file)?;
+    if expected.is_some_and(|expected| expected != identity) {
+        return Err(ElevatedHelperError::Drift);
+    }
+    Ok((file, identity))
+}
+
+pub(super) fn open_rename_directory(
+    path: &Path,
+    expected: NodeIdentity,
+) -> Result<File, ElevatedHelperError> {
+    let mut options = OpenOptions::new();
+    options
+        .access_mode(DELETE | FILE_READ_ATTRIBUTES)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
+    let file = options.open(path).map_err(|_| ElevatedHelperError::Drift)?;
+    if node_identity(&file)? != expected {
+        return Err(ElevatedHelperError::Drift);
+    }
+    Ok(file)
+}
+
+pub(super) fn open_destination_root(path: &Path) -> Result<File, ElevatedHelperError> {
+    let (_, exact) = open_exact_state_root(path).map_err(|_| ElevatedHelperError::Drift)?;
+    let expected = node_identity(&exact)?;
+    let mut options = OpenOptions::new();
+    options
+        .access_mode(FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
+    let root = options.open(path).map_err(|_| ElevatedHelperError::Drift)?;
+    if node_identity(&root)? != expected {
+        return Err(ElevatedHelperError::Drift);
+    }
+    Ok(root)
+}
+
+pub(super) fn rename_exact(
+    source: &File,
+    destination_root: &File,
+    destination_name: &OsStr,
+    replace: bool,
+) -> Result<(), ElevatedHelperError> {
+    let mut components = Path::new(destination_name).components();
+    if !matches!(components.next(), Some(Component::Normal(_))) || components.next().is_some() {
+        return Err(ElevatedHelperError::HandoffIdentity);
+    }
+    let name = destination_name.encode_wide().collect::<Vec<_>>();
+    let name_bytes = name
+        .len()
+        .checked_mul(std::mem::size_of::<u16>())
+        .and_then(|bytes| u32::try_from(bytes).ok())
+        .ok_or(ElevatedHelperError::Publication)?;
+    let total = std::mem::size_of::<FILE_RENAME_INFO>()
+        .checked_add(name_bytes as usize)
+        .ok_or(ElevatedHelperError::Publication)?;
+    let mut storage = vec![0_u64; total.div_ceil(std::mem::size_of::<u64>())];
+    let info = storage.as_mut_ptr().cast::<FILE_RENAME_INFO>();
+    // SAFETY: `storage` is aligned, zeroed, and sized for the fixed header plus
+    // every UTF-16 code unit copied into its trailing filename buffer.
+    unsafe {
+        (*info).Anonymous.ReplaceIfExists = replace;
+        (*info).RootDirectory = destination_root.as_raw_handle() as HANDLE;
+        (*info).FileNameLength = name_bytes;
+        std::ptr::copy_nonoverlapping(name.as_ptr(), (*info).FileName.as_mut_ptr(), name.len());
+    }
+    let mut status_block = IoStatusBlock {
+        status: IoStatus { status: 0 },
+        information: 0,
+    };
+    // SAFETY: both handles remain live; `info` and `status_block` are valid for
+    // the duration of this synchronous native filesystem operation.
+    let status = unsafe {
+        NtSetInformationFile(
+            source.as_raw_handle() as HANDLE,
+            &mut status_block,
+            info.cast(),
+            u32::try_from(total).map_err(|_| ElevatedHelperError::Publication)?,
+            FILE_RENAME_INFORMATION_CLASS,
+        )
+    };
+    if status < 0 {
+        return Err(if !replace && status == STATUS_OBJECT_NAME_COLLISION {
+            ElevatedHelperError::Collision
+        } else {
+            ElevatedHelperError::Publication
+        });
+    }
+    Ok(())
+}
+
+pub(super) fn create_initial_journal(
+    path: &Path,
+    bytes: &[u8],
+    parent: &File,
+    nonce: &str,
+) -> Result<(), ElevatedHelperError> {
+    let mut suffix = path.as_os_str().to_os_string();
+    suffix.push(format!(".creating-{nonce}"));
+    let temporary = PathBuf::from(suffix);
+    remove_exact_file_if_present(&temporary)?;
+    let mut file = create_synced_file(&temporary, bytes)?;
+    rename_exact(
+        &file,
+        parent,
+        path.file_name()
+            .ok_or(ElevatedHelperError::HandoffIdentity)?,
+        false,
+    )?;
+    file.flush()
+        .and_then(|()| file.sync_all())
+        .map_err(|_| ElevatedHelperError::Journal)
+}
+
+pub(super) fn replace_journal(
+    path: &Path,
+    bytes: &[u8],
+    parent: &File,
+) -> Result<(), ElevatedHelperError> {
+    let mut suffix = path.as_os_str().to_os_string();
+    suffix.push(NEXT_SUFFIX);
+    let temporary = PathBuf::from(suffix);
+    remove_exact_file_if_present(&temporary)?;
+    let file = create_synced_file(&temporary, bytes)?;
+    rename_exact(
+        &file,
+        parent,
+        path.file_name()
+            .ok_or(ElevatedHelperError::HandoffIdentity)?,
+        true,
+    )
+    .and_then(|()| file.sync_all().map_err(|_| ElevatedHelperError::Journal))
+    .map_err(|_| ElevatedHelperError::Journal)
+}
+
+fn create_synced_file(path: &Path, bytes: &[u8]) -> Result<File, ElevatedHelperError> {
+    let mut options = OpenOptions::new();
+    options
+        .write(true)
+        .access_mode(GENERIC_WRITE | DELETE)
+        .create_new(true)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_DELETE)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    let mut file = options
+        .open(path)
+        .map_err(|_| ElevatedHelperError::Journal)?;
+    #[cfg(test)]
+    if let Some(prefix) = TORN_INITIAL_WRITE.with(|slot| slot.replace(None)) {
+        file.write_all(&bytes[..prefix.min(bytes.len())])
+            .and_then(|()| file.sync_all())
+            .map_err(|_| ElevatedHelperError::Journal)?;
+        panic!("simulated crash during initial journal write");
+    }
+    file.write_all(bytes)
+        .and_then(|()| file.sync_all())
+        .map_err(|_| ElevatedHelperError::Journal)?;
+    Ok(file)
+}
+
+fn remove_exact_file_if_present(path: &Path) -> Result<(), ElevatedHelperError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata)
+            if metadata.file_type().is_file()
+                && metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT == 0 =>
+        {
+            fs::remove_file(path).map_err(|_| ElevatedHelperError::Journal)
+        }
+        Ok(_) => Err(ElevatedHelperError::Journal),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(_) => Err(ElevatedHelperError::Journal),
+    }
+}
+
+pub(super) fn bounded_names(
+    root: &Path,
+    maximum: usize,
+    failure: ElevatedHelperError,
+) -> Result<BTreeSet<OsString>, ElevatedHelperError> {
+    let mut names = BTreeSet::new();
+    for entry in fs::read_dir(root).map_err(|_| failure)? {
+        let name = entry.map_err(|_| failure)?.file_name();
+        if !names.insert(name) || names.len() > maximum {
+            return Err(failure);
+        }
+    }
+    Ok(names)
+}
+
+#[cfg(test)]
+thread_local! {
+    static TORN_INITIAL_WRITE: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+
+#[cfg(test)]
+pub(super) fn inject_torn_initial_write(prefix: usize) {
+    TORN_INITIAL_WRITE.with(|slot| {
+        assert!(slot.replace(Some(prefix)).is_none());
+    });
+}
+
+#[cfg(test)]
+#[path = "native/tests.rs"]
+mod tests;

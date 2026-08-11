@@ -6,7 +6,7 @@ use crate::acp::bindings::codex::provisioning::{AclPlan, HandoffPayload, SealedH
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CrashPoint {
     JournalCreated,
-    StateCreated,
+    StateNativePublished,
     StatePhaseWritten,
     PackagePublished,
     PackagePhaseWritten,
@@ -23,6 +23,8 @@ struct FakePlatform {
     fail_publish: bool,
     fail_proof: bool,
     fail_cleanup: bool,
+    state_identity: NodeIdentity,
+    bound_state_identity: Option<NodeIdentity>,
 }
 
 impl Default for FakePlatform {
@@ -41,6 +43,11 @@ impl Default for FakePlatform {
             fail_publish: false,
             fail_proof: false,
             fail_cleanup: false,
+            state_identity: NodeIdentity {
+                volume_serial: 7,
+                file_id: 11,
+            },
+            bound_state_identity: None,
         }
     }
 }
@@ -95,6 +102,17 @@ impl HelperTransactionPlatform for FakePlatform {
         Ok(self.observation)
     }
 
+    fn bind_state_identity(
+        &mut self,
+        expected: Option<NodeIdentity>,
+    ) -> Result<NodeIdentity, ElevatedHelperError> {
+        if expected.is_some_and(|expected| expected != self.state_identity) {
+            return Err(ElevatedHelperError::Drift);
+        }
+        self.bound_state_identity = Some(self.state_identity);
+        Ok(self.state_identity)
+    }
+
     fn revalidate_stage(&mut self) -> Result<(), ElevatedHelperError> {
         self.observation
             .stage_package
@@ -103,8 +121,7 @@ impl HelperTransactionPlatform for FakePlatform {
     }
 
     fn revalidate_state(&mut self) -> Result<(), ElevatedHelperError> {
-        self.observation
-            .final_state
+        (self.observation.final_state && self.bound_state_identity == Some(self.state_identity))
             .then_some(())
             .ok_or(ElevatedHelperError::Drift)
     }
@@ -124,13 +141,13 @@ impl HelperTransactionPlatform for FakePlatform {
         }
     }
 
-    fn create_state_with_acl(&mut self) -> Result<(), ElevatedHelperError> {
+    fn publish_state_with_acl(&mut self) -> Result<(), ElevatedHelperError> {
         self.observation.final_state = true;
-        self.crash_if(CrashPoint::StateCreated);
+        self.crash_if(CrashPoint::StateNativePublished);
         Ok(())
     }
 
-    fn publish_package_write_through(&mut self) -> Result<(), ElevatedHelperError> {
+    fn publish_package_exact(&mut self) -> Result<(), ElevatedHelperError> {
         if self.fail_publish {
             return Err(ElevatedHelperError::Publication);
         }
@@ -163,6 +180,9 @@ impl HelperTransactionPlatform for FakePlatform {
     }
 
     fn rollback_state(&mut self) -> Result<(), ElevatedHelperError> {
+        if self.bound_state_identity != Some(self.state_identity) {
+            return Err(ElevatedHelperError::Drift);
+        }
         self.observation.final_state = false;
         Ok(())
     }
@@ -241,7 +261,7 @@ fn exact_transaction_publishes_and_removes_the_journal() {
 fn every_effect_and_phase_boundary_recovers_after_process_crash() {
     for point in [
         CrashPoint::JournalCreated,
-        CrashPoint::StateCreated,
+        CrashPoint::StateNativePublished,
         CrashPoint::StatePhaseWritten,
         CrashPoint::PackagePublished,
         CrashPoint::PackagePhaseWritten,
@@ -258,6 +278,23 @@ fn every_effect_and_phase_boundary_recovers_after_process_crash() {
             "{point:?}"
         );
     }
+}
+
+#[test]
+fn recovery_rejects_a_same_user_state_swap_after_native_publication() {
+    let request = request("00");
+    let mut platform = FakePlatform {
+        crash: Some(CrashPoint::StateNativePublished),
+        ..FakePlatform::default()
+    };
+    let _ = catch_unwind(AssertUnwindSafe(|| finalize(&request, &mut platform)));
+    platform.state_identity.file_id += 1;
+
+    assert_eq!(
+        finalize(&request, &mut platform),
+        Err(ElevatedHelperError::Drift)
+    );
+    assert!(platform.observation.final_state);
 }
 
 #[test]

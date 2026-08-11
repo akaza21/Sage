@@ -1,18 +1,20 @@
 use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write};
-use std::os::windows::ffi::OsStrExt;
+use std::io::Read;
 use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
 use windows_sys::Win32::Security::{WinBuiltinAdministratorsSid, WinLocalSystemSid};
 use windows_sys::Win32::Storage::FileSystem::{
-    FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT, MOVEFILE_REPLACE_EXISTING,
-    MOVEFILE_WRITE_THROUGH, MoveFileExW,
+    FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT,
 };
 
-use super::transaction::{HelperTransactionPlatform, NamespaceObservation, finalize};
+use super::transaction::{HelperTransactionPlatform, NamespaceObservation, NodeIdentity, finalize};
 use super::{AuthenticatedHelperRequest, ElevatedHelperError};
+#[path = "windows/native.rs"]
+mod native;
+#[path = "windows/platform.rs"]
+mod platform;
 #[path = "windows/security.rs"]
 mod security;
 #[path = "windows/transaction_lock.rs"]
@@ -27,11 +29,14 @@ use crate::acp::bindings::codex::physical::{
     PhysicallyInspectedPackage, decode_digest, inspect_claims, inspect_managed_package,
 };
 use crate::acp::bindings::codex::provisioning::{AclPlan, SealedHandoff, hex};
-use security::{Principals, apply_acl, apply_acl_to_exact_node, open_acl_node, well_known_sid};
+use native::{
+    bounded_names, create_initial_journal, node_identity, open_destination_root,
+    open_mutation_directory, open_rename_directory, rename_exact, replace_journal,
+};
+use security::{Principals, apply_acl, apply_acl_to_exact_node, well_known_sid};
 use transaction_lock::TransactionLock;
 
 const RECEIPT_BYTES_MAX: usize = 64 * 1024;
-const NEXT_SUFFIX: &str = ".next";
 
 /// Capability reserved for the separately built and verified elevated helper
 /// process. There is intentionally no production constructor in this lane.
@@ -68,6 +73,12 @@ struct WindowsPlatform {
     state_acl: AclPlan,
     principals: Principals,
     stage_proof: Option<PhysicallyInspectedPackage>,
+    stage_root_handle: Option<File>,
+    package_parent_handle: File,
+    state_parent_handle: File,
+    state_handle: Option<File>,
+    state_identity: Option<NodeIdentity>,
+    creation_nonce: String,
 }
 
 impl WindowsPlatform {
@@ -92,10 +103,28 @@ impl WindowsPlatform {
                 })
             })
             .collect::<Result<Vec<_>, ElevatedHelperError>>()?;
+        let transaction_lock = TransactionLock::acquire(request.package_target())?;
+        let stage_root = request.stage_root().to_owned();
+        let stage_root_handle = open_destination_root(&stage_root)?;
+        let package_parent = request
+            .package_target()
+            .parent()
+            .ok_or(ElevatedHelperError::HandoffIdentity)?;
+        let package_parent_handle = open_destination_root(package_parent)?;
+        if node_identity(transaction_lock.parent_handle())?
+            != node_identity(&package_parent_handle)?
+        {
+            return Err(ElevatedHelperError::Drift);
+        }
+        let state_parent = request
+            .state_target()
+            .parent()
+            .ok_or(ElevatedHelperError::HandoffIdentity)?;
+        let state_parent_handle = open_destination_root(state_parent)?;
         Ok(Self {
-            _transaction_lock: TransactionLock::acquire(request.package_target())?,
+            _transaction_lock: transaction_lock,
             packet: packet.clone(),
-            stage_root: request.stage_root().to_owned(),
+            stage_root,
             stage_package: request.stage_root().join("package"),
             stage_state: request.stage_root().join("state"),
             package_target: request.package_target().to_owned(),
@@ -111,6 +140,12 @@ impl WindowsPlatform {
                 system: well_known_sid(WinLocalSystemSid)?,
             },
             stage_proof: None,
+            stage_root_handle: Some(stage_root_handle),
+            package_parent_handle,
+            state_parent_handle,
+            state_handle: None,
+            state_identity: None,
+            creation_nonce: request.creation_nonce().to_owned(),
         })
     }
 
@@ -125,196 +160,26 @@ impl WindowsPlatform {
     }
 }
 
-impl HelperTransactionPlatform for WindowsPlatform {
-    type Proof = ManagedStagingPrerequisite;
-
-    fn read_journal(
-        &mut self,
-        path: &Path,
-        byte_limit: usize,
-    ) -> Result<Option<Vec<u8>>, ElevatedHelperError> {
-        read_bounded_file(path, byte_limit)
-    }
-
-    fn create_journal(&mut self, path: &Path, bytes: &[u8]) -> Result<(), ElevatedHelperError> {
-        write_new_synced(path, bytes)
-    }
-
-    fn replace_journal(&mut self, path: &Path, bytes: &[u8]) -> Result<(), ElevatedHelperError> {
-        let mut next_name = path.as_os_str().to_os_string();
-        next_name.push(NEXT_SUFFIX);
-        let next = PathBuf::from(next_name);
-        remove_exact_file_if_present(&next)?;
-        write_new_synced(&next, bytes)?;
-        rename_write_through(&next, path, true).inspect_err(|_| {
-            let _ = fs::remove_file(&next);
-        })
-    }
-
-    fn remove_journal(&mut self, path: &Path) -> Result<(), ElevatedHelperError> {
-        remove_exact_file(path)
-    }
-
-    fn observe(&mut self) -> Result<NamespaceObservation, ElevatedHelperError> {
-        Ok(NamespaceObservation {
-            stage_package: exact_directory_presence(&self.stage_package)?,
-            final_package: exact_directory_presence(&self.package_target)?,
-            final_state: exact_directory_presence(&self.state_target)?,
-        })
-    }
-
-    fn revalidate_stage(&mut self) -> Result<(), ElevatedHelperError> {
-        validate_stage_closure(
-            &self.stage_root,
-            &self.stage_state,
-            &self.receipt,
-            self.stage_package.exists(),
-        )?;
-        self.stage_proof = Some(self.inspect_at(self.stage_package.clone())?);
-        Ok(())
-    }
-
-    fn revalidate_stage_acl(&mut self) -> Result<(), ElevatedHelperError> {
-        validate_provisioned_package_acl(
-            self.stage_proof
-                .as_ref()
-                .ok_or(ElevatedHelperError::Drift)?,
-        )
-        .map_err(|_| ElevatedHelperError::AclApplication)
-    }
-
-    fn revalidate_state(&mut self) -> Result<(), ElevatedHelperError> {
-        validate_provisioned_state_root(&self.state_target)
-            .map_err(|_| ElevatedHelperError::AclApplication)
-    }
-
-    fn apply_package_acl(&mut self) -> Result<(), ElevatedHelperError> {
-        let proof = self
-            .stage_proof
-            .as_ref()
-            .ok_or(ElevatedHelperError::Drift)?;
-        for node in proof.held_nodes() {
-            apply_acl_to_exact_node(
-                node,
-                &self.package_acl,
-                &self.principals.administrators,
-                &self.principals,
-            )?;
-        }
-        validate_provisioned_package_acl(proof).map_err(|_| ElevatedHelperError::AclApplication)
-    }
-
-    fn create_state_with_acl(&mut self) -> Result<(), ElevatedHelperError> {
-        fs::create_dir(&self.state_target).map_err(|error| {
-            if error.kind() == std::io::ErrorKind::AlreadyExists {
-                ElevatedHelperError::Collision
-            } else {
-                ElevatedHelperError::Publication
-            }
-        })?;
-        let node = open_acl_node(&self.state_target, true)?;
-        apply_acl(
-            &node,
-            &self.state_acl,
-            &self.principals.user,
-            &self.principals,
-            true,
-        )?;
-        validate_provisioned_state_root(&self.state_target)
-            .map_err(|_| ElevatedHelperError::AclApplication)
-    }
-
-    fn publish_package_write_through(&mut self) -> Result<(), ElevatedHelperError> {
-        self.revalidate_stage_acl()?;
-        self.stage_proof.take();
-        rename_write_through(&self.stage_package, &self.package_target, false)
-    }
-
-    fn final_managed_proof(&mut self) -> Result<Self::Proof, ElevatedHelperError> {
-        inspect_provisioned_managed_staging(&self.packet)
-            .map_err(|_| ElevatedHelperError::FinalProof)
-    }
-
-    fn remove_completed_stage(&mut self) -> Result<(), ElevatedHelperError> {
-        if exact_directory_presence(&self.stage_root)? {
-            let names = fs::read_dir(&self.stage_root)
-                .map_err(|_| ElevatedHelperError::Cleanup)?
-                .map(|entry| entry.map(|entry| entry.file_name()))
-                .collect::<Result<BTreeSet<_>, _>>()
-                .map_err(|_| ElevatedHelperError::Cleanup)?;
-            let allowed = ["handoff.json", "state"]
-                .into_iter()
-                .map(Into::into)
-                .collect::<BTreeSet<_>>();
-            if !names.is_subset(&allowed) {
-                return Err(ElevatedHelperError::Cleanup);
-            }
-        }
-        remove_exact_file_if_present(&self.stage_root.join("handoff.json"))?;
-        if exact_directory_presence(&self.stage_state)? {
-            if fs::read_dir(&self.stage_state)
-                .map_err(|_| ElevatedHelperError::Cleanup)?
-                .next()
-                .is_some()
-            {
-                return Err(ElevatedHelperError::Cleanup);
-            }
-            fs::remove_dir(&self.stage_state).map_err(|_| ElevatedHelperError::Cleanup)?;
-        }
-        if exact_directory_presence(&self.stage_root)? {
-            fs::remove_dir(&self.stage_root).map_err(|_| ElevatedHelperError::Cleanup)?;
-        }
-        Ok(())
-    }
-
-    fn rollback_package(&mut self) -> Result<(), ElevatedHelperError> {
-        let root = ConfiguredManagedPackageRoot::new(self.package_target.clone())
-            .map_err(|_| ElevatedHelperError::Rollback)?;
-        let proof = inspect_managed_package(&self.packet, &root)
-            .map_err(|_| ElevatedHelperError::Rollback)?;
-        validate_provisioned_package_acl(&proof).map_err(|_| ElevatedHelperError::Rollback)?;
-        drop(proof);
-        rename_write_through(&self.package_target, &self.stage_package, false)
-            .map_err(|_| ElevatedHelperError::Rollback)
-    }
-
-    fn rollback_state(&mut self) -> Result<(), ElevatedHelperError> {
-        validate_provisioned_state_root(&self.state_target)
-            .map_err(|_| ElevatedHelperError::Rollback)?;
-        if fs::read_dir(&self.state_target)
-            .map_err(|_| ElevatedHelperError::Rollback)?
-            .next()
-            .is_some()
-        {
-            return Err(ElevatedHelperError::Rollback);
-        }
-        fs::remove_dir(&self.state_target).map_err(|_| ElevatedHelperError::Rollback)
-    }
-}
-
 fn validate_stage_closure(
     stage: &Path,
     state: &Path,
     receipt: &SealedHandoff,
     package_present: bool,
+    state_published: bool,
 ) -> Result<(), ElevatedHelperError> {
-    let names = fs::read_dir(stage)
-        .map_err(|_| ElevatedHelperError::Drift)?
-        .map(|entry| entry.map(|entry| entry.file_name()))
-        .collect::<Result<BTreeSet<_>, _>>()
-        .map_err(|_| ElevatedHelperError::Drift)?;
-    let mut expected = ["handoff.json", "state"]
+    let mut expected = ["handoff.json"]
         .into_iter()
         .map(Into::into)
         .collect::<BTreeSet<_>>();
     if package_present {
         expected.insert("package".into());
     }
+    if !state_published {
+        expected.insert("state".into());
+    }
+    let names = bounded_names(stage, expected.len(), ElevatedHelperError::Drift)?;
     if names != expected
-        || fs::read_dir(state)
-            .map_err(|_| ElevatedHelperError::Drift)?
-            .next()
-            .is_some()
+        || (!state_published && !bounded_names(state, 0, ElevatedHelperError::Drift)?.is_empty())
     {
         return Err(ElevatedHelperError::Drift);
     }
@@ -357,19 +222,6 @@ fn read_bounded_file(path: &Path, limit: usize) -> Result<Option<Vec<u8>>, Eleva
     Ok(Some(bytes))
 }
 
-fn write_new_synced(path: &Path, bytes: &[u8]) -> Result<(), ElevatedHelperError> {
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .share_mode(0)
-        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
-        .open(path)
-        .map_err(|_| ElevatedHelperError::Journal)?;
-    file.write_all(bytes)
-        .and_then(|()| file.sync_all())
-        .map_err(|_| ElevatedHelperError::Journal)
-}
-
 fn remove_exact_file(path: &Path) -> Result<(), ElevatedHelperError> {
     let metadata = fs::symlink_metadata(path).map_err(|_| ElevatedHelperError::Journal)?;
     if !metadata.file_type().is_file()
@@ -400,24 +252,4 @@ fn exact_directory_presence(path: &Path) -> Result<bool, ElevatedHelperError> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(_) => Err(ElevatedHelperError::Drift),
     }
-}
-
-fn rename_write_through(from: &Path, to: &Path, replace: bool) -> Result<(), ElevatedHelperError> {
-    if !replace && fs::symlink_metadata(to).is_ok() {
-        return Err(ElevatedHelperError::Collision);
-    }
-    let mut from = from.as_os_str().encode_wide().collect::<Vec<_>>();
-    let mut to = to.as_os_str().encode_wide().collect::<Vec<_>>();
-    from.push(0);
-    to.push(0);
-    let flags = MOVEFILE_WRITE_THROUGH
-        | if replace {
-            MOVEFILE_REPLACE_EXISTING
-        } else {
-            0
-        };
-    if unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), flags) } == 0 {
-        return Err(ElevatedHelperError::Publication);
-    }
-    Ok(())
 }

@@ -11,7 +11,7 @@ use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::Storage::FileSystem::{
     BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
     FILE_BASIC_INFO, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
-    FILE_NAME_NORMALIZED, FILE_SHARE_READ, FILE_TYPE_DISK, FileBasicInfo,
+    FILE_NAME_NORMALIZED, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_TYPE_DISK, FileBasicInfo,
     GetFileInformationByHandle, GetFileInformationByHandleEx, GetFileType,
     GetFinalPathNameByHandleW, VOLUME_NAME_DOS,
 };
@@ -56,7 +56,7 @@ pub(super) fn open_root(
 pub(super) fn open_node(
     path: &Path,
 ) -> Result<(File, NativeInfo, PathBuf), PhysicalInspectionError> {
-    open_node_with_share(path, FILE_SHARE_READ)
+    open_node_with_share(path, FILE_SHARE_READ | FILE_SHARE_DELETE)
 }
 
 pub(super) fn open_mutable_directory(
@@ -64,7 +64,7 @@ pub(super) fn open_mutable_directory(
 ) -> Result<(File, NativeInfo, PathBuf), PhysicalInspectionError> {
     use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_WRITE;
 
-    open_node_with_share(path, FILE_SHARE_READ | FILE_SHARE_WRITE)
+    open_node_with_share(path, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
 }
 
 fn open_node_with_share(

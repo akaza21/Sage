@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use super::{AuthenticatedHelperRequest, ElevatedHelperError, constant_time_equal};
 use serde::{Deserialize, Serialize};
 
-const JOURNAL_SCHEMA_VERSION: u8 = 1;
+const JOURNAL_SCHEMA_VERSION: u8 = 2;
 const JOURNAL_BYTES_MAX: usize = 64 * 1024;
 const RECOVERY_STEPS_MAX: usize = 4;
 const JOURNAL_NAME: &str = ".sage-codex-0.145.0-provisioning-journal.json";
@@ -25,6 +25,7 @@ struct JournalPayload {
     stage_root: PathBuf,
     package_target: PathBuf,
     state_target: PathBuf,
+    state_identity: NodeIdentity,
     phase: JournalPhase,
 }
 
@@ -42,6 +43,13 @@ pub(super) struct NamespaceObservation {
     pub(super) final_state: bool,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct NodeIdentity {
+    pub(super) volume_serial: u32,
+    pub(super) file_id: u64,
+}
+
 pub(super) trait HelperTransactionPlatform {
     type Proof;
 
@@ -54,12 +62,16 @@ pub(super) trait HelperTransactionPlatform {
     fn replace_journal(&mut self, path: &Path, bytes: &[u8]) -> Result<(), ElevatedHelperError>;
     fn remove_journal(&mut self, path: &Path) -> Result<(), ElevatedHelperError>;
     fn observe(&mut self) -> Result<NamespaceObservation, ElevatedHelperError>;
+    fn bind_state_identity(
+        &mut self,
+        expected: Option<NodeIdentity>,
+    ) -> Result<NodeIdentity, ElevatedHelperError>;
     fn revalidate_stage(&mut self) -> Result<(), ElevatedHelperError>;
     fn revalidate_stage_acl(&mut self) -> Result<(), ElevatedHelperError>;
     fn revalidate_state(&mut self) -> Result<(), ElevatedHelperError>;
     fn apply_package_acl(&mut self) -> Result<(), ElevatedHelperError>;
-    fn create_state_with_acl(&mut self) -> Result<(), ElevatedHelperError>;
-    fn publish_package_write_through(&mut self) -> Result<(), ElevatedHelperError>;
+    fn publish_state_with_acl(&mut self) -> Result<(), ElevatedHelperError>;
+    fn publish_package_exact(&mut self) -> Result<(), ElevatedHelperError>;
     fn final_managed_proof(&mut self) -> Result<Self::Proof, ElevatedHelperError>;
     fn remove_completed_stage(&mut self) -> Result<(), ElevatedHelperError>;
     fn rollback_package(&mut self) -> Result<(), ElevatedHelperError>;
@@ -71,12 +83,17 @@ pub(super) fn finalize<P: HelperTransactionPlatform>(
     platform: &mut P,
 ) -> Result<P::Proof, ElevatedHelperError> {
     let journal_path = journal_path(request)?;
-    let expected = initial_journal(request)?;
     let mut journal = match platform.read_journal(&journal_path, JOURNAL_BYTES_MAX)? {
-        Some(bytes) => decode_journal(&bytes, &expected, request)?,
+        Some(bytes) => {
+            let journal = decode_journal(&bytes, request)?;
+            platform.bind_state_identity(Some(journal.payload.state_identity))?;
+            journal
+        }
         None => {
             require_namespace(platform.observe()?, JournalPhase::Prepared, false)?;
             platform.revalidate_stage()?;
+            let state_identity = platform.bind_state_identity(None)?;
+            let expected = initial_journal(request, state_identity)?;
             let bytes = encode_journal(&expected)?;
             platform.create_journal(&journal_path, &bytes)?;
             expected
@@ -107,7 +124,7 @@ fn advance<P: HelperTransactionPlatform>(
                 if observed.final_state {
                     platform.revalidate_state()?;
                 } else {
-                    platform.create_state_with_acl()?;
+                    platform.publish_state_with_acl()?;
                 }
                 persist_phase(
                     request,
@@ -123,7 +140,7 @@ fn advance<P: HelperTransactionPlatform>(
                 if observed.stage_package {
                     platform.revalidate_stage()?;
                     platform.revalidate_stage_acl()?;
-                    platform.publish_package_write_through()?;
+                    platform.publish_package_exact()?;
                 }
                 persist_phase(
                     request,
@@ -222,6 +239,7 @@ fn rollback<P: HelperTransactionPlatform>(
 
 fn initial_journal(
     request: &AuthenticatedHelperRequest,
+    state_identity: NodeIdentity,
 ) -> Result<SealedJournal, ElevatedHelperError> {
     let payload = JournalPayload {
         schema_version: JOURNAL_SCHEMA_VERSION,
@@ -230,6 +248,7 @@ fn initial_journal(
         stage_root: request.stage_root().to_owned(),
         package_target: request.package_target().to_owned(),
         state_target: request.state_target().to_owned(),
+        state_identity,
         phase: JournalPhase::Prepared,
     };
     Ok(SealedJournal {
@@ -248,7 +267,6 @@ fn journal_path(request: &AuthenticatedHelperRequest) -> Result<PathBuf, Elevate
 
 fn decode_journal(
     bytes: &[u8],
-    expected: &SealedJournal,
     request: &AuthenticatedHelperRequest,
 ) -> Result<SealedJournal, ElevatedHelperError> {
     if bytes.is_empty() || bytes.len() > JOURNAL_BYTES_MAX {
@@ -263,7 +281,7 @@ fn decode_journal(
     ) {
         return Err(ElevatedHelperError::Journal);
     }
-    let mut expected_payload = expected.payload.clone();
+    let mut expected_payload = initial_journal(request, journal.payload.state_identity)?.payload;
     expected_payload.phase = journal.payload.phase;
     if journal.payload != expected_payload {
         return Err(ElevatedHelperError::Collision);

@@ -14,7 +14,7 @@ const LOCK_NAME: &str = ".sage-codex-0.145.0-elevated-helper.lock";
 #[derive(Debug)]
 pub(super) struct TransactionLock {
     _handle: File,
-    _parent_handle: File,
+    parent_handle: File,
 }
 
 impl TransactionLock {
@@ -46,8 +46,12 @@ impl TransactionLock {
             .map_err(|_| ElevatedHelperError::Journal)?;
         Ok(Self {
             _handle: handle,
-            _parent_handle: parent_handle,
+            parent_handle,
         })
+    }
+
+    pub(super) fn parent_handle(&self) -> &File {
+        &self.parent_handle
     }
 }
 
