@@ -1,14 +1,15 @@
-use std::{ffi::OsString, path::PathBuf};
+use std::ffi::OsString;
 
 use uuid::Uuid;
 
 use crate::acp::{
     bindings::adapter::AdapterRuntimeError,
     process::{
-        ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, CanonicalNativeDirectory,
-        LaunchSpec, ProcessDeadlines, RequiredContainment, TreeLimits,
+        ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
+        RequiredContainment, TreeLimits,
     },
 };
+use crate::project_registry::ProjectRootAuthority;
 
 use super::CodexRuntime;
 
@@ -17,13 +18,26 @@ impl CodexRuntime {
     /// exact runtime. Metadata-only adapters cannot construct this value.
     pub(crate) fn launch_spec(
         &self,
-        working_directory: PathBuf,
+        project_root: ProjectRootAuthority,
     ) -> Result<LaunchSpec, AdapterRuntimeError> {
         let binding = self
             .admission
             .as_ref()
             .ok_or(AdapterRuntimeError::LaunchUnavailable)?;
         binding
+            .revalidate()
+            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        let runtime_root = self
+            .project_root
+            .as_ref()
+            .ok_or(AdapterRuntimeError::LaunchUnavailable)?;
+        if runtime_root.project_id != *project_root.project_id()
+            || runtime_root.generation != project_root.generation()
+            || runtime_root.root_id != *project_root.root_id()
+        {
+            return Err(AdapterRuntimeError::LaunchUnavailable);
+        }
+        project_root
             .revalidate()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
 
@@ -48,8 +62,7 @@ impl CodexRuntime {
                 .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?,
             environment: BoundedEnvironment::new(environment)
                 .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?,
-            working_directory: CanonicalNativeDirectory::new(working_directory)
-                .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?,
+            project_root,
             required_guarantee: RequiredContainment::EnforcedTree,
             limits: TreeLimits::ade_0006a(),
             deadlines: ProcessDeadlines::ade_0006a(),

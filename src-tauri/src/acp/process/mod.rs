@@ -21,8 +21,8 @@ pub(crate) use platform::{
 };
 pub(crate) use supervisor::ZeroProcessToken;
 pub(crate) use supervisor::{
-    ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, CanonicalNativeDirectory, LaunchError,
-    LaunchSpec, ProcessDeadlines, RequiredContainment, TreeLimits,
+    ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchError, LaunchSpec,
+    ProcessDeadlines, RequiredContainment, TreeLimits,
 };
 pub(crate) use supervisor::{SupervisorLifecycle, TeardownAction, TreeExit, TreeState};
 

@@ -11,11 +11,13 @@ use uuid::Uuid;
 use crate::{
     acp::{
         bindings::adapter::ResourceMapper,
-        contract::{RuntimeEpoch, SageAgentSessionId},
+        contract::{
+            ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
+        },
         intent::{IntentSnapshot, ProjectionChangedV1, SafeResourceRef, UnavailableResourceReason},
         process::{
-            ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, CanonicalNativeDirectory,
-            LaunchSpec, ProcessDeadlines, RequiredContainment, TreeLimits,
+            ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
+            RequiredContainment, TreeLimits,
         },
         runtime::{
             ProjectIntentAuthority, ProjectionPublishError, ProjectionPublishStatus,
@@ -24,6 +26,7 @@ use crate::{
         store::PrepareTurnCommand,
     },
     persistence::Database,
+    project_registry::ProjectRootAuthority,
 };
 
 #[derive(Clone, Copy)]
@@ -146,8 +149,11 @@ pub(super) fn launch_spec(
         ])
         .unwrap(),
         environment: BoundedEnvironment::new(Vec::new()).unwrap(),
-        working_directory: CanonicalNativeDirectory::new(
-            std::env::current_dir().unwrap().canonicalize().unwrap(),
+        project_root: ProjectRootAuthority::for_test(
+            SageProjectId::parse("project-external-fixture").unwrap(),
+            ProjectGeneration::ZERO,
+            SageRootId::parse("root-external-fixture").unwrap(),
+            &std::env::current_dir().unwrap(),
         )
         .unwrap(),
         required_guarantee: RequiredContainment::EnforcedTree,

@@ -8,10 +8,179 @@ use uuid::Uuid;
 
 use super::*;
 use crate::{
+    acp::contract::{ProjectGeneration, SageProjectId, SageRootId},
     domain::{ProjectLayoutRequest, ProjectSwitchRequest},
     editor,
     persistence::Database,
+    state::AppState,
 };
+
+fn runtime() -> tokio::runtime::Runtime {
+    tokio::runtime::Runtime::new().unwrap()
+}
+
+#[test]
+fn process_root_authority_rejects_unknown_and_foreign_roots() {
+    runtime().block_on(async {
+        let folders = Folders::new();
+        let database = Database::open(Path::new(":memory:")).unwrap();
+        let foreign = database
+            .create_project_from_root(&folders.root("foreign"))
+            .unwrap();
+        let active = database
+            .create_project_from_root(&folders.root("active"))
+            .unwrap();
+        let state = AppState::new(database.clone());
+        let project_id = SageProjectId::parse(active.id).unwrap();
+        let context = state
+            .lock_active_project(&project_id, ProjectGeneration::ZERO)
+            .await
+            .unwrap();
+
+        assert!(
+            database
+                .project_root_authority(&context, &SageRootId::parse("root-unknown").unwrap())
+                .is_err()
+        );
+        assert!(
+            database
+                .project_root_authority(
+                    &context,
+                    &SageRootId::parse(foreign.roots[0].id.clone()).unwrap()
+                )
+                .is_err()
+        );
+    });
+}
+
+#[test]
+fn process_root_authority_rejects_noncanonical_alias_and_missing_root() {
+    runtime().block_on(async {
+        let folders = Folders::new();
+        let root = folders.root("root");
+        let database = Database::open(Path::new(":memory:")).unwrap();
+        let project = database.create_project_from_root(&root).unwrap();
+        let root_id = SageRootId::parse(project.roots[0].id.clone()).unwrap();
+        let state = AppState::new(database.clone());
+        let project_id = SageProjectId::parse(project.id).unwrap();
+        let context = state
+            .lock_active_project(&project_id, ProjectGeneration::ZERO)
+            .await
+            .unwrap();
+
+        database
+            .connection()
+            .execute(
+                "UPDATE project_roots SET absolute_path=?2 WHERE id=?1",
+                rusqlite::params![root_id.as_str(), root.join(".").to_string_lossy()],
+            )
+            .unwrap();
+        assert!(database.project_root_authority(&context, &root_id).is_err());
+
+        database
+            .connection()
+            .execute(
+                "UPDATE project_roots SET absolute_path=?2 WHERE id=?1",
+                rusqlite::params![root_id.as_str(), root.to_string_lossy()],
+            )
+            .unwrap();
+        fs::remove_dir_all(&root).unwrap();
+        assert!(database.project_root_authority(&context, &root_id).is_err());
+    });
+}
+
+#[test]
+fn retained_process_root_detects_or_blocks_directory_substitution() {
+    runtime().block_on(async {
+        let folders = Folders::new();
+        let root = folders.root("root");
+        let moved = folders.base.join("moved");
+        let database = Database::open(Path::new(":memory:")).unwrap();
+        let project = database.create_project_from_root(&root).unwrap();
+        let state = AppState::new(database.clone());
+        let project_id = SageProjectId::parse(project.id).unwrap();
+        let context = state
+            .lock_active_project(&project_id, ProjectGeneration::ZERO)
+            .await
+            .unwrap();
+        let authority = database.selected_project_root_authority(&context).unwrap();
+
+        match fs::rename(&root, &moved) {
+            Ok(()) => {
+                fs::create_dir_all(&root).unwrap();
+                assert!(authority.revalidate().is_err());
+            }
+            Err(_) => {
+                // Windows retains the directory without FILE_SHARE_DELETE,
+                // so ordinary replacement is blocked while authority lives.
+                assert!(authority.revalidate().is_ok());
+            }
+        }
+        drop(authority);
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn process_root_authority_rejects_registered_symlink_alias() {
+    use std::os::unix::fs::symlink;
+
+    runtime().block_on(async {
+        let folders = Folders::new();
+        let root = folders.root("root");
+        let alias = folders.base.join("alias");
+        symlink(&root, &alias).unwrap();
+        let database = Database::open(Path::new(":memory:")).unwrap();
+        let project = database.create_project_from_root(&root).unwrap();
+        let root_id = SageRootId::parse(project.roots[0].id.clone()).unwrap();
+        database
+            .connection()
+            .execute(
+                "UPDATE project_roots SET absolute_path=?2 WHERE id=?1",
+                rusqlite::params![root_id.as_str(), alias.to_string_lossy()],
+            )
+            .unwrap();
+        let state = AppState::new(database.clone());
+        let project_id = SageProjectId::parse(project.id).unwrap();
+        let context = state
+            .lock_active_project(&project_id, ProjectGeneration::ZERO)
+            .await
+            .unwrap();
+
+        assert!(database.project_root_authority(&context, &root_id).is_err());
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn process_root_authority_rejects_registered_windows_directory_alias() {
+    runtime().block_on(async {
+        let folders = Folders::new();
+        let root = folders.root("root");
+        let alias = folders.base.join("alias");
+        if std::os::windows::fs::symlink_dir(&root, &alias).is_err() {
+            return;
+        }
+        let database = Database::open(Path::new(":memory:")).unwrap();
+        let project = database.create_project_from_root(&root).unwrap();
+        let root_id = SageRootId::parse(project.roots[0].id.clone()).unwrap();
+        database
+            .connection()
+            .execute(
+                "UPDATE project_roots SET absolute_path=?2 WHERE id=?1",
+                rusqlite::params![root_id.as_str(), alias.to_string_lossy()],
+            )
+            .unwrap();
+        let state = AppState::new(database.clone());
+        let project_id = SageProjectId::parse(project.id).unwrap();
+        let context = state
+            .lock_active_project(&project_id, ProjectGeneration::ZERO)
+            .await
+            .unwrap();
+
+        assert!(database.project_root_authority(&context, &root_id).is_err());
+    });
+}
 
 struct Folders {
     base: PathBuf,

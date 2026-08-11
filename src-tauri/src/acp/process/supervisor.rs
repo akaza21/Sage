@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use uuid::Uuid;
 
-use crate::acp::limits::LIMITS;
+use crate::{acp::limits::LIMITS, project_registry::ProjectRootAuthority};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EntryPointKind {
@@ -39,19 +39,6 @@ pub(crate) enum LaunchError {
     Io,
     PlatformUnavailable,
     StdioLimit,
-}
-
-pub(crate) struct CanonicalNativeDirectory(PathBuf);
-
-impl CanonicalNativeDirectory {
-    pub(crate) fn new(path: PathBuf) -> Result<Self, LaunchError> {
-        validate_absolute_normalized(&path)?;
-        Ok(Self(path))
-    }
-
-    pub(crate) fn as_path(&self) -> &Path {
-        &self.0
-    }
 }
 
 pub(crate) struct ArtifactExpectation {
@@ -192,7 +179,7 @@ pub(crate) struct LaunchSpec {
     pub(crate) artifact: ArtifactExpectation,
     pub(crate) fixed_args: BoundedOsArgs,
     pub(crate) environment: BoundedEnvironment,
-    pub(crate) working_directory: CanonicalNativeDirectory,
+    pub(crate) project_root: ProjectRootAuthority,
     pub(crate) required_guarantee: RequiredContainment,
     pub(crate) limits: TreeLimits,
     pub(crate) deadlines: ProcessDeadlines,

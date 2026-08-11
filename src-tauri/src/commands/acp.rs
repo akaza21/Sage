@@ -19,7 +19,7 @@ use crate::{
             validate_cancel_intent, validate_session_intent,
         },
     },
-    state::AppState,
+    state::{ActiveProjectContext, ActiveProjectError, AppState},
 };
 
 #[tauri::command]
@@ -110,7 +110,16 @@ pub(crate) async fn activate_acp_session_inner(
     validate_session_intent(&request, &snapshot).map_err(intent_error)?;
     #[cfg(all(windows, feature = "acp-fixture"))]
     if state.acp.characterization_enabled() {
-        return characterization::activate(state, request).await;
+        let project_root = state
+            .database
+            .selected_project_root_authority(&_transition)
+            .map_err(|_| AcpIpcError::Unavailable {
+                reason: crate::acp::intent::AcpUnavailableReason::CapabilityUnavailable,
+                message: safe_message(
+                    "The selected project root is unavailable or changed; reselect it and retry.",
+                ),
+            })?;
+        return characterization::activate(state, request, project_root).await;
     }
     Err(binding_unavailable())
 }
@@ -210,7 +219,7 @@ async fn snapshot_for<'a>(
     project_id: SageProjectId,
     generation: ProjectGeneration,
     chat_id: SageChatId,
-) -> Result<(tokio::sync::MutexGuard<'a, u64>, IntentSnapshot), AcpIpcError> {
+) -> Result<(ActiveProjectContext<'a>, IntentSnapshot), AcpIpcError> {
     let transition = lock_acp_context(state, &project_id, generation).await?;
     let snapshot = state
         .acp
@@ -223,23 +232,20 @@ async fn lock_acp_context<'a>(
     state: &'a AppState,
     project_id: &SageProjectId,
     generation: ProjectGeneration,
-) -> Result<tokio::sync::MutexGuard<'a, u64>, AcpIpcError> {
-    let transition = state.project_transitions.lock().await;
-    let expected =
-        ProjectGeneration::new(*transition).map_err(|_| AcpIpcError::RecoveryRequired {
-            message: safe_message("The native project generation is unavailable; reload Sage."),
-        })?;
-    if generation != expected {
-        return Err(intent_error(IntentError::StaleProjectGeneration));
-    }
-    let active = state
-        .database
-        .active_project_id()
-        .map_err(|_| internal_error())?;
-    if active.as_deref() != Some(project_id.as_str()) {
-        return Err(intent_error(IntentError::ForeignProject));
-    }
-    Ok(transition)
+) -> Result<ActiveProjectContext<'a>, AcpIpcError> {
+    state
+        .lock_active_project(project_id, generation)
+        .await
+        .map_err(|error| match error {
+            ActiveProjectError::GenerationUnavailable => AcpIpcError::RecoveryRequired {
+                message: safe_message("The native project generation is unavailable; reload Sage."),
+            },
+            ActiveProjectError::StaleGeneration => {
+                intent_error(IntentError::StaleProjectGeneration)
+            }
+            ActiveProjectError::ForeignProject => intent_error(IntentError::ForeignProject),
+            ActiveProjectError::Storage => internal_error(),
+        })
 }
 
 fn send_owner(request: &SendAcpTurnRequest) -> (&SageProjectId, ProjectGeneration, &SageChatId) {

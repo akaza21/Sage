@@ -228,17 +228,20 @@ frozen launch environment until runtime teardown, but not afterward.
 The admitted-launch-contract increment adds focused Windows tests proving that
 only an admitted runtime can produce the shared supervisor input; the contract
 contains the exact entrypoint identity, one `app-server` argument, runtime
-epoch, canonical Project working root, enforced tree containment, and exactly
+epoch, a registry-resolved ProjectGeneration-qualified selected-root authority,
+enforced tree containment, and exactly
 `CODEX_HOME`, `SystemRoot`, `TEMP`, `TMP`, and `WINDIR`. It proves the absence
-of inherited `HOME`, `USERPROFILE`, `PATH`, and `OPENAI_API_KEY`, rejects
-relative and verbatim-parent-traversal roots, and fails closed after authority
-drift. The existing shared-registration refresh remains the bounded transition
-that invalidates service and catalog availability. A local supervisor
-regression separately covers verbatim Windows `..` components.
+of inherited `HOME`, `USERPROFILE`, `PATH`, and `OPENAI_API_KEY`; rejects wrong
+project, stale generation, wrong/unknown root, missing/noncanonical and
+symlink/junction aliases; detects or blocks directory replacement between
+contract creation and spawn; and fails closed after Binding drift. The existing
+shared-registration refresh remains the bounded transition that invalidates
+service and catalog availability.
 
 The contract test deliberately does not spawn. The generic Windows supervisor
-remains the only executor and reopens/hashes the exact image, validates the
-working directory, and enforces the Job boundary at spawn. A real ignored
+remains the only executor and reopens/hashes the exact image, revalidates the
+retained root handle plus path identity, and enforces the Job boundary at
+spawn. A real ignored
 Codex campaign was not run because `SAGE_CODEX_0145_PACKAGE_ROOT` and
 `SAGE_CODEX_0145_STATE_ROOT` are unset and both canonical managed roots are
 absent. No model, Turn, restart, RSS, WAL, latency, or admission claim follows

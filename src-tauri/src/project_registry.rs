@@ -1,3 +1,4 @@
+mod launch_root;
 mod seed;
 
 use std::path::{Path, PathBuf};
@@ -6,11 +7,15 @@ use rusqlite::{Connection, OptionalExtension, params};
 use uuid::Uuid;
 
 use crate::{
+    acp::contract::SageRootId,
     domain::{ProjectListItem, ProjectRootSummary, ProjectSummary, ResourceRef},
     error::{AppError, AppResult},
     persistence::{Database, now_millis},
+    state::ActiveProjectContext,
     workspace::Workspace,
 };
+
+pub(crate) use launch_root::ProjectRootAuthority;
 
 use self::seed::{active_project_in, insert_root, seed_project};
 
@@ -43,6 +48,59 @@ pub(crate) fn persisted_path_text(path: &Path) -> AppResult<&str> {
 }
 
 impl Database {
+    pub(crate) fn selected_project_root_authority(
+        &self,
+        context: &ActiveProjectContext<'_>,
+    ) -> AppResult<ProjectRootAuthority> {
+        let root_id = self
+            .connection()
+            .query_row(
+                "SELECT selected_root_id FROM project_layouts WHERE project_id = ?1",
+                [context.project_id().as_str()],
+                |row| row.get::<_, Option<String>>(0),
+            )?
+            .ok_or_else(|| {
+                AppError::InvalidRequest("the active project has no selected root".into())
+            })?;
+        let root_id = SageRootId::parse(root_id).map_err(|_| {
+            AppError::InvalidRequest("selected project root identity is invalid".into())
+        })?;
+        self.project_root_authority(context, &root_id)
+    }
+
+    pub(crate) fn project_root_authority(
+        &self,
+        context: &ActiveProjectContext<'_>,
+        root_id: &SageRootId,
+    ) -> AppResult<ProjectRootAuthority> {
+        if self.active_project_id()?.as_deref() != Some(context.project_id().as_str()) {
+            return Err(AppError::InvalidRequest(
+                "project changed while resolving the process root".into(),
+            ));
+        }
+        let record = self.root_record(root_id.as_str())?;
+        if record.project_id != context.project_id().as_str() {
+            return Err(AppError::InvalidRequest(
+                "selected root does not belong to the active project".into(),
+            ));
+        }
+        let canonical = record.absolute_path.canonicalize().map_err(|_| {
+            AppError::InvalidRequest("selected project root is missing or unavailable".into())
+        })?;
+        if canonical != record.absolute_path || !canonical.is_dir() {
+            return Err(AppError::InvalidRequest(
+                "registered project root is not its canonical directory identity".into(),
+            ));
+        }
+        let workspace = Workspace::open(&record.project_id, &record.id, &record.absolute_path)?;
+        ProjectRootAuthority::acquire(
+            workspace,
+            context.project_id().clone(),
+            context.generation(),
+            root_id.clone(),
+        )
+    }
+
     pub fn project_count(&self) -> AppResult<i64> {
         Ok(self
             .connection()

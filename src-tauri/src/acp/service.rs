@@ -27,6 +27,8 @@ use crate::acp::{
     bindings::{adapter::AdapterRuntimeError, codex::CodexRuntime},
     contract::{RuntimeEpoch, SageAgentSessionId},
 };
+#[cfg(test)]
+use crate::project_registry::ProjectRootAuthority;
 
 #[cfg(all(windows, feature = "acp-fixture"))]
 mod characterization;
@@ -133,6 +135,7 @@ impl AcpService {
     #[cfg(test)]
     pub(crate) fn codex_runtime(
         &self,
+        project_root: &ProjectRootAuthority,
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<CodexRuntime, AdapterRuntimeError> {
@@ -140,9 +143,10 @@ impl AcpService {
             .codex
             .refresh()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        CodexRuntime::from_admitted_binding(binding, runtime_epoch, session_id).inspect_err(|_| {
-            self.codex.invalidate_drift();
-        })
+        CodexRuntime::from_admitted_binding(binding, project_root, runtime_epoch, session_id)
+            .inspect_err(|_| {
+                self.codex.invalidate_drift();
+            })
     }
 
     pub(crate) fn refresh_codex_registration(

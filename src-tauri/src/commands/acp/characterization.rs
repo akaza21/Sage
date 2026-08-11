@@ -14,6 +14,7 @@ use crate::{
             ActivateSessionCommand, CloseSessionCommand, PrepareTurnCommand, StartSessionCommand,
         },
     },
+    project_registry::ProjectRootAuthority,
     state::AppState,
 };
 
@@ -49,6 +50,7 @@ pub(super) async fn start(
 pub(super) async fn activate(
     state: &AppState,
     request: ActivateAcpSessionRequest,
+    project_root: ProjectRootAuthority,
 ) -> Result<AcpMutationResponse, AcpIpcError> {
     let project_id = request.project_id.clone();
     let chat_id = request.chat_id.clone();
@@ -58,16 +60,19 @@ pub(super) async fn activate(
         .ok_or_else(binding_unavailable)?;
     state
         .acp
-        .start_characterization(ActivateSessionCommand {
-            project_id: request.project_id,
-            chat_id: request.chat_id,
-            expected_projection_revision: request.expected_projection_revision,
-            client_intent_id: request.client_intent_id,
-            session_id: request.session_id,
-            runtime_epoch: request.runtime_epoch,
-            artifact_digest,
-            now_millis: crate::persistence::now_millis(),
-        })
+        .start_characterization(
+            ActivateSessionCommand {
+                project_id: request.project_id,
+                chat_id: request.chat_id,
+                expected_projection_revision: request.expected_projection_revision,
+                client_intent_id: request.client_intent_id,
+                session_id: request.session_id,
+                runtime_epoch: request.runtime_epoch,
+                artifact_digest,
+                now_millis: crate::persistence::now_millis(),
+            },
+            project_root,
+        )
         .await
         .map_err(map_error)?;
     mutation_response(state, project_id, chat_id)

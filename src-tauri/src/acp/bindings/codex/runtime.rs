@@ -5,7 +5,7 @@ use crate::acp::{
         AdapterBatch, AdapterBatchBuilder, AdapterCommand, AdapterEgress, AdapterEvent,
         AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
-    contract::{RuntimeEpoch, SageAgentSessionId},
+    contract::{ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId},
     lifecycle::ServerRequestState,
     transport::{Frame, OutboundFrame, request_payload_digest},
 };
@@ -40,10 +40,17 @@ use snapshots::ItemSnapshots;
 
 pub(crate) struct CodexRuntime {
     admission: Option<Arc<AdmittedCodexBinding>>,
+    project_root: Option<RuntimeProjectRoot>,
     inner: CodexAdapter,
     next_request_id: u64,
     snapshots: ItemSnapshots,
     poisoned: bool,
+}
+
+struct RuntimeProjectRoot {
+    project_id: SageProjectId,
+    generation: ProjectGeneration,
+    root_id: SageRootId,
 }
 
 impl CodexRuntime {
@@ -94,6 +101,7 @@ impl CodexRuntime {
     ) -> Self {
         Self {
             admission: None,
+            project_root: None,
             inner: CodexAdapter::from_metadata_packet(
                 packet,
                 binding_digest,

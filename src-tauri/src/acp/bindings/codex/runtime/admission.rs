@@ -4,12 +4,14 @@ use crate::acp::{
     bindings::{adapter::AdapterRuntimeError, codex::admission::AdmittedCodexBinding},
     contract::{RuntimeEpoch, SageAgentSessionId},
 };
+use crate::project_registry::ProjectRootAuthority;
 
-use super::CodexRuntime;
+use super::{CodexRuntime, RuntimeProjectRoot};
 
 impl CodexRuntime {
     pub(crate) fn from_admitted_binding(
         binding: Arc<AdmittedCodexBinding>,
+        project_root: &ProjectRootAuthority,
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<Self, AdapterRuntimeError> {
@@ -23,6 +25,11 @@ impl CodexRuntime {
             session_id,
         );
         runtime.admission = Some(binding);
+        runtime.project_root = Some(RuntimeProjectRoot {
+            project_id: project_root.project_id().clone(),
+            generation: project_root.generation(),
+            root_id: project_root.root_id().clone(),
+        });
         Ok(runtime)
     }
 

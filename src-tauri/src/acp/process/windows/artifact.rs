@@ -115,14 +115,6 @@ impl VerifiedArtifact {
     }
 }
 
-pub(super) fn validate_directory(path: &Path) -> Result<(), LaunchError> {
-    let canonical = std::fs::canonicalize(path).map_err(|_| LaunchError::InvalidAbsolutePath)?;
-    if canonical != path || !canonical.is_dir() {
-        return Err(LaunchError::InvalidAbsolutePath);
-    }
-    Ok(())
-}
-
 fn hash_file(file: &mut File, bytes: u64) -> Result<[u8; 32], LaunchError> {
     file.seek(SeekFrom::Start(0)).map_err(|_| LaunchError::Io)?;
     let mut reader = file.take(bytes.saturating_add(1));

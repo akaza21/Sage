@@ -26,6 +26,7 @@ use crate::acp::{
 };
 
 use super::AcpService;
+use crate::project_registry::ProjectRootAuthority;
 use observation::ObservedStdin;
 use support::{
     DatabaseAuthority, command_owner, converge_failed_runtime, deadlines, launch_spec, load_roots,
@@ -59,6 +60,7 @@ impl AcpService {
     pub(crate) async fn start_characterization(
         &self,
         command: ActivateSessionCommand,
+        project_root: ProjectRootAuthority,
     ) -> Result<(), CharacterizationError> {
         let binding = self
             .characterization
@@ -76,10 +78,7 @@ impl AcpService {
         };
         validate_session_binding(&self.database, &owner)?;
         let roots = load_roots(&self.database, &owner)?;
-        let primary = roots
-            .first()
-            .map(|root| root.canonical_native_root.clone())
-            .ok_or(CharacterizationError::Intent)?;
+        let primary = project_root.as_path().to_owned();
         let resources =
             NativeResourceMapper::new(roots).map_err(|_| CharacterizationError::Intent)?;
         let (operation_deadline, cleanup_deadline) = deadlines()?;
@@ -87,7 +86,7 @@ impl AcpService {
             &binding.artifact,
             binding.case,
             &owner,
-            &primary,
+            project_root,
             cleanup_deadline,
         )?;
         let external_session = ExternalId::new("externalSession", "fixture-persisted-session-1")

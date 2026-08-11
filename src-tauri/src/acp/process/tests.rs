@@ -4,6 +4,10 @@ use std::path::PathBuf;
 use uuid::Uuid;
 
 use crate::acp::limits::LIMITS;
+use crate::{
+    acp::contract::{ProjectGeneration, SageProjectId, SageRootId},
+    project_registry::ProjectRootAuthority,
+};
 
 use super::supervisor::LaunchFailureTracker;
 use super::*;
@@ -16,10 +20,7 @@ fn launch_spec(path: PathBuf) -> LaunchSpec {
         artifact: ArtifactExpectation::new(Uuid::nil(), path, [7; 32], 10).unwrap(),
         fixed_args: BoundedOsArgs::new(Vec::new()).unwrap(),
         environment: BoundedEnvironment::new(Vec::new()).unwrap(),
-        working_directory: CanonicalNativeDirectory::new(
-            std::env::current_dir().unwrap().canonicalize().unwrap(),
-        )
-        .unwrap(),
+        project_root: test_project_root(),
         required_guarantee: RequiredContainment::EnforcedTree,
         limits: TreeLimits::ade_0006a(),
         deadlines: ProcessDeadlines::ade_0006a(),
@@ -27,6 +28,16 @@ fn launch_spec(path: PathBuf) -> LaunchSpec {
         #[cfg(all(test, windows))]
         test_after_artifact_verified: None,
     }
+}
+
+fn test_project_root() -> ProjectRootAuthority {
+    ProjectRootAuthority::for_test(
+        SageProjectId::parse("project-process-test").unwrap(),
+        ProjectGeneration::ZERO,
+        SageRootId::parse("root-process-test").unwrap(),
+        &std::env::current_dir().unwrap(),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -71,15 +82,6 @@ fn launch_inputs_reject_nul_invalid_environment_and_case_aliases() {
         ])
         .err(),
         Some(LaunchError::InvalidEnvironment)
-    );
-}
-
-#[cfg(windows)]
-#[test]
-fn canonical_native_directory_rejects_verbatim_parent_traversal() {
-    assert_eq!(
-        CanonicalNativeDirectory::new(PathBuf::from(r"\\?\C:\repo\..\escape")).err(),
-        Some(LaunchError::InvalidAbsolutePath)
     );
 }
 
@@ -264,10 +266,7 @@ fn verified_fixture_spec_at(case: &str, seed: u32, path: PathBuf) -> LaunchSpec 
         ])
         .unwrap(),
         environment: BoundedEnvironment::new(Vec::new()).unwrap(),
-        working_directory: CanonicalNativeDirectory::new(
-            std::env::current_dir().unwrap().canonicalize().unwrap(),
-        )
-        .unwrap(),
+        project_root: test_project_root(),
         required_guarantee: RequiredContainment::EnforcedTree,
         limits: TreeLimits::ade_0006a(),
         deadlines: ProcessDeadlines::ade_0006a(),

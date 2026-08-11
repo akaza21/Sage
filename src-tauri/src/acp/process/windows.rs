@@ -17,7 +17,7 @@ use windows_sys::Win32::System::Threading::{
     INFINITE, PROCESS_INFORMATION, STARTF_USESTDHANDLES, STARTUPINFOEXW, WaitForSingleObject,
 };
 
-use self::artifact::{VerifiedArtifact, validate_directory};
+use self::artifact::VerifiedArtifact;
 pub(crate) use self::authority::{RunningTree, TreeControl};
 use self::encoding::{command_line, environment_block, wide_z};
 pub(crate) use self::io::{StdinEndpoint, StdoutEndpoint};
@@ -60,7 +60,11 @@ pub(crate) fn launch(
     if let Some(hook) = &spec.test_after_artifact_verified {
         hook();
     }
-    pre_spawn!(validate_directory(spec.working_directory.as_path()));
+    pre_spawn!(
+        spec.project_root
+            .revalidate()
+            .map_err(|_| LaunchError::IdentityMismatch)
+    );
     let job = pre_spawn!(JobBoundary::create(spec.limits.active_processes));
     let stdio = pre_spawn!(StdioSet::create());
     let child_handles = stdio.child_handles();
@@ -71,7 +75,7 @@ pub(crate) fn launch(
     ));
     let environment = pre_spawn!(environment_block(spec.environment.as_slice()));
     let application = pre_spawn!(wide_z(artifact.canonical_path.as_os_str()));
-    let cwd = pre_spawn!(wide_z(spec.working_directory.as_path().as_os_str()));
+    let cwd = pre_spawn!(wide_z(spec.project_root.as_path().as_os_str()));
     let mut startup = STARTUPINFOEXW::default();
     startup.StartupInfo.cb = pre_spawn!(
         u32::try_from(size_of::<STARTUPINFOEXW>()).map_err(|_| LaunchError::ContainmentFailure)

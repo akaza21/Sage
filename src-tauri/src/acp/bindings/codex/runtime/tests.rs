@@ -9,10 +9,11 @@ use crate::acp::{
         },
         codex::{Platform, parse_packet_metadata, parse_security_policy},
     },
-    contract::{RequiredText, SafeText, SageRootId},
+    contract::{ProjectGeneration, RequiredText, SafeText, SageProjectId, SageRootId},
     intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef},
     transport::IncrementalFrameDecoder,
 };
+use crate::project_registry::ProjectRootAuthority;
 
 struct Mapper;
 
@@ -35,6 +36,28 @@ impl ResourceMapper for Mapper {
 
 fn fixture_runtime() -> CodexRuntime {
     CodexRuntime::fixture(Platform::WindowsX86_64)
+}
+
+fn launch_project_id() -> SageProjectId {
+    SageProjectId::parse("project-codex-launch").unwrap()
+}
+
+fn launch_root_id() -> SageRootId {
+    SageRootId::parse("root-codex-launch").unwrap()
+}
+
+fn launch_root(
+    project_id: SageProjectId,
+    generation: ProjectGeneration,
+    root_id: SageRootId,
+) -> ProjectRootAuthority {
+    ProjectRootAuthority::for_test(
+        project_id,
+        generation,
+        root_id,
+        &std::env::current_dir().unwrap(),
+    )
+    .unwrap()
 }
 
 fn frame(value: Value) -> Frame {
@@ -165,6 +188,11 @@ fn admitted_binding_is_the_only_constructor_that_crosses_the_launch_gate() {
     assert!(
         CodexRuntime::from_admitted_binding(
             binding,
+            &launch_root(
+                launch_project_id(),
+                ProjectGeneration::ZERO,
+                launch_root_id(),
+            ),
             RuntimeEpoch::new(1).expect("epoch"),
             SageAgentSessionId::parse("session-admitted").expect("session"),
         )
@@ -181,6 +209,11 @@ fn runtime_retains_admission_authority_and_frozen_environment_until_teardown() {
     let retained = std::sync::Arc::downgrade(&binding);
     let runtime = CodexRuntime::from_admitted_binding(
         binding,
+        &launch_root(
+            launch_project_id(),
+            ProjectGeneration::ZERO,
+            launch_root_id(),
+        ),
         RuntimeEpoch::new(1).expect("epoch"),
         SageAgentSessionId::parse("session-retained-authority").expect("session"),
     )
@@ -206,16 +239,22 @@ fn admitted_runtime_builds_the_exact_contained_app_server_launch_contract() {
     let expected_sha256 = binding.entrypoint().sha256;
     let expected_bytes = binding.entrypoint().byte_len;
     let expected_environment = binding.environment().entries().to_vec();
-    let working_directory = std::env::current_dir().unwrap().canonicalize().unwrap();
+    let project_root = launch_root(
+        launch_project_id(),
+        ProjectGeneration::ZERO,
+        launch_root_id(),
+    );
+    let working_directory = project_root.as_path().to_owned();
     let runtime = CodexRuntime::from_admitted_binding(
         binding,
+        &project_root,
         RuntimeEpoch::new(23).expect("epoch"),
         SageAgentSessionId::parse("session-launch-contract").expect("session"),
     )
     .unwrap();
 
     let spec = runtime
-        .launch_spec(working_directory.clone())
+        .launch_spec(project_root)
         .expect("admitted launch contract");
 
     assert_eq!(spec.runtime_epoch, 23);
@@ -255,7 +294,7 @@ fn admitted_runtime_builds_the_exact_contained_app_server_launch_contract() {
                 .all(|(key, _)| !key.eq_ignore_ascii_case(OsStr::new(inherited)))
         );
     }
-    assert_eq!(spec.working_directory.as_path(), working_directory);
+    assert_eq!(spec.project_root.as_path(), working_directory);
     assert_eq!(spec.required_guarantee, RequiredContainment::EnforcedTree);
     assert_eq!(
         spec.limits.active_processes,
@@ -266,41 +305,66 @@ fn admitted_runtime_builds_the_exact_contained_app_server_launch_contract() {
 #[test]
 fn metadata_only_runtime_cannot_build_a_process_launch_contract() {
     let runtime = fixture_runtime();
-    let working_directory = std::env::current_dir().unwrap().canonicalize().unwrap();
+    let project_root = launch_root(
+        launch_project_id(),
+        ProjectGeneration::ZERO,
+        launch_root_id(),
+    );
 
     assert_eq!(
-        runtime.launch_spec(working_directory).err(),
+        runtime.launch_spec(project_root).err(),
         Some(AdapterRuntimeError::LaunchUnavailable)
     );
 }
 
 #[cfg(windows)]
 #[test]
-fn launch_contract_rejects_noncanonical_working_roots_and_admission_drift() {
+fn launch_contract_rejects_foreign_root_context_and_admission_drift() {
     let registration = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
     let binding = registration.refresh().unwrap();
     let runtime = CodexRuntime::from_admitted_binding(
         binding,
+        &launch_root(
+            launch_project_id(),
+            ProjectGeneration::ZERO,
+            launch_root_id(),
+        ),
         RuntimeEpoch::new(24).expect("epoch"),
         SageAgentSessionId::parse("session-launch-drift").expect("session"),
     )
     .unwrap();
-    let canonical = std::env::current_dir().unwrap().canonicalize().unwrap();
-
-    assert_eq!(
-        runtime.launch_spec("relative-root".into()).err(),
-        Some(AdapterRuntimeError::LaunchUnavailable)
-    );
-    assert_eq!(
-        runtime
-            .launch_spec(std::path::PathBuf::from(r"\\?\C:\repo\..\escape"))
-            .err(),
-        Some(AdapterRuntimeError::LaunchUnavailable)
-    );
+    for foreign in [
+        launch_root(
+            SageProjectId::parse("project-foreign").unwrap(),
+            ProjectGeneration::ZERO,
+            launch_root_id(),
+        ),
+        launch_root(
+            launch_project_id(),
+            ProjectGeneration::new(1).unwrap(),
+            launch_root_id(),
+        ),
+        launch_root(
+            launch_project_id(),
+            ProjectGeneration::ZERO,
+            SageRootId::parse("root-foreign").unwrap(),
+        ),
+    ] {
+        assert_eq!(
+            runtime.launch_spec(foreign).err(),
+            Some(AdapterRuntimeError::LaunchUnavailable)
+        );
+    }
 
     registration.induce_drift_for_test();
     assert_eq!(
-        runtime.launch_spec(canonical).err(),
+        runtime
+            .launch_spec(launch_root(
+                launch_project_id(),
+                ProjectGeneration::ZERO,
+                launch_root_id(),
+            ))
+            .err(),
         Some(AdapterRuntimeError::LaunchUnavailable)
     );
     assert_eq!(

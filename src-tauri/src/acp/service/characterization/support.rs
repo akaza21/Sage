@@ -13,14 +13,15 @@ use crate::acp::{
     intent::IntentSnapshot,
     limits::LIMITS,
     process::{
-        ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, CanonicalNativeDirectory,
-        LaunchSpec, ProcessDeadlines, RequiredContainment, TreeControl, TreeExit, TreeLimits,
+        ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
+        RequiredContainment, TreeControl, TreeExit, TreeLimits,
     },
     resource_mapper::ConfiguredResourceRoot,
     runtime::{HostError, LiveRunnerExit, LiveRunnerHandle, ProjectIntentAuthority},
     scheduler::RuntimeOwner,
     store::PrepareTurnCommand,
 };
+use crate::project_registry::ProjectRootAuthority;
 
 pub(super) struct DatabaseAuthority(pub(super) crate::persistence::Database);
 
@@ -102,7 +103,7 @@ pub(super) fn launch_spec(
     artifact: &CharacterizationArtifact,
     case: CharacterizationCase,
     owner: &RuntimeOwner,
-    working_directory: &Path,
+    project_root: ProjectRootAuthority,
     cleanup_deadline: Instant,
 ) -> Result<LaunchSpec, CharacterizationError> {
     Ok(LaunchSpec {
@@ -124,8 +125,7 @@ pub(super) fn launch_spec(
         .map_err(|_| CharacterizationError::Artifact)?,
         environment: BoundedEnvironment::new(Vec::new())
             .map_err(|_| CharacterizationError::Artifact)?,
-        working_directory: CanonicalNativeDirectory::new(working_directory.to_owned())
-            .map_err(|_| CharacterizationError::Intent)?,
+        project_root,
         required_guarantee: RequiredContainment::EnforcedTree,
         limits: TreeLimits::ade_0006a(),
         deadlines: ProcessDeadlines::ade_0006a(),

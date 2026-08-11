@@ -1,6 +1,7 @@
 use crate::{
     acp::{
         bindings::codex::startup_codex_binding_registration,
+        contract::{ProjectGeneration, SageProjectId},
         intent::{ACP_PROJECTION_CHANGED_EVENT, ProjectionChangedV1},
         runtime::{NotificationError, NotificationSink, NotificationSinkFuture},
         service::AcpService,
@@ -10,6 +11,33 @@ use crate::{
     harnesses::HarnessCatalog,
     persistence::Database,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActiveProjectError {
+    GenerationUnavailable,
+    StaleGeneration,
+    ForeignProject,
+    Storage,
+}
+
+/// Linear proof that a project ID and generation are still authoritative.
+/// Owning the transition guard prevents a project switch until the native
+/// operation has finished resolving all project-scoped capabilities.
+pub(crate) struct ActiveProjectContext<'a> {
+    _transition: tokio::sync::MutexGuard<'a, u64>,
+    project_id: SageProjectId,
+    generation: ProjectGeneration,
+}
+
+impl ActiveProjectContext<'_> {
+    pub(crate) fn project_id(&self) -> &SageProjectId {
+        &self.project_id
+    }
+
+    pub(crate) fn generation(&self) -> ProjectGeneration {
+        self.generation
+    }
+}
 
 #[derive(Debug)]
 pub struct AppState {
@@ -22,6 +50,31 @@ pub struct AppState {
 }
 
 impl AppState {
+    pub(crate) async fn lock_active_project(
+        &self,
+        project_id: &SageProjectId,
+        generation: ProjectGeneration,
+    ) -> Result<ActiveProjectContext<'_>, ActiveProjectError> {
+        let transition = self.project_transitions.lock().await;
+        let expected = ProjectGeneration::new(*transition)
+            .map_err(|_| ActiveProjectError::GenerationUnavailable)?;
+        if generation != expected {
+            return Err(ActiveProjectError::StaleGeneration);
+        }
+        let active = self
+            .database
+            .active_project_id()
+            .map_err(|_| ActiveProjectError::Storage)?;
+        if active.as_deref() != Some(project_id.as_str()) {
+            return Err(ActiveProjectError::ForeignProject);
+        }
+        Ok(ActiveProjectContext {
+            _transition: transition,
+            project_id: project_id.clone(),
+            generation,
+        })
+    }
+
     #[cfg(test)]
     pub fn try_new(database: Database) -> AppResult<Self> {
         let trash_recovery = crate::resource_trash_commands::recover_pending_at_startup(&database)?;
@@ -153,6 +206,7 @@ impl NotificationSink for DesktopProjectionSink {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::acp::contract::{ProjectGeneration, SageProjectId};
 
     #[test]
     fn app_state_shares_one_codex_registration_with_service_and_catalog() {
@@ -163,5 +217,43 @@ mod tests {
                 .codex_registration()
                 .same_authority(&state.harnesses.codex_registration())
         );
+    }
+
+    #[test]
+    fn active_project_context_rejects_stale_generation_and_foreign_project() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+            let root =
+                std::env::temp_dir().join(format!("sage-active-context-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&root).unwrap();
+            let project = database.create_project_from_root(&root).unwrap();
+            let state = AppState::new(database);
+            let project_id = SageProjectId::parse(project.id).unwrap();
+
+            assert!(matches!(
+                state
+                    .lock_active_project(&project_id, ProjectGeneration::new(1).unwrap())
+                    .await,
+                Err(ActiveProjectError::StaleGeneration)
+            ));
+            assert!(matches!(
+                state
+                    .lock_active_project(
+                        &SageProjectId::parse("project-foreign").unwrap(),
+                        ProjectGeneration::new(0).unwrap(),
+                    )
+                    .await,
+                Err(ActiveProjectError::ForeignProject)
+            ));
+            let context = state
+                .lock_active_project(&project_id, ProjectGeneration::new(0).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(context.project_id(), &project_id);
+            assert_eq!(context.generation(), ProjectGeneration::new(0).unwrap());
+
+            drop(context);
+            let _ = std::fs::remove_dir_all(root);
+        });
     }
 }
