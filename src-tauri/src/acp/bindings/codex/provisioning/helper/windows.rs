@@ -27,11 +27,13 @@ use crate::acp::bindings::codex::manifest::MetadataValidatedPacket;
 use crate::acp::bindings::codex::physical::{
     ConfiguredManagedPackageRoot, ExpectedPhysicalFile, InspectionClaims,
     PhysicallyInspectedPackage, decode_digest, inspect_claims, inspect_managed_package,
+    same_native_path,
 };
 use crate::acp::bindings::codex::provisioning::{AclPlan, SealedHandoff, hex};
 use native::{
-    bounded_names, create_initial_journal, node_identity, open_destination_root,
-    open_mutation_directory, open_rename_directory, rename_exact, replace_journal,
+    bounded_names, cleanup_completed_stage, create_initial_journal, handle_path, node_identity,
+    open_destination_root, open_mutation_directory, open_rename_directory, rename_exact,
+    replace_journal,
 };
 use security::{Principals, apply_acl, apply_acl_to_exact_node, well_known_sid};
 use transaction_lock::TransactionLock;
@@ -105,7 +107,11 @@ impl WindowsPlatform {
             .collect::<Result<Vec<_>, ElevatedHelperError>>()?;
         let transaction_lock = TransactionLock::acquire(request.package_target())?;
         let stage_root = request.stage_root().to_owned();
-        let stage_root_handle = open_destination_root(&stage_root)?;
+        let stage_root_handle = if exact_directory_presence(&stage_root)? {
+            Some(open_destination_root(&stage_root)?)
+        } else {
+            None
+        };
         let package_parent = request
             .package_target()
             .parent()
@@ -140,7 +146,7 @@ impl WindowsPlatform {
                 system: well_known_sid(WinLocalSystemSid)?,
             },
             stage_proof: None,
-            stage_root_handle: Some(stage_root_handle),
+            stage_root_handle,
             package_parent_handle,
             state_parent_handle,
             state_handle: None,
@@ -230,14 +236,6 @@ fn remove_exact_file(path: &Path) -> Result<(), ElevatedHelperError> {
         return Err(ElevatedHelperError::Journal);
     }
     fs::remove_file(path).map_err(|_| ElevatedHelperError::Journal)
-}
-
-fn remove_exact_file_if_present(path: &Path) -> Result<(), ElevatedHelperError> {
-    match fs::symlink_metadata(path) {
-        Ok(_) => remove_exact_file(path),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(_) => Err(ElevatedHelperError::Cleanup),
-    }
 }
 
 fn exact_directory_presence(path: &Path) -> Result<bool, ElevatedHelperError> {

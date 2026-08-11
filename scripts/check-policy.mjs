@@ -570,7 +570,6 @@ const windowsDeclaration = cargoToml.match(
 const windowsFeatures = [
   "Win32_Foundation",
   "Win32_Security",
-  "Win32_Security_Authorization",
   "Win32_Storage_FileSystem",
   "Win32_System_JobObjects",
   "Win32_System_Pipes",

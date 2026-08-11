@@ -10,6 +10,8 @@ enum CrashPoint {
     StatePhaseWritten,
     PackagePublished,
     PackagePhaseWritten,
+    HandoffRemoved,
+    StageRootRemoved,
 }
 
 #[derive(Debug)]
@@ -25,6 +27,10 @@ struct FakePlatform {
     fail_cleanup: bool,
     state_identity: NodeIdentity,
     bound_state_identity: Option<NodeIdentity>,
+    state_effect_published: bool,
+    stage_root_present: bool,
+    handoff_present: bool,
+    displace_state_during_failed_proof: bool,
 }
 
 impl Default for FakePlatform {
@@ -48,6 +54,10 @@ impl Default for FakePlatform {
                 file_id: 11,
             },
             bound_state_identity: None,
+            state_effect_published: false,
+            stage_root_present: true,
+            handoff_present: true,
+            displace_state_during_failed_proof: false,
         }
     }
 }
@@ -143,6 +153,7 @@ impl HelperTransactionPlatform for FakePlatform {
 
     fn publish_state_with_acl(&mut self) -> Result<(), ElevatedHelperError> {
         self.observation.final_state = true;
+        self.state_effect_published = true;
         self.crash_if(CrashPoint::StateNativePublished);
         Ok(())
     }
@@ -159,6 +170,9 @@ impl HelperTransactionPlatform for FakePlatform {
 
     fn final_managed_proof(&mut self) -> Result<Self::Proof, ElevatedHelperError> {
         if self.fail_proof {
+            if self.displace_state_during_failed_proof {
+                self.observation.final_state = false;
+            }
             Err(ElevatedHelperError::FinalProof)
         } else {
             Ok("managed-proof")
@@ -167,10 +181,17 @@ impl HelperTransactionPlatform for FakePlatform {
 
     fn remove_completed_stage(&mut self) -> Result<(), ElevatedHelperError> {
         if self.fail_cleanup {
-            Err(ElevatedHelperError::Cleanup)
-        } else {
-            Ok(())
+            return Err(ElevatedHelperError::Cleanup);
         }
+        if self.handoff_present {
+            self.handoff_present = false;
+            self.crash_if(CrashPoint::HandoffRemoved);
+        }
+        if self.stage_root_present {
+            self.stage_root_present = false;
+            self.crash_if(CrashPoint::StageRootRemoved);
+        }
+        Ok(())
     }
 
     fn rollback_package(&mut self) -> Result<(), ElevatedHelperError> {
@@ -183,7 +204,10 @@ impl HelperTransactionPlatform for FakePlatform {
         if self.bound_state_identity != Some(self.state_identity) {
             return Err(ElevatedHelperError::Drift);
         }
-        self.observation.final_state = false;
+        if self.state_effect_published {
+            self.observation.final_state = false;
+            self.state_effect_published = false;
+        }
         Ok(())
     }
 }
@@ -265,6 +289,8 @@ fn every_effect_and_phase_boundary_recovers_after_process_crash() {
         CrashPoint::StatePhaseWritten,
         CrashPoint::PackagePublished,
         CrashPoint::PackagePhaseWritten,
+        CrashPoint::HandoffRemoved,
+        CrashPoint::StageRootRemoved,
     ] {
         let request = request("00");
         let mut platform = FakePlatform {
@@ -278,6 +304,22 @@ fn every_effect_and_phase_boundary_recovers_after_process_crash() {
             "{point:?}"
         );
     }
+}
+
+#[test]
+fn rollback_follows_the_retained_state_effect_when_its_canonical_name_disappears() {
+    let mut platform = FakePlatform {
+        fail_proof: true,
+        displace_state_during_failed_proof: true,
+        ..FakePlatform::default()
+    };
+
+    assert_eq!(
+        finalize(&request("00"), &mut platform),
+        Err(ElevatedHelperError::FinalProof)
+    );
+    assert!(!platform.state_effect_published);
+    assert_eq!(platform.journal, None);
 }
 
 #[test]

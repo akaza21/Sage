@@ -21,7 +21,7 @@ impl Drop for TempRoot {
 }
 
 #[test]
-fn exact_handle_rename_ignores_publish_and_rollback_path_substitution() {
+fn exact_handle_rename_rejects_substitution_and_retains_effect_authority() {
     let root = TempRoot::new("exact-handle-rename");
     let stage = root.0.join("stage");
     let destination = root.0.join("destination");
@@ -31,16 +31,26 @@ fn exact_handle_rename_ignores_publish_and_rollback_path_substitution() {
     fs::create_dir(&source_path).unwrap();
     fs::write(source_path.join("identity"), b"original").unwrap();
 
-    let (source, source_identity) = open_mutation_directory(&source_path, None).unwrap();
-    let destination_handle = open_destination_root(&destination).unwrap();
+    let (_, proof) = open_exact_state_root(&source_path).unwrap();
+    let source_identity = node_identity(&proof).unwrap();
     fs::rename(&source_path, stage.join("displaced")).unwrap();
     fs::create_dir(&source_path).unwrap();
+    assert!(matches!(
+        open_rename_directory(&source_path, source_identity),
+        Err(ElevatedHelperError::Drift)
+    ));
+
+    let source = open_rename_directory(&stage.join("displaced"), source_identity).unwrap();
+    let destination_handle = open_destination_root(&destination).unwrap();
     rename_exact(&source, &destination_handle, OsStr::new("published"), false).unwrap();
 
     assert_eq!(
-        open_mutation_directory(&destination.join("published"), None)
-            .unwrap()
-            .1,
+        node_identity(
+            &open_exact_state_root(&destination.join("published"))
+                .unwrap()
+                .1
+        )
+        .unwrap(),
         source_identity
     );
     assert_ne!(
@@ -48,14 +58,11 @@ fn exact_handle_rename_ignores_publish_and_rollback_path_substitution() {
         source_identity
     );
 
-    fs::rename(destination.join("published"), destination.join("displaced")).unwrap();
-    fs::create_dir(destination.join("published")).unwrap();
+    assert!(fs::rename(destination.join("published"), destination.join("displaced")).is_err());
     let stage_handle = open_destination_root(&stage).unwrap();
     rename_exact(&source, &stage_handle, OsStr::new("returned"), false).unwrap();
     assert_eq!(
-        open_mutation_directory(&stage.join("returned"), None)
-            .unwrap()
-            .1,
+        node_identity(&open_exact_state_root(&stage.join("returned")).unwrap().1).unwrap(),
         source_identity
     );
     drop(stage_handle);
@@ -94,13 +101,59 @@ fn torn_initial_journal_temp_recovers_to_one_atomic_final_file() {
         .is_err()
     );
     assert!(!final_path.exists());
-    let temporary = PathBuf::from(format!("{}.creating-00", final_path.display()));
+    let temporary = PathBuf::from(format!("{}.creating", final_path.display()));
     assert_eq!(fs::read(&temporary).unwrap(), &bytes[..3]);
 
-    create_initial_journal(&final_path, bytes, &parent, "00").unwrap();
+    create_initial_journal(&final_path, bytes, &parent, "11").unwrap();
     assert_eq!(fs::read(&final_path).unwrap(), bytes);
     assert!(!temporary.exists());
+    assert!(!PathBuf::from(format!("{}.creating-00", final_path.display())).exists());
+    assert!(!PathBuf::from(format!("{}.creating-11", final_path.display())).exists());
     drop(parent);
+}
+
+#[test]
+fn destination_parent_and_state_authority_deny_external_rename() {
+    let root = TempRoot::new("destination-root-authority");
+    let parent = root.0.join("state-parent");
+    fs::create_dir(&parent).unwrap();
+    let authority = open_destination_root(&parent).unwrap();
+    assert!(fs::rename(&parent, root.0.join("moved-parent")).is_err());
+    assert!(parent.is_dir());
+    drop(authority);
+    fs::rename(&parent, root.0.join("moved-parent")).unwrap();
+
+    let state = root.0.join("state");
+    fs::create_dir(&state).unwrap();
+    let (state_authority, _) = open_mutation_directory(&state, None).unwrap();
+    assert!(fs::rename(&state, root.0.join("moved-state")).is_err());
+    assert!(state.is_dir());
+    drop(state_authority);
+}
+
+#[test]
+fn cleanup_retries_after_each_native_effect_without_requiring_handoff_or_stage() {
+    for point in [
+        CleanupCrashPoint::HandoffRemoved,
+        CleanupCrashPoint::StageRemoved,
+    ] {
+        let root = TempRoot::new("cleanup-substate");
+        let stage = root.0.join("stage");
+        fs::create_dir(&stage).unwrap();
+        fs::write(stage.join("handoff.json"), b"sealed").unwrap();
+        let mut stage_authority = Some(open_destination_root(&stage).unwrap());
+        inject_cleanup_crash(point);
+
+        assert!(
+            catch_unwind(AssertUnwindSafe(|| {
+                cleanup_completed_stage(&stage, &mut stage_authority)
+            }))
+            .is_err(),
+            "{point:?}"
+        );
+        cleanup_completed_stage(&stage, &mut stage_authority).unwrap();
+        assert!(!stage.exists(), "{point:?}");
+    }
 }
 
 #[test]

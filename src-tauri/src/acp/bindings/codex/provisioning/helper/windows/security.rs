@@ -4,7 +4,6 @@ use std::os::windows::io::AsRawHandle;
 use std::path::Path;
 
 use windows_sys::Win32::Foundation::HANDLE;
-use windows_sys::Win32::Security::Authorization::{SE_FILE_OBJECT, SetSecurityInfo};
 use windows_sys::Win32::Security::{
     ACCESS_ALLOWED_ACE, ACL, ACL_REVISION, AddAccessAllowedAceEx, CreateWellKnownSid,
     DACL_SECURITY_INFORMATION, InitializeAcl, OBJECT_INHERIT_ACE, OWNER_SECURITY_INFORMATION,
@@ -19,6 +18,23 @@ use windows_sys::Win32::Storage::FileSystem::{
 use super::super::ElevatedHelperError;
 use crate::acp::bindings::codex::physical::HeldPhysicalNode;
 use crate::acp::bindings::codex::provisioning::AclPlan;
+
+// Stable Win32 ABI values. The narrow declaration avoids expanding Sage's
+// frozen windows-sys feature contract solely for this one privileged call.
+const SE_FILE_OBJECT: i32 = 1;
+
+#[link(name = "advapi32")]
+unsafe extern "system" {
+    fn SetSecurityInfo(
+        handle: HANDLE,
+        object_type: i32,
+        security_information: u32,
+        owner: PSID,
+        group: PSID,
+        dacl: *const ACL,
+        sacl: *const ACL,
+    ) -> u32;
+}
 
 pub(super) struct Principals {
     pub(super) user: Vec<u8>,
@@ -106,6 +122,8 @@ pub(super) fn apply_acl(
     let information = OWNER_SECURITY_INFORMATION
         | DACL_SECURITY_INFORMATION
         | PROTECTED_DACL_SECURITY_INFORMATION;
+    // SAFETY: the live node handle and owner SID outlive the call, while `acl`
+    // points into fixed storage sized for every initialized ACE above.
     if unsafe {
         SetSecurityInfo(
             node.as_raw_handle() as HANDLE,
@@ -152,4 +170,32 @@ pub(super) fn well_known_sid(kind: i32) -> Result<Vec<u8>, ElevatedHelperError> 
     }
     sid.truncate(bytes as usize);
     Ok(sid)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows_sys::Win32::Foundation::ERROR_INVALID_HANDLE;
+
+    #[test]
+    fn source_declared_set_security_info_has_exact_abi_and_preserves_win32_error() {
+        type SetSecurityInfoAbi =
+            unsafe extern "system" fn(HANDLE, i32, u32, PSID, PSID, *const ACL, *const ACL) -> u32;
+        let function: SetSecurityInfoAbi = SetSecurityInfo;
+
+        // SAFETY: this intentionally invalid handle and null optional pointers
+        // exercise only the documented synchronous error return.
+        let status = unsafe {
+            function(
+                std::ptr::null_mut(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                std::ptr::null(),
+            )
+        };
+        assert_eq!(status, ERROR_INVALID_HANDLE);
+    }
 }

@@ -221,11 +221,9 @@ fn rollback<P: HelperTransactionPlatform>(
             .rollback_package()
             .map_err(|_| ElevatedHelperError::Rollback)?;
     }
-    if observed.final_state {
-        platform
-            .rollback_state()
-            .map_err(|_| ElevatedHelperError::Rollback)?;
-    }
+    platform
+        .rollback_state()
+        .map_err(|_| ElevatedHelperError::Rollback)?;
     let converged = platform
         .observe()
         .map_err(|_| ElevatedHelperError::Rollback)?;

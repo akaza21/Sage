@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::os::windows::ffi::OsStrExt;
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
 use std::os::windows::io::AsRawHandle;
 use std::path::{Component, Path, PathBuf};
@@ -11,8 +11,9 @@ use windows_sys::Win32::Foundation::{GENERIC_WRITE, HANDLE};
 use windows_sys::Win32::Storage::FileSystem::{
     BY_HANDLE_FILE_INFORMATION, DELETE, FILE_ADD_FILE, FILE_ADD_SUBDIRECTORY,
     FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
-    FILE_READ_ATTRIBUTES, FILE_RENAME_INFO, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
-    FILE_TRAVERSE, GetFileInformationByHandle, READ_CONTROL, WRITE_DAC, WRITE_OWNER,
+    FILE_NAME_NORMALIZED, FILE_READ_ATTRIBUTES, FILE_RENAME_INFO, FILE_SHARE_DELETE,
+    FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, GetFileInformationByHandle,
+    GetFinalPathNameByHandleW, READ_CONTROL, VOLUME_NAME_DOS, WRITE_DAC, WRITE_OWNER,
 };
 
 use super::super::ElevatedHelperError;
@@ -20,6 +21,8 @@ use super::super::transaction::NodeIdentity;
 use crate::acp::bindings::codex::physical::open_exact_state_root;
 
 const NEXT_SUFFIX: &str = ".next";
+const CREATING_SUFFIX: &str = ".creating";
+const HANDLE_PATH_WIDE_MAX: usize = 32 * 1024;
 // FILE_INFORMATION_CLASS::FileRenameInformation from the Windows native API.
 const FILE_RENAME_INFORMATION_CLASS: i32 = 10;
 const STATUS_OBJECT_NAME_COLLISION: i32 = 0xc000_0035_u32 as i32;
@@ -61,6 +64,24 @@ pub(super) fn node_identity(file: &File) -> Result<NodeIdentity, ElevatedHelperE
     })
 }
 
+pub(super) fn handle_path(file: &File) -> Result<PathBuf, ElevatedHelperError> {
+    let mut buffer = vec![0_u16; HANDLE_PATH_WIDE_MAX];
+    // SAFETY: `buffer` is writable and `file` owns a live disk handle.
+    let length = unsafe {
+        GetFinalPathNameByHandleW(
+            file.as_raw_handle() as HANDLE,
+            buffer.as_mut_ptr(),
+            u32::try_from(buffer.len()).map_err(|_| ElevatedHelperError::Drift)?,
+            FILE_NAME_NORMALIZED | VOLUME_NAME_DOS,
+        )
+    };
+    let length = usize::try_from(length).map_err(|_| ElevatedHelperError::Drift)?;
+    if length == 0 || length >= buffer.len() {
+        return Err(ElevatedHelperError::Drift);
+    }
+    Ok(PathBuf::from(OsString::from_wide(&buffer[..length])))
+}
+
 pub(super) fn open_mutation_directory(
     path: &Path,
     expected: Option<NodeIdentity>,
@@ -68,7 +89,7 @@ pub(super) fn open_mutation_directory(
     let mut options = OpenOptions::new();
     options
         .access_mode(DELETE | FILE_READ_ATTRIBUTES | READ_CONTROL | WRITE_DAC | WRITE_OWNER)
-        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
     let file = options.open(path).map_err(|_| ElevatedHelperError::Drift)?;
     let identity = node_identity(&file)?;
@@ -85,7 +106,7 @@ pub(super) fn open_rename_directory(
     let mut options = OpenOptions::new();
     options
         .access_mode(DELETE | FILE_READ_ATTRIBUTES)
-        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
     let file = options.open(path).map_err(|_| ElevatedHelperError::Drift)?;
     if node_identity(&file)? != expected {
@@ -100,7 +121,7 @@ pub(super) fn open_destination_root(path: &Path) -> Result<File, ElevatedHelperE
     let mut options = OpenOptions::new();
     options
         .access_mode(FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES)
-        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
     let root = options.open(path).map_err(|_| ElevatedHelperError::Drift)?;
     if node_identity(&root)? != expected {
@@ -167,10 +188,10 @@ pub(super) fn create_initial_journal(
     path: &Path,
     bytes: &[u8],
     parent: &File,
-    nonce: &str,
+    _creation_nonce: &str,
 ) -> Result<(), ElevatedHelperError> {
     let mut suffix = path.as_os_str().to_os_string();
-    suffix.push(format!(".creating-{nonce}"));
+    suffix.push(CREATING_SUFFIX);
     let temporary = PathBuf::from(suffix);
     remove_exact_file_if_present(&temporary)?;
     let mut file = create_synced_file(&temporary, bytes)?;
@@ -184,6 +205,48 @@ pub(super) fn create_initial_journal(
     file.flush()
         .and_then(|()| file.sync_all())
         .map_err(|_| ElevatedHelperError::Journal)
+}
+
+pub(super) fn cleanup_completed_stage(
+    stage: &Path,
+    authority: &mut Option<File>,
+) -> Result<(), ElevatedHelperError> {
+    let metadata = match fs::symlink_metadata(stage) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            authority.take();
+            return Ok(());
+        }
+        Err(_) => return Err(ElevatedHelperError::Cleanup),
+    };
+    if !metadata.file_type().is_dir()
+        || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    {
+        return Err(ElevatedHelperError::Cleanup);
+    }
+    let reopened = open_destination_root(stage).map_err(|_| ElevatedHelperError::Cleanup)?;
+    if let Some(held) = authority.as_ref()
+        && node_identity(held).map_err(|_| ElevatedHelperError::Cleanup)?
+            != node_identity(&reopened).map_err(|_| ElevatedHelperError::Cleanup)?
+    {
+        return Err(ElevatedHelperError::Cleanup);
+    }
+    *authority = Some(reopened);
+    let names = bounded_names(stage, 1, ElevatedHelperError::Cleanup)?;
+    let handoff = OsString::from("handoff.json");
+    if !names.is_empty() && names != BTreeSet::from([handoff]) {
+        return Err(ElevatedHelperError::Cleanup);
+    }
+    if !names.is_empty() {
+        remove_regular_file(&stage.join("handoff.json"), ElevatedHelperError::Cleanup)?;
+        #[cfg(test)]
+        run_cleanup_crash(CleanupCrashPoint::HandoffRemoved);
+    }
+    authority.take();
+    fs::remove_dir(stage).map_err(|_| ElevatedHelperError::Cleanup)?;
+    #[cfg(test)]
+    run_cleanup_crash(CleanupCrashPoint::StageRemoved);
+    Ok(())
 }
 
 pub(super) fn replace_journal(
@@ -245,6 +308,19 @@ fn remove_exact_file_if_present(path: &Path) -> Result<(), ElevatedHelperError> 
     }
 }
 
+fn remove_regular_file(
+    path: &Path,
+    failure: ElevatedHelperError,
+) -> Result<(), ElevatedHelperError> {
+    let metadata = fs::symlink_metadata(path).map_err(|_| failure)?;
+    if !metadata.file_type().is_file()
+        || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    {
+        return Err(failure);
+    }
+    fs::remove_file(path).map_err(|_| failure)
+}
+
 pub(super) fn bounded_names(
     root: &Path,
     maximum: usize,
@@ -263,12 +339,35 @@ pub(super) fn bounded_names(
 #[cfg(test)]
 thread_local! {
     static TORN_INITIAL_WRITE: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+    static CLEANUP_CRASH: std::cell::Cell<Option<CleanupCrashPoint>> = const { std::cell::Cell::new(None) };
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum CleanupCrashPoint {
+    HandoffRemoved,
+    StageRemoved,
 }
 
 #[cfg(test)]
 pub(super) fn inject_torn_initial_write(prefix: usize) {
     TORN_INITIAL_WRITE.with(|slot| {
         assert!(slot.replace(Some(prefix)).is_none());
+    });
+}
+
+#[cfg(test)]
+pub(super) fn inject_cleanup_crash(point: CleanupCrashPoint) {
+    CLEANUP_CRASH.with(|slot| assert!(slot.replace(Some(point)).is_none()));
+}
+
+#[cfg(test)]
+fn run_cleanup_crash(point: CleanupCrashPoint) {
+    CLEANUP_CRASH.with(|slot| {
+        if slot.get() == Some(point) {
+            slot.set(None);
+            panic!("simulated crash after cleanup effect {point:?}");
+        }
     });
 }
 

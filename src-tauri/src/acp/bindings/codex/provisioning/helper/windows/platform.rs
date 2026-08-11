@@ -155,24 +155,7 @@ impl HelperTransactionPlatform for WindowsPlatform {
     }
 
     fn remove_completed_stage(&mut self) -> Result<(), ElevatedHelperError> {
-        if exact_directory_presence(&self.stage_root)? {
-            self.require_stage_root_at_path()
-                .map_err(|_| ElevatedHelperError::Cleanup)?;
-            let names = bounded_names(&self.stage_root, 1, ElevatedHelperError::Cleanup)?;
-            let allowed = ["handoff.json"]
-                .into_iter()
-                .map(Into::into)
-                .collect::<BTreeSet<_>>();
-            if names != allowed {
-                return Err(ElevatedHelperError::Cleanup);
-            }
-        }
-        remove_exact_file_if_present(&self.stage_root.join("handoff.json"))?;
-        self.stage_root_handle.take();
-        if exact_directory_presence(&self.stage_root)? {
-            fs::remove_dir(&self.stage_root).map_err(|_| ElevatedHelperError::Cleanup)?;
-        }
-        Ok(())
+        cleanup_completed_stage(&self.stage_root, &mut self.stage_root_handle)
     }
 
     fn rollback_package(&mut self) -> Result<(), ElevatedHelperError> {
@@ -205,17 +188,25 @@ impl HelperTransactionPlatform for WindowsPlatform {
     }
 
     fn rollback_state(&mut self) -> Result<(), ElevatedHelperError> {
-        self.require_bound_state_at(&self.state_target)
-            .map_err(|_| ElevatedHelperError::Rollback)?;
-        validate_provisioned_state_root(&self.state_target)
-            .map_err(|_| ElevatedHelperError::Rollback)?;
-        if !bounded_names(&self.state_target, 0, ElevatedHelperError::Rollback)?.is_empty() {
+        let state = self
+            .state_handle
+            .as_ref()
+            .ok_or(ElevatedHelperError::Rollback)?;
+        if node_identity(state).map_err(|_| ElevatedHelperError::Rollback)?
+            != self.state_identity.ok_or(ElevatedHelperError::Rollback)?
+        {
+            return Err(ElevatedHelperError::Rollback);
+        }
+        let effect_path = handle_path(state).map_err(|_| ElevatedHelperError::Rollback)?;
+        if same_native_path(&effect_path, &self.stage_state) {
+            return Ok(());
+        }
+        validate_provisioned_state_root(&effect_path).map_err(|_| ElevatedHelperError::Rollback)?;
+        if !bounded_names(&effect_path, 0, ElevatedHelperError::Rollback)?.is_empty() {
             return Err(ElevatedHelperError::Rollback);
         }
         rename_exact(
-            self.state_handle
-                .as_ref()
-                .ok_or(ElevatedHelperError::Rollback)?,
+            state,
             self.stage_root_handle
                 .as_ref()
                 .ok_or(ElevatedHelperError::Rollback)?,
@@ -224,7 +215,9 @@ impl HelperTransactionPlatform for WindowsPlatform {
                 .ok_or(ElevatedHelperError::Rollback)?,
             false,
         )
-        .map_err(|_| ElevatedHelperError::Rollback)
+        .map_err(|_| ElevatedHelperError::Rollback)?;
+        self.require_bound_state_at(&self.stage_state)
+            .map_err(|_| ElevatedHelperError::Rollback)
     }
 }
 
