@@ -16,8 +16,9 @@ mod runtime;
 mod state;
 
 pub(crate) use authority::{
-    ConfigAuthorityError, EnvironmentAuthorityError, build_codex_launch_environment,
-    verify_codex_config,
+    ConfigAuthorityError, EnvironmentAuthorityError, ResidueMarker, RetentionDecision,
+    StateAuthorityError, build_codex_launch_environment, classify_codex_state_path,
+    inspect_codex_authority, verify_codex_config,
 };
 pub(crate) use incoming::{IncomingEvent, IngressDisposition, ResourceMapper};
 pub(crate) use managed::{

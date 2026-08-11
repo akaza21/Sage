@@ -441,6 +441,200 @@ fn codex_launch_environment_is_unavailable_off_windows() {
 }
 
 #[test]
+fn retention_protects_credentials_and_sessions_and_only_reclaims_exact_old_residue() {
+    let marker = ResidueMarker::parse("0123456789abcdef0123456789abcdef").unwrap();
+    for path in [
+        "auth.json",
+        "config.toml",
+        "state_5.sqlite-wal",
+        r"sessions\2026\08\11\rollout.jsonl",
+        r"archived_sessions\rollout.jsonl",
+    ] {
+        assert_eq!(
+            classify_codex_state_path(std::path::Path::new(path), &marker, 1_000),
+            RetentionDecision::Protected
+        );
+    }
+    let exact = std::path::Path::new(r"tmp\sage-login-0123456789abcdef0123456789abcdef.tmp");
+    assert_eq!(
+        classify_codex_state_path(exact, &marker, 23),
+        RetentionDecision::Preserve
+    );
+    assert_eq!(
+        classify_codex_state_path(exact, &marker, 24),
+        RetentionDecision::ReclaimableResidue
+    );
+    assert_eq!(
+        classify_codex_state_path(
+            std::path::Path::new(r"tmp\sage-login-fedcba9876543210fedcba9876543210.tmp"),
+            &marker,
+            1_000,
+        ),
+        RetentionDecision::Preserve
+    );
+    assert_eq!(
+        classify_codex_state_path(std::path::Path::new("unknown.cache"), &marker, 1_000),
+        RetentionDecision::Preserve
+    );
+}
+
+#[cfg(windows)]
+struct TestCodexStateRoot {
+    parent: std::path::PathBuf,
+    home: std::path::PathBuf,
+    cleaned: bool,
+}
+
+#[cfg(windows)]
+impl TestCodexStateRoot {
+    fn new() -> Self {
+        let parent =
+            std::env::temp_dir().join(format!("sage-codex-authority-{}", uuid::Uuid::new_v4()));
+        let home = parent
+            .join("CodexState")
+            .join("codex-app-server-0.145.0-7b0ab167");
+        std::fs::create_dir_all(home.join("sessions")).unwrap();
+        std::fs::write(home.join("config.toml"), CONFIG_FIXTURE).unwrap();
+        Self {
+            parent,
+            home,
+            cleaned: false,
+        }
+    }
+
+    fn packet_and_policy(
+        &self,
+    ) -> (
+        manifest::MetadataValidatedPacket,
+        policy::SecurityPolicyPrerequisite,
+        authority::VerifiedCodexConfig,
+    ) {
+        let home = self.home.to_str().unwrap();
+        let mut packet = packet_value();
+        relocate_codex_home(&mut packet, home);
+        let packet = parse_packet_metadata(&serde_json::to_vec(&packet).unwrap()).unwrap();
+        let mut policy = security_policy_value();
+        policy["codexHome"] = json!(home);
+        let policy = parse_security_policy(&serde_json::to_vec(&policy).unwrap(), &packet).unwrap();
+        let config = verify_codex_config(CONFIG_FIXTURE, &policy).unwrap();
+        (packet, policy, config)
+    }
+
+    fn cleanup(mut self) {
+        std::fs::remove_dir_all(&self.parent).unwrap();
+        assert!(!self.parent.exists(), "Codex authority test left residue");
+        self.cleaned = true;
+    }
+}
+
+#[cfg(windows)]
+impl Drop for TestCodexStateRoot {
+    fn drop(&mut self) {
+        if !self.cleaned && self.parent.exists() {
+            let _ = std::fs::remove_dir_all(&self.parent);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn inspect_test_state(
+    root: &TestCodexStateRoot,
+) -> Result<authority::CodexAuthorityPrerequisite, StateAuthorityError> {
+    let (packet, policy, config) = root.packet_and_policy();
+    let reproduced = reproduction::ReproducedPackagePrerequisite::fixture(&packet);
+    let managed = managed::ManagedStagingPrerequisite::fixture(&packet, &reproduced);
+    inspect_codex_authority(&packet, policy, config, &reproduced, managed)
+}
+
+#[cfg(windows)]
+#[test]
+fn physical_state_authority_accepts_bounded_state_and_leaves_no_residue() {
+    let root = TestCodexStateRoot::new();
+    std::fs::write(root.home.join("auth.json"), b"opaque credential fixture").unwrap();
+    std::fs::write(root.home.join("sessions").join("rollout.jsonl"), b"session").unwrap();
+    let (packet, policy, config) = root.packet_and_policy();
+    let reproduced = reproduction::ReproducedPackagePrerequisite::fixture(&packet);
+    let managed = managed::ManagedStagingPrerequisite::fixture(&packet, &reproduced);
+    let authority = inspect_codex_authority(&packet, policy, config, &reproduced, managed).unwrap();
+    authority.revalidate(&packet, &reproduced).unwrap();
+    drop(authority);
+    root.cleanup();
+}
+
+#[cfg(windows)]
+#[test]
+fn physical_state_authority_rejects_hardlinks_alternate_streams_and_sparse_excess() {
+    let hardlinks = TestCodexStateRoot::new();
+    let first = hardlinks.home.join("sessions").join("first.jsonl");
+    std::fs::write(&first, b"session").unwrap();
+    std::fs::hard_link(&first, hardlinks.home.join("sessions").join("second.jsonl")).unwrap();
+    assert!(matches!(
+        inspect_test_state(&hardlinks),
+        Err(StateAuthorityError::Alias)
+    ));
+    hardlinks.cleanup();
+
+    let streams = TestCodexStateRoot::new();
+    let ordinary = streams.home.join("history.jsonl");
+    std::fs::write(&ordinary, b"history").unwrap();
+    std::fs::write(format!("{}:secret", ordinary.display()), b"hidden").unwrap();
+    assert!(matches!(
+        inspect_test_state(&streams),
+        Err(StateAuthorityError::Stream)
+    ));
+    streams.cleanup();
+
+    let directory_streams = TestCodexStateRoot::new();
+    let directory = directory_streams.home.join("sessions");
+    std::fs::write(format!("{}:secret", directory.display()), b"hidden").unwrap();
+    assert!(matches!(
+        inspect_test_state(&directory_streams),
+        Err(StateAuthorityError::Stream)
+    ));
+    directory_streams.cleanup();
+
+    let sparse = TestCodexStateRoot::new();
+    std::fs::File::create(sparse.home.join("large.sparse"))
+        .unwrap()
+        .set_len(134_217_729)
+        .unwrap();
+    assert!(matches!(
+        inspect_test_state(&sparse),
+        Err(StateAuthorityError::FileBytes)
+    ));
+    sparse.cleanup();
+}
+
+#[cfg(windows)]
+#[test]
+fn physical_state_authority_rejects_namespace_race_and_cleans_it() {
+    let root = TestCodexStateRoot::new();
+    let raced = root.home.join("appeared-during-inspection");
+    authority::inject_before_state_recheck(move || {
+        std::fs::write(raced, b"race").unwrap();
+    });
+    assert!(matches!(
+        inspect_test_state(&root),
+        Err(StateAuthorityError::ChangedDuringInspection)
+    ));
+    root.cleanup();
+}
+
+#[cfg(not(windows))]
+#[test]
+fn physical_state_authority_is_unavailable_before_disk_off_windows() {
+    let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
+    let policy = parse_security_policy(SECURITY_POLICY_FIXTURE, &packet).unwrap();
+    let config = verify_codex_config(CONFIG_FIXTURE, &policy).unwrap();
+    let reproduced = reproduction::ReproducedPackagePrerequisite::fixture(&packet);
+    let managed = managed::ManagedStagingPrerequisite::fixture(&packet, &reproduced);
+    assert!(matches!(
+        inspect_codex_authority(&packet, policy, config, &reproduced, managed),
+        Err(StateAuthorityError::PlatformUnavailable)
+    ));
+}
+
+#[test]
 fn reproduction_requirements_bind_exact_registry_and_unverified_boundaries() {
     let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
     parse_reproduction_requirements(REPRODUCTION_FIXTURE, &packet).unwrap();
