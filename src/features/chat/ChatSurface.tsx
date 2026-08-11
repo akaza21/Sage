@@ -19,6 +19,7 @@ import {
   useAcpChatActions,
   useAcpChatHistory,
   useAcpChatProjection,
+  useAcpRetentionIncomplete,
   useRendererRecreationFocus,
 } from "./acp";
 
@@ -64,6 +65,7 @@ export function ChatSurface() {
   );
   const useNativeAcp = selectedHarness?.transport === "acp";
   const acpPage = useAcpChatProjection(useNativeAcp);
+  const acpRetentionIncomplete = useAcpRetentionIncomplete();
   const acpActions = useAcpChatActions();
   const foregroundError = acpActions.error ?? chatError;
   const acpHistory = useAcpChatHistory();
@@ -228,9 +230,8 @@ export function ChatSurface() {
               <AcpChatProjection
                 page={acpPage}
                 active
-                rootNames={Object.fromEntries(
-                  (project?.roots ?? []).map((root) => [root.id, root.name]),
-                )}
+                projectRoots={project?.roots ?? []}
+                retentionIncomplete={acpRetentionIncomplete}
                 onOpenResource={openAcpResource}
                 hasEarlier={acpHistory.hasEarlier}
                 loadingEarlier={acpHistory.loadingEarlier}

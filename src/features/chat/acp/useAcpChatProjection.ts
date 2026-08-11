@@ -9,6 +9,10 @@ import type {
 } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";
 
+export function useAcpRetentionIncomplete() {
+  return useAcpProjectionStore((state) => state.retentionIncomplete);
+}
+
 export function useAcpChatProjection(enabled = true) {
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   const projectGeneration = useWorkbenchStore(

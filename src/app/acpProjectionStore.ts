@@ -47,6 +47,7 @@ interface AcpProjectionState {
   scope: AcpProjectionScope | null;
   page: AcpChatPage | null;
   retainedBytes: number;
+  retentionIncomplete: boolean;
   activeLoad: AcpPageLoadIntent | null;
   requestSequence: number;
   pendingChange: AcpProjectionChangedEvent | null;
@@ -101,6 +102,10 @@ function countItems(turns: readonly TurnProjection[]): number {
   return turns.reduce((total, turn) => total + turn.items.length, 0);
 }
 
+function countActivities(turns: readonly TurnProjection[]): number {
+  return turns.reduce((total, turn) => total + turn.activities.length, 0);
+}
+
 function capTurnAndItemCounts(
   turns: readonly TurnProjection[],
 ): TurnProjection[] {
@@ -128,7 +133,11 @@ function capTurnAndItemCounts(
 function trimToByteLimit(page: AcpChatPage): {
   page: AcpChatPage;
   retainedBytes: number;
+  retentionIncomplete: boolean;
 } {
+  const sourceTurnCount = page.turns.length;
+  const sourceItemCount = countItems(page.turns);
+  const sourceActivityCount = countActivities(page.turns);
   let turns = capTurnAndItemCounts(page.turns);
   let candidate = { ...page, turns };
   let retainedBytes = byteLength(candidate);
@@ -165,13 +174,21 @@ function trimToByteLimit(page: AcpChatPage): {
     retainedBytes = byteLength(candidate);
   }
 
-  return { page: candidate, retainedBytes };
+  return {
+    page: candidate,
+    retainedBytes,
+    retentionIncomplete:
+      turns.length < sourceTurnCount ||
+      countItems(turns) < sourceItemCount ||
+      countActivities(turns) < sourceActivityCount,
+  };
 }
 
 const initialState = {
   scope: null,
   page: null,
   retainedBytes: 0,
+  retentionIncomplete: false,
   activeLoad: null,
   requestSequence: 0,
   pendingChange: null,
@@ -181,6 +198,7 @@ const initialState = {
   | "scope"
   | "page"
   | "retainedBytes"
+  | "retentionIncomplete"
   | "activeLoad"
   | "requestSequence"
   | "pendingChange"
@@ -266,6 +284,8 @@ export const useAcpProjectionStore = create<AcpProjectionState>((set, get) => ({
     set({
       page: retained.page,
       retainedBytes: retained.retainedBytes,
+      retentionIncomplete:
+        state.retentionIncomplete || retained.retentionIncomplete,
       activeLoad: null,
       error: null,
     });
@@ -305,6 +325,8 @@ export const useAcpProjectionStore = create<AcpProjectionState>((set, get) => ({
     set({
       page: retained.page,
       retainedBytes: retained.retainedBytes,
+      retentionIncomplete:
+        state.retentionIncomplete || retained.retentionIncomplete,
       activeLoad: null,
       error: null,
     });

@@ -203,6 +203,10 @@ describe("ACP projection bounds and notification mailbox", () => {
     expect(
       useAcpProjectionStore.getState().completePageLoad(latestIntent, newest),
     ).toBe("accepted");
+    expect(useAcpProjectionStore.getState().retentionIncomplete).toBe(false);
+    expect(useAcpProjectionStore.getState().page?.nextCursor).toBe(
+      "same-turn-cursor",
+    );
 
     const historyIntent = useAcpProjectionStore
       .getState()
@@ -223,6 +227,7 @@ describe("ACP projection bounds and notification mailbox", () => {
     expect(merged?.items[511].ordinal).toBe(511);
     expect(new Set(merged?.items.map((value) => value.id)).size).toBe(512);
     expect(useAcpProjectionStore.getState().page?.nextCursor).toBeNull();
+    expect(useAcpProjectionStore.getState().retentionIncomplete).toBe(false);
   });
 
   it("retains at most 100 Turns, 1,000 Items and 8 MiB", () => {
@@ -250,6 +255,23 @@ describe("ACP projection bounds and notification mailbox", () => {
     expect(retainedItems).toBeLessThanOrEqual(MAX_RETAINED_ITEMS);
     expect(state.retainedBytes).toBeLessThanOrEqual(MAX_RETAINED_BYTES);
     expect(state.page?.turns.at(-1)?.ordinal).toBe(109);
+    expect(state.retentionIncomplete).toBe(true);
+
+    expect(state.applyAuthoritativePage(scope, page("2", [turn(110)]))).toBe(
+      "accepted",
+    );
+    expect(useAcpProjectionStore.getState().retentionIncomplete).toBe(true);
+  });
+
+  it("does not carry retention loss into a different Chat scope", () => {
+    useAcpProjectionStore.setState({ retentionIncomplete: true });
+
+    useAcpProjectionStore.getState().activateScope({
+      ...scope,
+      chatId: "chat-b" as SageChatId,
+    });
+
+    expect(useAcpProjectionStore.getState().retentionIncomplete).toBe(false);
   });
 
   it("coalesces only the same notification tuple into one slot", () => {

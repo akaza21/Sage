@@ -1,5 +1,8 @@
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../../domain/acp";
-import type { ResourceRef } from "../../../domain/workbench";
+import type {
+  ProjectRootSummary,
+  ResourceRef,
+} from "../../../domain/workbench";
 
 import { AcpAnnouncementRegions } from "./AcpAnnouncementRegions";
 import { TurnEditSummary } from "./TurnEditSummary";
@@ -19,7 +22,25 @@ interface AcpChatProjectionProps {
   loadingEarlier?: boolean;
   historyError?: string | null;
   onLoadEarlier?: () => void;
-  rootNames?: Readonly<Record<string, string>>;
+  projectRoots?: readonly Pick<ProjectRootSummary, "id" | "name" | "ordinal">[];
+  retentionIncomplete?: boolean;
+}
+
+function projectRootLabels(
+  roots: readonly Pick<ProjectRootSummary, "id" | "name" | "ordinal">[],
+): Readonly<Record<string, string>> {
+  const nameCounts = new Map<string, number>();
+  for (const root of roots) {
+    nameCounts.set(root.name, (nameCounts.get(root.name) ?? 0) + 1);
+  }
+  return Object.fromEntries(
+    roots.map((root) => [
+      root.id,
+      (nameCounts.get(root.name) ?? 0) > 1
+        ? `${root.name} (root ${root.ordinal + 1})`
+        : root.name,
+    ]),
+  );
 }
 
 function ItemView({
@@ -99,12 +120,14 @@ function ItemView({
 function Turn({
   page,
   turn,
-  rootNames,
+  rootLabels,
+  countIncomplete,
   onOpenResource,
 }: {
   page: AcpChatPage;
   turn: TurnProjection;
-  rootNames: Readonly<Record<string, string>>;
+  rootLabels: Readonly<Record<string, string>>;
+  countIncomplete: boolean;
   onOpenResource?: AcpChatProjectionProps["onOpenResource"];
 }) {
   const primaryItems = turn.items.filter(
@@ -154,7 +177,8 @@ function Turn({
         <TurnEditSummary
           page={page}
           turn={turn}
-          rootNames={rootNames}
+          rootLabels={rootLabels}
+          countIncomplete={countIncomplete}
           onOpenDiff={
             onOpenResource
               ? (resource) => onOpenResource(resource, "diff")
@@ -174,9 +198,13 @@ export function AcpChatProjection({
   loadingEarlier = false,
   historyError = null,
   onLoadEarlier,
-  rootNames = {},
+  projectRoots = [],
+  retentionIncomplete = false,
 }: AcpChatProjectionProps) {
   if (!active) return null;
+  const earlierHistoryIncomplete = page.nextCursor !== null;
+  const countIncomplete = earlierHistoryIncomplete || retentionIncomplete;
+  const rootLabels = projectRootLabels(projectRoots);
   return (
     <section
       className="acp-chat-projection"
@@ -200,6 +228,18 @@ export function AcpChatProjection({
           Earlier history could not be loaded: {historyError}
         </p>
       ) : null}
+      {earlierHistoryIncomplete ? (
+        <p className="acp-history-notice">
+          Earlier history has not been loaded. Changed-file summaries show
+          retained records only.
+        </p>
+      ) : null}
+      {retentionIncomplete ? (
+        <p className="acp-history-notice">
+          Some Chat history was discarded to stay within memory limits.
+          Changed-file summaries show retained records only.
+        </p>
+      ) : null}
       {page.turns.length === 0 ? (
         <p className="acp-empty">No turns in this chat yet.</p>
       ) : (
@@ -208,7 +248,8 @@ export function AcpChatProjection({
             key={turn.id}
             page={page}
             turn={turn}
-            rootNames={rootNames}
+            rootLabels={rootLabels}
+            countIncomplete={countIncomplete}
             onOpenResource={onOpenResource}
           />
         ))

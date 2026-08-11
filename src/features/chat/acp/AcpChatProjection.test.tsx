@@ -210,10 +210,10 @@ describe("AcpChatProjection", () => {
       <AcpChatProjection
         page={edited}
         active
-        rootNames={{
-          "root-left": "Client",
-          "root-right": "Server",
-        }}
+        projectRoots={[
+          { id: "root-left", name: "Client", ordinal: 0 },
+          { id: "root-right", name: "Server", ordinal: 1 },
+        ]}
         onOpenResource={openResource}
       />,
     );
@@ -231,6 +231,111 @@ describe("AcpChatProjection", () => {
       { rootId: "root-right", relativePath: "src/main.ts" },
       "diff",
     );
+  });
+
+  it("disambiguates duplicate root names in visible and accessible Diff labels", () => {
+    const edited = page("completed");
+    edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
+    edited.turns[0].items = [
+      editItem("left", 1, "root-left", "left event"),
+      editItem("right", 2, "root-right", "right event"),
+    ];
+    const openResource = vi.fn();
+
+    render(
+      <AcpChatProjection
+        page={edited}
+        active
+        projectRoots={[
+          { id: "root-right", name: "Workspace", ordinal: 1 },
+          { id: "root-left", name: "Workspace", ordinal: 0 },
+        ]}
+        onOpenResource={openResource}
+      />,
+    );
+
+    const summary = screen.getByRole("region", {
+      name: "Files edited in turn 1",
+    });
+    expect(within(summary).getByText("Workspace (root 1)")).toBeVisible();
+    expect(within(summary).getByText("Workspace (root 2)")).toBeVisible();
+    const left = within(summary).getByRole("button", {
+      name: "Open diff Workspace (root 1) / src/main.ts",
+    });
+    const right = within(summary).getByRole("button", {
+      name: "Open diff Workspace (root 2) / src/main.ts",
+    });
+
+    fireEvent.click(left);
+    fireEvent.click(right);
+    expect(openResource).toHaveBeenNthCalledWith(
+      1,
+      { rootId: "root-left", relativePath: "src/main.ts" },
+      "diff",
+    );
+    expect(openResource).toHaveBeenNthCalledWith(
+      2,
+      { rootId: "root-right", relativePath: "src/main.ts" },
+      "diff",
+    );
+  });
+
+  it("discloses same-Turn paging until the full Turn has merged", () => {
+    const latest = page("completed");
+    latest.sessions = [{ id: "session-1", ordinal: 0 } as never];
+    latest.nextCursor = "same-turn-cursor" as never;
+    latest.turns[0].items = [editItem("newer", 2, "root-a", "newer event")];
+
+    const { rerender } = render(<AcpChatProjection page={latest} active />);
+
+    let summary = screen.getByRole("region", {
+      name: "Files edited in turn 1",
+    });
+    expect(within(summary).getByText("Showing 1 edited file")).toBeVisible();
+    expect(
+      screen.getByText(/earlier history has not been loaded/i),
+    ).toBeVisible();
+
+    const merged = {
+      ...latest,
+      nextCursor: null,
+      turns: [
+        {
+          ...latest.turns[0],
+          items: [
+            editItem("older", 1, "root-b", "older event"),
+            ...latest.turns[0].items,
+          ],
+        },
+      ],
+    };
+    rerender(<AcpChatProjection page={merged} active />);
+
+    summary = screen.getByRole("region", {
+      name: "Files edited in turn 1",
+    });
+    expect(within(summary).getByText("Edited 2 files")).toBeVisible();
+    expect(
+      screen.queryByText(/earlier history has not been loaded/i),
+    ).toBeNull();
+  });
+
+  it("discloses frontend retention eviction without claiming a complete count", () => {
+    const edited = page("completed");
+    edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
+    edited.turns[0].items = [
+      editItem("retained", 2, "root-a", "retained event"),
+    ];
+
+    render(<AcpChatProjection page={edited} active retentionIncomplete />);
+
+    const summary = screen.getByRole("region", {
+      name: "Files edited in turn 1",
+    });
+    expect(within(summary).getByText("Showing 1 edited file")).toBeVisible();
+    expect(
+      screen.getByText(/discarded to stay within memory limits/i),
+    ).toBeVisible();
   });
 
   it("discloses the rendered-file cap and rejected stale entries without enabling them", () => {

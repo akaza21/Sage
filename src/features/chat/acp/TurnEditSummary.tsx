@@ -8,16 +8,17 @@ import { projectAgentEditSummary } from "./agentEditSummary";
 interface TurnEditSummaryProps {
   page: AcpChatPage;
   turn: TurnProjection;
-  rootNames: Readonly<Record<string, string>>;
+  rootLabels: Readonly<Record<string, string>>;
+  countIncomplete: boolean;
   onOpenDiff?: (resource: ResourceRef) => void;
 }
 
 function rootDisplayName(
-  rootNames: Readonly<Record<string, string>>,
+  rootLabels: Readonly<Record<string, string>>,
   rootId: string,
 ): string {
-  const projected = Object.prototype.hasOwnProperty.call(rootNames, rootId)
-    ? rootNames[rootId]
+  const projected = Object.prototype.hasOwnProperty.call(rootLabels, rootId)
+    ? rootLabels[rootId]
     : null;
   return typeof projected === "string" && projected.length > 0
     ? projected
@@ -27,7 +28,8 @@ function rootDisplayName(
 export function TurnEditSummary({
   page,
   turn,
-  rootNames,
+  rootLabels,
+  countIncomplete,
   onOpenDiff,
 }: TurnEditSummaryProps) {
   const summary = projectAgentEditSummary(page, turn);
@@ -38,6 +40,11 @@ export function TurnEditSummary({
   ) {
     return null;
   }
+  const summaryIncomplete =
+    countIncomplete ||
+    summary.omittedCount > 0 ||
+    summary.sourceTruncated ||
+    summary.rejectedUnsafeOrStale;
 
   return (
     <section
@@ -48,8 +55,9 @@ export function TurnEditSummary({
       <header className="acp-file-changes__header">
         <Files size={16} aria-hidden="true" />
         <strong>
-          Edited {summary.changes.length}{" "}
-          {summary.changes.length === 1 ? "file" : "files"}
+          {summaryIncomplete
+            ? `Showing ${summary.changes.length} edited ${summary.changes.length === 1 ? "file" : "files"}`
+            : `Edited ${summary.changes.length} ${summary.changes.length === 1 ? "file" : "files"}`}
         </strong>
       </header>
       {summary.changes.length > 0 ? (
@@ -70,7 +78,7 @@ export function TurnEditSummary({
               );
             }
             const resource = location.resource;
-            const rootName = rootDisplayName(rootNames, resource.rootId);
+            const rootName = rootDisplayName(rootLabels, resource.rootId);
             const qualifiedLabel = `${rootName} / ${resource.relativePath}`;
             return (
               <li key={resourceKey(resource)}>

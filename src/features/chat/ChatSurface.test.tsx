@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useAcpProjectionStore } from "../../app/acpProjectionStore";
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage, AcpItem } from "../../domain/acp";
 import type { ResourceRef } from "../../domain/workbench";
@@ -153,6 +154,7 @@ function setTurnState(state: AcpChatPage["turns"][number]["state"]) {
 }
 
 beforeEach(() => {
+  useAcpProjectionStore.setState({ retentionIncomplete: false });
   hooks.page = projection();
   hooks.actions.busy = false;
   hooks.actions.error = null;
@@ -888,6 +890,17 @@ describe("ChatSurface ACP resource integration", () => {
       rootId: "root-b",
       relativePath: "src/main.ts",
     });
+  });
+
+  it("passes frontend retention incompleteness into the ACP edit summary", () => {
+    useAcpProjectionStore.setState({ retentionIncomplete: true });
+
+    render(<ChatSurface />);
+
+    expect(screen.getByText("Showing 1 edited file")).toBeVisible();
+    expect(
+      screen.getByText(/discarded to stay within memory limits/i),
+    ).toBeVisible();
   });
 
   it("does not mix the global legacy edit summary into an ACP Chat", () => {

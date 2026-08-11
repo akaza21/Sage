@@ -181,7 +181,8 @@
   justify-self: start;
 }
 
-.acp-history-error {
+.acp-history-error,
+.acp-history-notice {
   margin: 0;
   color: var(--text-soft, #c5c5c5);
 }
