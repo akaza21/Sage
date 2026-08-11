@@ -35,6 +35,7 @@ describe("browser repository mutations", () => {
           projectId: "project-a",
           resource: { rootId: "root-a", relativePath: "file.txt" },
           action: "stage",
+          discardConfirmed: false,
         },
         0,
       ),

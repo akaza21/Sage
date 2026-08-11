@@ -127,7 +127,7 @@ export const browserDesktop = {
     _expectedTransitionEpoch: number,
   ): Promise<never> {
     throw new BrowserGitMutationUnavailableError(
-      "Git stage and unstage require the native Sage desktop",
+      "Git stage, unstage, and discard require the native Sage desktop",
     );
   },
   async persistProjectLayout(request: ProjectLayoutRequest) {

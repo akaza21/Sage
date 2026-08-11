@@ -7,6 +7,7 @@ use super::{DirectoryListing, ProjectRepositoryStatus, ResourceRef};
 pub enum GitFileMutationAction {
     Stage,
     Unstage,
+    Discard,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,6 +16,7 @@ pub struct GitFileMutationRequest {
     pub project_id: String,
     pub resource: ResourceRef,
     pub action: GitFileMutationAction,
+    pub discard_confirmed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

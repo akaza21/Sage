@@ -65,7 +65,7 @@ export type GitFileState =
 
 export interface FileChange {
   resource: ResourceRef;
-  originalResource?: ResourceRef;
+  originalResource?: ResourceRef | null;
   indexStatus: GitFileState;
   worktreeStatus: GitFileState;
   additions: number | null;
@@ -91,12 +91,13 @@ export interface ProjectRepositoryStatus {
   elapsedMs: number;
 }
 
-export type GitFileMutationAction = "stage" | "unstage";
+export type GitFileMutationAction = "stage" | "unstage" | "discard";
 
 export interface GitFileMutationRequest {
   projectId: string;
   resource: ResourceRef;
   action: GitFileMutationAction;
+  discardConfirmed: boolean;
 }
 
 export type GitFileMutationErrorKind = "effectUnknown";

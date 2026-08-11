@@ -1,6 +1,7 @@
 import type { StateCreator } from "zustand";
 
 import { sameResource } from "../domain/resourceIdentity";
+import { isConflictedChange, isSafeDiscardChange } from "../domain/gitMutation";
 import type {
   GitFileMutationAction,
   GitProcessState,
@@ -27,6 +28,7 @@ export interface RepositoryMutationSlice {
   mutateRepositoryFile: (
     resource: ResourceRef,
     action: GitFileMutationAction,
+    discardConfirmed?: boolean,
   ) => Promise<boolean>;
 }
 
@@ -64,21 +66,24 @@ function eligibleMutation(
   state: WorkbenchState,
   resource: ResourceRef,
   action: GitFileMutationAction,
+  discardConfirmed: boolean,
 ) {
   const change = state.repositories.roots
     .find((root) => root.rootId === resource.rootId)
     ?.changes.find((candidate) => sameResource(candidate.resource, resource));
-  if (
-    !change ||
-    change.indexStatus === "conflicted" ||
-    change.worktreeStatus === "conflicted"
-  ) {
+  if (!change || isConflictedChange(change)) {
     return false;
   }
-  return action === "stage"
-    ? change.worktreeStatus !== "unchanged" &&
-        change.worktreeStatus !== "unknown"
-    : change.indexStatus !== "unchanged" && change.indexStatus !== "unknown";
+  if (action === "discard") {
+    return discardConfirmed && isSafeDiscardChange(change);
+  }
+  if (action === "stage") {
+    return (
+      change.worktreeStatus !== "unchanged" &&
+      change.worktreeStatus !== "unknown"
+    );
+  }
+  return change.indexStatus !== "unchanged" && change.indexStatus !== "unknown";
 }
 
 export const createRepositoryMutationSlice: StateCreator<
@@ -89,7 +94,7 @@ export const createRepositoryMutationSlice: StateCreator<
 > = (set, get) => ({
   repositoryMutation: null,
   repositoryMutationError: null,
-  mutateRepositoryFile: async (resource, action) => {
+  mutateRepositoryFile: async (resource, action, discardConfirmed = false) => {
     const generation = get().projectGeneration;
     const projectId = get().project?.id;
     const transitionEpoch = get().nativeTransitionEpoch;
@@ -99,7 +104,7 @@ export const createRepositoryMutationSlice: StateCreator<
       get().repositoryRefreshing ||
       get().repositoryMutation ||
       !matchesResourceIntent(get(), generation, projectId, resource) ||
-      !eligibleMutation(get(), resource, action)
+      !eligibleMutation(get(), resource, action, discardConfirmed)
     ) {
       return false;
     }
@@ -107,7 +112,7 @@ export const createRepositoryMutationSlice: StateCreator<
     set({ repositoryMutation: mutation, repositoryMutationError: null });
     try {
       const result = await desktop.mutateGitFile(
-        { projectId, resource, action },
+        { projectId, resource, action, discardConfirmed },
         transitionEpoch,
       );
       if (

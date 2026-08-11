@@ -107,6 +107,31 @@ pub(crate) async fn mutate_file_with_process_policy(
             )
             .await?
         }
+        GitFileMutationAction::Discard => {
+            if !matches!(
+                change.worktree_status.as_str(),
+                "modified" | "typeChanged" | "deleted"
+            ) || change.index_status == "renamed"
+                || change.index_status == "copied"
+                || change.original_resource.is_some()
+            {
+                return Err(AppError::InvalidRequest(
+                    "resource worktree change cannot be safely discarded".into(),
+                ));
+            }
+            repository::run_git_with_policy(
+                workspace.root(),
+                &[
+                    "restore",
+                    "--worktree",
+                    "--",
+                    resource.relative_path.as_str(),
+                ],
+                MAX_GIT_MUTATION_OUTPUT_BYTES,
+                process_policy,
+            )
+            .await?
+        }
     };
     repository::ensure_success(&output)
 }
@@ -123,7 +148,7 @@ fn validate_resource_identity(workspace: &Workspace, resource: &ResourceRef) -> 
             "Git mutation resource identity exceeds its bounded contract".into(),
         ));
     }
-    let canonical = workspace.canonical_ingress_resource(resource)?;
+    let canonical = workspace.git_resource_identity(resource)?;
     if canonical != *resource {
         return Err(AppError::InvalidRequest(
             "Git mutation requires the canonical root-qualified resource identity".into(),
@@ -151,6 +176,29 @@ mod tests {
                 .unwrap()
                 .success()
         );
+    }
+
+    fn create_file_symlink(target: &Path, link: &Path) -> bool {
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(target, link).unwrap();
+            true
+        }
+        #[cfg(windows)]
+        {
+            match std::os::windows::fs::symlink_file(target, link) {
+                Ok(()) => true,
+                Err(error) => {
+                    eprintln!("optional Windows Git symlink test unavailable: {error}");
+                    false
+                }
+            }
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            let _ = (target, link);
+            false
+        }
     }
 
     fn ambient_fixture(root: &Path, environment: &[(&str, &OsStr)]) -> std::process::Output {
@@ -522,6 +570,306 @@ mod tests {
     }
 
     #[test]
+    fn discards_one_literal_modified_file_and_restores_a_tracked_deletion() {
+        let root = std::env::temp_dir().join(format!("sage-git-discard-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q"]);
+        git(&root, &["config", "user.email", "sage@example.invalid"]);
+        git(&root, &["config", "user.name", "Sage Test"]);
+        git(&root, &["config", "core.autocrlf", "false"]);
+        let target = "literal[ab].txt";
+        let decoy = "literala.txt";
+        fs::create_dir_all(root.join("nested")).unwrap();
+        fs::write(root.join(target), "target base\n").unwrap();
+        fs::write(root.join(decoy), "decoy base\n").unwrap();
+        fs::write(root.join("nested/deleted.txt"), "restore me\n").unwrap();
+        git(&root, &["add", "-A", "--"]);
+        git(&root, &["commit", "-q", "-m", "fixture"]);
+        fs::write(root.join(target), "target changed\n").unwrap();
+        fs::write(root.join(decoy), "decoy changed\n").unwrap();
+        fs::remove_dir_all(root.join("nested")).unwrap();
+        let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+        let target_resource = workspace.resource(target).unwrap();
+        let deleted_resource = ResourceRef {
+            root_id: "root-a".into(),
+            relative_path: "nested/deleted.txt".into(),
+        };
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+
+        runtime
+            .block_on(mutate_file(
+                &workspace,
+                &target_resource,
+                GitFileMutationAction::Discard,
+            ))
+            .unwrap();
+        runtime
+            .block_on(mutate_file(
+                &workspace,
+                &deleted_resource,
+                GitFileMutationAction::Discard,
+            ))
+            .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join(target)).unwrap(),
+            "target base\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join(decoy)).unwrap(),
+            "decoy changed\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("nested/deleted.txt")).unwrap(),
+            "restore me\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn discard_preserves_the_index_for_partially_staged_and_added_files() {
+        let root = std::env::temp_dir().join(format!("sage-git-discard-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q"]);
+        git(&root, &["config", "user.email", "sage@example.invalid"]);
+        git(&root, &["config", "user.name", "Sage Test"]);
+        git(&root, &["config", "core.autocrlf", "false"]);
+        fs::write(root.join("partial.txt"), "base\n").unwrap();
+        git(&root, &["add", "--", "partial.txt"]);
+        git(&root, &["commit", "-q", "-m", "fixture"]);
+        fs::write(root.join("partial.txt"), "staged\n").unwrap();
+        git(&root, &["add", "--", "partial.txt"]);
+        fs::write(root.join("partial.txt"), "unstaged\n").unwrap();
+        fs::write(root.join("first.txt"), "staged first\n").unwrap();
+        git(&root, &["add", "--", "first.txt"]);
+        fs::write(root.join("first.txt"), "unstaged first\n").unwrap();
+        let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+
+        for path in ["partial.txt", "first.txt"] {
+            runtime
+                .block_on(mutate_file(
+                    &workspace,
+                    &workspace.resource(path).unwrap(),
+                    GitFileMutationAction::Discard,
+                ))
+                .unwrap();
+        }
+
+        assert_eq!(
+            fs::read_to_string(root.join("partial.txt")).unwrap(),
+            "staged\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("first.txt")).unwrap(),
+            "staged first\n"
+        );
+        let partial_index = Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(["show", ":partial.txt"])
+            .output()
+            .unwrap();
+        let first_index = Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(["show", ":first.txt"])
+            .output()
+            .unwrap();
+        assert_eq!(partial_index.stdout, b"staged\n");
+        assert_eq!(first_index.stdout, b"staged first\n");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn discard_restores_an_unborn_staged_file_from_the_index() {
+        let root = std::env::temp_dir().join(format!("sage-git-discard-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q"]);
+        git(&root, &["config", "core.autocrlf", "false"]);
+        fs::write(root.join("first.txt"), "staged first\n").unwrap();
+        git(&root, &["add", "--", "first.txt"]);
+        fs::write(root.join("first.txt"), "unstaged first\n").unwrap();
+        let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+        let resource = workspace.resource("first.txt").unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+
+        runtime
+            .block_on(mutate_file(
+                &workspace,
+                &resource,
+                GitFileMutationAction::Discard,
+            ))
+            .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join("first.txt")).unwrap(),
+            "staged first\n"
+        );
+        let projected = runtime.block_on(repository::status(&workspace)).unwrap();
+        assert_eq!(projected.changes[0].index_status, "added");
+        assert_eq!(projected.changes[0].worktree_status, "unchanged");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn discard_of_a_retargeted_tracked_symlink_never_restores_its_modified_target() {
+        let root = std::env::temp_dir().join(format!("sage-git-discard-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q"]);
+        git(&root, &["config", "user.email", "sage@example.invalid"]);
+        git(&root, &["config", "user.name", "Sage Test"]);
+        git(&root, &["config", "core.symlinks", "true"]);
+        fs::write(root.join("target-a.txt"), "target a\n").unwrap();
+        fs::write(root.join("target-b.txt"), "target b\n").unwrap();
+        if !create_file_symlink(Path::new("target-a.txt"), &root.join("link.txt")) {
+            fs::remove_dir_all(root).unwrap();
+            return;
+        }
+        git(&root, &["add", "-A", "--"]);
+        git(&root, &["commit", "-q", "-m", "fixture"]);
+        fs::write(root.join("target-b.txt"), "target b changed\n").unwrap();
+        fs::remove_file(root.join("link.txt")).unwrap();
+        create_file_symlink(Path::new("target-b.txt"), &root.join("link.txt"));
+        let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+        let resource = ResourceRef {
+            root_id: "root-a".into(),
+            relative_path: "link.txt".into(),
+        };
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let before = runtime.block_on(repository::status(&workspace)).unwrap();
+        let link_change = before
+            .changes
+            .iter()
+            .find(|change| change.resource.relative_path == "link.txt")
+            .unwrap();
+        assert_eq!(link_change.worktree_status, "modified");
+
+        runtime
+            .block_on(mutate_file(
+                &workspace,
+                &resource,
+                GitFileMutationAction::Discard,
+            ))
+            .unwrap();
+
+        assert_eq!(
+            fs::read_link(root.join("link.txt")).unwrap(),
+            Path::new("target-a.txt")
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("target-b.txt")).unwrap(),
+            "target b changed\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn discard_type_change_replaces_an_outside_symlink_without_touching_its_target() {
+        let base = std::env::temp_dir().join(format!("sage-git-discard-{}", Uuid::new_v4()));
+        let root = base.join("repo");
+        let outside = base.join("outside.txt");
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q"]);
+        git(&root, &["config", "user.email", "sage@example.invalid"]);
+        git(&root, &["config", "user.name", "Sage Test"]);
+        git(&root, &["config", "core.symlinks", "true"]);
+        fs::write(root.join("link.txt"), "tracked base\n").unwrap();
+        fs::write(&outside, "outside unchanged\n").unwrap();
+        git(&root, &["add", "--", "link.txt"]);
+        git(&root, &["commit", "-q", "-m", "fixture"]);
+        fs::remove_file(root.join("link.txt")).unwrap();
+        if !create_file_symlink(&outside, &root.join("link.txt")) {
+            fs::remove_dir_all(base).unwrap();
+            return;
+        }
+        let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+        let resource = ResourceRef {
+            root_id: "root-a".into(),
+            relative_path: "link.txt".into(),
+        };
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let before = runtime.block_on(repository::status(&workspace)).unwrap();
+        let link_change = before
+            .changes
+            .iter()
+            .find(|change| change.resource == resource)
+            .unwrap();
+        assert_eq!(link_change.worktree_status, "typeChanged");
+
+        runtime
+            .block_on(mutate_file(
+                &workspace,
+                &resource,
+                GitFileMutationAction::Discard,
+            ))
+            .unwrap();
+
+        assert!(
+            !fs::symlink_metadata(root.join("link.txt"))
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("link.txt")).unwrap(),
+            "tracked base\n"
+        );
+        assert_eq!(fs::read_to_string(outside).unwrap(), "outside unchanged\n");
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn discard_rejects_untracked_staged_only_and_renamed_files_without_deleting_bytes() {
+        let root = std::env::temp_dir().join(format!("sage-git-discard-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q"]);
+        git(&root, &["config", "user.email", "sage@example.invalid"]);
+        git(&root, &["config", "user.name", "Sage Test"]);
+        fs::write(root.join("tracked.txt"), "base\n").unwrap();
+        fs::write(root.join("rename-before.txt"), "rename\n").unwrap();
+        git(&root, &["add", "-A", "--"]);
+        git(&root, &["commit", "-q", "-m", "fixture"]);
+        fs::write(root.join("untracked.txt"), "keep untracked\n").unwrap();
+        fs::write(root.join("tracked.txt"), "staged only\n").unwrap();
+        git(&root, &["add", "--", "tracked.txt"]);
+        fs::rename(
+            root.join("rename-before.txt"),
+            root.join("rename-after.txt"),
+        )
+        .unwrap();
+        git(&root, &["add", "-A", "--"]);
+        let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+
+        for path in ["untracked.txt", "tracked.txt", "rename-after.txt"] {
+            let resource = workspace.resource(path).unwrap();
+            let error = runtime
+                .block_on(mutate_file(
+                    &workspace,
+                    &resource,
+                    GitFileMutationAction::Discard,
+                ))
+                .unwrap_err();
+            assert!(error.to_string().contains("cannot be safely discarded"));
+        }
+
+        assert_eq!(
+            fs::read_to_string(root.join("untracked.txt")).unwrap(),
+            "keep untracked\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("tracked.txt")).unwrap(),
+            "staged only\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("rename-after.txt")).unwrap(),
+            "rename\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn same_relative_path_mutates_only_the_selected_project_root() {
         let base = std::env::temp_dir().join(format!("sage-git-mutate-{}", Uuid::new_v4()));
         let root_a = base.join("a");
@@ -550,6 +898,85 @@ mod tests {
         assert_eq!(projected_b.changes[0].index_status, "unchanged");
         assert_eq!(projected_b.changes[0].worktree_status, "untracked");
         fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn discard_same_relative_path_changes_only_the_selected_root() {
+        let base = std::env::temp_dir().join(format!("sage-git-discard-{}", Uuid::new_v4()));
+        let root_a = base.join("a");
+        let root_b = base.join("b");
+        for (root, content) in [(&root_a, "base a\n"), (&root_b, "base b\n")] {
+            fs::create_dir_all(root).unwrap();
+            git(root, &["init", "-q"]);
+            git(root, &["config", "user.email", "sage@example.invalid"]);
+            git(root, &["config", "user.name", "Sage Test"]);
+            fs::write(root.join("same.txt"), content).unwrap();
+            git(root, &["add", "--", "same.txt"]);
+            git(root, &["commit", "-q", "-m", "fixture"]);
+            fs::write(root.join("same.txt"), "changed\n").unwrap();
+        }
+        let workspace_a = Workspace::open("project-a", "root-a", &root_a).unwrap();
+        let resource_a = workspace_a.resource("same.txt").unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+
+        runtime
+            .block_on(mutate_file(
+                &workspace_a,
+                &resource_a,
+                GitFileMutationAction::Discard,
+            ))
+            .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root_a.join("same.txt")).unwrap(),
+            "base a\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root_b.join("same.txt")).unwrap(),
+            "changed\n"
+        );
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn discard_rejects_an_unmerged_file_without_changing_conflict_bytes() {
+        let root = std::env::temp_dir().join(format!("sage-git-discard-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q"]);
+        git(&root, &["config", "user.email", "sage@example.invalid"]);
+        git(&root, &["config", "user.name", "Sage Test"]);
+        fs::write(root.join("conflict.txt"), "base\n").unwrap();
+        git(&root, &["add", "--", "conflict.txt"]);
+        git(&root, &["commit", "-q", "-m", "base"]);
+        git(&root, &["checkout", "-q", "-b", "other"]);
+        fs::write(root.join("conflict.txt"), "other\n").unwrap();
+        git(&root, &["commit", "-q", "-am", "other"]);
+        git(&root, &["checkout", "-q", "-"]);
+        fs::write(root.join("conflict.txt"), "master\n").unwrap();
+        git(&root, &["commit", "-q", "-am", "master"]);
+        let merge = Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(["merge", "other"])
+            .output()
+            .unwrap();
+        assert!(!merge.status.success());
+        let before = fs::read(root.join("conflict.txt")).unwrap();
+        let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+        let resource = workspace.resource("conflict.txt").unwrap();
+
+        let error = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(mutate_file(
+                &workspace,
+                &resource,
+                GitFileMutationAction::Discard,
+            ))
+            .unwrap_err();
+
+        assert!(error.to_string().contains("later conflict workflow"));
+        assert_eq!(fs::read(root.join("conflict.txt")).unwrap(), before);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

@@ -95,6 +95,12 @@ async fn mutate_git_file_inner_with_policy_override(
             "Git mutation Project identity exceeds its bounded contract".into(),
         ));
     }
+    if request.action == crate::domain::GitFileMutationAction::Discard && !request.discard_confirmed
+    {
+        return Err(AppError::InvalidRequest(
+            "Git discard requires explicit confirmation".into(),
+        ));
+    }
     let transition_epoch = state.project_transitions.lock().await;
     if *transition_epoch != expected_transition_epoch {
         return Err(AppError::InvalidRequest(
@@ -202,6 +208,7 @@ mod tests {
                         relative_path: "new.txt".into(),
                     },
                     action: GitFileMutationAction::Stage,
+                    discard_confirmed: false,
                 },
                 0,
             )
@@ -217,6 +224,64 @@ mod tests {
                 "added"
             );
             assert!(result.error.is_none());
+            drop(state);
+            fs::remove_dir_all(base).unwrap();
+        });
+    }
+
+    #[test]
+    fn discard_command_requires_confirmation_then_returns_authoritative_status() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
+            let root = base.join("repo");
+            fs::create_dir_all(&root).unwrap();
+            git(&root, &["init", "-q"]);
+            git(&root, &["config", "user.email", "sage@example.invalid"]);
+            git(&root, &["config", "user.name", "Sage Test"]);
+            fs::write(root.join("tracked.txt"), "base\n").unwrap();
+            git(&root, &["add", "--", "tracked.txt"]);
+            git(&root, &["commit", "-q", "-m", "fixture"]);
+            fs::write(root.join("tracked.txt"), "keep changed\n").unwrap();
+            let database = Database::open(&base.join("sage.db")).unwrap();
+            let project = database.create_project_from_root(&root).unwrap();
+            let snapshot = database.bootstrap_snapshot().unwrap();
+            let root_id = snapshot.project.unwrap().roots[0].id.clone();
+            let state = AppState::new(database);
+
+            let request = GitFileMutationRequest {
+                project_id: project.id,
+                resource: crate::domain::ResourceRef {
+                    root_id,
+                    relative_path: "tracked.txt".into(),
+                },
+                action: GitFileMutationAction::Discard,
+                discard_confirmed: false,
+            };
+            let error = mutate_git_file_inner(&state, request.clone(), 0)
+                .await
+                .unwrap_err();
+
+            assert!(error.to_string().contains("explicit confirmation"));
+            assert_eq!(
+                fs::read_to_string(root.join("tracked.txt")).unwrap(),
+                "keep changed\n"
+            );
+            let result = mutate_git_file_inner(
+                &state,
+                GitFileMutationRequest {
+                    discard_confirmed: true,
+                    ..request
+                },
+                0,
+            )
+            .await
+            .unwrap();
+            assert!(result.error.is_none());
+            assert!(result.repositories.roots[0].changes.is_empty());
+            assert_eq!(
+                fs::read_to_string(root.join("tracked.txt")).unwrap(),
+                "base\n"
+            );
             drop(state);
             fs::remove_dir_all(base).unwrap();
         });
@@ -242,10 +307,11 @@ mod tests {
                 GitFileMutationRequest {
                     project_id: project.id,
                     resource: crate::domain::ResourceRef {
-                        root_id,
+                        root_id: root_id.clone(),
                         relative_path: "new.txt".into(),
                     },
-                    action: GitFileMutationAction::Stage,
+                    action: GitFileMutationAction::Discard,
+                    discard_confirmed: true,
                 },
                 0,
             )
@@ -288,6 +354,7 @@ mod tests {
                         relative_path: "new.txt".into(),
                     },
                     action: GitFileMutationAction::Stage,
+                    discard_confirmed: false,
                 },
                 0,
             )
@@ -305,6 +372,7 @@ mod tests {
                         relative_path: "new.txt".into(),
                     },
                     action: GitFileMutationAction::Stage,
+                    discard_confirmed: false,
                 },
                 0,
             )
@@ -335,10 +403,11 @@ mod tests {
                 GitFileMutationRequest {
                     project_id: project.id,
                     resource: crate::domain::ResourceRef {
-                        root_id,
+                        root_id: root_id.clone(),
                         relative_path: "new.txt".into(),
                     },
                     action: GitFileMutationAction::Stage,
+                    discard_confirmed: false,
                 },
                 0,
                 std::time::Duration::ZERO,
@@ -359,10 +428,64 @@ mod tests {
                 "untracked"
             );
             std::thread::sleep(std::time::Duration::from_millis(200));
-            let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+            let workspace = Workspace::open("project-a", &root_id, &root).unwrap();
             let later = repository::status(&workspace).await.unwrap();
             assert_eq!(later.changes[0].index_status, "unchanged");
             assert_eq!(later.changes[0].worktree_status, "untracked");
+            drop(state);
+            fs::remove_dir_all(base).unwrap();
+        });
+    }
+
+    #[test]
+    fn discard_timeout_refreshes_authoritative_status_and_never_changes_later() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
+            let root = base.join("repo");
+            fs::create_dir_all(&root).unwrap();
+            git(&root, &["init", "-q"]);
+            git(&root, &["config", "user.email", "sage@example.invalid"]);
+            git(&root, &["config", "user.name", "Sage Test"]);
+            fs::write(root.join("tracked.txt"), "base\n").unwrap();
+            git(&root, &["add", "--", "tracked.txt"]);
+            git(&root, &["commit", "-q", "-m", "fixture"]);
+            fs::write(root.join("tracked.txt"), "changed\n").unwrap();
+            let database = Database::open(&base.join("sage.db")).unwrap();
+            let project = database.create_project_from_root(&root).unwrap();
+            let snapshot = database.bootstrap_snapshot().unwrap();
+            let root_id = snapshot.project.unwrap().roots[0].id.clone();
+            let state = AppState::new(database);
+
+            let result = mutate_git_file_inner_with_timeout(
+                &state,
+                GitFileMutationRequest {
+                    project_id: project.id,
+                    resource: crate::domain::ResourceRef {
+                        root_id: root_id.clone(),
+                        relative_path: "tracked.txt".into(),
+                    },
+                    action: GitFileMutationAction::Discard,
+                    discard_confirmed: true,
+                },
+                0,
+                Duration::ZERO,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(
+                result.error.as_ref().unwrap().kind,
+                crate::domain::GitFileMutationErrorKind::EffectUnknown
+            );
+            let authoritative_changes =
+                serde_json::to_value(&result.repositories.roots[0].changes).unwrap();
+            std::thread::sleep(Duration::from_millis(200));
+            let workspace = Workspace::open("project-a", &root_id, &root).unwrap();
+            let later = repository::status(&workspace).await.unwrap();
+            assert_eq!(
+                serde_json::to_value(later.changes).unwrap(),
+                authoritative_changes
+            );
             drop(state);
             fs::remove_dir_all(base).unwrap();
         });
@@ -391,6 +514,7 @@ mod tests {
                         relative_path: "new.txt".into(),
                     },
                     action: GitFileMutationAction::Stage,
+                    discard_confirmed: false,
                 },
                 0,
                 repository::GitProcessPolicy::nonconvergent_reap(Duration::ZERO),
@@ -438,6 +562,7 @@ mod tests {
                         relative_path: "new.txt".into(),
                     },
                     action: GitFileMutationAction::Stage,
+                    discard_confirmed: false,
                 },
                 0,
                 repository::GitProcessPolicy::post_reap_failure(Duration::from_secs(3)),
@@ -490,6 +615,7 @@ mod tests {
                         relative_path: "new.txt".into(),
                     },
                     action: GitFileMutationAction::Stage,
+                    discard_confirmed: false,
                 },
                 0,
                 repository::GitProcessPolicy::stdout_reader_failure(Duration::from_secs(3)),
@@ -532,6 +658,7 @@ mod tests {
                     relative_path: "new.txt".into(),
                 },
                 action: GitFileMutationAction::Stage,
+                discard_confirmed: false,
             };
             let state = AppState::new(database);
             let (cleanup_policy, reaper) =
@@ -605,6 +732,7 @@ mod tests {
                     relative_path: "new.txt".into(),
                 },
                 action: GitFileMutationAction::Stage,
+                discard_confirmed: false,
             };
             let state = AppState::new(database);
             let (cleanup_policy, reaper) =
@@ -677,6 +805,7 @@ mod tests {
                     relative_path: "new.txt".into(),
                 },
                 action: GitFileMutationAction::Stage,
+                discard_confirmed: false,
             };
             let state = AppState::new(database);
             let harness = repository::GitProcessTestHarness::new();

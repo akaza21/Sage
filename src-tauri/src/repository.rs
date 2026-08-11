@@ -77,9 +77,9 @@ pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         status_output.stdout_truncated,
     )?;
     for change in &mut changes {
-        change.resource = workspace.canonical_ingress_resource(&change.resource)?;
+        change.resource = workspace.git_resource_identity(&change.resource)?;
         if let Some(original) = &change.original_resource {
-            change.original_resource = Some(workspace.canonical_ingress_resource(original)?);
+            change.original_resource = Some(workspace.git_resource_identity(original)?);
         }
     }
     let mut stats = HashMap::new();
@@ -124,7 +124,7 @@ fn canonicalize_numstat_paths(
 ) -> AppResult<NumstatByPath> {
     let mut canonical = HashMap::with_capacity(stats.len());
     for (relative_path, counts) in stats {
-        let resource = workspace.canonical_ingress_resource(&ResourceRef {
+        let resource = workspace.git_resource_identity(&ResourceRef {
             root_id: workspace.root_id().into(),
             relative_path,
         })?;

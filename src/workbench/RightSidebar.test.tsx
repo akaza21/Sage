@@ -199,6 +199,170 @@ describe("RightSidebar Source Control mutations", () => {
     );
   });
 
+  it("requires an accessible inline confirmation before discarding one safe worktree change", async () => {
+    const mutateRepositoryFile = vi.fn(async () => true);
+    useWorkbenchStore.setState({
+      sidebarOpen: true,
+      sidebarView: "sourceControl",
+      project: {
+        id: "project-a",
+        name: "A",
+        roots: [
+          {
+            id: "root-a",
+            name: "Alpha",
+            ordinal: 0,
+            availability: "available",
+            message: null,
+          },
+        ],
+      },
+      repositories: {
+        roots: [
+          {
+            rootId: "root-a",
+            state: "repository",
+            branch: "main",
+            changes: [
+              {
+                resource: { rootId: "root-a", relativePath: "partial.txt" },
+                originalResource: null,
+                indexStatus: "modified",
+                worktreeStatus: "modified",
+                additions: 1,
+                deletions: 1,
+              },
+              {
+                resource: { rootId: "root-a", relativePath: "deleted.txt" },
+                indexStatus: "unchanged",
+                worktreeStatus: "deleted",
+                additions: 0,
+                deletions: 2,
+              },
+              {
+                resource: { rootId: "root-a", relativePath: "type.txt" },
+                indexStatus: "unchanged",
+                worktreeStatus: "typeChanged",
+                additions: null,
+                deletions: null,
+              },
+              {
+                resource: { rootId: "root-a", relativePath: "untracked.txt" },
+                indexStatus: "unchanged",
+                worktreeStatus: "untracked",
+                additions: null,
+                deletions: null,
+              },
+              {
+                resource: { rootId: "root-a", relativePath: "renamed.txt" },
+                originalResource: {
+                  rootId: "root-a",
+                  relativePath: "before.txt",
+                },
+                indexStatus: "renamed",
+                worktreeStatus: "modified",
+                additions: 0,
+                deletions: 0,
+              },
+              {
+                resource: { rootId: "root-a", relativePath: "conflict.txt" },
+                indexStatus: "conflicted",
+                worktreeStatus: "conflicted",
+                additions: null,
+                deletions: null,
+              },
+            ],
+            truncated: false,
+            elapsedMs: 1,
+            message: null,
+          },
+        ],
+        truncated: false,
+        elapsedMs: 1,
+      },
+      mutateRepositoryFile,
+    });
+
+    render(<RightSidebar compact={false} />);
+    const discardButton = () =>
+      screen.getByRole("button", {
+        name: "Discard unstaged changes to partial.txt in Alpha",
+      });
+    const discard = discardButton();
+    expect(
+      screen.getByRole("button", {
+        name: "Discard unstaged changes to deleted.txt in Alpha",
+      }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", {
+        name: "Discard unstaged changes to type.txt in Alpha",
+      }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByRole("button", {
+        name: /Discard unstaged changes to untracked/,
+      }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: /Discard unstaged changes to renamed/,
+      }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: /Discard unstaged changes to conflict/,
+      }),
+    ).toBeNull();
+
+    fireEvent.click(discard);
+    expect(mutateRepositoryFile).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        "Discard unstaged changes to partial.txt in Alpha? This cannot be undone.",
+      ),
+    ).toBeInTheDocument();
+    const confirm = screen.getByRole("button", {
+      name: "Confirm discard of partial.txt in Alpha",
+    });
+    const cancel = screen.getByRole("button", {
+      name: "Cancel discard of partial.txt in Alpha",
+    });
+    expect(cancel).toHaveFocus();
+    expect(confirm).toHaveAccessibleDescription(
+      "Discard unstaged changes to partial.txt in Alpha? This cannot be undone.",
+    );
+    fireEvent.click(cancel);
+    expect(screen.queryByText(/This cannot be undone/)).toBeNull();
+    await vi.waitFor(() => expect(discardButton()).toHaveFocus());
+
+    fireEvent.click(discardButton());
+    fireEvent.keyDown(
+      screen.getByRole("group", {
+        name: "Confirm discard of partial.txt in Alpha",
+      }),
+      { key: "Escape" },
+    );
+    expect(screen.queryByText(/This cannot be undone/)).toBeNull();
+    await vi.waitFor(() => expect(discardButton()).toHaveFocus());
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Discard unstaged changes to partial.txt in Alpha",
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Confirm discard of partial.txt in Alpha",
+      }),
+    );
+    expect(mutateRepositoryFile).toHaveBeenCalledWith(
+      { rootId: "root-a", relativePath: "partial.txt" },
+      "discard",
+      true,
+    );
+  });
+
   it("disables mutation controls during mutations and Project transitions", () => {
     const resource = { rootId: "root-a", relativePath: "file.txt" };
     useWorkbenchStore.setState({
@@ -263,7 +427,7 @@ describe("RightSidebar Source Control mutations", () => {
     expect(refresh).toBeDisabled();
   });
 
-  it("does not offer stage or unstage for conflicted files", () => {
+  it("does not offer stage, unstage, or discard for conflicted files", () => {
     useWorkbenchStore.setState({
       sidebarOpen: true,
       sidebarView: "sourceControl",
@@ -307,7 +471,7 @@ describe("RightSidebar Source Control mutations", () => {
 
     render(<RightSidebar compact={false} />);
     expect(
-      screen.queryByRole("button", { name: /^(Stage|Unstage) / }),
+      screen.queryByRole("button", { name: /^(Stage|Unstage|Discard) / }),
     ).toBeNull();
   });
 });

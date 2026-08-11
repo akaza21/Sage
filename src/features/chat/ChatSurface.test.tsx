@@ -523,7 +523,7 @@ describe("ChatSurface ACP resource integration", () => {
     useWorkbenchStore.setState({
       repositoryMutationError: {
         resource: { rootId: "root-a", relativePath: "src/main.ts" },
-        action: "stage",
+        action: "discard",
         kind: "failed",
         message: "Git index is locked",
       },

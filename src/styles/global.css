@@ -887,6 +887,10 @@ textarea:focus-visible {
   align-items: center;
 }
 
+.source-change-row--confirming {
+  padding-bottom: 5px;
+}
+
 .source-change {
   display: grid;
   width: 100%;
@@ -952,6 +956,53 @@ textarea:focus-visible {
 }
 
 .source-change__action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.source-change__discard-confirmation {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 5px;
+  padding: 7px;
+  border: 1px solid color-mix(in srgb, var(--danger) 42%, var(--border));
+  border-radius: 6px;
+  color: var(--text-soft);
+  background: var(--surface-raised);
+  font-size: 11px;
+}
+
+.source-change__confirmation-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.source-change__confirmation-button {
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-soft);
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+}
+
+.source-change__confirmation-button--danger {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+  color: var(--danger);
+}
+
+.source-change__confirmation-button:hover:not(:disabled),
+.source-change__confirmation-button:focus-visible {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.source-change__confirmation-button:disabled {
   opacity: 0.45;
   cursor: default;
 }

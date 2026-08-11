@@ -2180,6 +2180,7 @@ describe("workbench resource and project navigation", () => {
         projectId: "project-a",
         resource: samePathA,
         action: "stage",
+        discardConfirmed: false,
       },
       0,
     );
@@ -2189,6 +2190,140 @@ describe("workbench resource and project navigation", () => {
       error: null,
     });
   });
+
+  it("requires confirmation before discarding and adopts the exact authoritative result", async () => {
+    const target = resource("partial.txt", "root-a");
+    const samePathOtherRoot = resource("partial.txt", "root-b");
+    const before: ProjectRepositoryStatus = {
+      roots: [
+        {
+          rootId: "root-a",
+          state: "repository",
+          branch: "main",
+          changes: [
+            {
+              resource: target,
+              originalResource: null,
+              indexStatus: "modified",
+              worktreeStatus: "modified",
+              additions: 1,
+              deletions: 1,
+            },
+          ],
+          truncated: false,
+          elapsedMs: 1,
+          message: null,
+        },
+        {
+          rootId: "root-b",
+          state: "repository",
+          branch: "main",
+          changes: [
+            {
+              resource: samePathOtherRoot,
+              indexStatus: "unchanged",
+              worktreeStatus: "modified",
+              additions: 2,
+              deletions: 0,
+            },
+          ],
+          truncated: false,
+          elapsedMs: 1,
+          message: null,
+        },
+      ],
+      truncated: false,
+      elapsedMs: 2,
+    };
+    const after: ProjectRepositoryStatus = {
+      ...before,
+      roots: [{ ...before.roots[0], changes: [] }, before.roots[1]],
+    };
+    const mutate = vi.spyOn(desktop, "mutateGitFile").mockResolvedValue({
+      projectId: "project-a",
+      transitionEpoch: 0,
+      repositories: after,
+      error: null,
+    });
+    useWorkbenchStore.setState({ repositories: before });
+
+    await expect(
+      useWorkbenchStore.getState().mutateRepositoryFile(target, "discard"),
+    ).resolves.toBe(false);
+    expect(mutate).not.toHaveBeenCalled();
+
+    await expect(
+      useWorkbenchStore
+        .getState()
+        .mutateRepositoryFile(target, "discard", true),
+    ).resolves.toBe(true);
+    expect(mutate).toHaveBeenCalledWith(
+      {
+        projectId: "project-a",
+        resource: target,
+        action: "discard",
+        discardConfirmed: true,
+      },
+      0,
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      repositories: after,
+      repositoryMutation: null,
+      repositoryMutationError: null,
+    });
+  });
+
+  it.each([
+    ["untracked", "unchanged", "untracked"],
+    ["staged-only", "modified", "unchanged"],
+    ["renamed", "renamed", "modified"],
+    ["copied", "copied", "modified"],
+    ["conflicted", "conflicted", "conflicted"],
+    ["unknown", "unchanged", "unknown"],
+  ] as const)(
+    "rejects unsafe %s discard state before desktop invocation",
+    async (_label, indexStatus, worktreeStatus) => {
+      const target = resource("unsafe.txt");
+      const mutate = vi.spyOn(desktop, "mutateGitFile");
+      useWorkbenchStore.setState({
+        repositories: {
+          roots: [
+            {
+              rootId: "root-a",
+              state: "repository",
+              branch: "main",
+              changes: [
+                {
+                  resource: target,
+                  ...(indexStatus === "renamed" || indexStatus === "copied"
+                    ? {
+                        originalResource: resource("before.txt"),
+                      }
+                    : {}),
+                  indexStatus,
+                  worktreeStatus,
+                  additions: null,
+                  deletions: null,
+                },
+              ],
+              truncated: false,
+              elapsedMs: 1,
+              message: null,
+            },
+          ],
+          truncated: false,
+          elapsedMs: 1,
+        },
+      });
+
+      await expect(
+        useWorkbenchStore
+          .getState()
+          .mutateRepositoryFile(target, "discard", true),
+      ).resolves.toBe(false);
+      expect(mutate).not.toHaveBeenCalled();
+    },
+  );
 
   it("preserves the prior Source Control projection and reports a Git mutation failure", async () => {
     const target = resource("failed.txt");
@@ -2392,11 +2527,11 @@ describe("workbench resource and project navigation", () => {
 
     const mutation = useWorkbenchStore
       .getState()
-      .mutateRepositoryFile(target, "stage");
+      .mutateRepositoryFile(target, "discard", true);
     await vi.waitFor(() =>
       expect(useWorkbenchStore.getState().repositoryMutation).toMatchObject({
         resource: target,
-        action: "stage",
+        action: "discard",
       }),
     );
     const next = snapshotB().repositories;
