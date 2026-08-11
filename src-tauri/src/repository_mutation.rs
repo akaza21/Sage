@@ -24,6 +24,21 @@ pub(crate) async fn mutate_file_with_timeout(
     action: GitFileMutationAction,
     mutation_timeout: Duration,
 ) -> AppResult<()> {
+    mutate_file_with_process_policy(
+        workspace,
+        resource,
+        action,
+        repository::GitProcessPolicy::mutation(mutation_timeout),
+    )
+    .await
+}
+
+pub(crate) async fn mutate_file_with_process_policy(
+    workspace: &Workspace,
+    resource: &ResourceRef,
+    action: GitFileMutationAction,
+    process_policy: repository::GitProcessPolicy,
+) -> AppResult<()> {
     validate_resource_identity(workspace, resource)?;
     let projected = repository::status(workspace).await?;
     if projected.state != "repository" {
@@ -55,11 +70,11 @@ pub(crate) async fn mutate_file_with_timeout(
             }
             let mut arguments = vec!["add", "--"];
             arguments.extend(paths.iter().map(String::as_str));
-            repository::run_git_with_timeout(
+            repository::run_git_with_policy(
                 workspace.root(),
                 &arguments,
                 MAX_GIT_MUTATION_OUTPUT_BYTES,
-                mutation_timeout,
+                process_policy,
             )
             .await?
         }
@@ -84,11 +99,11 @@ pub(crate) async fn mutate_file_with_timeout(
                 vec!["rm", "--cached", "-f", "--"]
             };
             arguments.extend(paths.iter().map(String::as_str));
-            repository::run_git_with_timeout(
+            repository::run_git_with_policy(
                 workspace.root(),
                 &arguments,
                 MAX_GIT_MUTATION_OUTPUT_BYTES,
-                mutation_timeout,
+                process_policy,
             )
             .await?
         }

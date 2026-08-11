@@ -1,15 +1,16 @@
+#[cfg(test)]
 use std::time::Duration;
 
 use tauri::State;
 
 use crate::{
     domain::{
-        GitFileMutationError, GitFileMutationErrorKind, GitFileMutationRequest,
-        GitFileMutationResult,
+        GitFileMutationCommandError, GitFileMutationError, GitFileMutationErrorKind,
+        GitFileMutationRequest, GitFileMutationResult, GitProcessState,
     },
-    error::{AppError, AppResult},
+    error::{AppError, AppResult, GitContainmentState},
     repository,
-    repository_mutation::{mutate_file, mutate_file_with_timeout},
+    repository_mutation::{mutate_file, mutate_file_with_process_policy},
     state::AppState,
     workspace::Workspace,
 };
@@ -21,10 +22,25 @@ pub async fn mutate_git_file(
     state: State<'_, AppState>,
     request: GitFileMutationRequest,
     expected_transition_epoch: u64,
-) -> Result<GitFileMutationResult, String> {
+) -> Result<GitFileMutationResult, GitFileMutationCommandError> {
     mutate_git_file_inner(&state, request, expected_transition_epoch)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(git_mutation_command_error)
+}
+
+fn git_mutation_command_error(error: AppError) -> GitFileMutationCommandError {
+    match error {
+        AppError::GitContainment { state, message } => GitFileMutationCommandError::Containment {
+            process_state: match state {
+                GitContainmentState::TerminatedUnreaped => GitProcessState::TerminatedUnreaped,
+                GitContainmentState::PotentiallyRunning => GitProcessState::PotentiallyRunning,
+            },
+            message,
+        },
+        error => GitFileMutationCommandError::Failed {
+            message: error.to_string(),
+        },
+    }
 }
 
 async fn mutate_git_file_inner(
@@ -32,7 +48,7 @@ async fn mutate_git_file_inner(
     request: GitFileMutationRequest,
     expected_transition_epoch: u64,
 ) -> AppResult<GitFileMutationResult> {
-    mutate_git_file_inner_with_timeout_override(state, request, expected_transition_epoch, None)
+    mutate_git_file_inner_with_policy_override(state, request, expected_transition_epoch, None)
         .await
 }
 
@@ -43,20 +59,36 @@ async fn mutate_git_file_inner_with_timeout(
     expected_transition_epoch: u64,
     mutation_timeout: Duration,
 ) -> AppResult<GitFileMutationResult> {
-    mutate_git_file_inner_with_timeout_override(
+    mutate_git_file_inner_with_process_policy(
         state,
         request,
         expected_transition_epoch,
-        Some(mutation_timeout),
+        repository::GitProcessPolicy::mutation(mutation_timeout),
     )
     .await
 }
 
-async fn mutate_git_file_inner_with_timeout_override(
+#[cfg(test)]
+async fn mutate_git_file_inner_with_process_policy(
     state: &AppState,
     request: GitFileMutationRequest,
     expected_transition_epoch: u64,
-    mutation_timeout: Option<Duration>,
+    process_policy: repository::GitProcessPolicy,
+) -> AppResult<GitFileMutationResult> {
+    mutate_git_file_inner_with_policy_override(
+        state,
+        request,
+        expected_transition_epoch,
+        Some(process_policy),
+    )
+    .await
+}
+
+async fn mutate_git_file_inner_with_policy_override(
+    state: &AppState,
+    request: GitFileMutationRequest,
+    expected_transition_epoch: u64,
+    process_policy: Option<repository::GitProcessPolicy>,
 ) -> AppResult<GitFileMutationResult> {
     if request.project_id.is_empty() || request.project_id.len() > MAX_GIT_PROJECT_ID_BYTES {
         return Err(AppError::InvalidRequest(
@@ -88,9 +120,10 @@ async fn mutate_git_file_inner_with_timeout_override(
             )
         })?;
     let workspace = Workspace::open(&target.project_id, &target.id, &target.absolute_path)?;
-    let mutation_result = match mutation_timeout {
-        Some(timeout) => {
-            mutate_file_with_timeout(&workspace, &request.resource, request.action, timeout).await
+    let mutation_result = match process_policy {
+        Some(policy) => {
+            mutate_file_with_process_policy(&workspace, &request.resource, request.action, policy)
+                .await
         }
         None => mutate_file(&workspace, &request.resource, request.action).await,
     };
@@ -333,5 +366,123 @@ mod tests {
             drop(state);
             fs::remove_dir_all(base).unwrap();
         });
+    }
+
+    #[test]
+    fn nonconvergent_reap_returns_containment_without_a_final_projection() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
+            let root = base.join("repo");
+            fs::create_dir_all(&root).unwrap();
+            git(&root, &["init", "-q"]);
+            fs::write(root.join("new.txt"), "new\n").unwrap();
+            let database = Database::open(&base.join("sage.db")).unwrap();
+            let project = database.create_project_from_root(&root).unwrap();
+            let snapshot = database.bootstrap_snapshot().unwrap();
+            let root_id = snapshot.project.unwrap().roots[0].id.clone();
+            let state = AppState::new(database);
+
+            let error = mutate_git_file_inner_with_process_policy(
+                &state,
+                GitFileMutationRequest {
+                    project_id: project.id,
+                    resource: crate::domain::ResourceRef {
+                        root_id,
+                        relative_path: "new.txt".into(),
+                    },
+                    action: GitFileMutationAction::Stage,
+                },
+                0,
+                repository::GitProcessPolicy::nonconvergent_reap(Duration::ZERO),
+            )
+            .await
+            .unwrap_err();
+
+            assert!(matches!(
+                error,
+                AppError::GitContainment {
+                    state: crate::error::GitContainmentState::TerminatedUnreaped,
+                    ..
+                }
+            ));
+            std::thread::sleep(Duration::from_millis(200));
+            let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+            let later = repository::status(&workspace).await.unwrap();
+            assert_eq!(later.changes[0].index_status, "unchanged");
+            assert_eq!(later.changes[0].worktree_status, "untracked");
+            drop(state);
+            fs::remove_dir_all(base).unwrap();
+        });
+    }
+
+    #[test]
+    fn inner_failure_after_proven_reap_returns_effect_unknown_and_refreshes() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
+            let root = base.join("repo");
+            fs::create_dir_all(&root).unwrap();
+            git(&root, &["init", "-q"]);
+            fs::write(root.join("new.txt"), "new\n").unwrap();
+            let database = Database::open(&base.join("sage.db")).unwrap();
+            let project = database.create_project_from_root(&root).unwrap();
+            let snapshot = database.bootstrap_snapshot().unwrap();
+            let root_id = snapshot.project.unwrap().roots[0].id.clone();
+            let state = AppState::new(database);
+
+            let result = mutate_git_file_inner_with_process_policy(
+                &state,
+                GitFileMutationRequest {
+                    project_id: project.id,
+                    resource: crate::domain::ResourceRef {
+                        root_id,
+                        relative_path: "new.txt".into(),
+                    },
+                    action: GitFileMutationAction::Stage,
+                },
+                0,
+                repository::GitProcessPolicy::post_reap_failure(Duration::from_secs(3)),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(
+                result.error.as_ref().unwrap().kind,
+                crate::domain::GitFileMutationErrorKind::EffectUnknown
+            );
+            assert_eq!(
+                result.repositories.roots[0].changes[0].index_status,
+                "added"
+            );
+            assert_eq!(
+                result.repositories.roots[0].changes[0].worktree_status,
+                "unchanged"
+            );
+            std::thread::sleep(Duration::from_millis(200));
+            let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+            let later = repository::status(&workspace).await.unwrap();
+            assert_eq!(later.changes[0].index_status, "added");
+            assert_eq!(later.changes[0].worktree_status, "unchanged");
+            drop(state);
+            fs::remove_dir_all(base).unwrap();
+        });
+    }
+
+    #[test]
+    fn containment_command_rejection_is_typed_and_carries_no_projection() {
+        let encoded = serde_json::to_value(git_mutation_command_error(AppError::GitContainment {
+            state: crate::error::GitContainmentState::TerminatedUnreaped,
+            message: "Git termination is proven, but reap did not converge".into(),
+        }))
+        .unwrap();
+
+        assert_eq!(
+            encoded,
+            serde_json::json!({
+                "kind": "containment",
+                "processState": "terminatedUnreaped",
+                "message": "Git termination is proven, but reap did not converge"
+            })
+        );
+        assert!(encoded.get("repositories").is_none());
     }
 }

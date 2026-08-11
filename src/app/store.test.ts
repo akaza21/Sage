@@ -2240,6 +2240,55 @@ describe("workbench resource and project navigation", () => {
     });
   });
 
+  it("preserves the prior Source Control projection for a containment rejection", async () => {
+    const target = resource("contained.txt");
+    const before: ProjectRepositoryStatus = {
+      roots: [
+        {
+          rootId: "root-a",
+          state: "repository",
+          branch: "main",
+          changes: [
+            {
+              resource: target,
+              indexStatus: "unchanged",
+              worktreeStatus: "modified",
+              additions: 1,
+              deletions: 0,
+            },
+          ],
+          truncated: false,
+          elapsedMs: 1,
+          message: null,
+        },
+      ],
+      truncated: false,
+      elapsedMs: 1,
+    };
+    vi.spyOn(desktop, "mutateGitFile").mockRejectedValue({
+      kind: "containment",
+      processState: "terminatedUnreaped",
+      message: "Git termination is proven, but reap did not converge",
+    });
+    useWorkbenchStore.setState({ repositories: before });
+
+    await expect(
+      useWorkbenchStore.getState().mutateRepositoryFile(target, "stage"),
+    ).resolves.toBe(false);
+
+    expect(useWorkbenchStore.getState().repositories).toBe(before);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      repositoryMutation: null,
+      repositoryMutationError: {
+        resource: target,
+        action: "stage",
+        kind: "containment",
+        processState: "terminatedUnreaped",
+        message: "Git termination is proven, but reap did not converge",
+      },
+    });
+  });
+
   it("applies authoritative status and scopes an effect-unknown mutation error", async () => {
     const target = resource("timeout.txt");
     const before: ProjectRepositoryStatus = {

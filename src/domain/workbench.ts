@@ -113,6 +113,16 @@ export interface GitFileMutationResult {
   error: GitFileMutationError | null;
 }
 
+export type GitProcessState = "terminatedUnreaped" | "potentiallyRunning";
+
+export type GitFileMutationCommandError =
+  | { kind: "failed"; message: string }
+  | {
+      kind: "containment";
+      processState: GitProcessState;
+      message: string;
+    };
+
 export type WorkspaceEntryKind = "directory" | "file" | "symlink" | "other";
 
 export interface WorkspaceEntry {

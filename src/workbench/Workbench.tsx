@@ -11,6 +11,21 @@ import { StatusBar } from "./StatusBar";
 import { TabStrip } from "./TabStrip";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 
+function repositoryMutationTitle(
+  error: NonNullable<
+    ReturnType<typeof useWorkbenchStore.getState>["repositoryMutationError"]
+  >,
+) {
+  const path = error.resource.relativePath;
+  if (error.kind === "containment") {
+    return `Source Control containment blocked ${error.action} for ${path}`;
+  }
+  if (error.kind === "effectUnknown") {
+    return `Source Control could not confirm ${error.action} for ${path}`;
+  }
+  return `Source Control could not ${error.action} ${path}`;
+}
+
 export function Workbench() {
   const project = useWorkbenchStore((state) => state.project);
   const tabs = useWorkbenchStore((state) => state.tabs);
@@ -56,9 +71,7 @@ export function Workbench() {
             {contextualMutationError ? (
               <div className="repository-mutation-alert" role="alert">
                 <strong>
-                  {contextualMutationError.kind === "effectUnknown"
-                    ? `Source Control could not confirm ${contextualMutationError.action} for ${contextualMutationError.resource.relativePath}`
-                    : `Source Control could not ${contextualMutationError.action} ${contextualMutationError.resource.relativePath}`}
+                  {repositoryMutationTitle(contextualMutationError)}
                 </strong>
                 <span>{contextualMutationError.message}</span>
               </div>

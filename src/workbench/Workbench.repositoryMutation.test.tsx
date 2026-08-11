@@ -91,4 +91,28 @@ describe("Workbench repository mutation errors", () => {
 
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  it("shows containment context on the active File without claiming final Git state", () => {
+    const activeTab = tab("file");
+    useWorkbenchStore.setState({
+      tabs: [activeTab],
+      activeTabId: activeTab.id,
+      repositoryMutationError: {
+        resource,
+        action: "stage",
+        kind: "containment",
+        message: "Git termination is proven, but reap did not converge",
+      },
+      error: null,
+    });
+
+    render(<Workbench />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Source Control containment blocked stage for src/file.txt",
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Git termination is proven, but reap did not converge",
+    );
+  });
 });

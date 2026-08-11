@@ -1,3 +1,9 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GitContainmentState {
+    TerminatedUnreaped,
+    PotentiallyRunning,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("database operation failed: {0}")]
@@ -23,6 +29,12 @@ pub enum AppError {
 
     #[error("Git mutation effect is unknown: {0}")]
     GitEffectUnknown(String),
+
+    #[error("Git process containment is active: {message}")]
+    GitContainment {
+        state: GitContainmentState,
+        message: String,
+    },
 }
 
 pub type AppResult<T> = Result<T, AppError>;

@@ -1,19 +1,13 @@
 use std::{
     collections::HashMap,
     path::Path,
-    process::{ExitStatus, Stdio},
     time::{Duration, Instant},
-};
-
-use tokio::{
-    io::{AsyncRead, AsyncReadExt},
-    process::Command,
-    time::timeout,
 };
 
 use crate::{
     domain::{FileDiff, ProjectRepositoryStatus, ResourceRef, RootRepositoryStatus},
     error::{AppError, AppResult},
+    git_process,
     repository_parse::{
         MAX_DIFF_LINES, added_file_diff, merge_numstat, parse_status, parse_unified_diff,
     },
@@ -21,21 +15,12 @@ use crate::{
 };
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(3);
-const GIT_REAP_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_STATUS_BYTES: usize = 4 * 1024 * 1024;
 const MAX_DIFF_BYTES: usize = 1024 * 1024;
-const MAX_STDERR_BYTES: usize = 64 * 1024;
 type NumstatCounts = (Option<u64>, Option<u64>);
 type NumstatByPath = HashMap<String, NumstatCounts>;
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-pub(crate) struct GitOutput {
-    status: ExitStatus,
-    stdout: Vec<u8>,
-    stderr: Vec<u8>,
-    stdout_truncated: bool,
-}
+pub(crate) use git_process::{GitOutput, GitProcessPolicy};
 
 impl GitOutput {
     pub(crate) fn succeeded(&self) -> bool {
@@ -51,12 +36,6 @@ enum RepositoryBoundary {
     Exact,
     Nested,
     NotRepository,
-}
-
-#[derive(Default)]
-struct BoundedBytes {
-    bytes: Vec<u8>,
-    truncated: bool,
 }
 
 pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
@@ -294,106 +273,26 @@ pub(crate) async fn run_git(
     args: &[&str],
     stdout_limit: usize,
 ) -> AppResult<GitOutput> {
-    match run_git_with_timeout(root, args, stdout_limit, GIT_TIMEOUT).await {
+    match run_git_with_policy(
+        root,
+        args,
+        stdout_limit,
+        GitProcessPolicy::read(GIT_TIMEOUT),
+    )
+    .await
+    {
         Err(AppError::GitEffectUnknown(message)) => Err(AppError::Git(message)),
         result => result,
     }
 }
 
-pub(crate) async fn run_git_with_timeout(
+pub(crate) async fn run_git_with_policy(
     root: &Path,
     args: &[&str],
     stdout_limit: usize,
-    command_timeout: Duration,
+    policy: GitProcessPolicy,
 ) -> AppResult<GitOutput> {
-    let root = root.to_owned();
-    let arguments = args.iter().map(ToString::to_string).collect::<Vec<_>>();
-    let mut command = Command::new("git");
-    command
-        .arg("--no-optional-locks")
-        .arg("--literal-pathspecs")
-        .arg("-C")
-        .arg(root)
-        .args(arguments)
-        .env_clear()
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_PAGER", "cat")
-        .env("LC_ALL", "C")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    #[cfg(windows)]
-    command.creation_flags(CREATE_NO_WINDOW);
-    let mut child = command.spawn().map_err(AppError::Io)?;
-
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| AppError::Git("Git stdout was not captured".into()))?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| AppError::Git("Git stderr was not captured".into()))?;
-
-    let mut stdout_task = tokio::spawn(read_bounded(stdout, stdout_limit));
-    let mut stderr_task = tokio::spawn(read_bounded(stderr, MAX_STDERR_BYTES));
-    let completed = timeout(command_timeout, async {
-        let status = child.wait().await?;
-        let stdout = (&mut stdout_task)
-            .await
-            .map_err(|error| AppError::Git(error.to_string()))??;
-        let stderr = (&mut stderr_task)
-            .await
-            .map_err(|error| AppError::Git(error.to_string()))??;
-        Ok::<GitOutput, AppError>(GitOutput {
-            status,
-            stdout: stdout.bytes,
-            stderr: stderr.bytes,
-            stdout_truncated: stdout.truncated,
-        })
-    })
-    .await;
-    if let Ok(result) = completed {
-        return result;
-    }
-
-    let kill_error = child.start_kill().err();
-    let reaped = matches!(timeout(GIT_REAP_TIMEOUT, child.wait()).await, Ok(Ok(_)));
-    stdout_task.abort();
-    stderr_task.abort();
-    let cleanup = if reaped {
-        "the Git process was terminated and reaped"
-    } else if kill_error.is_some() {
-        "Git termination and reap could not be confirmed"
-    } else {
-        "Git termination was requested but reap did not converge"
-    };
-    Err(AppError::GitEffectUnknown(format!(
-        "the post-spawn deadline expired; {cleanup}"
-    )))
-}
-
-async fn read_bounded<R: AsyncRead + Unpin>(
-    mut reader: R,
-    limit: usize,
-) -> std::io::Result<BoundedBytes> {
-    let mut result = BoundedBytes {
-        bytes: Vec::with_capacity(limit.min(64 * 1024)),
-        truncated: false,
-    };
-    let mut buffer = [0_u8; 8 * 1024];
-    loop {
-        let read = reader.read(&mut buffer).await?;
-        if read == 0 {
-            break;
-        }
-        let remaining = limit.saturating_sub(result.bytes.len());
-        let retained = remaining.min(read);
-        result.bytes.extend_from_slice(&buffer[..retained]);
-        result.truncated |= retained < read;
-    }
-    Ok(result)
+    git_process::run(root, args, stdout_limit, policy).await
 }
 
 pub(crate) fn ensure_success(output: &GitOutput) -> AppResult<()> {

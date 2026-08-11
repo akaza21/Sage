@@ -156,6 +156,29 @@ pub struct GitFileMutationResult {
     pub error: Option<GitFileMutationError>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GitProcessState {
+    TerminatedUnreaped,
+    PotentiallyRunning,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum GitFileMutationCommandError {
+    Failed {
+        message: String,
+    },
+    Containment {
+        process_state: GitProcessState,
+        message: String,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceEntry {

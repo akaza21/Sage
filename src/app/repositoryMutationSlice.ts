@@ -1,7 +1,11 @@
 import type { StateCreator } from "zustand";
 
 import { sameResource } from "../domain/resourceIdentity";
-import type { GitFileMutationAction, ResourceRef } from "../domain/workbench";
+import type {
+  GitFileMutationAction,
+  GitProcessState,
+  ResourceRef,
+} from "../domain/workbench";
 import { desktop } from "../services/desktop";
 import { matchesResourceIntent } from "./projectIntent";
 import type { WorkbenchState } from "./store";
@@ -12,8 +16,9 @@ export interface RepositoryMutation {
 }
 
 export interface RepositoryMutationError extends RepositoryMutation {
-  kind: "failed" | "effectUnknown";
+  kind: "failed" | "effectUnknown" | "containment";
   message: string;
+  processState?: GitProcessState;
 }
 
 export interface RepositoryMutationSlice {
@@ -27,6 +32,32 @@ export interface RepositoryMutationSlice {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function rejectedMutation(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "kind" in error &&
+    "message" in error &&
+    (error.kind === "failed" || error.kind === "containment") &&
+    typeof error.message === "string"
+  ) {
+    if (
+      error.kind === "containment" &&
+      "processState" in error &&
+      (error.processState === "terminatedUnreaped" ||
+        error.processState === "potentiallyRunning")
+    ) {
+      return {
+        kind: error.kind,
+        message: error.message,
+        processState: error.processState,
+      } as const;
+    }
+    return { kind: error.kind, message: error.message } as const;
+  }
+  return { kind: "failed", message: errorMessage(error) } as const;
 }
 
 function eligibleMutation(
@@ -111,8 +142,7 @@ export const createRepositoryMutationSlice: StateCreator<
           repositoryMutation: null,
           repositoryMutationError: {
             ...mutation,
-            kind: "failed",
-            message: errorMessage(error),
+            ...rejectedMutation(error),
           },
         });
       } else if (get().repositoryMutation === mutation) {

@@ -12,6 +12,7 @@ mod editor_content;
 mod editor_coordination;
 mod editor_persistence;
 mod error;
+mod git_process;
 mod harnesses;
 mod launch_profile;
 mod persistence;
