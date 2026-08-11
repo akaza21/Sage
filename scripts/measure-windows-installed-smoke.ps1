@@ -9,19 +9,18 @@ param(
   [Parameter(Mandatory)][ValidatePattern('^[a-z0-9][a-z0-9-]{0,63}$')][string]$CampaignId,
   [Parameter(Mandatory)][string]$OutputDirectory,
   [Parameter(Mandatory)][string]$NodePath,
+  [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{64}$')][string]$NodeSha256,
+  [Parameter(Mandatory)][ValidateRange(1, 536870912)][long]$NodeBytes,
   [Parameter(Mandatory)][string]$GitPath,
   [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{64}$')][string]$GitSha256,
-  [Parameter(Mandatory)][ValidateRange(1, 536870912)][long]$GitBytes
+  [Parameter(Mandatory)][ValidateRange(1, 536870912)][long]$GitBytes,
+  [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{64}$')][string]$PowerShellSha256,
+  [Parameter(Mandatory)][ValidateRange(1, 536870912)][long]$PowerShellBytes,
+  [Parameter(Mandatory)][ValidateLength(1, 32768)][string]$RunnerFileIdentitiesBase64
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
-
-Import-Module (Join-Path $PSScriptRoot "footprint/DisposableProfile.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "footprint/ScenarioEvidence.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "footprint/WindowsFootprint.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "footprint/WindowsJob.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "footprint/ProcessIdentity.psm1") -Force
 
 $stepIds = @(
   "install-initial", "launch-initial", "drive-primary", "close-initial",
@@ -34,28 +33,43 @@ $assertionNames = @(
   "gitStaged", "gitCommitted", "chatCreated", "chatRenamed", "chatSwitched",
   "simulatorTurnCompleted", "restartPersisted", "reinstallVerified"
 )
-$runner = (Resolve-Path (Join-Path $PSScriptRoot "footprint/bounded-node-runner.mjs")).Path
-$driver = (Resolve-Path (Join-Path $PSScriptRoot "footprint/drive-installed-smoke.mjs")).Path
+$runnerRelativePaths = @(
+  "scripts/measure-windows-installed-smoke.ps1",
+  "scripts/footprint/InstalledSmokeIdentity.psm1",
+  "scripts/footprint/InstalledSmokePackageLifecycle.psm1",
+  "scripts/footprint/InstalledSmokeSemantic.psm1",
+  "scripts/footprint/DisposableProfile.psm1",
+  "scripts/footprint/ScenarioEvidence.psm1",
+  "scripts/footprint/WindowsFootprint.psm1",
+  "scripts/footprint/WindowsJob.psm1",
+  "scripts/footprint/WindowsJobCompletion.psm1",
+  "scripts/footprint/ProcessIdentity.psm1",
+  "scripts/footprint/bounded-node-runner.mjs",
+  "scripts/footprint/drive-installed-smoke.mjs"
+)
 $steps = @($stepIds | ForEach-Object {
   [ordered]@{ id = $_; status = "skipped"; durationMs = 0; evidenceSha256 = $null }
 })
 $assertions = [ordered]@{}
 foreach ($name in $assertionNames) { $assertions[$name] = $false }
+$runState = [ordered]@{
+  stepIds = $stepIds; steps = $steps
+  assertionNames = $assertionNames; assertions = $assertions
+  currentStep = "prerequisites"; job = $null
+  installed = $false; cleanupUninstaller = $null
+}
 $currentStep = "prerequisites"
 $failure = $null
 $result = "failed"
-$started = [DateTime]::UtcNow.ToString("o")
+$started = [DateTime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", [Globalization.CultureInfo]::InvariantCulture)
 $profile = $null
 $job = $null
-$installed = $false
-
-function Get-StringSha256 {
-  param([Parameter(Mandatory)][string]$Value)
-  $hasher = [Security.Cryptography.SHA256]::Create()
-  try {
-    return ([BitConverter]::ToString($hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($Value)))).Replace("-", "").ToLowerInvariant()
-  } finally { $hasher.Dispose() }
-}
+$runnerIdentities = $null
+$runner = $null
+$driver = $null
+$resolvedInstaller = $null
+$resolvedNode = $null
+$resolvedGit = $null
 
 function Test-PlainDirectory {
   param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Label)
@@ -81,9 +95,65 @@ function Test-FileIdentity {
   } catch { return $false }
 }
 
+function Test-PlainFileUnderRoot {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [Parameter(Mandatory)][string]$Root,
+    [Parameter(Mandatory)][long]$Bytes,
+    [Parameter(Mandatory)][string]$Sha256
+  )
+  try {
+    $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    $volumeRoot = [IO.Path]::GetPathRoot($rootPath)
+    if ([string]::IsNullOrWhiteSpace($volumeRoot) -or
+        [string]::Equals($rootPath, $volumeRoot.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals([IO.Path]::GetPathRoot($fullPath), $volumeRoot, [StringComparison]::OrdinalIgnoreCase)) {
+      return $false
+    }
+    $prefix = "$rootPath\"
+    if (-not $fullPath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { return $false }
+    $current = $volumeRoot
+    foreach ($segment in $fullPath.Substring($volumeRoot.Length).Split('\')) {
+      $current = Join-Path $current $segment
+      $item = Get-Item -LiteralPath $current -Force -ErrorAction Stop
+      if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $false }
+    }
+    return Test-FileIdentity $fullPath $Bytes $Sha256
+  } catch { return $false }
+}
+
+function Assert-PowerShellIdentity {
+  $hostPath = (Get-Process -Id $PID -ErrorAction Stop).Path
+  if (-not (Test-FileIdentity $hostPath $PowerShellBytes $PowerShellSha256)) {
+    throw "PowerShell host identity changed during smoke execution."
+  }
+}
+
+function Assert-NodeIdentity {
+  if (-not (Test-FileIdentity $resolvedNode $NodeBytes $NodeSha256)) {
+    throw "Authenticated Node identity changed during smoke execution."
+  }
+}
+
 function Assert-GitIdentity {
   if (-not (Test-FileIdentity $resolvedGit $GitBytes $GitSha256)) {
     throw "Authenticated Git identity changed during smoke execution."
+  }
+}
+
+function Assert-RunnerSourceIdentity {
+  if ($null -eq $runnerIdentities -or $runnerIdentities.Count -ne $runnerRelativePaths.Count) {
+    throw "Installed smoke runner identity set is incomplete."
+  }
+  for ($index = 0; $index -lt $runnerRelativePaths.Count; $index += 1) {
+    $expected = $runnerIdentities[$index]
+    if ([string]$expected.relativePath -ne $runnerRelativePaths[$index] -or
+        [long]$expected.bytes -lt 1 -or [long]$expected.bytes -gt 2097152 -or
+        [string]$expected.sha256 -notmatch '^[0-9a-f]{64}$' -or
+        -not (Test-PlainFileUnderRoot (Join-Path $sourceRoot $expected.relativePath) $sourceRoot ([long]$expected.bytes) ([string]$expected.sha256))) {
+      throw "Installed smoke runner source identity changed."
+    }
   }
 }
 
@@ -94,6 +164,9 @@ function Invoke-Bounded {
     [Parameter(Mandatory)][string]$Label,
     [ValidateRange(100, 120000)][int]$TimeoutMs = 120000
   )
+  Assert-PowerShellIdentity
+  Assert-NodeIdentity
+  Assert-RunnerSourceIdentity
   if ([string]::Equals($Executable, $resolvedGit, [StringComparison]::OrdinalIgnoreCase)) {
     Assert-GitIdentity
   }
@@ -105,196 +178,11 @@ function Invoke-Bounded {
   }
 }
 
-function Invoke-BoundedInstallerProcess {
-  param(
-    [Parameter(Mandatory)][string]$Executable,
-    [Parameter(Mandatory)][string[]]$Arguments,
-    [ValidateRange(1, 120)][int]$TimeoutSeconds = 120
-  )
-  $process = Start-Process -FilePath $Executable -ArgumentList $Arguments -PassThru -WindowStyle Hidden
-  $identity = $null
-  $known = New-FootprintIdentityStore
-  $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
-  try {
-    $identity = Get-FootprintLaunchIdentity $process $Executable
-    [void](Add-FootprintRememberedIdentity $known ([pscustomobject]@{
-      ProcessId = $identity.processId; ExecutablePath = $identity.executablePath; CreationDate = $identity.creationDate
-    }))
-    do {
-      foreach ($row in @(Get-FootprintDescendants $process.Id @(Get-FootprintProcessSnapshot))) {
-        [void](Add-FootprintRememberedIdentity $known $row)
-      }
-      $process.Refresh()
-      if ($process.HasExited) { break }
-      Start-Sleep -Milliseconds 50
-    } while ([DateTime]::UtcNow -lt $deadline)
-    if (-not $process.HasExited) { throw "Installer process timed out." }
-    $exitCode = $process.ExitCode
-  } catch {
-    if ($null -eq $identity) {
-      $fallback = Stop-FootprintLaunchedProcessObject $process $Executable $known
-      if (-not $fallback.exited -or -not $fallback.treeBoundaryVerified) {
-        throw "Installer identity acquisition and exact fallback cleanup both failed."
-      }
-    }
-    throw
-  } finally {
-    if ($null -ne $identity) { $teardown = Stop-FootprintTree $identity $known 30 }
-  }
-  if ($teardown.identityLost -or $teardown.remaining.Count -ne 0 -or $teardown.forced) {
-    throw "Installer process-tree identity did not converge naturally."
-  }
-  if ($exitCode -ne 0) { throw "Installer process exited with code $exitCode." }
-  return [ordered]@{ exitCode = $exitCode; zeroOrphans = $true }
-}
-
-function Set-StepPassed {
-  param([Parameter(Mandatory)][string]$Id, [Parameter(Mandatory)][Diagnostics.Stopwatch]$Timer, [Parameter(Mandatory)]$Evidence)
-  $index = [Array]::IndexOf($stepIds, $Id)
-  $steps[$index] = [ordered]@{
-    id = $Id
-    status = "passed"
-    durationMs = [Math]::Min(600000, [Math]::Max(0, [int]$Timer.ElapsedMilliseconds))
-    evidenceSha256 = Get-StringSha256 ($Evidence | ConvertTo-Json -Compress -Depth 6)
-  }
-}
-
 function Set-StepFailed {
   param([Parameter(Mandatory)][string]$Id)
   $index = [Array]::IndexOf($stepIds, $Id)
   if ($index -ge 0) {
     $steps[$index] = [ordered]@{ id = $Id; status = "failed"; durationMs = 0; evidenceSha256 = $null }
-  }
-}
-
-function Get-AvailablePort {
-  $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
-  try {
-    $listener.Start()
-    return ([Net.IPEndPoint]$listener.LocalEndpoint).Port
-  } finally { $listener.Stop() }
-}
-
-function Invoke-Install {
-  param([Parameter(Mandatory)][string]$StepId)
-  $script:currentStep = $StepId
-  $timer = [Diagnostics.Stopwatch]::StartNew()
-  $script:installed = $true
-  $processEvidence = Invoke-BoundedInstallerProcess $resolvedInstaller @("/S", "/D=$installRoot")
-  $executable = Join-Path $installRoot "sage.exe"
-  $uninstaller = Join-Path $installRoot "uninstall.exe"
-  foreach ($file in @($executable, $uninstaller)) {
-    $item = Get-Item -LiteralPath $file -Force -ErrorAction Stop
-    if (-not $item.PSIsContainer -and -not ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { continue }
-    throw "Installed payload identity is invalid."
-  }
-  $installedItem = Get-Item -LiteralPath $executable -Force
-  $installedSha256 = (Get-FileHash $executable -Algorithm SHA256).Hash.ToLowerInvariant()
-  if ($installedItem.Length -ne $ExpectedInstalledExecutableBytes -or $installedSha256 -ne $ExpectedInstalledExecutableSha256) {
-    throw "Installed executable does not match the authenticated package projection."
-  }
-  Set-StepPassed $StepId $timer ([ordered]@{
-    executableSha256 = $installedSha256; executableBytes = [long]$installedItem.Length
-    zeroOrphans = $processEvidence.zeroOrphans
-  })
-  return [ordered]@{ executable = $executable; uninstaller = $uninstaller }
-}
-
-function Invoke-Uninstall {
-  param([Parameter(Mandatory)][string]$StepId, [Parameter(Mandatory)][string]$Uninstaller)
-  $script:currentStep = $StepId
-  $timer = [Diagnostics.Stopwatch]::StartNew()
-  $processEvidence = Invoke-BoundedInstallerProcess $Uninstaller @("/S")
-  if (Test-Path -LiteralPath (Join-Path $installRoot "sage.exe")) { throw "Uninstall retained the installed executable." }
-  if (Test-Path -LiteralPath $installRoot -PathType Container) {
-    [void](Test-PlainDirectory $installRoot "Installed payload root")
-    if (@(Get-ChildItem -LiteralPath $installRoot -Force | Select-Object -First 1).Count -ne 0) {
-      throw "Uninstall retained installed payload entries."
-    }
-    Remove-Item -LiteralPath $installRoot -Force
-  }
-  $script:installed = $false
-  Set-StepPassed $StepId $timer ([ordered]@{ executableAbsent = $true; zeroOrphans = $processEvidence.zeroOrphans })
-}
-
-function Invoke-SemanticLaunch {
-  param(
-    [Parameter(Mandatory)][string]$LaunchStep,
-    [Parameter(Mandatory)][string]$DriveStep,
-    [Parameter(Mandatory)][string]$CloseStep,
-    [Parameter(Mandatory)][ValidateSet("primary", "restart", "reinstall")][string]$Mode,
-    [Parameter(Mandatory)][string]$Executable
-  )
-  Assert-GitIdentity
-  $script:currentStep = $LaunchStep
-  $launchTimer = [Diagnostics.Stopwatch]::StartNew()
-  $launchItem = Get-Item -LiteralPath $Executable -Force
-  if ($launchItem.Length -ne $ExpectedInstalledExecutableBytes -or
-      (Get-FileHash $Executable -Algorithm SHA256).Hash.ToLowerInvariant() -ne $ExpectedInstalledExecutableSha256) {
-    throw "Installed executable identity changed before launch."
-  }
-  $port = Get-AvailablePort
-  $start = [Diagnostics.ProcessStartInfo]::new()
-  $start.FileName = $Executable
-  $start.WorkingDirectory = $installRoot
-  $start.UseShellExecute = $false
-  $start.CreateNoWindow = $true
-  foreach ($name in @(
-    "SAGE_PROJECT_ROOT", "SAGE_DIAGNOSTIC_DATA_DIR",
-    "SAGE_CHARACTERIZATION_FIXTURE_PATH", "SAGE_CHARACTERIZATION_FIXTURE_SHA256",
-    "SAGE_CHARACTERIZATION_FIXTURE_BYTES", "SAGE_CHARACTERIZATION_CASE"
-  )) { [void]$start.EnvironmentVariables.Remove($name) }
-  $start.EnvironmentVariables["SAGE_DISPOSABLE_PROFILE_ROOT"] = $profile.root
-  if ($Mode -eq "primary") { $start.EnvironmentVariables["SAGE_PROJECT_ROOT"] = $fixtureRoot }
-  else { [void]$start.EnvironmentVariables.Remove("SAGE_PROJECT_ROOT") }
-  $start.EnvironmentVariables["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = "--remote-debugging-port=$port"
-  $start.EnvironmentVariables["WEBVIEW2_BROWSER_EXECUTABLE_FOLDER"] = ""
-  $start.EnvironmentVariables["PATH"] = "{0};{1}" -f ([IO.Path]::GetDirectoryName($resolvedGit)), (Join-Path $env:SystemRoot "System32")
-  $start.EnvironmentVariables["GIT_CONFIG_NOSYSTEM"] = "1"
-  $start.EnvironmentVariables["GIT_CONFIG_GLOBAL"] = "NUL"
-  $script:job = Start-FootprintJobProcess $start
-  try {
-    $window = Wait-FootprintWindow $job.process.Id 20
-    Set-StepPassed $LaunchStep $launchTimer ([ordered]@{ windowTitleSha256 = Get-StringSha256 $window.title })
-    $script:currentStep = $DriveStep
-    $driveTimer = [Diagnostics.Stopwatch]::StartNew()
-    $semanticPath = Join-Path $resolvedOutput ("semantic-{0}.json" -f $Mode)
-    if (Test-Path -LiteralPath $semanticPath) { throw "Semantic evidence path is not fresh." }
-    $nodeResult = Invoke-Bounded $resolvedNode @($driver, [string]$port, $Mode, $rootLabel, $semanticPath) "drive-$Mode" 60000
-    $semantic = Get-Content -LiteralPath $semanticPath -Raw | ConvertFrom-Json
-    $semanticBytes = (Get-Item -LiteralPath $semanticPath).Length
-    if ($semanticBytes -gt 32768 -or [int]$semantic.schemaVersion -ne 1 -or [string]$semantic.mode -ne $Mode) {
-      throw "Semantic evidence is invalid."
-    }
-    foreach ($name in $assertionNames) {
-      if ([bool]$semantic.assertions.$name) { $assertions[$name] = $true }
-    }
-    Set-StepPassed $DriveStep $driveTimer ([ordered]@{ stdoutSha256 = Get-StringSha256 $nodeResult.stdout; semanticSha256 = (Get-FileHash $semanticPath -Algorithm SHA256).Hash.ToLowerInvariant() })
-  } finally {
-    $script:currentStep = $CloseStep
-    $closeTimer = [Diagnostics.Stopwatch]::StartNew()
-    if ($null -ne $job) {
-      $teardown = Stop-FootprintJobProcess $job.process $job.boundary 1000 5000
-      $job = $null
-      if (-not $teardown.treeBoundaryVerified -or $teardown.orphanProcessesAfterClose -ne 0) { throw "Launch cleanup identity was not verified." }
-      Set-StepPassed $CloseStep $closeTimer ([ordered]@{ forced = [bool]$teardown.forced; zeroOrphans = $true })
-    }
-  }
-}
-
-function New-FixtureRepository {
-  [void][IO.Directory]::CreateDirectory($fixtureRoot)
-  [IO.File]::WriteAllText((Join-Path $fixtureRoot "README.md"), "sage installed smoke initial`n", [Text.UTF8Encoding]::new($false))
-  foreach ($command in @(
-    @("init"), @("config", "user.name", "Sage Smoke"),
-    @("config", "user.email", "sage-smoke@example.invalid"),
-    @("add", "README.md"), @("commit", "-m", "initial fixture")
-  )) { [void](Invoke-Bounded $resolvedGit (@("-C", $fixtureRoot) + $command) "git-fixture" 30000) }
-  $head = (Invoke-Bounded $resolvedGit @("-C", $fixtureRoot, "rev-parse", "HEAD") "git-head" 30000).stdout.Trim()
-  return [ordered]@{
-    rootIdentitySha256 = Get-StringSha256 ([IO.Path]::GetFullPath($fixtureRoot).TrimEnd('\').ToLowerInvariant())
-    rootLabel = $rootLabel
-    initialCommitSha256 = Get-StringSha256 $head
   }
 }
 
@@ -305,91 +193,167 @@ if (-not (Test-Path -LiteralPath $parent -PathType Container)) { throw "Smoke ou
 if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) { throw "Smoke output must be reserved." }
 $resolvedOutput = Test-PlainDirectory ([IO.Path]::GetFullPath($OutputDirectory)) "Smoke output"
 if (@(Get-ChildItem -LiteralPath $resolvedOutput -Force).Count -ne 0) { throw "Smoke output must be empty." }
-$resolvedInstaller = (Resolve-Path -LiteralPath $InstallerPath).Path
-$resolvedNode = (Resolve-Path -LiteralPath $NodePath).Path
-$resolvedGit = (Resolve-Path -LiteralPath $GitPath).Path
 $script:processOrdinal = 0
+$sourceRoot = Split-Path -Parent $PSScriptRoot
 $installRoot = Join-Path $resolvedOutput "installed"
-$profileCampaignRoot = [IO.Directory]::CreateDirectory((Join-Path $resolvedOutput "profiles")).FullName
+$profileCampaignRoot = Join-Path $resolvedOutput "profiles"
 $rootLabel = "sage-installed-smoke-fixture"
 $fixtureRoot = Join-Path $resolvedOutput $rootLabel
 $receiptPath = Join-Path $resolvedOutput "receipt.json"
-$signature = Get-AuthenticodeSignature -LiteralPath $resolvedInstaller
-$webViewVersion = @(
-  @(
-    Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F1E7E89C-98C0-4E8A-8B72-6AD3D4C13C4B}" -ErrorAction SilentlyContinue
-    Get-ItemProperty "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F1E7E89C-98C0-4E8A-8B72-6AD3D4C13C4B}" -ErrorAction SilentlyContinue
-  ) | Where-Object { $_.pv } | Select-Object -First 1 -ExpandProperty pv
-)
-$administrator = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-$gitIdentity = Test-FileIdentity $resolvedGit $GitBytes $GitSha256
-$gitVersion = $null
-if ($gitIdentity) {
-  try { $gitVersion = (Invoke-Bounded $resolvedGit @("--version") "git-version" 30000).stdout.Trim().Replace("git version ", "") } catch {}
-}
 $prerequisites = [ordered]@{
-  windows = $true
-  interactiveSession = [Environment]::UserInteractive -and $env:SESSIONNAME -notmatch '^Services$'
-  webView2 = $webViewVersion.Count -eq 1
-  administrator = $administrator
-  authenticode = $signature.Status -eq [Management.Automation.SignatureStatus]::Valid -and
-    $null -ne $signature.SignerCertificate -and
-    $signature.SignerCertificate.Thumbprint.ToLowerInvariant() -eq $ExpectedSignerThumbprint.ToLowerInvariant()
-  git = $gitIdentity -and -not [string]::IsNullOrWhiteSpace($gitVersion)
-  osVersion = [Environment]::OSVersion.Version.ToString()
-  webView2Version = if ($webViewVersion.Count -eq 1) { [string]$webViewVersion[0] } else { $null }
-  gitVersion = $gitVersion
-  signerThumbprint = if ($null -ne $signature.SignerCertificate) { $signature.SignerCertificate.Thumbprint.ToLowerInvariant() } else { $null }
+  windows = $false; interactiveSession = $false; webView2 = $false
+  administrator = $false; authenticode = $false; git = $false
+  osVersion = $null; webView2Version = $null; gitVersion = $null; signerThumbprint = $null
 }
 $fixture = [ordered]@{ rootIdentitySha256 = "0" * 64; rootLabel = $rootLabel; initialCommitSha256 = "0" * 64 }
 
 try {
-  $installer = Get-Item -LiteralPath $resolvedInstaller -Force
-  if ($installer.PSIsContainer -or ($installer.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
-      $installer.Length -ne $InstallerBytes -or
-      (Get-FileHash -LiteralPath $resolvedInstaller -Algorithm SHA256).Hash.ToLowerInvariant() -ne $InstallerSha256) {
-    throw "Authenticated installer identity changed before smoke execution."
+  try {
+    $resolvedInstaller = (Resolve-Path -LiteralPath $InstallerPath).Path
+    $resolvedNode = (Resolve-Path -LiteralPath $NodePath).Path
+    $resolvedGit = (Resolve-Path -LiteralPath $GitPath).Path
+    [object[]]$runnerIdentities = ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($RunnerFileIdentitiesBase64)) | ConvertFrom-Json)
+    Assert-PowerShellIdentity
+    Assert-NodeIdentity
+    Assert-GitIdentity
+    Assert-RunnerSourceIdentity
+    Import-Module (Join-Path $PSScriptRoot "footprint/InstalledSmokeIdentity.psm1") -Force
+    Import-Module (Join-Path $PSScriptRoot "footprint/InstalledSmokePackageLifecycle.psm1") -Force
+    Import-Module (Join-Path $PSScriptRoot "footprint/InstalledSmokeSemantic.psm1") -Force
+    Import-Module (Join-Path $PSScriptRoot "footprint/DisposableProfile.psm1") -Force
+    Import-Module (Join-Path $PSScriptRoot "footprint/ScenarioEvidence.psm1") -Force
+    Import-Module (Join-Path $PSScriptRoot "footprint/WindowsFootprint.psm1") -Force
+    Import-Module (Join-Path $PSScriptRoot "footprint/WindowsJob.psm1") -Force
+    Import-Module (Join-Path $PSScriptRoot "footprint/WindowsJobCompletion.psm1") -Force
+    $runner = (Resolve-Path (Join-Path $PSScriptRoot "footprint/bounded-node-runner.mjs")).Path
+    $driver = (Resolve-Path (Join-Path $PSScriptRoot "footprint/drive-installed-smoke.mjs")).Path
+    [void](Assert-InstalledSmokePath $resolvedOutput $resolvedOutput "Directory")
+    $signature = Get-AuthenticodeSignature -LiteralPath $resolvedInstaller
+    $webViewVersion = @(
+      @(
+        Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F1E7E89C-98C0-4E8A-8B72-6AD3D4C13C4B}" -ErrorAction SilentlyContinue
+        Get-ItemProperty "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F1E7E89C-98C0-4E8A-8B72-6AD3D4C13C4B}" -ErrorAction SilentlyContinue
+      ) | Where-Object { $_.pv } | Select-Object -First 1 -ExpandProperty pv
+    )
+    $administrator = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    $gitVersion = (Invoke-Bounded $resolvedGit @("--version") "git-version" 30000).stdout.Trim().Replace("git version ", "")
+    $prerequisites = [ordered]@{
+      windows = $true
+      interactiveSession = [Environment]::UserInteractive -and $env:SESSIONNAME -notmatch '^Services$'
+      webView2 = $webViewVersion.Count -eq 1
+      administrator = $administrator
+      authenticode = (Test-FileIdentity $resolvedInstaller $InstallerBytes $InstallerSha256) -and
+        $signature.Status -eq [Management.Automation.SignatureStatus]::Valid -and
+        $null -ne $signature.SignerCertificate -and
+        $signature.SignerCertificate.Thumbprint.ToLowerInvariant() -eq $ExpectedSignerThumbprint.ToLowerInvariant()
+      git = -not [string]::IsNullOrWhiteSpace($gitVersion)
+      osVersion = [Environment]::OSVersion.Version.ToString()
+      webView2Version = if ($webViewVersion.Count -eq 1) { [string]$webViewVersion[0] } else { $null }
+      gitVersion = $gitVersion
+      signerThumbprint = if ($null -ne $signature.SignerCertificate) { $signature.SignerCertificate.Thumbprint.ToLowerInvariant() } else { $null }
+    }
+  } catch {
+    $failure = [ordered]@{ code = "prerequisite-inspection-failed"; phase = "prerequisites" }
   }
-  $missing = @(
+  $missing = if ($null -eq $failure) { @(
     @("windows", "windows-unavailable"), @("interactiveSession", "interactive-session-unavailable"),
     @("webView2", "webview2-unavailable"), @("administrator", "administrator-unavailable"),
     @("authenticode", "installer-signature-invalid"), @("git", "git-unavailable")
-  ) | Where-Object { -not [bool]$prerequisites[$_[0]] } | Select-Object -First 1
-  if ($null -ne $missing) {
+  ) | Where-Object { -not [bool]$prerequisites[$_[0]] } | Select-Object -First 1 } else { $null }
+  if ($null -ne $failure) {
+    # Typed prerequisite inspection failure is settled in the final receipt.
+  } elseif ($null -ne $missing) {
     $result = "blocked"
     $failure = [ordered]@{ code = $missing[1]; phase = "prerequisites" }
   } else {
-    $fixture = New-FixtureRepository
+    [void][IO.Directory]::CreateDirectory($profileCampaignRoot)
+    [void](Assert-InstalledSmokePath $profileCampaignRoot $resolvedOutput "Directory")
+    $fixture = New-InstalledSmokeFixtureRepository $fixtureRoot $rootLabel {
+      param([string[]]$Arguments)
+      Invoke-Bounded $resolvedGit $Arguments "git-fixture" 30000
+    }
     $profile = New-C0BDisposableProfile $profileCampaignRoot "installed-smoke"
-    $payload = Invoke-Install "install-initial"
-    Invoke-SemanticLaunch "launch-initial" "drive-primary" "close-initial" "primary" $payload.executable
-    Invoke-SemanticLaunch "launch-restart" "verify-restart" "close-restart" "restart" $payload.executable
-    Invoke-Uninstall "uninstall-initial" $payload.uninstaller
-    $payload = Invoke-Install "install-reinstall"
-    Invoke-SemanticLaunch "launch-reinstall" "verify-reinstall" "close-reinstall" "reinstall" $payload.executable
-    Invoke-Uninstall "uninstall-final" $payload.uninstaller
+    $semanticConfig = [ordered]@{
+      outputRoot = $resolvedOutput; installRoot = $installRoot
+      profileRoot = $profile.root; fixtureRoot = $fixtureRoot
+      gitPath = $resolvedGit; nodePath = $resolvedNode; driver = $driver
+      rootLabel = $rootLabel
+      invokeBounded = {
+        param($Executable, [string[]]$Arguments, $Label, $TimeoutMs)
+        Invoke-Bounded $Executable $Arguments $Label $TimeoutMs
+      }
+    }
+    $identityGate = {
+      Assert-PowerShellIdentity
+      Assert-NodeIdentity
+      Assert-GitIdentity
+      Assert-RunnerSourceIdentity
+    }
+    $lifecycleConfig = [ordered]@{
+      outputRoot = $resolvedOutput; installRoot = $installRoot
+      installerPath = $resolvedInstaller; installerSha256 = $InstallerSha256
+      installerBytes = $InstallerBytes; signerThumbprint = $ExpectedSignerThumbprint
+      executableSha256 = $ExpectedInstalledExecutableSha256
+      executableBytes = $ExpectedInstalledExecutableBytes
+    }
+    $payload = Invoke-InstalledSmokeInstall $runState $identityGate "install-initial" $lifecycleConfig
+    Invoke-InstalledSmokeSemanticCampaign $runState $identityGate "launch-initial" "drive-primary" "close-initial" "primary" $payload.executable $semanticConfig
+    Invoke-InstalledSmokeSemanticCampaign $runState $identityGate "launch-restart" "verify-restart" "close-restart" "restart" $payload.executable $semanticConfig
+    Invoke-InstalledSmokeUninstall $runState $identityGate "uninstall-initial" $payload.uninstaller $lifecycleConfig
+    $payload = Invoke-InstalledSmokeInstall $runState $identityGate "install-reinstall" $lifecycleConfig
+    Invoke-InstalledSmokeSemanticCampaign $runState $identityGate "launch-reinstall" "verify-reinstall" "close-reinstall" "reinstall" $payload.executable $semanticConfig
+    Invoke-InstalledSmokeUninstall $runState $identityGate "uninstall-final" $payload.uninstaller $lifecycleConfig
     if (@($assertions.Values | Where-Object { -not $_ }).Count -ne 0) { throw "Installed smoke assertions are incomplete." }
     $result = "passed"
   }
 } catch {
+  $currentStep = $runState.currentStep
+  $job = $runState.job
   Set-StepFailed $currentStep
   $code = if ($_.Exception.Message -match 'timeout|exceeded') { "step-timeout" } elseif ($_.Exception.Message -match 'identity|orphan|cleanup') { "identity-lost" } else { "step-failed" }
   $failure = [ordered]@{ code = $code; phase = $currentStep }
-  if ($installed -and $null -eq $job) {
+} finally {
+  if ($null -ne $job) {
     try {
-      $candidate = Join-Path $installRoot "uninstall.exe"
-      if (Test-Path -LiteralPath $candidate -PathType Leaf) { Invoke-Uninstall "uninstall-final" $candidate }
+      [void](Stop-FootprintJobProcess $job.process $job.boundary 0 5000)
+      $job.boundary.Dispose()
+      $job = $null
+      $runState.job = $null
+    } catch {
+      try { $job.boundary.Terminate() } catch {}
+      try { $job.boundary.Dispose() } catch {}
+      $job = $null
+      $runState.job = $null
+      $failure = [ordered]@{ code = "cleanup-failed"; phase = "job-cleanup" }
+    }
+  }
+  if ($runState.installed) {
+    try {
+      if ($null -eq $runState.cleanupUninstaller) { throw "Partial install has no authoritative uninstaller." }
+      Invoke-InstalledSmokeUninstall $runState $identityGate "uninstall-final" $runState.cleanupUninstaller $lifecycleConfig
     } catch {
       Set-StepFailed "uninstall-final"
       $failure = [ordered]@{ code = "cleanup-failed"; phase = "uninstall-final" }
     }
   }
-} finally {
-  if ($null -ne $job) {
-    try { [void](Stop-FootprintJobProcess $job.process $job.boundary 0 5000) } catch { $failure = [ordered]@{ code = "cleanup-failed"; phase = $currentStep } }
-  }
   if ($null -ne $profile) {
     try { Remove-C0BDisposableProfile $profileCampaignRoot $profile.root } catch { $failure = [ordered]@{ code = "cleanup-failed"; phase = "profile-cleanup" } }
+  }
+  if (Test-Path -LiteralPath $fixtureRoot -PathType Container) {
+    try {
+      [void](Get-FootprintBoundedDirectoryInventory $fixtureRoot "Installed smoke fixture")
+      [void](Assert-InstalledSmokePath $fixtureRoot $resolvedOutput "Directory")
+      Remove-Item -LiteralPath $fixtureRoot -Recurse -Force
+    } catch { $failure = [ordered]@{ code = "cleanup-failed"; phase = "fixture-cleanup" } }
+  }
+  if (Test-Path -LiteralPath $profileCampaignRoot -PathType Container) {
+    try {
+      [void](Assert-InstalledSmokePath $profileCampaignRoot $resolvedOutput "Directory")
+      if (@(Get-ChildItem -LiteralPath $profileCampaignRoot -Force | Select-Object -First 1).Count -ne 0) {
+        throw "Disposable profile campaign root is not empty."
+      }
+      Remove-Item -LiteralPath $profileCampaignRoot -Force
+    } catch { $failure = [ordered]@{ code = "cleanup-failed"; phase = "profile-cleanup" } }
   }
   if ($null -ne $failure -and $result -ne "blocked") { $result = "failed" }
   $receipt = [ordered]@{
@@ -401,7 +365,9 @@ try {
       signerThumbprint = $ExpectedSignerThumbprint.ToLowerInvariant()
     }
     packageReceiptSha256 = $PackageReceiptSha256; fixture = $fixture; prerequisites = $prerequisites
-    startedAtUtc = $started; completedAtUtc = [DateTime]::UtcNow.ToString("o"); result = $result
+    startedAtUtc = $started
+    completedAtUtc = [DateTime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", [Globalization.CultureInfo]::InvariantCulture)
+    result = $result
     failure = $failure; steps = $steps; assertions = $assertions
     limits = [ordered]@{ stepCount = 13; stepTimeoutMs = 600000; retainedOutputBytes = 262144 }
   }

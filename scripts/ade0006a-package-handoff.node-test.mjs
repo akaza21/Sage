@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,6 +15,7 @@ import {
   authenticatePackageArtifactHandoff,
   deliverPackageArtifactHandoff,
 } from "./ade0006a-package-handoff.mjs";
+import { buildSourceManifest } from "./generate-source-manifest.mjs";
 
 const participants = ["candidate", "control"];
 const installers = ["msi", "nsis"];
@@ -23,6 +30,13 @@ function digest(value) {
 
 function fixture() {
   const scratchRoot = mkdtempSync(path.join(tmpdir(), "sage-handoff-"));
+  const sourceRoot = path.join(scratchRoot, "source");
+  mkdirSync(sourceRoot);
+  writeFileSync(path.join(sourceRoot, "marker.txt"), "staged-source");
+  const sourceManifest = buildSourceManifest(sourceRoot, {
+    files: ["marker.txt"],
+    directories: [],
+  });
   const gitPath = path.join(scratchRoot, "git.exe");
   writeFileSync(gitPath, "staged-git");
   const artifacts = {};
@@ -90,6 +104,8 @@ function fixture() {
   }
   return {
     scratchRoot,
+    sourceRoot,
+    sourceManifest,
     artifacts,
     receipt,
     git: { path: gitPath, ...digest("staged-git") },
@@ -214,6 +230,11 @@ test("artifact handoff rejects changed or out-of-scratch executables", async () 
 
 test("artifact delivery skips failed receipts and awaits an isolated passing payload", async () => {
   const value = fixture();
+  const originalRoot = mkdtempSync(
+    path.join(tmpdir(), "sage-handoff-original-"),
+  );
+  const originalMarker = path.join(originalRoot, "marker.txt");
+  writeFileSync(originalMarker, "original-source");
   try {
     let calls = 0;
     value.receipt.result = "failed";
@@ -228,6 +249,8 @@ test("artifact delivery skips failed receipts and awaits an isolated passing pay
         receiptBytes: Buffer.from("failed-receipt"),
         rawRoot: "retained-raw-root",
         frozen: { contract: "frozen" },
+        sourceRoot: value.sourceRoot,
+        sourceManifest: value.sourceManifest,
         git: value.git,
         maximumExecutableBytes: 1024,
         maximumInstallerBytes: 1024,
@@ -243,6 +266,12 @@ test("artifact delivery skips failed receipts and awaits an isolated passing pay
       await deliverPackageArtifactHandoff({
         callback: async (payload) => {
           calls += 1;
+          writeFileSync(originalMarker, "post-finalization-change");
+          assert.equal(payload.sourceRoot, value.sourceRoot);
+          assert.equal(
+            readFileSync(path.join(payload.sourceRoot, "marker.txt"), "utf8"),
+            "staged-source",
+          );
           assert.equal(payload.tools.git.sha256, value.git.sha256);
           assert.equal(payload.tools.git.bytes, value.git.bytes);
           payload.receipt.result = "mutated";
@@ -256,6 +285,8 @@ test("artifact delivery skips failed receipts and awaits an isolated passing pay
         receiptBytes,
         rawRoot: "retained-raw-root",
         frozen: { contract: "frozen" },
+        sourceRoot: value.sourceRoot,
+        sourceManifest: value.sourceManifest,
         git: value.git,
         maximumExecutableBytes: 1024,
         maximumInstallerBytes: 1024,
@@ -279,6 +310,8 @@ test("artifact delivery skips failed receipts and awaits an isolated passing pay
         receiptBytes,
         rawRoot: "retained-raw-root",
         frozen: { contract: "frozen" },
+        sourceRoot: value.sourceRoot,
+        sourceManifest: value.sourceManifest,
         git: value.git,
         maximumExecutableBytes: 1024,
         maximumInstallerBytes: 1024,
@@ -286,7 +319,31 @@ test("artifact delivery skips failed receipts and awaits an isolated passing pay
       /artifact-handoff-git-mismatch/,
     );
     assert.equal(calls, 1);
+
+    writeFileSync(value.git.path, "staged-git");
+    writeFileSync(path.join(value.sourceRoot, "marker.txt"), "changed-source");
+    await assert.rejects(
+      deliverPackageArtifactHandoff({
+        callback: async () => {
+          calls += 1;
+        },
+        scratchRoot: value.scratchRoot,
+        artifacts: value.artifacts,
+        receipt: value.receipt,
+        receiptBytes,
+        rawRoot: "retained-raw-root",
+        frozen: { contract: "frozen" },
+        sourceRoot: value.sourceRoot,
+        sourceManifest: value.sourceManifest,
+        git: value.git,
+        maximumExecutableBytes: 1024,
+        maximumInstallerBytes: 1024,
+      }),
+      /artifact-handoff-source-mismatch/,
+    );
+    assert.equal(calls, 1);
   } finally {
     rmSync(value.scratchRoot, { recursive: true, force: true });
+    rmSync(originalRoot, { recursive: true, force: true });
   }
 });

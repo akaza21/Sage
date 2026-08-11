@@ -27,11 +27,13 @@ namespace SageFootprint {
 
     public static NativeJobBoundary Start(
       string executable,
+      string[] arguments,
       string workingDirectory,
       string[] environmentEntries,
       uint activeProcessLimit
     ) {
-      if (String.IsNullOrWhiteSpace(executable) ||
+      if (String.IsNullOrWhiteSpace(executable) || arguments == null ||
+          arguments.Length > 32 ||
           String.IsNullOrWhiteSpace(workingDirectory) ||
           executable.IndexOf('\0') >= 0 || executable.IndexOf('"') >= 0 ||
           activeProcessLimit == 0 || activeProcessLimit > 33) {
@@ -48,7 +50,7 @@ namespace SageFootprint {
         environment = Marshal.StringToHGlobalUni(EnvironmentBlock(environmentEntries));
         var startup = new STARTUPINFO();
         startup.cb = Marshal.SizeOf(typeof(STARTUPINFO));
-        var commandLine = new StringBuilder("\"" + executable + "\"");
+        var commandLine = new StringBuilder(BuildCommandLine(executable, arguments));
         if (!CreateProcess(
           executable,
           commandLine,
@@ -78,6 +80,39 @@ namespace SageFootprint {
         if (process.hProcess != IntPtr.Zero) CloseHandle(process.hProcess);
         if (!resumed) boundary.ProcessId = 0;
       }
+    }
+
+    public static string QuoteArgumentForTest(string argument) {
+      return QuoteArgument(argument);
+    }
+
+    static string BuildCommandLine(string executable, string[] arguments) {
+      var command = new StringBuilder(QuoteArgument(executable));
+      foreach (string argument in arguments) {
+        command.Append(' ').Append(QuoteArgument(argument));
+        // CreateProcessW's 32,767-character limit includes the terminating NUL.
+        if (command.Length >= 32767)
+          throw new ArgumentException("Native Job command line exceeds its bound.");
+      }
+      return command.ToString();
+    }
+
+    static string QuoteArgument(string argument) {
+      if (argument == null || argument.IndexOf('\0') >= 0 || argument.Length > 4096)
+        throw new ArgumentException("Invalid native Job argument.");
+      if (argument.Length > 0 && argument.IndexOfAny(new [] {' ', '\t', '\r', '\n', '\v', '\f', '"'}) < 0)
+        return argument;
+      var quoted = new StringBuilder("\"");
+      int slashes = 0;
+      foreach (char value in argument) {
+        if (value == '\\') { slashes++; continue; }
+        if (value == '"') quoted.Append('\\', slashes * 2 + 1);
+        else quoted.Append('\\', slashes);
+        quoted.Append(value);
+        slashes = 0;
+      }
+      quoted.Append('\\', slashes * 2).Append('"');
+      return quoted.ToString();
     }
 
     public uint ActiveProcesses() {
@@ -257,7 +292,8 @@ namespace SageFootprint {
 function Start-FootprintJobProcess {
   param(
     [Parameter(Mandatory)][Diagnostics.ProcessStartInfo]$StartInfo,
-    [ValidateRange(1, 33)][int]$ActiveProcessLimit = 33
+    [ValidateRange(1, 33)][int]$ActiveProcessLimit = 33,
+    [string[]]$ArgumentList = @()
   )
   if ($StartInfo.UseShellExecute -or -not [IO.Path]::IsPathRooted($StartInfo.FileName) -or
       -not [IO.Path]::IsPathRooted($StartInfo.WorkingDirectory) -or
@@ -270,6 +306,7 @@ function Start-FootprintJobProcess {
   $spawnStartedTick = [Diagnostics.Stopwatch]::GetTimestamp()
   $boundary = [SageFootprint.NativeJobBoundary]::Start(
     [IO.Path]::GetFullPath($StartInfo.FileName),
+    [string[]]$ArgumentList,
     [IO.Path]::GetFullPath($StartInfo.WorkingDirectory),
     [string[]]$environment,
     [uint32]$ActiveProcessLimit

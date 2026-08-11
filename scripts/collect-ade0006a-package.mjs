@@ -246,9 +246,12 @@ export async function collectPackage(options) {
       receiptBytes,
       rawRoot,
       frozen,
+      sourceRoot: buildContext.sourceRoot,
+      sourceManifest: sourceBefore,
       maximumExecutableBytes:
         frozen.package.observerBounds.executableArtifactBytes,
       git: buildTools.git,
+      node: buildTools.node,
     });
     return { receipt, receiptBytes };
   } catch (error) {
@@ -322,9 +325,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
                 "v1.0",
                 "powershell.exe",
               ),
-              node,
               expectedSignerThumbprint: smokeSignerThumbprint,
-              sourceRoot,
             });
           }
         : undefined,

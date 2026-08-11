@@ -149,9 +149,10 @@ function validatePrerequisites(errors, receipt) {
 }
 
 function validateSteps(errors, receipt) {
+  const steps = Array.isArray(receipt?.steps) ? receipt.steps : [];
   const exactSteps =
     Array.isArray(receipt?.steps) &&
-    receipt.steps.map(({ id }) => id).join("\0") ===
+    steps.map((step) => step?.id).join("\0") ===
       INSTALLED_SMOKE_STEP_IDS.join("\0");
   if (!exactSteps) {
     errors.push(
@@ -159,7 +160,7 @@ function validateSteps(errors, receipt) {
     );
     return false;
   }
-  receipt.steps.forEach((step, index) => {
+  steps.forEach((step, index) => {
     exactKeys(
       errors,
       step,
@@ -269,14 +270,26 @@ export function validateInstalledSmokeReceipt(receipt) {
   }
   if (
     receipt?.result === "passed" &&
-    INSTALLED_SMOKE_ASSERTION_KEYS.some((key) => !receipt.assertions[key])
+    INSTALLED_SMOKE_ASSERTION_KEYS.some(
+      (key) => receipt?.assertions?.[key] !== true,
+    )
   ) {
     errors.push("passing receipt has incomplete assertions");
   }
   if (
     receipt?.result === "passed" &&
+    (INSTALLED_SMOKE_PREREQUISITE_FAILURES.some(
+      ([key]) => receipt?.prerequisites?.[key] !== true,
+    ) ||
+      receipt?.prerequisites?.signerThumbprint !==
+        receipt?.installer?.signerThumbprint)
+  ) {
+    errors.push("passing receipt has unmet prerequisites");
+  }
+  if (
+    receipt?.result === "passed" &&
     (receipt.failure !== null ||
-      (exactSteps && receipt.steps.some(({ status }) => status !== "passed")))
+      (exactSteps && receipt.steps.some((step) => step?.status !== "passed")))
   ) {
     errors.push("passing receipt contains failed or skipped work");
   }
@@ -284,7 +297,7 @@ export function validateInstalledSmokeReceipt(receipt) {
     receipt?.result === "blocked" &&
     (receipt.failure?.phase !== "prerequisites" ||
       (exactSteps &&
-        receipt.steps.some(({ status }) => status !== "skipped")) ||
+        receipt.steps.some((step) => step?.status !== "skipped")) ||
       INSTALLED_SMOKE_ASSERTION_KEYS.some((key) => receipt.assertions?.[key]))
   ) {
     errors.push("blocked receipt contains mutation evidence");

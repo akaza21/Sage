@@ -3,10 +3,27 @@ import path from "node:path";
 
 import { parseBoundedJson, sha256 } from "./ade0006a-c0b-common.mjs";
 import { runBounded } from "./ade0006a-package-build.mjs";
+import { hashBoundedFile } from "./ade0006a-package-members.mjs";
 import { validateInstalledSmokeReceipt } from "./beta0001-installed-smoke.mjs";
 
 const receiptMaximumBytes = 256 * 1024;
 const smokeTimeoutMs = 30 * 60 * 1000;
+const executableMaximumBytes = 512 * 1024 * 1024;
+const runnerMaximumBytes = 2 * 1024 * 1024;
+const runnerRelativePaths = Object.freeze([
+  "scripts/measure-windows-installed-smoke.ps1",
+  "scripts/footprint/InstalledSmokeIdentity.psm1",
+  "scripts/footprint/InstalledSmokePackageLifecycle.psm1",
+  "scripts/footprint/InstalledSmokeSemantic.psm1",
+  "scripts/footprint/DisposableProfile.psm1",
+  "scripts/footprint/ScenarioEvidence.psm1",
+  "scripts/footprint/WindowsFootprint.psm1",
+  "scripts/footprint/WindowsJob.psm1",
+  "scripts/footprint/WindowsJobCompletion.psm1",
+  "scripts/footprint/ProcessIdentity.psm1",
+  "scripts/footprint/bounded-node-runner.mjs",
+  "scripts/footprint/drive-installed-smoke.mjs",
+]);
 const jsonLimits = Object.freeze({
   jsonDepth: 8,
   jsonNodes: 512,
@@ -41,14 +58,24 @@ function argument(name, value) {
   return [name, value];
 }
 
+async function observedIdentity(filePath, label, maximumBytes, expected) {
+  const resolved = await requiredFile(filePath, label);
+  const identity = await hashBoundedFile(resolved, maximumBytes);
+  if (
+    expected &&
+    (identity.sha256 !== expected.sha256 || identity.bytes !== expected.bytes)
+  ) {
+    throw new Error(`${label}-identity-changed`);
+  }
+  return { path: resolved, ...identity };
+}
+
 export async function runAuthenticatedInstalledSmoke({
   handoff,
   campaignId,
   outputDirectory,
   powershell,
-  node,
   expectedSignerThumbprint,
-  sourceRoot,
   runProcess = runBounded,
 }) {
   const installer = handoff?.artifacts?.candidate?.installerArtifacts?.nsis;
@@ -59,6 +86,7 @@ export async function runAuthenticatedInstalledSmoke({
       ({ kind }) => kind === "nsis",
     )?.installedExecutable;
   const git = handoff?.tools?.git;
+  const node = handoff?.tools?.node;
   if (
     !installer ||
     typeof installer.path !== "string" ||
@@ -71,19 +99,55 @@ export async function runAuthenticatedInstalledSmoke({
     typeof git.path !== "string" ||
     typeof git.sha256 !== "string" ||
     !Number.isSafeInteger(git.bytes) ||
+    !node ||
+    typeof node.path !== "string" ||
+    typeof node.sha256 !== "string" ||
+    !Number.isSafeInteger(node.bytes) ||
+    typeof handoff?.sourceRoot !== "string" ||
     !/^[0-9a-f]{40}$/u.test(expectedSignerThumbprint ?? "")
   ) {
     throw new Error("installed-smoke-authenticated-nsis-binding-invalid");
   }
-  const [resolvedPowerShell, resolvedNode, resolvedGit] = await Promise.all([
-    requiredFile(powershell, "installed-smoke-powershell"),
-    requiredFile(node, "installed-smoke-node"),
-    requiredFile(git.path, "installed-smoke-git"),
+  const sourceRoot = await realpath(handoff.sourceRoot);
+  const [powerShellIdentity, nodeIdentity, gitIdentity] = await Promise.all([
+    observedIdentity(
+      powershell,
+      "installed-smoke-powershell",
+      executableMaximumBytes,
+    ),
+    observedIdentity(
+      node.path,
+      "installed-smoke-node",
+      executableMaximumBytes,
+      node,
+    ),
+    observedIdentity(
+      git.path,
+      "installed-smoke-git",
+      executableMaximumBytes,
+      git,
+    ),
   ]);
-  const script = await requiredFile(
-    path.join(sourceRoot, "scripts", "measure-windows-installed-smoke.ps1"),
-    "installed-smoke-script",
+  const runnerIdentities = await Promise.all(
+    runnerRelativePaths.map(async (relativePath) => ({
+      relativePath,
+      ...(await observedIdentity(
+        path.join(sourceRoot, ...relativePath.split("/")),
+        "installed-smoke-runner",
+        runnerMaximumBytes,
+      )),
+    })),
   );
+  const script = runnerIdentities[0].path;
+  const encodedRunnerIdentities = Buffer.from(
+    JSON.stringify(
+      runnerIdentities.map(({ relativePath, sha256: hash, bytes }) => ({
+        relativePath,
+        sha256: hash,
+        bytes,
+      })),
+    ),
+  ).toString("base64");
   const output = await reserveOutput(outputDirectory);
   const receiptPath = path.join(output, "receipt.json");
   const packageReceiptSha256 = sha256(handoff.receiptBytes);
@@ -110,13 +174,18 @@ export async function runAuthenticatedInstalledSmoke({
     ...argument("-PackageReceiptSha256", packageReceiptSha256),
     ...argument("-CampaignId", campaignId),
     ...argument("-OutputDirectory", output),
-    ...argument("-NodePath", resolvedNode),
-    ...argument("-GitPath", resolvedGit),
-    ...argument("-GitSha256", git.sha256),
-    ...argument("-GitBytes", String(git.bytes)),
+    ...argument("-PowerShellSha256", powerShellIdentity.sha256),
+    ...argument("-PowerShellBytes", String(powerShellIdentity.bytes)),
+    ...argument("-NodePath", nodeIdentity.path),
+    ...argument("-NodeSha256", nodeIdentity.sha256),
+    ...argument("-NodeBytes", String(nodeIdentity.bytes)),
+    ...argument("-GitPath", gitIdentity.path),
+    ...argument("-GitSha256", gitIdentity.sha256),
+    ...argument("-GitBytes", String(gitIdentity.bytes)),
+    ...argument("-RunnerFileIdentitiesBase64", encodedRunnerIdentities),
   ];
   try {
-    await runProcess(resolvedPowerShell, args, {
+    await runProcess(powerShellIdentity.path, args, {
       cwd: sourceRoot,
       env: process.env,
       timeoutMs: smokeTimeoutMs,

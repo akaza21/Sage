@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -13,6 +21,15 @@ import {
 import { runAuthenticatedInstalledSmoke } from "./beta0001-installed-smoke-handoff.mjs";
 
 const SHA = "a".repeat(64);
+
+function fileIdentity(filePath) {
+  const bytes = readFileSync(filePath);
+  return {
+    path: filePath,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    bytes: bytes.byteLength,
+  };
+}
 
 function request() {
   return {
@@ -48,6 +65,29 @@ function prerequisites(overrides = {}) {
     signerThumbprint: "f".repeat(40),
     ...overrides,
   };
+}
+
+function passingReceipt() {
+  return runInstalledNsisSmoke({
+    request: request(),
+    operations: {
+      inspectPrerequisites: () => prerequisites(),
+      runStep: (id) => ({
+        durationMs: 1,
+        evidenceSha256: SHA,
+        assertions:
+          id === "drive-primary"
+            ? Object.fromEntries(
+                assertionKeysForTest().map((key) => [key, true]),
+              )
+            : id === "verify-restart"
+              ? { restartPersisted: true }
+              : id === "verify-reinstall"
+                ? { reinstallVerified: true }
+                : {},
+      }),
+    },
+  });
 }
 
 test("installed NSIS smoke runs the exact lifecycle and validates its bounded receipt", async () => {
@@ -158,6 +198,70 @@ test("receipt validation rejects omitted lifecycle evidence and unbounded string
   ]);
 });
 
+test("receipt validation is total for hostile bounded JSON shapes", () => {
+  const mutations = [
+    (receipt) => {
+      receipt.steps = null;
+    },
+    (receipt) => {
+      receipt.steps[0] = null;
+    },
+    (receipt) => {
+      receipt.assertions = null;
+    },
+    (receipt) => {
+      delete receipt.prerequisites;
+    },
+  ];
+  for (const mutate of mutations) {
+    const receipt = passingReceipt();
+    mutate(receipt);
+    let errors;
+    assert.doesNotThrow(() => {
+      errors = validateInstalledSmokeReceipt(receipt);
+    });
+    assert.ok(errors.length > 0);
+  }
+});
+
+test("passing receipts require every prerequisite and the exact observed signer", () => {
+  const missingGit = passingReceipt();
+  missingGit.prerequisites.git = false;
+  assert.ok(
+    validateInstalledSmokeReceipt(missingGit).includes(
+      "passing receipt has unmet prerequisites",
+    ),
+  );
+
+  const wrongSigner = passingReceipt();
+  wrongSigner.prerequisites.signerThumbprint = "9".repeat(40);
+  const errors = validateInstalledSmokeReceipt(wrongSigner);
+  assert.ok(errors.includes("receipt signer thumbprint is invalid"));
+  assert.ok(errors.includes("passing receipt has unmet prerequisites"));
+});
+
+test("prerequisite inspection failures settle as typed receipts", () => {
+  let mutations = 0;
+  const receipt = runInstalledNsisSmoke({
+    request: request(),
+    operations: {
+      inspectPrerequisites: () => {
+        throw new Error("inspection failed");
+      },
+      runStep: () => {
+        mutations += 1;
+      },
+    },
+  });
+  assert.equal(mutations, 0);
+  assert.equal(receipt.result, "failed");
+  assert.deepEqual(receipt.failure, {
+    code: "prerequisite-inspection-failed",
+    phase: "prerequisites",
+  });
+  assert.deepEqual(validateInstalledSmokeReceipt(receipt), []);
+});
+
 test("typed process timeout preserves failure and runs only authoritative cleanup", async () => {
   const calls = [];
   const receipt = await runInstalledNsisSmoke({
@@ -178,6 +282,28 @@ test("typed process timeout preserves failure and runs only authoritative cleanu
   assert.equal(receipt.result, "failed");
   assert.equal(receipt.failure.code, "step-timeout");
   assert.equal(receipt.steps.at(-1).status, "passed");
+  assert.deepEqual(validateInstalledSmokeReceipt(receipt), []);
+});
+
+test("failed authoritative uninstall overrides a partial-install failure", () => {
+  const receipt = runInstalledNsisSmoke({
+    request: request(),
+    operations: {
+      inspectPrerequisites: () => prerequisites(),
+      runStep: (id) => {
+        if (id === "install-initial") {
+          throw new InstalledSmokeOperationError("step-timeout");
+        }
+        if (id === "uninstall-final") throw new Error("uninstaller absent");
+        throw new Error("unexpected step");
+      },
+    },
+  });
+  assert.equal(receipt.result, "failed");
+  assert.deepEqual(receipt.failure, {
+    code: "cleanup-failed",
+    phase: "uninstall-final",
+  });
   assert.deepEqual(validateInstalledSmokeReceipt(receipt), []);
 });
 
@@ -248,8 +374,10 @@ test("authenticated handoff binds signer and installed executable identity into 
         },
       },
       tools: {
-        git: { path: process.execPath, sha256: "2".repeat(64), bytes: 1 },
+        node: fileIdentity(process.execPath),
+        git: fileIdentity(process.execPath),
       },
+      sourceRoot: path.resolve("."),
     };
     let args;
     let processCalls = 0;
@@ -258,9 +386,7 @@ test("authenticated handoff binds signer and installed executable identity into 
       campaignId: smokeRequest.campaignId,
       outputDirectory: path.join(root, "output"),
       powershell: process.execPath,
-      node: process.execPath,
       expectedSignerThumbprint: smokeRequest.installer.signerThumbprint,
-      sourceRoot: path.resolve("."),
       runProcess: async (_executable, received) => {
         processCalls += 1;
         args = received;
@@ -284,8 +410,26 @@ test("authenticated handoff binds signer and installed executable identity into 
       args[args.indexOf("-ExpectedSignerThumbprint") + 1],
       smokeRequest.installer.signerThumbprint,
     );
-    assert.equal(args[args.indexOf("-GitSha256") + 1], "2".repeat(64));
-    assert.equal(args[args.indexOf("-GitBytes") + 1], "1");
+    assert.equal(
+      args[args.indexOf("-GitSha256") + 1],
+      handoff.tools.git.sha256,
+    );
+    assert.equal(
+      args[args.indexOf("-GitBytes") + 1],
+      String(handoff.tools.git.bytes),
+    );
+    assert.equal(
+      args[args.indexOf("-NodeSha256") + 1],
+      handoff.tools.node.sha256,
+    );
+    assert.equal(
+      args[args.indexOf("-File") + 1],
+      path.join(
+        handoff.sourceRoot,
+        "scripts",
+        "measure-windows-installed-smoke.ps1",
+      ),
+    );
     handoff.artifacts.candidate.installedExecutables.nsis.sha256 = "9".repeat(
       64,
     );
@@ -295,9 +439,7 @@ test("authenticated handoff binds signer and installed executable identity into 
         campaignId: smokeRequest.campaignId,
         outputDirectory: path.join(root, "blocked-output"),
         powershell: process.execPath,
-        node: process.execPath,
         expectedSignerThumbprint: smokeRequest.installer.signerThumbprint,
-        sourceRoot: path.resolve("."),
         runProcess: async () => {
           processCalls += 1;
         },
@@ -309,6 +451,79 @@ test("authenticated handoff binds signer and installed executable identity into 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test(
+  "real PowerShell preflight settles an unsigned candidate without installer mutation",
+  { skip: process.platform !== "win32" },
+  async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "sage-installed-preflight-"));
+    try {
+      const installerPath = path.join(root, "unsigned-setup.exe");
+      const installedPath = path.join(root, "projected-sage.exe");
+      writeFileSync(installerPath, "unsigned installer fixture");
+      writeFileSync(installedPath, "projected executable fixture");
+      const gitPath = execFileSync("where.exe", ["git.exe"], {
+        encoding: "utf8",
+        windowsHide: true,
+      })
+        .split(/\r?\n/u)
+        .find(Boolean);
+      assert.ok(gitPath);
+      const installer = fileIdentity(installerPath);
+      const installed = fileIdentity(installedPath);
+      const handoff = {
+        sourceRoot: path.resolve("."),
+        receiptBytes: Buffer.from("preflight-package-receipt"),
+        receipt: {
+          participants: {
+            candidate: {
+              installers: [{ kind: "nsis", installedExecutable: installed }],
+            },
+          },
+        },
+        artifacts: {
+          candidate: {
+            installerArtifacts: { nsis: installer },
+            installedExecutables: { nsis: installed },
+          },
+        },
+        tools: {
+          node: fileIdentity(process.execPath),
+          git: fileIdentity(gitPath),
+        },
+      };
+      const powershell = path.join(
+        process.env.SystemRoot ?? "C:\\Windows",
+        "System32",
+        "WindowsPowerShell",
+        "v1.0",
+        "powershell.exe",
+      );
+      const receipt = await runAuthenticatedInstalledSmoke({
+        handoff,
+        campaignId: "unsigned-preflight-01",
+        outputDirectory: path.join(root, "output"),
+        powershell,
+        expectedSignerThumbprint: "f".repeat(40),
+      });
+      assert.equal(receipt.result, "blocked");
+      assert.equal(receipt.failure.phase, "prerequisites");
+      assert.equal(
+        receipt.prerequisites.authenticode,
+        false,
+        "unsigned fixture must never reach install",
+      );
+      assert.equal(
+        readFileSync(path.join(root, "output", "receipt.json"), "utf8").length >
+          0,
+        true,
+      );
+      assert.equal(existsSync(path.join(root, "output", "installed")), false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
 function assertionKeysForTest() {
   return [
@@ -325,19 +540,53 @@ function assertionKeysForTest() {
   ];
 }
 
-test("real runner gates mutation on the configured Authenticode signer", () => {
+test("real runner rechecks identities, preserves failure phase, and requires cleanup", () => {
   const source = readFileSync(
     new URL("./measure-windows-installed-smoke.ps1", import.meta.url),
+    "utf8",
+  );
+  const semanticSource = readFileSync(
+    new URL("./footprint/InstalledSmokeSemantic.psm1", import.meta.url),
+    "utf8",
+  );
+  const lifecycleSource = readFileSync(
+    new URL("./footprint/InstalledSmokePackageLifecycle.psm1", import.meta.url),
     "utf8",
   );
   const signerGate = source.indexOf(
     "$signature.SignerCertificate.Thumbprint.ToLowerInvariant() -eq $ExpectedSignerThumbprint.ToLowerInvariant()",
   );
-  const prerequisiteDecision = source.indexOf("$missing = @(");
+  const prerequisiteDecision = source.indexOf("$missing = if");
   const firstInstall = source.indexOf(
-    '$payload = Invoke-Install "install-initial"',
+    '$payload = Invoke-InstalledSmokeInstall $runState $identityGate "install-initial"',
   );
   assert.ok(signerGate > 0);
   assert.ok(prerequisiteDecision > signerGate);
   assert.ok(firstInstall > prerequisiteDecision);
+  const installFunction = lifecycleSource.slice(
+    lifecycleSource.indexOf("function Invoke-InstalledSmokeInstall"),
+    lifecycleSource.indexOf("function Invoke-InstalledSmokeUninstall"),
+  );
+  assert.ok(
+    installFunction.indexOf("Assert-InstalledSmokeInstallerIdentity") <
+      installFunction.indexOf("Invoke-InstalledSmokeJobProcess"),
+  );
+  const uninstallFunction = lifecycleSource.slice(
+    lifecycleSource.indexOf("function Invoke-InstalledSmokeUninstall"),
+    lifecycleSource.indexOf("Export-ModuleMember"),
+  );
+  assert.ok(
+    uninstallFunction.indexOf("Assert-InstalledSmokeFileIdentity") <
+      uninstallFunction.indexOf("Invoke-InstalledSmokeJobProcess"),
+  );
+  assert.ok(semanticSource.match(/& \$IdentityGate/gu)?.length >= 2);
+  assert.ok(semanticSource.includes("$primaryFailurePhase"));
+  assert.ok(
+    source.includes("Partial install has no authoritative uninstaller."),
+  );
+  assert.ok(source.includes("Assert-RunnerSourceIdentity"));
+  assert.ok(
+    source.indexOf("Stop-FootprintJobProcess") <
+      source.indexOf("if ($runState.installed)"),
+  );
 });

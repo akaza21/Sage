@@ -86,6 +86,21 @@ function emptyAssertions() {
   return Object.fromEntries(assertionKeys.map((key) => [key, false]));
 }
 
+function unavailablePrerequisites() {
+  return {
+    windows: false,
+    interactiveSession: false,
+    webView2: false,
+    administrator: false,
+    authenticode: false,
+    git: false,
+    osVersion: null,
+    webView2Version: null,
+    gitVersion: null,
+    signerThumbprint: null,
+  };
+}
+
 function skippedSteps() {
   return INSTALLED_SMOKE_STEP_IDS.map((id) => ({
     id,
@@ -173,12 +188,29 @@ export function runInstalledNsisSmoke({
   ) {
     throw new Error("installed-smoke-operations-invalid");
   }
-  const prerequisites = boundedOperationResult(
-    operations.inspectPrerequisites(request),
-    "installed-smoke-prerequisites",
-  );
-  validatePrerequisites(prerequisites);
-  const receipt = baseReceipt(request, prerequisites, clock().toISOString());
+  const startedAtUtc = clock().toISOString();
+  let prerequisites;
+  try {
+    prerequisites = boundedOperationResult(
+      operations.inspectPrerequisites(request),
+      "installed-smoke-prerequisites",
+    );
+    validatePrerequisites(prerequisites);
+  } catch {
+    const receipt = baseReceipt(
+      request,
+      unavailablePrerequisites(),
+      startedAtUtc,
+    );
+    receipt.result = "failed";
+    receipt.failure = failure(
+      "prerequisite-inspection-failed",
+      "prerequisites",
+    );
+    receipt.completedAtUtc = clock().toISOString();
+    return receipt;
+  }
+  const receipt = baseReceipt(request, prerequisites, startedAtUtc);
   const missing = prerequisiteFailures.find(([key]) => !prerequisites[key]);
   if (missing) {
     receipt.result = "blocked";
@@ -222,12 +254,16 @@ export function runInstalledNsisSmoke({
         durationMs: 0,
         evidenceSha256: null,
       };
-      receipt.failure ??= failure(
-        error instanceof InstalledSmokeOperationError
-          ? error.code
-          : "step-failed",
-        id,
-      );
+      if (cleanup) {
+        receipt.failure = failure("cleanup-failed", id);
+      } else {
+        receipt.failure ??= failure(
+          error instanceof InstalledSmokeOperationError
+            ? error.code
+            : "step-failed",
+          id,
+        );
+      }
       failed = true;
     }
   }

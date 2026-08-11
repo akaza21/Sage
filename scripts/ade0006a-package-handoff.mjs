@@ -2,6 +2,7 @@ import { realpath } from "node:fs/promises";
 import path from "node:path";
 
 import { hashBoundedFile } from "./ade0006a-package-members.mjs";
+import { buildSourceManifest } from "./generate-source-manifest.mjs";
 
 const participants = ["candidate", "control"];
 const installers = ["msi", "nsis"];
@@ -32,12 +33,13 @@ async function authenticateFile({
   maximumExecutableBytes,
   scratchRoot,
   requireExpectedBytes = true,
+  requireWithinScratch = true,
 }) {
   if (typeof filePath !== "string" || !path.isAbsolute(filePath)) {
     throw new Error(`artifact-handoff-${label}-path-invalid`);
   }
   const resolved = await realpath(filePath);
-  if (!within(resolved, scratchRoot)) {
+  if (requireWithinScratch && !within(resolved, scratchRoot)) {
     throw new Error(`artifact-handoff-${label}-outside-scratch`);
   }
   const evidence = await hashBoundedFile(resolved, maximumExecutableBytes, {
@@ -51,6 +53,25 @@ async function authenticateFile({
     throw new Error(`artifact-handoff-${label}-mismatch`);
   }
   return { path: resolved, ...evidence };
+}
+
+async function authenticateSource({ sourceRoot, sourceManifest, scratchRoot }) {
+  if (typeof sourceRoot !== "string" || !path.isAbsolute(sourceRoot)) {
+    throw new Error("artifact-handoff-source-path-invalid");
+  }
+  const resolved = await realpath(sourceRoot);
+  if (!within(resolved, scratchRoot)) {
+    throw new Error("artifact-handoff-source-outside-scratch");
+  }
+  const observed = buildSourceManifest(resolved, sourceManifest?.include);
+  if (
+    observed.aggregateSha256 !== sourceManifest?.aggregateSha256 ||
+    observed.fileCount !== sourceManifest?.fileCount ||
+    observed.totalBytes !== sourceManifest?.totalBytes
+  ) {
+    throw new Error("artifact-handoff-source-mismatch");
+  }
+  return resolved;
 }
 
 export async function authenticatePackageArtifactHandoff({
@@ -175,10 +196,19 @@ export async function deliverPackageArtifactHandoff({
   rawRoot,
   frozen,
   git,
+  node,
+  sourceRoot,
+  sourceManifest,
   ...authentication
 }) {
   assertPackageArtifactHandoffCallback(callback);
   if (!callback || receipt.result !== "passed") return false;
+  const resolvedScratch = await realpath(authentication.scratchRoot);
+  const authenticatedSourceRoot = await authenticateSource({
+    sourceRoot,
+    sourceManifest,
+    scratchRoot: resolvedScratch,
+  });
   const artifacts = await authenticatePackageArtifactHandoff({
     receipt,
     maximumInstallerBytes:
@@ -195,8 +225,19 @@ export async function deliverPackageArtifactHandoff({
         expected: git,
         label: "git",
         maximumExecutableBytes: authentication.maximumExecutableBytes,
-        scratchRoot: await realpath(authentication.scratchRoot),
+        scratchRoot: resolvedScratch,
         requireExpectedBytes: false,
+      })
+    : null;
+  const authenticatedNode = node
+    ? await authenticateFile({
+        filePath: node.path,
+        expected: node,
+        label: "node",
+        maximumExecutableBytes: authentication.maximumExecutableBytes,
+        scratchRoot: resolvedScratch,
+        requireExpectedBytes: false,
+        requireWithinScratch: false,
       })
     : null;
   await callback({
@@ -204,8 +245,9 @@ export async function deliverPackageArtifactHandoff({
     receiptBytes: Buffer.from(receiptBytes),
     rawRoot,
     frozen: structuredClone(frozen),
+    sourceRoot: authenticatedSourceRoot,
     artifacts,
-    tools: { git: authenticatedGit },
+    tools: { git: authenticatedGit, node: authenticatedNode },
   });
   return true;
 }
