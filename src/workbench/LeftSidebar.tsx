@@ -4,12 +4,12 @@ import {
   FolderOpen,
   FolderPlus,
   Plus,
-  Search,
   Settings,
   SquarePen,
 } from "lucide-react";
 
 import { useWorkbenchStore } from "../app/store";
+import { ChatSearchControl } from "../features/chatSearch/ChatSearchControl";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
 
 export function LeftSidebar() {
@@ -32,10 +32,7 @@ export function LeftSidebar() {
           <SquarePen size={16} aria-hidden="true" />
           New chat
         </button>
-        <button className="project-action" type="button" title="Search chats">
-          <Search size={16} aria-hidden="true" />
-          Search chats
-        </button>
+        <ChatSearchControl />
       </div>
 
       <div className="project-sidebar__scroll">

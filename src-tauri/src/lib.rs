@@ -3,6 +3,8 @@ mod chat_archive;
 mod chat_archive_commands;
 mod chat_commands;
 mod chat_lifecycle;
+mod chat_search;
+mod chat_search_commands;
 mod commands;
 mod domain;
 mod editor;
@@ -147,6 +149,7 @@ pub fn run() {
             chat_archive_commands::archive_chat,
             chat_commands::rename_chat,
             chat_archive_commands::restore_chat,
+            chat_search_commands::search_project_chats,
             project_commands::persist_project_layout,
             project_commands::persist_project_layout_and_close,
             project_commands::switch_project,
