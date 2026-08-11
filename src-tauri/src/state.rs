@@ -18,11 +18,16 @@ pub struct AppState {
     pub harnesses: HarnessCatalog,
     pub editor_operations: EditorOperationCoordinator,
     pub project_transitions: tokio::sync::Mutex<u64>,
+    pub startup_recovery_notice: Option<String>,
 }
 
 impl AppState {
     #[cfg(test)]
     pub fn try_new(database: Database) -> AppResult<Self> {
+        let trash_recovery = crate::resource_trash_commands::recover_pending_at_startup(&database)?;
+        let transition_epoch = trash_recovery
+            .as_ref()
+            .map_or(0, |recovery| recovery.transition_epoch);
         let codex = startup_codex_binding_registration();
         let acp =
             AcpService::new_with_codex_for_test(database.clone(), codex.clone()).map_err(|_| {
@@ -35,11 +40,16 @@ impl AppState {
             acp,
             harnesses: HarnessCatalog::with_codex_registration(codex),
             editor_operations: EditorOperationCoordinator::default(),
-            project_transitions: tokio::sync::Mutex::new(0),
+            project_transitions: tokio::sync::Mutex::new(transition_epoch),
+            startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
         })
     }
 
     pub fn try_new_desktop(database: Database, app: tauri::AppHandle) -> AppResult<Self> {
+        let trash_recovery = crate::resource_trash_commands::recover_pending_at_startup(&database)?;
+        let transition_epoch = trash_recovery
+            .as_ref()
+            .map_or(0, |recovery| recovery.transition_epoch);
         let codex = startup_codex_binding_registration();
         let acp = AcpService::new_with_notification_sink_and_codex(
             database.clone(),
@@ -56,7 +66,8 @@ impl AppState {
             acp,
             harnesses: HarnessCatalog::with_codex_registration(codex),
             editor_operations: EditorOperationCoordinator::default(),
-            project_transitions: tokio::sync::Mutex::new(0),
+            project_transitions: tokio::sync::Mutex::new(transition_epoch),
+            startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
         })
     }
 
@@ -66,6 +77,10 @@ impl AppState {
         app: tauri::AppHandle,
         binding: crate::acp::service::CharacterizationBinding,
     ) -> AppResult<Self> {
+        let trash_recovery = crate::resource_trash_commands::recover_pending_at_startup(&database)?;
+        let transition_epoch = trash_recovery
+            .as_ref()
+            .map_or(0, |recovery| recovery.transition_epoch);
         let codex = startup_codex_binding_registration();
         let acp = AcpService::new_with_characterization_sink(
             database.clone(),
@@ -83,7 +98,8 @@ impl AppState {
             acp,
             harnesses: HarnessCatalog::with_codex_registration_and_characterization(codex),
             editor_operations: EditorOperationCoordinator::default(),
-            project_transitions: tokio::sync::Mutex::new(0),
+            project_transitions: tokio::sync::Mutex::new(transition_epoch),
+            startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
         })
     }
 
@@ -92,6 +108,10 @@ impl AppState {
         database: Database,
         binding: crate::acp::service::CharacterizationBinding,
     ) -> AppResult<Self> {
+        let trash_recovery = crate::resource_trash_commands::recover_pending_at_startup(&database)?;
+        let transition_epoch = trash_recovery
+            .as_ref()
+            .map_or(0, |recovery| recovery.transition_epoch);
         let codex = startup_codex_binding_registration();
         let acp =
             AcpService::new_characterization_for_test(database.clone(), binding, codex.clone())
@@ -105,7 +125,8 @@ impl AppState {
             acp,
             harnesses: HarnessCatalog::with_codex_registration_and_characterization(codex),
             editor_operations: EditorOperationCoordinator::default(),
-            project_transitions: tokio::sync::Mutex::new(0),
+            project_transitions: tokio::sync::Mutex::new(transition_epoch),
+            startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
         })
     }
 

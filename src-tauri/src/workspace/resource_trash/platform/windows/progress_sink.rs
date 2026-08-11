@@ -14,7 +14,7 @@ use windows::{
             IShellItem, SHCreateItemFromParsingName,
         },
     },
-    core::{HRESULT, PCWSTR, Ref, implement},
+    core::{HRESULT, IUnknown, Interface, PCWSTR, Ref, implement},
 };
 
 use crate::error::{AppError, AppResult};
@@ -23,15 +23,64 @@ use super::{ResourceTrashAuthority, verify_visible_source};
 
 #[derive(Default)]
 struct ProgressState {
-    pre_delete_seen: bool,
+    pre_delete_count: u8,
+    post_delete_count: u8,
     post_delete_result: Option<HRESULT>,
     validation_error: Option<String>,
+}
+
+impl ProgressState {
+    fn reject(&mut self, message: &str) -> windows::core::Result<()> {
+        self.validation_error.get_or_insert_with(|| message.into());
+        Err(E_FAIL.into())
+    }
+
+    fn record_pre(
+        &mut self,
+        item_matches: bool,
+        visible_identity_valid: bool,
+    ) -> windows::core::Result<()> {
+        if !item_matches {
+            return self
+                .reject("Recycle Bin pre-delete callback item did not match the queued item");
+        }
+        if self.pre_delete_count != 0 || self.post_delete_count != 0 {
+            return self.reject("Recycle Bin pre-delete callback was duplicated or out of order");
+        }
+        if !visible_identity_valid {
+            return self.reject("Recycle Bin source identity changed before mutation");
+        }
+        self.pre_delete_count = 1;
+        Ok(())
+    }
+
+    fn record_post(&mut self, item_matches: bool, result: HRESULT) -> windows::core::Result<()> {
+        if !item_matches {
+            return self
+                .reject("Recycle Bin post-delete callback item did not match the queued item");
+        }
+        if self.pre_delete_count != 1 || self.post_delete_count != 0 {
+            return self.reject("Recycle Bin post-delete callback was duplicated or out of order");
+        }
+        self.post_delete_count = 1;
+        self.post_delete_result = Some(result);
+        Ok(())
+    }
 }
 
 #[implement(IFileOperationProgressSink)]
 struct TrashProgressSink {
     authority: Arc<ResourceTrashAuthority>,
+    queued_item_identity: IUnknown,
     state: Arc<Mutex<ProgressState>>,
+}
+
+impl TrashProgressSink {
+    fn item_matches(&self, item: &Ref<'_, IShellItem>) -> bool {
+        item.as_ref()
+            .and_then(|item| item.cast::<IUnknown>().ok())
+            .is_some_and(|identity| identity.as_raw() == self.queued_item_identity.as_raw())
+    }
 }
 
 #[allow(non_snake_case)]
@@ -47,36 +96,29 @@ impl IFileOperationProgressSink_Impl for TrashProgressSink_Impl {
     fn PreDeleteItem(
         &self,
         _dwflags: u32,
-        _psiitem: Ref<'_, IShellItem>,
+        psiitem: Ref<'_, IShellItem>,
     ) -> windows::core::Result<()> {
+        let item_matches = self.item_matches(&psiitem);
+        let visible_identity_valid = verify_visible_source(&self.authority).is_ok();
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        match verify_visible_source(&self.authority) {
-            Ok(()) => {
-                state.pre_delete_seen = true;
-                Ok(())
-            }
-            Err(error) => {
-                state.validation_error = Some(error.to_string());
-                Err(E_FAIL.into())
-            }
-        }
+        state.record_pre(item_matches, visible_identity_valid)
     }
 
     fn PostDeleteItem(
         &self,
         _dwflags: u32,
-        _psiitem: Ref<'_, IShellItem>,
+        psiitem: Ref<'_, IShellItem>,
         hrdelete: HRESULT,
         _psinewlycreated: Ref<'_, IShellItem>,
     ) -> windows::core::Result<()> {
+        let item_matches = self.item_matches(&psiitem);
         self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .post_delete_result = Some(hrdelete);
-        Ok(())
+            .record_post(item_matches, hrdelete)
     }
 
     fn PreRenameItem(
@@ -222,8 +264,12 @@ where
         AppError::InvalidRequest(format!("Recycle Bin flags were rejected: {error}"))
     })?;
     let state = Arc::new(Mutex::new(ProgressState::default()));
+    let queued_item_identity = item.cast::<IUnknown>().map_err(|error| {
+        AppError::InvalidRequest(format!("Recycle Bin item identity binding failed: {error}"))
+    })?;
     let sink: IFileOperationProgressSink = TrashProgressSink {
         authority: Arc::clone(&authority),
+        queued_item_identity,
         state: Arc::clone(&state),
     }
     .into();
@@ -253,7 +299,7 @@ fn validate_completion(aborted: bool, state: &ProgressState) -> AppResult<()> {
             "Recycle Bin operation was aborted before completion".into(),
         ));
     }
-    if !state.pre_delete_seen {
+    if state.pre_delete_count != 1 {
         return Err(AppError::InvalidRequest(
             "Recycle Bin pre-delete identity callback was not observed".into(),
         ));
@@ -261,6 +307,11 @@ fn validate_completion(aborted: bool, state: &ProgressState) -> AppResult<()> {
     let post = state.post_delete_result.ok_or_else(|| {
         AppError::InvalidRequest("Recycle Bin post-delete result was not observed".into())
     })?;
+    if state.post_delete_count != 1 {
+        return Err(AppError::InvalidRequest(
+            "Recycle Bin post-delete callback count was not exact".into(),
+        ));
+    }
     post.ok().map_err(|error| {
         AppError::InvalidRequest(format!("Recycle Bin item deletion failed: {error}"))
     })
@@ -305,7 +356,8 @@ mod tests {
     #[test]
     fn aborted_or_failed_item_is_never_accepted_as_complete() {
         let successful = ProgressState {
-            pre_delete_seen: true,
+            pre_delete_count: 1,
+            post_delete_count: 1,
             post_delete_result: Some(HRESULT(0)),
             validation_error: None,
         };
@@ -313,10 +365,36 @@ mod tests {
         assert!(validate_completion(true, &successful).is_err());
 
         let failed_item = ProgressState {
-            pre_delete_seen: true,
+            pre_delete_count: 1,
+            post_delete_count: 1,
             post_delete_result: Some(E_FAIL),
             validation_error: None,
         };
         assert!(validate_completion(false, &failed_item).is_err());
+    }
+
+    #[test]
+    fn callback_validator_rejects_null_mismatch_duplicate_and_out_of_order_items() {
+        let mut null_pre = ProgressState::default();
+        assert!(null_pre.record_pre(false, true).is_err());
+
+        let mut changed = ProgressState::default();
+        assert!(changed.record_pre(true, false).is_err());
+
+        let mut duplicate = ProgressState::default();
+        duplicate.record_pre(true, true).unwrap();
+        assert!(duplicate.record_pre(true, true).is_err());
+
+        let mut out_of_order = ProgressState::default();
+        assert!(out_of_order.record_post(true, HRESULT(0)).is_err());
+
+        let mut duplicate_post = ProgressState::default();
+        duplicate_post.record_pre(true, true).unwrap();
+        duplicate_post.record_post(true, HRESULT(0)).unwrap();
+        assert!(duplicate_post.record_post(true, HRESULT(0)).is_err());
+
+        let mut mismatched_post = ProgressState::default();
+        mismatched_post.record_pre(true, true).unwrap();
+        assert!(mismatched_post.record_post(false, HRESULT(0)).is_err());
     }
 }

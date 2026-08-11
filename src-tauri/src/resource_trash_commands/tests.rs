@@ -12,13 +12,14 @@ use crate::{
     state::AppState,
     workspace::{
         Workspace,
-        resource_trash::{ResourceTrashCommit, ResourceTrashMarker},
+        resource_trash::{ResourceTrashCommit, ResourceTrashIdentity, ResourceTrashMarker},
     },
 };
 
 fn trash_with_fixture(
     workspace: &Workspace,
     request: &TrashProjectResourceRequest,
+    _identity: ResourceTrashIdentity,
     marker: Arc<ResourceTrashMarker>,
 ) -> AppResult<ResourceTrashCommit> {
     let parent = workspace.preflight_resource_trash(&request.source, request.kind)?;
@@ -112,6 +113,126 @@ impl Drop for Fixture {
     }
 }
 
+fn persist_fixture_intent(fixture: &Fixture) {
+    let request = fixture.file_request();
+    let workspace = fixture
+        .state
+        .database
+        .resolve_active_resource(&request.source)
+        .unwrap();
+    let identity = workspace
+        .resource_trash_identity(&request.source, request.kind)
+        .unwrap();
+    intent::persist(
+        &fixture.state.database,
+        &intent::PendingTrashIntent::new(&request, identity),
+    )
+    .unwrap();
+}
+
+fn pending_intent_count(fixture: &Fixture) -> i64 {
+    fixture
+        .state
+        .database
+        .connection()
+        .query_row("SELECT COUNT(*) FROM resource_trash_intents", [], |row| {
+            row.get(0)
+        })
+        .unwrap()
+}
+
+#[test]
+fn restart_before_effect_clears_intent_once_without_changing_the_resource() {
+    let fixture = Fixture::new();
+    persist_fixture_intent(&fixture);
+
+    let recovered = intent::recover_at_startup(&fixture.state.database)
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(recovered.transition_epoch, 1);
+    assert!(recovered.notice.contains("EffectUnknown"));
+    assert!(fixture.root.join("src/closed.rs").is_file());
+    assert_eq!(pending_intent_count(&fixture), 0);
+    assert!(
+        intent::recover_at_startup(&fixture.state.database)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        fixture
+            .state
+            .database
+            .bootstrap_snapshot()
+            .unwrap()
+            .selected_resource,
+        Some(fixture.file_request().source)
+    );
+}
+
+#[test]
+fn restart_during_effect_preserves_an_identity_mismatched_replacement() {
+    let fixture = Fixture::new();
+    persist_fixture_intent(&fixture);
+    fs::rename(
+        fixture.root.join("src/closed.rs"),
+        fixture.root.join("src/original.rs"),
+    )
+    .unwrap();
+    fs::write(fixture.root.join("src/closed.rs"), "replacement\n").unwrap();
+
+    let recovered = intent::recover_at_startup(&fixture.state.database)
+        .unwrap()
+        .unwrap();
+
+    assert!(recovered.notice.contains("identity could not be confirmed"));
+    assert_eq!(
+        fs::read_to_string(fixture.root.join("src/closed.rs")).unwrap(),
+        "replacement\n"
+    );
+    assert_eq!(pending_intent_count(&fixture), 0);
+    assert_eq!(
+        fixture
+            .state
+            .database
+            .bootstrap_snapshot()
+            .unwrap()
+            .selected_resource,
+        Some(fixture.file_request().source)
+    );
+}
+
+#[test]
+fn restart_after_effect_repairs_selection_and_never_applies_twice() {
+    let fixture = Fixture::new();
+    persist_fixture_intent(&fixture);
+    fs::remove_file(fixture.root.join("src/closed.rs")).unwrap();
+
+    let recovered = intent::recover_at_startup(&fixture.state.database)
+        .unwrap()
+        .unwrap();
+
+    assert!(recovered.notice.contains("selection was repaired"));
+    assert_eq!(pending_intent_count(&fixture), 0);
+    assert_eq!(
+        fixture
+            .state
+            .database
+            .bootstrap_snapshot()
+            .unwrap()
+            .selected_resource,
+        Some(ResourceRef {
+            root_id: fixture.root_id.clone(),
+            relative_path: "src".into(),
+        })
+    );
+    assert!(
+        intent::recover_at_startup(&fixture.state.database)
+            .unwrap()
+            .is_none()
+    );
+}
+
 #[test]
 fn committed_file_trash_increments_epoch_and_selects_parent() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -135,6 +256,36 @@ fn committed_file_trash_increments_epoch_and_selects_parent() {
             Some(result.parent)
         );
         assert!(!fixture.root.join("src/closed.rs").exists());
+    });
+}
+
+#[test]
+fn adapter_completion_without_mutation_marker_clears_intent_and_fails_closed() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let error = execute_with_operation(
+            &fixture.state,
+            fixture.file_request(),
+            |workspace, request, _identity, _marker| {
+                let parent = workspace.preflight_resource_trash(&request.source, request.kind)?;
+                Ok(ResourceTrashCommit {
+                    source: request.source.clone(),
+                    parent,
+                    resource_confirmed: true,
+                    parent_listing: None,
+                    warning: None,
+                })
+            },
+            |_| Ok(()),
+            || Ok(()),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("mutation boundary"));
+        assert!(fixture.root.join("src/closed.rs").is_file());
+        assert_eq!(pending_intent_count(&fixture), 0);
+        assert_eq!(*fixture.state.project_transitions.lock().await, 0);
     });
 }
 

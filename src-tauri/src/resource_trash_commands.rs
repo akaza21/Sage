@@ -16,7 +16,8 @@ use crate::{
     workspace::{
         Workspace,
         resource_trash::{
-            ResourceTrashCommit, ResourceTrashMarker, supported as resource_trash_supported,
+            ResourceTrashCommit, ResourceTrashIdentity, ResourceTrashMarker,
+            supported as resource_trash_supported,
         },
     },
 };
@@ -44,8 +45,8 @@ async fn execute(
     execute_with_operation(
         state,
         request,
-        |workspace, request, marker| {
-            workspace.trash_resource_observed(&request.source, request.kind, marker)
+        |workspace, request, identity, marker| {
+            workspace.trash_resource_observed(&request.source, request.kind, identity, marker)
         },
         |_| Ok(()),
         || Ok(()),
@@ -89,6 +90,7 @@ where
     O: FnOnce(
             &Workspace,
             &TrashProjectResourceRequest,
+            ResourceTrashIdentity,
             Arc<ResourceTrashMarker>,
         ) -> AppResult<ResourceTrashCommit>
         + Send
@@ -174,17 +176,63 @@ where
     O: FnOnce(
         &Workspace,
         &TrashProjectResourceRequest,
+        ResourceTrashIdentity,
         Arc<ResourceTrashMarker>,
     ) -> AppResult<ResourceTrashCommit>,
     A: FnOnce(&rusqlite::Transaction<'_>) -> AppResult<()>,
 {
+    let workspace = admit_request(&database, &request)?;
+    let identity = workspace.resource_trash_identity(&request.source, request.kind)?;
+    let pending = intent::PendingTrashIntent::new(&request, identity);
+    intent::persist(&database, &pending)?;
+    let commit = match operation(&workspace, &request, identity, Arc::clone(&marker)) {
+        Ok(commit) if marker.mutation_started() => commit,
+        Ok(_) => {
+            intent::clear(&database, &pending)?;
+            return Err(AppError::InvalidRequest(
+                "Recycle Bin operation completed without recording its mutation boundary".into(),
+            ));
+        }
+        Err(error) if !marker.mutation_started() => {
+            intent::clear(&database, &pending)?;
+            return Err(error);
+        }
+        Err(error) => return Err(error),
+    };
+    settle_commit(database, &request, &pending, &commit, after_trash)?;
+    Ok(commit)
+}
+
+fn admit_request(
+    database: &Database,
+    request: &TrashProjectResourceRequest,
+) -> AppResult<Workspace> {
     let mut connection = database.write_connection()?;
     let transaction = connection.transaction()?;
-    let workspace = resolve_workspace(&transaction, &request)?;
+    let workspace = resolve_workspace(&transaction, request)?;
     layout::ensure_resource_closed(&transaction, &request.project_id, &request.source)?;
     validate_layout(&transaction, &request.current_layout)?;
-    layout::ensure_request_resource_closed(&request)?;
-    let commit = operation(&workspace, &request, marker)?;
+    layout::ensure_request_resource_closed(request)?;
+    transaction.commit()?;
+    Ok(workspace)
+}
+
+fn settle_commit<A>(
+    database: Database,
+    request: &TrashProjectResourceRequest,
+    pending: &intent::PendingTrashIntent,
+    commit: &ResourceTrashCommit,
+    after_trash: A,
+) -> AppResult<()>
+where
+    A: FnOnce(&rusqlite::Transaction<'_>) -> AppResult<()>,
+{
+    let mut connection = database.write_connection()?;
+    let transaction = connection.transaction()?;
+    let _workspace = resolve_workspace(&transaction, request)?;
+    layout::ensure_resource_closed(&transaction, &request.project_id, &request.source)?;
+    validate_layout(&transaction, &request.current_layout)?;
+    layout::ensure_request_resource_closed(request)?;
     if commit.resource_confirmed {
         layout::migrate_selection(
             &transaction,
@@ -194,8 +242,9 @@ where
         )?;
     }
     after_trash(&transaction)?;
+    intent::delete_exact(&transaction, pending)?;
     transaction.commit()?;
-    Ok(commit)
+    Ok(())
 }
 
 fn recover_effect_unknown(
@@ -203,22 +252,14 @@ fn recover_effect_unknown(
     request: TrashProjectResourceRequest,
     marker: &ResourceTrashMarker,
 ) -> AppResult<ResourceTrashCommit> {
-    let mut connection = database.write_connection()?;
-    let transaction = connection.transaction()?;
-    let workspace = resolve_workspace(&transaction, &request)?;
-    layout::ensure_resource_closed(&transaction, &request.project_id, &request.source)?;
-    validate_layout(&transaction, &request.current_layout)?;
-    layout::ensure_request_resource_closed(&request)?;
-    let commit = workspace.confirm_trashed_resource(&request.source, marker)?;
-    if commit.resource_confirmed {
-        layout::migrate_selection(
-            &transaction,
-            &request.project_id,
-            &commit.source,
-            &commit.parent,
-        )?;
-    }
-    transaction.commit()?;
+    let pending = intent::load(&database)?.ok_or_else(|| {
+        AppError::InvalidRequest("pending Recycle Bin intent is unavailable".into())
+    })?;
+    let workspace = admit_request(&database, &request)?;
+    let commit = workspace
+        .confirm_trashed_resource(&request.source, marker)
+        .unwrap_or_else(|_| fallback_commit(&request));
+    settle_commit(database, &request, &pending, &commit, |_| Ok(()))?;
     Ok(commit)
 }
 
@@ -354,6 +395,13 @@ fn result_from_commit(
     }
 }
 
+pub(crate) fn recover_pending_at_startup(
+    database: &Database,
+) -> AppResult<Option<intent::StartupTrashRecovery>> {
+    intent::recover_at_startup(database)
+}
+
+mod intent;
 mod layout;
 
 #[cfg(test)]

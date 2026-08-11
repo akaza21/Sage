@@ -10,6 +10,8 @@ use crate::{
 
 use super::Workspace;
 
+pub(crate) use platform::ResourceTrashIdentity;
+
 pub(crate) fn supported() -> bool {
     platform::SUPPORTED
 }
@@ -70,6 +72,27 @@ impl ResourceTrashMarker {
 }
 
 impl Workspace {
+    pub(crate) fn resource_trash_identity(
+        &self,
+        source: &ResourceRef,
+        kind: TrashResourceKind,
+    ) -> AppResult<ResourceTrashIdentity> {
+        let parent = self.preflight_resource_trash(source, kind)?;
+        let source_name = source
+            .relative_path
+            .rsplit_once('/')
+            .map_or(source.relative_path.as_str(), |(_, name)| name);
+        platform::observe_identity(
+            platform::ParentAuthority {
+                root: self.root(),
+                expected_root: self.root_identity(),
+                relative_path: &parent.relative_path,
+            },
+            source_name,
+            kind,
+        )
+    }
+
     pub(crate) fn preflight_resource_trash(
         &self,
         source: &ResourceRef,
@@ -129,6 +152,7 @@ impl Workspace {
         &self,
         source: &ResourceRef,
         kind: TrashResourceKind,
+        expected_identity: ResourceTrashIdentity,
         marker: Arc<ResourceTrashMarker>,
     ) -> AppResult<ResourceTrashCommit> {
         let source_path = super::validate_contract_path(&source.relative_path, false)
@@ -154,6 +178,7 @@ impl Workspace {
             },
             source_name,
             kind,
+            expected_identity,
             move |authority| {
                 observed_marker.retain(authority);
                 observed_marker.record_mutation_started();

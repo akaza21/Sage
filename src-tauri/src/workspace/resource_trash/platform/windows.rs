@@ -20,7 +20,10 @@ use crate::{
     workspace::{root_identity_file, root_identity_path},
 };
 
-use super::{ParentAuthority, ResourceTrashAuthority, TrashIdentityProof, TrashObservation};
+use super::{
+    ParentAuthority, ResourceTrashAuthority, ResourceTrashIdentity, TrashIdentityProof,
+    TrashObservation,
+};
 
 mod progress_sink;
 
@@ -109,6 +112,44 @@ fn parent_path(root: &Path, parent_relative: &str) -> PathBuf {
     }
 }
 
+fn open_authority(
+    parent_authority: ParentAuthority<'_>,
+    source_name: &str,
+    kind: TrashResourceKind,
+) -> AppResult<Arc<ResourceTrashAuthority>> {
+    let root = parent_authority.root;
+    let expected_root = parent_authority.expected_root;
+    let parent_relative = parent_authority.relative_path;
+    let directories = open_parent(parent_authority)?;
+    let source_path = parent_path(root, parent_relative).join(source_name);
+    let source = open_source(&source_path, kind)?;
+    let authority = Arc::new(ResourceTrashAuthority {
+        proof: TrashIdentityProof {
+            root: expected_root,
+            parent: root_identity_file(
+                directories
+                    .last()
+                    .expect("Recycle Bin root/parent authority exists"),
+            )?,
+            source: root_identity_file(&source)?,
+            kind,
+        },
+        _directories: directories,
+        _source: source,
+        source_path,
+    });
+    verify_visible_source(&authority)?;
+    Ok(authority)
+}
+
+pub(in crate::workspace::resource_trash) fn observe_identity(
+    parent_authority: ParentAuthority<'_>,
+    source_name: &str,
+    kind: TrashResourceKind,
+) -> AppResult<ResourceTrashIdentity> {
+    Ok(open_authority(parent_authority, source_name, kind)?.identity())
+}
+
 pub(super) fn verify_visible_authority(
     authority: &ResourceTrashAuthority,
     root: &Path,
@@ -161,6 +202,7 @@ pub(in crate::workspace::resource_trash) fn recycle_one<C, P, L>(
     parent_authority: ParentAuthority<'_>,
     source_name: &str,
     kind: TrashResourceKind,
+    expected_identity: ResourceTrashIdentity,
     mutation_started: C,
     preflight: P,
     list_after: L,
@@ -173,26 +215,21 @@ where
     let root = parent_authority.root;
     let expected_root = parent_authority.expected_root;
     let parent_relative = parent_authority.relative_path;
-    let directories = open_parent(parent_authority)?;
-    let source_path = parent_path(root, parent_relative).join(source_name);
-    let source = open_source(&source_path, kind)?;
-    let authority = Arc::new(ResourceTrashAuthority {
-        proof: TrashIdentityProof {
-            root: expected_root,
-            parent: root_identity_file(
-                directories
-                    .last()
-                    .expect("Recycle Bin root/parent authority exists"),
-            )?,
-            source: root_identity_file(&source)?,
-            kind,
-        },
-        _directories: directories,
-        _source: source,
-        source_path,
-    });
-    verify_visible_source(&authority)?;
     preflight()?;
+    let authority = open_authority(
+        ParentAuthority {
+            root,
+            expected_root,
+            relative_path: parent_relative,
+        },
+        source_name,
+        kind,
+    )?;
+    if authority.identity() != expected_identity {
+        return Err(AppError::InvalidRequest(
+            "Recycle Bin source identity changed after durable intent admission".into(),
+        ));
+    }
     verify_visible_source(&authority)?;
     progress_sink::recycle_on_sta(Arc::clone(&authority), mutation_started)?;
     let listing = observe_listing(&authority, root, parent_relative, list_after);

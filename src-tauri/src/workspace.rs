@@ -28,8 +28,17 @@ pub struct Workspace {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RootIdentity {
-    first: u64,
-    second: u64,
+    volume: u64,
+    file_id: [u8; 16],
+}
+
+impl RootIdentity {
+    pub(crate) fn stable_bytes(self) -> [u8; 24] {
+        let mut bytes = [0_u8; 24];
+        bytes[..8].copy_from_slice(&self.volume.to_be_bytes());
+        bytes[8..].copy_from_slice(&self.file_id);
+        bytes
+    }
 }
 
 impl Workspace {
@@ -262,9 +271,11 @@ pub(crate) fn root_identity_path(path: &Path) -> AppResult<RootIdentity> {
 pub(crate) fn root_identity_metadata(metadata: &fs::Metadata) -> AppResult<RootIdentity> {
     use std::os::unix::fs::MetadataExt;
 
+    let mut file_id = [0_u8; 16];
+    file_id[8..].copy_from_slice(&metadata.ino().to_be_bytes());
     Ok(RootIdentity {
-        first: metadata.dev(),
-        second: metadata.ino(),
+        volume: metadata.dev(),
+        file_id,
     })
 }
 
@@ -286,24 +297,30 @@ pub(crate) fn root_identity_path(path: &Path) -> AppResult<RootIdentity> {
 
 #[cfg(windows)]
 pub(crate) fn root_identity_file(file: &fs::File) -> AppResult<RootIdentity> {
-    use std::{mem::MaybeUninit, os::windows::io::AsRawHandle};
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::HANDLE;
     use windows_sys::Win32::Storage::FileSystem::{
-        BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+        FILE_ID_INFO, FileIdInfo, GetFileInformationByHandleEx,
     };
 
-    let mut information = MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::uninit();
-    // SAFETY: the file handle is live and the output points to writable storage for the call.
-    let success =
-        unsafe { GetFileInformationByHandle(file.as_raw_handle(), information.as_mut_ptr()) };
-    if success == 0 {
+    let mut information = FILE_ID_INFO::default();
+    // SAFETY: the file handle is live and the typed output has its exact Windows size.
+    if unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle() as HANDLE,
+            FileIdInfo,
+            (&raw mut information).cast(),
+            u32::try_from(std::mem::size_of::<FILE_ID_INFO>()).map_err(|_| {
+                AppError::InvalidRequest("Windows file identity size overflow".into())
+            })?,
+        )
+    } == 0
+    {
         return Err(std::io::Error::last_os_error().into());
     }
-    // SAFETY: GetFileInformationByHandle initialized the output on success.
-    let information = unsafe { information.assume_init() };
     Ok(RootIdentity {
-        first: u64::from(information.dwVolumeSerialNumber),
-        second: (u64::from(information.nFileIndexHigh) << 32)
-            | u64::from(information.nFileIndexLow),
+        volume: information.VolumeSerialNumber,
+        file_id: information.FileId.Identifier,
     })
 }
 
@@ -478,6 +495,23 @@ mod tests {
             );
         }
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn root_identity_preserves_the_high_half_of_a_128_bit_file_id() {
+        let low = RootIdentity {
+            volume: 7,
+            file_id: [0; 16],
+        };
+        let mut high_id = [0_u8; 16];
+        high_id[0] = 1;
+        let high = RootIdentity {
+            volume: 7,
+            file_id: high_id,
+        };
+
+        assert_ne!(low, high);
+        assert_ne!(low.stable_bytes(), high.stable_bytes());
     }
 
     #[cfg(unix)]

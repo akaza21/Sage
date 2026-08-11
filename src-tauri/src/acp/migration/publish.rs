@@ -19,6 +19,14 @@ pub(super) fn recover_or_publish(paths: &MigrationPaths) -> AppResult<bool> {
     let live_class = super::probe::classify_live(paths)?;
     match live_class {
         SchemaClass::CurrentV5 => {
+            verify_replacement_for(&paths.live, &manifest, SchemaClass::CurrentV5)?;
+            if paths.replacement_stage.exists() {
+                return invalid("published v5 coexists with a replacement stage");
+            }
+            cleanup_retired(paths, &manifest)?;
+            Ok(true)
+        }
+        SchemaClass::CurrentV6 => {
             verify_replacement(&paths.live, &manifest)?;
             if paths.replacement_stage.exists() {
                 return invalid("published v5 coexists with a replacement stage");
@@ -299,11 +307,24 @@ fn verify_restored_optional(
 }
 
 fn verify_replacement(path: &Path, manifest: &ReplacementManifest) -> AppResult<()> {
+    let expected_schema = match manifest.replacement_database.schema {
+        SchemaClass::CurrentV5 => SchemaClass::CurrentV5,
+        SchemaClass::CurrentV6 => SchemaClass::CurrentV6,
+        _ => return invalid("replacement manifest does not name a current schema"),
+    };
+    verify_replacement_for(path, manifest, expected_schema)
+}
+
+fn verify_replacement_for(
+    path: &Path,
+    manifest: &ReplacementManifest,
+    expected_schema: SchemaClass,
+) -> AppResult<()> {
     verify_file(path, &manifest.replacement)?;
     let connection = open_read_only(path)?;
     verify_sqlite(&connection)?;
     let database = database_fingerprint(&connection)?;
-    if database != manifest.replacement_database || database.schema != SchemaClass::CurrentV5 {
+    if database != manifest.replacement_database || database.schema != expected_schema {
         return invalid("replacement database fingerprint mismatch");
     }
     Ok(())

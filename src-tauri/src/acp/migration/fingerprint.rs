@@ -15,6 +15,7 @@ pub(super) use super::file_artifact::{FileFingerprint, file_fingerprint, open_re
 const INITIAL: &str = include_str!("../../../migrations/001_initial.sql");
 const V2: &str = include_str!("../../../migrations/002_diff_tabs.sql");
 const V3: &str = include_str!("../../../migrations/003_editor_buffers.sql");
+const V6: &str = include_str!("../../../migrations/006_resource_trash_intents.sql");
 const MAX_SCHEMA_OBJECTS: usize = 128;
 const MAX_SCHEMA_BYTES: usize = 1_048_576;
 const MAX_COLUMNS: usize = 128;
@@ -29,6 +30,7 @@ pub(super) enum SchemaClass {
     LegacyV3,
     LegacyV4,
     CurrentV5,
+    CurrentV6,
 }
 
 impl SchemaClass {
@@ -85,7 +87,7 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
         .query_map([], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     if versions.is_empty()
-        || versions.len() > 5
+        || versions.len() > 6
         || versions
             .iter()
             .enumerate()
@@ -97,8 +99,8 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
     if marker != 0 && marker != i64::from(version) {
         return invalid("Sage user_version does not match migration history");
     }
-    if version == 5 && marker != 5 {
-        return invalid("schema v5 requires both exact version markers");
+    if version >= 5 && marker != i64::from(version) {
+        return invalid("current schema requires both exact version markers");
     }
     let class = class_for_version(version)?;
     let actual = schema_fingerprint(connection)?;
@@ -224,6 +226,14 @@ fn expected_schema_fingerprint(version: u32) -> AppResult<String> {
         legacy::convert(&transaction, 0)?;
         transaction.commit()?;
     }
+    if version >= 6 {
+        expected.execute_batch(V6)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (6, 0)",
+            [],
+        )?;
+        expected.pragma_update(None, "user_version", 6)?;
+    }
     schema_fingerprint(&expected)
 }
 
@@ -234,6 +244,7 @@ fn class_for_version(version: u32) -> AppResult<SchemaClass> {
         3 => SchemaClass::LegacyV3,
         4 => SchemaClass::LegacyV4,
         5 => SchemaClass::CurrentV5,
+        6 => SchemaClass::CurrentV6,
         _ => return invalid("Sage schema version is above the supported maximum"),
     })
 }

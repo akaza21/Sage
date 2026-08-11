@@ -38,6 +38,7 @@ pub(crate) async fn build_bootstrap_snapshot(
     snapshot.transition_epoch = transition_epoch;
     snapshot.harnesses = state.harnesses.definitions();
     let Some(project) = &snapshot.project else {
+        append_startup_recovery_notice(&mut snapshot, state.startup_recovery_notice.as_deref());
         return Ok(snapshot);
     };
     let roots = state.database.root_records(&project.id)?;
@@ -54,8 +55,17 @@ pub(crate) async fn build_bootstrap_snapshot(
     snapshot.repositories = repository::project_status(repository_roots).await;
     snapshot.recovered_buffers = editor::recovered_buffers(&state.database, &project.id)?;
     merge_recovered_file_tabs(&mut snapshot);
+    append_startup_recovery_notice(&mut snapshot, state.startup_recovery_notice.as_deref());
     validate_tab_projection(&snapshot.tabs)?;
     Ok(snapshot)
+}
+
+fn append_startup_recovery_notice(snapshot: &mut BootstrapSnapshot, notice: Option<&str>) {
+    let Some(notice) = notice else { return };
+    snapshot.recovery_notice = Some(match snapshot.recovery_notice.take() {
+        Some(existing) => format!("{existing} {notice}"),
+        None => notice.into(),
+    });
 }
 
 fn merge_recovered_file_tabs(snapshot: &mut BootstrapSnapshot) {

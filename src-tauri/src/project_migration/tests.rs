@@ -96,7 +96,7 @@ fn migrates_legacy_root_tabs_session_and_dirty_buffer() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 5);
+    assert_eq!(version, 6);
     drop(database);
     fs::remove_dir_all(folder).unwrap();
 }
