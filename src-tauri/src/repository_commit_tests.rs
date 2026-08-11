@@ -83,6 +83,24 @@ fn write_executable(path: &Path, body: &str) {
     }
 }
 
+fn object_storage(root: &Path) -> (usize, u64) {
+    let mut files = 0;
+    let mut bytes = 0;
+    let mut pending = vec![root.join(".git/objects")];
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(directory).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_dir() {
+                pending.push(entry.path());
+            } else {
+                files += 1;
+                bytes += entry.metadata().unwrap().len();
+            }
+        }
+    }
+    (files, bytes)
+}
+
 fn ambient_fixture(root: &Path, environment: &[(&str, &OsStr)]) -> std::process::Output {
     let mut command = Command::new(std::env::current_exe().unwrap());
     command
@@ -363,6 +381,44 @@ fn ambient_git_redirections_cannot_escape_the_selected_repository() {
 }
 
 #[test]
+fn replacement_repository_cannot_rebind_an_open_workspace() {
+    let repository = TestRepository::new();
+    let original_head = seed_then_stage(&repository);
+    let workspace = repository.workspace();
+    let moved_root = repository.base.join("original-repository");
+    fs::rename(&repository.root, &moved_root).unwrap();
+
+    fs::create_dir(&repository.root).unwrap();
+    git(&repository.root, &["init", "-q"]);
+    git(
+        &repository.root,
+        &["config", "user.email", "replacement@example.invalid"],
+    );
+    git(&repository.root, &["config", "user.name", "Replacement"]);
+    fs::write(repository.root.join("replacement.txt"), "base\n").unwrap();
+    git(&repository.root, &["add", "--", "replacement.txt"]);
+    git(&repository.root, &["commit", "-q", "-m", "replacement"]);
+    fs::write(repository.root.join("replacement.txt"), "staged\n").unwrap();
+    git(&repository.root, &["add", "--", "replacement.txt"]);
+    let replacement_head = git_stdout(&repository.root, &["rev-parse", "HEAD"]);
+
+    let error = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(commit_staged(&workspace, "must not cross identity"))
+        .unwrap_err();
+
+    assert!(error.to_string().contains("root identity changed"));
+    assert_eq!(
+        git_stdout(&moved_root, &["rev-parse", "HEAD"]).trim(),
+        original_head
+    );
+    assert_eq!(
+        git_stdout(&repository.root, &["rev-parse", "HEAD"]),
+        replacement_head
+    );
+}
+
+#[test]
 fn missing_promisor_object_cannot_launch_a_lazy_fetch() {
     let repository = TestRepository::new();
     fs::write(repository.root.join("tracked.txt"), "base\n").unwrap();
@@ -600,6 +656,19 @@ fn unconfirmed_exit_returns_containment_and_keeps_mutation_admission_charged() {
                 ..
             }
         ));
+
+        let storage_before_retry = object_storage(&repository.root);
+        let blocked_retry = commit_staged_with_policy(
+            &repository.workspace(),
+            "blocked retry must not write an object",
+            reaper.mutation_policy(Duration::from_secs(3), Duration::from_millis(10)),
+        )
+        .await;
+        assert!(matches!(
+            blocked_retry,
+            Err(AppError::GitContainment { .. })
+        ));
+        assert_eq!(object_storage(&repository.root), storage_before_retry);
 
         let blocked = repository::run_git_with_policy(
             &repository.root,

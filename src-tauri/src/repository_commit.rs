@@ -49,6 +49,7 @@ pub(crate) async fn commit_staged_with_policy(
     process_policy: repository::GitProcessPolicy,
 ) -> AppResult<()> {
     let message = normalize_message(message)?;
+    workspace.ensure_root_identity()?;
     if !matches!(
         repository::repository_boundary(workspace.root()).await?,
         RepositoryBoundary::Exact
@@ -57,17 +58,20 @@ pub(crate) async fn commit_staged_with_policy(
             "Git commit requires a Project root that equals the repository top level".into(),
         ));
     }
+    workspace.ensure_root_identity()?;
+    let pre_ref_policy = process_policy.pre_ref_mutation(GIT_COMMIT_TIMEOUT);
     let head_ref = symbolic_head_ref(workspace).await?;
     reject_unfinished_history(workspace).await?;
     let unmerged =
-        repository::run_git(workspace.root(), &["ls-files", "--unmerged", "-z"], 1).await?;
+        crate::repository_workspace::run_git(workspace, &["ls-files", "--unmerged", "-z"], 1)
+            .await?;
     repository::ensure_success(&unmerged)?;
     if !unmerged.stdout.is_empty() || unmerged.stdout_truncated {
         return Err(AppError::InvalidRequest(
             "conflicted changes require the later conflict workflow".into(),
         ));
     }
-    let prepared = prepare_index(workspace, head_ref).await?;
+    let prepared = prepare_index(workspace, head_ref, pre_ref_policy.clone()).await?;
 
     let name = local_identity_value(workspace, "user.name").await?;
     let email = local_identity_value(workspace, "user.email").await?;
@@ -89,15 +93,20 @@ pub(crate) async fn commit_staged_with_policy(
         commit_arguments.extend(["-p", parent_oid]);
     }
     commit_arguments.extend(["-m", message.as_str()]);
-    let commit =
-        repository::run_git(workspace.root(), &commit_arguments, MAX_GIT_OID_BYTES).await?;
+    let commit = crate::repository_workspace::run_git_with_policy(
+        workspace,
+        &commit_arguments,
+        MAX_GIT_OID_BYTES,
+        pre_ref_policy,
+    )
+    .await?;
     repository::ensure_success(&commit)?;
     let commit_oid = bounded_oid(&commit, "commit")?;
     let expected_old = prepared
         .parent_oid
         .unwrap_or_else(|| "0".repeat(commit_oid.len()));
-    let output = repository::run_git_with_policy(
-        workspace.root(),
+    let output = crate::repository_workspace::run_git_with_policy(
+        workspace,
         &[
             "update-ref",
             "-m",
@@ -114,8 +123,8 @@ pub(crate) async fn commit_staged_with_policy(
 }
 
 async fn symbolic_head_ref(workspace: &Workspace) -> AppResult<String> {
-    let output = repository::run_git(
-        workspace.root(),
+    let output = crate::repository_workspace::run_git(
+        workspace,
         &["symbolic-ref", "--quiet", "HEAD"],
         MAX_GIT_REF_BYTES + 2,
     )
@@ -145,12 +154,22 @@ async fn symbolic_head_ref(workspace: &Workspace) -> AppResult<String> {
     Ok(head_ref.into())
 }
 
-async fn prepare_index(workspace: &Workspace, head_ref: String) -> AppResult<PreparedCommit> {
-    let tree = repository::run_git(workspace.root(), &["write-tree"], MAX_GIT_OID_BYTES).await?;
+async fn prepare_index(
+    workspace: &Workspace,
+    head_ref: String,
+    pre_ref_policy: repository::GitProcessPolicy,
+) -> AppResult<PreparedCommit> {
+    let tree = crate::repository_workspace::run_git_with_policy(
+        workspace,
+        &["write-tree"],
+        MAX_GIT_OID_BYTES,
+        pre_ref_policy,
+    )
+    .await?;
     repository::ensure_success(&tree)?;
     let tree_oid = bounded_oid(&tree, "tree")?;
-    let connectivity = repository::run_git(
-        workspace.root(),
+    let connectivity = crate::repository_workspace::run_git(
+        workspace,
         &[
             "rev-list",
             "--objects",
@@ -176,8 +195,8 @@ async fn prepare_index(workspace: &Workspace, head_ref: String) -> AppResult<Pre
         ));
     }
 
-    let parent = repository::run_git(
-        workspace.root(),
+    let parent = crate::repository_workspace::run_git(
+        workspace,
         &["rev-parse", "--verify", "--quiet", head_ref.as_str()],
         MAX_GIT_OID_BYTES,
     )
@@ -191,8 +210,8 @@ async fn prepare_index(workspace: &Workspace, head_ref: String) -> AppResult<Pre
 
     if let Some(parent_oid) = parent_oid.as_deref() {
         let parent_tree_expression = format!("{parent_oid}^{{tree}}");
-        let parent_tree = repository::run_git(
-            workspace.root(),
+        let parent_tree = crate::repository_workspace::run_git(
+            workspace,
             &["rev-parse", "--verify", parent_tree_expression.as_str()],
             MAX_GIT_OID_BYTES,
         )
@@ -204,8 +223,8 @@ async fn prepare_index(workspace: &Workspace, head_ref: String) -> AppResult<Pre
             ));
         }
     } else {
-        let initial_tree = repository::run_git(
-            workspace.root(),
+        let initial_tree = crate::repository_workspace::run_git(
+            workspace,
             &["ls-tree", "--name-only", "-z", tree_oid.as_str()],
             1,
         )
@@ -258,8 +277,8 @@ pub(crate) fn normalize_message(message: &str) -> AppResult<String> {
 }
 
 async fn local_identity_value(workspace: &Workspace, key: &str) -> AppResult<String> {
-    let output = repository::run_git(
-        workspace.root(),
+    let output = crate::repository_workspace::run_git(
+        workspace,
         &["config", "--local", "--no-includes", "--get", key],
         MAX_GIT_IDENTITY_BYTES + 2,
     )
@@ -298,8 +317,8 @@ async fn reject_unfinished_history(workspace: &Workspace) -> AppResult<()> {
         "rebase-merge",
         "rebase-apply",
     ] {
-        let output = repository::run_git(
-            workspace.root(),
+        let output = crate::repository_workspace::run_git(
+            workspace,
             &["rev-parse", "--path-format=absolute", "--git-path", marker],
             MAX_GIT_ADMIN_PATH_BYTES + 2,
         )

@@ -92,11 +92,18 @@ impl GitProcessPolicy {
             admission_timeout: GIT_ADMISSION_TIMEOUT,
             reap_timeout: Some(GIT_REAP_TIMEOUT),
             mutation: true,
+            visible_effect: true,
             post_reap_failure: true,
             stdout_reader_failure: false,
             reaper_control: None,
             containment_registry: None,
         }
+    }
+
+    pub(crate) fn pre_ref_post_reap_failure(command_timeout: Duration) -> Self {
+        let mut policy = Self::post_reap_failure(command_timeout);
+        policy.visible_effect = false;
+        policy
     }
 
     pub(crate) fn stdout_reader_failure(command_timeout: Duration) -> Self {
@@ -105,6 +112,7 @@ impl GitProcessPolicy {
             admission_timeout: GIT_ADMISSION_TIMEOUT,
             reap_timeout: Some(GIT_REAP_TIMEOUT),
             mutation: true,
+            visible_effect: true,
             post_reap_failure: false,
             stdout_reader_failure: true,
             reaper_control: None,
@@ -148,6 +156,7 @@ impl GitProcessTestHarness {
             ReaperWaitMode::Exhaust,
         );
         policy.mutation = false;
+        policy.visible_effect = false;
         (policy, handle)
     }
 
@@ -197,6 +206,7 @@ impl GitProcessTestHarness {
                 admission_timeout: GIT_ADMISSION_TIMEOUT,
                 reap_timeout: None,
                 mutation: true,
+                visible_effect: true,
                 post_reap_failure: false,
                 stdout_reader_failure: false,
                 reaper_control: Some(Arc::clone(&control)),

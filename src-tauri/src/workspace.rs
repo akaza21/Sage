@@ -63,6 +63,15 @@ impl Workspace {
         self.root_identity
     }
 
+    pub(crate) fn ensure_root_identity(&self) -> AppResult<()> {
+        if root_identity_path(&self.root)? != self.root_identity {
+            return Err(AppError::InvalidRequest(
+                "workspace root identity changed before Git access".into(),
+            ));
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
     pub fn resource(&self, relative_path: &str) -> AppResult<ResourceRef> {
         let resource = self.resource_unchecked(relative_path);

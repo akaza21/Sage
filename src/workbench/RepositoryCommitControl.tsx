@@ -36,8 +36,8 @@ export function RepositoryCommitControl({
       : null,
   );
   const staged = hasStagedChanges(repository);
-  const repositoryUnavailable =
-    repository.state !== "repository" || repository.truncated;
+  const editorUnavailable = repository.state !== "repository";
+  const repositoryUnavailable = editorUnavailable || repository.truncated;
   const validationError = message ? gitCommitMessageError(message) : null;
   const commitDisabled =
     controlsDisabled ||
@@ -90,7 +90,7 @@ export function RepositoryCommitControl({
           placeholder="Commit message"
           aria-describedby={description}
           aria-invalid={validationError || error ? "true" : undefined}
-          disabled={controlsDisabled || submitting || repositoryUnavailable}
+          disabled={controlsDisabled || submitting || editorUnavailable}
           onChange={(event) => {
             setMessage(event.target.value);
             clearError(repository.rootId);

@@ -51,7 +51,10 @@ pub(crate) async fn project_status(
 
 async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
     let started = Instant::now();
-    match repository::repository_boundary(workspace.root()).await? {
+    workspace.ensure_root_identity()?;
+    let boundary = repository::repository_boundary(workspace.root()).await?;
+    workspace.ensure_root_identity()?;
+    match boundary {
         RepositoryBoundary::Exact => {}
         RepositoryBoundary::Nested => {
             return Ok(RootRepositoryStatus::repository_subdirectory(
@@ -66,11 +69,10 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
             ));
         }
     }
-
     let branch = symbolic_branch(workspace).await?;
-    let base = repository::repository_diff_base(workspace.root()).await?;
-    let output = repository::run_git(
-        workspace.root(),
+    let base = diff_base(workspace).await?;
+    let output = crate::repository_workspace::run_git(
+        workspace,
         &[
             "diff",
             "--cached",
@@ -99,9 +101,35 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
     })
 }
 
+async fn diff_base(workspace: &Workspace) -> AppResult<String> {
+    let head = crate::repository_workspace::run_git(
+        workspace,
+        &["rev-parse", "--verify", "--quiet", "HEAD"],
+        256,
+    )
+    .await?;
+    if head.succeeded() {
+        return Ok("HEAD".into());
+    }
+    let empty_tree = crate::repository_workspace::run_git(
+        workspace,
+        &["hash-object", "-t", "tree", "--stdin"],
+        256,
+    )
+    .await?;
+    repository::ensure_success(&empty_tree)?;
+    let oid = std::str::from_utf8(&empty_tree.stdout)
+        .map_err(|_| AppError::Git("Git returned a non-UTF-8 object id".into()))?
+        .trim();
+    if oid.is_empty() {
+        return Err(AppError::Git("Git returned an empty tree object id".into()));
+    }
+    Ok(oid.into())
+}
+
 async fn symbolic_branch(workspace: &Workspace) -> AppResult<Option<String>> {
-    let output = repository::run_git(
-        workspace.root(),
+    let output = crate::repository_workspace::run_git(
+        workspace,
         &["symbolic-ref", "--quiet", "--short", "HEAD"],
         1024,
     )
@@ -186,7 +214,8 @@ fn index_status(status: &str) -> &'static str {
     match status.as_bytes().first() {
         Some(b'A') => "added",
         Some(b'D') => "deleted",
-        Some(b'M' | b'T') => "modified",
+        Some(b'M') => "modified",
+        Some(b'T') => "typeChanged",
         Some(b'U') => "conflicted",
         _ => "unknown",
     }

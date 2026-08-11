@@ -175,6 +175,53 @@ fn commit_and_post_commit_projection_never_launch_content_filters() {
 }
 
 #[test]
+fn post_commit_projection_preserves_a_staged_type_change() {
+    let fixture = TwoRootProject::new();
+    let linked_commit = Command::new("git")
+        .arg("-C")
+        .arg(&fixture.root_b)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .unwrap();
+    assert!(linked_commit.status.success());
+    let linked_commit = String::from_utf8(linked_commit.stdout).unwrap();
+    let cache_info = format!("160000,{},same.txt", linked_commit.trim());
+    git(
+        &fixture.root_b,
+        &["update-index", "--cacheinfo", &cache_info],
+    );
+
+    let database = Database::open(&fixture.base.join("sage.db")).unwrap();
+    let project = database.create_project_from_root(&fixture.root_a).unwrap();
+    database
+        .add_project_root(&project.id, &fixture.root_b)
+        .unwrap();
+    let roots = database.root_records(&project.id).unwrap();
+    let state = AppState::new(database);
+    let result = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(commit_git_repository_inner(
+            &state,
+            GitRepositoryCommitRequest {
+                project_id: project.id,
+                root_id: roots[0].id.clone(),
+                message: "project type change".into(),
+            },
+            0,
+        ))
+        .unwrap();
+
+    let type_change_root = result
+        .repositories
+        .roots
+        .iter()
+        .find(|root| root.root_id == roots[1].id)
+        .unwrap();
+    assert_eq!(type_change_root.changes.len(), 1);
+    assert_eq!(type_change_root.changes[0].index_status, "typeChanged");
+}
+
+#[test]
 fn stale_epoch_foreign_root_and_oversized_ids_reject_before_commit() {
     let fixture = TwoRootProject::new();
     let database = Database::open(&fixture.base.join("sage.db")).unwrap();

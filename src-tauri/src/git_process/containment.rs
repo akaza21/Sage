@@ -27,7 +27,7 @@ const IO_CLEANUP_TIMEOUT: Duration = Duration::from_millis(50);
 const REAPER_WAIT_TIMEOUT: Duration = Duration::from_millis(100);
 const REAPER_RETRY_DELAY: Duration = Duration::from_millis(25);
 #[cfg(test)]
-const TEST_RELEASE_GATE_TIMEOUT: Duration = Duration::from_secs(1);
+const TEST_RELEASE_GATE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(super) struct ContainmentRegistry {
     reaper_capacity: Arc<Semaphore>,
@@ -135,10 +135,10 @@ pub(super) async fn cleanup_failure(
 ) -> AppResult<GitOutput> {
     if failure.reaped {
         settle_readers(readers).await;
-        return Err(AppError::GitEffectUnknown(format!(
-            "{}; the Git process exited and was reaped",
-            failure.message
-        )));
+        return Err(settled_failure(
+            policy.visible_effect,
+            format!("{}; the Git process exited and was reaped", failure.message),
+        ));
     }
 
     let actual_kill_succeeded = child.start_kill().is_ok();
@@ -170,10 +170,13 @@ pub(super) async fn cleanup_failure(
             });
     if reaped {
         settle_readers(readers).await;
-        return Err(AppError::GitEffectUnknown(format!(
-            "{}; the Git process was terminated and reaped",
-            failure.message
-        )));
+        return Err(settled_failure(
+            policy.visible_effect,
+            format!(
+                "{}; the Git process was terminated and reaped",
+                failure.message
+            ),
+        ));
     }
 
     let state = if termination_proven {
@@ -204,6 +207,14 @@ pub(super) async fn cleanup_failure(
             )
         },
     ))
+}
+
+fn settled_failure(visible_effect: bool, message: String) -> AppError {
+    if visible_effect {
+        AppError::GitEffectUnknown(message)
+    } else {
+        AppError::Git(message)
+    }
 }
 
 pub(super) async fn reserve_reaper_owner(

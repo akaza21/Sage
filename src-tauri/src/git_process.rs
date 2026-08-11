@@ -34,6 +34,7 @@ pub(crate) struct GitProcessPolicy {
     admission_timeout: Duration,
     reap_timeout: Option<Duration>,
     mutation: bool,
+    visible_effect: bool,
     #[cfg(test)]
     post_reap_failure: bool,
     #[cfg(test)]
@@ -51,6 +52,7 @@ impl GitProcessPolicy {
             admission_timeout: GIT_ADMISSION_TIMEOUT,
             reap_timeout: Some(GIT_REAP_TIMEOUT),
             mutation: true,
+            visible_effect: true,
             #[cfg(test)]
             post_reap_failure: false,
             #[cfg(test)]
@@ -68,6 +70,7 @@ impl GitProcessPolicy {
             admission_timeout: GIT_ADMISSION_TIMEOUT,
             reap_timeout: Some(GIT_REAP_TIMEOUT),
             mutation: false,
+            visible_effect: false,
             #[cfg(test)]
             post_reap_failure: false,
             #[cfg(test)]
@@ -77,6 +80,28 @@ impl GitProcessPolicy {
             #[cfg(test)]
             containment_registry: None,
         }
+    }
+
+    pub(crate) fn pre_ref_mutation(&self, command_timeout: Duration) -> Self {
+        Self {
+            command_timeout,
+            admission_timeout: self.admission_timeout,
+            reap_timeout: Some(GIT_REAP_TIMEOUT),
+            mutation: true,
+            visible_effect: false,
+            #[cfg(test)]
+            post_reap_failure: false,
+            #[cfg(test)]
+            stdout_reader_failure: false,
+            #[cfg(test)]
+            reaper_control: None,
+            #[cfg(test)]
+            containment_registry: self.containment_registry.clone(),
+        }
+    }
+
+    pub(crate) fn has_visible_effect(&self) -> bool {
+        self.visible_effect
     }
 }
 

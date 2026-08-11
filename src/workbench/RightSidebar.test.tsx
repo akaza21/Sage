@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import { resourceKey } from "../domain/resourceIdentity";
-import type { ResourceRef } from "../domain/workbench";
+import type { ResourceRef, RootRepositoryStatus } from "../domain/workbench";
 import { workspaceSearchDesktop } from "../features/search";
 import { desktop } from "../services/desktop";
 import { RightSidebar } from "./RightSidebar";
@@ -293,6 +293,83 @@ describe("RightSidebar Source Control mutations", () => {
         name: "Commit message for Shared (root 2)",
       }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps the retained draft focusable after an effect-unknown projection", async () => {
+    const root: RootRepositoryStatus = {
+      rootId: "root-a",
+      state: "repository",
+      branch: "main",
+      changes: [
+        {
+          resource: { rootId: "root-a", relativePath: "staged.txt" },
+          indexStatus: "modified",
+          worktreeStatus: "unchanged",
+          additions: 1,
+          deletions: 0,
+        },
+      ],
+      truncated: false,
+      elapsedMs: 1,
+      message: null,
+    };
+    const commitRepository = vi.fn(async () => {
+      useWorkbenchStore.setState({
+        repositories: {
+          roots: [
+            {
+              ...root,
+              changes: [],
+              truncated: true,
+              message:
+                "Commit outcome is uncertain. Refresh Source Control to reconcile.",
+            },
+          ],
+          truncated: true,
+          elapsedMs: 2,
+        },
+        repositoryCommitError: {
+          rootId: "root-a",
+          kind: "effectUnknown",
+          message: "Commit outcome is uncertain",
+        },
+      });
+      return false;
+    });
+    useWorkbenchStore.setState({
+      sidebarOpen: true,
+      sidebarView: "sourceControl",
+      project: {
+        id: "project-a",
+        name: "A",
+        roots: [
+          {
+            id: "root-a",
+            name: "Alpha",
+            ordinal: 0,
+            availability: "available",
+            message: null,
+          },
+        ],
+      },
+      repositories: { roots: [root], truncated: false, elapsedMs: 1 },
+      commitRepository,
+    });
+
+    render(<RightSidebar compact={false} />);
+    const message = screen.getByRole("textbox", {
+      name: "Commit message for Alpha",
+    });
+    fireEvent.change(message, { target: { value: "Retain this draft" } });
+    fireEvent.submit(message.closest("form")!);
+
+    await vi.waitFor(() => expect(commitRepository).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(message).toHaveFocus());
+    expect(message).toBeEnabled();
+    expect(message).toHaveValue("Retain this draft");
+    expect(
+      screen.getByRole("button", { name: "Commit staged changes in Alpha" }),
+    ).toBeDisabled();
   });
 
   it("stages and unstages exact root-qualified changes with accessible actions", () => {
