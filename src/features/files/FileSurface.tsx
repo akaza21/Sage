@@ -294,6 +294,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
         />
       ) : null}
       <EditorAdapter
+        key={activeResourceKey}
         ref={editorInputRef}
         ariaLabel={`Edit ${path}`}
         path={path}

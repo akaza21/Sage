@@ -106,11 +106,20 @@ export function createCodeMirrorEditorRuntime(
 
   function selectLanguage(path: string) {
     const generation = ++languageGeneration;
-    void loadEditorLanguage(editorLanguageForPath(path)).then((extension) => {
-      if (!destroyed && generation === languageGeneration) {
-        view.dispatch({ effects: languageCompartment.reconfigure(extension) });
-      }
-    });
+    view.dispatch({ effects: languageCompartment.reconfigure([]) });
+    void loadEditorLanguage(editorLanguageForPath(path))
+      .then((extension) => {
+        if (!destroyed && generation === languageGeneration) {
+          view.dispatch({
+            effects: languageCompartment.reconfigure(extension),
+          });
+        }
+      })
+      .catch(() => {
+        if (!destroyed && generation === languageGeneration) {
+          view.dispatch({ effects: languageCompartment.reconfigure([]) });
+        }
+      });
   }
 
   selectLanguage(options.path);

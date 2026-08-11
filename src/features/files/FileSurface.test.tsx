@@ -197,6 +197,61 @@ describe("FileSurface durability cadence", () => {
       revision: 0,
     });
   });
+
+  it("isolates editor history and lifecycle by full Resource identity", async () => {
+    const firstResource = {
+      rootId: "root-a",
+      relativePath: "src/shared.ts",
+    };
+    const firstTab = {
+      ...tab,
+      id: "file:root-a:src/shared.ts",
+      title: "shared.ts",
+      resource: firstResource,
+    };
+    setReadyEditor(firstTab, "first resource");
+    const { rerender } = render(<FileSurface tab={firstTab} />);
+    const firstEditor = await screen.findByRole("textbox", {
+      name: "Edit src/shared.ts",
+    });
+    const firstView = viewForEditor(firstEditor);
+    const destroy = vi.spyOn(firstView, "destroy");
+
+    replaceEditorContent(firstEditor, "shared content");
+    expect(firstView.state.doc.toString()).toBe("shared content");
+
+    const secondResource = {
+      rootId: "root-b",
+      relativePath: "src/shared.ts",
+    };
+    const secondTab = {
+      ...tab,
+      id: "file:root-b:src/shared.ts",
+      title: "shared.ts",
+      resource: secondResource,
+    };
+    act(() => {
+      setReadyEditor(secondTab, "shared content");
+      rerender(<FileSurface tab={secondTab} />);
+    });
+
+    expect(destroy).toHaveBeenCalledOnce();
+    const secondEditor = await screen.findByRole("textbox", {
+      name: "Edit src/shared.ts",
+    });
+    const secondView = viewForEditor(secondEditor);
+    expect(secondView).not.toBe(firstView);
+
+    fireEvent.keyDown(secondEditor, { key: "z", ctrlKey: true });
+
+    expect(secondView.state.doc.toString()).toBe("shared content");
+    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+      phase: "ready",
+      resource: secondResource,
+      content: "shared content",
+      revision: 0,
+    });
+  });
 });
 
 describe("FileSurface Search navigation", () => {
