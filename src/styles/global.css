@@ -1659,23 +1659,95 @@ textarea:focus-visible {
 }
 
 .editor-input {
+  position: relative;
+  display: flex;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   width: 100%;
   height: 100%;
-  padding: 18px 20px;
-  overflow: auto;
-  resize: none;
+  overflow: hidden;
   border: 0;
   outline: 0;
   color: #cbd1ca;
   background: #0f110f;
+}
+
+.editor-input .cm-editor {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  color: #cbd1ca;
+  background: #0f110f;
+}
+
+.editor-input__mount {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.editor-loading {
+  position: absolute;
+  z-index: 1;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.editor-loading--error {
+  color: #efb3ae;
+}
+
+.editor-input .cm-scroller {
+  overflow: auto;
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
   line-height: 1.65;
   tab-size: 2;
-  white-space: pre;
+}
+
+.editor-input .cm-content {
+  min-height: 100%;
+  padding: 18px 20px 18px 8px;
+  caret-color: #e1e7df;
+}
+
+.editor-input .cm-line {
+  padding: 0;
+}
+
+.editor-input .cm-gutters {
+  padding-top: 18px;
+  border-right: 1px solid #252a25;
+  color: #667067;
+  background: #0f110f;
+}
+
+.editor-input .cm-lineNumbers .cm-gutterElement {
+  min-width: 42px;
+  padding: 0 10px 0 8px;
+}
+
+.editor-input .cm-activeLine,
+.editor-input .cm-activeLineGutter {
+  background: rgb(255 255 255 / 0.035);
+}
+
+.editor-input .cm-selectionBackground,
+.editor-input .cm-content ::selection {
+  background: #31523a !important;
+}
+
+.editor-input .cm-cursor {
+  border-left-color: #e1e7df;
+}
+
+.editor-input .cm-focused {
+  outline: 0;
 }
 
 .dialog-backdrop {

@@ -5,6 +5,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
@@ -41,6 +42,28 @@ const tab: WorkbenchTab = {
 };
 const initialState = useWorkbenchStore.getState();
 
+function viewForEditor(editor: HTMLElement) {
+  const view = EditorView.findFromDOM(editor);
+  if (!view) {
+    throw new Error("Expected a mounted CodeMirror editor");
+  }
+  return view;
+}
+
+function replaceEditorContent(editor: HTMLElement, content: string) {
+  const view = viewForEditor(editor);
+  act(() => {
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: content },
+    });
+  });
+}
+
+function editorSelection(editor: HTMLElement) {
+  const selection = viewForEditor(editor).state.selection.main;
+  return { start: selection.from, end: selection.to };
+}
+
 function setReadyEditor(
   nextTab: WorkbenchTab = tab,
   content = document.buffer.content,
@@ -76,7 +99,7 @@ afterEach(() => {
 });
 
 describe("FileSurface durability cadence", () => {
-  it("keeps edit, save, discard, and conflict behavior at the File surface", () => {
+  it("keeps edit, save, discard, and conflict behavior at the File surface", async () => {
     const save = vi.fn(async () => true);
     const discard = vi.fn(async () => true);
     setReadyEditor({ ...tab, dirty: true });
@@ -99,8 +122,10 @@ describe("FileSurface durability cadence", () => {
     }));
     render(<FileSurface tab={{ ...tab, dirty: true }} />);
 
-    const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
-    fireEvent.change(editor, { target: { value: "edited\n" } });
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
+    replaceEditorContent(editor, "edited\n");
     expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
       phase: "ready",
       content: "edited\n",
@@ -155,14 +180,14 @@ describe("FileSurface durability cadence", () => {
     );
   });
 
-  it("freezes editor input while a Project transition owns the projection", () => {
+  it("freezes editor input while a Project transition owns the projection", async () => {
     setReadyEditor();
     useWorkbenchStore.setState({ projectTransitioning: true });
     render(<FileSurface tab={tab} />);
 
     expect(
-      screen.getByRole("textbox", { name: `Edit ${path}` }),
-    ).toBeDisabled();
+      await screen.findByRole("textbox", { name: `Edit ${path}` }),
+    ).toHaveAttribute("aria-readonly", "true");
     act(() => {
       useWorkbenchStore.getState().updateEditorContent("must not be accepted");
     });
@@ -175,7 +200,7 @@ describe("FileSurface durability cadence", () => {
 });
 
 describe("FileSurface Search navigation", () => {
-  it("selects the exact Unicode match range and clamps stale offsets", () => {
+  it("selects the exact Unicode match range and clamps stale offsets", async () => {
     const content = "zero\n🙂 needle tail";
     setReadyEditor(tab, content);
     useWorkbenchStore.setState({
@@ -193,11 +218,12 @@ describe("FileSurface Search navigation", () => {
       },
     });
     render(<FileSurface tab={tab} />);
-    const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
 
     expect(editor).toHaveFocus();
-    expect(editor).toHaveProperty("selectionStart", 8);
-    expect(editor).toHaveProperty("selectionEnd", 14);
+    expect(editorSelection(editor)).toEqual({ start: 8, end: 14 });
     expect(useWorkbenchStore.getState().fileNavigationTarget).toBeNull();
 
     act(() => {
@@ -215,12 +241,14 @@ describe("FileSurface Search navigation", () => {
       });
     });
 
-    expect(editor).toHaveProperty("selectionStart", content.length);
-    expect(editor).toHaveProperty("selectionEnd", content.length);
+    expect(editorSelection(editor)).toEqual({
+      start: content.length,
+      end: content.length,
+    });
     expect(useWorkbenchStore.getState().fileNavigationTarget).toBeNull();
   });
 
-  it("does not reveal a Search target during a transition or after its epoch retires", () => {
+  it("does not reveal a Search target during a transition or after its epoch retires", async () => {
     setReadyEditor(tab, "alpha needle omega");
     const target = {
       projectId: "project-a",
@@ -239,9 +267,11 @@ describe("FileSurface Search navigation", () => {
       fileNavigationTarget: target,
     });
     render(<FileSurface tab={tab} />);
-    const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
 
-    expect(editor).toHaveProperty("selectionStart", 0);
+    expect(editorSelection(editor).start).toBe(0);
     expect(useWorkbenchStore.getState().fileNavigationTarget).toBe(target);
 
     act(() => {
@@ -251,11 +281,11 @@ describe("FileSurface Search navigation", () => {
       });
     });
 
-    expect(editor).toHaveProperty("selectionStart", 0);
+    expect(editorSelection(editor).start).toBe(0);
     expect(useWorkbenchStore.getState().fileNavigationTarget).toBe(target);
   });
 
-  it("never selects content beyond the bounded editor ceiling", () => {
+  it("never selects content beyond the bounded editor ceiling", async () => {
     const content = `${"a".repeat(MAX_EDITABLE_CONTENT_BYTES)}\nneedle`;
     setReadyEditor(tab, content);
     useWorkbenchStore.setState({
@@ -271,17 +301,23 @@ describe("FileSurface Search navigation", () => {
       },
     });
     render(<FileSurface tab={tab} />);
-    const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
 
-    expect(editor).toHaveProperty("selectionStart", MAX_EDITABLE_CONTENT_BYTES);
-    expect(editor).toHaveProperty("selectionEnd", MAX_EDITABLE_CONTENT_BYTES);
+    expect(editorSelection(editor)).toEqual({
+      start: MAX_EDITABLE_CONTENT_BYTES,
+      end: MAX_EDITABLE_CONTENT_BYTES,
+    });
     expect(useWorkbenchStore.getState().fileNavigationTarget).toBeNull();
   });
 
-  it("preserves an open Editor Find while revealing a Search match", () => {
+  it("preserves an open Editor Find while revealing a Search match", async () => {
     setReadyEditor(tab, "alpha needle omega");
     render(<FileSurface tab={tab} />);
-    const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
     fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
     const find = screen.getByRole("textbox", { name: "Find text" });
     fireEvent.change(find, { target: { value: "alpha" } });
@@ -304,16 +340,17 @@ describe("FileSurface Search navigation", () => {
     expect(screen.getByRole("search", { name: "Find in file" })).toBeVisible();
     expect(find).toHaveValue("alpha");
     expect(editor).toHaveFocus();
-    expect(editor).toHaveProperty("selectionStart", 6);
-    expect(editor).toHaveProperty("selectionEnd", 12);
+    expect(editorSelection(editor)).toEqual({ start: 6, end: 12 });
   });
 });
 
 describe("FileSurface in-file find", () => {
-  it("navigates literal matches with wrap, case control, and editor focus recovery", () => {
+  it("navigates literal matches with wrap, case control, and editor focus recovery", async () => {
     setReadyEditor(tab, "Needle needle needle");
     render(<FileSurface tab={tab} />);
-    const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
 
     editor.focus();
     fireEvent.keyDown(editor, { key: "f", ctrlKey: true, shiftKey: true });
@@ -327,24 +364,23 @@ describe("FileSurface in-file find", () => {
 
     fireEvent.change(query, { target: { value: "needle" } });
     expect(screen.getByRole("status")).toHaveTextContent("1 of 3 matches");
-    expect(editor).toHaveProperty("selectionStart", 0);
-    expect(editor).toHaveProperty("selectionEnd", 6);
+    expect(editorSelection(editor)).toEqual({ start: 0, end: 6 });
 
     fireEvent.click(screen.getByRole("button", { name: "Previous match" }));
     expect(screen.getByRole("status")).toHaveTextContent("3 of 3 matches");
-    expect(editor).toHaveProperty("selectionStart", 14);
+    expect(editorSelection(editor).start).toBe(14);
 
     fireEvent.click(screen.getByRole("button", { name: "Next match" }));
     expect(screen.getByRole("status")).toHaveTextContent("1 of 3 matches");
-    expect(editor).toHaveProperty("selectionStart", 0);
+    expect(editorSelection(editor).start).toBe(0);
 
     fireEvent.keyDown(query, { key: "Enter", shiftKey: true });
     expect(screen.getByRole("status")).toHaveTextContent("3 of 3 matches");
-    expect(editor).toHaveProperty("selectionStart", 14);
+    expect(editorSelection(editor).start).toBe(14);
 
     fireEvent.keyDown(query, { key: "Enter" });
     expect(screen.getByRole("status")).toHaveTextContent("1 of 3 matches");
-    expect(editor).toHaveProperty("selectionStart", 0);
+    expect(editorSelection(editor).start).toBe(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Match case" }));
     expect(screen.getByRole("button", { name: "Match case" })).toHaveAttribute(
@@ -352,24 +388,25 @@ describe("FileSurface in-file find", () => {
       "true",
     );
     expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches");
-    expect(editor).toHaveProperty("selectionStart", 7);
+    expect(editorSelection(editor).start).toBe(7);
 
     fireEvent.change(query, { target: { value: "absent" } });
     expect(screen.getByRole("status")).toHaveTextContent("No matches");
-    expect(editor).toHaveProperty("selectionStart", 7);
-    expect(editor).toHaveProperty("selectionEnd", 7);
+    expect(editorSelection(editor)).toEqual({ start: 7, end: 7 });
 
     fireEvent.keyDown(query, { key: "Escape" });
     expect(screen.queryByRole("search", { name: "Find in file" })).toBeNull();
     expect(editor).toHaveFocus();
   });
 
-  it("reports no match and saves while Find owns focus", () => {
+  it("reports no match and saves while Find owns focus", async () => {
     const save = vi.fn(async () => true);
     setReadyEditor();
     useWorkbenchStore.setState({ saveActiveEditor: save });
     render(<FileSurface tab={tab} />);
-    const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
 
     fireEvent.keyDown(editor, { key: "f", metaKey: true });
     const query = screen.getByRole("textbox", { name: "Find text" });
@@ -383,13 +420,15 @@ describe("FileSurface in-file find", () => {
     expect(save).toHaveBeenCalledOnce();
   });
 
-  it("fails closed when content exceeds the editor ceiling", () => {
+  it("fails closed when content exceeds the editor ceiling", async () => {
     setReadyEditor(tab, "a".repeat(MAX_EDITABLE_CONTENT_BYTES + 1));
     render(<FileSurface tab={tab} />);
-    const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
 
     expect(editor).toHaveAttribute(
-      "maxLength",
+      "data-max-content-bytes",
       String(MAX_EDITABLE_CONTENT_BYTES),
     );
     fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
@@ -406,10 +445,12 @@ describe("FileSurface in-file find", () => {
     expect(screen.getByRole("button", { name: "Next match" })).toBeDisabled();
   });
 
-  it("recomputes results for content changes and retires the index for a new resource", () => {
+  it("recomputes results for content changes and retires the index for a new resource", async () => {
     setReadyEditor(tab, "alpha alpha");
     const { rerender } = render(<FileSurface tab={tab} />);
-    let editor = screen.getByRole("textbox", { name: `Edit ${path}` });
+    let editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
 
     fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
     const query = screen.getByRole("textbox", { name: "Find text" });
@@ -417,7 +458,7 @@ describe("FileSurface in-file find", () => {
     fireEvent.keyDown(query, { key: "Enter" });
     expect(screen.getByRole("status")).toHaveTextContent("2 of 2 matches");
 
-    fireEvent.change(editor, { target: { value: "alpha" } });
+    replaceEditorContent(editor, "alpha");
     expect(screen.getByRole("status")).toHaveTextContent("1 of 1 match");
 
     const nextResource = { rootId: "root-b", relativePath: "next.txt" };
@@ -429,10 +470,9 @@ describe("FileSurface in-file find", () => {
     };
     act(() => setReadyEditor(nextTab, "alpha z alpha"));
     rerender(<FileSurface tab={nextTab} />);
-    editor = screen.getByRole("textbox", { name: "Edit next.txt" });
+    editor = await screen.findByRole("textbox", { name: "Edit next.txt" });
 
     expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches");
-    expect(editor).toHaveProperty("selectionStart", 0);
-    expect(editor).toHaveProperty("selectionEnd", 5);
+    expect(editorSelection(editor)).toEqual({ start: 0, end: 5 });
   });
 });

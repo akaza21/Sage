@@ -296,6 +296,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
       <EditorAdapter
         ref={editorInputRef}
         ariaLabel={`Edit ${path}`}
+        path={path}
         content={editor.content}
         maxContentLength={MAX_EDITABLE_CONTENT_BYTES}
         disabled={editor.saving || projectTransitioning}
