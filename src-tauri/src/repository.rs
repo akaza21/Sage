@@ -20,6 +20,8 @@ const MAX_DIFF_BYTES: usize = 1024 * 1024;
 type NumstatCounts = (Option<u64>, Option<u64>);
 type NumstatByPath = HashMap<String, NumstatCounts>;
 
+#[cfg(test)]
+pub(crate) use git_process::GitProcessTestHarness;
 pub(crate) use git_process::{GitOutput, GitProcessPolicy};
 
 impl GitOutput {

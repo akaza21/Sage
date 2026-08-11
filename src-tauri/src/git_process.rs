@@ -4,7 +4,6 @@ use std::{
     time::Duration,
 };
 
-#[cfg(test)]
 use std::sync::Arc;
 
 use tokio::{
@@ -14,12 +13,14 @@ use tokio::{
     time::timeout,
 };
 
-#[cfg(test)]
-use tokio::sync::Notify;
-
 use crate::error::{AppError, AppResult};
 
 mod containment;
+#[cfg(test)]
+mod test_support;
+
+#[cfg(test)]
+pub(crate) use test_support::GitProcessTestHarness;
 
 const GIT_ADMISSION_TIMEOUT: Duration = Duration::from_secs(1);
 const GIT_REAP_TIMEOUT: Duration = Duration::from_secs(1);
@@ -38,32 +39,9 @@ pub(crate) struct GitProcessPolicy {
     #[cfg(test)]
     stdout_reader_failure: bool,
     #[cfg(test)]
-    potentially_running: Option<PotentiallyRunningControl>,
-}
-
-#[cfg(test)]
-#[derive(Clone)]
-struct PotentiallyRunningControl {
-    release: Arc<Notify>,
-    exited: Arc<Notify>,
-}
-
-#[cfg(test)]
-pub(crate) struct GitReaperTestHandle {
-    control: PotentiallyRunningControl,
-}
-
-#[cfg(test)]
-impl GitReaperTestHandle {
-    pub(crate) fn release(&self) {
-        self.control.release.notify_one();
-    }
-
-    pub(crate) async fn wait_for_exit(&self, deadline: Duration) -> AppResult<()> {
-        timeout(deadline, self.control.exited.notified())
-            .await
-            .map_err(|_| AppError::Git("the injected Git reaper did not finish in time".into()))
-    }
+    reaper_control: Option<Arc<test_support::ReaperTestControl>>,
+    #[cfg(test)]
+    containment_registry: Option<Arc<containment::ContainmentRegistry>>,
 }
 
 impl GitProcessPolicy {
@@ -78,77 +56,9 @@ impl GitProcessPolicy {
             #[cfg(test)]
             stdout_reader_failure: false,
             #[cfg(test)]
-            potentially_running: None,
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn nonconvergent_reap(command_timeout: Duration) -> Self {
-        Self {
-            command_timeout,
-            admission_timeout: GIT_ADMISSION_TIMEOUT,
-            reap_timeout: None,
-            mutation: true,
-            post_reap_failure: false,
-            stdout_reader_failure: false,
-            potentially_running: None,
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn post_reap_failure(command_timeout: Duration) -> Self {
-        Self {
-            command_timeout,
-            admission_timeout: GIT_ADMISSION_TIMEOUT,
-            reap_timeout: Some(GIT_REAP_TIMEOUT),
-            mutation: true,
-            post_reap_failure: true,
-            stdout_reader_failure: false,
-            potentially_running: None,
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn stdout_reader_failure(command_timeout: Duration) -> Self {
-        Self {
-            command_timeout,
-            admission_timeout: GIT_ADMISSION_TIMEOUT,
-            reap_timeout: Some(GIT_REAP_TIMEOUT),
-            mutation: true,
-            post_reap_failure: false,
-            stdout_reader_failure: true,
-            potentially_running: None,
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn potentially_running(command_timeout: Duration) -> (Self, GitReaperTestHandle) {
-        let control = PotentiallyRunningControl {
-            release: Arc::new(Notify::new()),
-            exited: Arc::new(Notify::new()),
-        };
-        (
-            Self {
-                command_timeout,
-                admission_timeout: GIT_ADMISSION_TIMEOUT,
-                reap_timeout: Some(GIT_REAP_TIMEOUT),
-                mutation: true,
-                post_reap_failure: false,
-                stdout_reader_failure: false,
-                potentially_running: Some(control.clone()),
-            },
-            GitReaperTestHandle { control },
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn mutation_with_admission_timeout(
-        command_timeout: Duration,
-        admission_timeout: Duration,
-    ) -> Self {
-        Self {
-            admission_timeout,
-            ..Self::mutation(command_timeout)
+            reaper_control: None,
+            #[cfg(test)]
+            containment_registry: None,
         }
     }
 
@@ -163,7 +73,9 @@ impl GitProcessPolicy {
             #[cfg(test)]
             stdout_reader_failure: false,
             #[cfg(test)]
-            potentially_running: None,
+            reaper_control: None,
+            #[cfg(test)]
+            containment_registry: None,
         }
     }
 }
@@ -199,14 +111,18 @@ pub(crate) async fn run(
     stdout_limit: usize,
     policy: GitProcessPolicy,
 ) -> AppResult<GitOutput> {
+    #[cfg(test)]
+    let registry = policy
+        .containment_registry
+        .clone()
+        .unwrap_or_else(containment::git_containment);
+    #[cfg(not(test))]
+    let registry = containment::git_containment();
     if policy.mutation {
-        containment::await_mutation_admission(policy.admission_timeout).await?;
+        containment::await_mutation_admission(&registry, policy.admission_timeout).await?;
     }
-    let reaper_lease = containment::reserve_reaper_owner(
-        containment::git_reaper_capacity(),
-        policy.admission_timeout,
-    )
-    .await?;
+    let reaper_lease =
+        containment::reserve_reaper_owner(Arc::clone(&registry), policy.admission_timeout).await?;
 
     let mut command = configured_command(root, args);
     let mut child = command.spawn().map_err(AppError::Io)?;
@@ -222,6 +138,7 @@ pub(crate) async fn run(
                     reaped: false,
                 },
                 policy,
+                registry,
             )
             .await;
         }
@@ -241,6 +158,7 @@ pub(crate) async fn run(
                     reaped: false,
                 },
                 policy,
+                registry,
             )
             .await;
         }
@@ -283,7 +201,8 @@ pub(crate) async fn run(
     match completed {
         Ok(Ok(output)) => Ok(output),
         Ok(Err(failure)) => {
-            containment::cleanup_failure(child, readers, reaper_lease, failure, policy).await
+            containment::cleanup_failure(child, readers, reaper_lease, failure, policy, registry)
+                .await
         }
         Err(_) => {
             containment::cleanup_failure(
@@ -295,6 +214,7 @@ pub(crate) async fn run(
                     reaped: false,
                 },
                 policy,
+                registry,
             )
             .await
         }

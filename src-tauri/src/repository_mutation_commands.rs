@@ -554,10 +554,7 @@ mod tests {
                 &state,
                 request.clone(),
                 0,
-                repository::GitProcessPolicy::mutation_with_admission_timeout(
-                    Duration::from_secs(3),
-                    Duration::from_millis(10),
-                ),
+                reaper.mutation_policy(Duration::from_secs(3), Duration::from_millis(10)),
             )
             .await
             .unwrap_err();
@@ -575,10 +572,7 @@ mod tests {
                 &state,
                 request,
                 0,
-                repository::GitProcessPolicy::mutation_with_admission_timeout(
-                    Duration::from_secs(3),
-                    Duration::from_millis(50),
-                ),
+                reaper.mutation_policy(Duration::from_secs(3), Duration::from_millis(50)),
             )
             .await
             .unwrap();
@@ -587,6 +581,176 @@ mod tests {
                 recovered.repositories.roots[0].changes[0].index_status,
                 "added"
             );
+
+            drop(state);
+            fs::remove_dir_all(base).unwrap();
+        });
+    }
+
+    #[test]
+    fn successful_kill_keeps_mutation_admission_charged_until_wait_proves_exit() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
+            let root = base.join("repo");
+            fs::create_dir_all(&root).unwrap();
+            git(&root, &["init", "-q"]);
+            fs::write(root.join("new.txt"), "new\n").unwrap();
+            let database = Database::open(&base.join("sage.db")).unwrap();
+            let project = database.create_project_from_root(&root).unwrap();
+            let snapshot = database.bootstrap_snapshot().unwrap();
+            let request = GitFileMutationRequest {
+                project_id: project.id,
+                resource: crate::domain::ResourceRef {
+                    root_id: snapshot.project.unwrap().roots[0].id.clone(),
+                    relative_path: "new.txt".into(),
+                },
+                action: GitFileMutationAction::Stage,
+            };
+            let state = AppState::new(database);
+            let (cleanup_policy, reaper) =
+                repository::GitProcessPolicy::terminated_unreaped_withheld_wait(Duration::ZERO);
+
+            let first = mutate_git_file_inner_with_process_policy(
+                &state,
+                request.clone(),
+                0,
+                cleanup_policy,
+            )
+            .await
+            .unwrap_err();
+            assert!(matches!(
+                first,
+                AppError::GitContainment {
+                    state: crate::error::GitContainmentState::TerminatedUnreaped,
+                    ..
+                }
+            ));
+
+            let blocked = mutate_git_file_inner_with_process_policy(
+                &state,
+                request.clone(),
+                0,
+                reaper.mutation_policy(Duration::from_secs(3), Duration::from_millis(10)),
+            )
+            .await
+            .unwrap_err();
+            assert!(matches!(
+                blocked,
+                AppError::GitContainment {
+                    state: crate::error::GitContainmentState::TerminatedUnreaped,
+                    ..
+                }
+            ));
+
+            reaper.release_wait();
+            reaper.wait_for_exit(Duration::from_secs(1)).await.unwrap();
+            let recovered = mutate_git_file_inner_with_process_policy(
+                &state,
+                request,
+                0,
+                reaper.mutation_policy(Duration::from_secs(3), Duration::from_millis(50)),
+            )
+            .await
+            .unwrap();
+            assert!(recovered.error.is_none());
+
+            drop(state);
+            fs::remove_dir_all(base).unwrap();
+        });
+    }
+
+    #[test]
+    fn exhausted_real_reapers_quarantine_exact_eight_and_keep_admission_charged() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
+            let root = base.join("repo");
+            fs::create_dir_all(&root).unwrap();
+            git(&root, &["init", "-q"]);
+            fs::write(root.join("new.txt"), "new\n").unwrap();
+            let database = Database::open(&base.join("sage.db")).unwrap();
+            let project = database.create_project_from_root(&root).unwrap();
+            let snapshot = database.bootstrap_snapshot().unwrap();
+            let request = GitFileMutationRequest {
+                project_id: project.id,
+                resource: crate::domain::ResourceRef {
+                    root_id: snapshot.project.unwrap().roots[0].id.clone(),
+                    relative_path: "new.txt".into(),
+                },
+                action: GitFileMutationAction::Stage,
+            };
+            let state = AppState::new(database);
+            let harness = repository::GitProcessTestHarness::new();
+
+            for _ in 0..8 {
+                let (policy, reaper) = harness.exhausting_reaper_policy(Duration::ZERO);
+                let error =
+                    mutate_git_file_inner_with_process_policy(&state, request.clone(), 0, policy)
+                        .await
+                        .unwrap_err();
+                assert!(matches!(
+                    error,
+                    AppError::GitContainment {
+                        state: crate::error::GitContainmentState::TerminatedUnreaped,
+                        ..
+                    }
+                ));
+                reaper
+                    .wait_for_quarantine(Duration::from_secs(1))
+                    .await
+                    .unwrap();
+                assert_eq!(reaper.wait_attempts(), 40);
+            }
+
+            let saturated = harness.observation();
+            assert_eq!(saturated.unconfirmed_exits, 8);
+            assert_eq!(saturated.quarantined_owners, 8);
+            assert_eq!(saturated.active_reapers, 0);
+            assert_eq!(saturated.available_reaper_permits, 0);
+            assert!(matches!(
+                harness.probe_reaper_owner(Duration::from_millis(10)).await,
+                Err(AppError::ResourceLimit(_))
+            ));
+
+            let blocked = mutate_git_file_inner_with_process_policy(
+                &state,
+                request.clone(),
+                0,
+                harness.mutation_policy(Duration::from_secs(3), Duration::from_millis(10)),
+            )
+            .await
+            .unwrap_err();
+            assert!(matches!(
+                blocked,
+                AppError::GitContainment {
+                    state: crate::error::GitContainmentState::TerminatedUnreaped,
+                    ..
+                }
+            ));
+
+            harness
+                .reap_quarantine(Duration::from_secs(1))
+                .await
+                .unwrap();
+            let reset = harness.observation();
+            assert_eq!(reset.unconfirmed_exits, 0);
+            assert_eq!(reset.quarantined_owners, 0);
+            assert_eq!(reset.active_reapers, 0);
+            assert_eq!(reset.available_reaper_permits, 8);
+            harness
+                .reap_quarantine(Duration::from_secs(1))
+                .await
+                .unwrap();
+            assert_eq!(harness.observation().unconfirmed_exits, 0);
+
+            let recovered = mutate_git_file_inner_with_process_policy(
+                &state,
+                request,
+                0,
+                harness.mutation_policy(Duration::from_secs(3), Duration::from_millis(50)),
+            )
+            .await
+            .unwrap();
+            assert!(recovered.error.is_none());
 
             drop(state);
             fs::remove_dir_all(base).unwrap();
