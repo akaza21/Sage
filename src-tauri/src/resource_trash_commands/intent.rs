@@ -8,7 +8,7 @@ use crate::{
     error::{AppError, AppResult},
     persistence::{Database, now_millis},
     project_registry::RootRecord,
-    workspace::{resource_trash::ResourceTrashIdentity, root_identity_path},
+    workspace::{MAX_DIRECTORY_ENTRIES, resource_trash::ResourceTrashIdentity, root_identity_path},
 };
 
 use super::{MAX_JAVASCRIPT_SAFE_INTEGER, layout, parent_resource};
@@ -296,29 +296,75 @@ fn observe_filesystem(
     let parent = join_relative(root, &pending.parent.relative_path);
     let source = join_relative(root, &pending.source.relative_path);
     let root_matches = root_identity_path(root)?.stable_bytes() == pending.root_identity;
-    let parent_matches = root_identity_path(&parent)?.stable_bytes() == pending.parent_identity;
-    match root_identity_path(&source) {
-        Ok(identity) => {
-            let metadata = std::fs::metadata(&source)?;
-            let kind_matches = match pending.kind {
-                TrashResourceKind::File => metadata.is_file(),
-                TrashResourceKind::EmptyFolder => metadata.is_dir(),
+    let parent_before = root_identity_path(&parent)?.stable_bytes();
+    match std::fs::symlink_metadata(&source) {
+        Ok(metadata) => {
+            let source_matches = if metadata_is_alias(&metadata) {
+                false
+            } else {
+                let kind_matches = match pending.kind {
+                    TrashResourceKind::File => metadata.is_file(),
+                    TrashResourceKind::EmptyFolder => metadata.is_dir(),
+                };
+                kind_matches
+                    && root_identity_path(&source)?.stable_bytes() == pending.source_identity
             };
+            let parent_after = root_identity_path(&parent)?.stable_bytes();
             Ok(FilesystemObservation {
-                authority_matches: root_matches && parent_matches,
+                authority_matches: root_matches
+                    && parent_before == pending.parent_identity
+                    && parent_after == pending.parent_identity,
                 source_absent: false,
-                source_matches: kind_matches && identity.stable_bytes() == pending.source_identity,
+                source_matches,
             })
         }
-        Err(AppError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let source_name = source.file_name().ok_or_else(|| {
+                AppError::InvalidRequest("pending Recycle Bin source has no filename".into())
+            })?;
+            let mut count = 0_usize;
+            let mut source_seen = false;
+            for entry in std::fs::read_dir(&parent)? {
+                let entry = entry?;
+                count += 1;
+                if count > MAX_DIRECTORY_ENTRIES {
+                    return Err(AppError::ResourceLimit(
+                        "pending Recycle Bin parent exceeds the bounded recovery scan".into(),
+                    ));
+                }
+                if entry.file_name() == source_name {
+                    source_seen = true;
+                }
+            }
+            let parent_after = root_identity_path(&parent)?.stable_bytes();
+            let still_absent = match std::fs::symlink_metadata(&source) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+                Ok(_) => false,
+                Err(error) => return Err(error.into()),
+            };
             Ok(FilesystemObservation {
-                authority_matches: root_matches && parent_matches,
-                source_absent: true,
+                authority_matches: root_matches
+                    && parent_before == pending.parent_identity
+                    && parent_after == pending.parent_identity,
+                source_absent: !source_seen && still_absent,
                 source_matches: false,
             })
         }
-        Err(error) => Err(error),
+        Err(error) => Err(error.into()),
     }
+}
+
+#[cfg(windows)]
+fn metadata_is_alias(metadata: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(not(windows))]
+fn metadata_is_alias(metadata: &std::fs::Metadata) -> bool {
+    metadata.file_type().is_symlink()
 }
 
 fn join_relative(root: &std::path::Path, relative: &str) -> PathBuf {

@@ -77,10 +77,14 @@ struct TrashProgressSink {
 
 impl TrashProgressSink {
     fn item_matches(&self, item: &Ref<'_, IShellItem>) -> bool {
-        item.as_ref()
-            .and_then(|item| item.cast::<IUnknown>().ok())
-            .is_some_and(|identity| identity.as_raw() == self.queued_item_identity.as_raw())
+        same_shell_item_identity(&self.queued_item_identity, item)
     }
+}
+
+fn same_shell_item_identity(queued_identity: &IUnknown, item: &Ref<'_, IShellItem>) -> bool {
+    item.as_ref()
+        .and_then(|item| item.cast::<IUnknown>().ok())
+        .is_some_and(|identity| identity.as_raw() == queued_identity.as_raw())
 }
 
 #[allow(non_snake_case)]
@@ -338,6 +342,15 @@ use std::os::windows::ffi::OsStrExt;
 mod tests {
     use super::*;
 
+    fn shell_item(path: &std::path::Path) -> windows::core::Result<IShellItem> {
+        let wide_path = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>();
+        unsafe { SHCreateItemFromParsingName(PCWSTR(wide_path.as_ptr()), None) }
+    }
+
     #[test]
     fn operation_flags_require_recycling_no_ui_no_recursion_and_undo() {
         let flags = operation_flags().0;
@@ -396,5 +409,47 @@ mod tests {
         let mut mismatched_post = ProgressState::default();
         mismatched_post.record_pre(true, true).unwrap();
         assert!(mismatched_post.record_post(false, HRESULT(0)).is_err());
+    }
+
+    #[test]
+    fn shell_item_identity_accepts_only_the_same_non_null_com_object() {
+        let root =
+            std::env::temp_dir().join(format!("sage-trash-com-identity-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("first.rs"), "first\n").unwrap();
+        std::fs::write(root.join("second.rs"), "second\n").unwrap();
+        let sta_root = root.clone();
+
+        let joined = std::thread::spawn(move || -> windows::core::Result<()> {
+            unsafe {
+                CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE).ok()?;
+            }
+            let _apartment = ComApartment;
+            let first = shell_item(&sta_root.join("first.rs"))?;
+            let second = shell_item(&sta_root.join("second.rs"))?;
+            let queued_identity = first.cast::<IUnknown>()?;
+
+            let same = Some(first);
+            let distinct = Some(second);
+            let null: Option<IShellItem> = None;
+            assert!(same_shell_item_identity(
+                &queued_identity,
+                &Ref::from(&same)
+            ));
+            assert!(!same_shell_item_identity(
+                &queued_identity,
+                &Ref::from(&distinct)
+            ));
+            assert!(!same_shell_item_identity(
+                &queued_identity,
+                &Ref::from(&null)
+            ));
+            Ok(())
+        })
+        .join();
+
+        let cleanup = std::fs::remove_dir_all(&root);
+        joined.expect("Shell item identity STA panicked").unwrap();
+        cleanup.unwrap();
     }
 }

@@ -202,6 +202,51 @@ fn restart_during_effect_preserves_an_identity_mismatched_replacement() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn restart_during_effect_preserves_a_dangling_reparse_replacement() {
+    use std::os::windows::fs::symlink_file;
+
+    let fixture = Fixture::new();
+    persist_fixture_intent(&fixture);
+    let source = fixture.root.join("src/closed.rs");
+    fs::rename(&source, fixture.root.join("src/original.rs")).unwrap();
+    if let Err(error) = symlink_file(fixture.root.join("src/missing-target.rs"), &source) {
+        if error.kind() == std::io::ErrorKind::PermissionDenied {
+            eprintln!("skipping dangling-reparse regression: symlink creation was denied");
+            return;
+        }
+        panic!("failed to create dangling reparse replacement: {error}");
+    }
+
+    let recovered = intent::recover_at_startup(&fixture.state.database)
+        .unwrap()
+        .unwrap();
+
+    assert!(recovered.notice.contains("identity could not be confirmed"));
+    assert!(
+        fs::symlink_metadata(&source)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(pending_intent_count(&fixture), 0);
+    assert_eq!(
+        fixture
+            .state
+            .database
+            .bootstrap_snapshot()
+            .unwrap()
+            .selected_resource,
+        Some(fixture.file_request().source)
+    );
+    assert!(
+        intent::recover_at_startup(&fixture.state.database)
+            .unwrap()
+            .is_none()
+    );
+}
+
 #[test]
 fn restart_after_effect_repairs_selection_and_never_applies_twice() {
     let fixture = Fixture::new();
