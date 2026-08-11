@@ -34,6 +34,7 @@ mod repository_parse;
 mod repository_public_error;
 mod repository_workspace;
 mod resource_commands;
+mod resource_trash_commands;
 mod session_events;
 mod state;
 mod workbench_persistence;
@@ -160,6 +161,7 @@ pub fn run() {
             file_create_commands::create_project_file,
             file_create_commands::create_project_folder,
             file_rename_commands::rename_project_file,
+            resource_trash_commands::trash_project_resource,
             project_commands::create_project_from_picker,
             project_commands::add_project_root_from_picker,
             chat_commands::create_chat,

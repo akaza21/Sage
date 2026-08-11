@@ -149,3 +149,44 @@ pub struct RenameProjectFileResult {
     pub snapshot: Option<BootstrapSnapshot>,
     pub warning: Option<String>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TrashResourceKind {
+    File,
+    EmptyFolder,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TrashProjectResourceRequest {
+    pub project_id: String,
+    pub project_generation: u64,
+    pub expected_transition_epoch: u64,
+    pub source: ResourceRef,
+    pub kind: TrashResourceKind,
+    pub current_layout: ProjectLayoutRequest,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ResourceTrashOutcome {
+    Committed,
+    EffectUnknown,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashProjectResourceResult {
+    pub outcome: ResourceTrashOutcome,
+    pub resource_confirmed: bool,
+    pub project_id: String,
+    pub project_generation: u64,
+    pub transition_epoch: u64,
+    pub source: ResourceRef,
+    pub parent: ResourceRef,
+    pub parent_listing: Option<DirectoryListing>,
+    pub snapshot: Option<BootstrapSnapshot>,
+    pub warning: Option<String>,
+}
