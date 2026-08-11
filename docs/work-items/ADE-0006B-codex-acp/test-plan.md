@@ -149,6 +149,19 @@ not run because the exact managed roots are absent. Thus the verifier is local
 green, while provisioning, exact-root ACL evidence, global immutability, and
 atomic check-to-launch remain unproven.
 
+The sealed-staging increment adds bounded Windows fixtures for an arbitrary
+exact offline source, source hard-link rejection, exact-plus-one path rejection,
+target collision, one-live-stage exclusion, copy-failure rollback, exact
+receipt/file/target/ACL-plan contents, post-write receipt drift, revalidation,
+drop cleanup, and typed ACL/publish unavailability. Its ignored production test
+requires `SAGE_CODEX_0145_OFFLINE_SOURCE_ROOT`, the exact value
+`SAGE_CODEX_0145_STAGE_ONLY=prepare-sealed-offline-stage-no-publish`, absent
+canonical targets, and the existing canonical package parent. The local test
+does not apply ACLs, publish either target, alter credentials, launch Codex, or
+claim recovery of a crash-abandoned stage; those operations belong to the
+separately reviewed privileged-helper increment documented in the
+[sealed-staging evidence](provisioning-staging-0.145.0-build-evidence.md).
+
 The security-prerequisite increment adds exact and drift fixtures for the
 packet-bound isolated `CODEX_HOME`, file credential store, disabled ambient
 config and update checks, one-live-tree ceiling, cleared five-key environment,

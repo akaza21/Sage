@@ -240,6 +240,11 @@ fn revalidate_snapshot(
     validate_snapshot(observed)
 }
 
+#[cfg(windows)]
+pub(super) fn current_process_user_sid() -> Result<Vec<u8>, ManagedStagingError> {
+    windows::current_process_user_sid()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

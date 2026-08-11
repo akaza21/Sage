@@ -162,6 +162,15 @@ impl MetadataValidatedPacket {
         &self.0.codex_home
     }
 
+    pub(super) fn managed_package_root(&self) -> PathBuf {
+        let mut root = self.0.entrypoint.path.clone();
+        for _ in Path::new(PINNED_ARTIFACTS[0].relative_path).components() {
+            let removed = root.pop();
+            debug_assert!(removed, "validated entrypoint has the pinned suffix");
+        }
+        root
+    }
+
     pub(crate) fn capability_ceiling(&self) -> &CuratedCapabilityCeiling {
         &self.0.capability_ceiling
     }

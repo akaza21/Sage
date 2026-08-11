@@ -36,6 +36,10 @@ mod acl;
 mod token;
 use token::ProcessToken;
 
+pub(super) fn current_process_user_sid() -> Result<Vec<u8>, ManagedStagingError> {
+    Ok(ProcessToken::open()?.user_sid)
+}
+
 #[derive(Debug)]
 pub(super) struct WindowsManagedProof {
     package: PhysicallyInspectedPackage,

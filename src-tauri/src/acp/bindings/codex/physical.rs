@@ -28,6 +28,22 @@ impl ConfiguredManagedPackageRoot {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ConfiguredCodexSourceRoot(PathBuf);
+
+impl ConfiguredCodexSourceRoot {
+    pub(crate) fn new(path: PathBuf) -> Result<Self, PhysicalInspectionError> {
+        if path.as_os_str().is_empty() || path.as_os_str().len() > CONFIGURED_PATH_BYTES_MAX {
+            return Err(PhysicalInspectionError::ConfiguredRoot);
+        }
+        Ok(Self(path))
+    }
+
+    fn as_path(&self) -> &Path {
+        &self.0
+    }
+}
+
 /// Proof that one exact package closure was physically inspected.
 ///
 /// Known nodes remain open and the directory namespace matched across two
@@ -146,14 +162,14 @@ pub(crate) enum PhysicalInspectionError {
 }
 
 #[derive(Debug, Clone)]
-struct ExpectedPhysicalFile {
+pub(super) struct ExpectedPhysicalFile {
     pub(super) relative_path: PathBuf,
     pub(super) sha256: [u8; 32],
     pub(super) byte_len: u64,
 }
 
 #[derive(Debug)]
-struct InspectionClaims {
+pub(super) struct InspectionClaims {
     pub(super) package_root: PathBuf,
     pub(super) codex_home: PathBuf,
     pub(super) files: Vec<ExpectedPhysicalFile>,
@@ -178,8 +194,26 @@ pub(crate) fn inspect_managed_package(
     }
 }
 
+pub(crate) fn inspect_codex_source(
+    packet: &MetadataValidatedPacket,
+    configured_root: &ConfiguredCodexSourceRoot,
+) -> Result<PhysicallyInspectedPackage, PhysicalInspectionError> {
+    if packet.metadata().platform != Platform::WindowsX86_64 {
+        return Err(PhysicalInspectionError::PlatformUnavailable);
+    }
+    #[cfg(windows)]
+    {
+        windows::inspect_source(packet, configured_root)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = configured_root;
+        Err(PhysicalInspectionError::PlatformUnavailable)
+    }
+}
+
 #[cfg(windows)]
-fn inspect_claims(
+pub(super) fn inspect_claims(
     claims: InspectionClaims,
 ) -> Result<PhysicallyInspectedPackage, PhysicalInspectionError> {
     windows::inspect_claims(claims)
@@ -192,7 +226,7 @@ pub(super) fn open_exact_state_root(
     windows::open_exact_state_root(path)
 }
 
-fn decode_digest(value: &str) -> Result<[u8; 32], PhysicalInspectionError> {
+pub(super) fn decode_digest(value: &str) -> Result<[u8; 32], PhysicalInspectionError> {
     if value.len() != 64 {
         return Err(PhysicalInspectionError::Identity);
     }

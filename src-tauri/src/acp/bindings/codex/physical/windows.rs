@@ -13,9 +13,9 @@ use handle::{
 };
 
 use super::{
-    ConfiguredManagedPackageRoot, EXPECTED_FILE_COUNT, ExpectedPhysicalFile, HeldPhysicalNode,
-    InspectionClaims, PACKAGE_DEPTH_MAX, PACKAGE_ENTRY_MAX, PhysicalInspectionError,
-    PhysicallyInspectedPackage, decode_digest,
+    ConfiguredCodexSourceRoot, ConfiguredManagedPackageRoot, EXPECTED_FILE_COUNT,
+    ExpectedPhysicalFile, HeldPhysicalNode, InspectionClaims, PACKAGE_DEPTH_MAX, PACKAGE_ENTRY_MAX,
+    PhysicalInspectionError, PhysicallyInspectedPackage, decode_digest,
 };
 use crate::acp::bindings::codex::manifest::MetadataValidatedPacket;
 
@@ -33,6 +33,41 @@ pub(super) fn inspect(
 ) -> Result<PhysicallyInspectedPackage, PhysicalInspectionError> {
     let claims = claims_from_packet(packet, configured_root)?;
     inspect_claims(claims)
+}
+
+pub(super) fn inspect_source(
+    packet: &MetadataValidatedPacket,
+    configured_root: &ConfiguredCodexSourceRoot,
+) -> Result<PhysicallyInspectedPackage, PhysicalInspectionError> {
+    inspect_claims(claims_from_source(packet, configured_root)?)
+}
+
+fn claims_from_source(
+    packet: &MetadataValidatedPacket,
+    configured_root: &ConfiguredCodexSourceRoot,
+) -> Result<InspectionClaims, PhysicalInspectionError> {
+    let root = configured_root.as_path();
+    if !local_absolute_normalized(root) {
+        return Err(PhysicalInspectionError::ConfiguredRoot);
+    }
+    require_disjoint_state(&packet.managed_package_root(), root)?;
+    require_disjoint_state(packet.codex_home(), root)?;
+    let files = packet
+        .physical_artifact_claims()
+        .map(|(artifact, relative)| {
+            Ok(ExpectedPhysicalFile {
+                relative_path: PathBuf::from(relative),
+                sha256: decode_digest(&artifact.sha256)?,
+                byte_len: artifact.byte_len,
+            })
+        })
+        .collect::<Result<Vec<_>, PhysicalInspectionError>>()?;
+    Ok(InspectionClaims {
+        package_root: root.to_owned(),
+        codex_home: packet.codex_home().to_owned(),
+        files,
+        aggregate_bytes: packet.metadata().package_unpacked_byte_len,
+    })
 }
 
 pub(super) fn open_exact_state_root(

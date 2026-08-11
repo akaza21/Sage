@@ -38,6 +38,15 @@ pub(crate) struct PackageReproductionRequirements {
     managed_staging: ManagedStagingRequirements,
 }
 
+impl PackageReproductionRequirements {
+    pub(super) fn revalidate(
+        &self,
+        packet: &MetadataValidatedPacket,
+    ) -> Result<(), ReproductionError> {
+        validate_requirements(self, packet)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RegistryRequirements {

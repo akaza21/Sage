@@ -8,6 +8,7 @@ mod managed;
 mod manifest;
 mod physical;
 mod policy;
+mod provisioning;
 mod reproduction;
 mod request;
 mod runtime;
@@ -23,6 +24,10 @@ pub(crate) use physical::{
     inspect_managed_package,
 };
 pub(crate) use policy::{SecurityPolicyError, parse_security_policy};
+pub(crate) use provisioning::{
+    ExplicitStagingAuthorization, PreparedCodexStaging, ProvisioningError, VerifiedCodexSource,
+    authorize_offline_staging_from_environment, prepare_codex_staging, verify_codex_source,
+};
 pub(crate) use reproduction::{
     ReproductionError, bind_reproduced_package, parse_reproduction_requirements,
 };
