@@ -217,6 +217,12 @@ mod tests {
             Err(ManagedStagingError::Io)
         );
 
+        let missing_ace_header = [2, 0, 8, 0, 1, 0, 0, 0];
+        assert_eq!(
+            validate_acl_structure(&missing_ace_header),
+            Err(ManagedStagingError::Io)
+        );
+
         let mut truncated = vec![2, 0, 16, 0, 1, 0, 0, 0, ALLOW, 0, 20, 0];
         truncated.extend_from_slice(&0_u32.to_le_bytes());
         assert_eq!(
@@ -247,9 +253,7 @@ mod tests {
         );
 
         let mut truncated_sid = standard_ace(ALLOW, &system_sid(1));
-        truncated_sid.truncate(truncated_sid.len() - 1);
-        let size = u16::try_from(truncated_sid.len()).unwrap().to_le_bytes();
-        truncated_sid[2..4].copy_from_slice(&size);
+        truncated_sid[9] = 2;
         assert_eq!(
             validate_acl_structure(&acl(&[truncated_sid])),
             Err(ManagedStagingError::Io)

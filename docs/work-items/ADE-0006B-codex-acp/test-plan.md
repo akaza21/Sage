@@ -64,7 +64,7 @@ Exact commands, counts, hashes, machine identity, limitations, and raw-evidence
 provenance belong in a later `results.md`. Build evidence is followed by fresh
 Review and Independent Test; it is not acceptance.
 
-## Current Build evidence (2026-08-09)
+## Current Build evidence (2026-08-11)
 
 The fail-closed packet slices exercise exact Windows package inventory
 metadata matching, schema/source/package claim drift rejection, declared
@@ -101,7 +101,7 @@ command is:
 cargo test --lib acp::bindings::codex
 ```
 
-It passed 51 default tests on the implementation workstation. One additional
+It passed 55 default tests on the implementation workstation. One additional
 ignored test now requires both the exact managed package and existing isolated
 state roots:
 
