@@ -10,6 +10,7 @@ use crate::acp::{
 
 use super::{
     incoming::{IncomingEvent, IngressDisposition},
+    managed::ManagedStagingPrerequisite,
     manifest::MetadataValidatedPacket,
     policy::SecurityPolicyPrerequisite,
     reproduction::ReproducedPackagePrerequisite,
@@ -40,12 +41,16 @@ impl CodexRuntime {
         packet: &MetadataValidatedPacket,
         security_policy: &SecurityPolicyPrerequisite,
         reproduced_package: &ReproducedPackagePrerequisite,
+        managed_staging: &ManagedStagingPrerequisite,
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<Self, AdapterRuntimeError> {
         reproduced_package
             .revalidate(packet)
+            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        managed_staging
+            .revalidate(packet, reproduced_package)
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         security_policy
             .revalidate(packet)

@@ -56,10 +56,25 @@ pub(super) fn open_root(
 pub(super) fn open_node(
     path: &Path,
 ) -> Result<(File, NativeInfo, PathBuf), PhysicalInspectionError> {
+    open_node_with_share(path, FILE_SHARE_READ)
+}
+
+pub(super) fn open_mutable_directory(
+    path: &Path,
+) -> Result<(File, NativeInfo, PathBuf), PhysicalInspectionError> {
+    use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_WRITE;
+
+    open_node_with_share(path, FILE_SHARE_READ | FILE_SHARE_WRITE)
+}
+
+fn open_node_with_share(
+    path: &Path,
+    share_mode: u32,
+) -> Result<(File, NativeInfo, PathBuf), PhysicalInspectionError> {
     let mut options = OpenOptions::new();
     options
         .read(true)
-        .share_mode(FILE_SHARE_READ)
+        .share_mode(share_mode)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
     let file = options
         .open(path)

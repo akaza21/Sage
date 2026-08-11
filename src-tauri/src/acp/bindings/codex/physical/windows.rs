@@ -13,9 +13,9 @@ use handle::{
 };
 
 use super::{
-    ConfiguredManagedPackageRoot, EXPECTED_FILE_COUNT, ExpectedPhysicalFile, InspectionClaims,
-    PACKAGE_DEPTH_MAX, PACKAGE_ENTRY_MAX, PhysicalInspectionError, PhysicallyInspectedPackage,
-    decode_digest,
+    ConfiguredManagedPackageRoot, EXPECTED_FILE_COUNT, ExpectedPhysicalFile, HeldPhysicalNode,
+    InspectionClaims, PACKAGE_DEPTH_MAX, PACKAGE_ENTRY_MAX, PhysicalInspectionError,
+    PhysicallyInspectedPackage, decode_digest,
 };
 use crate::acp::bindings::codex::manifest::MetadataValidatedPacket;
 
@@ -33,6 +33,16 @@ pub(super) fn inspect(
 ) -> Result<PhysicallyInspectedPackage, PhysicalInspectionError> {
     let claims = claims_from_packet(packet, configured_root)?;
     inspect_claims(claims)
+}
+
+pub(super) fn open_exact_state_root(
+    path: &Path,
+) -> Result<(PathBuf, File), PhysicalInspectionError> {
+    let (handle, info, final_path) = handle::open_mutable_directory(path)?;
+    if info.attributes & FILE_ATTRIBUTE_DIRECTORY == 0 || path_key(path) != path_key(&final_path) {
+        return Err(PhysicalInspectionError::StatePath);
+    }
+    Ok((final_path, handle))
 }
 
 pub(super) fn claims_from_packet(
@@ -245,17 +255,21 @@ pub(super) fn inspect_claims(
     #[cfg(test)]
     run_before_namespace_recheck();
     recheck_namespace(&held_directories, &held_files, &observed_namespace)?;
-    let held_handles = held_directories
+    let held_nodes = held_directories
         .into_iter()
         .chain(held_files)
-        .map(|node| node.handle)
+        .map(|node| HeldPhysicalNode {
+            path: node.path,
+            directory: node.initial.attributes & FILE_ATTRIBUTE_DIRECTORY != 0,
+            handle: node.handle,
+        })
         .collect();
     Ok(PhysicallyInspectedPackage {
         package_root,
         codex_home: claims.codex_home,
         artifact_count,
         byte_len: aggregate_bytes,
-        _held_handles: held_handles,
+        held_nodes,
     })
 }
 

@@ -1,0 +1,364 @@
+use std::ffi::c_void;
+use std::fs::File;
+use std::os::windows::io::AsRawHandle;
+use std::path::{Path, PathBuf};
+
+use sha2::{Digest, Sha256};
+use windows_sys::Win32::Foundation::HANDLE;
+use windows_sys::Win32::Security::{
+    ACL, ACL_SIZE_INFORMATION, AccessCheck, AclSizeInformation, DACL_SECURITY_INFORMATION,
+    GENERIC_MAPPING, GROUP_SECURITY_INFORMATION, GetAce, GetAclInformation,
+    GetKernelObjectSecurity, GetLengthSid, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
+    GetSecurityDescriptorOwner, IsValidAcl, IsValidSid, MapGenericMask, OWNER_SECURITY_INFORMATION,
+    PSID, SE_DACL_PROTECTED,
+};
+use windows_sys::Win32::Storage::FileSystem::{
+    FILE_ALL_ACCESS, FILE_GENERIC_EXECUTE, FILE_GENERIC_READ, FILE_GENERIC_WRITE,
+};
+
+use super::{
+    DANGEROUS_ACCESS, ManagedSecuritySnapshot, ManagedStagingError, NodeSecurityClaims, OwnerClass,
+    SECURITY_DESCRIPTOR_BYTES_MAX, revalidate_snapshot, validate_snapshot,
+};
+use crate::acp::bindings::codex::{
+    manifest::MetadataValidatedPacket,
+    physical::{
+        ConfiguredManagedPackageRoot, HeldPhysicalNode, PhysicallyInspectedPackage,
+        inspect_managed_package, open_exact_state_root,
+    },
+};
+
+const ACL_ACE_MAX: u32 = 256;
+// Stable Win32 access-mask and ACE type values. Keeping these local avoids
+// widening Sage's exact reviewed windows-sys feature surface for constants.
+const MAXIMUM_ALLOWED_ACCESS: u32 = 0x0200_0000;
+const ACCESS_ALLOWED_ACE_KIND: u32 = 0;
+const ACCESS_ALLOWED_COMPOUND_ACE_KIND: u32 = 4;
+const ACCESS_ALLOWED_OBJECT_ACE_KIND: u32 = 5;
+const ACCESS_ALLOWED_CALLBACK_ACE_KIND: u32 = 9;
+const ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_KIND: u32 = 11;
+
+#[path = "windows/token.rs"]
+mod token;
+use token::ProcessToken;
+
+#[derive(Debug)]
+pub(super) struct WindowsManagedProof {
+    package: PhysicallyInspectedPackage,
+    state_path: PathBuf,
+    state_handle: File,
+    snapshot: ManagedSecuritySnapshot,
+}
+
+struct SecurityDescriptor {
+    words: Vec<u64>,
+    byte_len: usize,
+}
+
+impl SecurityDescriptor {
+    fn pointer(&self) -> *mut c_void {
+        self.words.as_ptr().cast_mut().cast()
+    }
+
+    fn bytes(&self) -> &[u8] {
+        // SAFETY: words owns at least byte_len initialized bytes returned by Win32.
+        unsafe { std::slice::from_raw_parts(self.words.as_ptr().cast(), self.byte_len) }
+    }
+}
+
+pub(super) fn inspect(
+    packet: &MetadataValidatedPacket,
+    package: PhysicallyInspectedPackage,
+) -> Result<WindowsManagedProof, ManagedStagingError> {
+    let (state_path, state_handle) =
+        open_exact_state_root(packet.codex_home()).map_err(|_| ManagedStagingError::StateAcl)?;
+    if state_path != packet.codex_home() {
+        return Err(ManagedStagingError::StateAcl);
+    }
+    let snapshot = observe(&package, &state_path, &state_handle)?;
+    validate_snapshot(&snapshot)?;
+    Ok(WindowsManagedProof {
+        package,
+        state_path,
+        state_handle,
+        snapshot,
+    })
+}
+
+pub(super) fn revalidate(
+    packet: &MetadataValidatedPacket,
+    proof: &WindowsManagedProof,
+) -> Result<(), ManagedStagingError> {
+    if proof.state_path != packet.codex_home() || proof.package.codex_home() != packet.codex_home()
+    {
+        return Err(ManagedStagingError::Binding);
+    }
+    let root = ConfiguredManagedPackageRoot::new(proof.package.package_root().to_owned())
+        .map_err(|_| ManagedStagingError::Binding)?;
+    let fresh =
+        inspect_managed_package(packet, &root).map_err(|_| ManagedStagingError::SecurityDrift)?;
+    let observed = observe(&fresh, &proof.state_path, &proof.state_handle)?;
+    revalidate_snapshot(&proof.snapshot, &observed)
+}
+
+fn observe(
+    package: &PhysicallyInspectedPackage,
+    state_path: &Path,
+    state_handle: &File,
+) -> Result<ManagedSecuritySnapshot, ManagedStagingError> {
+    let token = ProcessToken::open()?;
+    let mut package_nodes = package
+        .held_nodes()
+        .iter()
+        .map(|node| claims_for_node(node, &token, false))
+        .collect::<Result<Vec<_>, _>>()?;
+    package_nodes.sort_by(|left, right| {
+        left.path
+            .components()
+            .count()
+            .cmp(&right.path.components().count())
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    let state_root = claims_for_handle(state_path.to_owned(), true, state_handle, &token, true)?;
+    Ok(ManagedSecuritySnapshot {
+        token_user_digest: Sha256::digest(&token.user_sid).into(),
+        package_nodes,
+        state_root,
+    })
+}
+
+fn claims_for_node(
+    node: &HeldPhysicalNode,
+    token: &ProcessToken,
+    state: bool,
+) -> Result<NodeSecurityClaims, ManagedStagingError> {
+    claims_for_handle(
+        node.path.clone(),
+        node.directory,
+        &node.handle,
+        token,
+        state,
+    )
+}
+
+fn claims_for_handle(
+    path: PathBuf,
+    directory: bool,
+    handle: &File,
+    token: &ProcessToken,
+    state: bool,
+) -> Result<NodeSecurityClaims, ManagedStagingError> {
+    let descriptor = query_security_descriptor(handle)?;
+    let pointer = descriptor.pointer();
+    let mut owner: PSID = std::ptr::null_mut();
+    let mut owner_defaulted = 0;
+    // SAFETY: descriptor is a live self-relative descriptor and outputs are writable.
+    if unsafe { GetSecurityDescriptorOwner(pointer, &mut owner, &mut owner_defaulted) } == 0
+        || owner.is_null()
+        || unsafe { IsValidSid(owner) } == 0
+        || owner_defaulted != 0
+    {
+        return Err(ManagedStagingError::Io);
+    }
+    let owner = token.classify_owner(owner);
+
+    let mut dacl_present = 0;
+    let mut dacl: *mut ACL = std::ptr::null_mut();
+    let mut dacl_defaulted = 0;
+    // SAFETY: descriptor is live and output pointers are writable.
+    if unsafe {
+        GetSecurityDescriptorDacl(pointer, &mut dacl_present, &mut dacl, &mut dacl_defaulted)
+    } == 0
+        || dacl_present == 0
+        || dacl.is_null()
+        || dacl_defaulted != 0
+        || unsafe { IsValidAcl(dacl) } == 0
+    {
+        return Err(if state {
+            ManagedStagingError::StateAcl
+        } else {
+            ManagedStagingError::PackageAcl
+        });
+    }
+    let mut control = 0_u16;
+    let mut revision = 0_u32;
+    // SAFETY: descriptor is live and outputs are writable.
+    if unsafe { GetSecurityDescriptorControl(pointer, &mut control, &mut revision) } == 0 {
+        return Err(ManagedStagingError::Io);
+    }
+    let effective_access = effective_access(pointer, token.impersonation_handle())?;
+    let foreign_mutation_grant = foreign_mutation_grant(dacl, token, state)?;
+    Ok(NodeSecurityClaims {
+        path,
+        directory,
+        owner,
+        dacl_present: true,
+        dacl_protected: control & SE_DACL_PROTECTED != 0,
+        descriptor_digest: Sha256::digest(descriptor.bytes()).into(),
+        descriptor_bytes: descriptor.byte_len,
+        effective_access,
+        foreign_mutation_grant,
+    })
+}
+
+fn query_security_descriptor(handle: &File) -> Result<SecurityDescriptor, ManagedStagingError> {
+    let raw = handle.as_raw_handle() as HANDLE;
+    let requested =
+        OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION;
+    let mut needed = 0_u32;
+    // SAFETY: this sizing call intentionally supplies no output buffer.
+    unsafe { GetKernelObjectSecurity(raw, requested, std::ptr::null_mut(), 0, &mut needed) };
+    let byte_len = usize::try_from(needed).map_err(|_| ManagedStagingError::DescriptorLimit)?;
+    if byte_len == 0 || byte_len > SECURITY_DESCRIPTOR_BYTES_MAX {
+        return Err(ManagedStagingError::DescriptorLimit);
+    }
+    let mut words = vec![0_u64; byte_len.div_ceil(std::mem::size_of::<u64>())];
+    // SAFETY: words is aligned, writable, and large enough for needed bytes.
+    if unsafe {
+        GetKernelObjectSecurity(
+            raw,
+            requested,
+            words.as_mut_ptr().cast(),
+            needed,
+            &mut needed,
+        )
+    } == 0
+    {
+        return Err(ManagedStagingError::Io);
+    }
+    Ok(SecurityDescriptor { words, byte_len })
+}
+
+fn effective_access(descriptor: *mut c_void, token: HANDLE) -> Result<u32, ManagedStagingError> {
+    let mapping = generic_mapping();
+    let mut privileges = [0_u64; 128];
+    let mut privilege_bytes =
+        u32::try_from(std::mem::size_of_val(&privileges)).map_err(|_| ManagedStagingError::Io)?;
+    let mut granted = 0_u32;
+    let mut access = 0;
+    // SAFETY: descriptor/token are live; all output buffers are writable and bounded.
+    if unsafe {
+        AccessCheck(
+            descriptor,
+            token,
+            MAXIMUM_ALLOWED_ACCESS,
+            &mapping,
+            privileges.as_mut_ptr().cast(),
+            &mut privilege_bytes,
+            &mut granted,
+            &mut access,
+        )
+    } == 0
+        || access == 0
+    {
+        return Err(ManagedStagingError::Io);
+    }
+    Ok(granted)
+}
+
+fn foreign_mutation_grant(
+    dacl: *mut ACL,
+    token: &ProcessToken,
+    state: bool,
+) -> Result<bool, ManagedStagingError> {
+    let mut info = ACL_SIZE_INFORMATION::default();
+    // SAFETY: dacl is valid and info is writable.
+    if unsafe {
+        GetAclInformation(
+            dacl,
+            (&raw mut info).cast(),
+            u32::try_from(std::mem::size_of::<ACL_SIZE_INFORMATION>())
+                .map_err(|_| ManagedStagingError::Io)?,
+            AclSizeInformation,
+        )
+    } == 0
+        || info.AceCount > ACL_ACE_MAX
+    {
+        return Err(ManagedStagingError::Io);
+    }
+    for index in 0..info.AceCount {
+        let mut ace: *mut c_void = std::ptr::null_mut();
+        // SAFETY: the validated ACL owns every ACE returned by this bounded index.
+        if unsafe { GetAce(dacl, index, &mut ace) } == 0 || ace.is_null() {
+            return Err(ManagedStagingError::Io);
+        }
+        // SAFETY: every ACE starts with a four-byte ACE_HEADER followed by its mask.
+        let ace_type = unsafe { *(ace.cast::<u8>()) } as u32;
+        if matches!(
+            ace_type,
+            ACCESS_ALLOWED_CALLBACK_ACE_KIND
+                | ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_KIND
+                | ACCESS_ALLOWED_COMPOUND_ACE_KIND
+                | ACCESS_ALLOWED_OBJECT_ACE_KIND
+        ) {
+            return Ok(true);
+        }
+        if ace_type != ACCESS_ALLOWED_ACE_KIND {
+            continue;
+        }
+        // SAFETY: a standard ACCESS_ALLOWED_ACE stores mask at byte 4 and SID at byte 8.
+        let mut mask = unsafe { *ace.cast::<u8>().add(4).cast::<u32>() };
+        // SAFETY: mapping is a valid immutable mapping.
+        unsafe { MapGenericMask(&mut mask, &generic_mapping()) };
+        if mask & DANGEROUS_ACCESS == 0 {
+            continue;
+        }
+        // SAFETY: every valid ACL ACE begins with the fixed four-byte header.
+        let ace_bytes = usize::from(unsafe { *ace.cast::<u8>().add(2).cast::<u16>() });
+        if ace_bytes < 12 {
+            return Err(ManagedStagingError::Io);
+        }
+        // SAFETY: standard ACCESS_ALLOWED_ACE SID begins at byte 8.
+        let sid = unsafe { ace.cast::<u8>().add(8).cast::<c_void>() };
+        // SAFETY: sid is within the validated ACE allocation.
+        if unsafe { IsValidSid(sid) } == 0
+            || (unsafe { GetLengthSid(sid) } as usize) > ace_bytes - 8
+        {
+            return Err(ManagedStagingError::Io);
+        }
+        if !token.trusted_mutation_principal(sid, state) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn generic_mapping() -> GENERIC_MAPPING {
+    GENERIC_MAPPING {
+        GenericRead: FILE_GENERIC_READ,
+        GenericWrite: FILE_GENERIC_WRITE,
+        GenericExecute: FILE_GENERIC_EXECUTE,
+        GenericAll: FILE_ALL_ACCESS,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::{self, OpenOptions};
+    use std::os::windows::fs::OpenOptionsExt;
+
+    use uuid::Uuid;
+    use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+
+    use super::*;
+
+    #[test]
+    fn ordinary_user_owned_file_is_observed_as_mutable_not_managed() {
+        let base = std::env::temp_dir().join(format!("sage-managed-acl-{}", Uuid::new_v4()));
+        fs::create_dir(&base).unwrap();
+        let path = base.join("ordinary-file");
+        fs::write(&path, b"fixture").unwrap();
+        {
+            let handle = OpenOptions::new()
+                .read(true)
+                .share_mode(FILE_SHARE_READ)
+                .open(&path)
+                .unwrap();
+            let token = ProcessToken::open().unwrap();
+            let claims = claims_for_handle(path.clone(), false, &handle, &token, false).unwrap();
+            assert_eq!(claims.owner, OwnerClass::CurrentUser);
+            assert_ne!(claims.effective_access & DANGEROUS_ACCESS, 0);
+        }
+        fs::remove_dir_all(base).unwrap();
+    }
+}

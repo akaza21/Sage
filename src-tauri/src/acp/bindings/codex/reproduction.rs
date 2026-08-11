@@ -190,6 +190,10 @@ impl ReproducedPackagePrerequisite {
         Ok(())
     }
 
+    pub(super) fn inspection(&self) -> &PhysicallyInspectedPackage {
+        &self.inspection
+    }
+
     #[cfg(test)]
     pub(super) fn fixture(packet: &MetadataValidatedPacket) -> Self {
         let requirements = parse_reproduction_requirements(

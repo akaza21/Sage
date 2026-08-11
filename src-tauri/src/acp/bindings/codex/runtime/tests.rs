@@ -137,11 +137,16 @@ fn launch_stays_unavailable_without_exact_artifact_admission() {
     .expect("security policy prerequisite");
     let reproduction =
         crate::acp::bindings::codex::reproduction::ReproducedPackagePrerequisite::fixture(&packet);
+    let managed_staging = crate::acp::bindings::codex::managed::ManagedStagingPrerequisite::fixture(
+        &packet,
+        &reproduction,
+    );
     assert_eq!(
         CodexRuntime::from_metadata_packet(
             &packet,
             &policy,
             &reproduction,
+            &managed_staging,
             [1; 32],
             RuntimeEpoch::new(1).expect("epoch"),
             SageAgentSessionId::parse("session-launch").expect("session")

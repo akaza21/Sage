@@ -44,7 +44,14 @@ pub(crate) struct PhysicallyInspectedPackage {
     codex_home: PathBuf,
     artifact_count: usize,
     byte_len: u64,
-    _held_handles: Vec<File>,
+    held_nodes: Vec<HeldPhysicalNode>,
+}
+
+#[derive(Debug)]
+pub(super) struct HeldPhysicalNode {
+    pub(super) path: PathBuf,
+    pub(super) directory: bool,
+    pub(super) handle: File,
 }
 
 impl PhysicallyInspectedPackage {
@@ -69,7 +76,7 @@ impl PhysicallyInspectedPackage {
             ),
             artifact_count: EXPECTED_FILE_COUNT,
             byte_len: 427_151_500,
-            _held_handles: Vec::new(),
+            held_nodes: Vec::new(),
         }
     }
 
@@ -85,23 +92,28 @@ impl PhysicallyInspectedPackage {
             codex_home: packet.codex_home().to_owned(),
             artifact_count: packet.metadata().supporting_artifacts.len() + 1,
             byte_len: packet.metadata().package_unpacked_byte_len,
-            _held_handles: Vec::new(),
+            held_nodes: Vec::new(),
         }
     }
 
-    #[cfg(test)]
-    fn package_root(&self) -> &Path {
+    pub(super) fn package_root(&self) -> &Path {
         &self.package_root
     }
 
-    #[cfg(test)]
-    fn artifact_count(&self) -> usize {
+    pub(super) fn codex_home(&self) -> &Path {
+        &self.codex_home
+    }
+
+    pub(super) fn artifact_count(&self) -> usize {
         self.artifact_count
     }
 
-    #[cfg(test)]
-    fn byte_len(&self) -> u64 {
+    pub(super) fn byte_len(&self) -> u64 {
         self.byte_len
+    }
+
+    pub(super) fn held_nodes(&self) -> &[HeldPhysicalNode] {
+        &self.held_nodes
     }
 }
 
@@ -171,6 +183,13 @@ fn inspect_claims(
     claims: InspectionClaims,
 ) -> Result<PhysicallyInspectedPackage, PhysicalInspectionError> {
     windows::inspect_claims(claims)
+}
+
+#[cfg(windows)]
+pub(super) fn open_exact_state_root(
+    path: &Path,
+) -> Result<(PathBuf, File), PhysicalInspectionError> {
+    windows::open_exact_state_root(path)
 }
 
 fn decode_digest(value: &str) -> Result<[u8; 32], PhysicalInspectionError> {

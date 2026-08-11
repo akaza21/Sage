@@ -101,18 +101,19 @@ command is:
 cargo test --lib acp::bindings::codex
 ```
 
-It passed 44 default tests on the implementation workstation. One additional
-ignored test is explicitly enabled with `SAGE_CODEX_0145_PACKAGE_ROOT` and
-passed against the exact extracted 427,151,500-byte package:
+It passed 51 default tests on the implementation workstation. One additional
+ignored test now requires both the exact managed package and existing isolated
+state roots:
 
 ```text
-cargo test --lib acp::bindings::codex::tests::exact_registry_package_satisfies_reproduction_prerequisite_without_launch_authority -- --ignored --exact --nocapture
+cargo test --lib acp::bindings::codex::tests::exact_registry_package_and_state_satisfy_managed_prerequisite_without_launch_authority -- --ignored --exact --nocapture
 ```
 
-The resulting 45 test declarations include malformed, unknown-field,
+The resulting 52 test declarations include malformed, unknown-field,
 exact-limit-plus-one, registry/verification-boundary drift, mismatched physical
 package-root and isolated-state-root binding, mandatory-constructor, and
-real-package fail-closed coverage. This is
+real-package/state fail-closed coverage. The ignored gate is unrun because the
+managed roots are absent. This is
 developer self-check evidence, not the clean-machine package reproduction, signature
 verification, hostile containment probe, fresh Review, or Independent Test
 required for Ready.
@@ -127,6 +128,23 @@ construction, but it grants no artifact admission or launch authority. Exact
 commands, results, and observed identities are in the
 [package-reproduction evidence](package-reproduction-0.145.0-build-evidence.md).
 
+The managed-staging prerequisite adds a 64-node, 64-KiB-per-descriptor,
+1-MiB-aggregate, and 256-ACE bounded Windows security pass. Tests cover
+package and state owner policy, protected-root DACLs, current-token effective
+write denial/allowance, conservative foreign mutating grants, exact and
+plus-one bounds, different package/state binding, and descriptor/owner/access/
+token drift. A native smoke proves an ordinary user-owned writable file fails
+the package policy. Production runtime construction now requires this typed
+prerequisite and repeats the exact closure plus security snapshot before still
+returning `LaunchUnavailable` at `ArtifactNotAdmitted`.
+
+The renamed ignored gate requires both `SAGE_CODEX_0145_PACKAGE_ROOT` and
+`SAGE_CODEX_0145_STATE_ROOT` and is documented in the
+[managed-staging evidence](managed-staging-0.145.0-build-evidence.md). It was
+not run because the exact managed roots are absent. Thus the verifier is local
+green, while provisioning, exact-root ACL evidence, global immutability, and
+atomic check-to-launch remain unproven.
+
 The security-prerequisite increment adds exact and drift fixtures for the
 packet-bound isolated `CODEX_HOME`, file credential store, disabled ambient
 config and update checks, one-live-tree ceiling, cleared five-key environment,
@@ -138,7 +156,8 @@ still returns `LaunchUnavailable` through the unchanged
 `ArtifactNotAdmitted` production gate, and the catalog assertion keeps Codex
 `notInstalled`.
 
-No test in this increment proves directory provisioning, ACLs, an adequate or
+No test in these increments proves directory provisioning or the exact
+candidate's applied ACLs, an adequate or
 enforced Codex writable-state disk/retention budget, authentication lifecycle
 or redaction, endpoint/proxy/TLS/offline behavior, telemetry, Windows
 containment, or launch authority. Those remain H1-03/H1-04 admission work.

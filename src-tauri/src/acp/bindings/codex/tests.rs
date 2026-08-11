@@ -66,6 +66,10 @@ fn relocate_package_root(packet: &mut Value, next_root: &str) {
     }
 }
 
+fn relocate_codex_home(packet: &mut Value, next_home: &str) {
+    packet["codexHome"] = json!(next_home);
+}
+
 fn initialize_result(id: u64) -> Vec<u8> {
     serde_json::to_vec(&json!({
         "id": id,
@@ -368,27 +372,56 @@ fn reproduction_prerequisite_rejects_an_inspection_for_a_different_codex_home() 
     ));
 }
 
+#[test]
+fn managed_staging_prerequisite_rejects_a_different_package_and_state_binding() {
+    let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
+    let reproduced = reproduction::ReproducedPackagePrerequisite::fixture(&packet);
+    let managed = managed::ManagedStagingPrerequisite::fixture(&packet, &reproduced);
+
+    let mut changed = packet_value();
+    relocate_package_root(&mut changed, r"C:\SageHarnesses\Codex\0.145.0\package");
+    relocate_codex_home(
+        &mut changed,
+        r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167",
+    );
+    let changed_packet = parse_packet_metadata(&serde_json::to_vec(&changed).unwrap()).unwrap();
+    let changed_reproduced = reproduction::ReproducedPackagePrerequisite::fixture(&changed_packet);
+
+    assert_eq!(
+        managed.revalidate(&changed_packet, &changed_reproduced),
+        Err(ManagedStagingError::Binding)
+    );
+}
+
 #[cfg(windows)]
 #[test]
-#[ignore = "requires SAGE_CODEX_0145_PACKAGE_ROOT pointing at the exact 427 MB package"]
-fn exact_registry_package_satisfies_reproduction_prerequisite_without_launch_authority() {
+#[ignore = "requires exact SAGE_CODEX_0145_PACKAGE_ROOT and SAGE_CODEX_0145_STATE_ROOT managed roots"]
+fn exact_registry_package_and_state_satisfy_managed_prerequisite_without_launch_authority() {
     let package_root = std::env::var("SAGE_CODEX_0145_PACKAGE_ROOT")
         .expect("set SAGE_CODEX_0145_PACKAGE_ROOT to the extracted 0.145.0-win32-x64 package");
     let mut packet = packet_value();
     relocate_package_root(&mut packet, &package_root);
+    let state_root = std::env::var("SAGE_CODEX_0145_STATE_ROOT")
+        .expect("set SAGE_CODEX_0145_STATE_ROOT to the exact existing isolated state root");
+    relocate_codex_home(&mut packet, &state_root);
     let packet = parse_packet_metadata(&serde_json::to_vec(&packet).unwrap()).unwrap();
     let requirements = parse_reproduction_requirements(REPRODUCTION_FIXTURE, &packet).unwrap();
     let configured_root =
         ConfiguredManagedPackageRoot::new(std::path::PathBuf::from(package_root)).unwrap();
     let inspection = inspect_managed_package(&packet, &configured_root).unwrap();
     let reproduced = bind_reproduced_package(requirements, &packet, inspection).unwrap();
-    let security_policy = parse_security_policy(SECURITY_POLICY_FIXTURE, &packet).unwrap();
+    let managed_staging = inspect_managed_staging(&packet, &reproduced).unwrap();
+    let mut security_policy = security_policy_value();
+    security_policy["codexHome"] = json!(state_root);
+    let security_policy =
+        parse_security_policy(&serde_json::to_vec(&security_policy).unwrap(), &packet).unwrap();
 
     assert!(matches!(
         CodexRuntime::from_metadata_packet(
             &packet,
             &security_policy,
             &reproduced,
+            &managed_staging,
             [7; 32],
             RuntimeEpoch::new(1).unwrap(),
             SageAgentSessionId::parse("real-package-reproduction").unwrap(),
