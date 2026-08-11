@@ -37,6 +37,48 @@ function canonicalRelative(value) {
   return value.split(path.sep).join("/");
 }
 
+const betaAcceptanceRelativePath =
+  "docs/work-items/BETA-0001-primary-beta-path/contracts/beta-acceptance-v1.json";
+const betaAcceptanceBytes = await readFile(
+  path.join(root, betaAcceptanceRelativePath),
+);
+const betaAcceptance = JSON.parse(betaAcceptanceBytes.toString("utf8"));
+const betaAcceptanceSha256 = createHash("sha256")
+  .update(betaAcceptanceBytes)
+  .digest("hex");
+if (
+  betaAcceptanceSha256 !==
+    "3a6513190351bb71398a2ec1081e2db6f2a3c21aa860235d565f0523f49b85e4" ||
+  betaAcceptance.schemaVersion !== 1 ||
+  betaAcceptance.status !== "frozen-thresholds-awaiting-candidate-verifier" ||
+  betaAcceptance.workItem !== "BETA-0001"
+) {
+  fail("BETA-0001 acceptance contract drifted from its reviewed v1 bytes.");
+}
+const betaContractDirectory = path.dirname(
+  path.join(root, betaAcceptanceRelativePath),
+);
+for (const authority of betaAcceptance.sharedAuthorities ?? []) {
+  const authorityPath = path.resolve(
+    betaContractDirectory,
+    authority.relativePath,
+  );
+  try {
+    const metadata = await lstat(authorityPath);
+    if (!metadata.isFile() || metadata.isSymbolicLink()) {
+      fail(`BETA-0001 ${authority.id} authority is not a regular file.`);
+      continue;
+    }
+    const bytes = await readFile(authorityPath);
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    if (authority.bytes !== bytes.length || authority.sha256 !== sha256) {
+      fail(`BETA-0001 ${authority.id} authority bytes drifted.`);
+    }
+  } catch {
+    fail(`BETA-0001 ${authority.id} authority is missing.`);
+  }
+}
+
 const ownershipManifest = await readJson(
   "docs/work-items/ADE-0006A-acp-session-foundation/contracts/ownership-manifest-v1.json",
 );

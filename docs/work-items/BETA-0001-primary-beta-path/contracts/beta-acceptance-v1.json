@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "status": "frozen-thresholds-awaiting-candidate-verifier",
+  "workItem": "BETA-0001",
+  "candidate": {
+    "platform": "windows",
+    "architecture": "x86_64",
+    "exactSourceCommitRequired": true,
+    "exactPackageReceiptRequired": true,
+    "installedCampaignRequired": true,
+    "freshStandardsReviewRequired": true,
+    "freshSpecReviewRequired": true,
+    "independentTestRequired": true,
+    "macosSharedContractCiRequired": true
+  },
+  "codexJourney": {
+    "runtimeVersion": "0.145.0",
+    "projectRootMode": "single-root-project-only",
+    "minimumObservedModels": 1,
+    "minimumDistinctChats": 2,
+    "minimumSequentialTurnsInOneSession": 2,
+    "minimumSuccessfulTurns": 4,
+    "minimumRestartResumeThenTurnCycles": 1,
+    "minimumCancelThenReuseCycles": 1,
+    "minimumCleanCycles": 5,
+    "minimumFailureCycles": 5,
+    "maximumOrphanProcessesAfterClose": 0,
+    "maximumSecretExposureObservations": 0,
+    "maximumUnauthorizedMutationObservations": 0
+  },
+  "codexBudgets": {
+    "minimumLatencySamples": 30,
+    "managedArtifactLogicalBytesMaximum": 536870912,
+    "managedStateLogicalBytesMaximum": 536870912,
+    "managedStateAllocatedBytesMaximum": 536870912,
+    "operationalRuntimeTreesMaximum": 1,
+    "operationalProcessCountMaximum": 1,
+    "operationalTreePrivateBytesP95Maximum": 536870912,
+    "readyIdleCpuSingleCorePercentP95Maximum": 0.5,
+    "spawnToProcessReadyP95MsMaximum": 2500,
+    "initializeP95MsMaximum": 5000,
+    "promptWriteCompleteToFirstNormalizedOutputP95MsMaximum": 30000,
+    "cancelDispatchP95MsMaximum": 100,
+    "cancelTerminalP95MsMaximum": 1000,
+    "explicitCloseP95MsMaximum": 1000,
+    "databaseBytesMaximum": 1073741824,
+    "walBytesMaximum": 33554432,
+    "unexpectedListenerCountMaximum": 0,
+    "unexpectedEnvironmentEntryCountMaximum": 0
+  },
+  "sharedAuthorities": [
+    {
+      "id": "ade0006a-foundation-budget-v1",
+      "relativePath": "../../ADE-0006A-acp-session-foundation/contracts/performance-budgets-v1.json",
+      "bytes": 16989,
+      "sha256": "c2c490c7f2c3c34a318905976faafb4271460f60faa8451dddeae71e0badbd4c"
+    },
+    {
+      "id": "codex-0145-test-plan",
+      "relativePath": "../../ADE-0006B-codex-acp/test-plan.md",
+      "bytes": 14340,
+      "sha256": "b5401b02c13c5765c53aa1ed5f5633a06a925629bce91526bfda9a11053abaf1"
+    },
+    {
+      "id": "codex-0145-security-policy-source",
+      "relativePath": "../../../../src-tauri/src/acp/bindings/codex/policy.rs",
+      "bytes": 13217,
+      "sha256": "2095f8631af0a2194598d14e246b9b99a2f3a4fcb4d5307ce06d1a6087d10aa5"
+    }
+  ],
+  "measurement": {
+    "percentileMethod": "nearest-rank",
+    "candidateMayChangeCeiling": false,
+    "testMayChangeCeiling": false
+  },
+  "candidateVerifier": {
+    "status": "planned",
+    "requiredBeforeFeatureFreezeCampaign": true,
+    "mustAuthenticateThisContractSha256": true,
+    "mustDefineEveryIncludedJourneyResult": true,
+    "mustRejectMissingUnknownDuplicateAndOverBudgetEvidence": true
+  }
+}
