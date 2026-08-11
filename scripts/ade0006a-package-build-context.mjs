@@ -1,6 +1,5 @@
 import path from "node:path";
 
-import { stableJson } from "./ade0006a-c0b-common.mjs";
 import {
   resolvePackageBuildTools,
   runBounded,
@@ -16,14 +15,13 @@ import {
   createPackageGitEnvironment,
   createPackageNpmEnvironment,
 } from "./ade0006a-package-environment.mjs";
-import { hashBoundedFile } from "./ade0006a-package-members.mjs";
+import { verifyAuthenticatedPackageInputs } from "./ade0006a-package-input-verification.mjs";
 import { stageAuthenticatedPackageFileSet } from "./ade0006a-package-file-set.mjs";
 import { stagePackageSource } from "./ade0006a-package-source-stage.mjs";
 import { observeAuthenticatedPackageTree } from "./ade0006a-package-tree.mjs";
 import {
   observeAuthenticatedPackageTreeSet,
   resolveAuthenticatedPackageTreeSetMembers,
-  verifyAuthenticatedPackageTreeSet,
 } from "./ade0006a-package-tree-set.mjs";
 import {
   packageToolFileIdentity,
@@ -91,6 +89,17 @@ export async function prepareAuthenticatedWindowsPackageBuild({
   }
   const maximum = frozen.package.observerBounds.executableArtifactBytes;
   const node = await packageToolFileIdentity(options.node, "node", maximum);
+  const powershell = await packageToolFileIdentity(
+    path.join(
+      options.systemRoot,
+      "System32",
+      "WindowsPowerShell",
+      "v1.0",
+      "powershell.exe",
+    ),
+    "powershell",
+    maximum,
+  );
   const gitRuntimeTree = await stageAuthenticatedPackageFileSet({
     sourceRoot: path.join(
       gitRoot,
@@ -189,6 +198,7 @@ export async function prepareAuthenticatedWindowsPackageBuild({
     },
     frozen,
   );
+  buildTools.powershell = powershell;
   const launcher = async (relativePath, label) =>
     packageToolFileIdentity(
       path.join(staged.sourceRoot, ...relativePath.split("/")),
@@ -291,6 +301,7 @@ export async function prepareAuthenticatedWindowsPackageBuild({
       },
       buildTools,
       node,
+      powershell,
       npmCli,
       git,
       launchers: { typescript, vite },
@@ -356,7 +367,15 @@ export async function prepareAuthenticatedWindowsPackageBuild({
     [msvcInputsTree, "msvcInputBytes"],
     [windowsSdkInputsTree, "windowsSdkInputBytes"],
   ];
-  const watchedFiles = [node, git, msvc.cl, msvc.link, sdk.rc, sdk.mt];
+  const watchedFiles = [
+    node,
+    powershell,
+    git,
+    msvc.cl,
+    msvc.link,
+    sdk.rc,
+    sdk.mt,
+  ];
   return {
     sourceRoot: staged.sourceRoot,
     buildTools,
@@ -371,30 +390,13 @@ export async function prepareAuthenticatedWindowsPackageBuild({
       ) {
         throw new Error("staged-source-changed-during-package-campaign");
       }
-      for (const [tree, bytesKey] of watchedTrees) {
-        const observed = await observeAuthenticatedPackageTree({
-          root: tree.root,
-          bounds: packageBuildTreeBounds(frozen, bytesKey),
-        });
-        if (stableJson(observed.summary) !== stableJson(tree.summary)) {
-          throw new Error(
-            `authenticated-package-input-tree-changed:${bytesKey}`,
-          );
-        }
-      }
-      for (const [treeSet, bytesKey] of watchedTreeSets) {
-        await verifyAuthenticatedPackageTreeSet(
-          treeSet,
-          packageBuildTreeBounds(frozen, bytesKey),
-        );
-      }
-      for (const file of watchedFiles) {
-        if (
-          (await hashBoundedFile(file.path, maximum)).sha256 !== file.sha256
-        ) {
-          throw new Error("authenticated-package-input-file-changed");
-        }
-      }
+      await verifyAuthenticatedPackageInputs({
+        watchedTrees,
+        watchedTreeSets,
+        watchedFiles,
+        frozen,
+        maximumFileBytes: maximum,
+      });
     },
   };
 }

@@ -42,6 +42,7 @@ export function validateAuthenticatedPackageBuildIdentity(
       "rustToolchain",
       "cargoRegistry",
       "node",
+      "powershell",
       "npm",
       "nodeModules",
       "launchers",
@@ -125,6 +126,12 @@ export function validateAuthenticatedPackageBuildIdentity(
   );
   exactKeys(
     errors,
+    value?.powershell,
+    ["executableSha256"],
+    `${label}.powershell`,
+  );
+  exactKeys(
+    errors,
     value?.npm,
     ["version", "cliSha256", "treeSha256", "fileCount", "bytes"],
     `${label}.npm`,
@@ -153,9 +160,10 @@ export function validateAuthenticatedPackageBuildIdentity(
     value?.node?.version !== contract.node.version ||
     value?.npm?.version !== contract.node.npmVersion ||
     !SHA256.test(value?.node?.executableSha256 ?? "") ||
-    !SHA256.test(value?.npm?.cliSha256 ?? "")
+    !SHA256.test(value?.npm?.cliSha256 ?? "") ||
+    !SHA256.test(value?.powershell?.executableSha256 ?? "")
   ) {
-    errors.push(`${label} Node or npm identity is invalid`);
+    errors.push(`${label} Node, npm, or PowerShell identity is invalid`);
   }
   exactKeys(
     errors,

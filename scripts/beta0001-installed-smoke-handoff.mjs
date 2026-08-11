@@ -1,29 +1,39 @@
-import { lstat, mkdir, realpath, stat, writeFile } from "node:fs/promises";
+import { lstat, realpath, stat } from "node:fs/promises";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 
-import { parseBoundedJson, sha256 } from "./ade0006a-c0b-common.mjs";
+import {
+  readBoundedFile,
+  sha256,
+  validateJsonShape,
+} from "./ade0006a-c0b-common.mjs";
 import { runBounded } from "./ade0006a-package-build.mjs";
 import { hashBoundedFile } from "./ade0006a-package-members.mjs";
 import { validateInstalledSmokeReceipt } from "./beta0001-installed-smoke.mjs";
+import {
+  INSTALLED_SMOKE_SETTLEMENT_TIMEOUT_MS,
+  settleInstalledSmokeWatchdog,
+} from "./beta0001-installed-smoke-settlement.mjs";
+import { INSTALLED_SMOKE_RUNNER_RELATIVE_PATHS } from "./beta0001-installed-smoke-source-closure.mjs";
+import {
+  acquireInstalledSmokeOutputAuthority,
+  assertInstalledSmokeOutputAuthority,
+  releaseInstalledSmokeOutputAuthority,
+  writeInstalledSmokeOutputFile,
+} from "./beta0001-installed-smoke-output-authority.mjs";
+import {
+  createInstalledSmokeControllerInvocation,
+  INSTALLED_SMOKE_CAMPAIGN_JOB_TIMEOUT_MS,
+  installedSmokeFailure,
+  installedSmokeProcessFailureCode,
+  parseInstalledSmokeControllerProof,
+} from "./beta0001-installed-smoke-controller.mjs";
 
 const receiptMaximumBytes = 256 * 1024;
 const smokeTimeoutMs = 30 * 60 * 1000;
+const campaignDeadlineMs = 20 * 60 * 1000;
 const executableMaximumBytes = 512 * 1024 * 1024;
 const runnerMaximumBytes = 2 * 1024 * 1024;
-const runnerRelativePaths = Object.freeze([
-  "scripts/measure-windows-installed-smoke.ps1",
-  "scripts/footprint/InstalledSmokeIdentity.psm1",
-  "scripts/footprint/InstalledSmokePackageLifecycle.psm1",
-  "scripts/footprint/InstalledSmokeSemantic.psm1",
-  "scripts/footprint/DisposableProfile.psm1",
-  "scripts/footprint/ScenarioEvidence.psm1",
-  "scripts/footprint/WindowsFootprint.psm1",
-  "scripts/footprint/WindowsJob.psm1",
-  "scripts/footprint/WindowsJobCompletion.psm1",
-  "scripts/footprint/ProcessIdentity.psm1",
-  "scripts/footprint/bounded-node-runner.mjs",
-  "scripts/footprint/drive-installed-smoke.mjs",
-]);
 const jsonLimits = Object.freeze({
   jsonDepth: 8,
   jsonNodes: 512,
@@ -40,24 +50,6 @@ async function requiredFile(value, label) {
   return resolved;
 }
 
-async function reserveOutput(value) {
-  if (!path.isAbsolute(value ?? "")) {
-    throw new Error("installed-smoke-output-path-invalid");
-  }
-  const resolved = path.resolve(value);
-  const parent = await realpath(path.dirname(resolved));
-  const item = await lstat(parent);
-  if (!item.isDirectory() || item.isSymbolicLink()) {
-    throw new Error("installed-smoke-output-parent-invalid");
-  }
-  await mkdir(resolved, { recursive: false });
-  return resolved;
-}
-
-function argument(name, value) {
-  return [name, value];
-}
-
 async function observedIdentity(filePath, label, maximumBytes, expected) {
   const resolved = await requiredFile(filePath, label);
   const identity = await hashBoundedFile(resolved, maximumBytes);
@@ -70,13 +62,22 @@ async function observedIdentity(filePath, label, maximumBytes, expected) {
   return { path: resolved, ...identity };
 }
 
+async function existingItem(value) {
+  try {
+    return await lstat(value);
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
 export async function runAuthenticatedInstalledSmoke({
   handoff,
   campaignId,
   outputDirectory,
-  powershell,
   expectedSignerThumbprint,
   runProcess = runBounded,
+  runFallbackProcess = runBounded,
 }) {
   const installer = handoff?.artifacts?.candidate?.installerArtifacts?.nsis;
   const installedExecutable =
@@ -87,6 +88,8 @@ export async function runAuthenticatedInstalledSmoke({
     )?.installedExecutable;
   const git = handoff?.tools?.git;
   const node = handoff?.tools?.node;
+  const powershell = handoff?.tools?.powershell;
+  const sourceManifest = handoff?.sourceManifest;
   if (
     !installer ||
     typeof installer.path !== "string" ||
@@ -103,7 +106,14 @@ export async function runAuthenticatedInstalledSmoke({
     typeof node.path !== "string" ||
     typeof node.sha256 !== "string" ||
     !Number.isSafeInteger(node.bytes) ||
+    !powershell ||
+    typeof powershell.path !== "string" ||
+    typeof powershell.sha256 !== "string" ||
+    !Number.isSafeInteger(powershell.bytes) ||
+    powershell.sha256 !==
+      handoff?.receipt?.buildIdentity?.powershell?.executableSha256 ||
     typeof handoff?.sourceRoot !== "string" ||
+    !Array.isArray(sourceManifest?.files) ||
     !/^[0-9a-f]{40}$/u.test(expectedSignerThumbprint ?? "")
   ) {
     throw new Error("installed-smoke-authenticated-nsis-binding-invalid");
@@ -111,9 +121,10 @@ export async function runAuthenticatedInstalledSmoke({
   const sourceRoot = await realpath(handoff.sourceRoot);
   const [powerShellIdentity, nodeIdentity, gitIdentity] = await Promise.all([
     observedIdentity(
-      powershell,
+      powershell.path,
       "installed-smoke-powershell",
       executableMaximumBytes,
+      powershell,
     ),
     observedIdentity(
       node.path,
@@ -129,16 +140,28 @@ export async function runAuthenticatedInstalledSmoke({
     ),
   ]);
   const runnerIdentities = await Promise.all(
-    runnerRelativePaths.map(async (relativePath) => ({
-      relativePath,
-      ...(await observedIdentity(
-        path.join(sourceRoot, ...relativePath.split("/")),
-        "installed-smoke-runner",
-        runnerMaximumBytes,
-      )),
-    })),
+    INSTALLED_SMOKE_RUNNER_RELATIVE_PATHS.map(async (relativePath) => {
+      const expected = sourceManifest.files.find(
+        (entry) => entry?.path === relativePath,
+      );
+      if (
+        !expected ||
+        typeof expected.sha256 !== "string" ||
+        !Number.isSafeInteger(expected.bytes)
+      ) {
+        throw new Error("installed-smoke-runner-manifest-entry-missing");
+      }
+      return {
+        relativePath,
+        ...(await observedIdentity(
+          path.join(sourceRoot, ...relativePath.split("/")),
+          "installed-smoke-runner",
+          runnerMaximumBytes,
+          expected,
+        )),
+      };
+    }),
   );
-  const script = runnerIdentities[0].path;
   const encodedRunnerIdentities = Buffer.from(
     JSON.stringify(
       runnerIdentities.map(({ relativePath, sha256: hash, bytes }) => ({
@@ -148,99 +171,191 @@ export async function runAuthenticatedInstalledSmoke({
       })),
     ),
   ).toString("base64");
-  const output = await reserveOutput(outputDirectory);
-  const receiptPath = path.join(output, "receipt.json");
-  const packageReceiptSha256 = sha256(handoff.receiptBytes);
-  const args = [
-    "-NoLogo",
-    "-NoProfile",
-    "-NonInteractive",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-File",
-    script,
-    ...argument("-InstallerPath", installer.path),
-    ...argument("-InstallerSha256", installer.sha256),
-    ...argument("-InstallerBytes", String(installer.bytes)),
-    ...argument(
-      "-ExpectedInstalledExecutableSha256",
-      installedExecutable.sha256,
-    ),
-    ...argument(
-      "-ExpectedInstalledExecutableBytes",
-      String(installedExecutable.bytes),
-    ),
-    ...argument("-ExpectedSignerThumbprint", expectedSignerThumbprint),
-    ...argument("-PackageReceiptSha256", packageReceiptSha256),
-    ...argument("-CampaignId", campaignId),
-    ...argument("-OutputDirectory", output),
-    ...argument("-PowerShellSha256", powerShellIdentity.sha256),
-    ...argument("-PowerShellBytes", String(powerShellIdentity.bytes)),
-    ...argument("-NodePath", nodeIdentity.path),
-    ...argument("-NodeSha256", nodeIdentity.sha256),
-    ...argument("-NodeBytes", String(nodeIdentity.bytes)),
-    ...argument("-GitPath", gitIdentity.path),
-    ...argument("-GitSha256", gitIdentity.sha256),
-    ...argument("-GitBytes", String(gitIdentity.bytes)),
-    ...argument("-RunnerFileIdentitiesBase64", encodedRunnerIdentities),
-  ];
+  const outputAuthority = await acquireInstalledSmokeOutputAuthority({
+    outputDirectory,
+    powerShell: powerShellIdentity,
+    create: true,
+  });
+  const output = outputAuthority.root;
   try {
-    await runProcess(powerShellIdentity.path, args, {
-      cwd: sourceRoot,
-      env: process.env,
-      timeoutMs: smokeTimeoutMs,
-      label: "installed-smoke",
-      stdoutMaximum: receiptMaximumBytes,
-      stderrMaximum: 64 * 1024,
-      captureStdout: false,
+    const cleanupKey = randomBytes(32);
+    const receiptPath = path.join(output, "receipt.json");
+    const packageReceiptSha256 = sha256(handoff.receiptBytes);
+    const mainParameters = {
+      InstallerPath: installer.path,
+      InstallerSha256: installer.sha256,
+      InstallerBytes: installer.bytes,
+      ExpectedInstalledExecutableSha256: installedExecutable.sha256,
+      ExpectedInstalledExecutableBytes: installedExecutable.bytes,
+      ExpectedSignerThumbprint: expectedSignerThumbprint,
+      PackageReceiptSha256: packageReceiptSha256,
+      CampaignId: campaignId,
+      OutputDirectory: output,
+      AuthenticatedSourceRoot: sourceRoot,
+      CleanupKeyBase64: cleanupKey.toString("base64"),
+      PowerShellSha256: powerShellIdentity.sha256,
+      PowerShellBytes: powerShellIdentity.bytes,
+      CampaignDeadlineMilliseconds: campaignDeadlineMs,
+      NodePath: nodeIdentity.path,
+      NodeSha256: nodeIdentity.sha256,
+      NodeBytes: nodeIdentity.bytes,
+      GitPath: gitIdentity.path,
+      GitSha256: gitIdentity.sha256,
+      GitBytes: gitIdentity.bytes,
+      RunnerFileIdentitiesBase64: encodedRunnerIdentities,
+    };
+    const controller = createInstalledSmokeControllerInvocation({
+      campaignId,
+      sourceRoot,
+      runnerIdentities,
+      powerShellIdentity,
+      mainParameters,
     });
-  } catch (error) {
-    const message = String(error?.message ?? error);
-    const code = message.includes("timeout")
-      ? "orchestrator-timeout"
-      : message.includes("oversize")
-        ? "orchestrator-output-oversize"
-        : message.includes("exit-")
-          ? "orchestrator-exit-nonzero"
-          : "orchestrator-process-failed";
-    await writeFile(
-      path.join(output, "orchestrator-failure.json"),
-      `${JSON.stringify({
+    let outerJob = null;
+    try {
+      await assertInstalledSmokeOutputAuthority(
+        outputAuthority,
+        "installed-smoke-launch-output-authority",
+      );
+      const processResult = await runProcess(
+        powerShellIdentity.path,
+        controller.args,
+        {
+          cwd: sourceRoot,
+          env: process.env,
+          timeoutMs: smokeTimeoutMs,
+          label: "installed-smoke",
+          stdoutMaximum: 16 * 1024,
+          stderrMaximum: 64 * 1024,
+          captureStdout: true,
+          stdin: controller.stdin,
+          stdinMaximum: controller.stdinMaximum,
+        },
+      );
+      outerJob = parseInstalledSmokeControllerProof(
+        processResult.stdout,
+        campaignId,
+      );
+      if (outerJob.status !== "completed" || outerJob.childExitCode !== 0) {
+        throw installedSmokeFailure(
+          outerJob.status === "timeout"
+            ? "orchestrator-timeout"
+            : "orchestrator-exit-nonzero",
+          `installed-smoke-controller-${outerJob.status}`,
+        );
+      }
+      let receipt;
+      try {
+        await assertInstalledSmokeOutputAuthority(
+          outputAuthority,
+          "installed-smoke-receipt-output-authority",
+        );
+        const receiptBuffer = readBoundedFile(
+          receiptPath,
+          receiptMaximumBytes,
+          "installed smoke receipt",
+        );
+        const observedSha256 = sha256(receiptBuffer);
+        const observedAuthentication = createHmac("sha256", cleanupKey)
+          .update(receiptBuffer)
+          .digest();
+        const expectedAuthentication = Buffer.from(
+          outerJob.receiptAuthenticationSha256 ?? "",
+          "hex",
+        );
+        if (
+          observedSha256 !== outerJob.receiptSha256 ||
+          expectedAuthentication.byteLength !==
+            observedAuthentication.byteLength ||
+          !timingSafeEqual(expectedAuthentication, observedAuthentication)
+        ) {
+          throw new Error("controller receipt authentication changed");
+        }
+        receipt = JSON.parse(receiptBuffer);
+        validateJsonShape(receipt, jsonLimits, "installed smoke receipt");
+        const errors = validateInstalledSmokeReceipt(receipt);
+        if (
+          receipt.campaignId !== campaignId ||
+          receipt.packageReceiptSha256 !== packageReceiptSha256 ||
+          receipt.installer?.kind !== "nsis" ||
+          receipt.installer?.sha256 !== installer.sha256 ||
+          receipt.installer?.bytes !== installer.bytes ||
+          receipt.installer?.expectedInstalledExecutableSha256 !==
+            installedExecutable.sha256 ||
+          receipt.installer?.expectedInstalledExecutableBytes !==
+            installedExecutable.bytes ||
+          receipt.installer?.signerThumbprint !== expectedSignerThumbprint
+        ) {
+          errors.push(
+            "installed smoke receipt is not bound to its package handoff",
+          );
+        }
+        if (errors.length > 0) throw new Error(errors.join(","));
+      } catch (error) {
+        throw installedSmokeFailure(
+          "receipt-invalid",
+          `installed-smoke-receipt-invalid:${error?.message ?? error}`,
+        );
+      }
+      if (
+        (await existingItem(path.join(output, "installed"))) ||
+        (await existingItem(path.join(output, "cleanup-authority.json")))
+      ) {
+        throw installedSmokeFailure(
+          "receipt-cleanup-unproven",
+          "installed-smoke-receipt-cleanup-unproven",
+        );
+      }
+      return receipt;
+    } catch (error) {
+      const code = installedSmokeProcessFailureCode(error);
+      const cleanup = await settleInstalledSmokeWatchdog({
+        campaignId,
+        outputDirectory: output,
+        sourceRoot,
+        sourceManifest,
+        powershell: powerShellIdentity,
+        cleanupKey,
+        outerJobConverged: outerJob?.jobConverged === true,
+        outputAuthority,
+        runProcess: runFallbackProcess,
+      });
+      const cleanupFailed = !["absent", "uninstalled"].includes(cleanup.status);
+      const settlement = {
         schemaVersion: 1,
+        workItem: "BETA-0001",
         campaignId,
         result: "failed",
-        failure: { code, phase: "orchestrator" },
-      })}\n`,
-      { flag: "wx" },
-    );
-    throw new Error(`installed-smoke-${code}`, { cause: error });
+        failure: {
+          code: cleanupFailed ? "cleanup-failed" : code,
+          phase: cleanupFailed ? "fallback-cleanup" : "orchestrator-watchdog",
+        },
+        cleanup,
+        outerJob,
+      };
+      if (cleanup.status !== "unresolved") {
+        await writeInstalledSmokeOutputFile(
+          outputAuthority,
+          "orchestrator-failure.json",
+          `${JSON.stringify(settlement)}\n`,
+          { flag: "wx" },
+        );
+      }
+      return settlement;
+    }
+  } finally {
+    await releaseInstalledSmokeOutputAuthority(outputAuthority);
   }
-  const { value: receipt } = parseBoundedJson(
-    receiptPath,
-    receiptMaximumBytes,
-    jsonLimits,
-    "installed smoke receipt",
-  );
-  const errors = validateInstalledSmokeReceipt(receipt);
-  if (
-    receipt.campaignId !== campaignId ||
-    receipt.packageReceiptSha256 !== packageReceiptSha256 ||
-    receipt.installer?.kind !== "nsis" ||
-    receipt.installer?.sha256 !== installer.sha256 ||
-    receipt.installer?.bytes !== installer.bytes ||
-    receipt.installer?.expectedInstalledExecutableSha256 !==
-      installedExecutable.sha256 ||
-    receipt.installer?.expectedInstalledExecutableBytes !==
-      installedExecutable.bytes ||
-    receipt.installer?.signerThumbprint !== expectedSignerThumbprint
-  ) {
-    errors.push("installed smoke receipt is not bound to its package handoff");
-  }
-  if (errors.length > 0) {
-    throw new Error(`installed-smoke-receipt-invalid:${errors.join(",")}`);
-  }
-  return receipt;
 }
 
 export const INSTALLED_SMOKE_RECEIPT_MAXIMUM_BYTES = receiptMaximumBytes;
 export const INSTALLED_SMOKE_TIMEOUT_MS = smokeTimeoutMs;
+export const INSTALLED_SMOKE_CAMPAIGN_DEADLINE_MS = campaignDeadlineMs;
+export { INSTALLED_SMOKE_CAMPAIGN_JOB_TIMEOUT_MS };
+export const INSTALLED_SMOKE_SETTLEMENT_RESERVE_MS =
+  smokeTimeoutMs - campaignDeadlineMs;
+if (
+  INSTALLED_SMOKE_SETTLEMENT_RESERVE_MS <= INSTALLED_SMOKE_SETTLEMENT_TIMEOUT_MS
+) {
+  throw new Error("installed-smoke-settlement-reserve-invalid");
+}

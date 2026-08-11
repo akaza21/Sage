@@ -8,6 +8,8 @@ param(
   [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{64}$')][string]$PackageReceiptSha256,
   [Parameter(Mandatory)][ValidatePattern('^[a-z0-9][a-z0-9-]{0,63}$')][string]$CampaignId,
   [Parameter(Mandatory)][string]$OutputDirectory,
+  [Parameter(Mandatory)][string]$AuthenticatedSourceRoot,
+  [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9+/]{43}=$')][string]$CleanupKeyBase64,
   [Parameter(Mandatory)][string]$NodePath,
   [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{64}$')][string]$NodeSha256,
   [Parameter(Mandatory)][ValidateRange(1, 536870912)][long]$NodeBytes,
@@ -16,6 +18,7 @@ param(
   [Parameter(Mandatory)][ValidateRange(1, 536870912)][long]$GitBytes,
   [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{64}$')][string]$PowerShellSha256,
   [Parameter(Mandatory)][ValidateRange(1, 536870912)][long]$PowerShellBytes,
+  [Parameter(Mandatory)][ValidateRange(60000, 1200000)][int]$CampaignDeadlineMilliseconds,
   [Parameter(Mandatory)][ValidateLength(1, 32768)][string]$RunnerFileIdentitiesBase64
 )
 
@@ -34,7 +37,10 @@ $assertionNames = @(
   "simulatorTurnCompleted", "restartPersisted", "reinstallVerified"
 )
 $runnerRelativePaths = @(
+  "scripts/control-windows-installed-smoke.ps1",
   "scripts/measure-windows-installed-smoke.ps1",
+  "scripts/settle-windows-installed-smoke.ps1",
+  "scripts/footprint/InstalledSmokeCleanupAuthority.psm1",
   "scripts/footprint/InstalledSmokeIdentity.psm1",
   "scripts/footprint/InstalledSmokePackageLifecycle.psm1",
   "scripts/footprint/InstalledSmokeSemantic.psm1",
@@ -70,6 +76,13 @@ $driver = $null
 $resolvedInstaller = $null
 $resolvedNode = $null
 $resolvedGit = $null
+$campaignClock = [Diagnostics.Stopwatch]::StartNew()
+
+function Assert-CampaignExecutionDeadline {
+  if ($campaignClock.ElapsedMilliseconds -ge $CampaignDeadlineMilliseconds) {
+    throw "Installed smoke campaign execution deadline exceeded."
+  }
+}
 
 function Test-PlainDirectory {
   param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Label)
@@ -167,6 +180,7 @@ function Invoke-Bounded {
   Assert-PowerShellIdentity
   Assert-NodeIdentity
   Assert-RunnerSourceIdentity
+  Assert-CampaignExecutionDeadline
   if ([string]::Equals($Executable, $resolvedGit, [StringComparison]::OrdinalIgnoreCase)) {
     Assert-GitIdentity
   }
@@ -192,20 +206,31 @@ if (-not (Test-Path -LiteralPath $parent -PathType Container)) { throw "Smoke ou
 [void](Test-PlainDirectory $parent "Smoke output parent")
 if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) { throw "Smoke output must be reserved." }
 $resolvedOutput = Test-PlainDirectory ([IO.Path]::GetFullPath($OutputDirectory)) "Smoke output"
-if (@(Get-ChildItem -LiteralPath $resolvedOutput -Force).Count -ne 0) { throw "Smoke output must be empty." }
+$reservedEntries = @(Get-ChildItem -LiteralPath $resolvedOutput -Force)
+if ($reservedEntries.Count -ne 1 -or
+    $reservedEntries[0].Name -ne ".sage-output-authority.lock" -or
+    $reservedEntries[0].PSIsContainer -or
+    ($reservedEntries[0].Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+    $reservedEntries[0].Length -ne 0) {
+  throw "Smoke output must contain only its sealed authority token."
+}
 $script:processOrdinal = 0
-$sourceRoot = Split-Path -Parent $PSScriptRoot
+$sourceRoot = [IO.Path]::GetFullPath($AuthenticatedSourceRoot)
 $installRoot = Join-Path $resolvedOutput "installed"
 $profileCampaignRoot = Join-Path $resolvedOutput "profiles"
 $rootLabel = "sage-installed-smoke-fixture"
 $fixtureRoot = Join-Path $resolvedOutput $rootLabel
 $receiptPath = Join-Path $resolvedOutput "receipt.json"
+$receiptAuthenticationPath = Join-Path $resolvedOutput "receipt-authentication.json"
 $prerequisites = [ordered]@{
   windows = $false; interactiveSession = $false; webView2 = $false
   administrator = $false; authenticode = $false; git = $false
   osVersion = $null; webView2Version = $null; gitVersion = $null; signerThumbprint = $null
 }
 $fixture = [ordered]@{ rootIdentitySha256 = "0" * 64; rootLabel = $rootLabel; initialCommitSha256 = "0" * 64 }
+[byte[]]$cleanupKey = [Convert]::FromBase64String($CleanupKeyBase64)
+if ($cleanupKey.Length -ne 32) { throw "Cleanup authority key is invalid." }
+Import-Module (Join-Path $sourceRoot "scripts/footprint/InstalledSmokeCleanupAuthority.psm1") -Force
 
 try {
   try {
@@ -217,16 +242,17 @@ try {
     Assert-NodeIdentity
     Assert-GitIdentity
     Assert-RunnerSourceIdentity
-    Import-Module (Join-Path $PSScriptRoot "footprint/InstalledSmokeIdentity.psm1") -Force
-    Import-Module (Join-Path $PSScriptRoot "footprint/InstalledSmokePackageLifecycle.psm1") -Force
-    Import-Module (Join-Path $PSScriptRoot "footprint/InstalledSmokeSemantic.psm1") -Force
-    Import-Module (Join-Path $PSScriptRoot "footprint/DisposableProfile.psm1") -Force
-    Import-Module (Join-Path $PSScriptRoot "footprint/ScenarioEvidence.psm1") -Force
-    Import-Module (Join-Path $PSScriptRoot "footprint/WindowsFootprint.psm1") -Force
-    Import-Module (Join-Path $PSScriptRoot "footprint/WindowsJob.psm1") -Force
-    Import-Module (Join-Path $PSScriptRoot "footprint/WindowsJobCompletion.psm1") -Force
-    $runner = (Resolve-Path (Join-Path $PSScriptRoot "footprint/bounded-node-runner.mjs")).Path
-    $driver = (Resolve-Path (Join-Path $PSScriptRoot "footprint/drive-installed-smoke.mjs")).Path
+    Assert-CampaignExecutionDeadline
+    Import-Module (Join-Path $sourceRoot "scripts/footprint/InstalledSmokeIdentity.psm1") -Force
+    Import-Module (Join-Path $sourceRoot "scripts/footprint/InstalledSmokePackageLifecycle.psm1") -Force
+    Import-Module (Join-Path $sourceRoot "scripts/footprint/InstalledSmokeSemantic.psm1") -Force
+    Import-Module (Join-Path $sourceRoot "scripts/footprint/DisposableProfile.psm1") -Force
+    Import-Module (Join-Path $sourceRoot "scripts/footprint/ScenarioEvidence.psm1") -Force
+    Import-Module (Join-Path $sourceRoot "scripts/footprint/WindowsFootprint.psm1") -Force
+    Import-Module (Join-Path $sourceRoot "scripts/footprint/WindowsJob.psm1") -Force
+    Import-Module (Join-Path $sourceRoot "scripts/footprint/WindowsJobCompletion.psm1") -Force
+    $runner = (Resolve-Path (Join-Path $sourceRoot "scripts/footprint/bounded-node-runner.mjs")).Path
+    $driver = (Resolve-Path (Join-Path $sourceRoot "scripts/footprint/drive-installed-smoke.mjs")).Path
     [void](Assert-InstalledSmokePath $resolvedOutput $resolvedOutput "Directory")
     $signature = Get-AuthenticodeSignature -LiteralPath $resolvedInstaller
     $webViewVersion = @(
@@ -289,20 +315,27 @@ try {
       Assert-GitIdentity
       Assert-RunnerSourceIdentity
     }
+    $executionGate = {
+      & $identityGate
+      Assert-CampaignExecutionDeadline
+    }
     $lifecycleConfig = [ordered]@{
       outputRoot = $resolvedOutput; installRoot = $installRoot
+      campaignId = $CampaignId
+      cleanupAuthorityPath = Join-Path $resolvedOutput "cleanup-authority.json"
+      cleanupKey = $cleanupKey
       installerPath = $resolvedInstaller; installerSha256 = $InstallerSha256
       installerBytes = $InstallerBytes; signerThumbprint = $ExpectedSignerThumbprint
       executableSha256 = $ExpectedInstalledExecutableSha256
       executableBytes = $ExpectedInstalledExecutableBytes
     }
-    $payload = Invoke-InstalledSmokeInstall $runState $identityGate "install-initial" $lifecycleConfig
-    Invoke-InstalledSmokeSemanticCampaign $runState $identityGate "launch-initial" "drive-primary" "close-initial" "primary" $payload.executable $semanticConfig
-    Invoke-InstalledSmokeSemanticCampaign $runState $identityGate "launch-restart" "verify-restart" "close-restart" "restart" $payload.executable $semanticConfig
-    Invoke-InstalledSmokeUninstall $runState $identityGate "uninstall-initial" $payload.uninstaller $lifecycleConfig
-    $payload = Invoke-InstalledSmokeInstall $runState $identityGate "install-reinstall" $lifecycleConfig
-    Invoke-InstalledSmokeSemanticCampaign $runState $identityGate "launch-reinstall" "verify-reinstall" "close-reinstall" "reinstall" $payload.executable $semanticConfig
-    Invoke-InstalledSmokeUninstall $runState $identityGate "uninstall-final" $payload.uninstaller $lifecycleConfig
+    $payload = Invoke-InstalledSmokeInstall $runState $executionGate "install-initial" $lifecycleConfig
+    Invoke-InstalledSmokeSemanticCampaign $runState $executionGate "launch-initial" "drive-primary" "close-initial" "primary" $payload.executable $semanticConfig
+    Invoke-InstalledSmokeSemanticCampaign $runState $executionGate "launch-restart" "verify-restart" "close-restart" "restart" $payload.executable $semanticConfig
+    [void](Invoke-InstalledSmokeUninstall $runState $executionGate "uninstall-initial" $payload.uninstaller $lifecycleConfig)
+    $payload = Invoke-InstalledSmokeInstall $runState $executionGate "install-reinstall" $lifecycleConfig
+    Invoke-InstalledSmokeSemanticCampaign $runState $executionGate "launch-reinstall" "verify-reinstall" "close-reinstall" "reinstall" $payload.executable $semanticConfig
+    [void](Invoke-InstalledSmokeUninstall $runState $executionGate "uninstall-final" $payload.uninstaller $lifecycleConfig)
     if (@($assertions.Values | Where-Object { -not $_ }).Count -ne 0) { throw "Installed smoke assertions are incomplete." }
     $result = "passed"
   }
@@ -330,7 +363,7 @@ try {
   if ($runState.installed) {
     try {
       if ($null -eq $runState.cleanupUninstaller) { throw "Partial install has no authoritative uninstaller." }
-      Invoke-InstalledSmokeUninstall $runState $identityGate "uninstall-final" $runState.cleanupUninstaller $lifecycleConfig
+      [void](Invoke-InstalledSmokeUninstall $runState $identityGate "uninstall-final" $runState.cleanupUninstaller $lifecycleConfig)
     } catch {
       Set-StepFailed "uninstall-final"
       $failure = [ordered]@{ code = "cleanup-failed"; phase = "uninstall-final" }
@@ -372,7 +405,6 @@ try {
     limits = [ordered]@{ stepCount = 13; stepTimeoutMs = 600000; retainedOutputBytes = 262144 }
   }
   $json = $receipt | ConvertTo-Json -Depth 8
-  if ([Text.Encoding]::UTF8.GetByteCount($json) -gt 262144) { throw "Installed smoke receipt exceeds its retention bound." }
-  [IO.File]::WriteAllText($receiptPath, "$json`n", [Text.UTF8Encoding]::new($false))
-  $json
+  [byte[]]$receiptBytes = [Text.UTF8Encoding]::new($false).GetBytes("$json`n")
+  Write-InstalledSmokeAuthenticatedReceipt $receiptPath $receiptAuthenticationPath $CampaignId $receiptBytes $cleanupKey
 }

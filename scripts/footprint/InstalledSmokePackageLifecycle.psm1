@@ -64,11 +64,13 @@ function Invoke-InstalledSmokeInstall {
   Assert-InstalledSmokeInstallerIdentity $Config $IdentityGate
   [void](Assert-InstalledSmokePath $Config.installRoot $Config.outputRoot "Any" -AllowMissingLeaf)
   if (Test-Path -LiteralPath $Config.installRoot) { throw "Install root must be absent before install." }
+  Set-InstalledSmokeCleanupAuthority $Config "installing"
   $State.installed = $true
   $processEvidence = Invoke-InstalledSmokeJobProcess $Config.installerPath @("/S", "/D=$($Config.installRoot)")
   $executable = Join-Path $Config.installRoot "sage.exe"
   $uninstaller = Join-Path $Config.installRoot "uninstall.exe"
   $State.cleanupUninstaller = Get-InstalledSmokeFileIdentity $uninstaller $Config.outputRoot
+  Set-InstalledSmokeCleanupAuthority $Config "installed" $State.cleanupUninstaller
   $executableIdentity = Get-InstalledSmokeFileIdentity $executable $Config.outputRoot
   if ($executableIdentity.bytes -ne $Config.executableBytes -or
       $executableIdentity.sha256 -ne $Config.executableSha256) {
@@ -94,6 +96,10 @@ function Invoke-InstalledSmokeUninstall {
   }
   if (Test-Path -LiteralPath $Config.installRoot -PathType Container) {
     [void](Assert-InstalledSmokePath $Config.installRoot $Config.outputRoot "Directory")
+    if (Test-Path -LiteralPath $identity.path -PathType Leaf) {
+      [void](Assert-InstalledSmokeFileIdentity $identity.path $Config.outputRoot ([long]$identity.bytes) ([string]$identity.sha256))
+      Remove-Item -LiteralPath $identity.path -Force
+    }
     if (@(Get-ChildItem -LiteralPath $Config.installRoot -Force | Select-Object -First 1).Count -ne 0) {
       throw "Uninstall retained installed payload entries."
     }
@@ -101,10 +107,12 @@ function Invoke-InstalledSmokeUninstall {
   }
   $State.installed = $false
   $State.cleanupUninstaller = $null
+  Remove-InstalledSmokeCleanupAuthority $Config
   Set-InstalledSmokeLifecycleStep $State $StepId $timer ([ordered]@{
     executableAbsent = $true; zeroOrphans = $processEvidence.zeroOrphans
     uninstallerSha256 = $identity.sha256; uninstallerBytes = $identity.bytes
   })
+  return [ordered]@{ jobConverged = [bool]$processEvidence.zeroOrphans }
 }
 
 Export-ModuleMember -Function @(

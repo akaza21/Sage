@@ -41,6 +41,7 @@ function identity() {
       "tauri-cli-native": { sha256: hash("e") },
     },
     node: { sha256: hash("f") },
+    powershell: { sha256: hash("d") },
     npmCli: { sha256: hash("1") },
     git: { sha256: hash("2") },
     launchers: {
@@ -103,4 +104,24 @@ test("authenticated build identity rejects Rustup-proxy-style Cargo/Rustc aliasi
     frozen,
   );
   assert.ok(rejected.some((error) => error.includes("pinned real toolchain")));
+});
+
+test("authenticated build identity binds the prior PowerShell executable", () => {
+  const observed = identity();
+  assert.equal(observed.buildIdentity.powershell.executableSha256, hash("d"));
+  const accepted = [];
+  validateAuthenticatedPackageBuildIdentity(
+    accepted,
+    observed.buildIdentity,
+    frozen,
+  );
+  assert.deepEqual(accepted, []);
+  delete observed.buildIdentity.powershell;
+  const rejected = [];
+  validateAuthenticatedPackageBuildIdentity(
+    rejected,
+    observed.buildIdentity,
+    frozen,
+  );
+  assert.ok(rejected.some((error) => error.includes("PowerShell")));
 });

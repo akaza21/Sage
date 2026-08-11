@@ -23,6 +23,7 @@ export function deriveAuthenticatedPackageBuildIdentity({
   versions,
   buildTools,
   node,
+  powershell,
   npmCli,
   git,
   launchers,
@@ -52,6 +53,9 @@ export function deriveAuthenticatedPackageBuildIdentity({
     node: {
       version: versions.node,
       executableSha256: node.sha256,
+    },
+    powershell: {
+      executableSha256: powershell.sha256,
     },
     npm: {
       version: versions.npm,

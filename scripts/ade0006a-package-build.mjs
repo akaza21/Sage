@@ -34,6 +34,17 @@ function terminateTree(child) {
 }
 
 export function runBounded(executable, args, options) {
+  const stdinMaximum = options.stdinMaximum ?? 4096;
+  if (
+    options.stdin !== undefined &&
+    (!Number.isSafeInteger(stdinMaximum) ||
+      stdinMaximum < 1 ||
+      stdinMaximum > 2 * 1024 * 1024 ||
+      !Buffer.isBuffer(options.stdin) ||
+      options.stdin.byteLength > stdinMaximum)
+  ) {
+    throw new Error(`${options.label}-stdin-invalid`);
+  }
   return new Promise((resolve, reject) => {
     let stdoutBytes = 0;
     let stderrBytes = 0;
@@ -43,8 +54,14 @@ export function runBounded(executable, args, options) {
       cwd: options.cwd,
       env: options.env,
       windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [options.stdin ? "pipe" : "ignore", "pipe", "pipe"],
     });
+    if (options.stdin) {
+      child.stdin.on("error", (error) => {
+        terminalReason ??= `stdin-${error.code ?? "failed"}`;
+      });
+      child.stdin.end(options.stdin);
+    }
     function capture(chunk, stream) {
       if (terminalReason) return;
       const maximum =

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  cpSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -16,6 +17,8 @@ import {
   deliverPackageArtifactHandoff,
 } from "./ade0006a-package-handoff.mjs";
 import { buildSourceManifest } from "./generate-source-manifest.mjs";
+import { runAuthenticatedInstalledSmoke } from "./beta0001-installed-smoke-handoff.mjs";
+import { INSTALLED_SMOKE_RUNNER_RELATIVE_PATHS } from "./beta0001-installed-smoke-source-closure.mjs";
 
 const participants = ["candidate", "control"];
 const installers = ["msi", "nsis"];
@@ -39,8 +42,28 @@ function fixture() {
   });
   const gitPath = path.join(scratchRoot, "git.exe");
   writeFileSync(gitPath, "staged-git");
+  const powershellPath = path.join(scratchRoot, "powershell.exe");
+  writeFileSync(powershellPath, "prior-powershell");
+  const nodePath = path.join(scratchRoot, "node.exe");
+  writeFileSync(nodePath, "prior-node");
   const artifacts = {};
-  const receipt = { result: "passed", participants: {} };
+  const receipt = {
+    result: "passed",
+    source: {
+      aggregateSha256: sourceManifest.aggregateSha256,
+      manifestSha256: digest(JSON.stringify(sourceManifest)).sha256,
+      fileCount: sourceManifest.fileCount,
+      bytes: sourceManifest.totalBytes,
+    },
+    buildIdentity: {
+      git: { executableSha256: digest("staged-git").sha256 },
+      node: { executableSha256: digest("prior-node").sha256 },
+      powershell: {
+        executableSha256: digest("prior-powershell").sha256,
+      },
+    },
+    participants: {},
+  };
   for (const participant of participants) {
     const root = path.join(scratchRoot, participant);
     mkdirSync(root);
@@ -109,6 +132,11 @@ function fixture() {
     artifacts,
     receipt,
     git: { path: gitPath, ...digest("staged-git") },
+    node: { path: nodePath, ...digest("prior-node") },
+    powershell: {
+      path: powershellPath,
+      ...digest("prior-powershell"),
+    },
   };
 }
 
@@ -252,6 +280,8 @@ test("artifact delivery skips failed receipts and awaits an isolated passing pay
         sourceRoot: value.sourceRoot,
         sourceManifest: value.sourceManifest,
         git: value.git,
+        node: value.node,
+        powershell: value.powershell,
         maximumExecutableBytes: 1024,
         maximumInstallerBytes: 1024,
       }),
@@ -268,12 +298,17 @@ test("artifact delivery skips failed receipts and awaits an isolated passing pay
           calls += 1;
           writeFileSync(originalMarker, "post-finalization-change");
           assert.equal(payload.sourceRoot, value.sourceRoot);
+          assert.deepEqual(payload.sourceManifest, value.sourceManifest);
           assert.equal(
             readFileSync(path.join(payload.sourceRoot, "marker.txt"), "utf8"),
             "staged-source",
           );
           assert.equal(payload.tools.git.sha256, value.git.sha256);
           assert.equal(payload.tools.git.bytes, value.git.bytes);
+          assert.equal(
+            payload.tools.powershell.sha256,
+            value.powershell.sha256,
+          );
           payload.receipt.result = "mutated";
           payload.receiptBytes[0] = 0;
           await Promise.resolve();
@@ -288,6 +323,8 @@ test("artifact delivery skips failed receipts and awaits an isolated passing pay
         sourceRoot: value.sourceRoot,
         sourceManifest: value.sourceManifest,
         git: value.git,
+        node: value.node,
+        powershell: value.powershell,
         maximumExecutableBytes: 1024,
         maximumInstallerBytes: 1024,
       }),
@@ -297,6 +334,31 @@ test("artifact delivery skips failed receipts and awaits an isolated passing pay
     assert.equal(completed, true);
     assert.equal(value.receipt.result, "passed");
     assert.equal(receiptBytes.toString(), "passing-receipt");
+
+    writeFileSync(value.powershell.path, "changed-powershell");
+    await assert.rejects(
+      deliverPackageArtifactHandoff({
+        callback: async () => {
+          calls += 1;
+        },
+        scratchRoot: value.scratchRoot,
+        artifacts: value.artifacts,
+        receipt: value.receipt,
+        receiptBytes,
+        rawRoot: "retained-raw-root",
+        frozen: { contract: "frozen" },
+        sourceRoot: value.sourceRoot,
+        sourceManifest: value.sourceManifest,
+        git: value.git,
+        node: value.node,
+        powershell: value.powershell,
+        maximumExecutableBytes: 1024,
+        maximumInstallerBytes: 1024,
+      }),
+      /artifact-handoff-powershell-mismatch/,
+    );
+    assert.equal(calls, 1);
+    writeFileSync(value.powershell.path, "prior-powershell");
 
     writeFileSync(value.git.path, "changed-git");
     await assert.rejects(
@@ -345,5 +407,129 @@ test("artifact delivery skips failed receipts and awaits an isolated passing pay
   } finally {
     rmSync(value.scratchRoot, { recursive: true, force: true });
     rmSync(originalRoot, { recursive: true, force: true });
+  }
+});
+
+test("artifact delivery binds manifest, Git, and Node to the validated receipt", async () => {
+  const value = fixture();
+  let callbacks = 0;
+  const deliver = () =>
+    deliverPackageArtifactHandoff({
+      callback: async () => {
+        callbacks += 1;
+      },
+      scratchRoot: value.scratchRoot,
+      artifacts: value.artifacts,
+      receipt: value.receipt,
+      receiptBytes: Buffer.from("passing-receipt"),
+      rawRoot: "retained-raw-root",
+      frozen: { contract: "frozen" },
+      sourceRoot: value.sourceRoot,
+      sourceManifest: value.sourceManifest,
+      git: value.git,
+      node: value.node,
+      powershell: value.powershell,
+      maximumExecutableBytes: 1024,
+      maximumInstallerBytes: 1024,
+    });
+  try {
+    const manifestSha256 = value.receipt.source.manifestSha256;
+    value.receipt.source.manifestSha256 = "0".repeat(64);
+    await assert.rejects(deliver(), /artifact-handoff-source-mismatch/);
+    value.receipt.source.manifestSha256 = manifestSha256;
+
+    const gitSha256 = value.receipt.buildIdentity.git.executableSha256;
+    value.receipt.buildIdentity.git.executableSha256 = "0".repeat(64);
+    await assert.rejects(deliver(), /artifact-handoff-git-receipt-mismatch/);
+    value.receipt.buildIdentity.git.executableSha256 = gitSha256;
+
+    value.receipt.buildIdentity.node.executableSha256 = "0".repeat(64);
+    await assert.rejects(deliver(), /artifact-handoff-node-receipt-mismatch/);
+    assert.equal(callbacks, 0);
+  } finally {
+    rmSync(value.scratchRoot, { recursive: true, force: true });
+  }
+});
+
+test("runner mutation inside the authenticated handoff callback fails before launch", async () => {
+  const value = fixture();
+  try {
+    for (const relativePath of INSTALLED_SMOKE_RUNNER_RELATIVE_PATHS) {
+      const destination = path.join(
+        value.sourceRoot,
+        ...relativePath.split("/"),
+      );
+      mkdirSync(path.dirname(destination), { recursive: true });
+      cpSync(path.resolve(relativePath), destination);
+    }
+    value.sourceManifest = buildSourceManifest(value.sourceRoot, {
+      files: ["marker.txt", ...INSTALLED_SMOKE_RUNNER_RELATIVE_PATHS],
+      directories: [],
+    });
+    value.receipt.source = {
+      aggregateSha256: value.sourceManifest.aggregateSha256,
+      manifestSha256: digest(JSON.stringify(value.sourceManifest)).sha256,
+      fileCount: value.sourceManifest.fileCount,
+      bytes: value.sourceManifest.totalBytes,
+    };
+    let childCalls = 0;
+    await deliverPackageArtifactHandoff({
+      callback: async (payload) => {
+        const stagedRunner = path.join(
+          payload.sourceRoot,
+          "scripts",
+          "measure-windows-installed-smoke.ps1",
+        );
+        writeFileSync(stagedRunner, "mutated after handoff authentication");
+        await assert.rejects(
+          runAuthenticatedInstalledSmoke({
+            handoff: payload,
+            campaignId: "handoff-callback-mutation",
+            outputDirectory: path.join(value.scratchRoot, "smoke-output"),
+            expectedSignerThumbprint: "f".repeat(40),
+            runProcess: async () => {
+              childCalls += 1;
+            },
+          }),
+          /installed-smoke-runner-identity-changed/,
+        );
+        cpSync(
+          path.resolve("scripts/measure-windows-installed-smoke.ps1"),
+          stagedRunner,
+        );
+        writeFileSync(payload.tools.powershell.path, "mutated after handoff");
+        await assert.rejects(
+          runAuthenticatedInstalledSmoke({
+            handoff: payload,
+            campaignId: "handoff-powershell-mutation",
+            outputDirectory: path.join(
+              value.scratchRoot,
+              "powershell-smoke-output",
+            ),
+            expectedSignerThumbprint: "f".repeat(40),
+            runProcess: async () => {
+              childCalls += 1;
+            },
+          }),
+          /installed-smoke-powershell-identity-changed/,
+        );
+      },
+      scratchRoot: value.scratchRoot,
+      artifacts: value.artifacts,
+      receipt: value.receipt,
+      receiptBytes: Buffer.from("passing-receipt"),
+      rawRoot: "retained-raw-root",
+      frozen: { contract: "frozen" },
+      sourceRoot: value.sourceRoot,
+      sourceManifest: value.sourceManifest,
+      git: value.git,
+      node: value.node,
+      powershell: value.powershell,
+      maximumExecutableBytes: 1024 * 1024,
+      maximumInstallerBytes: 1024,
+    });
+    assert.equal(childCalls, 0);
+  } finally {
+    rmSync(value.scratchRoot, { recursive: true, force: true });
   }
 });

@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import {
+  cpSync,
   existsSync,
   mkdtempSync,
+  mkdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -18,9 +20,33 @@ import {
   runInstalledNsisSmoke,
   validateInstalledSmokeReceipt,
 } from "./beta0001-installed-smoke.mjs";
-import { runAuthenticatedInstalledSmoke } from "./beta0001-installed-smoke-handoff.mjs";
+import {
+  INSTALLED_SMOKE_CAMPAIGN_DEADLINE_MS,
+  INSTALLED_SMOKE_CAMPAIGN_JOB_TIMEOUT_MS,
+  INSTALLED_SMOKE_SETTLEMENT_RESERVE_MS,
+  runAuthenticatedInstalledSmoke,
+} from "./beta0001-installed-smoke-handoff.mjs";
+import { INSTALLED_SMOKE_SETTLEMENT_TIMEOUT_MS } from "./beta0001-installed-smoke-settlement.mjs";
+import { buildSourceManifest } from "./generate-source-manifest.mjs";
 
 const SHA = "a".repeat(64);
+const runnerClosure = [
+  "scripts/control-windows-installed-smoke.ps1",
+  "scripts/measure-windows-installed-smoke.ps1",
+  "scripts/settle-windows-installed-smoke.ps1",
+  "scripts/footprint/InstalledSmokeCleanupAuthority.psm1",
+  "scripts/footprint/InstalledSmokeIdentity.psm1",
+  "scripts/footprint/InstalledSmokePackageLifecycle.psm1",
+  "scripts/footprint/InstalledSmokeSemantic.psm1",
+  "scripts/footprint/DisposableProfile.psm1",
+  "scripts/footprint/ScenarioEvidence.psm1",
+  "scripts/footprint/WindowsFootprint.psm1",
+  "scripts/footprint/WindowsJob.psm1",
+  "scripts/footprint/WindowsJobCompletion.psm1",
+  "scripts/footprint/ProcessIdentity.psm1",
+  "scripts/footprint/bounded-node-runner.mjs",
+  "scripts/footprint/drive-installed-smoke.mjs",
+];
 
 function fileIdentity(filePath) {
   const bytes = readFileSync(filePath);
@@ -28,6 +54,50 @@ function fileIdentity(filePath) {
     path: filePath,
     sha256: createHash("sha256").update(bytes).digest("hex"),
     bytes: bytes.byteLength,
+  };
+}
+
+function windowsPowerShell() {
+  return path.join(
+    process.env.SystemRoot ?? "C:\\Windows",
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+}
+
+function lockedCampaignParameters(options) {
+  const controller = JSON.parse(options.stdin.toString("utf8"));
+  const campaign = JSON.parse(
+    Buffer.from(
+      controller.parameters.CampaignBootstrapBase64,
+      "base64",
+    ).toString("utf8"),
+  );
+  return { controller: controller.parameters, campaign: campaign.parameters };
+}
+
+function completedControllerProof(campaignId, receiptBytes, cleanupKey) {
+  return {
+    exitCode: 0,
+    stdoutBytes: 0,
+    stderrBytes: 0,
+    stdout: Buffer.from(
+      JSON.stringify({
+        schemaVersion: 1,
+        campaignId,
+        status: "completed",
+        jobConverged: true,
+        childExitCode: 0,
+        forced: false,
+        orphanProcessesAfterClose: 0,
+        receiptSha256: createHash("sha256").update(receiptBytes).digest("hex"),
+        receiptAuthenticationSha256: createHmac("sha256", cleanupKey)
+          .update(receiptBytes)
+          .digest("hex"),
+      }),
+    ),
   };
 }
 
@@ -337,9 +407,15 @@ test("authenticated handoff binds signer and installed executable identity into 
         }),
       },
     });
+    const authenticatedPowerShell = fileIdentity(windowsPowerShell());
     const handoff = {
       receiptBytes: Buffer.from("package-receipt"),
       receipt: {
+        buildIdentity: {
+          powershell: {
+            executableSha256: authenticatedPowerShell.sha256,
+          },
+        },
         participants: {
           candidate: {
             installers: [
@@ -376,60 +452,92 @@ test("authenticated handoff binds signer and installed executable identity into 
       tools: {
         node: fileIdentity(process.execPath),
         git: fileIdentity(process.execPath),
+        powershell: authenticatedPowerShell,
       },
       sourceRoot: path.resolve("."),
+      sourceManifest: buildSourceManifest(path.resolve(".")),
     };
-    let args;
+    let launch;
     let processCalls = 0;
     const result = await runAuthenticatedInstalledSmoke({
       handoff,
       campaignId: smokeRequest.campaignId,
       outputDirectory: path.join(root, "output"),
-      powershell: process.execPath,
       expectedSignerThumbprint: smokeRequest.installer.signerThumbprint,
-      runProcess: async (_executable, received) => {
+      runProcess: async (_executable, received, options) => {
         processCalls += 1;
-        args = received;
-        const output = received[received.indexOf("-OutputDirectory") + 1];
+        launch = {
+          args: received,
+          ...lockedCampaignParameters(options),
+        };
+        const output = launch.campaign.OutputDirectory;
         receipt.packageReceiptSha256 = "placeholder";
-        const expectedPackage =
-          received[received.indexOf("-PackageReceiptSha256") + 1];
-        receipt.packageReceiptSha256 = expectedPackage;
-        writeFileSync(
-          path.join(output, "receipt.json"),
-          `${JSON.stringify(receipt)}\n`,
+        receipt.packageReceiptSha256 = launch.campaign.PackageReceiptSha256;
+        const receiptBytes = Buffer.from(`${JSON.stringify(receipt)}\n`);
+        writeFileSync(path.join(output, "receipt.json"), receiptBytes);
+        return completedControllerProof(
+          smokeRequest.campaignId,
+          receiptBytes,
+          Buffer.from(launch.campaign.CleanupKeyBase64, "base64"),
         );
       },
     });
     assert.equal(result.result, "passed");
     assert.equal(
-      args[args.indexOf("-ExpectedInstalledExecutableSha256") + 1],
+      launch.campaign.ExpectedInstalledExecutableSha256,
       smokeRequest.installer.expectedInstalledExecutableSha256,
     );
     assert.equal(
-      args[args.indexOf("-ExpectedSignerThumbprint") + 1],
+      launch.campaign.ExpectedSignerThumbprint,
       smokeRequest.installer.signerThumbprint,
     );
+    assert.equal(launch.campaign.GitSha256, handoff.tools.git.sha256);
+    assert.equal(launch.campaign.GitBytes, handoff.tools.git.bytes);
+    assert.equal(launch.campaign.NodeSha256, handoff.tools.node.sha256);
     assert.equal(
-      args[args.indexOf("-GitSha256") + 1],
-      handoff.tools.git.sha256,
+      launch.campaign.CampaignDeadlineMilliseconds,
+      INSTALLED_SMOKE_CAMPAIGN_DEADLINE_MS,
+    );
+    assert.ok(
+      INSTALLED_SMOKE_SETTLEMENT_RESERVE_MS >
+        INSTALLED_SMOKE_SETTLEMENT_TIMEOUT_MS,
     );
     assert.equal(
-      args[args.indexOf("-GitBytes") + 1],
-      String(handoff.tools.git.bytes),
+      launch.controller.OuterJobTimeoutMilliseconds,
+      INSTALLED_SMOKE_CAMPAIGN_JOB_TIMEOUT_MS,
     );
-    assert.equal(
-      args[args.indexOf("-NodeSha256") + 1],
-      handoff.tools.node.sha256,
-    );
-    assert.equal(
-      args[args.indexOf("-File") + 1],
-      path.join(
-        handoff.sourceRoot,
-        "scripts",
-        "measure-windows-installed-smoke.ps1",
-      ),
-    );
+    assert.equal(launch.args.includes("-File"), false);
+    assert.equal(launch.args.includes("-EncodedCommand"), true);
+    const replaced = await runAuthenticatedInstalledSmoke({
+      handoff,
+      campaignId: smokeRequest.campaignId,
+      outputDirectory: path.join(root, "replaced-receipt-output"),
+      expectedSignerThumbprint: smokeRequest.installer.signerThumbprint,
+      runProcess: async (_executable, _received, options) => {
+        processCalls += 1;
+        const current = lockedCampaignParameters(options);
+        const validReceipt = {
+          ...receipt,
+          packageReceiptSha256: current.campaign.PackageReceiptSha256,
+        };
+        const validBytes = Buffer.from(`${JSON.stringify(validReceipt)}\n`);
+        const proof = completedControllerProof(
+          smokeRequest.campaignId,
+          validBytes,
+          Buffer.from(current.campaign.CleanupKeyBase64, "base64"),
+        );
+        writeFileSync(
+          path.join(current.campaign.OutputDirectory, "receipt.json"),
+          `${JSON.stringify({ ...validReceipt, campaignId: "forged-after-exit" })}\n`,
+        );
+        return proof;
+      },
+    });
+    assert.deepEqual(replaced.failure, {
+      code: "receipt-invalid",
+      phase: "orchestrator-watchdog",
+    });
+    assert.equal(replaced.cleanup.status, "absent");
     handoff.artifacts.candidate.installedExecutables.nsis.sha256 = "9".repeat(
       64,
     );
@@ -438,7 +546,6 @@ test("authenticated handoff binds signer and installed executable identity into 
         handoff,
         campaignId: smokeRequest.campaignId,
         outputDirectory: path.join(root, "blocked-output"),
-        powershell: process.execPath,
         expectedSignerThumbprint: smokeRequest.installer.signerThumbprint,
         runProcess: async () => {
           processCalls += 1;
@@ -446,7 +553,76 @@ test("authenticated handoff binds signer and installed executable identity into 
       }),
       /installed-smoke-authenticated-nsis-binding-invalid/,
     );
-    assert.equal(processCalls, 1);
+    assert.equal(processCalls, 2);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("installed smoke rejects runner mutation after artifact handoff authentication", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-runner-mutation-"));
+  try {
+    const sourceRoot = path.join(root, "source");
+    mkdirSync(sourceRoot);
+    for (const relativePath of runnerClosure) {
+      const destination = path.join(sourceRoot, ...relativePath.split("/"));
+      mkdirSync(path.dirname(destination), { recursive: true });
+      cpSync(path.resolve(relativePath), destination);
+    }
+    const sourceManifest = buildSourceManifest(sourceRoot, {
+      files: runnerClosure,
+      directories: [],
+    });
+    writeFileSync(
+      path.join(sourceRoot, "scripts", "measure-windows-installed-smoke.ps1"),
+      "post-handoff mutation",
+    );
+    const installerPath = path.join(root, "setup.exe");
+    const installedPath = path.join(root, "sage.exe");
+    writeFileSync(installerPath, "installer");
+    writeFileSync(installedPath, "installed");
+    const installer = fileIdentity(installerPath);
+    const installed = fileIdentity(installedPath);
+    const powershell = fileIdentity(process.execPath);
+    let processCalls = 0;
+    await assert.rejects(
+      runAuthenticatedInstalledSmoke({
+        handoff: {
+          sourceRoot,
+          sourceManifest,
+          receiptBytes: Buffer.from("package-receipt"),
+          receipt: {
+            buildIdentity: {
+              powershell: { executableSha256: powershell.sha256 },
+            },
+            participants: {
+              candidate: {
+                installers: [{ kind: "nsis", installedExecutable: installed }],
+              },
+            },
+          },
+          artifacts: {
+            candidate: {
+              installerArtifacts: { nsis: installer },
+              installedExecutables: { nsis: installed },
+            },
+          },
+          tools: {
+            node: fileIdentity(process.execPath),
+            git: fileIdentity(process.execPath),
+            powershell,
+          },
+        },
+        campaignId: "post-handoff-mutation",
+        outputDirectory: path.join(root, "output"),
+        expectedSignerThumbprint: "f".repeat(40),
+        runProcess: async () => {
+          processCalls += 1;
+        },
+      }),
+      /installed-smoke-runner-identity-changed/,
+    );
+    assert.equal(processCalls, 0);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -471,10 +647,23 @@ test(
       assert.ok(gitPath);
       const installer = fileIdentity(installerPath);
       const installed = fileIdentity(installedPath);
+      const powershell = path.join(
+        process.env.SystemRoot ?? "C:\\Windows",
+        "System32",
+        "WindowsPowerShell",
+        "v1.0",
+        "powershell.exe",
+      );
       const handoff = {
         sourceRoot: path.resolve("."),
+        sourceManifest: buildSourceManifest(path.resolve(".")),
         receiptBytes: Buffer.from("preflight-package-receipt"),
         receipt: {
+          buildIdentity: {
+            powershell: {
+              executableSha256: fileIdentity(powershell).sha256,
+            },
+          },
           participants: {
             candidate: {
               installers: [{ kind: "nsis", installedExecutable: installed }],
@@ -490,23 +679,16 @@ test(
         tools: {
           node: fileIdentity(process.execPath),
           git: fileIdentity(gitPath),
+          powershell: fileIdentity(powershell),
         },
       };
-      const powershell = path.join(
-        process.env.SystemRoot ?? "C:\\Windows",
-        "System32",
-        "WindowsPowerShell",
-        "v1.0",
-        "powershell.exe",
-      );
       const receipt = await runAuthenticatedInstalledSmoke({
         handoff,
         campaignId: "unsigned-preflight-01",
         outputDirectory: path.join(root, "output"),
-        powershell,
         expectedSignerThumbprint: "f".repeat(40),
       });
-      assert.equal(receipt.result, "blocked");
+      assert.equal(receipt.result, "blocked", JSON.stringify(receipt));
       assert.equal(receipt.failure.phase, "prerequisites");
       assert.equal(
         receipt.prerequisites.authenticode,
@@ -558,7 +740,7 @@ test("real runner rechecks identities, preserves failure phase, and requires cle
   );
   const prerequisiteDecision = source.indexOf("$missing = if");
   const firstInstall = source.indexOf(
-    '$payload = Invoke-InstalledSmokeInstall $runState $identityGate "install-initial"',
+    '$payload = Invoke-InstalledSmokeInstall $runState $executionGate "install-initial"',
   );
   assert.ok(signerGate > 0);
   assert.ok(prerequisiteDecision > signerGate);
@@ -569,7 +751,20 @@ test("real runner rechecks identities, preserves failure phase, and requires cle
   );
   assert.ok(
     installFunction.indexOf("Assert-InstalledSmokeInstallerIdentity") <
-      installFunction.indexOf("Invoke-InstalledSmokeJobProcess"),
+      installFunction.indexOf(
+        'Set-InstalledSmokeCleanupAuthority $Config "installing"',
+      ),
+  );
+  assert.ok(
+    installFunction.indexOf(
+      'Set-InstalledSmokeCleanupAuthority $Config "installing"',
+    ) < installFunction.indexOf("Invoke-InstalledSmokeJobProcess"),
+  );
+  assert.ok(
+    installFunction.indexOf("Get-InstalledSmokeFileIdentity $uninstaller") <
+      installFunction.indexOf(
+        'Set-InstalledSmokeCleanupAuthority $Config "installed"',
+      ),
   );
   const uninstallFunction = lifecycleSource.slice(
     lifecycleSource.indexOf("function Invoke-InstalledSmokeUninstall"),
@@ -581,6 +776,7 @@ test("real runner rechecks identities, preserves failure phase, and requires cle
   );
   assert.ok(semanticSource.match(/& \$IdentityGate/gu)?.length >= 2);
   assert.ok(semanticSource.includes("$primaryFailurePhase"));
+  assert.ok(source.includes("Assert-CampaignExecutionDeadline"));
   assert.ok(
     source.includes("Partial install has no authoritative uninstaller."),
   );

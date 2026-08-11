@@ -1,6 +1,7 @@
 import { realpath } from "node:fs/promises";
 import path from "node:path";
 
+import { sha256 } from "./ade0006a-c0b-common.mjs";
 import { hashBoundedFile } from "./ade0006a-package-members.mjs";
 import { buildSourceManifest } from "./generate-source-manifest.mjs";
 
@@ -55,7 +56,12 @@ async function authenticateFile({
   return { path: resolved, ...evidence };
 }
 
-async function authenticateSource({ sourceRoot, sourceManifest, scratchRoot }) {
+async function authenticateSource({
+  sourceRoot,
+  sourceManifest,
+  receiptSource,
+  scratchRoot,
+}) {
   if (typeof sourceRoot !== "string" || !path.isAbsolute(sourceRoot)) {
     throw new Error("artifact-handoff-source-path-invalid");
   }
@@ -64,10 +70,16 @@ async function authenticateSource({ sourceRoot, sourceManifest, scratchRoot }) {
     throw new Error("artifact-handoff-source-outside-scratch");
   }
   const observed = buildSourceManifest(resolved, sourceManifest?.include);
+  const manifestBytes = Buffer.from(JSON.stringify(sourceManifest));
   if (
     observed.aggregateSha256 !== sourceManifest?.aggregateSha256 ||
     observed.fileCount !== sourceManifest?.fileCount ||
-    observed.totalBytes !== sourceManifest?.totalBytes
+    observed.totalBytes !== sourceManifest?.totalBytes ||
+    JSON.stringify(observed.files) !== JSON.stringify(sourceManifest?.files) ||
+    sha256(manifestBytes) !== receiptSource?.manifestSha256 ||
+    sourceManifest?.aggregateSha256 !== receiptSource?.aggregateSha256 ||
+    sourceManifest?.fileCount !== receiptSource?.fileCount ||
+    sourceManifest?.totalBytes !== receiptSource?.bytes
   ) {
     throw new Error("artifact-handoff-source-mismatch");
   }
@@ -197,6 +209,7 @@ export async function deliverPackageArtifactHandoff({
   frozen,
   git,
   node,
+  powershell,
   sourceRoot,
   sourceManifest,
   ...authentication
@@ -207,6 +220,7 @@ export async function deliverPackageArtifactHandoff({
   const authenticatedSourceRoot = await authenticateSource({
     sourceRoot,
     sourceManifest,
+    receiptSource: receipt?.source,
     scratchRoot: resolvedScratch,
   });
   const artifacts = await authenticatePackageArtifactHandoff({
@@ -240,14 +254,49 @@ export async function deliverPackageArtifactHandoff({
         requireWithinScratch: false,
       })
     : null;
+  const authenticatedPowerShell = powershell
+    ? await authenticateFile({
+        filePath: powershell.path,
+        expected: powershell,
+        label: "powershell",
+        maximumExecutableBytes: authentication.maximumExecutableBytes,
+        scratchRoot: resolvedScratch,
+        requireExpectedBytes: false,
+        requireWithinScratch: false,
+      })
+    : null;
+  if (
+    !authenticatedGit ||
+    authenticatedGit.sha256 !== receipt?.buildIdentity?.git?.executableSha256
+  ) {
+    throw new Error("artifact-handoff-git-receipt-mismatch");
+  }
+  if (
+    !authenticatedNode ||
+    authenticatedNode.sha256 !== receipt?.buildIdentity?.node?.executableSha256
+  ) {
+    throw new Error("artifact-handoff-node-receipt-mismatch");
+  }
+  if (
+    !authenticatedPowerShell ||
+    authenticatedPowerShell.sha256 !==
+      receipt?.buildIdentity?.powershell?.executableSha256
+  ) {
+    throw new Error("artifact-handoff-powershell-receipt-mismatch");
+  }
   await callback({
     receipt: structuredClone(receipt),
     receiptBytes: Buffer.from(receiptBytes),
     rawRoot,
     frozen: structuredClone(frozen),
     sourceRoot: authenticatedSourceRoot,
+    sourceManifest: structuredClone(sourceManifest),
     artifacts,
-    tools: { git: authenticatedGit, node: authenticatedNode },
+    tools: {
+      git: authenticatedGit,
+      node: authenticatedNode,
+      powershell: authenticatedPowerShell,
+    },
   });
   return true;
 }

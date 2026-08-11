@@ -98,7 +98,7 @@ namespace SageFootprint {
     }
 
     static string QuoteArgument(string argument) {
-      if (argument == null || argument.IndexOf('\0') >= 0 || argument.Length > 4096)
+      if (argument == null || argument.IndexOf('\0') >= 0 || argument.Length > 16384)
         throw new ArgumentException("Invalid native Job argument.");
       if (argument.Length > 0 && argument.IndexOfAny(new [] {' ', '\t', '\r', '\n', '\v', '\f', '"'}) < 0)
         return argument;

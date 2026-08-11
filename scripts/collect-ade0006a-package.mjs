@@ -252,6 +252,7 @@ export async function collectPackage(options) {
         frozen.package.observerBounds.executableArtifactBytes,
       git: buildTools.git,
       node: buildTools.node,
+      powershell: buildTools.powershell,
     });
     return { receipt, receiptBytes };
   } catch (error) {
@@ -318,13 +319,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
               handoff,
               campaignId,
               outputDirectory: smokeOutput,
-              powershell: path.join(
-                process.env.SystemRoot ?? "C:\\Windows",
-                "System32",
-                "WindowsPowerShell",
-                "v1.0",
-                "powershell.exe",
-              ),
               expectedSignerThumbprint: smokeSignerThumbprint,
             });
           }
