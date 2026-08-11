@@ -468,6 +468,132 @@ mod tests {
     }
 
     #[test]
+    fn consumed_stdout_reader_failure_is_effect_unknown_and_refreshes_without_panicking() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
+            let root = base.join("repo");
+            fs::create_dir_all(&root).unwrap();
+            git(&root, &["init", "-q"]);
+            fs::write(root.join("new.txt"), "new\n").unwrap();
+            let database = Database::open(&base.join("sage.db")).unwrap();
+            let project = database.create_project_from_root(&root).unwrap();
+            let snapshot = database.bootstrap_snapshot().unwrap();
+            let root_id = snapshot.project.unwrap().roots[0].id.clone();
+            let state = AppState::new(database);
+
+            let result = mutate_git_file_inner_with_process_policy(
+                &state,
+                GitFileMutationRequest {
+                    project_id: project.id,
+                    resource: crate::domain::ResourceRef {
+                        root_id,
+                        relative_path: "new.txt".into(),
+                    },
+                    action: GitFileMutationAction::Stage,
+                },
+                0,
+                repository::GitProcessPolicy::stdout_reader_failure(Duration::from_secs(3)),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(
+                result.error.as_ref().unwrap().kind,
+                crate::domain::GitFileMutationErrorKind::EffectUnknown
+            );
+            assert_eq!(
+                result.repositories.roots[0].changes[0].index_status,
+                "added"
+            );
+            assert_eq!(
+                result.repositories.roots[0].changes[0].worktree_status,
+                "unchanged"
+            );
+            drop(state);
+            fs::remove_dir_all(base).unwrap();
+        });
+    }
+
+    #[test]
+    fn potentially_running_cleanup_blocks_mutations_until_bounded_reaper_proves_exit() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
+            let root = base.join("repo");
+            fs::create_dir_all(&root).unwrap();
+            git(&root, &["init", "-q"]);
+            fs::write(root.join("new.txt"), "new\n").unwrap();
+            let database = Database::open(&base.join("sage.db")).unwrap();
+            let project = database.create_project_from_root(&root).unwrap();
+            let snapshot = database.bootstrap_snapshot().unwrap();
+            let request = GitFileMutationRequest {
+                project_id: project.id,
+                resource: crate::domain::ResourceRef {
+                    root_id: snapshot.project.unwrap().roots[0].id.clone(),
+                    relative_path: "new.txt".into(),
+                },
+                action: GitFileMutationAction::Stage,
+            };
+            let state = AppState::new(database);
+            let (cleanup_policy, reaper) =
+                repository::GitProcessPolicy::potentially_running(Duration::ZERO);
+
+            let first = mutate_git_file_inner_with_process_policy(
+                &state,
+                request.clone(),
+                0,
+                cleanup_policy,
+            )
+            .await
+            .unwrap_err();
+            let first = serde_json::to_value(git_mutation_command_error(first)).unwrap();
+            assert_eq!(first["kind"], "containment");
+            assert_eq!(first["processState"], "potentiallyRunning");
+            assert!(first.get("repositories").is_none());
+
+            let blocked = mutate_git_file_inner_with_process_policy(
+                &state,
+                request.clone(),
+                0,
+                repository::GitProcessPolicy::mutation_with_admission_timeout(
+                    Duration::from_secs(3),
+                    Duration::from_millis(10),
+                ),
+            )
+            .await
+            .unwrap_err();
+            assert!(matches!(
+                blocked,
+                AppError::GitContainment {
+                    state: crate::error::GitContainmentState::PotentiallyRunning,
+                    ..
+                }
+            ));
+
+            reaper.release();
+            reaper.wait_for_exit(Duration::from_secs(1)).await.unwrap();
+            let recovered = mutate_git_file_inner_with_process_policy(
+                &state,
+                request,
+                0,
+                repository::GitProcessPolicy::mutation_with_admission_timeout(
+                    Duration::from_secs(3),
+                    Duration::from_millis(50),
+                ),
+            )
+            .await
+            .unwrap();
+            assert!(recovered.error.is_none());
+            assert_eq!(
+                recovered.repositories.roots[0].changes[0].index_status,
+                "added"
+            );
+
+            drop(state);
+            fs::remove_dir_all(base).unwrap();
+        });
+    }
+
+    #[test]
     fn containment_command_rejection_is_typed_and_carries_no_projection() {
         let encoded = serde_json::to_value(git_mutation_command_error(AppError::GitContainment {
             state: crate::error::GitContainmentState::TerminatedUnreaped,

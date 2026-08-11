@@ -1,48 +1,84 @@
 use std::{
     path::Path,
     process::{ExitStatus, Stdio},
-    sync::{
-        Arc, OnceLock,
-        atomic::{AtomicUsize, Ordering},
-    },
     time::Duration,
 };
 
+#[cfg(test)]
+use std::sync::Arc;
+
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
-    process::{Child, Command},
-    sync::{OwnedSemaphorePermit, Semaphore},
+    process::Command,
     task::JoinHandle,
-    time::{sleep, timeout},
+    time::timeout,
 };
 
-use crate::error::{AppError, AppResult, GitContainmentState};
+#[cfg(test)]
+use tokio::sync::Notify;
+
+use crate::error::{AppError, AppResult};
+
+mod containment;
 
 const GIT_ADMISSION_TIMEOUT: Duration = Duration::from_secs(1);
 const GIT_REAP_TIMEOUT: Duration = Duration::from_secs(1);
-const GIT_REAPER_CAPACITY: usize = 8;
-const IO_CLEANUP_TIMEOUT: Duration = Duration::from_millis(50);
 const MAX_STDERR_BYTES: usize = 64 * 1024;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct GitProcessPolicy {
     command_timeout: Duration,
+    admission_timeout: Duration,
     reap_timeout: Option<Duration>,
     mutation: bool,
     #[cfg(test)]
     post_reap_failure: bool,
+    #[cfg(test)]
+    stdout_reader_failure: bool,
+    #[cfg(test)]
+    potentially_running: Option<PotentiallyRunningControl>,
+}
+
+#[cfg(test)]
+#[derive(Clone)]
+struct PotentiallyRunningControl {
+    release: Arc<Notify>,
+    exited: Arc<Notify>,
+}
+
+#[cfg(test)]
+pub(crate) struct GitReaperTestHandle {
+    control: PotentiallyRunningControl,
+}
+
+#[cfg(test)]
+impl GitReaperTestHandle {
+    pub(crate) fn release(&self) {
+        self.control.release.notify_one();
+    }
+
+    pub(crate) async fn wait_for_exit(&self, deadline: Duration) -> AppResult<()> {
+        timeout(deadline, self.control.exited.notified())
+            .await
+            .map_err(|_| AppError::Git("the injected Git reaper did not finish in time".into()))
+    }
 }
 
 impl GitProcessPolicy {
     pub(crate) fn mutation(command_timeout: Duration) -> Self {
         Self {
             command_timeout,
+            admission_timeout: GIT_ADMISSION_TIMEOUT,
             reap_timeout: Some(GIT_REAP_TIMEOUT),
             mutation: true,
             #[cfg(test)]
             post_reap_failure: false,
+            #[cfg(test)]
+            stdout_reader_failure: false,
+            #[cfg(test)]
+            potentially_running: None,
         }
     }
 
@@ -50,9 +86,12 @@ impl GitProcessPolicy {
     pub(crate) fn nonconvergent_reap(command_timeout: Duration) -> Self {
         Self {
             command_timeout,
+            admission_timeout: GIT_ADMISSION_TIMEOUT,
             reap_timeout: None,
             mutation: true,
             post_reap_failure: false,
+            stdout_reader_failure: false,
+            potentially_running: None,
         }
     }
 
@@ -60,19 +99,71 @@ impl GitProcessPolicy {
     pub(crate) fn post_reap_failure(command_timeout: Duration) -> Self {
         Self {
             command_timeout,
+            admission_timeout: GIT_ADMISSION_TIMEOUT,
             reap_timeout: Some(GIT_REAP_TIMEOUT),
             mutation: true,
             post_reap_failure: true,
+            stdout_reader_failure: false,
+            potentially_running: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn stdout_reader_failure(command_timeout: Duration) -> Self {
+        Self {
+            command_timeout,
+            admission_timeout: GIT_ADMISSION_TIMEOUT,
+            reap_timeout: Some(GIT_REAP_TIMEOUT),
+            mutation: true,
+            post_reap_failure: false,
+            stdout_reader_failure: true,
+            potentially_running: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn potentially_running(command_timeout: Duration) -> (Self, GitReaperTestHandle) {
+        let control = PotentiallyRunningControl {
+            release: Arc::new(Notify::new()),
+            exited: Arc::new(Notify::new()),
+        };
+        (
+            Self {
+                command_timeout,
+                admission_timeout: GIT_ADMISSION_TIMEOUT,
+                reap_timeout: Some(GIT_REAP_TIMEOUT),
+                mutation: true,
+                post_reap_failure: false,
+                stdout_reader_failure: false,
+                potentially_running: Some(control.clone()),
+            },
+            GitReaperTestHandle { control },
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mutation_with_admission_timeout(
+        command_timeout: Duration,
+        admission_timeout: Duration,
+    ) -> Self {
+        Self {
+            admission_timeout,
+            ..Self::mutation(command_timeout)
         }
     }
 
     pub(crate) fn read(command_timeout: Duration) -> Self {
         Self {
             command_timeout,
+            admission_timeout: GIT_ADMISSION_TIMEOUT,
             reap_timeout: Some(GIT_REAP_TIMEOUT),
             mutation: false,
             #[cfg(test)]
             post_reap_failure: false,
+            #[cfg(test)]
+            stdout_reader_failure: false,
+            #[cfg(test)]
+            potentially_running: None,
         }
     }
 }
@@ -96,6 +187,12 @@ struct PostSpawnFailure {
 
 type ReaderTask = JoinHandle<std::io::Result<BoundedBytes>>;
 
+#[derive(Default)]
+struct ReaderTasks {
+    stdout: Option<ReaderTask>,
+    stderr: Option<ReaderTask>,
+}
+
 pub(crate) async fn run(
     root: &Path,
     args: &[&str],
@@ -103,28 +200,28 @@ pub(crate) async fn run(
     policy: GitProcessPolicy,
 ) -> AppResult<GitOutput> {
     if policy.mutation {
-        await_mutation_admission().await?;
+        containment::await_mutation_admission(policy.admission_timeout).await?;
     }
-    let reaper_lease = timeout(GIT_ADMISSION_TIMEOUT, git_reaper_capacity().acquire_owned())
-        .await
-        .map_err(|_| AppError::ResourceLimit("the bounded Git reaper is at capacity".into()))?
-        .map_err(|_| AppError::Git("the bounded Git reaper is unavailable".into()))?;
+    let reaper_lease = containment::reserve_reaper_owner(
+        containment::git_reaper_capacity(),
+        policy.admission_timeout,
+    )
+    .await?;
 
     let mut command = configured_command(root, args);
     let mut child = command.spawn().map_err(AppError::Io)?;
     let stdout = match child.stdout.take() {
         Some(stdout) => stdout,
         None => {
-            return cleanup_failure(
+            return containment::cleanup_failure(
                 child,
-                None,
-                None,
+                ReaderTasks::default(),
                 reaper_lease,
                 PostSpawnFailure {
                     message: "Git stdout was not captured".into(),
                     reaped: false,
                 },
-                policy.reap_timeout,
+                policy,
             )
             .await;
         }
@@ -132,22 +229,26 @@ pub(crate) async fn run(
     let stderr = match child.stderr.take() {
         Some(stderr) => stderr,
         None => {
-            return cleanup_failure(
+            return containment::cleanup_failure(
                 child,
-                Some(tokio::spawn(read_bounded(stdout, stdout_limit))),
-                None,
+                ReaderTasks {
+                    stdout: Some(tokio::spawn(read_bounded(stdout, stdout_limit))),
+                    stderr: None,
+                },
                 reaper_lease,
                 PostSpawnFailure {
                     message: "Git stderr was not captured".into(),
                     reaped: false,
                 },
-                policy.reap_timeout,
+                policy,
             )
             .await;
         }
     };
-    let mut stdout_task = tokio::spawn(read_bounded(stdout, stdout_limit));
-    let mut stderr_task = tokio::spawn(read_bounded(stderr, MAX_STDERR_BYTES));
+    let mut readers = ReaderTasks {
+        stdout: Some(tokio::spawn(read_bounded(stdout, stdout_limit))),
+        stderr: Some(tokio::spawn(read_bounded(stderr, MAX_STDERR_BYTES))),
+    };
     let completed = timeout(policy.command_timeout, async {
         let status = child.wait().await.map_err(|error| PostSpawnFailure {
             message: format!("Git process wait failed: {error}"),
@@ -160,26 +261,16 @@ pub(crate) async fn run(
                 reaped: true,
             });
         }
-        let stdout = (&mut stdout_task)
-            .await
-            .map_err(|error| PostSpawnFailure {
-                message: format!("Git stdout task failed: {error}"),
-                reaped: true,
-            })?
-            .map_err(|error| PostSpawnFailure {
-                message: format!("Git stdout read failed: {error}"),
-                reaped: true,
-            })?;
-        let stderr = (&mut stderr_task)
-            .await
-            .map_err(|error| PostSpawnFailure {
-                message: format!("Git stderr task failed: {error}"),
-                reaped: true,
-            })?
-            .map_err(|error| PostSpawnFailure {
-                message: format!("Git stderr read failed: {error}"),
-                reaped: true,
-            })?;
+        let stdout = await_reader(
+            &mut readers.stdout,
+            "stdout",
+            #[cfg(test)]
+            policy.stdout_reader_failure,
+            #[cfg(not(test))]
+            false,
+        )
+        .await?;
+        let stderr = await_reader(&mut readers.stderr, "stderr", false).await?;
         Ok::<GitOutput, PostSpawnFailure>(GitOutput {
             status,
             stdout: stdout.bytes,
@@ -192,27 +283,18 @@ pub(crate) async fn run(
     match completed {
         Ok(Ok(output)) => Ok(output),
         Ok(Err(failure)) => {
-            cleanup_failure(
-                child,
-                Some(stdout_task),
-                Some(stderr_task),
-                reaper_lease,
-                failure,
-                policy.reap_timeout,
-            )
-            .await
+            containment::cleanup_failure(child, readers, reaper_lease, failure, policy).await
         }
         Err(_) => {
-            cleanup_failure(
+            containment::cleanup_failure(
                 child,
-                Some(stdout_task),
-                Some(stderr_task),
+                readers,
                 reaper_lease,
                 PostSpawnFailure {
                     message: "the post-spawn Git deadline expired".into(),
                     reaped: false,
                 },
-                policy.reap_timeout,
+                policy,
             )
             .await
         }
@@ -240,123 +322,32 @@ fn configured_command(root: &Path, args: &[&str]) -> Command {
     command
 }
 
-async fn cleanup_failure(
-    mut child: Child,
-    stdout_task: Option<ReaderTask>,
-    stderr_task: Option<ReaderTask>,
-    reaper_lease: OwnedSemaphorePermit,
-    failure: PostSpawnFailure,
-    reap_timeout: Option<Duration>,
-) -> AppResult<GitOutput> {
-    if failure.reaped {
-        settle_readers(stdout_task, stderr_task).await;
-        return Err(AppError::GitEffectUnknown(format!(
-            "{}; the Git process exited and was reaped",
-            failure.message
-        )));
+async fn await_reader(
+    slot: &mut Option<ReaderTask>,
+    stream: &str,
+    inject_read_failure: bool,
+) -> Result<BoundedBytes, PostSpawnFailure> {
+    let result = slot
+        .as_mut()
+        .expect("reader slots are consumed exactly once")
+        .await;
+    let _completed = slot.take();
+    let output = result
+        .map_err(|error| PostSpawnFailure {
+            message: format!("Git {stream} task failed: {error}"),
+            reaped: true,
+        })?
+        .map_err(|error| PostSpawnFailure {
+            message: format!("Git {stream} read failed: {error}"),
+            reaped: true,
+        })?;
+    if inject_read_failure {
+        return Err(PostSpawnFailure {
+            message: format!("injected Git {stream} read failure after reader completion"),
+            reaped: true,
+        });
     }
-
-    let kill_succeeded = child.start_kill().is_ok();
-    let already_reaped = !kill_succeeded && matches!(child.try_wait(), Ok(Some(_)));
-    let termination_proven = kill_succeeded || already_reaped;
-    let reaped = already_reaped
-        || match reap_timeout {
-            Some(deadline) => matches!(timeout(deadline, child.wait()).await, Ok(Ok(_))),
-            None => false,
-        };
-    if reaped {
-        settle_readers(stdout_task, stderr_task).await;
-        return Err(AppError::GitEffectUnknown(format!(
-            "{}; the Git process was terminated and reaped",
-            failure.message
-        )));
-    }
-
-    let state = if termination_proven {
-        GitContainmentState::TerminatedUnreaped
-    } else {
-        GitContainmentState::PotentiallyRunning
-    };
-    if !termination_proven {
-        potentially_running_git().fetch_add(1, Ordering::SeqCst);
-    }
-    handoff_reaper(
-        child,
-        stdout_task,
-        stderr_task,
-        reaper_lease,
-        termination_proven,
-    );
-    Err(containment(
-        state,
-        if termination_proven {
-            format!(
-                "{}; Git termination is proven, but reap did not converge",
-                failure.message
-            )
-        } else {
-            format!(
-                "{}; Git termination and reap could not be confirmed",
-                failure.message
-            )
-        },
-    ))
-}
-
-fn containment(state: GitContainmentState, message: impl Into<String>) -> AppError {
-    AppError::GitContainment {
-        state,
-        message: message.into(),
-    }
-}
-
-fn handoff_reaper(
-    mut child: Child,
-    stdout_task: Option<ReaderTask>,
-    stderr_task: Option<ReaderTask>,
-    reaper_lease: OwnedSemaphorePermit,
-    mut termination_proven: bool,
-) {
-    tokio::spawn(async move {
-        let _reaper_lease = reaper_lease;
-        settle_readers(stdout_task, stderr_task).await;
-        loop {
-            if !termination_proven {
-                termination_proven = child.start_kill().is_ok();
-                if termination_proven {
-                    potentially_running_git().fetch_sub(1, Ordering::SeqCst);
-                }
-            }
-            if matches!(
-                timeout(Duration::from_millis(100), child.wait()).await,
-                Ok(Ok(_))
-            ) {
-                if !termination_proven {
-                    potentially_running_git().fetch_sub(1, Ordering::SeqCst);
-                }
-                break;
-            }
-            sleep(Duration::from_millis(25)).await;
-        }
-    });
-}
-
-async fn settle_readers(stdout_task: Option<ReaderTask>, stderr_task: Option<ReaderTask>) {
-    if let Some(task) = &stdout_task {
-        task.abort();
-    }
-    if let Some(task) = &stderr_task {
-        task.abort();
-    }
-    let _ = timeout(IO_CLEANUP_TIMEOUT, async {
-        if let Some(task) = stdout_task {
-            let _ = task.await;
-        }
-        if let Some(task) = stderr_task {
-            let _ = task.await;
-        }
-    })
-    .await;
+    Ok(output)
 }
 
 async fn read_bounded<R: AsyncRead + Unpin>(
@@ -379,31 +370,4 @@ async fn read_bounded<R: AsyncRead + Unpin>(
         result.truncated |= retained < read;
     }
     Ok(result)
-}
-
-fn git_reaper_capacity() -> Arc<Semaphore> {
-    static GIT_REAPER: OnceLock<Arc<Semaphore>> = OnceLock::new();
-    GIT_REAPER
-        .get_or_init(|| Arc::new(Semaphore::new(GIT_REAPER_CAPACITY)))
-        .clone()
-}
-
-async fn await_mutation_admission() -> AppResult<()> {
-    timeout(GIT_ADMISSION_TIMEOUT, async {
-        while potentially_running_git().load(Ordering::SeqCst) != 0 {
-            sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .map_err(|_| {
-        containment(
-            GitContainmentState::PotentiallyRunning,
-            "a prior Git process is still under containment",
-        )
-    })
-}
-
-fn potentially_running_git() -> &'static AtomicUsize {
-    static POTENTIALLY_RUNNING_GIT: AtomicUsize = AtomicUsize::new(0);
-    &POTENTIALLY_RUNNING_GIT
 }
