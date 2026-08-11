@@ -61,6 +61,10 @@ interface AcpActionDependencies {
 }
 
 export type AcpActionOutcome = "applied" | "ignoredStale" | "rejected";
+type AcpActionPresentation = Pick<
+  AcpActionState,
+  "busy" | "cancellingTurnId" | "error"
+>;
 
 function typedError(error: unknown): AcpDesktopError {
   if (error instanceof AcpDesktopError) return error;
@@ -145,25 +149,17 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     cancellingTurnId: null,
     error: null,
   };
-  const ownerStates = new Map<string, AcpActionState>();
 
-  const updateState = (
+  const emitState = (
     captured: AcpActionContext,
-    next: Partial<AcpActionState>,
+    presentation: AcpActionPresentation,
   ) => {
-    const key = scopeKey(captured);
     state = {
-      ...(ownerStates.get(key) ?? {
-        busy: false,
-        cancellingTurnId: null,
-        error: null,
-      }),
       scope: captured.scope,
       ownershipEpoch: captured.ownershipEpoch,
       transitionEpoch: Number(captured.commandProjectGeneration),
-      ...next,
+      ...presentation,
     };
-    ownerStates.set(key, state);
     dependencies.onStateChange?.(state);
   };
 
@@ -181,7 +177,9 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
 
   const enqueue = (
     captured: AcpActionContext,
-    action: () => Promise<AcpActionOutcome>,
+    action: (
+      updateState: (next: Partial<AcpActionPresentation>) => void,
+    ) => Promise<AcpActionOutcome>,
   ): Promise<AcpActionOutcome> => {
     const key = scopeKey(captured);
     if (
@@ -194,20 +192,30 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
         limit: MAX_QUEUED_ACTIONS,
         message: "Too many ACP actions are queued for this chat.",
       });
-      updateState(captured, { error });
+      emitState(captured, {
+        busy: queues.has(key),
+        cancellingTurnId: null,
+        error,
+      });
       return Promise.resolve("rejected");
     }
-    queuedActions += 1;
-    updateState(captured, {
+    let presentation: AcpActionPresentation = {
       busy: true,
+      cancellingTurnId: null,
       error: null,
-    });
+    };
+    const updateState = (next: Partial<AcpActionPresentation>) => {
+      presentation = { ...presentation, ...next };
+      emitState(captured, presentation);
+    };
+    queuedActions += 1;
+    emitState(captured, presentation);
     const previous = queues.get(key) ?? Promise.resolve();
     const result = previous.then(async () => {
       if (!sameScope(dependencies.getContext(), captured)) {
         return "ignoredStale" as const;
       }
-      return action();
+      return action(updateState);
     });
     const tail = result
       .catch(() => undefined)
@@ -215,7 +223,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
         queuedActions -= 1;
         if (queues.get(key) === tail) queues.delete(key);
         if (!queues.has(key)) {
-          updateState(captured, { busy: false });
+          updateState({ busy: false });
         }
       });
     queues.set(key, tail);
@@ -230,8 +238,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     const captured = dependencies.getContext();
     const normalizedPrompt = prompt.trim();
     if (!captured || !normalizedPrompt) return Promise.resolve("rejected");
-    return enqueue(captured, async () => {
-      dependencies.clearComposer?.(captured, normalizedPrompt);
+    return enqueue(captured, async (updateState) => {
       let page = dependencies.getContext()?.page ?? captured.page;
       let promptCallStarted = false;
       try {
@@ -303,12 +310,13 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           runtimeEpoch: session.runtimeEpoch,
           prompt: normalizedPrompt,
         };
+        dependencies.clearComposer?.(captured, normalizedPrompt);
         promptCallStarted = true;
         const sent = await commands.sendTurn(request);
         return apply(captured, sent) ? "applied" : "ignoredStale";
       } catch (value) {
         const error = typedError(value);
-        updateState(captured, { error });
+        updateState({ error });
         if (!promptCallStarted || definitePromptNonDispatch(error)) {
           dependencies.restoreComposer?.(captured, normalizedPrompt);
         }
@@ -322,7 +330,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     if (!captured || cancellableTurnId(captured.page) !== turnId) {
       return Promise.resolve("rejected");
     }
-    return enqueue(captured, async () => {
+    return enqueue(captured, async (updateState) => {
       const context = dependencies.getContext();
       if (!sameScope(context, captured) || !context) return "ignoredStale";
       const session = currentSession(context.page);
@@ -336,7 +344,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
       ) {
         return "rejected";
       }
-      updateState(captured, { cancellingTurnId: turnId });
+      updateState({ cancellingTurnId: turnId });
       try {
         const request: CancelAcpTurnRequest = {
           ...captured.scope,
@@ -352,10 +360,10 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
         const result = await commands.cancelTurn(request);
         return apply(captured, result) ? "applied" : "ignoredStale";
       } catch (value) {
-        updateState(captured, { error: typedError(value) });
+        updateState({ error: typedError(value) });
         return "rejected";
       } finally {
-        updateState(captured, { cancellingTurnId: null });
+        updateState({ cancellingTurnId: null });
       }
     });
   };
@@ -370,7 +378,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     ) {
       return Promise.resolve("rejected");
     }
-    return enqueue(captured, async () => {
+    return enqueue(captured, async (updateState) => {
       const context = dependencies.getContext();
       if (!sameScope(context, captured) || !context) return "ignoredStale";
       const current = currentSession(context.page);
@@ -388,7 +396,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
         });
         return apply(captured, result) ? "applied" : "ignoredStale";
       } catch (value) {
-        updateState(captured, { error: typedError(value) });
+        updateState({ error: typedError(value) });
         return "rejected";
       }
     });

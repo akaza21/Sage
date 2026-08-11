@@ -163,4 +163,69 @@ describe("useAcpChatActions per-Chat ownership", () => {
       },
     });
   });
+
+  it("keeps a successful background dispatch owned by its source Chat", async () => {
+    const pending = deferred<Awaited<ReturnType<typeof acpDesktop.sendTurn>>>();
+    const send = vi
+      .spyOn(acpDesktop, "sendTurn")
+      .mockReturnValue(pending.promise);
+    vi.spyOn(desktop, "activateChat").mockImplementation(
+      async (layout, expectedTransitionEpoch) => ({
+        committed: true,
+        transitionEpoch: expectedTransitionEpoch + 1,
+        snapshot: {
+          transitionEpoch: expectedTransitionEpoch + 1,
+          projects: [],
+          project: { id: "project-a", name: "A", roots: [] },
+          tabs: layout.tabs,
+          archivedChats: [],
+          activeTabId: layout.activeTabId,
+          selectedRootId: null,
+          selectedResource: null,
+          harnesses: [],
+          sessionId: null,
+          selectedHarnessId: null,
+          selectedModelId: null,
+          messages: [],
+          repositories: { roots: [], truncated: false, elapsedMs: 0 },
+          turnChanges: [],
+          recoveredBuffers: [],
+          recoveryNotice: null,
+        },
+        recoveryError: null,
+      }),
+    );
+    useWorkbenchStore.getState().setComposerText("Dispatch from A");
+    const { result } = renderHook(() => useAcpChatActions());
+
+    let outcome!: Awaited<ReturnType<typeof result.current.submit>>;
+    await act(async () => {
+      const action = result.current.submit("Dispatch from A", bindingId, null);
+      await waitFor(() => expect(send).toHaveBeenCalledOnce());
+      await useWorkbenchStore.getState().activateChat("chat-b");
+      useWorkbenchStore.getState().setComposerText("Draft B");
+      pending.resolve({
+        projection: {
+          ...page(),
+          projectionRevision: "2",
+        } as AcpChatPage,
+      });
+      outcome = await action;
+    });
+
+    expect(outcome).toBe("ignoredStale");
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ chatId: "chat-a", prompt: "Dispatch from A" }),
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: "chat-b",
+      composerText: "Draft B",
+      sending: false,
+      chatError: null,
+      chatUiById: {
+        "chat-a": { composerText: "", sending: false, error: null },
+        "chat-b": { composerText: "Draft B", error: null },
+      },
+    });
+  });
 });

@@ -248,6 +248,59 @@ describe("ACP action controller", () => {
     );
   });
 
+  it("retains the source prompt when its Chat changes during session start", async () => {
+    const test = harness(page("1", null));
+    const starting = deferred<{ projection: AcpChatPage }>();
+    vi.mocked(test.commands.startSession).mockReturnValue(starting.promise);
+    const action = test.controller.submit("Keep in A", bindingId, modelId);
+    await nextMicrotask();
+    const nextScope = { ...scope, chatId: "chat-b" as SageChatId };
+    test.setContext({
+      scope: nextScope,
+      ownershipEpoch: 1,
+      commandProjectGeneration,
+      page: { ...page("1", null), chatId: nextScope.chatId },
+    });
+
+    starting.resolve({ projection: page("2", session("cold", null, "1")) });
+
+    await expect(action).resolves.toBe("ignoredStale");
+    expect(test.cleared).toEqual([]);
+    expect(test.restored).toEqual([]);
+    expect(test.commands.activateSession).not.toHaveBeenCalled();
+    expect(test.commands.sendTurn).not.toHaveBeenCalled();
+  });
+
+  it("retains the source prompt when its Chat changes during session activation", async () => {
+    const test = harness(page("2", session("cold", null, "1")));
+    const activating = deferred<{ projection: AcpChatPage }>();
+    vi.mocked(test.commands.activateSession).mockReturnValue(
+      activating.promise,
+    );
+    const action = test.controller.submit(
+      "Keep activation prompt",
+      bindingId,
+      modelId,
+    );
+    await nextMicrotask();
+    const nextScope = { ...scope, chatId: "chat-b" as SageChatId };
+    test.setContext({
+      scope: nextScope,
+      ownershipEpoch: 1,
+      commandProjectGeneration,
+      page: { ...page("1", null), chatId: nextScope.chatId },
+    });
+
+    activating.resolve({
+      projection: page("3", session("hot", "1", null)),
+    });
+
+    await expect(action).resolves.toBe("ignoredStale");
+    expect(test.cleared).toEqual([]);
+    expect(test.restored).toEqual([]);
+    expect(test.commands.sendTurn).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["binding", "binding-b" as CuratedBindingId, modelId],
     ["model", bindingId, "model-b" as CuratedModelId],
