@@ -324,6 +324,62 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.getByText("Read-only policy")).toBeInTheDocument();
   });
 
+  it("does not project an active session onto a different selected model or binding", () => {
+    hooks.page = {
+      ...hooks.page!,
+      currentSessionId: "session-a" as never,
+      sessions: [
+        {
+          id: "session-a",
+          ordinal: 0,
+          runtimeEpoch: "1",
+          nextRuntimeEpoch: null,
+          state: "active",
+          residency: "hot",
+          legacy: false,
+          bindingId: "codex-app-server",
+          modelId: "codex-old",
+          capabilities: { closeSession: true },
+          revision: "1",
+          projectionRevision: "2",
+        },
+      ],
+    } as unknown as AcpChatPage;
+    useWorkbenchStore.setState({
+      models: [
+        { id: "codex-old", name: "Codex old" },
+        { id: "codex-new", name: "Codex new" },
+      ],
+      selectedModelId: "codex-new",
+    });
+    render(<ChatSurface />);
+
+    expect(screen.getByLabelText("Harness status: Ready")).toBeInTheDocument();
+    expect(screen.queryByText("Live")).toBeNull();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        harnesses: [
+          ...useWorkbenchStore.getState().harnesses,
+          {
+            id: "pi",
+            name: "Pi",
+            description: "Second admitted binding",
+            installState: "available",
+            source: "builtIn",
+            transport: "acp",
+            bindingId: "pi-acp",
+          },
+        ],
+        selectedHarnessId: "pi",
+        selectedModelId: "codex-old",
+      });
+    });
+
+    expect(screen.getByLabelText("Harness status: Ready")).toBeInTheDocument();
+    expect(screen.queryByText("Live")).toBeNull();
+  });
+
   it("announces the active Chat failure and exposes the bounded composer", () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "A", roots: [] },

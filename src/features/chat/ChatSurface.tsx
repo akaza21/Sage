@@ -84,6 +84,13 @@ export function ChatSurface() {
   const availableBinding = Boolean(
     useNativeAcp && harnessAvailable && selectedAcpBindingId,
   );
+  const selectedCurrentSession =
+    currentAcpSession &&
+    currentAcpSession.bindingId === selectedAcpBindingId &&
+    currentAcpSession.modelId === selectedModelId
+      ? currentAcpSession
+      : null;
+  const selectedMatchesCurrentSession = Boolean(selectedCurrentSession);
   const harnessStatus = !selectedHarness
     ? "No harness"
     : selectedHarness.source === "development"
@@ -92,21 +99,16 @@ export function ChatSurface() {
         ? selectedHarness.installState === "installing"
           ? "Installing"
           : "Unavailable"
-        : currentAcpSession?.state === "active"
+        : selectedCurrentSession?.state === "active"
           ? "Live"
-          : currentAcpSession
-            ? `${currentAcpSession.state[0].toUpperCase()}${currentAcpSession.state.slice(1)}`
+          : selectedCurrentSession
+            ? `${selectedCurrentSession.state[0].toUpperCase()}${selectedCurrentSession.state.slice(1)}`
             : "Ready";
   const visibleHarnesses = harnesses.filter(
     (harness) =>
       harness.installState === "available" ||
       harness.source === "development" ||
       harness.id === selectedHarnessId,
-  );
-  const selectedMatchesCurrentSession = Boolean(
-    currentAcpSession &&
-    currentAcpSession.bindingId === selectedAcpBindingId &&
-    currentAcpSession.modelId === selectedModelId,
   );
   const actionBusy = useNativeAcp ? acpActions.busy : sending;
   const activeAcpTurn = useNativeAcp ? currentNonterminalTurn(acpPage) : null;
