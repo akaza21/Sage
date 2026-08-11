@@ -25,4 +25,4 @@ pub(crate) use storage::{
 };
 
 #[cfg(all(test, windows))]
-pub(crate) use storage::inject_before_state_recheck;
+pub(crate) use storage::{inject_after_state_root_open, inject_before_state_recheck};

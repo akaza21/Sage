@@ -1,20 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::OsString;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
-use std::os::windows::ffi::{OsStrExt, OsStringExt};
-use std::os::windows::fs::OpenOptionsExt;
-use std::os::windows::io::AsRawHandle;
+use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
-use windows_sys::Win32::Foundation::HANDLE;
-use windows_sys::Win32::Storage::FileSystem::{
-    BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
-    FILE_BASIC_INFO, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
-    FILE_NAME_NORMALIZED, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_STANDARD_INFO,
-    FILE_TYPE_DISK, FileBasicInfo, FileStandardInfo, GetFileInformationByHandle,
-    GetFileInformationByHandleEx, GetFileType, GetFinalPathNameByHandleW, VOLUME_NAME_DOS,
-};
+use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_DIRECTORY;
 
 use super::{StateAuthorityError, StorageTotals, validate_totals};
 use crate::acp::bindings::codex::{
@@ -25,31 +15,19 @@ use crate::acp::bindings::codex::{
     },
 };
 
-const HANDLE_PATH_WIDE_MAX: usize = 32 * 1024;
 const CONFIG_READ_BYTES_MAX: u64 = 4 * 1024 + 1;
 
+#[path = "windows/native.rs"]
+mod native;
 #[path = "windows/streams.rs"]
 mod streams;
+use native::{NativeInfo, final_path, native_info, open_node, path_key};
 use streams::{reject_directory_named_streams, reject_named_streams};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct NativeIdentity {
-    volume: u32,
-    index: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct NativeInfo {
-    identity: NativeIdentity,
-    attributes: u32,
-    links: u32,
-    logical_bytes: u64,
-    allocated_bytes: u64,
-    change_time: i64,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct StateSnapshot {
+    root: NativeInfo,
+    config: NativeInfo,
     totals: StorageTotals,
     nodes: BTreeMap<PathBuf, NativeInfo>,
 }
@@ -58,10 +36,8 @@ struct StateSnapshot {
 pub(super) struct WindowsStateProof {
     home: PathBuf,
     root: File,
-    root_info: NativeInfo,
     config_path: PathBuf,
     config: File,
-    config_info: NativeInfo,
     snapshot: StateSnapshot,
 }
 
@@ -72,18 +48,22 @@ impl WindowsStateProof {
         policy: &SecurityPolicyPrerequisite,
         config: &VerifiedCodexConfig,
     ) -> Result<(), StateAuthorityError> {
-        if path_key(packet.codex_home()) != path_key(&self.home)
-            || path_key(&final_path(&self.root)?) != path_key(&self.home)
-            || native_info(&self.root)? != self.root_info
-            || path_key(&final_path(&self.config)?) != path_key(&self.config_path)
-            || native_info(&self.config)? != self.config_info
-        {
+        if path_key(packet.codex_home()) != path_key(&self.home) {
             return Err(StateAuthorityError::ChangedDuringInspection);
         }
         verify_config_handle(&self.config, policy, config)?;
         let first = observe(&self.home)?;
         let second = observe(&self.home)?;
-        if first != second || first != self.snapshot {
+        if first != second
+            || first != self.snapshot
+            || !retained_handles_match_snapshot(
+                &self.home,
+                &self.root,
+                &self.config_path,
+                &self.config,
+                &second,
+            )?
+        {
             return Err(StateAuthorityError::ChangedDuringInspection);
         }
         Ok(())
@@ -103,6 +83,8 @@ pub(super) fn inspect(
         return Err(StateAuthorityError::Alias);
     }
     reject_directory_named_streams(&home)?;
+    #[cfg(test)]
+    run_after_state_root_open();
     let config_path = home.join("config.toml");
     let (config_handle, config_info, final_config) = open_node(&config_path, true)?;
     if config_info.attributes & FILE_ATTRIBUTE_DIRECTORY != 0
@@ -118,18 +100,21 @@ pub(super) fn inspect(
     run_before_state_recheck();
     let reobserved = observe(&home)?;
     if snapshot != reobserved
-        || native_info(&root)? != root_info
-        || native_info(&config_handle)? != config_info
+        || !retained_handles_match_snapshot(
+            &home,
+            &root,
+            &config_path,
+            &config_handle,
+            &reobserved,
+        )?
     {
         return Err(StateAuthorityError::ChangedDuringInspection);
     }
     Ok(WindowsStateProof {
         home,
         root,
-        root_info,
         config_path,
         config: config_handle,
-        config_info,
         snapshot,
     })
 }
@@ -146,6 +131,7 @@ fn observe(home: &Path) -> Result<StateSnapshot, StateAuthorityError> {
     };
     let mut nodes = BTreeMap::new();
     let mut identities = BTreeSet::new();
+    let mut observed_config = None;
     let (root, root_info, final_root) = open_node(home, false)?;
     if root_info.attributes & FILE_ATTRIBUTE_DIRECTORY == 0
         || path_key(home) != path_key(&final_root)
@@ -164,6 +150,9 @@ fn observe(home: &Path) -> Result<StateSnapshot, StateAuthorityError> {
             let (node, info, final_node) = open_node(&path, false)?;
             if path_key(&path) != path_key(&final_node) || !identities.insert(info.identity) {
                 return Err(StateAuthorityError::Alias);
+            }
+            if relative_key(&relative) == "config.toml" {
+                observed_config = Some(info);
             }
             let depth = u8::try_from(relative.components().count())
                 .map_err(|_| StateAuthorityError::DepthLimit)?;
@@ -213,77 +202,32 @@ fn observe(home: &Path) -> Result<StateSnapshot, StateAuthorityError> {
         }
     }
     validate_totals(totals)?;
-    Ok(StateSnapshot { totals, nodes })
-}
-
-fn open_node(
-    path: &Path,
-    lock_config: bool,
-) -> Result<(File, NativeInfo, PathBuf), StateAuthorityError> {
-    let mut options = OpenOptions::new();
-    let share = if lock_config {
-        FILE_SHARE_READ
-    } else {
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE
-    };
-    options
-        .read(true)
-        .share_mode(share)
-        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
-    let file = options.open(path).map_err(|_| StateAuthorityError::Io)?;
-    if unsafe { GetFileType(file.as_raw_handle() as HANDLE) } != FILE_TYPE_DISK {
-        return Err(StateAuthorityError::Alias);
-    }
-    let info = native_info(&file)?;
-    reject_reparse(info.attributes)?;
-    let final_path = final_path(&file)?;
-    Ok((file, info, final_path))
-}
-
-fn native_info(file: &File) -> Result<NativeInfo, StateAuthorityError> {
-    let raw = file.as_raw_handle() as HANDLE;
-    let mut identity = BY_HANDLE_FILE_INFORMATION::default();
-    if unsafe { GetFileInformationByHandle(raw, &mut identity) } == 0 {
-        return Err(StateAuthorityError::Io);
-    }
-    let mut standard = FILE_STANDARD_INFO::default();
-    if unsafe {
-        GetFileInformationByHandleEx(
-            raw,
-            FileStandardInfo,
-            (&raw mut standard).cast(),
-            u32::try_from(std::mem::size_of::<FILE_STANDARD_INFO>())
-                .map_err(|_| StateAuthorityError::Io)?,
-        )
-    } == 0
-    {
-        return Err(StateAuthorityError::Io);
-    }
-    let mut basic = FILE_BASIC_INFO::default();
-    if unsafe {
-        GetFileInformationByHandleEx(
-            raw,
-            FileBasicInfo,
-            (&raw mut basic).cast(),
-            u32::try_from(std::mem::size_of::<FILE_BASIC_INFO>())
-                .map_err(|_| StateAuthorityError::Io)?,
-        )
-    } == 0
-    {
-        return Err(StateAuthorityError::Io);
-    }
-    Ok(NativeInfo {
-        identity: NativeIdentity {
-            volume: identity.dwVolumeSerialNumber,
-            index: (u64::from(identity.nFileIndexHigh) << 32) | u64::from(identity.nFileIndexLow),
-        },
-        attributes: identity.dwFileAttributes,
-        links: standard.NumberOfLinks,
-        logical_bytes: u64::try_from(standard.EndOfFile).map_err(|_| StateAuthorityError::Io)?,
-        allocated_bytes: u64::try_from(standard.AllocationSize)
-            .map_err(|_| StateAuthorityError::Io)?,
-        change_time: basic.ChangeTime,
+    Ok(StateSnapshot {
+        root: root_info,
+        config: observed_config.ok_or(StateAuthorityError::Config)?,
+        totals,
+        nodes,
     })
+}
+
+fn retained_handles_match_snapshot(
+    home: &Path,
+    root: &File,
+    config_path: &Path,
+    config: &File,
+    snapshot: &StateSnapshot,
+) -> Result<bool, StateAuthorityError> {
+    Ok(path_key(&final_path(root)?) == path_key(home)
+        && path_key(&final_path(config)?) == path_key(config_path)
+        && snapshot_matches_native_infos(snapshot, native_info(root)?, native_info(config)?))
+}
+
+fn snapshot_matches_native_infos(
+    snapshot: &StateSnapshot,
+    root: NativeInfo,
+    config: NativeInfo,
+) -> bool {
+    snapshot.root == root && snapshot.config == config
 }
 
 fn verify_config_handle(
@@ -324,55 +268,27 @@ fn validate_path(relative: &Path, native: &Path) -> Result<(), StateAuthorityErr
     Ok(())
 }
 
-fn final_path(file: &File) -> Result<PathBuf, StateAuthorityError> {
-    let mut buffer = vec![0_u16; HANDLE_PATH_WIDE_MAX];
-    let length = unsafe {
-        GetFinalPathNameByHandleW(
-            file.as_raw_handle() as HANDLE,
-            buffer.as_mut_ptr(),
-            u32::try_from(buffer.len()).map_err(|_| StateAuthorityError::Io)?,
-            FILE_NAME_NORMALIZED | VOLUME_NAME_DOS,
-        )
-    };
-    let length = usize::try_from(length).map_err(|_| StateAuthorityError::Io)?;
-    if length == 0 || length >= buffer.len() {
-        return Err(StateAuthorityError::Io);
-    }
-    Ok(PathBuf::from(OsString::from_wide(&buffer[..length])))
-}
-
-fn path_key(path: &Path) -> Vec<u16> {
-    let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
-    if wide.starts_with(&[b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16]) {
-        wide.drain(..4);
-    }
-    while wide.last() == Some(&(b'\\' as u16)) {
-        wide.pop();
-    }
-    for unit in &mut wide {
-        if (*unit >= b'A' as u16) && (*unit <= b'Z' as u16) {
-            *unit += u16::from(b'a' - b'A');
-        }
-    }
-    wide
-}
-
 fn relative_key(path: &Path) -> String {
     path.as_os_str().to_string_lossy().to_ascii_lowercase()
 }
 
-fn reject_reparse(attributes: u32) -> Result<(), StateAuthorityError> {
-    if attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-        Err(StateAuthorityError::Alias)
-    } else {
-        Ok(())
-    }
+#[cfg(test)]
+thread_local! {
+    static AFTER_STATE_ROOT_OPEN: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        const { std::cell::RefCell::new(None) };
+    static BEFORE_STATE_RECHECK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 #[cfg(test)]
-thread_local! {
-    static BEFORE_STATE_RECHECK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
-        const { std::cell::RefCell::new(None) };
+pub(crate) fn inject_after_state_root_open<F>(hook: F)
+where
+    F: FnOnce() + 'static,
+{
+    AFTER_STATE_ROOT_OPEN.with(|slot| {
+        assert!(slot.borrow().is_none(), "root-open hook already installed");
+        *slot.borrow_mut() = Some(Box::new(hook));
+    });
 }
 
 #[cfg(test)]
@@ -390,6 +306,15 @@ where
 }
 
 #[cfg(test)]
+fn run_after_state_root_open() {
+    AFTER_STATE_ROOT_OPEN.with(|slot| {
+        if let Some(hook) = slot.borrow_mut().take() {
+            hook();
+        }
+    });
+}
+
+#[cfg(test)]
 fn run_before_state_recheck() {
     BEFORE_STATE_RECHECK.with(|slot| {
         if let Some(hook) = slot.borrow_mut().take() {
@@ -403,11 +328,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reparse_attribute_is_rejected_before_traversal() {
-        assert_eq!(
-            reject_reparse(FILE_ATTRIBUTE_REPARSE_POINT),
-            Err(StateAuthorityError::Alias)
-        );
-        assert_eq!(reject_reparse(0), Ok(()));
+    fn snapshot_authority_rejects_a_different_root_or_config_identity() {
+        let info = NativeInfo {
+            identity: native::NativeIdentity {
+                volume: 7,
+                file_id: [0; 16],
+            },
+            attributes: 0,
+            links: 1,
+            logical_bytes: 10,
+            allocated_bytes: 16,
+            change_time: 20,
+        };
+        let snapshot = StateSnapshot {
+            root: info,
+            config: info,
+            totals: StorageTotals {
+                regular_files: 0,
+                directories: 1,
+                maximum_depth: 0,
+                logical_bytes: 0,
+                allocated_bytes: 0,
+                maximum_file_bytes: 0,
+                credential_file_bytes: 0,
+            },
+            nodes: BTreeMap::new(),
+        };
+        let mut replacement = info;
+        replacement.identity.file_id[15] = 1;
+        assert!(snapshot_matches_native_infos(&snapshot, info, info));
+        assert!(!snapshot_matches_native_infos(&snapshot, replacement, info));
+        assert!(!snapshot_matches_native_infos(&snapshot, info, replacement));
     }
 }

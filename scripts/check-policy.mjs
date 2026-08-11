@@ -622,6 +622,7 @@ const windowsFeatures = [
   "Win32_System_JobObjects",
   "Win32_System_Pipes",
   "Win32_System_Performance",
+  "Win32_System_SystemInformation",
   "Win32_System_Threading",
 ];
 const declaredWindowsFeatures = windowsDeclaration

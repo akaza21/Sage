@@ -10,21 +10,27 @@ use crate::acp::{
 
 use super::VerifiedCodexConfig;
 
+#[cfg(windows)]
+#[path = "environment/windows.rs"]
+mod windows;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum EnvironmentAuthorityError {
     #[error("Codex launch environment is unavailable on this platform")]
     PlatformUnavailable,
     #[error("Codex launch environment is not bound to the packet and configuration")]
     Binding,
-    #[error("Windows SystemRoot and WINDIR are not the same normalized absolute directory")]
+    #[error("Windows SystemRoot and WINDIR are not the physically verified OS Windows directory")]
     SystemRoot,
     #[error("Codex launch environment exceeds its bounded size")]
     Limit,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub(crate) struct CodexLaunchEnvironment {
     entries: Vec<(String, String)>,
+    #[cfg(windows)]
+    _windows_directory: windows::WindowsDirectoryProof,
 }
 
 impl CodexLaunchEnvironment {
@@ -54,6 +60,8 @@ pub(crate) fn build_codex_launch_environment(
     if !system_root.eq_ignore_ascii_case(&windir) {
         return Err(EnvironmentAuthorityError::SystemRoot);
     }
+    #[cfg(windows)]
+    let (system_root, windows_directory) = windows::inspect(&system_root, &windir)?;
     let codex_home = policy.codex_home().to_owned();
     let state_temp = format!(r"{codex_home}\tmp");
     let entries = vec![
@@ -64,7 +72,11 @@ pub(crate) fn build_codex_launch_environment(
         ("WINDIR".into(), system_root),
     ];
     validate_limits(&entries)?;
-    Ok(CodexLaunchEnvironment { entries })
+    Ok(CodexLaunchEnvironment {
+        entries,
+        #[cfg(windows)]
+        _windows_directory: windows_directory,
+    })
 }
 
 fn windows_path(path: &Path) -> Option<String> {

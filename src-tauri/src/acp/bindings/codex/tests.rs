@@ -389,28 +389,36 @@ fn launch_environment_is_exactly_five_keys_with_state_local_temp() {
         std::path::Path::new(r"c:\WINDOWS"),
     )
     .unwrap();
+    let entries = environment.entries();
+    assert_eq!(entries.len(), 5);
     assert_eq!(
-        environment.entries(),
-        &[
-            ("CODEX_HOME".into(), ISOLATED_CODEX_HOME.into()),
-            ("SystemRoot".into(), r"C:\Windows".into()),
-            (
-                "TEMP".into(),
-                r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167\tmp".into(),
-            ),
-            (
-                "TMP".into(),
-                r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167\tmp".into(),
-            ),
-            ("WINDIR".into(), r"C:\Windows".into()),
-        ]
+        entries[0],
+        ("CODEX_HOME".into(), ISOLATED_CODEX_HOME.into())
     );
+    assert_eq!(entries[1].0, "SystemRoot");
+    assert_eq!(
+        entries[2],
+        (
+            "TEMP".into(),
+            r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167\tmp".into(),
+        )
+    );
+    assert_eq!(
+        entries[3],
+        (
+            "TMP".into(),
+            r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167\tmp".into(),
+        )
+    );
+    assert_eq!(entries[4].0, "WINDIR");
+    assert!(entries[1].1.eq_ignore_ascii_case(&entries[4].1));
+    assert!(std::path::Path::new(&entries[1].1).is_dir());
     assert!(environment.entries().iter().all(|(key, _)| !matches!(
         key.as_str(),
         "PATH" | "OPENAI_API_KEY" | "HTTP_PROXY" | "HTTPS_PROXY" | "SSL_CERT_FILE"
     )));
 
-    assert_eq!(
+    assert!(matches!(
         build_codex_launch_environment(
             &packet,
             &policy,
@@ -419,7 +427,17 @@ fn launch_environment_is_exactly_five_keys_with_state_local_temp() {
             std::path::Path::new(r"D:\Windows"),
         ),
         Err(EnvironmentAuthorityError::SystemRoot)
-    );
+    ));
+    assert!(matches!(
+        build_codex_launch_environment(
+            &packet,
+            &policy,
+            &config,
+            std::path::Path::new(r"C:\attacker"),
+            std::path::Path::new(r"C:\attacker"),
+        ),
+        Err(EnvironmentAuthorityError::SystemRoot)
+    ));
 }
 
 #[cfg(not(windows))]
@@ -428,7 +446,7 @@ fn codex_launch_environment_is_unavailable_off_windows() {
     let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
     let policy = parse_security_policy(SECURITY_POLICY_FIXTURE, &packet).unwrap();
     let config = verify_codex_config(CONFIG_FIXTURE, &policy).unwrap();
-    assert_eq!(
+    assert!(matches!(
         build_codex_launch_environment(
             &packet,
             &policy,
@@ -437,7 +455,7 @@ fn codex_launch_environment_is_unavailable_off_windows() {
             std::path::Path::new("/also/absent"),
         ),
         Err(EnvironmentAuthorityError::PlatformUnavailable)
-    );
+    ));
 }
 
 #[test]
@@ -612,6 +630,24 @@ fn physical_state_authority_rejects_namespace_race_and_cleans_it() {
     let raced = root.home.join("appeared-during-inspection");
     authority::inject_before_state_recheck(move || {
         std::fs::write(raced, b"race").unwrap();
+    });
+    assert!(matches!(
+        inspect_test_state(&root),
+        Err(StateAuthorityError::ChangedDuringInspection)
+    ));
+    root.cleanup();
+}
+
+#[cfg(windows)]
+#[test]
+fn physical_state_authority_rejects_root_substitution_after_retaining_its_handle() {
+    let root = TestCodexStateRoot::new();
+    let original = root.home.clone();
+    let displaced = root.parent.join("displaced-root");
+    authority::inject_after_state_root_open(move || {
+        std::fs::rename(&original, &displaced).unwrap();
+        std::fs::create_dir_all(original.join("sessions")).unwrap();
+        std::fs::write(original.join("config.toml"), CONFIG_FIXTURE).unwrap();
     });
     assert!(matches!(
         inspect_test_state(&root),

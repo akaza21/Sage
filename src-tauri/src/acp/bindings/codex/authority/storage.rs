@@ -17,7 +17,7 @@ use crate::acp::bindings::codex::{
 mod windows;
 
 #[cfg(all(test, windows))]
-pub(crate) use windows::inject_before_state_recheck;
+pub(crate) use windows::{inject_after_state_root_open, inject_before_state_recheck};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum StateAuthorityError {
