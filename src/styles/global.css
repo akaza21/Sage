@@ -384,8 +384,7 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 
-.project-section__title button,
-.project-sidebar__account button {
+.project-section__title button {
   display: grid;
   width: 25px;
   height: 25px;
@@ -398,8 +397,7 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
-.project-section__title button:hover,
-.project-sidebar__account button:hover {
+.project-section__title button:hover {
   color: var(--text);
   background: var(--surface-hover);
 }
@@ -643,7 +641,7 @@ textarea:focus-visible {
 .project-sidebar__account {
   display: grid;
   height: 48px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   padding: 0 10px;
@@ -2136,7 +2134,7 @@ textarea:focus-visible {
   .project-row span,
   .project-row > svg:last-child,
   .project-chat span,
-  .project-sidebar__account > span {
+  .project-sidebar__account > span:not(.account-avatar) {
     display: none;
   }
 

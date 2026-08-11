@@ -301,6 +301,27 @@ describe("compact Workbench project tools", () => {
     expect(createChat).toHaveBeenCalledTimes(2);
   });
 
+  it("exposes only truthful focusable controls in the Project sidebar", () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
+    });
+    render(<Workbench />);
+
+    expect(
+      screen.queryByRole("button", { name: "Open settings" }),
+    ).not.toBeInTheDocument();
+
+    const searchChats = screen.getByRole("button", { name: "Search chats" });
+    expect(searchChats).toBeEnabled();
+    searchChats.focus();
+    expect(searchChats).toHaveFocus();
+    fireEvent.click(searchChats);
+    expect(
+      screen.getByRole("dialog", { name: "Search Chats" }),
+    ).toBeInTheDocument();
+  });
+
   it("uses one accessible drawer and restores its rail focus after Escape", () => {
     const { container } = render(<Workbench />);
     const center = container.querySelector(".center-region");

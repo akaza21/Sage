@@ -4,7 +4,6 @@ import {
   FolderOpen,
   FolderPlus,
   Plus,
-  Settings,
   SquarePen,
 } from "lucide-react";
 
@@ -90,9 +89,6 @@ export function LeftSidebar() {
       <div className="project-sidebar__account">
         <span className="account-avatar">P</span>
         <span>Username</span>
-        <button type="button" aria-label="Open settings" title="Settings">
-          <Settings size={15} aria-hidden="true" />
-        </button>
       </div>
     </aside>
   );
