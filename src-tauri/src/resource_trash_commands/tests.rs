@@ -211,13 +211,8 @@ fn restart_during_effect_preserves_a_dangling_reparse_replacement() {
     persist_fixture_intent(&fixture);
     let source = fixture.root.join("src/closed.rs");
     fs::rename(&source, fixture.root.join("src/original.rs")).unwrap();
-    if let Err(error) = symlink_file(fixture.root.join("src/missing-target.rs"), &source) {
-        if error.kind() == std::io::ErrorKind::PermissionDenied {
-            eprintln!("skipping dangling-reparse regression: symlink creation was denied");
-            return;
-        }
-        panic!("failed to create dangling reparse replacement: {error}");
-    }
+    symlink_file(fixture.root.join("src/missing-target.rs"), &source)
+        .expect("dangling-reparse regression requires a creatable Windows file symlink");
 
     let recovered = intent::recover_at_startup(&fixture.state.database)
         .unwrap()

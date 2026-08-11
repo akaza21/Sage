@@ -336,12 +336,12 @@ fn observe_filesystem(
                     source_seen = true;
                 }
             }
-            let parent_after = root_identity_path(&parent)?.stable_bytes();
             let still_absent = match std::fs::symlink_metadata(&source) {
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
                 Ok(_) => false,
                 Err(error) => return Err(error.into()),
             };
+            let parent_after = root_identity_path(&parent)?.stable_bytes();
             Ok(FilesystemObservation {
                 authority_matches: root_matches
                     && parent_before == pending.parent_identity
