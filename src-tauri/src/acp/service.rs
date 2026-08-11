@@ -24,11 +24,12 @@ use crate::{
 
 #[cfg(test)]
 use crate::acp::{
-    bindings::{adapter::AdapterRuntimeError, codex::CodexRuntime},
+    bindings::{
+        adapter::AdapterRuntimeError,
+        codex::{CodexProjectRootAuthority, CodexRuntime},
+    },
     contract::{RuntimeEpoch, SageAgentSessionId},
 };
-#[cfg(test)]
-use crate::project_registry::ProjectRootAuthority;
 
 #[cfg(all(windows, feature = "acp-fixture"))]
 mod characterization;
@@ -135,7 +136,7 @@ impl AcpService {
     #[cfg(test)]
     pub(crate) fn codex_runtime(
         &self,
-        project_root: &ProjectRootAuthority,
+        project_root: CodexProjectRootAuthority,
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<CodexRuntime, AdapterRuntimeError> {

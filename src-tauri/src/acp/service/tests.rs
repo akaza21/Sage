@@ -6,6 +6,7 @@ use std::{
 
 use crate::{
     acp::{
+        bindings::codex::CodexProjectRootAuthority,
         contract::{
             ClientIntentId, ProjectGeneration, ProjectionRevision, RequiredText, RuntimeEpoch,
             SageAgentSessionId, SageChatId, SageProjectId, SageRootId, SageTurnId,
@@ -39,13 +40,15 @@ fn codex_drift_transition_invalidates_the_shared_service_and_catalog_registratio
     let database = Database::open(std::path::Path::new(":memory:")).unwrap();
     let service = AcpService::new_with_codex_for_test(database, registration.clone()).unwrap();
     let catalog = crate::harnesses::HarnessCatalog::with_codex_registration(registration.clone());
-    let project_root = ProjectRootAuthority::for_test(
-        SageProjectId::parse("project-drift").unwrap(),
-        ProjectGeneration::ZERO,
-        SageRootId::parse("root-drift").unwrap(),
-        &std::env::current_dir().unwrap(),
-    )
-    .unwrap();
+    let project_root = CodexProjectRootAuthority::for_test(
+        ProjectRootAuthority::for_test(
+            SageProjectId::parse("project-drift").unwrap(),
+            ProjectGeneration::ZERO,
+            SageRootId::parse("root-drift").unwrap(),
+            &std::env::current_dir().unwrap(),
+        )
+        .unwrap(),
+    );
 
     assert!(registration.same_authority(&service.codex_registration()));
     assert_eq!(catalog.definitions().remove(0).install_state, "available");
@@ -64,7 +67,7 @@ fn codex_drift_transition_invalidates_the_shared_service_and_catalog_registratio
     assert!(
         service
             .codex_runtime(
-                &project_root,
+                project_root,
                 RuntimeEpoch::new(1).unwrap(),
                 SageAgentSessionId::parse("session-drifted-registration").unwrap(),
             )

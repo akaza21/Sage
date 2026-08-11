@@ -42,7 +42,7 @@ pub(crate) use provisioning::{
 pub(crate) use reproduction::{
     ReproductionError, bind_reproduced_package, parse_reproduction_requirements,
 };
-pub(crate) use runtime::CodexRuntime;
+pub(crate) use runtime::{CodexRuntime, authority::CodexProjectRootAuthority};
 pub(crate) use state::CodexAdapter;
 
 #[cfg(test)]

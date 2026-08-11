@@ -228,15 +228,19 @@ frozen launch environment until runtime teardown, but not afterward.
 The admitted-launch-contract increment adds focused Windows tests proving that
 only an admitted runtime can produce the shared supervisor input; the contract
 contains the exact entrypoint identity, one `app-server` argument, runtime
-epoch, a registry-resolved ProjectGeneration-qualified selected-root authority,
+epoch, a registry-resolved ProjectGeneration-qualified single-root authority,
 enforced tree containment, and exactly
 `CODEX_HOME`, `SystemRoot`, `TEMP`, `TMP`, and `WINDIR`. It proves the absence
 of inherited `HOME`, `USERPROFILE`, `PATH`, and `OPENAI_API_KEY`; rejects wrong
 project, stale generation, wrong/unknown root, missing/noncanonical and
-symlink/junction aliases; detects or blocks directory replacement between
-contract creation and spawn; and fails closed after Binding drift. The existing
-shared-registration refresh remains the bounded transition that invalidates
-service and catalog availability.
+symlink/junction aliases; accepts exactly one registered root and rejects two
+before runtime/process admission; proves a same-ID/different-directory
+authority cannot replace the exact non-Clone authority consumed by the runtime;
+detects or blocks directory replacement between contract creation and spawn;
+and fails closed after Binding drift. The argument-free launch handoff is
+one-shot. Characterization fixture multi-root behavior stays on its separate
+generic selected-root path. The existing shared-registration refresh remains
+the bounded transition that invalidates service and catalog availability.
 
 The contract test deliberately does not spawn. The generic Windows supervisor
 remains the only executor and reopens/hashes the exact image, revalidates the

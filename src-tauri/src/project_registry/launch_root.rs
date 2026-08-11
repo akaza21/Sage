@@ -52,16 +52,8 @@ impl ProjectRootAuthority {
         Ok(authority)
     }
 
-    pub(crate) fn project_id(&self) -> &SageProjectId {
-        &self.project_id
-    }
-
-    pub(crate) fn generation(&self) -> ProjectGeneration {
-        self.generation
-    }
-
-    pub(crate) fn root_id(&self) -> &SageRootId {
-        &self.root_id
+    pub(crate) fn scope(&self) -> (&SageProjectId, ProjectGeneration, &SageRootId) {
+        (&self.project_id, self.generation, &self.root_id)
     }
 
     pub(crate) fn as_path(&self) -> &Path {

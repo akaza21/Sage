@@ -126,6 +126,7 @@ pub(crate) fn launch(
 ) -> Result<RunningTree, LaunchFailure> {
     // Ordering is security-sensitive: an unsupported platform fails before
     // inspecting either native path or touching process/session state.
+    let _project_scope = spec.project_root.scope();
     let recovery = LaunchRecovery::pre_spawn(lease, spec.runtime_epoch);
     match recovery.retry_zero() {
         Ok(token) => Err(LaunchFailure::zero_process(

@@ -7,13 +7,16 @@ use crate::acp::{
             AdapterCommand, AdapterEvent, AdapterIdentity, AdapterRuntimeError, EgressResolution,
             HarnessAdapter,
         },
-        codex::{Platform, parse_packet_metadata, parse_security_policy},
+        codex::{
+            CodexProjectRootAuthority, Platform, parse_packet_metadata, parse_security_policy,
+        },
     },
     contract::{ProjectGeneration, RequiredText, SafeText, SageProjectId, SageRootId},
     intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef},
     transport::IncrementalFrameDecoder,
 };
 use crate::project_registry::ProjectRootAuthority;
+use crate::{error::AppError, persistence::Database, state::AppState};
 
 struct Mapper;
 
@@ -50,14 +53,80 @@ fn launch_root(
     project_id: SageProjectId,
     generation: ProjectGeneration,
     root_id: SageRootId,
-) -> ProjectRootAuthority {
-    ProjectRootAuthority::for_test(
-        project_id,
-        generation,
-        root_id,
-        &std::env::current_dir().unwrap(),
+) -> CodexProjectRootAuthority {
+    CodexProjectRootAuthority::for_test(
+        ProjectRootAuthority::for_test(
+            project_id,
+            generation,
+            root_id,
+            &std::env::current_dir().unwrap(),
+        )
+        .unwrap(),
     )
-    .unwrap()
+}
+
+#[test]
+fn codex_authority_accepts_exactly_one_registered_root_without_process_admission() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let base =
+            std::env::temp_dir().join(format!("sage-codex-one-root-{}", uuid::Uuid::new_v4()));
+        let root = base.join("root");
+        std::fs::create_dir_all(&root).unwrap();
+        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let project = database.create_project_from_root(&root).unwrap();
+        let state = AppState::new(database.clone());
+        let project_id = SageProjectId::parse(project.id).unwrap();
+        let context = state
+            .lock_active_project(&project_id, ProjectGeneration::ZERO)
+            .await
+            .unwrap();
+        let before = crate::acp::process::TreeCapacityPool::global().usage();
+
+        let authority = database.codex_project_root_authority(&context).unwrap();
+
+        assert_eq!(authority.project_id(), &project_id);
+        assert_eq!(authority.root_id().as_str(), project.roots[0].id);
+        assert_eq!(
+            crate::acp::process::TreeCapacityPool::global().usage(),
+            before
+        );
+        drop(authority);
+        drop(context);
+        let _ = std::fs::remove_dir_all(base);
+    });
+}
+
+#[test]
+fn codex_authority_rejects_two_registered_roots_without_process_admission() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let base =
+            std::env::temp_dir().join(format!("sage-codex-two-roots-{}", uuid::Uuid::new_v4()));
+        let first = base.join("first");
+        let second = base.join("second");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let project = database.create_project_from_root(&first).unwrap();
+        database.add_project_root(&project.id, &second).unwrap();
+        let state = AppState::new(database.clone());
+        let project_id = SageProjectId::parse(project.id).unwrap();
+        let context = state
+            .lock_active_project(&project_id, ProjectGeneration::ZERO)
+            .await
+            .unwrap();
+        let before = crate::acp::process::TreeCapacityPool::global().usage();
+
+        assert!(matches!(
+            database.codex_project_root_authority(&context),
+            Err(AppError::HarnessUnavailable(_))
+        ));
+        assert_eq!(
+            crate::acp::process::TreeCapacityPool::global().usage(),
+            before
+        );
+        drop(context);
+        let _ = std::fs::remove_dir_all(base);
+    });
 }
 
 fn frame(value: Value) -> Frame {
@@ -188,7 +257,7 @@ fn admitted_binding_is_the_only_constructor_that_crosses_the_launch_gate() {
     assert!(
         CodexRuntime::from_admitted_binding(
             binding,
-            &launch_root(
+            launch_root(
                 launch_project_id(),
                 ProjectGeneration::ZERO,
                 launch_root_id(),
@@ -209,7 +278,7 @@ fn runtime_retains_admission_authority_and_frozen_environment_until_teardown() {
     let retained = std::sync::Arc::downgrade(&binding);
     let runtime = CodexRuntime::from_admitted_binding(
         binding,
-        &launch_root(
+        launch_root(
             launch_project_id(),
             ProjectGeneration::ZERO,
             launch_root_id(),
@@ -239,23 +308,20 @@ fn admitted_runtime_builds_the_exact_contained_app_server_launch_contract() {
     let expected_sha256 = binding.entrypoint().sha256;
     let expected_bytes = binding.entrypoint().byte_len;
     let expected_environment = binding.environment().entries().to_vec();
-    let project_root = launch_root(
-        launch_project_id(),
-        ProjectGeneration::ZERO,
-        launch_root_id(),
-    );
-    let working_directory = project_root.as_path().to_owned();
-    let runtime = CodexRuntime::from_admitted_binding(
+    let working_directory = std::env::current_dir().unwrap().canonicalize().unwrap();
+    let mut runtime = CodexRuntime::from_admitted_binding(
         binding,
-        &project_root,
+        launch_root(
+            launch_project_id(),
+            ProjectGeneration::ZERO,
+            launch_root_id(),
+        ),
         RuntimeEpoch::new(23).expect("epoch"),
         SageAgentSessionId::parse("session-launch-contract").expect("session"),
     )
     .unwrap();
 
-    let spec = runtime
-        .launch_spec(project_root)
-        .expect("admitted launch contract");
+    let spec = runtime.launch_spec().expect("admitted launch contract");
 
     assert_eq!(spec.runtime_epoch, 23);
     assert!(!spec.binding_id.is_nil());
@@ -304,67 +370,80 @@ fn admitted_runtime_builds_the_exact_contained_app_server_launch_contract() {
 
 #[test]
 fn metadata_only_runtime_cannot_build_a_process_launch_contract() {
-    let runtime = fixture_runtime();
-    let project_root = launch_root(
-        launch_project_id(),
-        ProjectGeneration::ZERO,
-        launch_root_id(),
-    );
+    let mut runtime = fixture_runtime();
 
     assert_eq!(
-        runtime.launch_spec(project_root).err(),
+        runtime.launch_spec().err(),
         Some(AdapterRuntimeError::LaunchUnavailable)
     );
 }
 
 #[cfg(windows)]
 #[test]
-fn launch_contract_rejects_foreign_root_context_and_admission_drift() {
+fn runtime_launch_uses_the_exact_consumed_root_when_same_ids_name_another_identity() {
+    let base =
+        std::env::temp_dir().join(format!("sage-codex-root-identity-{}", uuid::Uuid::new_v4()));
+    let exact = base.join("exact");
+    let substitute = base.join("substitute");
+    std::fs::create_dir_all(&exact).unwrap();
+    std::fs::create_dir_all(&substitute).unwrap();
     let registration = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
     let binding = registration.refresh().unwrap();
-    let runtime = CodexRuntime::from_admitted_binding(
+    let project_id = launch_project_id();
+    let root_id = launch_root_id();
+    let exact_authority = CodexProjectRootAuthority::for_test(
+        ProjectRootAuthority::for_test(
+            project_id.clone(),
+            ProjectGeneration::ZERO,
+            root_id.clone(),
+            &exact,
+        )
+        .unwrap(),
+    );
+    let substitute_authority =
+        ProjectRootAuthority::for_test(project_id, ProjectGeneration::ZERO, root_id, &substitute)
+            .unwrap();
+    let mut runtime = CodexRuntime::from_admitted_binding(
         binding,
-        &launch_root(
+        exact_authority,
+        RuntimeEpoch::new(24).expect("epoch"),
+        SageAgentSessionId::parse("session-root-identity").expect("session"),
+    )
+    .unwrap();
+
+    let spec = runtime.launch_spec().unwrap();
+
+    assert_eq!(spec.project_root.as_path(), exact.canonicalize().unwrap());
+    assert_ne!(spec.project_root.as_path(), substitute_authority.as_path());
+    assert_eq!(
+        runtime.launch_spec().err(),
+        Some(AdapterRuntimeError::LaunchUnavailable)
+    );
+    drop(spec);
+    drop(substitute_authority);
+    let _ = std::fs::remove_dir_all(base);
+}
+
+#[cfg(windows)]
+#[test]
+fn retained_launch_authority_fails_closed_after_binding_drift() {
+    let registration = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
+    let binding = registration.refresh().unwrap();
+    let mut runtime = CodexRuntime::from_admitted_binding(
+        binding,
+        launch_root(
             launch_project_id(),
             ProjectGeneration::ZERO,
             launch_root_id(),
         ),
-        RuntimeEpoch::new(24).expect("epoch"),
+        RuntimeEpoch::new(25).expect("epoch"),
         SageAgentSessionId::parse("session-launch-drift").expect("session"),
     )
     .unwrap();
-    for foreign in [
-        launch_root(
-            SageProjectId::parse("project-foreign").unwrap(),
-            ProjectGeneration::ZERO,
-            launch_root_id(),
-        ),
-        launch_root(
-            launch_project_id(),
-            ProjectGeneration::new(1).unwrap(),
-            launch_root_id(),
-        ),
-        launch_root(
-            launch_project_id(),
-            ProjectGeneration::ZERO,
-            SageRootId::parse("root-foreign").unwrap(),
-        ),
-    ] {
-        assert_eq!(
-            runtime.launch_spec(foreign).err(),
-            Some(AdapterRuntimeError::LaunchUnavailable)
-        );
-    }
 
     registration.induce_drift_for_test();
     assert_eq!(
-        runtime
-            .launch_spec(launch_root(
-                launch_project_id(),
-                ProjectGeneration::ZERO,
-                launch_root_id(),
-            ))
-            .err(),
+        runtime.launch_spec().err(),
         Some(AdapterRuntimeError::LaunchUnavailable)
     );
     assert_eq!(

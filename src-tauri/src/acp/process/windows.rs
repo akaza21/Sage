@@ -46,6 +46,7 @@ pub(crate) fn launch(
         spec.binding_id,
         spec.runtime_epoch,
         spec.artifact.artifact_id,
+        spec.project_root.scope(),
     );
     macro_rules! pre_spawn {
         ($operation:expr) => {

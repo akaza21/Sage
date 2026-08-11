@@ -1,17 +1,14 @@
-use std::sync::Arc;
-
 use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterBatchBuilder, AdapterCommand, AdapterEgress, AdapterEvent,
         AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
-    contract::{ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId},
+    contract::{RuntimeEpoch, SageAgentSessionId},
     lifecycle::ServerRequestState,
     transport::{Frame, OutboundFrame, request_payload_digest},
 };
 
 use super::{
-    admission::AdmittedCodexBinding,
     incoming::{IncomingEvent, IngressDisposition},
     managed::ManagedStagingPrerequisite,
     manifest::MetadataValidatedPacket,
@@ -31,6 +28,10 @@ use support::*;
 #[path = "runtime/admission.rs"]
 mod admission;
 
+#[path = "runtime/authority.rs"]
+pub(super) mod authority;
+use authority::RuntimeLaunchAuthority;
+
 #[path = "runtime/launch.rs"]
 mod launch;
 
@@ -39,18 +40,11 @@ mod snapshots;
 use snapshots::ItemSnapshots;
 
 pub(crate) struct CodexRuntime {
-    admission: Option<Arc<AdmittedCodexBinding>>,
-    project_root: Option<RuntimeProjectRoot>,
+    launch_authority: RuntimeLaunchAuthority,
     inner: CodexAdapter,
     next_request_id: u64,
     snapshots: ItemSnapshots,
     poisoned: bool,
-}
-
-struct RuntimeProjectRoot {
-    project_id: SageProjectId,
-    generation: ProjectGeneration,
-    root_id: SageRootId,
 }
 
 impl CodexRuntime {
@@ -100,8 +94,7 @@ impl CodexRuntime {
         session_id: SageAgentSessionId,
     ) -> Self {
         Self {
-            admission: None,
-            project_root: None,
+            launch_authority: RuntimeLaunchAuthority::metadata_only(),
             inner: CodexAdapter::from_metadata_packet(
                 packet,
                 binding_digest,
