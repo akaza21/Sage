@@ -237,7 +237,7 @@ export function SourceControlView() {
           return (
             <section className="source-root" key={repository.rootId}>
               <div className="source-control-list__group">
-                <span>{rootName}</span>
+                <span>{rootLabel}</span>
                 <span className="muted">
                   {repository.branch ??
                     (repository.state === "notRepository"
@@ -260,7 +260,7 @@ export function SourceControlView() {
                   <SourceChangeRow
                     key={`${resourceKey(change.resource)}:${change.indexStatus}:${change.worktreeStatus}:${change.originalResource ? resourceKey(change.originalResource) : ""}`}
                     change={change}
-                    rootName={rootName}
+                    rootName={rootLabel}
                     selected={selected}
                     controlsDisabled={controlsDisabled}
                     mutateRepositoryFile={mutateRepositoryFile}

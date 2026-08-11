@@ -85,11 +85,6 @@ export function LeftSidebar() {
           ) : null}
         </section>
       </div>
-
-      <div className="project-sidebar__account">
-        <span className="account-avatar">P</span>
-        <span>Username</span>
-      </div>
     </aside>
   );
 }

@@ -1,5 +1,4 @@
 import {
-  Braces,
   ChevronRight,
   FileCode2,
   FileSearch,
@@ -7,7 +6,6 @@ import {
   Folder,
   GitBranch,
   Link2,
-  ListChecks,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from "react";
 
@@ -38,8 +36,6 @@ const views: Array<{
   { id: "explorer", label: "Explorer", icon: Files },
   { id: "search", label: "Search", icon: FileSearch },
   { id: "sourceControl", label: "Source Control", icon: GitBranch },
-  { id: "problems", label: "Problems", icon: ListChecks },
-  { id: "outline", label: "Outline", icon: Braces },
 ];
 
 const sidebarPanelId = "project-tools-panel";
@@ -239,18 +235,7 @@ function SearchView() {
 function SidebarContent({ view }: { view: SidebarView }) {
   if (view === "explorer") return <ExplorerView />;
   if (view === "search") return <SearchView />;
-  if (view === "sourceControl") return <SourceControlView />;
-  const labels = {
-    problems: ["Problems", "No problems have been reported."],
-    outline: ["Outline", "Open a source file to view its outline."],
-  } as const;
-  const [title, body] = labels[view];
-  return (
-    <>
-      <div className="sidebar__heading">{title}</div>
-      <p className="sidebar__empty">{body}</p>
-    </>
-  );
+  return <SourceControlView />;
 }
 
 export function RightSidebar({ compact }: { compact: boolean }) {

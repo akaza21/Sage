@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -180,6 +181,93 @@ afterEach(() => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
+  it("keeps unavailable curated harnesses truthful and hides out-of-beta catalog entries", () => {
+    hooks.page = null;
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "codex",
+          name: "Codex",
+          description: "ACP",
+          installState: "notInstalled",
+          source: "builtIn",
+          transport: "acp",
+          bindingId: "codex-app-server",
+        },
+        {
+          id: "pi",
+          name: "Pi",
+          description: "Later harness",
+          installState: "notInstalled",
+          source: "registry",
+          transport: "acp",
+          bindingId: null,
+        },
+        {
+          id: "sage-simulator",
+          name: "Simulator",
+          description: "Development",
+          installState: "available",
+          source: "development",
+          transport: "legacySimulator",
+          bindingId: null,
+        },
+      ],
+      selectedHarnessId: "codex",
+    });
+
+    render(<ChatSurface />);
+
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Live")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Attach context" })).toBeNull();
+    expect(screen.queryByText("Read-only policy")).toBeNull();
+    const harness = screen.getByRole("combobox", { name: "Harness" });
+    const options = within(harness).getAllByRole("option");
+    expect(options).toHaveLength(2);
+    expect(options[0]).toHaveTextContent("Codex — unavailable");
+    expect(options[0]).toBeDisabled();
+    expect(options[1]).toHaveTextContent("Simulator — test only");
+    expect(screen.queryByRole("option", { name: "Pi" })).toBeNull();
+  });
+
+  it("marks the development simulator as test-only without policy claims", () => {
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "sage-simulator",
+          name: "Simulator",
+          description: "Development",
+          installState: "available",
+          source: "development",
+          transport: "legacySimulator",
+          bindingId: null,
+        },
+      ],
+      selectedHarnessId: "sage-simulator",
+    });
+
+    render(<ChatSurface />);
+
+    expect(screen.getByText("Test simulator")).toBeInTheDocument();
+    expect(screen.getByText("Development simulator")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This test-only harness exercises the workbench without connecting a production agent.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Phase 0 has started")).toBeNull();
+    expect(screen.queryByText("Read-only policy")).toBeNull();
+  });
+
+  it("shows an available ACP binding as ready before a session starts", () => {
+    render(<ChatSurface />);
+
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(screen.queryByText("Live")).toBeNull();
+    expect(screen.getByText("Read-only policy")).toBeInTheDocument();
+  });
+
   it("announces the active Chat failure and exposes the bounded composer", () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "A", roots: [] },
@@ -615,6 +703,7 @@ describe("ChatSurface ACP resource integration", () => {
     } as unknown as AcpChatPage;
 
     render(<ChatSurface />);
+    expect(screen.getByText("Live")).toBeInTheDocument();
     const close = screen.getByRole("button", { name: "Close session" });
     expect(close).toBeEnabled();
     fireEvent.click(close);

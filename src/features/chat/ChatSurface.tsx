@@ -1,4 +1,4 @@
-import { ArrowUp, Check, ChevronDown, Plus, ShieldCheck } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, ShieldCheck } from "lucide-react";
 import { type FormEvent, useEffect, useRef } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
@@ -80,6 +80,28 @@ export function ChatSurface() {
       : null;
   const currentAcpSession = acpPage?.sessions.find(
     (session) => session.id === acpPage.currentSessionId && !session.legacy,
+  );
+  const availableBinding = Boolean(
+    useNativeAcp && harnessAvailable && selectedAcpBindingId,
+  );
+  const harnessStatus = !selectedHarness
+    ? "No harness"
+    : selectedHarness.source === "development"
+      ? "Test simulator"
+      : !harnessAvailable
+        ? selectedHarness.installState === "installing"
+          ? "Installing"
+          : "Unavailable"
+        : currentAcpSession?.state === "active"
+          ? "Live"
+          : currentAcpSession
+            ? `${currentAcpSession.state[0].toUpperCase()}${currentAcpSession.state.slice(1)}`
+            : "Ready";
+  const visibleHarnesses = harnesses.filter(
+    (harness) =>
+      harness.installState === "available" ||
+      harness.source === "builtIn" ||
+      harness.id === selectedHarnessId,
   );
   const selectedMatchesCurrentSession = Boolean(
     currentAcpSession &&
@@ -182,9 +204,14 @@ export function ChatSurface() {
               Close session
             </button>
           ) : null}
-          <div className="session-state">
-            <span className="session-state__dot" />
-            Live
+          <div
+            className="session-state"
+            aria-label={`Harness status: ${harnessStatus}`}
+          >
+            {harnessStatus === "Live" ? (
+              <span className="session-state__dot" />
+            ) : null}
+            {harnessStatus}
           </div>
         </div>
       </header>
@@ -208,19 +235,20 @@ export function ChatSurface() {
               />
             ) : (
               <>
-                <div className="project-intro">
-                  <span className="project-intro__icon">
-                    <Check size={17} aria-hidden="true" />
-                  </span>
-                  <div>
-                    <strong>Phase 0 has started</strong>
-                    <p>
-                      This first vertical slice proves the tab-first workbench,
-                      harness-then-model selection, and Rust-owned durable
-                      transcript.
-                    </p>
+                {selectedHarness?.source === "development" ? (
+                  <div className="project-intro">
+                    <span className="project-intro__icon">
+                      <Check size={17} aria-hidden="true" />
+                    </span>
+                    <div>
+                      <strong>Development simulator</strong>
+                      <p>
+                        This test-only harness exercises the workbench without
+                        connecting a production agent.
+                      </p>
+                    </div>
                   </div>
-                </div>
+                ) : null}
                 {messages.map((message) => (
                   <article
                     className={`message message--${message.role}`}
@@ -288,15 +316,6 @@ export function ChatSurface() {
           }}
         />
         <div className="composer__toolbar">
-          <button
-            className="icon-button"
-            type="button"
-            aria-label="Attach context"
-            title="Attach context"
-            disabled
-          >
-            <Plus size={18} aria-hidden="true" />
-          </button>
           <div className="composer__controls">
             <label className="select-control">
               <span className="sr-only">Harness</span>
@@ -305,12 +324,18 @@ export function ChatSurface() {
                 disabled={projectTransitioning}
                 onChange={(event) => void selectHarness(event.target.value)}
               >
-                {harnesses.map((harness) => (
-                  <option key={harness.id} value={harness.id}>
+                {visibleHarnesses.map((harness) => (
+                  <option
+                    key={harness.id}
+                    value={harness.id}
+                    disabled={harness.installState !== "available"}
+                  >
                     {harness.name}
-                    {harness.installState === "notInstalled"
-                      ? " - install"
-                      : ""}
+                    {harness.source === "development"
+                      ? " — test only"
+                      : harness.installState !== "available"
+                        ? " — unavailable"
+                        : ""}
                   </option>
                 ))}
               </select>
@@ -337,13 +362,15 @@ export function ChatSurface() {
               </select>
               <ChevronDown size={14} aria-hidden="true" />
             </label>
-            <span
-              className="access-mode"
-              title="Permission requests fail closed"
-            >
-              <ShieldCheck size={14} aria-hidden="true" />
-              Read-only policy
-            </span>
+            {availableBinding ? (
+              <span
+                className="access-mode"
+                title="Permission requests fail closed"
+              >
+                <ShieldCheck size={14} aria-hidden="true" />
+                Read-only policy
+              </span>
+            ) : null}
           </div>
           {useNativeAcp && acpActions.cancellableTurnId ? (
             <button

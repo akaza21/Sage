@@ -48,8 +48,7 @@ import {
 } from "./searchNavigationSlice";
 import { closeWorkbenchTab } from "./tabClosing";
 
-export type SidebarView =
-  "explorer" | "search" | "sourceControl" | "problems" | "outline";
+export type SidebarView = "explorer" | "search" | "sourceControl";
 export type ResourceState<T> =
   | { phase: "loading" }
   | { phase: "ready"; value: T }

@@ -93,7 +93,8 @@ export function Workbench() {
               <section className="placeholder-surface">
                 <h1>No open tabs</h1>
                 <p>
-                  Use the plus button to open a chat, file, diff, or terminal.
+                  Use New chat, or open a file from Explorer, Search, or Source
+                  Control.
                 </p>
               </section>
             ) : null}

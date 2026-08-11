@@ -295,10 +295,25 @@ describe("compact Workbench project tools", () => {
     });
     render(<Workbench />);
 
-    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-    fireEvent.click(screen.getByRole("button", { name: "New tab" }));
+    const newChatControls = screen.getAllByRole("button", {
+      name: "New chat",
+    });
+    expect(newChatControls).toHaveLength(2);
+    newChatControls.forEach((control) => fireEvent.click(control));
 
     expect(createChat).toHaveBeenCalledTimes(2);
+  });
+
+  it("guides an empty workbench only through implemented entry points", () => {
+    render(<Workbench />);
+
+    expect(screen.getByText("No open tabs")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Use New chat, or open a file from Explorer, Search, or Source Control.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Username")).toBeNull();
   });
 
   it("exposes only truthful focusable controls in the Project sidebar", () => {
@@ -362,7 +377,9 @@ describe("compact Workbench project tools", () => {
     });
     const { container } = render(<Workbench />);
     const center = container.querySelector(".center-region");
-    const centerButton = screen.getByRole("button", { name: "New tab" });
+    const centerButton = within(center as HTMLElement).getByRole("button", {
+      name: "New chat",
+    });
     centerButton.focus();
 
     act(() => setCompactViewport(true));

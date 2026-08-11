@@ -23,6 +23,24 @@ afterEach(() => {
   useWorkbenchStore.setState(initialState, true);
 });
 
+describe("RightSidebar beta tool rail", () => {
+  it("exposes only backed Project tools", () => {
+    useWorkbenchStore.setState({ sidebarOpen: false });
+
+    render(<RightSidebar compact={false} />);
+
+    expect(
+      screen.getByRole("button", { name: "Explorer" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Source Control" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Problems" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Outline" })).toBeNull();
+  });
+});
+
 describe("RightSidebar Search", () => {
   it("searches the active Project and opens a result through the workbench", async () => {
     const openSearchMatch = vi.fn(async () => undefined);
@@ -293,6 +311,8 @@ describe("RightSidebar Source Control mutations", () => {
         name: "Commit message for Shared (root 2)",
       }),
     ).toBeInTheDocument();
+    expect(screen.getByText("Shared (root 1)")).toBeInTheDocument();
+    expect(screen.getByText("Shared (root 2)")).toBeInTheDocument();
   });
 
   it("keeps the retained draft focusable after an effect-unknown projection", async () => {

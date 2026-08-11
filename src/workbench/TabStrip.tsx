@@ -78,8 +78,8 @@ export function TabStrip() {
       <button
         className="icon-button tab-strip__new"
         type="button"
-        aria-label="New tab"
-        title="New tab"
+        aria-label="New chat"
+        title="New chat"
         disabled={!project}
         onClick={() => void createChat()}
       >
