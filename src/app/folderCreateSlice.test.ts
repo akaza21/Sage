@@ -176,4 +176,16 @@ describe("folder creation store transaction", () => {
     expect(useWorkbenchStore.getState().selectedResource).toBeNull();
     expect(useWorkbenchStore.getState().directoryListings).toEqual({});
   });
+
+  it("does not release an existing creation transaction on reentry", async () => {
+    const create = vi.spyOn(desktop, "createProjectFolder");
+    useWorkbenchStore.setState({ folderCreateInFlight: true });
+
+    expect(
+      await useWorkbenchStore.getState().createProjectFolder(parent, "nested"),
+    ).toBe(false);
+
+    expect(useWorkbenchStore.getState().folderCreateInFlight).toBe(true);
+    expect(create).not.toHaveBeenCalled();
+  });
 });

@@ -156,7 +156,7 @@ impl Workspace {
             root_id: self.root_id().into(),
             relative_path,
         };
-        let (sync_warning, after_listing, resource_confirmed) = platform::create_new_directory(
+        let mut observation = platform::create_new_directory(
             platform::ParentAuthority {
                 root: self.root(),
                 expected_root: self.root_identity(),
@@ -168,15 +168,20 @@ impl Workspace {
             sync_parent,
             || list_after(self, parent),
         )?;
-        Ok(finish_create(
+        let commit = finish_create(
             before,
             basename,
             resource,
             CreatedKind::Directory,
-            sync_warning,
-            after_listing,
-            resource_confirmed,
-        ))
+            observation.warning.take(),
+            observation
+                .listing
+                .take()
+                .expect("directory creation always records a listing result"),
+            observation.resource_confirmed,
+        );
+        drop(observation);
+        Ok(commit)
     }
 
     pub(crate) fn confirm_created_file(
@@ -251,7 +256,10 @@ fn sync_parent_directory(parent: &std::fs::File) -> std::io::Result<()> {
 
 #[cfg(windows)]
 fn sync_parent_directory(_parent: &std::fs::File) -> std::io::Result<()> {
-    Ok(())
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "Windows does not provide a supported directory durability flush through this handle",
+    ))
 }
 
 #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]

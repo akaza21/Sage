@@ -63,6 +63,10 @@ fn creates_folder_with_exact_identity_and_authoritative_parent_listing() {
             .unwrap();
         assert_eq!(result.outcome, FileCreationOutcome::Committed);
         assert!(result.resource_confirmed);
+        #[cfg(windows)]
+        assert!(result.warning.as_deref().unwrap().contains("durability"));
+        #[cfg(not(windows))]
+        assert!(result.warning.is_none());
         assert_eq!(result.resource.relative_path, "src/nested");
         assert!(result.parent_listing.entries.iter().any(|entry| {
             entry.resource == result.resource

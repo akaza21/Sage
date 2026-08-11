@@ -13,12 +13,20 @@ use std::{
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use super::ensure_root_identity;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-use crate::error::{AppError, AppResult};
+use crate::error::AppError;
+use crate::error::AppResult;
 
 pub(super) struct ParentAuthority<'a> {
     pub(super) root: &'a std::path::Path,
     pub(super) expected_root: super::super::RootIdentity,
     pub(super) relative_path: &'a str,
+}
+
+pub(super) struct DirectoryCreateObservation {
+    pub(super) warning: Option<String>,
+    pub(super) listing: Option<AppResult<crate::domain::DirectoryListing>>,
+    pub(super) resource_confirmed: bool,
+    _guards: Vec<std::fs::File>,
 }
 
 #[cfg(target_os = "macos")]
@@ -155,11 +163,7 @@ pub(super) fn create_new_directory<B, C, S, L>(
     created: C,
     sync_parent: S,
     list_after: L,
-) -> AppResult<(
-    Option<String>,
-    AppResult<crate::domain::DirectoryListing>,
-    bool,
-)>
+) -> AppResult<DirectoryCreateObservation>
 where
     B: FnOnce(&Path) -> std::io::Result<()>,
     C: FnOnce(),
@@ -180,11 +184,8 @@ where
         return Err(std::io::Error::last_os_error().into());
     }
     created();
-    let warning = sync_parent(&directory)
-        .err()
-        .map(|_| "Folder was created, but its durability could not be confirmed.".to_owned());
-    let listing = list_after();
-    // SAFETY: openat returns a new descriptor, or a negative error value.
+    // Acquire the created identity before any fallible refresh work and retain it
+    // together with the parent authority until reconciliation is complete.
     let descriptor = unsafe {
         openat(
             directory.as_raw_fd(),
@@ -192,20 +193,35 @@ where
             O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC,
         )
     };
-    let resource_confirmed = if descriptor < 0 {
-        false
+    let created_directory = if descriptor < 0 {
+        None
     } else {
         // SAFETY: openat returned a new owned descriptor on success.
-        let created_directory = unsafe { File::from_raw_fd(descriptor) };
-        created_directory
-            .metadata()
-            .ok()
-            .zip(target.symlink_metadata().ok())
-            .is_some_and(|(created, target)| {
-                target.is_dir() && target.dev() == created.dev() && target.ino() == created.ino()
-            })
+        Some(unsafe { File::from_raw_fd(descriptor) })
     };
-    Ok((warning, listing, resource_confirmed))
+    let warning = sync_parent(&directory)
+        .err()
+        .map(|_| "Folder was created, but its durability could not be confirmed.".to_owned());
+    let listing = list_after();
+    let resource_confirmed = created_directory
+        .as_ref()
+        .and_then(|created_directory| {
+            created_directory
+                .metadata()
+                .ok()
+                .zip(target.symlink_metadata().ok())
+        })
+        .is_some_and(|(created, target)| {
+            target.is_dir() && target.dev() == created.dev() && target.ino() == created.ino()
+        });
+    let mut guards = vec![directory];
+    guards.extend(created_directory);
+    Ok(DirectoryCreateObservation {
+        warning,
+        listing: Some(listing),
+        resource_confirmed,
+        _guards: guards,
+    })
 }
 
 #[cfg(all(test, target_os = "macos"))]
@@ -312,11 +328,7 @@ mod windows {
         created: C,
         sync_parent: S,
         list_after: L,
-    ) -> AppResult<(
-        Option<String>,
-        AppResult<crate::domain::DirectoryListing>,
-        bool,
-    )>
+    ) -> AppResult<super::DirectoryCreateObservation>
     where
         B: FnOnce(&Path) -> std::io::Result<()>,
         C: FnOnce(),
@@ -329,13 +341,25 @@ mod windows {
         let target = directory.join(basename);
         std::fs::create_dir(&target)?;
         created();
+        let created_directory = open_directory(&target).ok();
         let warning = sync_parent(guards.last().expect("parent authority exists"))
             .err()
             .map(|_| "Folder was created, but its durability could not be confirmed.".to_owned());
         let listing = list_after();
-        let resource_confirmed = open_directory(&target).is_ok();
-        drop(guards);
-        Ok((warning, listing, resource_confirmed))
+        let resource_confirmed = created_directory.as_ref().is_some_and(|created| {
+            super::super::super::root_identity_file(created)
+                .ok()
+                .zip(super::super::super::root_identity_path(&target).ok())
+                .is_some_and(|(created, target)| created == target)
+        });
+        let mut retained_guards = guards;
+        retained_guards.extend(created_directory);
+        Ok(super::DirectoryCreateObservation {
+            warning,
+            listing: Some(listing),
+            resource_confirmed,
+            _guards: retained_guards,
+        })
     }
 }
 
@@ -374,11 +398,7 @@ pub(super) fn create_new_directory<B, C, S, L>(
     _created: C,
     _sync_parent: S,
     _list_after: L,
-) -> crate::error::AppResult<(
-    Option<String>,
-    crate::error::AppResult<crate::domain::DirectoryListing>,
-    bool,
-)>
+) -> crate::error::AppResult<DirectoryCreateObservation>
 where
     B: FnOnce(&std::path::Path) -> std::io::Result<()>,
     C: FnOnce(),

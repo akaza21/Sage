@@ -63,6 +63,79 @@ fn creates_one_empty_directory_without_overwriting() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[cfg(unix)]
+#[test]
+fn replaced_unix_child_is_not_confirmed_as_the_created_directory() {
+    let (root, workspace) = fixture();
+    let target = root.join("src/raced");
+    let result = workspace
+        .create_directory_with(
+            &parent("src"),
+            "raced",
+            |_| Ok(()),
+            |directory| directory.sync_all(),
+            |workspace, parent| {
+                fs::remove_dir(&target).unwrap();
+                fs::create_dir(&target).unwrap();
+                workspace.list_directory(parent)
+            },
+            || {},
+        )
+        .unwrap();
+    assert!(!result.resource_confirmed);
+    assert!(
+        result
+            .warning
+            .as_deref()
+            .unwrap()
+            .contains("identity is unknown")
+    );
+    assert!(target.is_dir());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_delete_recreate_race_is_blocked_or_conservatively_unconfirmed() {
+    use std::cell::Cell;
+
+    let (root, workspace) = fixture();
+    let target = root.join("src/raced");
+    let replaced = Cell::new(false);
+    let result = workspace
+        .create_directory_with(
+            &parent("src"),
+            "raced",
+            |_| Ok(()),
+            |_| Ok(()),
+            |workspace, parent| {
+                if fs::remove_dir(&target).is_ok() {
+                    fs::create_dir(&target).unwrap();
+                    replaced.set(true);
+                }
+                workspace.list_directory(parent)
+            },
+            || {},
+        )
+        .unwrap();
+    assert!(
+        !replaced.get() || !result.resource_confirmed,
+        "a delete/recreate race must be blocked or conservatively unconfirmed"
+    );
+    assert!(target.is_dir());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_directory_sync_reports_typed_unsupported_instead_of_success() {
+    let (root, _workspace) = fixture();
+    let probe = fs::File::create(root.join("sync-probe")).unwrap();
+    let error = sync_parent_directory(&probe).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
+    fs::remove_dir_all(root).unwrap();
+}
+
 #[test]
 fn sync_and_post_create_listing_failures_return_committed_reconciliation() {
     let (root, workspace) = fixture();
