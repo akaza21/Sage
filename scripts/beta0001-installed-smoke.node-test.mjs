@@ -2,10 +2,8 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
 import {
-  cpSync,
   existsSync,
   mkdtempSync,
-  mkdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -27,27 +25,9 @@ import {
   runAuthenticatedInstalledSmoke,
 } from "./beta0001-installed-smoke-handoff.mjs";
 import { INSTALLED_SMOKE_SETTLEMENT_TIMEOUT_MS } from "./beta0001-installed-smoke-settlement.mjs";
-import { buildSourceManifest } from "./generate-source-manifest.mjs";
+import { stageInstalledSmokeTestSource } from "./beta0001-installed-smoke-test-source.mjs";
 
 const SHA = "a".repeat(64);
-const runnerClosure = [
-  "scripts/control-windows-installed-smoke.ps1",
-  "scripts/measure-windows-installed-smoke.ps1",
-  "scripts/settle-windows-installed-smoke.ps1",
-  "scripts/footprint/InstalledSmokeCleanupAuthority.psm1",
-  "scripts/footprint/InstalledSmokeIdentity.psm1",
-  "scripts/footprint/InstalledSmokePackageLifecycle.psm1",
-  "scripts/footprint/InstalledSmokeSemantic.psm1",
-  "scripts/footprint/DisposableProfile.psm1",
-  "scripts/footprint/ScenarioEvidence.psm1",
-  "scripts/footprint/WindowsFootprint.psm1",
-  "scripts/footprint/WindowsJob.psm1",
-  "scripts/footprint/WindowsJobCompletion.psm1",
-  "scripts/footprint/ProcessIdentity.psm1",
-  "scripts/footprint/bounded-node-runner.mjs",
-  "scripts/footprint/drive-installed-smoke.mjs",
-];
-
 function fileIdentity(filePath) {
   const bytes = readFileSync(filePath);
   return {
@@ -408,6 +388,7 @@ test("authenticated handoff binds signer and installed executable identity into 
       },
     });
     const authenticatedPowerShell = fileIdentity(windowsPowerShell());
+    const source = stageInstalledSmokeTestSource(root);
     const handoff = {
       receiptBytes: Buffer.from("package-receipt"),
       receipt: {
@@ -454,8 +435,7 @@ test("authenticated handoff binds signer and installed executable identity into 
         git: fileIdentity(process.execPath),
         powershell: authenticatedPowerShell,
       },
-      sourceRoot: path.resolve("."),
-      sourceManifest: buildSourceManifest(path.resolve(".")),
+      ...source,
     };
     let launch;
     let processCalls = 0;
@@ -562,17 +542,7 @@ test("authenticated handoff binds signer and installed executable identity into 
 test("installed smoke rejects runner mutation after artifact handoff authentication", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-runner-mutation-"));
   try {
-    const sourceRoot = path.join(root, "source");
-    mkdirSync(sourceRoot);
-    for (const relativePath of runnerClosure) {
-      const destination = path.join(sourceRoot, ...relativePath.split("/"));
-      mkdirSync(path.dirname(destination), { recursive: true });
-      cpSync(path.resolve(relativePath), destination);
-    }
-    const sourceManifest = buildSourceManifest(sourceRoot, {
-      files: runnerClosure,
-      directories: [],
-    });
+    const { sourceRoot, sourceManifest } = stageInstalledSmokeTestSource(root);
     writeFileSync(
       path.join(sourceRoot, "scripts", "measure-windows-installed-smoke.ps1"),
       "post-handoff mutation",
@@ -634,6 +604,7 @@ test(
   async () => {
     const root = mkdtempSync(path.join(tmpdir(), "sage-installed-preflight-"));
     try {
+      const source = stageInstalledSmokeTestSource(root);
       const installerPath = path.join(root, "unsigned-setup.exe");
       const installedPath = path.join(root, "projected-sage.exe");
       writeFileSync(installerPath, "unsigned installer fixture");
@@ -655,8 +626,7 @@ test(
         "powershell.exe",
       );
       const handoff = {
-        sourceRoot: path.resolve("."),
-        sourceManifest: buildSourceManifest(path.resolve(".")),
+        ...source,
         receiptBytes: Buffer.from("preflight-package-receipt"),
         receipt: {
           buildIdentity: {

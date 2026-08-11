@@ -22,7 +22,7 @@ import {
   INSTALLED_SMOKE_OUTPUT_GUARDIAN_ARGUMENTS,
   releaseInstalledSmokeOutputAuthority,
 } from "./beta0001-installed-smoke-output-authority.mjs";
-import { buildSourceManifest } from "./generate-source-manifest.mjs";
+import { stageInstalledSmokeTestSource } from "./beta0001-installed-smoke-test-source.mjs";
 
 function identity(filePath) {
   const bytes = readFileSync(filePath);
@@ -109,10 +109,9 @@ function smokeHandoff(root) {
     "powershell.exe",
   );
   const powershell = identity(powershellPath);
-  const sourceRoot = path.resolve(".");
+  const source = stageInstalledSmokeTestSource(root);
   return {
-    sourceRoot,
-    sourceManifest: buildSourceManifest(sourceRoot),
+    ...source,
     receiptBytes: Buffer.from("watchdog-package-receipt"),
     receipt: {
       buildIdentity: {
@@ -220,8 +219,7 @@ test(
       const result = await settleExistingOutput({
         campaignId: "watchdog-cleanup-01",
         outputDirectory: output,
-        sourceRoot: path.resolve("."),
-        sourceManifest: buildSourceManifest(path.resolve(".")),
+        ...stageInstalledSmokeTestSource(root),
         powershell: identity(powershellPath),
         cleanupKey: testCleanupKey,
         outerJobConverged: true,
@@ -267,13 +265,12 @@ test(
         "powershell.exe",
       );
       const powershell = identity(powershellPath);
-      const sourceRoot = path.resolve(".");
+      const source = stageInstalledSmokeTestSource(root);
       const campaignId = "watchdog-orchestrator-01";
       const outputDirectory = path.join(root, "output");
       const settlement = await runAuthenticatedInstalledSmoke({
         handoff: {
-          sourceRoot,
-          sourceManifest: buildSourceManifest(sourceRoot),
+          ...source,
           receiptBytes: Buffer.from("watchdog-package-receipt"),
           receipt: {
             buildIdentity: {
@@ -585,8 +582,7 @@ test(
       const result = await settleExistingOutput({
         campaignId: "watchdog-tamper-01",
         outputDirectory: output,
-        sourceRoot: path.resolve("."),
-        sourceManifest: buildSourceManifest(path.resolve(".")),
+        ...stageInstalledSmokeTestSource(root),
         powershell: identity(powershellPath),
         cleanupKey: testCleanupKey,
         outerJobConverged: true,
@@ -645,8 +641,7 @@ test(
       const result = await settleExistingOutput({
         campaignId: "watchdog-forgery-01",
         outputDirectory: output,
-        sourceRoot: path.resolve("."),
-        sourceManifest: buildSourceManifest(path.resolve(".")),
+        ...stageInstalledSmokeTestSource(root),
         powershell: identity(powershellPath),
         cleanupKey: testCleanupKey,
         outerJobConverged: true,
@@ -690,8 +685,7 @@ test(
       const result = await settleExistingOutput({
         campaignId: "watchdog-authority-only-01",
         outputDirectory: output,
-        sourceRoot: path.resolve("."),
-        sourceManifest: buildSourceManifest(path.resolve(".")),
+        ...stageInstalledSmokeTestSource(root),
         powershell,
         cleanupKey: testCleanupKey,
         outerJobConverged: false,
@@ -730,8 +724,7 @@ test(
       const result = await settleExistingOutput({
         campaignId: "watchdog-installed-link-01",
         outputDirectory: output,
-        sourceRoot: path.resolve("."),
-        sourceManifest: buildSourceManifest(path.resolve(".")),
+        ...stageInstalledSmokeTestSource(root),
         powershell,
         cleanupKey: testCleanupKey,
         outerJobConverged: true,
@@ -810,13 +803,12 @@ test(
         "powershell.exe",
       );
       const powershell = identity(powershellPath);
-      const sourceRoot = path.resolve(".");
+      const source = stageInstalledSmokeTestSource(root);
       const campaignId = "watchdog-failure-01";
       const outputDirectory = path.join(root, "output");
       const settlement = await runAuthenticatedInstalledSmoke({
         handoff: {
-          sourceRoot,
-          sourceManifest: buildSourceManifest(sourceRoot),
+          ...source,
           receiptBytes: Buffer.from("watchdog-package-receipt"),
           receipt: {
             buildIdentity: {
