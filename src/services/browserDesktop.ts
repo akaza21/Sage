@@ -6,6 +6,7 @@ import type {
   CreateProjectFolderRequest,
   FileDiff,
   GitFileMutationRequest,
+  GitRepositoryCommitRequest,
   ProjectLayoutRequest,
   RenameProjectFileRequest,
   RenameChatRequest,
@@ -143,6 +144,14 @@ export const browserDesktop = {
   ): Promise<never> {
     throw new BrowserGitMutationUnavailableError(
       "Git stage, unstage, and discard require the native Sage desktop",
+    );
+  },
+  async commitGitRepository(
+    _request: GitRepositoryCommitRequest,
+    _expectedTransitionEpoch: number,
+  ): Promise<never> {
+    throw new BrowserGitMutationUnavailableError(
+      "Git commits require the native Sage desktop",
     );
   },
   async persistProjectLayout(

@@ -10,6 +10,7 @@ import type {
   GitFileState,
   ResourceRef,
 } from "../domain/workbench";
+import { RepositoryCommitControl } from "./RepositoryCommitControl";
 
 const statusLabels: Record<GitFileState, string> = {
   unchanged: "",
@@ -193,6 +194,7 @@ export function SourceControlView() {
   const selected = useWorkbenchStore((state) => state.selectedResource);
   const refreshing = useWorkbenchStore((state) => state.repositoryRefreshing);
   const mutation = useWorkbenchStore((state) => state.repositoryMutation);
+  const commit = useWorkbenchStore((state) => state.repositoryCommit);
   const transitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
@@ -201,7 +203,8 @@ export function SourceControlView() {
     (state) => state.mutateRepositoryFile,
   );
   const openDiff = useWorkbenchStore((state) => state.openDiff);
-  const controlsDisabled = refreshing || transitioning || mutation !== null;
+  const controlsDisabled =
+    refreshing || transitioning || mutation !== null || commit !== null;
   const rootNames = new Map(
     project?.roots.map((root) => [root.id, root.name]) ?? [],
   );
@@ -235,6 +238,14 @@ export function SourceControlView() {
               </div>
               {repository.message ? (
                 <p className="sidebar__empty">{repository.message}</p>
+              ) : null}
+              {repository.state === "repository" ? (
+                <RepositoryCommitControl
+                  repository={repository}
+                  rootName={rootName}
+                  controlsDisabled={controlsDisabled}
+                  projectStatusTruncated={repositories.truncated}
+                />
               ) : null}
               {repository.changes.slice(0, 300).map((change) => {
                 return (

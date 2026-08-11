@@ -114,6 +114,114 @@ describe("RightSidebar Search", () => {
 });
 
 describe("RightSidebar Source Control mutations", () => {
+  it("commits staged changes per root and keeps root-scoped failures in Source Control", async () => {
+    const commitRepository = vi
+      .fn<(rootId: string, message: string) => Promise<boolean>>()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    useWorkbenchStore.setState({
+      sidebarOpen: true,
+      sidebarView: "sourceControl",
+      project: {
+        id: "project-a",
+        name: "A",
+        roots: [
+          {
+            id: "root-a",
+            name: "Alpha",
+            ordinal: 0,
+            availability: "available",
+            message: null,
+          },
+          {
+            id: "root-b",
+            name: "Beta",
+            ordinal: 1,
+            availability: "available",
+            message: null,
+          },
+        ],
+      },
+      repositories: {
+        roots: [
+          {
+            rootId: "root-a",
+            state: "repository",
+            branch: "main",
+            changes: [
+              {
+                resource: { rootId: "root-a", relativePath: "staged.txt" },
+                indexStatus: "modified",
+                worktreeStatus: "unchanged",
+                additions: 1,
+                deletions: 0,
+              },
+            ],
+            truncated: false,
+            elapsedMs: 1,
+            message: null,
+          },
+          {
+            rootId: "root-b",
+            state: "repository",
+            branch: "main",
+            changes: [],
+            truncated: false,
+            elapsedMs: 1,
+            message: null,
+          },
+        ],
+        truncated: false,
+        elapsedMs: 2,
+      },
+      commitRepository,
+    });
+
+    render(<RightSidebar compact={false} />);
+    const alphaMessage = screen.getByRole("textbox", {
+      name: "Commit message for Alpha",
+    });
+    const alphaCommit = screen.getByRole("button", {
+      name: "Commit staged changes in Alpha",
+    });
+    expect(alphaCommit).toBeDisabled();
+    expect(
+      screen.getByRole("button", {
+        name: "Commit staged changes in Beta",
+      }),
+    ).toBeDisabled();
+
+    fireEvent.change(alphaMessage, { target: { value: "  Root A only  " } });
+    fireEvent.submit(alphaMessage.closest("form")!);
+    await vi.waitFor(() =>
+      expect(commitRepository).toHaveBeenCalledWith(
+        "root-a",
+        "  Root A only  ",
+      ),
+    );
+    await vi.waitFor(() => expect(alphaMessage).toHaveValue(""));
+    await vi.waitFor(() => expect(alphaMessage).toHaveFocus());
+
+    fireEvent.change(alphaMessage, { target: { value: "Retry me" } });
+    fireEvent.submit(alphaMessage.closest("form")!);
+    await vi.waitFor(() => expect(commitRepository).toHaveBeenCalledTimes(2));
+    act(() => {
+      useWorkbenchStore.setState({
+        repositoryCommitError: {
+          rootId: "root-a",
+          kind: "failed",
+          message: "Local Git identity is missing",
+        },
+      });
+    });
+    expect(
+      screen.getByRole("alert", { name: "Alpha commit failed" }),
+    ).toHaveTextContent("Local Git identity is missing");
+    expect(alphaMessage).toHaveValue("Retry me");
+    expect(alphaMessage).toHaveFocus();
+    expect(useWorkbenchStore.getState().error).toBeNull();
+  });
+
   it("stages and unstages exact root-qualified changes with accessible actions", () => {
     const mutateRepositoryFile = vi.fn(async () => true);
     useWorkbenchStore.setState({

@@ -61,6 +61,19 @@ describe("browser repository mutations", () => {
       ),
     ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
   });
+
+  it("reports the same native-only failure for repository commits", async () => {
+    await expect(
+      browserDesktop.commitGitRepository(
+        {
+          projectId: "project-a",
+          rootId: "root-a",
+          message: "Browser cannot commit",
+        },
+        0,
+      ),
+    ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
+  });
 });
 
 describe("browser simulator history bounds", () => {

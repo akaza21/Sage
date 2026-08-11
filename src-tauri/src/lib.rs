@@ -22,6 +22,8 @@ mod project_commands;
 mod project_migration;
 mod project_registry;
 mod repository;
+mod repository_commit;
+mod repository_commit_commands;
 mod repository_mutation;
 mod repository_mutation_commands;
 mod repository_parse;
@@ -142,6 +144,7 @@ pub fn run() {
             resource_commands::get_repository_status,
             resource_commands::get_file_diff,
             repository_mutation_commands::mutate_git_file,
+            repository_commit_commands::commit_git_repository,
             resource_commands::list_directory,
             resource_commands::read_text_file,
             resource_commands::open_editor_document,

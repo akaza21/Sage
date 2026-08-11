@@ -35,6 +35,10 @@ import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import { createProjectSlice, type ProjectSlice } from "./projectSlice";
 import { createResourceSlice, type ResourceSlice } from "./resourceSlice";
 import {
+  createRepositoryCommitSlice,
+  type RepositoryCommitSlice,
+} from "./repositoryCommitSlice";
+import {
   createRepositoryMutationSlice,
   type RepositoryMutationSlice,
 } from "./repositoryMutationSlice";
@@ -61,6 +65,7 @@ export interface WorkbenchState
     FileCreateSlice,
     FileRenameSlice,
     ProjectSlice,
+    RepositoryCommitSlice,
     RepositoryMutationSlice,
     ResourceSlice,
     SearchNavigationSlice {
@@ -190,6 +195,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createChatArchiveSlice(set, get, store),
     ...createChatHandoffSlice(set, get, store),
     ...createChatOwnershipSlice(set, get, store),
+    ...createRepositoryCommitSlice(set, get, store),
     ...createRepositoryMutationSlice(set, get, store),
     ...createResourceSlice(set, get, store),
     ...createSearchNavigationSlice(set, get, store),
@@ -272,6 +278,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
       if (
         get().projectTransitioning ||
         get().fileRenameInFlight ||
+        get().repositoryCommit !== null ||
         get().repositoryMutation !== null ||
         (get().repositoryRefreshing && get().repositoryRefreshSuperseded)
       )

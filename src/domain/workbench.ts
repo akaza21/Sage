@@ -114,6 +114,20 @@ export interface GitFileMutationResult {
   error: GitFileMutationError | null;
 }
 
+export interface GitRepositoryCommitRequest {
+  projectId: string;
+  rootId: string;
+  message: string;
+}
+
+export interface GitRepositoryCommitResult {
+  projectId: string;
+  rootId: string;
+  transitionEpoch: number;
+  repositories: ProjectRepositoryStatus;
+  error: GitFileMutationError | null;
+}
+
 export type GitProcessState = "terminatedUnreaped" | "potentiallyRunning";
 
 export type GitFileMutationCommandError =

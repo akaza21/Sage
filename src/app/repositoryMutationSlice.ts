@@ -103,6 +103,7 @@ export const createRepositoryMutationSlice: StateCreator<
       get().projectTransitioning ||
       get().fileRenameInFlight ||
       get().repositoryRefreshing ||
+      get().repositoryCommit ||
       get().repositoryMutation ||
       !matchesResourceIntent(get(), generation, projectId, resource) ||
       !eligibleMutation(get(), resource, action, discardConfirmed)

@@ -67,6 +67,24 @@ pub enum GitFileMutationCommandError {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GitRepositoryCommitRequest {
+    pub project_id: String,
+    pub root_id: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRepositoryCommitResult {
+    pub project_id: String,
+    pub root_id: String,
+    pub transition_epoch: u64,
+    pub repositories: ProjectRepositoryStatus,
+    pub error: Option<GitFileMutationError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateProjectFileRequest {
     pub project_id: String,

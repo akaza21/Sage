@@ -12,6 +12,8 @@ import type {
   FileDiff,
   GitFileMutationRequest,
   GitFileMutationResult,
+  GitRepositoryCommitRequest,
+  GitRepositoryCommitResult,
   ModelOption,
   ProjectLayoutRequest,
   ProjectRepositoryStatus,
@@ -72,6 +74,15 @@ export const desktop = {
     return isTauriRuntime()
       ? invoke("mutate_git_file", { request, expectedTransitionEpoch })
       : browserDesktop.mutateGitFile(request, expectedTransitionEpoch);
+  },
+
+  commitGitRepository(
+    request: GitRepositoryCommitRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryCommitResult> {
+    return isTauriRuntime()
+      ? invoke("commit_git_repository", { request, expectedTransitionEpoch })
+      : browserDesktop.commitGitRepository(request, expectedTransitionEpoch);
   },
 
   listDirectory(resource: ResourceRef): Promise<DirectoryListing> {
