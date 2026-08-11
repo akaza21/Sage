@@ -20,6 +20,9 @@ use super::{
 #[path = "provisioning/windows.rs"]
 mod windows;
 
+#[path = "provisioning/helper.rs"]
+mod helper;
+
 const SOURCE_FILE_COUNT: usize = 8;
 const SOURCE_BYTES_MAX: u64 = 1024 * 1024 * 1024;
 const SOURCE_PATH_BYTES_MAX: usize = 32 * 1024;

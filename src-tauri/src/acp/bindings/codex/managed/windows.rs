@@ -22,7 +22,7 @@ use crate::acp::bindings::codex::{
     manifest::MetadataValidatedPacket,
     physical::{
         ConfiguredManagedPackageRoot, HeldPhysicalNode, PhysicallyInspectedPackage,
-        inspect_managed_package, open_exact_state_root,
+        inspect_managed_package, open_exact_state_root, same_native_path,
     },
 };
 
@@ -38,6 +38,54 @@ use token::ProcessToken;
 
 pub(super) fn current_process_user_sid() -> Result<Vec<u8>, ManagedStagingError> {
     Ok(ProcessToken::open()?.user_sid)
+}
+
+pub(super) fn validate_state_root(path: &Path) -> Result<(), ManagedStagingError> {
+    let (observed_path, handle) =
+        open_exact_state_root(path).map_err(|_| ManagedStagingError::StateAcl)?;
+    if !same_native_path(&observed_path, path) {
+        return Err(ManagedStagingError::StateAcl);
+    }
+    let token = ProcessToken::open()?;
+    let claims = claims_for_handle(observed_path, true, &handle, &token, true)?;
+    if claims.owner != OwnerClass::CurrentUser
+        || !claims.dacl_present
+        || !claims.dacl_protected
+        || claims.foreign_mutation_grant
+        || claims.effective_access & super::STATE_REQUIRED_ACCESS != super::STATE_REQUIRED_ACCESS
+    {
+        return Err(ManagedStagingError::StateAcl);
+    }
+    Ok(())
+}
+
+pub(super) fn validate_package_acl(
+    package: &PhysicallyInspectedPackage,
+) -> Result<(), ManagedStagingError> {
+    let token = ProcessToken::open()?;
+    let claims = package
+        .held_nodes()
+        .iter()
+        .map(|node| claims_for_node(node, &token, false))
+        .collect::<Result<Vec<_>, _>>()?;
+    if claims.is_empty()
+        || claims.iter().any(|node| {
+            !node.dacl_present
+                || !matches!(
+                    node.owner,
+                    OwnerClass::LocalSystem | OwnerClass::BuiltinAdministrators
+                )
+                || node.effective_access & DANGEROUS_ACCESS != 0
+                || node.foreign_mutation_grant
+        })
+        || claims
+            .iter()
+            .find(|node| node.path == package.package_root())
+            .is_none_or(|root| !root.directory || !root.dacl_protected)
+    {
+        return Err(ManagedStagingError::PackageAcl);
+    }
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -107,7 +155,7 @@ pub(super) fn inspect(
 ) -> Result<WindowsManagedProof, ManagedStagingError> {
     let (state_path, state_handle) =
         open_exact_state_root(packet.codex_home()).map_err(|_| ManagedStagingError::StateAcl)?;
-    if state_path != packet.codex_home() {
+    if !same_native_path(&state_path, packet.codex_home()) {
         return Err(ManagedStagingError::StateAcl);
     }
     let snapshot = observe(&package, &state_path, &state_handle)?;
@@ -124,7 +172,8 @@ pub(super) fn revalidate(
     packet: &MetadataValidatedPacket,
     proof: &WindowsManagedProof,
 ) -> Result<(), ManagedStagingError> {
-    if proof.state_path != packet.codex_home() || proof.package.codex_home() != packet.codex_home()
+    if !same_native_path(&proof.state_path, packet.codex_home())
+        || !same_native_path(proof.package.codex_home(), packet.codex_home())
     {
         return Err(ManagedStagingError::Binding);
     }

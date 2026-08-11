@@ -185,6 +185,35 @@ pub(crate) fn inspect_managed_staging(
     }
 }
 
+/// Re-inspects the canonical packet paths after the privileged provisioning
+/// transaction. This is intentionally separate from reproduced-package
+/// admission: it can close provisioning, but grants no catalog or launch
+/// authority without the normal upstream prerequisites.
+#[cfg(windows)]
+pub(super) fn inspect_provisioned_managed_staging(
+    packet: &MetadataValidatedPacket,
+) -> Result<ManagedStagingPrerequisite, ManagedStagingError> {
+    if packet.metadata().platform != Platform::WindowsX86_64 {
+        return Err(ManagedStagingError::PlatformUnavailable);
+    }
+    let root = ConfiguredManagedPackageRoot::new(packet.managed_package_root())
+        .map_err(|_| ManagedStagingError::Binding)?;
+    let inspection =
+        inspect_managed_package(packet, &root).map_err(|_| ManagedStagingError::Binding)?;
+    let package_root = inspection.package_root().to_owned();
+    let codex_home = inspection.codex_home().to_owned();
+    let artifact_count = inspection.artifact_count();
+    let byte_len = inspection.byte_len();
+    let proof = windows::inspect(packet, inspection)?;
+    Ok(ManagedStagingPrerequisite {
+        package_root,
+        codex_home,
+        artifact_count,
+        byte_len,
+        proof: ManagedProof::Windows(Box::new(proof)),
+    })
+}
+
 fn validate_snapshot(snapshot: &ManagedSecuritySnapshot) -> Result<(), ManagedStagingError> {
     if snapshot.package_nodes.is_empty() || snapshot.package_nodes.len() > MANAGED_NODE_MAX {
         return Err(ManagedStagingError::NodeLimit);
@@ -243,6 +272,20 @@ fn revalidate_snapshot(
 #[cfg(windows)]
 pub(super) fn current_process_user_sid() -> Result<Vec<u8>, ManagedStagingError> {
     windows::current_process_user_sid()
+}
+
+#[cfg(windows)]
+pub(super) fn validate_provisioned_state_root(
+    path: &std::path::Path,
+) -> Result<(), ManagedStagingError> {
+    windows::validate_state_root(path)
+}
+
+#[cfg(windows)]
+pub(super) fn validate_provisioned_package_acl(
+    package: &PhysicallyInspectedPackage,
+) -> Result<(), ManagedStagingError> {
+    windows::validate_package_acl(package)
 }
 
 #[cfg(test)]

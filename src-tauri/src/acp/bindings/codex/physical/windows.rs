@@ -80,6 +80,10 @@ pub(super) fn open_exact_state_root(
     Ok((final_path, handle))
 }
 
+pub(super) fn same_native_path(left: &Path, right: &Path) -> bool {
+    handle::path_key(left) == handle::path_key(right)
+}
+
 pub(super) fn claims_from_packet(
     packet: &MetadataValidatedPacket,
     configured_root: &ConfiguredManagedPackageRoot,

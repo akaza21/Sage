@@ -226,6 +226,11 @@ pub(super) fn open_exact_state_root(
     windows::open_exact_state_root(path)
 }
 
+#[cfg(windows)]
+pub(super) fn same_native_path(left: &Path, right: &Path) -> bool {
+    windows::same_native_path(left, right)
+}
+
 pub(super) fn decode_digest(value: &str) -> Result<[u8; 32], PhysicalInspectionError> {
     if value.len() != 64 {
         return Err(PhysicalInspectionError::Identity);

@@ -5,7 +5,7 @@
   "selfIncluded": false,
   "ordering": "relativePath ascending by UTF-8 byte order",
   "fileCount": 15,
-  "logicalBytes": 226616,
+  "logicalBytes": 226654,
   "files": [
     {
       "relativePath": "README.md",
@@ -19,8 +19,8 @@
     },
     {
       "relativePath": "dependency-admission-v1.json",
-      "bytes": 2930,
-      "sha256": "dcb1ffa5b58f22739402930b83eb8faed9400dec2379a3a8eb0606555dedb522"
+      "bytes": 2968,
+      "sha256": "27c8ff153e6198e3c6ec8efa56012cdfd5360f9c4e5145ae3045b219a0fed5c6"
     },
     {
       "relativePath": "evidence-policy-v1.json",

@@ -162,6 +162,21 @@ claim recovery of a crash-abandoned stage; those operations belong to the
 separately reviewed privileged-helper increment documented in the
 [sealed-staging evidence](provisioning-staging-0.145.0-build-evidence.md).
 
+The elevated-helper core increment adds request exact-limit/plus-one and
+truncation cases; secret, authenticator, helper version/hash/byte drift; nonce,
+source-proof, manifest order/hash/byte, target, and ACL drift; authenticated
+journal truncation/plus-one/tamper and replay/collision cases; and failpoints
+after initial journal creation, state creation, state phase persistence,
+package publication, and package phase persistence. It also proves convergent
+rollback for ACL, publication, and final-proof failures, plus journal-retaining
+retry when only post-commit cleanup fails. The concrete Windows adapter is
+compiled and routes ACL writes through handles whose volume/file identities
+match the retained no-follow inspection, then uses the existing managed ACL
+inspector for stage/state/final proof. No test manufactures an elevated-process
+capability. A Windows lock fixture also proves a second helper owner is rejected
+and a post-drop recovery owner can reacquire. See the
+[helper-core evidence](provisioning-helper-0.145.0-build-evidence.md).
+
 The security-prerequisite increment adds exact and drift fixtures for the
 packet-bound isolated `CODEX_HOME`, file credential store, disabled ambient
 config and update checks, one-live-tree ceiling, cleared five-key environment,
@@ -173,8 +188,8 @@ still returns `LaunchUnavailable` through the unchanged
 `ArtifactNotAdmitted` production gate, and the catalog assertion keeps Codex
 `notInstalled`.
 
-No test in these increments proves directory provisioning or the exact
-candidate's applied ACLs, an adequate or
+No test in these increments proves a live elevated executable/UAC boundary or
+the exact candidate's applied canonical-root ACLs, an adequate or
 enforced Codex writable-state disk/retention budget, authentication lifecycle
 or redaction, endpoint/proxy/TLS/offline behavior, telemetry, Windows
 containment, or launch authority. Those remain H1-03/H1-04 admission work.
