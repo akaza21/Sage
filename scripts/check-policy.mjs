@@ -237,6 +237,54 @@ if (declaredPackageMembers.length !== 0) {
   fail("Production package resources and external binaries must remain empty.");
 }
 
+const cargoBinBlocks =
+  packageCargoToml.match(
+    /\[\[bin\]\][\s\S]*?(?=\r?\n\[(?:\[bin\]|features|profile\.)|$)/g,
+  ) ?? [];
+const helperBinBlocks = cargoBinBlocks.filter((block) =>
+  /^name = "sage-codex-0145-elevated-helper"$/m.test(block),
+);
+const cargoFeaturesBlock =
+  packageCargoToml.match(/\[features\][\s\S]*?(?=\r?\n\[|$)/)?.[0] ?? "";
+if (
+  helperBinBlocks.length !== 1 ||
+  !/^path = "src\/bin\/codex_provisioning_helper\.rs"$/m.test(
+    helperBinBlocks[0],
+  ) ||
+  !/^required-features = \["codex-provisioning-helper"\]$/m.test(
+    helperBinBlocks[0],
+  ) ||
+  !/^default = \[\]$/m.test(cargoFeaturesBlock) ||
+  !/^codex-provisioning-helper = \[\]$/m.test(cargoFeaturesBlock)
+) {
+  fail(
+    "The Codex elevated helper must remain one explicit feature-only binary outside the default production package.",
+  );
+}
+
+const helperBoundaryFiles = [
+  "src-tauri/src/codex_helper_boundary.rs",
+  ...(await filesBelow("src-tauri/src/codex_helper_boundary")).map(
+    canonicalRelative,
+  ),
+];
+const helperBoundarySource = (
+  await Promise.all(
+    helperBoundaryFiles.map((file) => readFile(path.join(root, file), "utf8")),
+  )
+).join("\n");
+for (const forbiddenReference of [
+  "ElevatedHelperProcess",
+  "acp::bindings::codex::provisioning",
+  "provisioning::helper",
+]) {
+  if (helperBoundarySource.includes(forbiddenReference)) {
+    fail(
+      `The inert Codex helper boundary must not reach the mutation core: ${forbiddenReference}`,
+    );
+  }
+}
+
 const candidatePackage = packageContract.participants?.candidate;
 const controlPackage = packageContract.participants?.control;
 const packageArtifactKinds = candidatePackage?.artifacts?.map(

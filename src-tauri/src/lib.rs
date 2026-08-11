@@ -5,6 +5,9 @@ mod chat_commands;
 mod chat_lifecycle;
 mod chat_search;
 mod chat_search_commands;
+#[cfg(feature = "codex-provisioning-helper")]
+#[doc(hidden)]
+pub mod codex_helper_boundary;
 mod commands;
 mod domain;
 mod editor;

@@ -186,6 +186,21 @@ stage/cleanup enumeration rejects exact-limit plus one without an unbounded
 collection. See the
 [helper-core evidence](provisioning-helper-0.145.0-build-evidence.md).
 
+The feature-only helper process-boundary increment additionally exercises
+fixed/truncated/trailing/tampered request and response frames, wrong request
+digest replay, caller PID/SID/elevation and helper-elevation decisions, exact
+helper hashing while its image handle denies write/delete replacement,
+hard-link and empty-image rejection, and the fixed bounded pipe namespace. A
+live ordinary-user integration run must return the sealed
+`ElevationRequired` status, converge the child, reject a second connection,
+preserve the helper bytes, and leave no temp files beyond the copied fixture.
+An unconnected helper must terminate at its own deadline and remove its pipe.
+Policy must prove the helper requires its explicit Cargo feature while default
+features and all Tauri resource/external-binary inventories remain empty. This
+is an inert transport test only: no test may construct `ElevatedHelperProcess`,
+invoke the mutation core, trigger UAC, or publish canonical roots. See the
+[process-boundary evidence](provisioning-helper-boundary-0.145.0-build-evidence.md).
+
 The security-prerequisite increment adds exact and drift fixtures for the
 packet-bound isolated `CODEX_HOME`, file credential store, disabled ambient
 config and update checks, one-live-tree ceiling, cleared five-key environment,

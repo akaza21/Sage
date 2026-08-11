@@ -44,10 +44,16 @@ name = "acp-adversarial-fixture"
 path = "src/bin/acp_adversarial_fixture.rs"
 required-features = ["acp-fixture"]
 
+[[bin]]
+name = "sage-codex-0145-elevated-helper"
+path = "src/bin/codex_provisioning_helper.rs"
+required-features = ["codex-provisioning-helper"]
+
 [features]
 default = []
 acp-fixture = []
 acp-schema = ["dep:agent-client-protocol-schema"]
+codex-provisioning-helper = []
 custom-protocol = ["tauri/custom-protocol"]
 diagnostics = []
 
