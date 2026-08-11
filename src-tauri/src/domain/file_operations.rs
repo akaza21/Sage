@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use super::{DirectoryListing, ProjectRepositoryStatus, ResourceRef};
+use super::{
+    BootstrapSnapshot, DirectoryListing, ProjectLayoutRequest, ProjectRepositoryStatus, ResourceRef,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,3 +98,36 @@ pub struct CreateProjectFileResult {
 
 pub type CreateProjectFolderRequest = CreateProjectFileRequest;
 pub type CreateProjectFolderResult = CreateProjectFileResult;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RenameProjectFileRequest {
+    pub project_id: String,
+    pub project_generation: u64,
+    pub expected_transition_epoch: u64,
+    pub source: ResourceRef,
+    pub basename: String,
+    pub current_layout: ProjectLayoutRequest,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FileRenameOutcome {
+    Committed,
+    EffectUnknown,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameProjectFileResult {
+    pub outcome: FileRenameOutcome,
+    pub resource_confirmed: bool,
+    pub project_id: String,
+    pub project_generation: u64,
+    pub transition_epoch: u64,
+    pub source: ResourceRef,
+    pub target: ResourceRef,
+    pub parent_listing: Option<DirectoryListing>,
+    pub snapshot: BootstrapSnapshot,
+    pub warning: Option<String>,
+}

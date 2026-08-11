@@ -101,6 +101,7 @@ export const createRepositoryMutationSlice: StateCreator<
     if (
       !projectId ||
       get().projectTransitioning ||
+      get().fileRenameInFlight ||
       get().repositoryRefreshing ||
       get().repositoryMutation ||
       !matchesResourceIntent(get(), generation, projectId, resource) ||

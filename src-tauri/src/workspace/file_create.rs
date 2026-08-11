@@ -310,7 +310,7 @@ pub(crate) fn validate_new_file_basename(basename: &str) -> AppResult<()> {
     Ok(())
 }
 
-fn validate_new_file_path(parent: &str, basename: &str) -> AppResult<String> {
+pub(crate) fn validate_new_file_path(parent: &str, basename: &str) -> AppResult<String> {
     validate_new_file_basename(basename)?;
     if parent.len() > MAX_NEW_FILE_PATH_BYTES {
         return Err(AppError::ResourceLimit(format!(

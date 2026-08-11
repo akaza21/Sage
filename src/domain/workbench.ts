@@ -161,6 +161,28 @@ export interface CreateProjectFileResult {
 export type CreateProjectFolderRequest = CreateProjectFileRequest;
 export type CreateProjectFolderResult = CreateProjectFileResult;
 
+export interface RenameProjectFileRequest {
+  projectId: string;
+  projectGeneration: number;
+  expectedTransitionEpoch: number;
+  source: ResourceRef;
+  basename: string;
+  currentLayout: ProjectLayoutRequest;
+}
+
+export interface RenameProjectFileResult {
+  outcome: "committed" | "effectUnknown";
+  resourceConfirmed: boolean;
+  projectId: string;
+  projectGeneration: number;
+  transitionEpoch: number;
+  source: ResourceRef;
+  target: ResourceRef;
+  parentListing: DirectoryListing | null;
+  snapshot: BootstrapSnapshot;
+  warning: string | null;
+}
+
 export interface TextFile {
   resource: ResourceRef;
   content: string;

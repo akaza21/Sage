@@ -220,7 +220,8 @@ export const createFileCreateSlice: StateCreator<
       root.availability !== "available" ||
       get().projectTransitioning ||
       get().fileCreateInFlight ||
-      get().folderCreateInFlight
+      get().folderCreateInFlight ||
+      get().fileRenameInFlight
     ) {
       set(
         creationError(

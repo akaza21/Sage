@@ -10,6 +10,7 @@ import { assertBrowserChatRenameIdentity } from "./browserChat";
 import {
   appendBrowserSimulatorTurn,
   BrowserGitMutationUnavailableError,
+  BrowserFileRenameUnavailableError,
   browserDesktop,
   resetBrowserDesktopForTests,
 } from "./browserDesktop";
@@ -28,6 +29,25 @@ function messages(count: number, text = "x"): ChatMessage[] {
 const request = { sessionId: "session", modelId: "sim-fast", text: "hello" };
 
 describe("browser repository mutations", () => {
+  it("reports file rename as a typed native-only operation", async () => {
+    await expect(
+      browserDesktop.renameProjectFile({
+        projectId: "project-a",
+        projectGeneration: 1,
+        expectedTransitionEpoch: 0,
+        source: { rootId: "root-a", relativePath: "src/old.ts" },
+        basename: "new.ts",
+        currentLayout: {
+          projectId: "project-a",
+          tabs: [],
+          activeTabId: null,
+          selectedRootId: "root-a",
+          selectedResource: null,
+        },
+      }),
+    ).rejects.toBeInstanceOf(BrowserFileRenameUnavailableError);
+  });
+
   it("reports a typed native-only failure without simulating Git", async () => {
     await expect(
       browserDesktop.mutateGitFile(

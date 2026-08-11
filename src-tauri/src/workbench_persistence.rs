@@ -303,7 +303,7 @@ pub(crate) fn persist_layout_in(
     Ok(())
 }
 
-fn validate_layout(
+pub(crate) fn validate_layout(
     transaction: &rusqlite::Transaction<'_>,
     request: &ProjectLayoutRequest,
 ) -> AppResult<()> {

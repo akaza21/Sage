@@ -17,6 +17,7 @@ import { preferredModelId } from "../features/harnesses/modelSelection";
 import { desktop } from "../services/desktop";
 import { createEditorSlice, type EditorSlice } from "./editorSlice";
 import { createFileCreateSlice, type FileCreateSlice } from "./fileCreateSlice";
+import { createFileRenameSlice, type FileRenameSlice } from "./fileRenameSlice";
 import { createChatSlice, type ChatSlice } from "./chatSlice";
 import {
   createChatArchiveSlice,
@@ -58,6 +59,7 @@ export interface WorkbenchState
     ChatOwnershipSlice,
     EditorSlice,
     FileCreateSlice,
+    FileRenameSlice,
     ProjectSlice,
     RepositoryMutationSlice,
     ResourceSlice,
@@ -193,9 +195,10 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createSearchNavigationSlice(set, get, store),
     ...createEditorSlice(set, get, store),
     ...createFileCreateSlice(set, get, store),
+    ...createFileRenameSlice(set, get, store),
 
     selectRoot: (selectedRootId) => {
-      if (get().projectTransitioning) return;
+      if (get().projectTransitioning || get().fileRenameInFlight) return;
       set({
         selectedRootId,
         selectedResource: childResource(selectedRootId),
@@ -203,6 +206,8 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
         fileCreateNotice: null,
         folderCreateError: null,
         folderCreateNotice: null,
+        fileRenameError: null,
+        fileRenameNotice: null,
       });
       void get().loadDirectory(childResource(selectedRootId));
     },
@@ -210,7 +215,8 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     activateTab: async (tabId) => {
       const generation = get().projectGeneration;
       const projectId = get().project?.id;
-      if (!projectId || get().projectTransitioning) return;
+      if (!projectId || get().projectTransitioning || get().fileRenameInFlight)
+        return;
       const tab = get().tabs.find((candidate) => candidate.id === tabId);
       if (!tab) {
         return;
@@ -265,6 +271,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     refreshRepository: async () => {
       if (
         get().projectTransitioning ||
+        get().fileRenameInFlight ||
         get().repositoryMutation !== null ||
         (get().repositoryRefreshing && get().repositoryRefreshSuperseded)
       )

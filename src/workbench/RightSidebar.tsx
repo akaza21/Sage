@@ -15,6 +15,7 @@ import type { SidebarView } from "../app/store";
 import { useWorkbenchStore } from "../app/store";
 import {
   childResource,
+  parentResource,
   resourceKey,
   sameResource,
 } from "../domain/resourceIdentity";
@@ -25,6 +26,7 @@ import {
   NewFolderControl,
 } from "../features/files/NewFileControl";
 import { explorerCreateParent } from "../features/files/newFileContract";
+import { RenameFileControl } from "../features/files/RenameFileControl";
 import { WorkspaceSearchView } from "../features/search";
 import { SourceControlView } from "./SourceControlView";
 
@@ -153,6 +155,7 @@ function ExplorerView() {
   const folderCreateNotice = useWorkbenchStore(
     (state) => state.folderCreateNotice,
   );
+  const fileRenameNotice = useWorkbenchStore((state) => state.fileRenameNotice);
   const parent = project
     ? explorerCreateParent(
         project,
@@ -165,6 +168,23 @@ function ExplorerView() {
     : null;
   const rootName =
     project?.roots.find((root) => root.id === parent?.rootId)?.name ?? null;
+  const selectedParent = selectedResource
+    ? parentResource(selectedResource)
+    : null;
+  const selectedListing = selectedParent
+    ? listings[resourceKey(selectedParent)]
+    : null;
+  const selectedEntry =
+    selectedListing?.phase === "ready"
+      ? selectedListing.value.entries.find((entry) =>
+          sameResource(entry.resource, selectedResource),
+        )
+      : null;
+  const renameSource =
+    selectedEntry?.kind === "file" ? selectedEntry.resource : null;
+  const renameRootName =
+    project?.roots.find((root) => root.id === renameSource?.rootId)?.name ??
+    null;
   return (
     <>
       <div className="sidebar__heading">
@@ -173,6 +193,7 @@ function ExplorerView() {
           <span className="muted">{project?.name ?? "No project"}</span>
           <NewFileControl parent={parent} rootName={rootName} />
           <NewFolderControl parent={parent} rootName={rootName} />
+          <RenameFileControl source={renameSource} rootName={renameRootName} />
         </span>
       </div>
       {fileCreateNotice ? (
@@ -183,6 +204,11 @@ function ExplorerView() {
       {folderCreateNotice ? (
         <p className="tree__limit" role="status">
           {folderCreateNotice}
+        </p>
+      ) : null}
+      {fileRenameNotice ? (
+        <p className="tree__limit" role="status">
+          {fileRenameNotice}
         </p>
       ) : null}
       <div className="tree" role="tree" aria-label="Project files">

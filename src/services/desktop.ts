@@ -16,6 +16,8 @@ import type {
   ProjectLayoutRequest,
   ProjectRepositoryStatus,
   RenameChatRequest,
+  RenameProjectFileRequest,
+  RenameProjectFileResult,
   ChatLifecycleRequest,
   ProjectSwitchRequest,
   ProjectTransitionResult,
@@ -92,6 +94,14 @@ export const desktop = {
     return isTauriRuntime()
       ? invoke("create_project_folder", { request })
       : browserDesktop.createProjectFolder(request);
+  },
+
+  renameProjectFile(
+    request: RenameProjectFileRequest,
+  ): Promise<RenameProjectFileResult> {
+    return isTauriRuntime()
+      ? invoke("rename_project_file", { request })
+      : browserDesktop.renameProjectFile(request);
   },
 
   readTextFile(resource: ResourceRef): Promise<TextFile> {

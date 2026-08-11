@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import { resourceKey } from "../domain/resourceIdentity";
+import type { ResourceRef } from "../domain/workbench";
 import { workspaceSearchDesktop } from "../features/search";
 import { RightSidebar } from "./RightSidebar";
 
@@ -644,5 +645,113 @@ describe("RightSidebar Explorer New Folder", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await vi.waitFor(() => expect(trigger).toHaveFocus());
+  });
+});
+
+describe("RightSidebar Explorer Rename File", () => {
+  function renameState(
+    renameProjectFile: (
+      source: ResourceRef,
+      basename: string,
+    ) => Promise<boolean>,
+  ) {
+    const source = { rootId: "root-a", relativePath: "src/old.ts" };
+    useWorkbenchStore.setState({
+      sidebarOpen: true,
+      sidebarView: "explorer",
+      phase: "ready",
+      projectGeneration: 2,
+      nativeTransitionEpoch: 3,
+      project: {
+        id: "project-a",
+        name: "A",
+        roots: [
+          {
+            id: "root-a",
+            name: "Root A",
+            ordinal: 0,
+            availability: "available",
+            message: null,
+          },
+        ],
+      },
+      selectedRootId: "root-a",
+      selectedResource: source,
+      tabs: [],
+      activeTabId: null,
+      directoryListings: {
+        [resourceKey({ rootId: "root-a", relativePath: "src" })]: {
+          phase: "ready",
+          value: {
+            resource: { rootId: "root-a", relativePath: "src" },
+            entries: [
+              { name: "old.ts", resource: source, kind: "file", byteLen: 9 },
+            ],
+            truncated: false,
+          },
+        },
+      },
+      renameProjectFile,
+      fileRenameError: null,
+      fileRenameInFlight: false,
+    });
+    return source;
+  }
+
+  it("retains native errors, previews the target, then closes and restores focus", async () => {
+    const renameProjectFile = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        useWorkbenchStore.setState({
+          fileRenameError: "Target already exists.",
+        });
+        return false;
+      })
+      .mockResolvedValueOnce(true);
+    const source = renameState(renameProjectFile);
+
+    render(<RightSidebar compact={false} />);
+    const trigger = screen.getByRole("button", { name: "Rename File" });
+    fireEvent.click(trigger);
+    const input = await screen.findByLabelText("File name");
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { value: "new.ts" } });
+    expect(screen.getByText("Path: Root A/src/new.ts")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    expect(renameProjectFile).toHaveBeenLastCalledWith(source, "new.ts");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Target already exists.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(trigger).toHaveFocus();
+  });
+
+  it("requires the source File and Diff tabs to be closed", () => {
+    const renameProjectFile = vi.fn(async () => true);
+    const source = renameState(renameProjectFile);
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: "file-a",
+          kind: "file",
+          title: "old.ts",
+          position: 0,
+          pinned: false,
+          dirty: false,
+          resource: source,
+        },
+      ],
+    });
+
+    render(<RightSidebar compact={false} />);
+    const trigger = screen.getByRole("button", { name: "Rename File" });
+    expect(trigger).toBeDisabled();
+    expect(trigger).toHaveAttribute(
+      "title",
+      "Close the source File and Diff tabs before renaming",
+    );
   });
 });

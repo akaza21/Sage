@@ -8,7 +8,7 @@ export function closeWorkbenchTab(
   get: StoreApi<WorkbenchState>["getState"],
   tabId: string,
 ) {
-  if (get().projectTransitioning) return;
+  if (get().projectTransitioning || get().fileRenameInFlight) return;
   const state = get();
   const tab = state.tabs.find((candidate) => candidate.id === tabId);
   if (tab?.kind === "chat") {

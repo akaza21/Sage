@@ -10,6 +10,7 @@ use crate::{
 };
 
 pub(crate) mod file_create;
+pub(crate) mod file_rename;
 mod git_resource;
 pub(crate) mod search;
 
