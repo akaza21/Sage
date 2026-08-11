@@ -31,24 +31,38 @@ impl Drop for OwnedToken {
     }
 }
 
-struct ImpersonationGuard(bool);
+struct ImpersonationGuard<R: FnMut() -> bool> {
+    armed: bool,
+    revert: R,
+}
 
-impl ImpersonationGuard {
+impl<R: FnMut() -> bool> ImpersonationGuard<R> {
+    fn with_revert(revert: R) -> Self {
+        Self {
+            armed: true,
+            revert,
+        }
+    }
+
     fn revert(mut self) -> Result<(), BoundaryError> {
-        self.0 = false;
-        if unsafe { windows_sys::Win32::Security::RevertToSelf() } == 0 {
+        if !(self.revert)() {
             return Err(BoundaryError::Authority);
         }
+        self.armed = false;
         Ok(())
     }
 }
 
-impl Drop for ImpersonationGuard {
+impl<R: FnMut() -> bool> Drop for ImpersonationGuard<R> {
     fn drop(&mut self) {
-        if self.0 {
-            unsafe { windows_sys::Win32::Security::RevertToSelf() };
+        if self.armed {
+            let _ = (self.revert)();
         }
     }
+}
+
+fn revert_to_self() -> bool {
+    unsafe { windows_sys::Win32::Security::RevertToSelf() != 0 }
 }
 
 pub(crate) fn current_process_subject() -> Result<TokenSubject, BoundaryError> {
@@ -71,7 +85,7 @@ pub(crate) fn connected_client(
     if unsafe { ImpersonateNamedPipeClient(pipe.as_raw_handle().cast()) } == 0 {
         return Err(BoundaryError::Authority);
     }
-    let guard = ImpersonationGuard(true);
+    let guard = ImpersonationGuard::with_revert(revert_to_self);
     let mut handle = std::ptr::null_mut();
     if unsafe { OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 0, &mut handle) } == 0 {
         return Err(BoundaryError::Authority);
@@ -140,4 +154,26 @@ fn copy_sid(sid: PSID) -> Result<Vec<u8>, BoundaryError> {
         return Err(BoundaryError::Authority);
     }
     Ok(unsafe { std::slice::from_raw_parts(sid.cast::<u8>(), bytes) }.to_vec())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    use super::*;
+
+    #[test]
+    fn failed_explicit_revert_keeps_drop_retry_armed() {
+        let attempts = Rc::new(Cell::new(0));
+        let observed = Rc::clone(&attempts);
+        let guard = ImpersonationGuard::with_revert(move || {
+            let next = observed.get() + 1;
+            observed.set(next);
+            next > 1
+        });
+
+        assert_eq!(guard.revert(), Err(BoundaryError::Authority));
+        assert_eq!(attempts.get(), 2);
+    }
 }

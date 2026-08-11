@@ -12,6 +12,8 @@ use super::protocol::{
 };
 use super::windows::{authority, channel};
 
+const PROCESS_CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoundaryProbeReceipt {
     pub status: BoundaryStatus,
@@ -75,7 +77,7 @@ pub fn direct_non_elevated_probe(
             })
         }
         Err(error) => {
-            converge_child(&mut child);
+            converge_child(&mut child)?;
             Err(error)
         }
     }
@@ -100,18 +102,96 @@ fn exchange(
 
 fn wait_child(child: &mut Child, deadline: Instant) -> Result<ExitStatus, BoundaryError> {
     loop {
-        if let Some(status) = child.try_wait().map_err(|_| BoundaryError::Io)? {
-            return Ok(status);
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) => {}
+            Err(_) => {
+                converge_child(child)?;
+                return Err(BoundaryError::Io);
+            }
         }
         if Instant::now() >= deadline {
-            converge_child(child);
+            converge_child(child)?;
             return Err(BoundaryError::Deadline);
         }
         std::thread::sleep(Duration::from_millis(5));
     }
 }
 
-fn converge_child(child: &mut Child) {
-    let _ = child.kill();
-    let _ = child.wait();
+trait ChildProcessControl {
+    fn kill_process(&mut self) -> std::io::Result<()>;
+    fn poll_exit(&mut self) -> std::io::Result<Option<ExitStatus>>;
+}
+
+impl ChildProcessControl for Child {
+    fn kill_process(&mut self) -> std::io::Result<()> {
+        self.kill()
+    }
+
+    fn poll_exit(&mut self) -> std::io::Result<Option<ExitStatus>> {
+        self.try_wait()
+    }
+}
+
+fn converge_child(child: &mut Child) -> Result<(), BoundaryError> {
+    converge_process(child, Instant::now() + PROCESS_CLEANUP_TIMEOUT)
+}
+
+fn converge_process(
+    process: &mut impl ChildProcessControl,
+    deadline: Instant,
+) -> Result<(), BoundaryError> {
+    let kill_failed = process.kill_process().is_err();
+    loop {
+        match process.poll_exit() {
+            Ok(Some(_)) if kill_failed => return Err(BoundaryError::Io),
+            Ok(Some(_)) => return Ok(()),
+            Err(_) => return Err(BoundaryError::Io),
+            Ok(None) => {}
+        }
+        if Instant::now() >= deadline {
+            return Err(if kill_failed {
+                BoundaryError::Io
+            } else {
+                BoundaryError::Deadline
+            });
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use super::*;
+
+    #[derive(Default)]
+    struct KillFailureNeverExit {
+        kill_calls: usize,
+        poll_calls: usize,
+    }
+
+    impl ChildProcessControl for KillFailureNeverExit {
+        fn kill_process(&mut self) -> io::Result<()> {
+            self.kill_calls += 1;
+            Err(io::Error::other("injected kill failure"))
+        }
+
+        fn poll_exit(&mut self) -> io::Result<Option<ExitStatus>> {
+            self.poll_calls += 1;
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn kill_failure_and_never_exit_return_without_blocking_or_hiding_the_kill_error() {
+        let mut process = KillFailureNeverExit::default();
+
+        let result = converge_process(&mut process, Instant::now());
+
+        assert_eq!(result, Err(BoundaryError::Io));
+        assert_eq!(process.kill_calls, 1);
+        assert_eq!(process.poll_calls, 1);
+    }
 }

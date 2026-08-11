@@ -14,7 +14,7 @@ use windows_sys::Win32::Foundation::{
 };
 use windows_sys::Win32::Security::{
     ACL, ACL_REVISION, AddAccessAllowedAce, InitializeAcl, InitializeSecurityDescriptor,
-    SECURITY_ATTRIBUTES, SetSecurityDescriptorDacl,
+    SECURITY_ATTRIBUTES, SECURITY_DESCRIPTOR, SetSecurityDescriptorDacl,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_DUPLEX, ReadFile, SECURITY_IMPERSONATION,
@@ -202,7 +202,7 @@ pub(crate) fn read_message(
 }
 
 struct PipeSecurity {
-    _descriptor: Vec<u64>,
+    _descriptor: Box<SECURITY_DESCRIPTOR>,
     _acl: Vec<u64>,
     attributes: SECURITY_ATTRIBUTES,
 }
@@ -213,9 +213,9 @@ impl PipeSecurity {
             return Err(BoundaryError::Authority);
         }
         let acl_bytes = align4(size_of::<ACL>() + 8 + user_sid.len());
-        let mut descriptor = vec![0_u64; 4];
+        let mut descriptor = Box::new(SECURITY_DESCRIPTOR::default());
         let mut acl = vec![0_u64; acl_bytes.div_ceil(size_of::<u64>())];
-        let descriptor_ptr = descriptor.as_mut_ptr().cast();
+        let descriptor_ptr = std::ptr::from_mut(descriptor.as_mut()).cast();
         let acl_ptr = acl.as_mut_ptr().cast::<ACL>();
         if unsafe { InitializeSecurityDescriptor(descriptor_ptr, SECURITY_DESCRIPTOR_REVISION) }
             == 0
@@ -258,6 +258,27 @@ fn wide(value: &str) -> Vec<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const SYSTEM_SID: [u8; 12] = [1, 1, 0, 0, 0, 0, 0, 5, 18, 0, 0, 0];
+
+    #[test]
+    fn pipe_security_owns_the_complete_native_descriptor_layout() {
+        let security = PipeSecurity::new(&SYSTEM_SID).unwrap();
+
+        assert_eq!(
+            std::mem::size_of_val(&*security._descriptor),
+            size_of::<windows_sys::Win32::Security::SECURITY_DESCRIPTOR>()
+        );
+        let descriptor_address = security.attributes.lpSecurityDescriptor;
+        let moved = security;
+        assert_eq!(moved.attributes.lpSecurityDescriptor, descriptor_address);
+        assert_eq!(
+            std::ptr::from_ref(moved._descriptor.as_ref())
+                .cast_mut()
+                .cast(),
+            descriptor_address
+        );
+    }
 
     #[test]
     fn pipe_name_is_fixed_and_bounded() {
