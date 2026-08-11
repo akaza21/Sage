@@ -12,6 +12,7 @@ import {
   deliverPackageArtifactHandoff,
 } from "./ade0006a-package-handoff.mjs";
 import { observePackageParticipant } from "./ade0006a-package-observer.mjs";
+import { runAuthenticatedInstalledSmoke } from "./beta0001-installed-smoke-handoff.mjs";
 import { collectPackageSourceIdentity } from "./ade0006a-package-provenance.mjs";
 import {
   derivePackageBudgetEvaluation,
@@ -247,6 +248,7 @@ export async function collectPackage(options) {
       frozen,
       maximumExecutableBytes:
         frozen.package.observerBounds.executableArtifactBytes,
+      git: buildTools.git,
     });
     return { receipt, receiptBytes };
   } catch (error) {
@@ -281,20 +283,51 @@ export async function collectPackage(options) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
   try {
+    const sourceRoot = argument("--source-root");
+    const campaignId = argument("--campaign-id");
+    const node = argument("--node");
+    const gitRoot = argument("--git-root");
+    const smokeOutput = argument("--installed-smoke-output");
+    const smokeSignerThumbprint = argument(
+      "--installed-smoke-signer-thumbprint",
+    );
+    if (smokeOutput && !/^[0-9a-f]{40}$/u.test(smokeSignerThumbprint ?? "")) {
+      throw new Error("installed-smoke-signer-thumbprint-invalid");
+    }
+    let installedSmokeReceipt = null;
     const { receipt, receiptBytes } = await collectPackage({
-      campaignId: argument("--campaign-id"),
-      sourceRoot: argument("--source-root"),
+      campaignId,
+      sourceRoot,
       rustToolchainRoot: argument("--rust-toolchain-root"),
       cargoHome: argument("--cargo-home"),
-      node: argument("--node"),
+      node,
       npmPackageRoot: argument("--npm-package-root"),
-      gitRoot: argument("--git-root"),
+      gitRoot,
       wixToolsRoot: argument("--wix-tools-root"),
       nsisToolsRoot: argument("--nsis-tools-root"),
       msvcToolsRoot: argument("--msvc-tools-root"),
       windowsSdkRoot: argument("--windows-sdk-root"),
       windowsSdkVersion: argument("--windows-sdk-version"),
       sevenZip: argument("--seven-zip"),
+      onAuthenticatedArtifacts: smokeOutput
+        ? async (handoff) => {
+            installedSmokeReceipt = await runAuthenticatedInstalledSmoke({
+              handoff,
+              campaignId,
+              outputDirectory: smokeOutput,
+              powershell: path.join(
+                process.env.SystemRoot ?? "C:\\Windows",
+                "System32",
+                "WindowsPowerShell",
+                "v1.0",
+                "powershell.exe",
+              ),
+              node,
+              expectedSignerThumbprint: smokeSignerThumbprint,
+              sourceRoot,
+            });
+          }
+        : undefined,
     });
     process.stdout.write(
       JSON.stringify({
@@ -304,9 +337,22 @@ if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
         failedBudgets: receipt.budgetEvaluation
           .filter(({ passed }) => !passed)
           .map(({ metric }) => metric),
+        ...(smokeOutput
+          ? {
+              installedSmoke: installedSmokeReceipt
+                ? {
+                    result: installedSmokeReceipt.result,
+                    failure: installedSmokeReceipt.failure,
+                  }
+                : null,
+            }
+          : {}),
       }),
     );
     if (receipt.result !== "passed") process.exitCode = 2;
+    if (installedSmokeReceipt && installedSmokeReceipt.result !== "passed") {
+      process.exitCode = 3;
+    }
   } catch (error) {
     process.stderr.write(`package-observer: ${error.message}\n`);
     process.exitCode = 1;

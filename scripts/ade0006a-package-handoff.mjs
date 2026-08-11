@@ -31,6 +31,7 @@ async function authenticateFile({
   label,
   maximumExecutableBytes,
   scratchRoot,
+  requireExpectedBytes = true,
 }) {
   if (typeof filePath !== "string" || !path.isAbsolute(filePath)) {
     throw new Error(`artifact-handoff-${label}-path-invalid`);
@@ -44,7 +45,8 @@ async function authenticateFile({
   });
   if (
     evidence.sha256 !== expected?.sha256 ||
-    evidence.bytes !== expected?.bytes
+    (requireExpectedBytes && !Number.isSafeInteger(expected?.bytes)) ||
+    (Number.isSafeInteger(expected?.bytes) && evidence.bytes !== expected.bytes)
   ) {
     throw new Error(`artifact-handoff-${label}-mismatch`);
   }
@@ -56,6 +58,7 @@ export async function authenticatePackageArtifactHandoff({
   artifacts,
   receipt,
   maximumExecutableBytes,
+  maximumInstallerBytes,
 }) {
   const resolvedScratch = await realpath(scratchRoot);
   exactKeys(artifacts, participants, "participants");
@@ -70,9 +73,15 @@ export async function authenticatePackageArtifactHandoff({
         "releaseExecutable",
         "fixtureExecutable",
         "characterizationExecutable",
+        "installerArtifacts",
         "installedExecutables",
       ],
       participant,
+    );
+    exactKeys(
+      paths.installerArtifacts,
+      installers,
+      `${participant}-installer-artifacts`,
     );
     exactKeys(
       paths.installedExecutables,
@@ -90,7 +99,18 @@ export async function authenticatePackageArtifactHandoff({
       scratchRoot: resolvedScratch,
     });
     const installedExecutables = {};
+    const installerArtifacts = {};
     for (const installer of installers) {
+      const artifactExpected = summary?.artifactSet?.entries?.find(
+        ({ kind }) => kind === installer,
+      );
+      installerArtifacts[installer] = await authenticateFile({
+        filePath: paths.installerArtifacts[installer],
+        expected: artifactExpected,
+        label: `${participant}-${installer}-installer`,
+        maximumExecutableBytes: maximumInstallerBytes,
+        scratchRoot: resolvedScratch,
+      });
       const expected = summary?.installers?.find(
         ({ kind }) => kind === installer,
       )?.installedExecutable;
@@ -135,6 +155,7 @@ export async function authenticatePackageArtifactHandoff({
       releaseExecutable,
       fixtureExecutable,
       characterizationExecutable,
+      installerArtifacts,
       installedExecutables,
     };
   }
@@ -153,20 +174,38 @@ export async function deliverPackageArtifactHandoff({
   receiptBytes,
   rawRoot,
   frozen,
+  git,
   ...authentication
 }) {
   assertPackageArtifactHandoffCallback(callback);
   if (!callback || receipt.result !== "passed") return false;
   const artifacts = await authenticatePackageArtifactHandoff({
     receipt,
+    maximumInstallerBytes:
+      authentication.maximumInstallerBytes ??
+      Math.max(
+        frozen.package.observerBounds.msiArtifactBytes,
+        frozen.package.observerBounds.nsisArtifactBytes,
+      ),
     ...authentication,
   });
+  const authenticatedGit = git
+    ? await authenticateFile({
+        filePath: git.path,
+        expected: git,
+        label: "git",
+        maximumExecutableBytes: authentication.maximumExecutableBytes,
+        scratchRoot: await realpath(authentication.scratchRoot),
+        requireExpectedBytes: false,
+      })
+    : null;
   await callback({
     receipt: structuredClone(receipt),
     receiptBytes: Buffer.from(receiptBytes),
     rawRoot,
     frozen: structuredClone(frozen),
     artifacts,
+    tools: { git: authenticatedGit },
   });
   return true;
 }

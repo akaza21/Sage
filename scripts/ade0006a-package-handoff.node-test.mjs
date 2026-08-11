@@ -23,6 +23,8 @@ function digest(value) {
 
 function fixture() {
   const scratchRoot = mkdtempSync(path.join(tmpdir(), "sage-handoff-"));
+  const gitPath = path.join(scratchRoot, "git.exe");
+  writeFileSync(gitPath, "staged-git");
   const artifacts = {};
   const receipt = { result: "passed", participants: {} };
   for (const participant of participants) {
@@ -31,9 +33,14 @@ function fixture() {
     const releaseExecutable = path.join(root, "release.exe");
     const release = `${participant}-release`;
     writeFileSync(releaseExecutable, release);
+    const installerArtifacts = {};
     const installedExecutables = {};
     const receiptInstallers = [];
     for (const installer of installers) {
+      const installerArtifact = path.join(root, `${installer}-installer.exe`);
+      const installerBytes = `${participant}-${installer}-installer`;
+      writeFileSync(installerArtifact, installerBytes);
+      installerArtifacts[installer] = installerArtifact;
       const installedExecutable = path.join(root, `${installer}.exe`);
       const installed = `${participant}-${installer}-installed`;
       writeFileSync(installedExecutable, installed);
@@ -55,14 +62,15 @@ function fixture() {
       releaseExecutable,
       fixtureExecutable,
       characterizationExecutable,
+      installerArtifacts,
       installedExecutables,
     };
     receipt.participants[participant] = {
       artifactSet: {
         entries: [
           { kind: "executable", ...digest(release) },
-          { kind: "msi" },
-          { kind: "nsis" },
+          { kind: "msi", ...digest(`${participant}-msi-installer`) },
+          { kind: "nsis", ...digest(`${participant}-nsis-installer`) },
         ],
       },
       installers: receiptInstallers,
@@ -80,7 +88,12 @@ function fixture() {
         : {}),
     };
   }
-  return { scratchRoot, artifacts, receipt };
+  return {
+    scratchRoot,
+    artifacts,
+    receipt,
+    git: { path: gitPath, ...digest("staged-git") },
+  };
 }
 
 test("artifact handoff re-authenticates every executable against the receipt", async () => {
@@ -91,11 +104,21 @@ test("artifact handoff re-authenticates every executable against the receipt", a
       artifacts: value.artifacts,
       receipt: value.receipt,
       maximumExecutableBytes: 1024,
+      maximumInstallerBytes: 1024,
     });
     assert.deepEqual(Object.keys(authenticated), participants);
     assert.deepEqual(
       Object.keys(authenticated.candidate.installedExecutables),
       installers,
+    );
+    assert.equal(
+      authenticated.candidate.installerArtifacts.nsis.sha256,
+      value.receipt.participants.candidate.artifactSet.entries[2].sha256,
+    );
+    assert.equal(
+      authenticated.candidate.installedExecutables.nsis.sha256,
+      value.receipt.participants.candidate.installers[1].installedExecutable
+        .sha256,
     );
     assert.equal(
       authenticated.candidate.fixtureExecutable.sha256,
@@ -116,6 +139,22 @@ test("artifact handoff rejects changed or out-of-scratch executables", async () 
   const value = fixture();
   const outsideRoot = mkdtempSync(path.join(tmpdir(), "sage-handoff-outside-"));
   try {
+    writeFileSync(value.artifacts.candidate.installerArtifacts.nsis, "changed");
+    await assert.rejects(
+      authenticatePackageArtifactHandoff({
+        scratchRoot: value.scratchRoot,
+        artifacts: value.artifacts,
+        receipt: value.receipt,
+        maximumExecutableBytes: 1024,
+        maximumInstallerBytes: 1024,
+      }),
+      /artifact-handoff-candidate-nsis-installer-mismatch/,
+    );
+    writeFileSync(
+      value.artifacts.candidate.installerArtifacts.nsis,
+      "candidate-nsis-installer",
+    );
+
     writeFileSync(
       value.artifacts.candidate.installedExecutables.msi,
       "changed",
@@ -126,6 +165,7 @@ test("artifact handoff rejects changed or out-of-scratch executables", async () 
         artifacts: value.artifacts,
         receipt: value.receipt,
         maximumExecutableBytes: 1024,
+        maximumInstallerBytes: 1024,
       }),
       /artifact-handoff-candidate-msi-mismatch/,
     );
@@ -144,6 +184,7 @@ test("artifact handoff rejects changed or out-of-scratch executables", async () 
         artifacts: value.artifacts,
         receipt: value.receipt,
         maximumExecutableBytes: 1024,
+        maximumInstallerBytes: 1024,
       }),
       /artifact-handoff-candidate-characterization-mismatch/,
     );
@@ -161,6 +202,7 @@ test("artifact handoff rejects changed or out-of-scratch executables", async () 
         artifacts: value.artifacts,
         receipt: value.receipt,
         maximumExecutableBytes: 1024,
+        maximumInstallerBytes: 1024,
       }),
       /artifact-handoff-control-release-outside-scratch/,
     );
@@ -186,7 +228,9 @@ test("artifact delivery skips failed receipts and awaits an isolated passing pay
         receiptBytes: Buffer.from("failed-receipt"),
         rawRoot: "retained-raw-root",
         frozen: { contract: "frozen" },
+        git: value.git,
         maximumExecutableBytes: 1024,
+        maximumInstallerBytes: 1024,
       }),
       false,
     );
@@ -199,6 +243,8 @@ test("artifact delivery skips failed receipts and awaits an isolated passing pay
       await deliverPackageArtifactHandoff({
         callback: async (payload) => {
           calls += 1;
+          assert.equal(payload.tools.git.sha256, value.git.sha256);
+          assert.equal(payload.tools.git.bytes, value.git.bytes);
           payload.receipt.result = "mutated";
           payload.receiptBytes[0] = 0;
           await Promise.resolve();
@@ -210,7 +256,9 @@ test("artifact delivery skips failed receipts and awaits an isolated passing pay
         receiptBytes,
         rawRoot: "retained-raw-root",
         frozen: { contract: "frozen" },
+        git: value.git,
         maximumExecutableBytes: 1024,
+        maximumInstallerBytes: 1024,
       }),
       true,
     );
@@ -218,6 +266,26 @@ test("artifact delivery skips failed receipts and awaits an isolated passing pay
     assert.equal(completed, true);
     assert.equal(value.receipt.result, "passed");
     assert.equal(receiptBytes.toString(), "passing-receipt");
+
+    writeFileSync(value.git.path, "changed-git");
+    await assert.rejects(
+      deliverPackageArtifactHandoff({
+        callback: async () => {
+          calls += 1;
+        },
+        scratchRoot: value.scratchRoot,
+        artifacts: value.artifacts,
+        receipt: value.receipt,
+        receiptBytes,
+        rawRoot: "retained-raw-root",
+        frozen: { contract: "frozen" },
+        git: value.git,
+        maximumExecutableBytes: 1024,
+        maximumInstallerBytes: 1024,
+      }),
+      /artifact-handoff-git-mismatch/,
+    );
+    assert.equal(calls, 1);
   } finally {
     rmSync(value.scratchRoot, { recursive: true, force: true });
   }

@@ -233,6 +233,10 @@ export async function observePackageParticipant({
       releaseExecutable,
       fixtureExecutable: fixtureExecutable ?? null,
       characterizationExecutable: characterization?.executablePath ?? null,
+      installerArtifacts: {
+        msi: artifactPaths.msi,
+        nsis: artifactPaths.nsis,
+      },
       installedExecutables,
     },
   };
