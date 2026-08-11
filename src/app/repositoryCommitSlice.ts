@@ -65,7 +65,8 @@ export const createRepositoryCommitSlice: StateCreator<
   repositoryCommit: null,
   repositoryCommitError: null,
   clearRepositoryCommitError: (rootId) => {
-    if (get().repositoryCommitError?.rootId === rootId) {
+    const error = get().repositoryCommitError;
+    if (error?.rootId === rootId && error.kind !== "effectUnknown") {
       set({ repositoryCommitError: null });
     }
   },

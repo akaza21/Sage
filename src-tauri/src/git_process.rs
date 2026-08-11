@@ -16,9 +16,11 @@ use tokio::{
 use crate::error::{AppError, AppResult};
 
 mod containment;
+mod root_authority;
 #[cfg(test)]
 mod test_support;
 
+pub(crate) use root_authority::GitRootAuthority;
 #[cfg(test)]
 pub(crate) use test_support::GitProcessTestHarness;
 
@@ -27,6 +29,9 @@ const GIT_REAP_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_STDERR_BYTES: usize = 64 * 1024;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[cfg(test)]
+type GitProcessHook = Arc<dyn Fn() + Send + Sync>;
 
 #[derive(Clone)]
 pub(crate) struct GitProcessPolicy {
@@ -43,6 +48,10 @@ pub(crate) struct GitProcessPolicy {
     reaper_control: Option<Arc<test_support::ReaperTestControl>>,
     #[cfg(test)]
     containment_registry: Option<Arc<containment::ContainmentRegistry>>,
+    #[cfg(test)]
+    before_spawn_hook: Option<GitProcessHook>,
+    #[cfg(test)]
+    after_process_hook: Option<GitProcessHook>,
 }
 
 impl GitProcessPolicy {
@@ -61,6 +70,10 @@ impl GitProcessPolicy {
             reaper_control: None,
             #[cfg(test)]
             containment_registry: None,
+            #[cfg(test)]
+            before_spawn_hook: None,
+            #[cfg(test)]
+            after_process_hook: None,
         }
     }
 
@@ -79,6 +92,10 @@ impl GitProcessPolicy {
             reaper_control: None,
             #[cfg(test)]
             containment_registry: None,
+            #[cfg(test)]
+            before_spawn_hook: None,
+            #[cfg(test)]
+            after_process_hook: None,
         }
     }
 
@@ -97,11 +114,20 @@ impl GitProcessPolicy {
             reaper_control: None,
             #[cfg(test)]
             containment_registry: self.containment_registry.clone(),
+            #[cfg(test)]
+            before_spawn_hook: None,
+            #[cfg(test)]
+            after_process_hook: None,
         }
     }
 
     pub(crate) fn has_visible_effect(&self) -> bool {
         self.visible_effect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn after_process_hook(&self) -> Option<GitProcessHook> {
+        self.after_process_hook.clone()
     }
 }
 
@@ -136,6 +162,26 @@ pub(crate) async fn run(
     stdout_limit: usize,
     policy: GitProcessPolicy,
 ) -> AppResult<GitOutput> {
+    run_inner(root, args, stdout_limit, policy, None).await
+}
+
+pub(crate) async fn run_with_authority(
+    root: &Path,
+    args: &[&str],
+    stdout_limit: usize,
+    policy: GitProcessPolicy,
+    root_authority: GitRootAuthority,
+) -> AppResult<GitOutput> {
+    run_inner(root, args, stdout_limit, policy, Some(root_authority)).await
+}
+
+async fn run_inner(
+    root: &Path,
+    args: &[&str],
+    stdout_limit: usize,
+    policy: GitProcessPolicy,
+    root_authority: Option<GitRootAuthority>,
+) -> AppResult<GitOutput> {
     #[cfg(test)]
     let registry = policy
         .containment_registry
@@ -149,7 +195,11 @@ pub(crate) async fn run(
     let reaper_lease =
         containment::reserve_reaper_owner(Arc::clone(&registry), policy.admission_timeout).await?;
 
-    let mut command = configured_command(root, args);
+    let mut command = configured_command(root, args, root_authority.as_ref());
+    #[cfg(test)]
+    if let Some(hook) = &policy.before_spawn_hook {
+        hook();
+    }
     let mut child = command.spawn().map_err(AppError::Io)?;
     let stdout = match child.stdout.take() {
         Some(stdout) => stdout,
@@ -164,6 +214,7 @@ pub(crate) async fn run(
                 },
                 policy,
                 registry,
+                root_authority,
             )
             .await;
         }
@@ -184,6 +235,7 @@ pub(crate) async fn run(
                 },
                 policy,
                 registry,
+                root_authority,
             )
             .await;
         }
@@ -226,8 +278,16 @@ pub(crate) async fn run(
     match completed {
         Ok(Ok(output)) => Ok(output),
         Ok(Err(failure)) => {
-            containment::cleanup_failure(child, readers, reaper_lease, failure, policy, registry)
-                .await
+            containment::cleanup_failure(
+                child,
+                readers,
+                reaper_lease,
+                failure,
+                policy,
+                registry,
+                root_authority,
+            )
+            .await
         }
         Err(_) => {
             containment::cleanup_failure(
@@ -240,13 +300,18 @@ pub(crate) async fn run(
                 },
                 policy,
                 registry,
+                root_authority,
             )
             .await
         }
     }
 }
 
-fn configured_command(root: &Path, args: &[&str]) -> Command {
+fn configured_command(
+    root: &Path,
+    args: &[&str],
+    root_authority: Option<&GitRootAuthority>,
+) -> Command {
     let mut command = Command::new("git");
     command
         .arg("--no-optional-locks")
@@ -254,9 +319,13 @@ fn configured_command(root: &Path, args: &[&str]) -> Command {
         .args(["-c", "core.hooksPath=/dev/null"])
         .args(["-c", "core.fsmonitor=false"])
         .args(["-c", "maintenance.auto=false"])
-        .args(["-c", "gc.auto=0"])
-        .arg("-C")
-        .arg(root)
+        .args(["-c", "gc.auto=0"]);
+    if let Some(root_authority) = root_authority {
+        root_authority.bind_child(&mut command, root);
+    } else {
+        command.arg("-C").arg(root);
+    }
+    command
         .args(args)
         .env_clear()
         .env("GIT_CONFIG_GLOBAL", "/dev/null")

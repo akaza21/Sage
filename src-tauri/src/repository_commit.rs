@@ -49,16 +49,14 @@ pub(crate) async fn commit_staged_with_policy(
     process_policy: repository::GitProcessPolicy,
 ) -> AppResult<()> {
     let message = normalize_message(message)?;
-    workspace.ensure_root_identity()?;
     if !matches!(
-        repository::repository_boundary(workspace.root()).await?,
+        crate::repository_workspace::repository_boundary(workspace).await?,
         RepositoryBoundary::Exact
     ) {
         return Err(AppError::InvalidRequest(
             "Git commit requires a Project root that equals the repository top level".into(),
         ));
     }
-    workspace.ensure_root_identity()?;
     let pre_ref_policy = process_policy.pre_ref_mutation(GIT_COMMIT_TIMEOUT);
     let head_ref = symbolic_head_ref(workspace).await?;
     reject_unfinished_history(workspace).await?;

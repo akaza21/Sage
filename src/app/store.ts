@@ -300,11 +300,15 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
           matchesProjectIntent(get(), generation, projectId) &&
           get().repositoryRequestGeneration === requestGeneration
         ) {
-          set({
+          set((state) => ({
             repositories,
             repositoryRefreshing: false,
             repositoryRefreshSuperseded: false,
-          });
+            repositoryCommitError:
+              state.repositoryCommitError?.kind === "effectUnknown"
+                ? null
+                : state.repositoryCommitError,
+          }));
         }
       } catch (error) {
         if (

@@ -97,6 +97,8 @@ impl GitProcessPolicy {
             stdout_reader_failure: false,
             reaper_control: None,
             containment_registry: None,
+            before_spawn_hook: None,
+            after_process_hook: None,
         }
     }
 
@@ -117,7 +119,25 @@ impl GitProcessPolicy {
             stdout_reader_failure: true,
             reaper_control: None,
             containment_registry: None,
+            before_spawn_hook: None,
+            after_process_hook: None,
         }
+    }
+
+    pub(crate) fn with_before_spawn_hook(
+        mut self,
+        hook: impl Fn() + Send + Sync + 'static,
+    ) -> Self {
+        self.before_spawn_hook = Some(Arc::new(hook));
+        self
+    }
+
+    pub(crate) fn with_after_process_hook(
+        mut self,
+        hook: impl Fn() + Send + Sync + 'static,
+    ) -> Self {
+        self.after_process_hook = Some(Arc::new(hook));
+        self
     }
 
     pub(crate) fn potentially_running(command_timeout: Duration) -> (Self, GitReaperTestHandle) {
@@ -211,6 +231,8 @@ impl GitProcessTestHarness {
                 stdout_reader_failure: false,
                 reaper_control: Some(Arc::clone(&control)),
                 containment_registry: Some(Arc::clone(&self.registry)),
+                before_spawn_hook: None,
+                after_process_hook: None,
             },
             GitReaperTestHandle {
                 registry: Arc::clone(&self.registry),

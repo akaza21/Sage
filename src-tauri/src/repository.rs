@@ -260,6 +260,13 @@ async fn is_untracked(root: &Path, relative_path: &str) -> AppResult<bool> {
 
 pub(crate) async fn repository_boundary(root: &Path) -> AppResult<RepositoryBoundary> {
     let output = run_git(root, &["rev-parse", "--show-toplevel"], 32 * 1024).await?;
+    repository_boundary_from_output(root, &output)
+}
+
+pub(crate) fn repository_boundary_from_output(
+    root: &Path,
+    output: &GitOutput,
+) -> AppResult<RepositoryBoundary> {
     if !output.status.success() {
         return Ok(RepositoryBoundary::NotRepository);
     }
@@ -302,6 +309,16 @@ pub(crate) async fn run_git_with_policy(
     policy: GitProcessPolicy,
 ) -> AppResult<GitOutput> {
     git_process::run(root, args, stdout_limit, policy).await
+}
+
+pub(crate) async fn run_git_with_authority(
+    root: &Path,
+    args: &[&str],
+    stdout_limit: usize,
+    policy: GitProcessPolicy,
+    authority: git_process::GitRootAuthority,
+) -> AppResult<GitOutput> {
+    git_process::run_with_authority(root, args, stdout_limit, policy, authority).await
 }
 
 pub(crate) fn ensure_success(output: &GitOutput) -> AppResult<()> {

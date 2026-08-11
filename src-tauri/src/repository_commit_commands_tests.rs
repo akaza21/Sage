@@ -172,6 +172,13 @@ fn commit_and_post_commit_projection_never_launch_content_filters() {
             .unwrap()
             .contains("index-only")
     );
+    assert!(
+        !result.repositories.roots[0]
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("Commit completed")
+    );
 }
 
 #[test]
@@ -219,6 +226,115 @@ fn post_commit_projection_preserves_a_staged_type_change() {
         .unwrap();
     assert_eq!(type_change_root.changes.len(), 1);
     assert_eq!(type_change_root.changes[0].index_status, "typeChanged");
+}
+
+#[test]
+fn effect_unknown_recovery_never_projects_a_replacement_root_identity() {
+    let fixture = TwoRootProject::new();
+    let database = Database::open(&fixture.base.join("sage.db")).unwrap();
+    let project = database.create_project_from_root(&fixture.root_a).unwrap();
+    database
+        .add_project_root(&project.id, &fixture.root_b)
+        .unwrap();
+    let root_id = database.root_records(&project.id).unwrap()[0].id.clone();
+    let state = AppState::new(database);
+    let root = fixture.root_a.clone();
+    let moved = fixture.base.join("original-repo-a");
+    let hook_root = root.clone();
+    let hook_moved = moved.clone();
+    let policy = repository::GitProcessPolicy::mutation(Duration::from_secs(3))
+        .with_after_process_hook(move || {
+            fs::rename(&hook_root, &hook_moved).unwrap();
+            fs::create_dir(&hook_root).unwrap();
+            git(&hook_root, &["init", "-q"]);
+            git(
+                &hook_root,
+                &["config", "user.email", "replacement@example.invalid"],
+            );
+            git(&hook_root, &["config", "user.name", "Replacement"]);
+            fs::write(hook_root.join("replacement.txt"), "base\n").unwrap();
+            git(&hook_root, &["add", "--", "replacement.txt"]);
+            git(&hook_root, &["commit", "-q", "-m", "replacement"]);
+            fs::write(hook_root.join("replacement.txt"), "staged\n").unwrap();
+            git(&hook_root, &["add", "--", "replacement.txt"]);
+        });
+
+    let result = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(commit_git_repository_inner_with_policy_override(
+            &state,
+            GitRepositoryCommitRequest {
+                project_id: project.id,
+                root_id: root_id.clone(),
+                message: "original root only".into(),
+            },
+            0,
+            Some(policy),
+        ))
+        .unwrap();
+
+    assert_eq!(
+        result.error.as_ref().unwrap().kind,
+        crate::domain::GitFileMutationErrorKind::EffectUnknown
+    );
+    let recovered = result
+        .repositories
+        .roots
+        .iter()
+        .find(|candidate| candidate.root_id == root_id)
+        .unwrap();
+    assert_eq!(recovered.state, "unavailable");
+    assert!(recovered.changes.is_empty());
+    assert_eq!(subject(&moved), "original root only\n");
+    assert_eq!(subject(&root), "replacement\n");
+}
+
+#[test]
+fn ordinary_git_failure_never_exposes_an_absolute_repository_path() {
+    let fixture = TwoRootProject::new();
+    let database = Database::open(&fixture.base.join("sage.db")).unwrap();
+    let project = database.create_project_from_root(&fixture.root_a).unwrap();
+    let root_id = database.root_records(&project.id).unwrap()[0].id.clone();
+    let state = AppState::new(database);
+    let branch = Command::new("git")
+        .arg("-C")
+        .arg(&fixture.root_a)
+        .args(["symbolic-ref", "HEAD"])
+        .output()
+        .unwrap();
+    assert!(branch.status.success());
+    let branch = String::from_utf8(branch.stdout).unwrap();
+    let lock = fixture
+        .root_a
+        .join(".git")
+        .join(format!("{}.lock", branch.trim()));
+    fs::create_dir_all(lock.parent().unwrap()).unwrap();
+    fs::write(&lock, "held").unwrap();
+
+    let error = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(commit_git_repository_inner(
+            &state,
+            GitRepositoryCommitRequest {
+                project_id: project.id,
+                root_id,
+                message: "must fail safely".into(),
+            },
+            0,
+        ))
+        .unwrap_err();
+    let raw = error.to_string().replace('\\', "/");
+    let native_root = fixture.root_a.to_string_lossy().replace('\\', "/");
+    assert!(raw.contains(&native_root));
+
+    let public = commit_command_error(error);
+    let message = match public {
+        crate::domain::GitFileMutationCommandError::Failed { message } => message,
+        _ => panic!("ordinary Git failure must remain a failed command"),
+    };
+    assert!(message.len() <= 512);
+    assert!(!message.replace('\\', "/").contains(&native_root));
+    assert!(!message.contains(".git"));
 }
 
 #[test]
@@ -328,7 +444,7 @@ fn containment_command_error_is_typed_and_has_no_repository_projection() {
         serde_json::json!({
             "kind": "containment",
             "processState": "potentiallyRunning",
-            "message": "Git process may still be running"
+            "message": "A prior Git process has not finished exiting. Wait for Source Control recovery before retrying."
         })
     );
     assert!(encoded.get("repositories").is_none());

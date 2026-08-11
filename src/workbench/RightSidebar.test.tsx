@@ -367,6 +367,11 @@ describe("RightSidebar Source Control mutations", () => {
     await vi.waitFor(() => expect(message).toHaveFocus());
     expect(message).toBeEnabled();
     expect(message).toHaveValue("Retain this draft");
+    fireEvent.change(message, { target: { value: "Edit retained draft" } });
+    expect(message).toHaveValue("Edit retained draft");
+    expect(
+      screen.getByRole("alert", { name: "Alpha commit failed" }),
+    ).toHaveTextContent("Commit outcome is uncertain");
     expect(
       screen.getByRole("button", { name: "Commit staged changes in Alpha" }),
     ).toBeDisabled();

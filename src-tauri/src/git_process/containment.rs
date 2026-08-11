@@ -19,7 +19,7 @@ use crate::error::{AppError, AppResult, GitContainmentState};
 
 #[cfg(test)]
 use super::test_support::{ForegroundObservation, ReaperTestControl, ReaperWaitMode};
-use super::{GitOutput, GitProcessPolicy, PostSpawnFailure, ReaderTasks};
+use super::{GitOutput, GitProcessPolicy, GitRootAuthority, PostSpawnFailure, ReaderTasks};
 
 const GIT_REAPER_CAPACITY: usize = 8;
 const GIT_REAPER_ATTEMPTS: usize = 40;
@@ -41,6 +41,7 @@ struct QuarantinedGitProcess {
     _child: Child,
     _reaper_lease: OwnedSemaphorePermit,
     _exit_charge: ExitCharge,
+    _root_authority: Option<GitRootAuthority>,
 }
 
 struct ExitCharge {
@@ -132,6 +133,7 @@ pub(super) async fn cleanup_failure(
     failure: PostSpawnFailure,
     policy: GitProcessPolicy,
     registry: Arc<ContainmentRegistry>,
+    root_authority: Option<GitRootAuthority>,
 ) -> AppResult<GitOutput> {
     if failure.reaped {
         settle_readers(readers).await;
@@ -192,6 +194,7 @@ pub(super) async fn cleanup_failure(
         exit_charge,
         #[cfg(test)]
         policy.reaper_control,
+        root_authority,
     );
     Err(containment(
         state,
@@ -268,6 +271,7 @@ fn handoff_reaper(
     reaper_lease: OwnedSemaphorePermit,
     exit_charge: ExitCharge,
     #[cfg(test)] control: Option<Arc<ReaperTestControl>>,
+    root_authority: Option<GitRootAuthority>,
 ) {
     let registry = Arc::clone(&exit_charge.registry);
     let active_reaper = ActiveReaper::new(&registry);
@@ -302,7 +306,7 @@ fn handoff_reaper(
             )
             .await;
         }
-        quarantine(&registry, child, reaper_lease, exit_charge);
+        quarantine(&registry, child, reaper_lease, exit_charge, root_authority);
         drop(active_reaper);
         #[cfg(test)]
         if let Some(control) = &control {
@@ -360,6 +364,7 @@ fn quarantine(
     child: Child,
     reaper_lease: OwnedSemaphorePermit,
     exit_charge: ExitCharge,
+    root_authority: Option<GitRootAuthority>,
 ) {
     let mut owners = registry
         .quarantined
@@ -370,6 +375,7 @@ fn quarantine(
         _child: child,
         _reaper_lease: reaper_lease,
         _exit_charge: exit_charge,
+        _root_authority: root_authority,
     });
 }
 

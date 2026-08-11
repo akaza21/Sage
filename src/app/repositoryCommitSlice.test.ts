@@ -190,6 +190,35 @@ describe("repository commit store", () => {
     });
   });
 
+  it("preserves effect-unknown through draft edits and failed refresh, then clears it after a successful full refresh", async () => {
+    useWorkbenchStore.setState({
+      repositoryCommitError: {
+        rootId: "root-a",
+        kind: "effectUnknown",
+        message: "Commit outcome is uncertain",
+      },
+    });
+
+    useWorkbenchStore.getState().clearRepositoryCommitError("root-a");
+    expect(useWorkbenchStore.getState().repositoryCommitError?.kind).toBe(
+      "effectUnknown",
+    );
+
+    vi.spyOn(desktop, "getRepositoryStatus").mockRejectedValueOnce(
+      new Error("refresh failed"),
+    );
+    await useWorkbenchStore.getState().refreshRepository();
+    expect(useWorkbenchStore.getState().repositoryCommitError?.kind).toBe(
+      "effectUnknown",
+    );
+
+    vi.spyOn(desktop, "getRepositoryStatus").mockResolvedValueOnce(
+      afterRepositories,
+    );
+    await useWorkbenchStore.getState().refreshRepository();
+    expect(useWorkbenchStore.getState().repositoryCommitError).toBeNull();
+  });
+
   it("retires a completion after Project intent changes", async () => {
     const pending =
       deferred<Awaited<ReturnType<typeof desktop.commitGitRepository>>>();

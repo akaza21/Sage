@@ -4,13 +4,31 @@ use crate::{
     workspace::Workspace,
 };
 
+const GIT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
+pub(crate) async fn repository_boundary(
+    workspace: &Workspace,
+) -> AppResult<repository::RepositoryBoundary> {
+    let output = run_git(workspace, &["rev-parse", "--show-toplevel"], 32 * 1024).await?;
+    let boundary = repository::repository_boundary_from_output(workspace.root(), &output)?;
+    workspace.ensure_root_identity()?;
+    Ok(boundary)
+}
+
 pub(crate) async fn run_git(
     workspace: &Workspace,
     args: &[&str],
     stdout_limit: usize,
 ) -> AppResult<GitOutput> {
-    workspace.ensure_root_identity()?;
-    let result = repository::run_git(workspace.root(), args, stdout_limit).await;
+    let authority = crate::git_process::GitRootAuthority::acquire(workspace)?;
+    let result = repository::run_git_with_authority(
+        workspace.root(),
+        args,
+        stdout_limit,
+        GitProcessPolicy::read(GIT_READ_TIMEOUT),
+        authority,
+    )
+    .await;
     reconcile_identity(result, workspace.ensure_root_identity(), false)
 }
 
@@ -33,10 +51,17 @@ async fn run_git_with_policy_inner<F>(
 where
     F: FnOnce(),
 {
-    workspace.ensure_root_identity()?;
+    let authority = crate::git_process::GitRootAuthority::acquire(workspace)?;
     let visible_effect = policy.has_visible_effect();
+    #[cfg(test)]
+    let policy_after_process = policy.after_process_hook();
     let result =
-        repository::run_git_with_policy(workspace.root(), args, stdout_limit, policy).await;
+        repository::run_git_with_authority(workspace.root(), args, stdout_limit, policy, authority)
+            .await;
+    #[cfg(test)]
+    if let Some(hook) = policy_after_process {
+        hook();
+    }
     after_process();
     reconcile_identity(result, workspace.ensure_root_identity(), visible_effect)
 }

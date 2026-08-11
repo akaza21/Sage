@@ -9,7 +9,7 @@ use crate::{
 
 const MAX_INDEX_STATUS_BYTES: usize = 4 * 1024 * 1024;
 const MAX_CHANGES: usize = 300;
-const INDEX_ONLY_MESSAGE: &str = "Commit completed with an index-only projection. Refresh Source Control to inspect worktree changes.";
+const INDEX_ONLY_MESSAGE: &str = "Post-commit index-only projection. Refresh Source Control to inspect worktree changes and confirm repository state.";
 
 pub(crate) async fn project_status(
     roots: Vec<(String, Result<Workspace, String>)>,
@@ -51,9 +51,7 @@ pub(crate) async fn project_status(
 
 async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
     let started = Instant::now();
-    workspace.ensure_root_identity()?;
-    let boundary = repository::repository_boundary(workspace.root()).await?;
-    workspace.ensure_root_identity()?;
+    let boundary = crate::repository_workspace::repository_boundary(workspace).await?;
     match boundary {
         RepositoryBoundary::Exact => {}
         RepositoryBoundary::Nested => {
