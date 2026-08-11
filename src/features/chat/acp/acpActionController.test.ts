@@ -181,6 +181,12 @@ function harness(initialPage: AcpChatPage) {
 }
 
 describe("ACP action controller", () => {
+  it("exposes no retained presentation snapshot after notifications", () => {
+    const test = harness(page("1", null));
+
+    expect(test.controller).not.toHaveProperty("getState");
+  });
+
   it("serially starts, activates, and sends using each authoritative projection", async () => {
     const test = harness(page("1", null));
     const created = page("2", session("cold", null, "1"));
@@ -433,7 +439,7 @@ describe("ACP action controller", () => {
     await expect(
       test.controller.submit("overflow", bindingId, modelId),
     ).resolves.toBe("rejected");
-    expect(test.controller.getState().error?.failure).toMatchObject({
+    expect(test.states.at(-1)?.error?.failure).toMatchObject({
       kind: "capacity",
       resource: "queue",
       limit: 32,
@@ -476,7 +482,7 @@ describe("ACP action controller", () => {
       test.controller.submit("new", bindingId, modelId),
     ).resolves.toBe("applied");
     expect(test.commands.sendTurn).toHaveBeenCalledTimes(2);
-    expect(test.controller.getState()).toMatchObject({
+    expect(test.states.at(-1)).toMatchObject({
       scope: nextScope,
       busy: false,
     });
@@ -580,9 +586,7 @@ describe("ACP action controller", () => {
     );
     await definite.controller.submit("restore me", bindingId, modelId);
     expect(definite.restored).toEqual(["restore me"]);
-    expect(definite.controller.getState().error).toBeInstanceOf(
-      AcpDesktopError,
-    );
+    expect(definite.states.at(-1)?.error).toBeInstanceOf(AcpDesktopError);
 
     const uncertain = harness(page("5", session("hot", "1", null)));
     vi.mocked(uncertain.commands.sendTurn).mockRejectedValue(
@@ -593,7 +597,7 @@ describe("ACP action controller", () => {
     );
     await uncertain.controller.submit("do not replay", bindingId, modelId);
     expect(uncertain.restored).toEqual([]);
-    expect(uncertain.controller.getState().error?.failure.kind).toBe(
+    expect(uncertain.states.at(-1)?.error?.failure.kind).toBe(
       "recoveryRequired",
     );
   });

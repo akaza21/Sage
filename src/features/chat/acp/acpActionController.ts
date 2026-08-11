@@ -141,26 +141,18 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     dependencies.createIntentId ?? createClientIntentFactory();
   const queues = new Map<string, Promise<unknown>>();
   let queuedActions = 0;
-  let state: AcpActionState = {
-    scope: null,
-    ownershipEpoch: null,
-    transitionEpoch: null,
-    busy: false,
-    cancellingTurnId: null,
-    error: null,
-  };
 
   const emitState = (
     captured: AcpActionContext,
     presentation: AcpActionPresentation,
   ) => {
-    state = {
+    const emitted: AcpActionState = {
       scope: captured.scope,
       ownershipEpoch: captured.ownershipEpoch,
       transitionEpoch: Number(captured.commandProjectGeneration),
       ...presentation,
     };
-    dependencies.onStateChange?.(state);
+    dependencies.onStateChange?.(emitted);
   };
 
   const apply = (
@@ -406,6 +398,5 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     submit,
     cancel,
     close,
-    getState: () => state,
   };
 }

@@ -228,4 +228,53 @@ describe("useAcpChatActions per-Chat ownership", () => {
       },
     });
   });
+
+  it("bounds a large action error in the owner map and clears it on Project reset", async () => {
+    const oversizedError = "é".repeat(4 * 1024);
+    vi.spyOn(acpDesktop, "sendTurn").mockRejectedValue(
+      new AcpDesktopError({
+        kind: "conflict",
+        resource: "projectionRevision",
+        message: oversizedError,
+      }),
+    );
+    vi.spyOn(desktop, "getBootstrapSnapshot").mockResolvedValue({
+      transitionEpoch: 1,
+      projects: [],
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        { id: "chat-a", kind: "chat", title: "A" },
+        { id: "chat-b", kind: "chat", title: "B" },
+      ] as never,
+      archivedChats: [],
+      activeTabId: "chat-a",
+      selectedRootId: null,
+      selectedResource: null,
+      harnesses: [],
+      sessionId: null,
+      selectedHarnessId: null,
+      selectedModelId: null,
+      messages: [],
+      repositories: { roots: [], truncated: false, elapsedMs: 0 },
+      turnChanges: [],
+      recoveredBuffers: [],
+      recoveryNotice: null,
+    });
+    useWorkbenchStore.getState().setComposerText("Retry bounded failure");
+    const { result } = renderHook(() => useAcpChatActions());
+
+    await act(async () => {
+      await result.current.submit("Retry bounded failure", bindingId, null);
+    });
+
+    const retained = useWorkbenchStore.getState().chatUiById["chat-a"].error;
+    expect(new TextEncoder().encode(retained ?? "")).toHaveLength(2 * 1024);
+    await act(async () => {
+      await useWorkbenchStore.getState().initialize();
+    });
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      chatError: null,
+      chatUiById: { "chat-a": { error: null } },
+    });
+  });
 });
