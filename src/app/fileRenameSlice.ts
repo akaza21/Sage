@@ -154,6 +154,7 @@ export const createFileRenameSlice: StateCreator<
       state.fileCreateInFlight ||
       state.folderCreateInFlight ||
       state.fileRenameInFlight ||
+      state.resourceTrashInFlight ||
       state.repositoryRefreshing ||
       state.repositoryMutation !== null ||
       !sameResource(state.selectedResource, source) ||

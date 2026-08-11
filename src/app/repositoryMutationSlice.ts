@@ -102,6 +102,7 @@ export const createRepositoryMutationSlice: StateCreator<
       !projectId ||
       get().projectTransitioning ||
       get().fileRenameInFlight ||
+      get().resourceTrashInFlight ||
       get().repositoryRefreshing ||
       get().repositoryCommit ||
       get().repositoryMutation ||

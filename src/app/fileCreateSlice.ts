@@ -221,7 +221,8 @@ export const createFileCreateSlice: StateCreator<
       get().projectTransitioning ||
       get().fileCreateInFlight ||
       get().folderCreateInFlight ||
-      get().fileRenameInFlight
+      get().fileRenameInFlight ||
+      get().resourceTrashInFlight
     ) {
       set(
         creationError(

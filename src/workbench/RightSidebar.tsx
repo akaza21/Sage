@@ -13,18 +13,12 @@ import type { SidebarView } from "../app/store";
 import { useWorkbenchStore } from "../app/store";
 import {
   childResource,
-  parentResource,
   resourceKey,
   sameResource,
 } from "../domain/resourceIdentity";
 import type { ProjectRootSummary } from "../domain/workbench";
+import { ExplorerActions } from "../features/files/ExplorerActions";
 import { flattenFileTree } from "../features/files/fileTree";
-import {
-  NewFileControl,
-  NewFolderControl,
-} from "../features/files/NewFileControl";
-import { explorerCreateParent } from "../features/files/newFileContract";
-import { RenameFileControl } from "../features/files/RenameFileControl";
 import { WorkspaceSearchView } from "../features/search";
 import { SourceControlView } from "./SourceControlView";
 
@@ -50,6 +44,7 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
   const selectRoot = useWorkbenchStore((state) => state.selectRoot);
   const selectedRow = useRef<HTMLButtonElement>(null);
   const rootResource = childResource(root.id);
+  const rootSelected = sameResource(rootResource, selected);
   const tree = flattenFileTree(rootResource, listings, expanded);
   const listing = listings[resourceKey(rootResource)];
 
@@ -61,7 +56,9 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
     <section className="root-tree">
       <button
         className="root-tree__heading"
+        data-resource-key={resourceKey(rootResource)}
         type="button"
+        aria-current={rootSelected ? "page" : undefined}
         onClick={() => selectRoot(root.id)}
       >
         <Folder size={14} aria-hidden="true" />
@@ -92,6 +89,7 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
               isSelected ? "tree__row--selected" : ""
             }`}
             key={key}
+            data-resource-key={key}
             ref={isSelected ? selectedRow : undefined}
             type="button"
             role="treeitem"
@@ -142,55 +140,19 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
 
 function ExplorerView() {
   const project = useWorkbenchStore((state) => state.project);
-  const selectedRootId = useWorkbenchStore((state) => state.selectedRootId);
-  const selectedResource = useWorkbenchStore((state) => state.selectedResource);
-  const tabs = useWorkbenchStore((state) => state.tabs);
-  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
-  const listings = useWorkbenchStore((state) => state.directoryListings);
   const fileCreateNotice = useWorkbenchStore((state) => state.fileCreateNotice);
   const folderCreateNotice = useWorkbenchStore(
     (state) => state.folderCreateNotice,
   );
   const fileRenameNotice = useWorkbenchStore((state) => state.fileRenameNotice);
-  const parent = project
-    ? explorerCreateParent(
-        project,
-        selectedRootId,
-        selectedResource,
-        tabs,
-        activeTabId,
-        listings,
-      )
-    : null;
-  const rootName =
-    project?.roots.find((root) => root.id === parent?.rootId)?.name ?? null;
-  const selectedParent = selectedResource
-    ? parentResource(selectedResource)
-    : null;
-  const selectedListing = selectedParent
-    ? listings[resourceKey(selectedParent)]
-    : null;
-  const selectedEntry =
-    selectedListing?.phase === "ready"
-      ? selectedListing.value.entries.find((entry) =>
-          sameResource(entry.resource, selectedResource),
-        )
-      : null;
-  const renameSource =
-    selectedEntry?.kind === "file" ? selectedEntry.resource : null;
-  const renameRootName =
-    project?.roots.find((root) => root.id === renameSource?.rootId)?.name ??
-    null;
+  const resourceTrashNotice = useWorkbenchStore(
+    (state) => state.resourceTrashNotice,
+  );
   return (
     <>
       <div className="sidebar__heading">
         <span>Explorer</span>
-        <span className="sidebar__heading-actions">
-          <span className="muted">{project?.name ?? "No project"}</span>
-          <NewFileControl parent={parent} rootName={rootName} />
-          <NewFolderControl parent={parent} rootName={rootName} />
-          <RenameFileControl source={renameSource} rootName={renameRootName} />
-        </span>
+        <ExplorerActions />
       </div>
       {fileCreateNotice ? (
         <p className="tree__limit" role="status">
@@ -205,6 +167,11 @@ function ExplorerView() {
       {fileRenameNotice ? (
         <p className="tree__limit" role="status">
           {fileRenameNotice}
+        </p>
+      ) : null}
+      {resourceTrashNotice ? (
+        <p className="tree__limit" role="status">
+          {resourceTrashNotice}
         </p>
       ) : null}
       <div className="tree" role="tree" aria-label="Project files">

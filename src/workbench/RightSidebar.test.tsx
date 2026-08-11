@@ -21,6 +21,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   useWorkbenchStore.setState(initialState, true);
+  Reflect.deleteProperty(Element.prototype, "scrollIntoView");
 });
 
 describe("RightSidebar beta tool rail", () => {
@@ -1070,5 +1071,270 @@ describe("RightSidebar Explorer Rename File", () => {
       "Native rename failed safely.",
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+
+describe("RightSidebar Explorer recoverable trash", () => {
+  function trashState(
+    selectedResource: ResourceRef,
+    entryKind: "file" | "directory",
+    trashProjectResource: (
+      source: ResourceRef,
+      kind: "file" | "emptyFolder",
+    ) => Promise<boolean>,
+  ) {
+    const parent = {
+      rootId: selectedResource.rootId,
+      relativePath: "src",
+    };
+    useWorkbenchStore.setState({
+      sidebarOpen: true,
+      sidebarView: "explorer",
+      phase: "ready",
+      projectGeneration: 2,
+      nativeTransitionEpoch: 3,
+      project: {
+        id: "project-a",
+        name: "A",
+        roots: [
+          {
+            id: "root-a",
+            name: "Alpha",
+            ordinal: 0,
+            availability: "available",
+            message: null,
+          },
+          {
+            id: "root-b",
+            name: "Beta",
+            ordinal: 1,
+            availability: "available",
+            message: null,
+          },
+        ],
+      },
+      selectedRootId: selectedResource.rootId,
+      selectedResource,
+      tabs: [],
+      activeTabId: null,
+      activeEditor: null,
+      directoryListings: {
+        [resourceKey(parent)]: {
+          phase: "ready",
+          value: {
+            resource: parent,
+            entries: [
+              {
+                name: selectedResource.relativePath.split("/").at(-1)!,
+                resource: selectedResource,
+                kind: entryKind,
+                byteLen: entryKind === "file" ? 9 : null,
+              },
+            ],
+            truncated: false,
+          },
+        },
+        ...(entryKind === "directory"
+          ? {
+              [resourceKey(selectedResource)]: {
+                phase: "ready" as const,
+                value: {
+                  resource: selectedResource,
+                  entries: [],
+                  truncated: false,
+                },
+              },
+            }
+          : {}),
+      },
+      trashProjectResource,
+      resourceTrashError: null,
+      resourceTrashInFlight: false,
+      projectTransitioning: false,
+    });
+  }
+
+  it("confirms an exact multi-root file, retains native errors, and restores focus", async () => {
+    const source = { rootId: "root-b", relativePath: "src/old.ts" };
+    const trashProjectResource = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        useWorkbenchStore.setState({
+          resourceTrashError: "Recycle Bin operation is unavailable.",
+        });
+        return false;
+      })
+      .mockResolvedValueOnce(true);
+    trashState(source, "file", trashProjectResource);
+
+    render(<RightSidebar compact={false} />);
+    const trigger = screen.getByRole("button", {
+      name: "Move to Recycle Bin",
+    });
+    fireEvent.click(trigger);
+    expect(
+      await screen.findByRole("heading", { name: "Move to Recycle Bin?" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Path: Beta/src/old.ts")).toBeInTheDocument();
+    expect(screen.getByText(/Move this file/)).toBeInTheDocument();
+
+    const dialog = screen.getByRole("dialog");
+    act(() => {
+      useWorkbenchStore.setState({
+        resourceTrashInFlight: true,
+      });
+    });
+    expect(
+      within(dialog).getByRole("button", { name: "Moving…" }),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByRole("button", { name: "Cancel" }),
+    ).toBeDisabled();
+    act(() => {
+      useWorkbenchStore.setState({
+        resourceTrashInFlight: false,
+      });
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Move to Recycle Bin" }),
+    );
+    expect(trashProjectResource).toHaveBeenLastCalledWith(source, "file");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Recycle Bin operation is unavailable.",
+    );
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Move to Recycle Bin" }),
+    );
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(trigger).toHaveFocus();
+  });
+
+  it("allows only a proven-empty folder and blocks an open descendant Diff", async () => {
+    const source = { rootId: "root-b", relativePath: "src/empty" };
+    const trashProjectResource = vi.fn(async () => true);
+    trashState(source, "directory", trashProjectResource);
+
+    render(<RightSidebar compact={false} />);
+    const trigger = screen.getByRole("button", {
+      name: "Move to Recycle Bin",
+    });
+    expect(trigger).toBeEnabled();
+    fireEvent.click(trigger);
+    expect(
+      await screen.findByText(/Move this empty folder/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    act(() => {
+      useWorkbenchStore.setState({
+        tabs: [
+          {
+            id: "diff-child",
+            kind: "diff",
+            title: "child.ts",
+            position: 0,
+            pinned: false,
+            dirty: false,
+            resource: {
+              rootId: "root-b",
+              relativePath: "src/empty/child.ts",
+            },
+          },
+        ],
+      });
+    });
+    await vi.waitFor(() => expect(trigger).toBeDisabled());
+    expect(trigger).toHaveAttribute(
+      "title",
+      "Close File and Diff tabs for this resource and its descendants",
+    );
+  });
+
+  it("focuses the selected parent after the real store transition removes the source", async () => {
+    const source = { rootId: "root-b", relativePath: "src/old.ts" };
+    const parent = { rootId: "root-b", relativePath: "src" };
+    const root = { rootId: "root-b", relativePath: "" };
+    trashState(source, "file", initialState.trashProjectResource);
+    useWorkbenchStore.setState((state) => ({
+      directoryListings: {
+        ...state.directoryListings,
+        [resourceKey(root)]: {
+          phase: "ready",
+          value: {
+            resource: root,
+            entries: [
+              {
+                name: "src",
+                resource: parent,
+                kind: "directory",
+                byteLen: null,
+              },
+            ],
+            truncated: false,
+          },
+        },
+      },
+      expandedDirectories: { [resourceKey(root)]: true },
+      loadDirectory: vi.fn(async () => undefined),
+      refreshRepository: vi.fn(async () => undefined),
+    }));
+    vi.spyOn(desktop, "persistProjectLayout").mockResolvedValue();
+    vi.spyOn(desktop, "trashProjectResource").mockResolvedValue({
+      outcome: "effectUnknown",
+      resourceConfirmed: true,
+      projectId: "project-a",
+      projectGeneration: 2,
+      transitionEpoch: 4,
+      source,
+      parent,
+      parentListing: { resource: parent, entries: [], truncated: false },
+      snapshot: null,
+      warning: "The source is absent; Explorer is refreshing.",
+    });
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    render(<RightSidebar compact={false} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Move to Recycle Bin" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Move to Recycle Bin" }),
+    );
+
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(useWorkbenchStore.getState().selectedResource).toEqual(parent);
+    expect(
+      screen.getByRole("treeitem", { name: "Toggle folder src" }),
+    ).toHaveFocus();
+  });
+
+  it("closes once when an external Project transition invalidates the dialog", async () => {
+    const source = { rootId: "root-b", relativePath: "src/old.ts" };
+    trashState(
+      source,
+      "file",
+      vi.fn(async () => true),
+    );
+
+    render(<RightSidebar compact={false} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Move to Recycle Bin" }),
+    );
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+
+    act(() => {
+      useWorkbenchStore.setState({ projectTransitioning: true });
+    });
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

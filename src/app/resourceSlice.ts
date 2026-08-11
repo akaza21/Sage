@@ -98,6 +98,7 @@ export const createResourceSlice: StateCreator<
       get().fileCreateInFlight ||
       get().folderCreateInFlight ||
       get().fileRenameInFlight ||
+      get().resourceTrashInFlight ||
       get().projectTransitioning ||
       !matchesResourceIntent(get(), generation, projectId, resource)
     ) {
@@ -135,6 +136,7 @@ export const createResourceSlice: StateCreator<
       get().fileCreateInFlight ||
       get().folderCreateInFlight ||
       get().fileRenameInFlight ||
+      get().resourceTrashInFlight ||
       get().projectTransitioning ||
       !matchesResourceIntent(get(), generation, projectId, resource)
     ) {
@@ -244,7 +246,12 @@ export const createResourceSlice: StateCreator<
   },
 
   toggleDirectory: (resource) => {
-    if (get().projectTransitioning || get().fileRenameInFlight) return;
+    if (
+      get().projectTransitioning ||
+      get().fileRenameInFlight ||
+      get().resourceTrashInFlight
+    )
+      return;
     const key = resourceKey(resource);
     const expanded = !get().expandedDirectories[key];
     set((state) => {
@@ -267,7 +274,12 @@ export const createResourceSlice: StateCreator<
   },
 
   selectDirectory: (resource) => {
-    if (get().projectTransitioning || get().fileRenameInFlight) return;
+    if (
+      get().projectTransitioning ||
+      get().fileRenameInFlight ||
+      get().resourceTrashInFlight
+    )
+      return;
     set({
       selectedRootId: resource.rootId,
       selectedResource: resource,
@@ -281,7 +293,12 @@ export const createResourceSlice: StateCreator<
   },
 
   revealFile: async (resource) => {
-    if (get().projectTransitioning || get().fileRenameInFlight) return;
+    if (
+      get().projectTransitioning ||
+      get().fileRenameInFlight ||
+      get().resourceTrashInFlight
+    )
+      return;
     const parts = resource.relativePath.split("/").filter(Boolean);
     const parents = parts
       .slice(0, -1)

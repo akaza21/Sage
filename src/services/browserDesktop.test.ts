@@ -11,6 +11,7 @@ import {
   appendBrowserSimulatorTurn,
   BrowserGitMutationUnavailableError,
   BrowserFileRenameUnavailableError,
+  BrowserResourceTrashUnavailableError,
   browserDesktop,
   resetBrowserDesktopForTests,
 } from "./browserDesktop";
@@ -46,6 +47,30 @@ describe("browser repository mutations", () => {
         },
       }),
     ).rejects.toBeInstanceOf(BrowserFileRenameUnavailableError);
+  });
+
+  it("reports recoverable trash as native-only without mutating the browser fixture", async () => {
+    const parent = { rootId: "root-a", relativePath: "src" };
+    const before = await browserDesktop.listDirectory(parent);
+
+    await expect(
+      browserDesktop.trashProjectResource({
+        projectId: "project-a",
+        projectGeneration: 1,
+        expectedTransitionEpoch: 0,
+        source: { rootId: "root-a", relativePath: "src/main.ts" },
+        kind: "file",
+        currentLayout: {
+          projectId: "project-a",
+          tabs: [],
+          activeTabId: null,
+          selectedRootId: "root-a",
+          selectedResource: parent,
+        },
+      }),
+    ).rejects.toBeInstanceOf(BrowserResourceTrashUnavailableError);
+
+    expect(await browserDesktop.listDirectory(parent)).toEqual(before);
   });
 
   it("reports a typed native-only failure without simulating Git", async () => {

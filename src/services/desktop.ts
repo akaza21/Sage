@@ -26,6 +26,8 @@ import type {
   ResourceRef,
   SimulatorTurnResult,
   TextFile,
+  TrashProjectResourceRequest,
+  TrashProjectResourceResult,
 } from "../domain/workbench";
 import { browserDesktop } from "./browserDesktop";
 
@@ -113,6 +115,14 @@ export const desktop = {
     return isTauriRuntime()
       ? invoke("rename_project_file", { request })
       : browserDesktop.renameProjectFile(request);
+  },
+
+  trashProjectResource(
+    request: TrashProjectResourceRequest,
+  ): Promise<TrashProjectResourceResult> {
+    return isTauriRuntime()
+      ? invoke("trash_project_resource", { request })
+      : browserDesktop.trashProjectResource(request);
   },
 
   readTextFile(resource: ResourceRef): Promise<TextFile> {

@@ -8,7 +8,6 @@ import type {
   GitFileMutationRequest,
   GitRepositoryCommitRequest,
   ProjectLayoutRequest,
-  RenameProjectFileRequest,
   RenameChatRequest,
   ProjectSwitchRequest,
   ProjectTransitionResult,
@@ -40,6 +39,10 @@ import {
 } from "./browserFileCreate";
 import { assertBrowserProjectLayout } from "./browserLayout";
 import {
+  renameBrowserProjectFile,
+  trashBrowserProjectResource,
+} from "./browserResourceMutations";
+import {
   browserDirectories as directories,
   browserRepository as repository,
   browserSnapshot as snapshot,
@@ -47,13 +50,13 @@ import {
 } from "./browserWorkspaceFixture";
 
 export { appendBrowserSimulatorTurn } from "./browserChat";
+export {
+  BrowserFileRenameUnavailableError,
+  BrowserResourceTrashUnavailableError,
+} from "./browserResourceMutations";
 
 export class BrowserGitMutationUnavailableError extends Error {
   override name = "BrowserGitMutationUnavailableError";
-}
-
-export class BrowserFileRenameUnavailableError extends Error {
-  override name = "BrowserFileRenameUnavailableError";
 }
 
 const initialTabs = structuredClone(snapshot.tabs);
@@ -125,11 +128,8 @@ export const browserDesktop = {
   async createProjectFolder(request: CreateProjectFolderRequest) {
     return createBrowserProjectFolder(request);
   },
-  async renameProjectFile(_request: RenameProjectFileRequest): Promise<never> {
-    throw new BrowserFileRenameUnavailableError(
-      "File rename requires the native Sage desktop",
-    );
-  },
+  renameProjectFile: renameBrowserProjectFile,
+  trashProjectResource: trashBrowserProjectResource,
   readTextFile: browserEditor.readTextFile,
   openEditorDocument: browserEditor.open,
   snapshotEditorBuffer: browserEditor.snapshot,

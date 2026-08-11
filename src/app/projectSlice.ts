@@ -37,7 +37,11 @@ export const createProjectSlice: StateCreator<
   ProjectSlice
 > = (set, get) => {
   const beginProjectTransition = () => {
-    if (get().projectTransitioning || get().fileRenameInFlight) {
+    if (
+      get().projectTransitioning ||
+      get().fileRenameInFlight ||
+      get().resourceTrashInFlight
+    ) {
       return false;
     }
     set({ projectTransitioning: true, error: null });

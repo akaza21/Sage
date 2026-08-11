@@ -13,6 +13,25 @@ export function sameResource(
   );
 }
 
+export function sameOrDescendantResource(
+  candidate: ResourceRef | null | undefined,
+  source: ResourceRef,
+): boolean {
+  return (
+    candidate?.rootId === source.rootId &&
+    (candidate.relativePath === source.relativePath ||
+      candidate.relativePath.startsWith(`${source.relativePath}/`))
+  );
+}
+
+export function resourceKeyIsSameOrDescendant(
+  key: string,
+  source: ResourceRef,
+): boolean {
+  const sourceKey = resourceKey(source);
+  return key === sourceKey || key.startsWith(`${sourceKey}/`);
+}
+
 export function childResource(rootId: string, relativePath = ""): ResourceRef {
   return { rootId, relativePath };
 }

@@ -197,6 +197,30 @@ export interface RenameProjectFileResult {
   warning: string | null;
 }
 
+export type TrashResourceKind = "file" | "emptyFolder";
+
+export interface TrashProjectResourceRequest {
+  projectId: string;
+  projectGeneration: number;
+  expectedTransitionEpoch: number;
+  source: ResourceRef;
+  kind: TrashResourceKind;
+  currentLayout: ProjectLayoutRequest;
+}
+
+export interface TrashProjectResourceResult {
+  outcome: "committed" | "effectUnknown" | "unsupported";
+  resourceConfirmed: boolean;
+  projectId: string;
+  projectGeneration: number;
+  transitionEpoch: number;
+  source: ResourceRef;
+  parent: ResourceRef;
+  parentListing: DirectoryListing | null;
+  snapshot: BootstrapSnapshot | null;
+  warning: string | null;
+}
+
 export interface TextFile {
   resource: ResourceRef;
   content: string;
