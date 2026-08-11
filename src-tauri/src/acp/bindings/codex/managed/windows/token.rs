@@ -2,8 +2,8 @@ use std::ffi::c_void;
 
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
 use windows_sys::Win32::Security::{
-    CreateWellKnownSid, DuplicateToken, EqualSid, GetLengthSid, GetTokenInformation, IsValidSid,
-    PSID, SECURITY_MAX_SID_SIZE, SecurityImpersonation, TOKEN_DUPLICATE, TOKEN_QUERY, TOKEN_USER,
+    CreateWellKnownSid, DuplicateToken, GetLengthSid, GetTokenInformation, IsValidSid, PSID,
+    SECURITY_MAX_SID_SIZE, SecurityImpersonation, TOKEN_DUPLICATE, TOKEN_QUERY, TOKEN_USER,
     TokenUser, WinBuiltinAdministratorsSid, WinLocalSystemSid,
 };
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
@@ -64,27 +64,20 @@ impl ProcessToken {
         self.impersonation.0
     }
 
-    pub(super) fn classify_owner(&self, sid: PSID) -> OwnerClass {
-        if self.sid_is(sid, &self.system_sid) {
+    pub(super) fn classify_owner(&self, sid: &[u8]) -> OwnerClass {
+        if sid == self.system_sid {
             OwnerClass::LocalSystem
-        } else if self.sid_is(sid, &self.administrators_sid) {
+        } else if sid == self.administrators_sid {
             OwnerClass::BuiltinAdministrators
-        } else if self.sid_is(sid, &self.user_sid) {
+        } else if sid == self.user_sid {
             OwnerClass::CurrentUser
         } else {
             OwnerClass::Other
         }
     }
 
-    pub(super) fn trusted_mutation_principal(&self, sid: PSID, state: bool) -> bool {
-        self.sid_is(sid, &self.system_sid)
-            || self.sid_is(sid, &self.administrators_sid)
-            || (state && self.sid_is(sid, &self.user_sid))
-    }
-
-    fn sid_is(&self, sid: PSID, expected: &[u8]) -> bool {
-        // SAFETY: both slices contain SIDs validated at acquisition.
-        (unsafe { EqualSid(sid, expected.as_ptr().cast_mut().cast()) }) != 0
+    pub(super) fn trusted_mutation_principal(&self, sid: &[u8], state: bool) -> bool {
+        sid == self.system_sid || sid == self.administrators_sid || (state && sid == self.user_sid)
     }
 }
 

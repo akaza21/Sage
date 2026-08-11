@@ -6,11 +6,9 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::Security::{
-    ACL, ACL_SIZE_INFORMATION, AccessCheck, AclSizeInformation, DACL_SECURITY_INFORMATION,
-    GENERIC_MAPPING, GROUP_SECURITY_INFORMATION, GetAce, GetAclInformation,
-    GetKernelObjectSecurity, GetLengthSid, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
-    GetSecurityDescriptorOwner, IsValidAcl, IsValidSid, MapGenericMask, OWNER_SECURITY_INFORMATION,
-    PSID, SE_DACL_PROTECTED,
+    ACL, AccessCheck, DACL_SECURITY_INFORMATION, GENERIC_MAPPING, GROUP_SECURITY_INFORMATION,
+    GetKernelObjectSecurity, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
+    GetSecurityDescriptorOwner, OWNER_SECURITY_INFORMATION, PSID, SE_DACL_PROTECTED,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     FILE_ALL_ACCESS, FILE_GENERIC_EXECUTE, FILE_GENERIC_READ, FILE_GENERIC_WRITE,
@@ -28,16 +26,12 @@ use crate::acp::bindings::codex::{
     },
 };
 
-const ACL_ACE_MAX: u32 = 256;
 // Stable Win32 access-mask and ACE type values. Keeping these local avoids
 // widening Sage's exact reviewed windows-sys feature surface for constants.
 const MAXIMUM_ALLOWED_ACCESS: u32 = 0x0200_0000;
-const ACCESS_ALLOWED_ACE_KIND: u32 = 0;
-const ACCESS_ALLOWED_COMPOUND_ACE_KIND: u32 = 4;
-const ACCESS_ALLOWED_OBJECT_ACE_KIND: u32 = 5;
-const ACCESS_ALLOWED_CALLBACK_ACE_KIND: u32 = 9;
-const ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_KIND: u32 = 11;
 
+#[path = "windows/acl.rs"]
+mod acl;
 #[path = "windows/token.rs"]
 mod token;
 use token::ProcessToken;
@@ -63,6 +57,43 @@ impl SecurityDescriptor {
     fn bytes(&self) -> &[u8] {
         // SAFETY: words owns at least byte_len initialized bytes returned by Win32.
         unsafe { std::slice::from_raw_parts(self.words.as_ptr().cast(), self.byte_len) }
+    }
+
+    fn acl_bytes(&self, dacl: *mut ACL) -> Result<&[u8], ManagedStagingError> {
+        const ACL_HEADER_BYTES: usize = 8;
+
+        let bytes = self.bytes();
+        let base = bytes.as_ptr() as usize;
+        let address = dacl as usize;
+        if !address.is_multiple_of(std::mem::align_of::<u32>()) {
+            return Err(ManagedStagingError::Io);
+        }
+        let offset = address
+            .checked_sub(base)
+            .filter(|offset| *offset <= bytes.len())
+            .ok_or(ManagedStagingError::Io)?;
+        offset
+            .checked_add(ACL_HEADER_BYTES)
+            .filter(|end| *end <= bytes.len())
+            .ok_or(ManagedStagingError::Io)?;
+        let acl_bytes = usize::from(u16::from_le_bytes([bytes[offset + 2], bytes[offset + 3]]));
+        if acl_bytes < ACL_HEADER_BYTES {
+            return Err(ManagedStagingError::Io);
+        }
+        let end = offset
+            .checked_add(acl_bytes)
+            .filter(|end| *end <= bytes.len())
+            .ok_or(ManagedStagingError::Io)?;
+        Ok(&bytes[offset..end])
+    }
+
+    fn sid_bytes(&self, sid: PSID) -> Result<&[u8], ManagedStagingError> {
+        let bytes = self.bytes();
+        let offset = (sid as usize)
+            .checked_sub(bytes.as_ptr() as usize)
+            .filter(|offset| *offset <= bytes.len())
+            .ok_or(ManagedStagingError::Io)?;
+        acl::validated_sid_prefix(bytes.get(offset..).ok_or(ManagedStagingError::Io)?)
     }
 }
 
@@ -155,12 +186,11 @@ fn claims_for_handle(
     // SAFETY: descriptor is a live self-relative descriptor and outputs are writable.
     if unsafe { GetSecurityDescriptorOwner(pointer, &mut owner, &mut owner_defaulted) } == 0
         || owner.is_null()
-        || unsafe { IsValidSid(owner) } == 0
         || owner_defaulted != 0
     {
         return Err(ManagedStagingError::Io);
     }
-    let owner = token.classify_owner(owner);
+    let owner = token.classify_owner(descriptor.sid_bytes(owner)?);
 
     let mut dacl_present = 0;
     let mut dacl: *mut ACL = std::ptr::null_mut();
@@ -172,7 +202,6 @@ fn claims_for_handle(
         || dacl_present == 0
         || dacl.is_null()
         || dacl_defaulted != 0
-        || unsafe { IsValidAcl(dacl) } == 0
     {
         return Err(if state {
             ManagedStagingError::StateAcl
@@ -180,6 +209,20 @@ fn claims_for_handle(
             ManagedStagingError::PackageAcl
         });
     }
+    let dacl = descriptor.acl_bytes(dacl).map_err(|_| {
+        if state {
+            ManagedStagingError::StateAcl
+        } else {
+            ManagedStagingError::PackageAcl
+        }
+    })?;
+    acl::validate_acl_structure(dacl).map_err(|_| {
+        if state {
+            ManagedStagingError::StateAcl
+        } else {
+            ManagedStagingError::PackageAcl
+        }
+    })?;
     let mut control = 0_u16;
     let mut revision = 0_u32;
     // SAFETY: descriptor is live and outputs are writable.
@@ -187,7 +230,14 @@ fn claims_for_handle(
         return Err(ManagedStagingError::Io);
     }
     let effective_access = effective_access(pointer, token.impersonation_handle())?;
-    let foreign_mutation_grant = foreign_mutation_grant(dacl, token, state)?;
+    let foreign_mutation_grant = acl::foreign_mutation_grant(dacl, token, state, DANGEROUS_ACCESS)
+        .map_err(|_| {
+            if state {
+                ManagedStagingError::StateAcl
+            } else {
+                ManagedStagingError::PackageAcl
+            }
+        })?;
     Ok(NodeSecurityClaims {
         path,
         directory,
@@ -254,73 +304,6 @@ fn effective_access(descriptor: *mut c_void, token: HANDLE) -> Result<u32, Manag
         return Err(ManagedStagingError::Io);
     }
     Ok(granted)
-}
-
-fn foreign_mutation_grant(
-    dacl: *mut ACL,
-    token: &ProcessToken,
-    state: bool,
-) -> Result<bool, ManagedStagingError> {
-    let mut info = ACL_SIZE_INFORMATION::default();
-    // SAFETY: dacl is valid and info is writable.
-    if unsafe {
-        GetAclInformation(
-            dacl,
-            (&raw mut info).cast(),
-            u32::try_from(std::mem::size_of::<ACL_SIZE_INFORMATION>())
-                .map_err(|_| ManagedStagingError::Io)?,
-            AclSizeInformation,
-        )
-    } == 0
-        || info.AceCount > ACL_ACE_MAX
-    {
-        return Err(ManagedStagingError::Io);
-    }
-    for index in 0..info.AceCount {
-        let mut ace: *mut c_void = std::ptr::null_mut();
-        // SAFETY: the validated ACL owns every ACE returned by this bounded index.
-        if unsafe { GetAce(dacl, index, &mut ace) } == 0 || ace.is_null() {
-            return Err(ManagedStagingError::Io);
-        }
-        // SAFETY: every ACE starts with a four-byte ACE_HEADER followed by its mask.
-        let ace_type = unsafe { *(ace.cast::<u8>()) } as u32;
-        if matches!(
-            ace_type,
-            ACCESS_ALLOWED_CALLBACK_ACE_KIND
-                | ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_KIND
-                | ACCESS_ALLOWED_COMPOUND_ACE_KIND
-                | ACCESS_ALLOWED_OBJECT_ACE_KIND
-        ) {
-            return Ok(true);
-        }
-        if ace_type != ACCESS_ALLOWED_ACE_KIND {
-            continue;
-        }
-        // SAFETY: a standard ACCESS_ALLOWED_ACE stores mask at byte 4 and SID at byte 8.
-        let mut mask = unsafe { *ace.cast::<u8>().add(4).cast::<u32>() };
-        // SAFETY: mapping is a valid immutable mapping.
-        unsafe { MapGenericMask(&mut mask, &generic_mapping()) };
-        if mask & DANGEROUS_ACCESS == 0 {
-            continue;
-        }
-        // SAFETY: every valid ACL ACE begins with the fixed four-byte header.
-        let ace_bytes = usize::from(unsafe { *ace.cast::<u8>().add(2).cast::<u16>() });
-        if ace_bytes < 12 {
-            return Err(ManagedStagingError::Io);
-        }
-        // SAFETY: standard ACCESS_ALLOWED_ACE SID begins at byte 8.
-        let sid = unsafe { ace.cast::<u8>().add(8).cast::<c_void>() };
-        // SAFETY: sid is within the validated ACE allocation.
-        if unsafe { IsValidSid(sid) } == 0
-            || (unsafe { GetLengthSid(sid) } as usize) > ace_bytes - 8
-        {
-            return Err(ManagedStagingError::Io);
-        }
-        if !token.trusted_mutation_principal(sid, state) {
-            return Ok(true);
-        }
-    }
-    Ok(false)
 }
 
 fn generic_mapping() -> GENERIC_MAPPING {

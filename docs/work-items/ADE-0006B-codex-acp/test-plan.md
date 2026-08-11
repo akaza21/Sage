@@ -109,7 +109,7 @@ state roots:
 cargo test --lib acp::bindings::codex::tests::exact_registry_package_and_state_satisfy_managed_prerequisite_without_launch_authority -- --ignored --exact --nocapture
 ```
 
-The resulting 52 test declarations include malformed, unknown-field,
+The resulting 56 focused test declarations include malformed, unknown-field,
 exact-limit-plus-one, registry/verification-boundary drift, mismatched physical
 package-root and isolated-state-root binding, mandatory-constructor, and
 real-package/state fail-closed coverage. The ignored gate is unrun because the
@@ -133,10 +133,14 @@ The managed-staging prerequisite adds a 64-node, 64-KiB-per-descriptor,
 package and state owner policy, protected-root DACLs, current-token effective
 write denial/allowance, conservative foreign mutating grants, exact and
 plus-one bounds, different package/state binding, and descriptor/owner/access/
-token drift. A native smoke proves an ordinary user-owned writable file fails
-the package policy. Production runtime construction now requires this typed
-prerequisite and repeats the exact closure plus security snapshot before still
-returning `LaunchUnavailable` at `ArtifactNotAdmitted`.
+token drift. The safe-slice DACL parser additionally proves the exact
+256-accepted/257-rejected ACE boundary and rejects truncated ACL/ACE headers,
+declared-extent overflow, undersized standard ACEs, malformed SID extents, and
+all object/callback/compound/unknown ACE layouts before native SID validation.
+A native smoke proves an ordinary user-owned writable file fails the package
+policy. Production runtime construction now requires this typed prerequisite
+and repeats the exact closure plus security snapshot before still returning
+`LaunchUnavailable` at `ArtifactNotAdmitted`.
 
 The renamed ignored gate requires both `SAGE_CODEX_0145_PACKAGE_ROOT` and
 `SAGE_CODEX_0145_STATE_ROOT` and is documented in the

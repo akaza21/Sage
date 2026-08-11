@@ -75,6 +75,8 @@ pub(crate) enum ManagedStagingError {
     NodeLimit,
     #[error("a managed Codex security descriptor exceeds its byte limit")]
     DescriptorLimit,
+    #[error("a managed Codex DACL exceeds its ACE limit")]
+    AceLimit,
     #[error("the managed Codex package owner or DACL is not restricted")]
     PackageAcl,
     #[error("the isolated Codex state root owner or DACL is not restricted")]
