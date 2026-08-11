@@ -3,8 +3,11 @@ use std::{fs::File, path::Path};
 use crate::{
     domain::DirectoryListing,
     error::{AppError, AppResult},
-    workspace::{RootIdentity, root_identity_path},
+    workspace::RootIdentity,
 };
+
+#[cfg(windows)]
+use crate::workspace::root_identity_path;
 
 pub(super) struct ParentAuthority<'a> {
     pub(super) root: &'a Path,
@@ -18,6 +21,7 @@ pub(super) struct RenameObservation {
     pub(super) target_identity_confirmed: bool,
 }
 
+#[cfg(windows)]
 #[derive(Debug, Clone, Copy)]
 struct RenameIdentityProof {
     root: RootIdentity,
@@ -25,6 +29,7 @@ struct RenameIdentityProof {
     source: RootIdentity,
 }
 
+#[cfg(windows)]
 #[derive(Debug)]
 pub(super) struct FileRenameAuthority {
     proof: RenameIdentityProof,
@@ -32,6 +37,11 @@ pub(super) struct FileRenameAuthority {
     source: File,
 }
 
+#[cfg(not(windows))]
+#[derive(Debug)]
+pub(super) struct FileRenameAuthority;
+
+#[cfg(windows)]
 impl FileRenameAuthority {
     fn parent(&self) -> &File {
         self.directories
@@ -40,6 +50,7 @@ impl FileRenameAuthority {
     }
 }
 
+#[cfg(windows)]
 fn verify_visible_authority(
     authority: &FileRenameAuthority,
     root: &Path,
@@ -60,6 +71,7 @@ fn verify_visible_authority(
     Ok(())
 }
 
+#[cfg(windows)]
 fn observe_listing<L>(
     authority: &FileRenameAuthority,
     root: &Path,
@@ -75,17 +87,12 @@ where
     Ok(listing)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-mod unix;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-pub(super) use unix::{observe_recovery, rename_file_noreplace};
-
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]
 pub(super) use windows::{observe_recovery, rename_file_noreplace};
 
-#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+#[cfg(not(windows))]
 pub(super) fn rename_file_noreplace<C, P, S, L>(
     _authority: ParentAuthority<'_>,
     _source_name: &str,
@@ -101,12 +108,17 @@ where
     S: FnOnce(&File) -> std::io::Result<()>,
     L: FnOnce() -> AppResult<DirectoryListing>,
 {
-    Err(AppError::InvalidRequest(
-        "safe file rename is unavailable on this platform".into(),
+    let _ = (
+        _authority.root,
+        _authority.expected_root,
+        _authority.relative_path,
+    );
+    Err(AppError::Unsupported(
+        "safe closed-file rename currently requires Windows held-source authority".into(),
     ))
 }
 
-#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+#[cfg(not(windows))]
 pub(super) fn observe_recovery<L>(
     _authority: std::sync::Arc<FileRenameAuthority>,
     _root: &Path,
@@ -118,7 +130,7 @@ pub(super) fn observe_recovery<L>(
 where
     L: FnOnce() -> AppResult<DirectoryListing>,
 {
-    Err(AppError::InvalidRequest(
-        "safe file rename recovery is unavailable on this platform".into(),
+    Err(AppError::Unsupported(
+        "safe closed-file rename recovery currently requires Windows held-source authority".into(),
     ))
 }

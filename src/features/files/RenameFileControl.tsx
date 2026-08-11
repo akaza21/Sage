@@ -46,10 +46,13 @@ export function RenameFileControl({
   } | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const closingRef = useRef(false);
+  const ownRenameRef = useRef(false);
 
   const close = useCallback(
     (restoreFocus = true, force = false) => {
-      if (inFlight && !force) return;
+      if ((inFlight && !force) || closingRef.current) return;
+      closingRef.current = true;
       setOpen(false);
       setScope(null);
       setBasename("");
@@ -77,6 +80,7 @@ export function RenameFileControl({
   useEffect(() => {
     if (!open || !scope) return;
     return useWorkbenchStore.subscribe((state) => {
+      if (ownRenameRef.current) return;
       if (
         state.projectTransitioning ||
         state.project?.id !== scope.projectId ||
@@ -90,7 +94,7 @@ export function RenameFileControl({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!source || inFlight) return;
+    if (!source || !scope || inFlight) return;
     try {
       renameTargetResource(source, basename);
     } catch (error) {
@@ -98,7 +102,26 @@ export function RenameFileControl({
       return;
     }
     setLocalError(null);
-    if (await renameProjectFile(source, basename)) close();
+    ownRenameRef.current = true;
+    let renamed: boolean;
+    try {
+      renamed = await renameProjectFile(source, basename);
+    } finally {
+      ownRenameRef.current = false;
+    }
+    if (renamed) {
+      close();
+      return;
+    }
+    const state = useWorkbenchStore.getState();
+    if (
+      state.projectTransitioning ||
+      state.project?.id !== scope.projectId ||
+      state.projectGeneration !== scope.projectGeneration ||
+      state.nativeTransitionEpoch !== scope.transitionEpoch
+    ) {
+      close(false, true);
+    }
   };
 
   const containFocus = (event: KeyboardEvent<HTMLDialogElement>) => {
@@ -146,6 +169,7 @@ export function RenameFileControl({
         onClick={() => {
           const state = useWorkbenchStore.getState();
           if (!state.project || !source) return;
+          closingRef.current = false;
           clearError();
           setScope({
             projectId: state.project.id,

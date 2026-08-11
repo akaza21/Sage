@@ -12,6 +12,7 @@ import { useWorkbenchStore } from "../app/store";
 import { resourceKey } from "../domain/resourceIdentity";
 import type { ResourceRef } from "../domain/workbench";
 import { workspaceSearchDesktop } from "../features/search";
+import { desktop } from "../services/desktop";
 import { RightSidebar } from "./RightSidebar";
 
 const initialState = useWorkbenchStore.getState();
@@ -694,6 +695,7 @@ describe("RightSidebar Explorer Rename File", () => {
       renameProjectFile,
       fileRenameError: null,
       fileRenameInFlight: false,
+      projectTransitioning: false,
     });
     return source;
   }
@@ -753,5 +755,37 @@ describe("RightSidebar Explorer Rename File", () => {
       "title",
       "Close the source File and Diff tabs before renaming",
     );
+  });
+
+  it("keeps its own transition mounted and exposes a native failure", async () => {
+    let rejectRename!: (error: Error) => void;
+    const pendingRename = new Promise<never>((_resolve, reject) => {
+      rejectRename = reject;
+    });
+    vi.spyOn(desktop, "persistProjectLayout").mockResolvedValue();
+    vi.spyOn(desktop, "renameProjectFile").mockReturnValue(pendingRename);
+    renameState(initialState.renameProjectFile);
+
+    render(<RightSidebar compact={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename File" }));
+    fireEvent.change(await screen.findByLabelText("File name"), {
+      target: { value: "new.ts" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+
+    await vi.waitFor(() =>
+      expect(useWorkbenchStore.getState()).toMatchObject({
+        projectTransitioning: true,
+        fileRenameInFlight: true,
+      }),
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Renaming/ })).toBeDisabled();
+
+    act(() => rejectRename(new Error("Native rename failed safely.")));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Native rename failed safely.",
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 });

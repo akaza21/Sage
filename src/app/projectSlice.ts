@@ -44,6 +44,14 @@ export const createProjectSlice: StateCreator<
     return true;
   };
 
+  const persistCurrentLayout = async () => {
+    await get().flushActiveEditor();
+    const request = layout(get());
+    if (request) {
+      await desktop.persistProjectLayout(request, get().nativeTransitionEpoch);
+    }
+  };
+
   const invalidateProjectIntents = () => {
     const generation = nextProjectGeneration(get().projectGeneration);
     set({ projectGeneration: generation, repositoryRefreshing: false });
@@ -193,14 +201,7 @@ export const createProjectSlice: StateCreator<
 
     persistLayout: async () => {
       if (get().projectTransitioning) return;
-      await get().flushActiveEditor();
-      const request = layout(get());
-      if (request) {
-        await desktop.persistProjectLayout(
-          request,
-          get().nativeTransitionEpoch,
-        );
-      }
+      await persistCurrentLayout();
     },
 
     closeWorkbench: async () => {
@@ -221,7 +222,7 @@ export const createProjectSlice: StateCreator<
       let committed = false;
       let mutationInvoked = false;
       try {
-        await get().persistLayout();
+        await persistCurrentLayout();
         set({ phase: "booting" });
         mutationInvoked = true;
         const result = await desktop.createProjectFromPicker(
@@ -285,7 +286,7 @@ export const createProjectSlice: StateCreator<
       let committed = false;
       let mutationInvoked = false;
       try {
-        await get().persistLayout();
+        await persistCurrentLayout();
         set({ phase: "booting" });
         mutationInvoked = true;
         const result = await desktop.addProjectRootFromPicker(

@@ -25,6 +25,7 @@ impl Drop for Fixture {
     }
 }
 
+#[cfg(windows)]
 #[test]
 fn renames_one_regular_file_without_changing_content() {
     let fixture = Fixture::new();
@@ -128,6 +129,7 @@ fn link_source_fails_before_mutation() {
     assert!(fixture.root.join("src/old.rs").is_file());
 }
 
+#[cfg(windows)]
 #[test]
 fn source_replacement_after_held_preflight_fails_before_mutation() {
     let fixture = Fixture::new();
@@ -153,6 +155,7 @@ fn source_replacement_after_held_preflight_fails_before_mutation() {
     assert!(!fixture.root.join("src/new.rs").exists());
 }
 
+#[cfg(windows)]
 #[test]
 fn post_commit_listing_failure_is_unconfirmed_instead_of_escaping() {
     let fixture = Fixture::new();
@@ -179,6 +182,7 @@ fn post_commit_listing_failure_is_unconfirmed_instead_of_escaping() {
     assert!(fixture.root.join("src/new.rs").is_file());
 }
 
+#[cfg(windows)]
 #[test]
 fn parent_swap_during_reconciliation_never_confirms_the_replacement_path() {
     let fixture = Fixture::new();
@@ -217,6 +221,7 @@ fn parent_swap_during_reconciliation_never_confirms_the_replacement_path() {
     }
 }
 
+#[cfg(windows)]
 #[test]
 fn root_swap_during_reconciliation_never_confirms_the_replacement_path() {
     let fixture = Fixture::new();
@@ -253,4 +258,23 @@ fn root_swap_during_reconciliation_never_confirms_the_replacement_path() {
             "preserve\n"
         );
     }
+}
+
+#[cfg(not(windows))]
+#[test]
+fn unsupported_platform_fails_without_mutating_the_source() {
+    let fixture = Fixture::new();
+    let source = fixture.workspace.resource("src/old.rs").unwrap();
+
+    let error = fixture
+        .workspace
+        .rename_file(&source, "new.rs")
+        .unwrap_err();
+
+    assert!(matches!(error, crate::error::AppError::Unsupported(_)));
+    assert_eq!(
+        fs::read_to_string(fixture.root.join("src/old.rs")).unwrap(),
+        "preserve\n"
+    );
+    assert!(!fixture.root.join("src/new.rs").exists());
 }

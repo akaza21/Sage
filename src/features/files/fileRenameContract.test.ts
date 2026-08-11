@@ -57,6 +57,25 @@ describe("file rename contract", () => {
     ).toBe(true);
   });
 
+  it("keeps a confirmed rename committed when only durability is unconfirmed", () => {
+    expect(
+      validateFileRenameResult(
+        {
+          ...result(),
+          warning:
+            "File was renamed, but its durability could not be confirmed.",
+        },
+        {
+          projectId: "project-a",
+          projectGeneration: 3,
+          transitionEpoch: 5,
+          source,
+          target,
+        },
+      ),
+    ).toBe(true);
+  });
+
   it("rejects stale, source-present, truncated, and unconfirmed committed results", () => {
     const cases: RenameProjectFileResult[] = [
       { ...result(), transitionEpoch: 5 },

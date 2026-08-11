@@ -2754,6 +2754,90 @@ describe("workbench resource and project navigation", () => {
     expect(state.error).toContain("project change committed");
   });
 
+  it.each(["create", "addRoot"] as const)(
+    "flushes and persists a dirty editor before the owning %s transition",
+    async (operation) => {
+      const target = resource("dirty-project-transition.txt");
+      const fileTab: WorkbenchTab = {
+        id: "file:dirty-project-transition",
+        kind: "file",
+        title: "dirty-project-transition.txt",
+        position: 1,
+        pinned: false,
+        dirty: true,
+        resource: target,
+      };
+      useWorkbenchStore.setState({
+        tabs: [chatTab, fileTab],
+        activeTabId: fileTab.id,
+        activeEditor: {
+          phase: "ready",
+          resource: target,
+          document: document(target, "base", 0, false),
+          content: "dirty owner content",
+          revision: 1,
+          persistedRevision: 0,
+          persisting: false,
+          saving: false,
+          message: null,
+        },
+      });
+      const snapshot = vi
+        .spyOn(desktop, "snapshotEditorBuffer")
+        .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
+      const persist = vi
+        .spyOn(desktop, "persistProjectLayout")
+        .mockResolvedValue();
+      const create = vi
+        .spyOn(desktop, "createProjectFromPicker")
+        .mockResolvedValue({
+          committed: false,
+          transitionEpoch: 0,
+          snapshot: null,
+          recoveryError: null,
+        });
+      const addRoot = vi
+        .spyOn(desktop, "addProjectRootFromPicker")
+        .mockResolvedValue({
+          committed: false,
+          transitionEpoch: 0,
+          snapshot: null,
+          recoveryError: null,
+        });
+
+      if (operation === "create") {
+        await useWorkbenchStore.getState().createProject();
+      } else {
+        await useWorkbenchStore.getState().addProjectRoot();
+      }
+
+      const mutate = operation === "create" ? create : addRoot;
+      expect(snapshot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resource: target,
+          content: "dirty owner content",
+          revision: 1,
+        }),
+      );
+      expect(persist).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: "project-a",
+          tabs: expect.arrayContaining([
+            expect.objectContaining({ id: fileTab.id, dirty: true }),
+          ]),
+        }),
+        0,
+      );
+      expect(mutate).toHaveBeenCalledOnce();
+      expect(snapshot.mock.invocationCallOrder[0]).toBeLessThan(
+        persist.mock.invocationCallOrder[0],
+      );
+      expect(persist.mock.invocationCallOrder[0]).toBeLessThan(
+        mutate.mock.invocationCallOrder[0],
+      );
+    },
+  );
+
   it("uses an authoritative snapshot returned by the switch command without a second bootstrap", async () => {
     vi.spyOn(desktop, "switchProject").mockResolvedValue({
       committed: true,
