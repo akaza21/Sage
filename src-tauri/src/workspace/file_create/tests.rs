@@ -42,6 +42,28 @@ fn creates_one_empty_file_without_overwriting() {
 }
 
 #[test]
+fn creates_one_empty_directory_without_overwriting() {
+    let (root, workspace) = fixture();
+    let result = workspace
+        .create_directory(&parent("src"), "nested")
+        .unwrap();
+    assert_eq!(result.resource.relative_path, "src/nested");
+    assert!(result.resource_confirmed);
+    assert!(result.warning.is_none());
+    assert!(root.join("src/nested").is_dir());
+    assert!(result.parent_listing.entries.iter().any(|entry| {
+        entry.resource == result.resource && entry.kind == "directory" && entry.byte_len.is_none()
+    }));
+    assert!(
+        workspace
+            .create_directory(&parent("src"), "nested")
+            .is_err()
+    );
+    assert!(root.join("src/nested").is_dir());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn sync_and_post_create_listing_failures_return_committed_reconciliation() {
     let (root, workspace) = fixture();
     let result = workspace
@@ -73,6 +95,72 @@ fn sync_and_post_create_listing_failures_return_committed_reconciliation() {
         .unwrap_err();
     assert!(collision.to_string().contains("exists"));
     assert!(root.join("src/warning.rs").is_file());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn folder_sync_and_listing_failures_return_committed_reconciliation() {
+    let (root, workspace) = fixture();
+    let result = workspace
+        .create_directory_with(
+            &parent("src"),
+            "warning",
+            |_| Ok(()),
+            |_| Err(std::io::Error::other("injected sync failure")),
+            |_, _| Err(AppError::InvalidRequest("injected listing failure".into())),
+            || {},
+        )
+        .unwrap();
+    assert!(result.resource_confirmed);
+    assert!(result.warning.as_deref().unwrap().contains("durability"));
+    assert!(
+        result
+            .warning
+            .as_deref()
+            .unwrap()
+            .contains("Explorer refresh")
+    );
+    assert!(result.parent_listing.entries.iter().any(|entry| {
+        entry.resource == result.resource && entry.kind == "directory" && entry.byte_len.is_none()
+    }));
+    assert!(root.join("src/warning").is_dir());
+    assert!(
+        workspace
+            .create_directory(&parent("src"), "warning")
+            .is_err()
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn renamed_unix_folder_parent_never_invents_the_old_resource_path() {
+    let (root, workspace) = fixture();
+    let parent_path = root.join("src");
+    let moved_path = root.join("moved");
+    let result = workspace
+        .create_directory_with(
+            &parent("src"),
+            "nested",
+            |_| {
+                fs::rename(&parent_path, &moved_path)?;
+                Ok(())
+            },
+            |directory| directory.sync_all(),
+            |_, _| Err(AppError::InvalidRequest("injected listing failure".into())),
+            || {},
+        )
+        .unwrap();
+    assert!(!result.resource_confirmed);
+    assert!(
+        !result
+            .parent_listing
+            .entries
+            .iter()
+            .any(|entry| entry.resource == result.resource)
+    );
+    assert!(moved_path.join("nested").is_dir());
+    assert!(result.warning.as_deref().unwrap().contains("unknown"));
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -151,6 +239,12 @@ fn existing_directory_writer_blocks_creation() {
             .is_err()
     );
     assert!(!root.join("src/blocked.rs").exists());
+    assert!(
+        workspace
+            .create_directory(&parent("src"), "blocked")
+            .is_err()
+    );
+    assert!(!root.join("src/blocked").exists());
     drop(writer);
     fs::remove_dir_all(root).unwrap();
 }
@@ -182,10 +276,44 @@ fn held_parent_authority_blocks_replacement_before_create() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[cfg(windows)]
+#[test]
+fn held_parent_authority_blocks_replacement_during_folder_creation() {
+    let (root, workspace) = fixture();
+    let parent_path = root.join("src");
+    let moved_path = root.join("moved");
+    let result = workspace
+        .create_directory_with(
+            &parent("src"),
+            "anchored",
+            |_| {
+                assert!(fs::rename(&parent_path, &moved_path).is_err());
+                Ok(())
+            },
+            |_| Ok(()),
+            |workspace, parent| {
+                assert!(fs::rename(&parent_path, &moved_path).is_err());
+                workspace.list_directory(parent)
+            },
+            || {},
+        )
+        .unwrap();
+    assert_eq!(result.resource.relative_path, "src/anchored");
+    assert!(root.join("src/anchored").is_dir());
+    assert!(!moved_path.exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
 #[cfg(target_os = "macos")]
 #[test]
 fn apple_openat_binding_keeps_the_variadic_posix_abi() {
     super::platform::assert_apple_openat_variadic_binding();
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn apple_mkdirat_binding_uses_darwin_mode_t() {
+    super::platform::assert_apple_mkdirat_binding();
 }
 
 #[test]
@@ -234,6 +362,12 @@ fn rejects_symlink_parent_traversal() {
             .is_err()
     );
     assert!(!outside.join("escaped.rs").exists());
+    assert!(
+        workspace
+            .create_directory(&parent("link"), "escaped")
+            .is_err()
+    );
+    assert!(!outside.join("escaped").exists());
     fs::remove_dir_all(root).unwrap();
     fs::remove_dir_all(outside).unwrap();
 }
@@ -253,6 +387,12 @@ fn rejects_reparse_parent_traversal_when_symlink_creation_is_available() {
                 .is_err()
         );
         assert!(!outside.join("escaped.rs").exists());
+        assert!(
+            workspace
+                .create_directory(&parent("link"), "escaped")
+                .is_err()
+        );
+        assert!(!outside.join("escaped").exists());
     }
     fs::remove_dir_all(root).unwrap();
     fs::remove_dir_all(outside).unwrap();

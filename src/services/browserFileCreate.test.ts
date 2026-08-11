@@ -80,4 +80,38 @@ describe("browser file creation fixture", () => {
       browserDesktop.createProjectFile({ ...base, basename: "overflow.ts" }),
     ).rejects.toThrow("64-file limit");
   });
+
+  it("creates a bounded directory resource with an authoritative child listing", async () => {
+    const result = await browserDesktop.createProjectFolder({
+      projectId: "browser-project",
+      projectGeneration: 4,
+      expectedTransitionEpoch: 0,
+      parent: { rootId: "browser-root", relativePath: "src" },
+      basename: "nested",
+    });
+    expect(result.resource).toEqual({
+      rootId: "browser-root",
+      relativePath: "src/nested",
+    });
+    expect(result.parentListing.entries).toContainEqual({
+      name: "nested",
+      resource: result.resource,
+      kind: "directory",
+      byteLen: null,
+    });
+    expect(await browserDesktop.listDirectory(result.resource)).toEqual({
+      resource: result.resource,
+      entries: [],
+      truncated: false,
+    });
+    await expect(
+      browserDesktop.createProjectFolder({
+        projectId: "browser-project",
+        projectGeneration: 4,
+        expectedTransitionEpoch: 0,
+        parent: { rootId: "browser-root", relativePath: "src" },
+        basename: "nested",
+      }),
+    ).rejects.toThrow("already exists");
+  });
 });

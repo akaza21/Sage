@@ -1,5 +1,5 @@
 use crate::{
-    domain::{DirectoryListing, ResourceRef, WorkspaceEntry},
+    domain::{DirectoryListing, ResourceRef},
     error::{AppError, AppResult},
 };
 
@@ -10,17 +10,11 @@ use std::sync::{
 };
 
 use super::{Workspace, join_contract_path, validate_contract_path};
+pub(crate) use result::FileCreateCommit;
+use result::{CreatedKind, finish_create};
 
 pub(crate) const MAX_NEW_FILE_NAME_BYTES: usize = 255;
 pub(crate) const MAX_NEW_FILE_PATH_BYTES: usize = 16 * 1024;
-
-#[derive(Debug)]
-pub(crate) struct FileCreateCommit {
-    pub(crate) resource: ResourceRef,
-    pub(crate) resource_confirmed: bool,
-    pub(crate) parent_listing: DirectoryListing,
-    pub(crate) warning: Option<String>,
-}
 
 impl Workspace {
     #[cfg(test)]
@@ -91,45 +85,98 @@ impl Workspace {
             sync_file,
             || list_after(self, parent),
         )?;
-        let (parent_listing, refresh_warning) = match (resource_confirmed, after_listing) {
-            (true, Ok(listing))
-                if !listing.truncated
-                    && listing.entries.iter().any(|entry| {
-                        entry.resource == resource
-                            && entry.kind == "file"
-                            && entry.byte_len.is_some()
-                    }) =>
-            {
-                (listing, None)
-            }
-            (true, _) => (
-                reconciled_listing(before, basename, resource.clone()),
-                Some(
-                    "Explorer refresh could not be confirmed; the created file was inserted into the last authoritative parent listing."
-                        .to_owned(),
-                ),
-            ),
-            (false, Ok(listing)) if !listing.truncated => (
-                listing,
-                Some(
-                    "File creation completed under the held parent, but the requested path identity is unknown; Explorer is refreshing."
-                        .to_owned(),
-                ),
-            ),
-            (false, _) => (
-                before,
-                Some(
-                    "File creation completed under the held parent, but the requested path identity is unknown; Explorer is refreshing."
-                        .to_owned(),
-                ),
-            ),
-        };
-        Ok(FileCreateCommit {
+        Ok(finish_create(
+            before,
+            basename,
             resource,
+            CreatedKind::File,
+            sync_warning,
+            after_listing,
             resource_confirmed,
-            parent_listing,
-            warning: combine_warnings(sync_warning, refresh_warning),
-        })
+        ))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn create_directory(
+        &self,
+        parent: &ResourceRef,
+        basename: &str,
+    ) -> AppResult<FileCreateCommit> {
+        self.create_directory_with(
+            parent,
+            basename,
+            |_| Ok(()),
+            |_| Ok(()),
+            |workspace, resource| workspace.list_directory(resource),
+            || {},
+        )
+    }
+
+    pub(crate) fn create_directory_observed(
+        &self,
+        parent: &ResourceRef,
+        basename: &str,
+        committed: Arc<AtomicBool>,
+    ) -> AppResult<FileCreateCommit> {
+        self.create_directory_with(
+            parent,
+            basename,
+            |_| Ok(()),
+            sync_parent_directory,
+            |workspace, resource| workspace.list_directory(resource),
+            move || committed.store(true, Ordering::Release),
+        )
+    }
+
+    fn create_directory_with<B, S, L, C>(
+        &self,
+        parent: &ResourceRef,
+        basename: &str,
+        before_create: B,
+        sync_parent: S,
+        list_after: L,
+        committed: C,
+    ) -> AppResult<FileCreateCommit>
+    where
+        B: FnOnce(&Path) -> std::io::Result<()>,
+        S: FnOnce(&std::fs::File) -> std::io::Result<()>,
+        L: FnOnce(&Workspace, &ResourceRef) -> AppResult<DirectoryListing>,
+        C: FnOnce(),
+    {
+        let relative_path = validate_new_file_path(&parent.relative_path, basename)?;
+        let parent_path = self.validate_resource(parent, true)?;
+        let before = self.list_directory(parent)?;
+        if before.truncated || before.entries.len() >= super::MAX_DIRECTORY_ENTRIES {
+            return Err(AppError::ResourceLimit(format!(
+                "directory is at the {}-entry Explorer creation limit",
+                super::MAX_DIRECTORY_ENTRIES
+            )));
+        }
+        let resource = ResourceRef {
+            root_id: self.root_id().into(),
+            relative_path,
+        };
+        let (sync_warning, after_listing, resource_confirmed) = platform::create_new_directory(
+            platform::ParentAuthority {
+                root: self.root(),
+                expected_root: self.root_identity(),
+                relative_path: &parent_path,
+            },
+            basename,
+            before_create,
+            committed,
+            sync_parent,
+            || list_after(self, parent),
+        )?;
+        Ok(finish_create(
+            before,
+            basename,
+            resource,
+            CreatedKind::Directory,
+            sync_warning,
+            after_listing,
+            resource_confirmed,
+        ))
     }
 
     pub(crate) fn confirm_created_file(
@@ -163,34 +210,55 @@ impl Workspace {
             ),
         })
     }
-}
 
-fn reconciled_listing(
-    mut before: DirectoryListing,
-    basename: &str,
-    resource: ResourceRef,
-) -> DirectoryListing {
-    before.entries.push(WorkspaceEntry {
-        name: basename.into(),
-        resource,
-        kind: "file".into(),
-        byte_len: Some(0),
-    });
-    before.entries.sort_unstable_by(|left, right| {
-        let rank = |kind: &str| u8::from(kind != "directory");
-        rank(&left.kind)
-            .cmp(&rank(&right.kind))
-            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
-            .then_with(|| left.name.cmp(&right.name))
-    });
-    before
-}
-
-fn combine_warnings(left: Option<String>, right: Option<String>) -> Option<String> {
-    match (left, right) {
-        (Some(left), Some(right)) => Some(format!("{left} {right}")),
-        (left, right) => left.or(right),
+    pub(crate) fn confirm_created_directory(
+        &self,
+        parent: &ResourceRef,
+        basename: &str,
+    ) -> AppResult<FileCreateCommit> {
+        let relative_path = validate_new_file_path(&parent.relative_path, basename)?;
+        let resource = ResourceRef {
+            root_id: self.root_id().into(),
+            relative_path,
+        };
+        let parent_listing = self.list_directory(parent)?;
+        let confirmed = !parent_listing.truncated
+            && parent_listing.entries.iter().any(|entry| {
+                entry.resource == resource && entry.kind == "directory" && entry.byte_len.is_none()
+            });
+        if !confirmed {
+            return Err(AppError::InvalidRequest(
+                "folder creation outcome could not be confirmed; refresh Explorer before retrying"
+                    .into(),
+            ));
+        }
+        Ok(FileCreateCommit {
+            resource,
+            resource_confirmed: true,
+            parent_listing,
+            warning: Some(
+                "The folder exists, but the interrupted operation left its durability status unknown."
+                    .into(),
+            ),
+        })
     }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn sync_parent_directory(parent: &std::fs::File) -> std::io::Result<()> {
+    parent.sync_all()
+}
+
+#[cfg(windows)]
+fn sync_parent_directory(_parent: &std::fs::File) -> std::io::Result<()> {
+    Ok(())
+}
+
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+fn sync_parent_directory(_parent: &std::fs::File) -> std::io::Result<()> {
+    Err(std::io::Error::other(
+        "directory durability is unavailable on this platform",
+    ))
 }
 
 pub(crate) fn validate_new_file_basename(basename: &str) -> AppResult<()> {
@@ -272,6 +340,7 @@ fn ensure_root_identity(
 }
 
 mod platform;
+mod result;
 
 #[cfg(test)]
 mod tests;

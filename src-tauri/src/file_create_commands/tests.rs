@@ -55,6 +55,26 @@ fn returns_exact_identity_and_authoritative_parent_listing() {
 }
 
 #[test]
+fn creates_folder_with_exact_identity_and_authoritative_parent_listing() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (root, state, project) = fixture();
+        let result = execute_folder(&state, request(&project.id, &project.roots[0].id, "nested"))
+            .await
+            .unwrap();
+        assert_eq!(result.outcome, FileCreationOutcome::Committed);
+        assert!(result.resource_confirmed);
+        assert_eq!(result.resource.relative_path, "src/nested");
+        assert!(result.parent_listing.entries.iter().any(|entry| {
+            entry.resource == result.resource
+                && entry.kind == "directory"
+                && entry.byte_len.is_none()
+        }));
+        assert!(root.join("src/nested").is_dir());
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[test]
 fn bounds_project_and_root_ids_before_database_access() {
     let exact = "a".repeat(512);
     let plus_one = "a".repeat(513);
@@ -73,6 +93,7 @@ fn interrupted_committed_operation_recovers_as_effect_unknown() {
         state.database.clone(),
         request(&project.id, &project.roots[0].id, "interrupted.rs"),
         0,
+        ResourceKind::File,
     )
     .unwrap();
     assert_eq!(result.outcome, FileCreationOutcome::EffectUnknown);
@@ -84,6 +105,30 @@ fn interrupted_committed_operation_recovers_as_effect_unknown() {
             .entries
             .iter()
             .any(|entry| entry.resource == result.resource && entry.kind == "file")
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn interrupted_folder_creation_recovers_as_effect_unknown() {
+    let (root, state, project) = fixture();
+    fs::create_dir(root.join("src/interrupted")).unwrap();
+    let result = recover_effect_unknown(
+        state.database.clone(),
+        request(&project.id, &project.roots[0].id, "interrupted"),
+        0,
+        ResourceKind::Folder,
+    )
+    .unwrap();
+    assert_eq!(result.outcome, FileCreationOutcome::EffectUnknown);
+    assert!(result.resource_confirmed);
+    assert!(result.warning.as_deref().unwrap().contains("unknown"));
+    assert!(
+        result
+            .parent_listing
+            .entries
+            .iter()
+            .any(|entry| { entry.resource == result.resource && entry.kind == "directory" })
     );
     fs::remove_dir_all(root).unwrap();
 }
@@ -107,6 +152,12 @@ fn same_relative_parent_in_two_roots_is_root_qualified() {
         assert_eq!(result.resource.root_id, project.roots[1].id);
         assert!(!root_a.join("src/only-b.rs").exists());
         assert!(root_b.join("src/only-b.rs").exists());
+        let folder = execute_folder(&state, request(&project.id, &project.roots[1].id, "only-b"))
+            .await
+            .unwrap();
+        assert_eq!(folder.resource.root_id, project.roots[1].id);
+        assert!(!root_a.join("src/only-b").exists());
+        assert!(root_b.join("src/only-b").is_dir());
         fs::remove_dir_all(root_a).unwrap();
         fs::remove_dir_all(root_b).unwrap();
     });

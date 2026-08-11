@@ -158,6 +158,9 @@ export interface CreateProjectFileResult {
   warning: string | null;
 }
 
+export type CreateProjectFolderRequest = CreateProjectFileRequest;
+export type CreateProjectFolderResult = CreateProjectFileResult;
+
 export interface TextFile {
   resource: ResourceRef;
   content: string;

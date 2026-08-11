@@ -127,13 +127,42 @@ export function validateCreateProjectFileResult(
     resource: ResourceRef;
   },
 ): boolean {
+  return validateCreateProjectResourceResult(result, expected, "file");
+}
+
+export function validateCreateProjectFolderResult(
+  result: CreateProjectFileResult,
+  expected: {
+    projectId: string;
+    projectGeneration: number;
+    transitionEpoch: number;
+    parent: ResourceRef;
+    resource: ResourceRef;
+  },
+): boolean {
+  return validateCreateProjectResourceResult(result, expected, "directory");
+}
+
+function validateCreateProjectResourceResult(
+  result: CreateProjectFileResult,
+  expected: {
+    projectId: string;
+    projectGeneration: number;
+    transitionEpoch: number;
+    parent: ResourceRef;
+    resource: ResourceRef;
+  },
+  kind: "file" | "directory",
+): boolean {
   const created = result.parentListing.entries.filter((entry) =>
     sameResource(entry.resource, expected.resource),
   );
   const validCreatedEntry =
     created.length === 1 &&
-    created[0].kind === "file" &&
-    created[0].byteLen !== null;
+    created[0].kind === kind &&
+    (kind === "file"
+      ? created[0].byteLen !== null
+      : created[0].byteLen === null);
   if (
     (result.outcome !== "committed" && result.outcome !== "effectUnknown") ||
     (result.outcome === "effectUnknown" && !result.warning) ||
@@ -155,7 +184,9 @@ export function validateCreateProjectFileResult(
     (result.resourceConfirmed && !validCreatedEntry) ||
     (!result.resourceConfirmed && created.length !== 0 && !validCreatedEntry)
   ) {
-    throw new Error("native file creation returned stale or invalid identity");
+    throw new Error(
+      "native resource creation returned stale or invalid identity",
+    );
   }
   return result.resourceConfirmed;
 }

@@ -96,6 +96,7 @@ export const createResourceSlice: StateCreator<
     if (
       !projectId ||
       get().fileCreateInFlight ||
+      get().folderCreateInFlight ||
       get().projectTransitioning ||
       !matchesResourceIntent(get(), generation, projectId, resource)
     ) {
@@ -131,6 +132,7 @@ export const createResourceSlice: StateCreator<
     if (
       !projectId ||
       get().fileCreateInFlight ||
+      get().folderCreateInFlight ||
       get().projectTransitioning ||
       !matchesResourceIntent(get(), generation, projectId, resource)
     ) {
@@ -269,6 +271,8 @@ export const createResourceSlice: StateCreator<
       selectedResource: resource,
       fileCreateError: null,
       fileCreateNotice: null,
+      folderCreateError: null,
+      folderCreateNotice: null,
     });
   },
 

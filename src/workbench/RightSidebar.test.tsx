@@ -9,6 +9,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
+import { resourceKey } from "../domain/resourceIdentity";
 import { workspaceSearchDesktop } from "../features/search";
 import { RightSidebar } from "./RightSidebar";
 
@@ -560,6 +561,88 @@ describe("RightSidebar Explorer New File", () => {
     const cancel = screen.getByRole("button", { name: "Cancel" });
     await vi.waitFor(() => expect(cancel).toBeEnabled());
     fireEvent.click(cancel);
+    await vi.waitFor(() => expect(trigger).toHaveFocus());
+  });
+});
+
+describe("RightSidebar Explorer New Folder", () => {
+  it("announces a committed folder warning outside the closed dialog", () => {
+    useWorkbenchStore.setState({
+      sidebarOpen: true,
+      sidebarView: "explorer",
+      project: { id: "project-a", name: "A", roots: [] },
+      folderCreateNotice:
+        "Folder created, but its durability could not be confirmed.",
+    });
+
+    render(<RightSidebar compact={false} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Folder created, but its durability could not be confirmed.",
+    );
+  });
+
+  it("previews the exact root-qualified parent, reports errors, and restores focus", async () => {
+    const createProjectFolder = vi.fn(async () => {
+      useWorkbenchStore.setState({
+        folderCreateError: "Folder already exists.",
+      });
+      return false;
+    });
+    useWorkbenchStore.setState({
+      sidebarOpen: true,
+      sidebarView: "explorer",
+      phase: "ready",
+      projectGeneration: 2,
+      nativeTransitionEpoch: 3,
+      project: {
+        id: "project-a",
+        name: "A",
+        roots: [
+          {
+            id: "root-b",
+            name: "Root B",
+            ordinal: 0,
+            availability: "available",
+            message: null,
+          },
+        ],
+      },
+      selectedRootId: "root-b",
+      selectedResource: { rootId: "root-b", relativePath: "src" },
+      tabs: [],
+      activeTabId: null,
+      directoryListings: {
+        [resourceKey({ rootId: "root-b", relativePath: "src" })]: {
+          phase: "ready",
+          value: {
+            resource: { rootId: "root-b", relativePath: "src" },
+            entries: [],
+            truncated: false,
+          },
+        },
+      },
+      createProjectFolder,
+      folderCreateError: null,
+      folderCreateInFlight: false,
+    });
+
+    render(<RightSidebar compact={false} />);
+    const trigger = screen.getByRole("button", { name: "New Folder" });
+    fireEvent.click(trigger);
+    const input = await screen.findByLabelText("Folder name");
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { value: "nested" } });
+    expect(screen.getByText("Path: Root B/src/nested")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create Folder" }));
+    expect(createProjectFolder).toHaveBeenCalledWith(
+      { rootId: "root-b", relativePath: "src" },
+      "nested",
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Folder already exists.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await vi.waitFor(() => expect(trigger).toHaveFocus());
   });
 });

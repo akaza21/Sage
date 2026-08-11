@@ -5,7 +5,10 @@ use std::sync::{
 use tauri::State;
 
 use crate::{
-    domain::{CreateProjectFileRequest, CreateProjectFileResult, FileCreationOutcome},
+    domain::{
+        CreateProjectFileRequest, CreateProjectFileResult, CreateProjectFolderRequest,
+        CreateProjectFolderResult, FileCreationOutcome,
+    },
     error::{AppError, AppResult},
     persistence::Database,
     state::AppState,
@@ -14,6 +17,12 @@ use crate::{
 
 const MAX_JAVASCRIPT_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const MAX_FILE_CREATE_ID_BYTES: usize = 512;
+
+#[derive(Clone, Copy)]
+enum ResourceKind {
+    File,
+    Folder,
+}
 
 #[tauri::command]
 pub async fn create_project_file(
@@ -25,9 +34,34 @@ pub async fn create_project_file(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub async fn create_project_folder(
+    state: State<'_, AppState>,
+    request: CreateProjectFolderRequest,
+) -> Result<CreateProjectFolderResult, String> {
+    execute_folder(&state, request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 async fn execute(
     state: &AppState,
     request: CreateProjectFileRequest,
+) -> AppResult<CreateProjectFileResult> {
+    execute_kind(state, request, ResourceKind::File).await
+}
+
+async fn execute_folder(
+    state: &AppState,
+    request: CreateProjectFolderRequest,
+) -> AppResult<CreateProjectFolderResult> {
+    execute_kind(state, request, ResourceKind::Folder).await
+}
+
+async fn execute_kind(
+    state: &AppState,
+    request: CreateProjectFileRequest,
+    kind: ResourceKind,
 ) -> AppResult<CreateProjectFileResult> {
     validate_request_id("Project ID", &request.project_id)?;
     validate_request_id("root ID", &request.parent.root_id)?;
@@ -51,14 +85,14 @@ async fn execute(
     let operation_committed = committed.clone();
     let response_epoch = *transition_epoch;
     match tauri::async_runtime::spawn_blocking(move || {
-        execute_blocking(database, request, response_epoch, operation_committed)
+        execute_blocking(database, request, response_epoch, operation_committed, kind)
     })
     .await
     {
         Ok(result) => result,
         Err(_) if committed.load(Ordering::Acquire) => {
             tauri::async_runtime::spawn_blocking(move || {
-                recover_effect_unknown(recovery_database, recovery_request, response_epoch)
+                recover_effect_unknown(recovery_database, recovery_request, response_epoch, kind)
             })
             .await
             .map_err(|_| {
@@ -76,10 +110,17 @@ fn execute_blocking(
     request: CreateProjectFileRequest,
     transition_epoch: u64,
     committed: Arc<AtomicBool>,
+    kind: ResourceKind,
 ) -> AppResult<CreateProjectFileResult> {
     let workspace = resolve_workspace(&database, &request)?;
-    let commit =
-        workspace.create_empty_file_observed(&request.parent, &request.basename, committed)?;
+    let commit = match kind {
+        ResourceKind::File => {
+            workspace.create_empty_file_observed(&request.parent, &request.basename, committed)?
+        }
+        ResourceKind::Folder => {
+            workspace.create_directory_observed(&request.parent, &request.basename, committed)?
+        }
+    };
     let outcome = if commit.resource_confirmed {
         FileCreationOutcome::Committed
     } else {
@@ -97,9 +138,15 @@ fn recover_effect_unknown(
     database: Database,
     request: CreateProjectFileRequest,
     transition_epoch: u64,
+    kind: ResourceKind,
 ) -> AppResult<CreateProjectFileResult> {
     let workspace = resolve_workspace(&database, &request)?;
-    let commit = workspace.confirm_created_file(&request.parent, &request.basename)?;
+    let commit = match kind {
+        ResourceKind::File => workspace.confirm_created_file(&request.parent, &request.basename)?,
+        ResourceKind::Folder => {
+            workspace.confirm_created_directory(&request.parent, &request.basename)?
+        }
+    };
     Ok(result_from_commit(
         request,
         transition_epoch,

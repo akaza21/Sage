@@ -201,6 +201,8 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
         selectedResource: childResource(selectedRootId),
         fileCreateError: null,
         fileCreateNotice: null,
+        folderCreateError: null,
+        folderCreateNotice: null,
       });
       void get().loadDirectory(childResource(selectedRootId));
     },

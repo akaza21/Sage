@@ -93,3 +93,6 @@ pub struct CreateProjectFileResult {
     pub parent_listing: DirectoryListing,
     pub warning: Option<String>,
 }
+
+pub type CreateProjectFolderRequest = CreateProjectFileRequest;
+pub type CreateProjectFolderResult = CreateProjectFileResult;

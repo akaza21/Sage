@@ -3,6 +3,7 @@ import type {
   ChatLifecycleRequest,
   ChatMessage,
   CreateProjectFileRequest,
+  CreateProjectFolderRequest,
   FileDiff,
   GitFileMutationRequest,
   ProjectLayoutRequest,
@@ -32,6 +33,7 @@ import {
 import { browserEditor } from "./browserEditor";
 import {
   createBrowserProjectFile,
+  createBrowserProjectFolder,
   resetBrowserFileCreate,
 } from "./browserFileCreate";
 import { assertBrowserProjectLayout } from "./browserLayout";
@@ -113,6 +115,9 @@ export const browserDesktop = {
   },
   async createProjectFile(request: CreateProjectFileRequest) {
     return createBrowserProjectFile(request);
+  },
+  async createProjectFolder(request: CreateProjectFolderRequest) {
+    return createBrowserProjectFolder(request);
   },
   readTextFile: browserEditor.readTextFile,
   openEditorDocument: browserEditor.open,

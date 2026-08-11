@@ -2,6 +2,7 @@ import { resourceKey } from "../domain/resourceIdentity";
 import type {
   CreateProjectFileRequest,
   CreateProjectFileResult,
+  CreateProjectFolderRequest,
 } from "../domain/workbench";
 import {
   newFileResource,
@@ -24,6 +25,19 @@ export function resetBrowserFileCreate() {
 
 export function createBrowserProjectFile(
   request: CreateProjectFileRequest,
+): CreateProjectFileResult {
+  return createBrowserProjectResource(request, "file");
+}
+
+export function createBrowserProjectFolder(
+  request: CreateProjectFolderRequest,
+): CreateProjectFileResult {
+  return createBrowserProjectResource(request, "directory");
+}
+
+function createBrowserProjectResource(
+  request: CreateProjectFileRequest,
+  kind: "file" | "directory",
 ): CreateProjectFileResult {
   if (
     !Number.isSafeInteger(request.projectGeneration) ||
@@ -53,13 +67,25 @@ export function createBrowserProjectFile(
         : "File already exists.",
     );
   }
-  browserEditor.createEmpty(resource);
+  if (kind === "file") browserEditor.createEmpty(resource);
+  else {
+    browserDirectories.set(resourceKey(resource), {
+      resource,
+      entries: [],
+      truncated: false,
+    });
+  }
   createdCount += 1;
   const nextListing = {
     ...parentListing,
     entries: [
       ...parentListing.entries,
-      { name: request.basename, resource, kind: "file" as const, byteLen: 0 },
+      {
+        name: request.basename,
+        resource,
+        kind,
+        byteLen: kind === "file" ? 0 : null,
+      },
     ].sort((left, right) => {
       const rank = (kind: string) => (kind === "directory" ? 0 : 1);
       return (

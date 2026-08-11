@@ -5,6 +5,7 @@ import type { DirectoryListing, ResourceRef } from "../domain/workbench";
 import {
   newFileResource,
   validateCreateProjectFileResult,
+  validateCreateProjectFolderResult,
   validateNewFilePath,
 } from "../features/files/newFileContract";
 import { desktop } from "../services/desktop";
@@ -22,6 +23,15 @@ export interface FileCreateSlice {
   fileCreateRequestGeneration: number;
   clearFileCreateError: () => void;
   createProjectFile: (
+    parent: ResourceRef,
+    basename: string,
+  ) => Promise<boolean>;
+  folderCreateInFlight: boolean;
+  folderCreateError: string | null;
+  folderCreateNotice: string | null;
+  folderCreateRequestGeneration: number;
+  clearFolderCreateError: () => void;
+  createProjectFolder: (
     parent: ResourceRef,
     basename: string,
   ) => Promise<boolean>;
@@ -77,8 +87,13 @@ export const createFileCreateSlice: StateCreator<
   fileCreateError: null,
   fileCreateNotice: null,
   fileCreateRequestGeneration: 0,
+  folderCreateInFlight: false,
+  folderCreateError: null,
+  folderCreateNotice: null,
+  folderCreateRequestGeneration: 0,
 
   clearFileCreateError: () => set({ fileCreateError: null }),
+  clearFolderCreateError: () => set({ folderCreateError: null }),
 
   createProjectFile: async (parent, basename) => {
     const project = get().project;
@@ -94,7 +109,8 @@ export const createFileCreateSlice: StateCreator<
       !root ||
       root.availability !== "available" ||
       get().projectTransitioning ||
-      get().fileCreateInFlight
+      get().fileCreateInFlight ||
+      get().folderCreateInFlight
     ) {
       set({
         fileCreateError:
@@ -144,6 +160,7 @@ export const createFileCreateSlice: StateCreator<
       if (
         !matchesProjectIntent(get(), projectGeneration, project.id) ||
         get().nativeTransitionEpoch !== transitionEpoch ||
+        get().projectTransitioning ||
         get().fileCreateRequestGeneration !== requestGeneration
       ) {
         return false;
@@ -183,6 +200,117 @@ export const createFileCreateSlice: StateCreator<
     } finally {
       if (get().fileCreateRequestGeneration === requestGeneration) {
         set({ fileCreateInFlight: false });
+      }
+    }
+  },
+
+  createProjectFolder: async (parent, basename) => {
+    const project = get().project;
+    const projectGeneration = get().projectGeneration;
+    const transitionEpoch = get().nativeTransitionEpoch;
+    const validationError = validateNewFilePath(parent, basename);
+    const root = project?.roots.find(
+      (candidate) => candidate.id === parent.rootId,
+    );
+    if (
+      validationError ||
+      !project ||
+      !root ||
+      root.availability !== "available" ||
+      get().projectTransitioning ||
+      get().fileCreateInFlight ||
+      get().folderCreateInFlight
+    ) {
+      set({
+        folderCreateError:
+          validationError ??
+          "Select one available Project root to create a folder.",
+      });
+      return false;
+    }
+    const resource = newFileResource(parent, basename);
+    const requestGeneration = nextProjectGeneration(
+      get().folderCreateRequestGeneration,
+    );
+    set({
+      folderCreateInFlight: true,
+      folderCreateError: null,
+      folderCreateNotice: null,
+      folderCreateRequestGeneration: requestGeneration,
+    });
+    try {
+      await get().flushActiveEditor();
+      if (
+        !matchesProjectIntent(get(), projectGeneration, project.id) ||
+        get().nativeTransitionEpoch !== transitionEpoch ||
+        get().projectTransitioning
+      ) {
+        return false;
+      }
+      const result = await desktop.createProjectFolder({
+        projectId: project.id,
+        projectGeneration,
+        expectedTransitionEpoch: transitionEpoch,
+        parent,
+        basename,
+      });
+      const resourceConfirmed = validateCreateProjectFolderResult(result, {
+        projectId: project.id,
+        projectGeneration,
+        transitionEpoch,
+        parent,
+        resource,
+      });
+      if (
+        !matchesProjectIntent(get(), projectGeneration, project.id) ||
+        get().nativeTransitionEpoch !== transitionEpoch ||
+        get().projectTransitioning ||
+        get().folderCreateRequestGeneration !== requestGeneration
+      ) {
+        return false;
+      }
+      set((state) => ({
+        ...(resourceConfirmed
+          ? {
+              selectedRootId: result.resource.rootId,
+              selectedResource: result.resource,
+            }
+          : {}),
+        directoryListings: resourceConfirmed
+          ? boundedListingUpdate(state.directoryListings, result.parentListing)
+          : withoutListing(state.directoryListings, parent),
+        expandedDirectories: resourceConfirmed
+          ? boundedExpandedUpdate(
+              boundedExpandedUpdate(
+                state.expandedDirectories,
+                resourceKey(parent),
+              ),
+              resourceKey(result.resource),
+            )
+          : boundedExpandedUpdate(
+              state.expandedDirectories,
+              resourceKey(parent),
+            ),
+        folderCreateInFlight: false,
+        folderCreateError: null,
+        folderCreateNotice: result.warning,
+      }));
+      await get().loadDirectory(resourceConfirmed ? result.resource : parent);
+      return true;
+    } catch (error) {
+      if (
+        matchesProjectIntent(get(), projectGeneration, project.id) &&
+        get().folderCreateRequestGeneration === requestGeneration
+      ) {
+        set({
+          folderCreateInFlight: false,
+          folderCreateError: boundedError(error),
+        });
+      }
+      return false;
+    } finally {
+      if (get().folderCreateRequestGeneration === requestGeneration) {
+        set({ folderCreateInFlight: false });
       }
     }
   },

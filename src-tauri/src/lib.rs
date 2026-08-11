@@ -148,6 +148,7 @@ pub fn run() {
             resource_commands::save_editor_document,
             resource_commands::discard_editor_buffer,
             file_create_commands::create_project_file,
+            file_create_commands::create_project_folder,
             project_commands::create_project_from_picker,
             project_commands::add_project_root_from_picker,
             chat_commands::create_chat,

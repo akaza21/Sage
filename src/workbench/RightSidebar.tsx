@@ -20,7 +20,10 @@ import {
 } from "../domain/resourceIdentity";
 import type { ProjectRootSummary } from "../domain/workbench";
 import { flattenFileTree } from "../features/files/fileTree";
-import { NewFileControl } from "../features/files/NewFileControl";
+import {
+  NewFileControl,
+  NewFolderControl,
+} from "../features/files/NewFileControl";
 import { explorerCreateParent } from "../features/files/newFileContract";
 import { WorkspaceSearchView } from "../features/search";
 import { SourceControlView } from "./SourceControlView";
@@ -147,6 +150,9 @@ function ExplorerView() {
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const listings = useWorkbenchStore((state) => state.directoryListings);
   const fileCreateNotice = useWorkbenchStore((state) => state.fileCreateNotice);
+  const folderCreateNotice = useWorkbenchStore(
+    (state) => state.folderCreateNotice,
+  );
   const parent = project
     ? explorerCreateParent(
         project,
@@ -166,11 +172,17 @@ function ExplorerView() {
         <span className="sidebar__heading-actions">
           <span className="muted">{project?.name ?? "No project"}</span>
           <NewFileControl parent={parent} rootName={rootName} />
+          <NewFolderControl parent={parent} rootName={rootName} />
         </span>
       </div>
       {fileCreateNotice ? (
         <p className="tree__limit" role="status">
           {fileCreateNotice}
+        </p>
+      ) : null}
+      {folderCreateNotice ? (
+        <p className="tree__limit" role="status">
+          {folderCreateNotice}
         </p>
       ) : null}
       <div className="tree" role="tree" aria-label="Project files">

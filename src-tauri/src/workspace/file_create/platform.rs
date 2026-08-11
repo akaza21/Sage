@@ -15,6 +15,12 @@ use super::ensure_root_identity;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use crate::error::{AppError, AppResult};
 
+pub(super) struct ParentAuthority<'a> {
+    pub(super) root: &'a std::path::Path,
+    pub(super) expected_root: super::super::RootIdentity,
+    pub(super) relative_path: &'a str,
+}
+
 #[cfg(target_os = "macos")]
 const O_DIRECTORY: c_int = 0x10_0000;
 #[cfg(target_os = "linux")]
@@ -43,27 +49,18 @@ const O_WRONLY: c_int = 1;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 unsafe extern "C" {
     fn openat(dirfd: c_int, path: *const c_char, flags: c_int, ...) -> c_int;
+    #[cfg(target_os = "linux")]
+    fn mkdirat(dirfd: c_int, path: *const c_char, mode: std::os::raw::c_uint) -> c_int;
+    #[cfg(target_os = "macos")]
+    fn mkdirat(dirfd: c_int, path: *const c_char, mode: u16) -> c_int;
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-pub(super) fn create_new<B, S, L>(
+fn open_parent(
     root: &Path,
     expected_root: super::super::RootIdentity,
     parent: &str,
-    basename: &str,
-    before_create: B,
-    sync_file: S,
-    list_after: L,
-) -> AppResult<(
-    Option<String>,
-    AppResult<crate::domain::DirectoryListing>,
-    bool,
-)>
-where
-    B: FnOnce(&Path) -> std::io::Result<()>,
-    S: FnOnce(&File) -> std::io::Result<()>,
-    L: FnOnce() -> AppResult<crate::domain::DirectoryListing>,
-{
+) -> AppResult<File> {
     let mut directory = OpenOptions::new()
         .read(true)
         .custom_flags(O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
@@ -91,6 +88,29 @@ where
         // SAFETY: openat returned a new owned descriptor on success.
         directory = unsafe { File::from_raw_fd(descriptor) };
     }
+    Ok(directory)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(super) fn create_new<B, S, L>(
+    root: &Path,
+    expected_root: super::super::RootIdentity,
+    parent: &str,
+    basename: &str,
+    before_create: B,
+    sync_file: S,
+    list_after: L,
+) -> AppResult<(
+    Option<String>,
+    AppResult<crate::domain::DirectoryListing>,
+    bool,
+)>
+where
+    B: FnOnce(&Path) -> std::io::Result<()>,
+    S: FnOnce(&File) -> std::io::Result<()>,
+    L: FnOnce() -> AppResult<crate::domain::DirectoryListing>,
+{
+    let directory = open_parent(root, expected_root, parent)?;
     before_create(&root.join(parent))?;
     let target = root.join(parent).join(basename);
     let basename = CString::new(basename)
@@ -127,9 +147,75 @@ where
     Ok((warning, listing, resource_confirmed))
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(super) fn create_new_directory<B, C, S, L>(
+    parent: ParentAuthority<'_>,
+    basename: &str,
+    before_create: B,
+    created: C,
+    sync_parent: S,
+    list_after: L,
+) -> AppResult<(
+    Option<String>,
+    AppResult<crate::domain::DirectoryListing>,
+    bool,
+)>
+where
+    B: FnOnce(&Path) -> std::io::Result<()>,
+    C: FnOnce(),
+    S: FnOnce(&File) -> std::io::Result<()>,
+    L: FnOnce() -> AppResult<crate::domain::DirectoryListing>,
+{
+    let directory = open_parent(parent.root, parent.expected_root, parent.relative_path)?;
+    before_create(&parent.root.join(parent.relative_path))?;
+    let target = parent.root.join(parent.relative_path).join(basename);
+    let basename = CString::new(basename)
+        .map_err(|_| AppError::InvalidRequest("folder name contains a null byte".into()))?;
+    #[cfg(target_os = "macos")]
+    let mode = 0o777_u16;
+    #[cfg(target_os = "linux")]
+    let mode = 0o777 as std::os::raw::c_uint;
+    // SAFETY: the held parent descriptor and NUL-terminated basename are valid for this call.
+    if unsafe { mkdirat(directory.as_raw_fd(), basename.as_ptr(), mode) } < 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    created();
+    let warning = sync_parent(&directory)
+        .err()
+        .map(|_| "Folder was created, but its durability could not be confirmed.".to_owned());
+    let listing = list_after();
+    // SAFETY: openat returns a new descriptor, or a negative error value.
+    let descriptor = unsafe {
+        openat(
+            directory.as_raw_fd(),
+            basename.as_ptr(),
+            O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC,
+        )
+    };
+    let resource_confirmed = if descriptor < 0 {
+        false
+    } else {
+        // SAFETY: openat returned a new owned descriptor on success.
+        let created_directory = unsafe { File::from_raw_fd(descriptor) };
+        created_directory
+            .metadata()
+            .ok()
+            .zip(target.symlink_metadata().ok())
+            .is_some_and(|(created, target)| {
+                target.is_dir() && target.dev() == created.dev() && target.ino() == created.ino()
+            })
+    };
+    Ok((warning, listing, resource_confirmed))
+}
+
 #[cfg(all(test, target_os = "macos"))]
 pub(super) fn assert_apple_openat_variadic_binding() {
     let _: unsafe extern "C" fn(c_int, *const c_char, c_int, ...) -> c_int = openat;
+}
+
+#[cfg(all(test, target_os = "macos"))]
+pub(super) fn assert_apple_mkdirat_binding() {
+    let _: unsafe extern "C" fn(c_int, *const c_char, u16) -> c_int = mkdirat;
 }
 
 #[cfg(windows)]
@@ -161,6 +247,31 @@ mod windows {
         Ok(directory)
     }
 
+    fn open_parent(
+        root: &Path,
+        expected_root: super::super::super::RootIdentity,
+        parent: &str,
+    ) -> AppResult<(Vec<File>, std::path::PathBuf)> {
+        let root_guard = open_directory(root)?;
+        if super::super::super::root_identity_file(&root_guard)? != expected_root {
+            return Err(AppError::InvalidRequest(
+                "workspace root identity changed before resource creation".into(),
+            ));
+        }
+        let mut guards = vec![root_guard];
+        let mut directory = root.to_path_buf();
+        for component in Path::new(parent).components() {
+            let Component::Normal(name) = component else {
+                return Err(AppError::InvalidRequest(
+                    "resource parent is not canonical".into(),
+                ));
+            };
+            directory.push(name);
+            guards.push(open_directory(&directory)?);
+        }
+        Ok((guards, directory))
+    }
+
     pub(crate) fn create_new<B, S, L>(
         root: &Path,
         expected_root: super::super::super::RootIdentity,
@@ -179,23 +290,7 @@ mod windows {
         S: FnOnce(&File) -> std::io::Result<()>,
         L: FnOnce() -> AppResult<crate::domain::DirectoryListing>,
     {
-        let root_guard = open_directory(root)?;
-        if super::super::super::root_identity_file(&root_guard)? != expected_root {
-            return Err(AppError::InvalidRequest(
-                "workspace root identity changed before file creation".into(),
-            ));
-        }
-        let mut guards = vec![root_guard];
-        let mut directory = root.to_path_buf();
-        for component in Path::new(parent).components() {
-            let Component::Normal(name) = component else {
-                return Err(AppError::InvalidRequest(
-                    "file parent is not canonical".into(),
-                ));
-            };
-            directory.push(name);
-            guards.push(open_directory(&directory)?);
-        }
+        let (guards, directory) = open_parent(root, expected_root, parent)?;
         before_create(&directory)?;
         let file = OpenOptions::new()
             .write(true)
@@ -209,10 +304,43 @@ mod windows {
         drop(guards);
         Ok((warning, listing, true))
     }
+
+    pub(crate) fn create_new_directory<B, C, S, L>(
+        parent: super::ParentAuthority<'_>,
+        basename: &str,
+        before_create: B,
+        created: C,
+        sync_parent: S,
+        list_after: L,
+    ) -> AppResult<(
+        Option<String>,
+        AppResult<crate::domain::DirectoryListing>,
+        bool,
+    )>
+    where
+        B: FnOnce(&Path) -> std::io::Result<()>,
+        C: FnOnce(),
+        S: FnOnce(&File) -> std::io::Result<()>,
+        L: FnOnce() -> AppResult<crate::domain::DirectoryListing>,
+    {
+        let (guards, directory) =
+            open_parent(parent.root, parent.expected_root, parent.relative_path)?;
+        before_create(&directory)?;
+        let target = directory.join(basename);
+        std::fs::create_dir(&target)?;
+        created();
+        let warning = sync_parent(guards.last().expect("parent authority exists"))
+            .err()
+            .map(|_| "Folder was created, but its durability could not be confirmed.".to_owned());
+        let listing = list_after();
+        let resource_confirmed = open_directory(&target).is_ok();
+        drop(guards);
+        Ok((warning, listing, resource_confirmed))
+    }
 }
 
 #[cfg(windows)]
-pub(super) use windows::create_new;
+pub(super) use windows::{create_new, create_new_directory};
 
 #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub(super) fn create_new<B, S, L>(
@@ -235,5 +363,29 @@ where
 {
     Err(crate::error::AppError::InvalidRequest(
         "safe file creation is unavailable on this platform".into(),
+    ))
+}
+
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+pub(super) fn create_new_directory<B, C, S, L>(
+    _parent: ParentAuthority<'_>,
+    _basename: &str,
+    _before_create: B,
+    _created: C,
+    _sync_parent: S,
+    _list_after: L,
+) -> crate::error::AppResult<(
+    Option<String>,
+    crate::error::AppResult<crate::domain::DirectoryListing>,
+    bool,
+)>
+where
+    B: FnOnce(&std::path::Path) -> std::io::Result<()>,
+    C: FnOnce(),
+    S: FnOnce(&std::fs::File) -> std::io::Result<()>,
+    L: FnOnce() -> crate::error::AppResult<crate::domain::DirectoryListing>,
+{
+    Err(crate::error::AppError::InvalidRequest(
+        "safe folder creation is unavailable on this platform".into(),
     ))
 }

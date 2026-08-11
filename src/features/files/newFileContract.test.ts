@@ -6,6 +6,7 @@ import {
   explorerCreateParent,
   MAX_NEW_FILE_NAME_BYTES,
   validateCreateProjectFileResult,
+  validateCreateProjectFolderResult,
   validateNewFileBasename,
   validateNewFilePath,
 } from "./newFileContract";
@@ -137,6 +138,65 @@ describe("new file portable contract", () => {
         },
       ),
     ).not.toThrow();
+  });
+
+  it("validates a folder only when the authoritative listing carries directory identity", () => {
+    const parent = { rootId: "root-b", relativePath: "src" };
+    const resource = { rootId: "root-b", relativePath: "src/nested" };
+    const result = {
+      outcome: "committed" as const,
+      resourceConfirmed: true,
+      projectId: "project-a",
+      projectGeneration: 3,
+      transitionEpoch: 4,
+      resource,
+      parentListing: {
+        resource: parent,
+        entries: [
+          {
+            name: "nested",
+            resource,
+            kind: "directory" as const,
+            byteLen: null,
+          },
+        ],
+        truncated: false,
+      },
+      warning: null,
+    };
+    expect(() =>
+      validateCreateProjectFolderResult(result, {
+        projectId: "project-a",
+        projectGeneration: 3,
+        transitionEpoch: 4,
+        parent,
+        resource,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateCreateProjectFolderResult(
+        {
+          ...result,
+          parentListing: {
+            ...result.parentListing,
+            entries: [
+              {
+                ...result.parentListing.entries[0],
+                kind: "file" as const,
+                byteLen: 0,
+              },
+            ],
+          },
+        },
+        {
+          projectId: "project-a",
+          projectGeneration: 3,
+          transitionEpoch: 4,
+          parent,
+          resource,
+        },
+      ),
+    ).toThrow("invalid identity");
   });
 });
 

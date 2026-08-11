@@ -6,28 +6,36 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { FilePlus2 } from "lucide-react";
+import { FilePlus2, FolderPlus } from "lucide-react";
 
 import { useWorkbenchStore } from "../../app/store";
 import type { ResourceRef } from "../../domain/workbench";
 import { validateNewFilePath } from "./newFileContract";
 
-export function NewFileControl({
+function NewEntryControl({
   parent,
   rootName,
+  kind,
 }: {
   parent: ResourceRef | null;
   rootName: string | null;
+  kind: "file" | "folder";
 }) {
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
-  const inFlight = useWorkbenchStore((state) => state.fileCreateInFlight);
-  const nativeError = useWorkbenchStore((state) => state.fileCreateError);
-  const createProjectFile = useWorkbenchStore(
-    (state) => state.createProjectFile,
+  const inFlight = useWorkbenchStore((state) =>
+    kind === "file" ? state.fileCreateInFlight : state.folderCreateInFlight,
   );
-  const clearError = useWorkbenchStore((state) => state.clearFileCreateError);
+  const nativeError = useWorkbenchStore((state) =>
+    kind === "file" ? state.fileCreateError : state.folderCreateError,
+  );
+  const createProjectResource = useWorkbenchStore((state) =>
+    kind === "file" ? state.createProjectFile : state.createProjectFolder,
+  );
+  const clearError = useWorkbenchStore((state) =>
+    kind === "file" ? state.clearFileCreateError : state.clearFolderCreateError,
+  );
   const [open, setOpen] = useState(false);
   const [basename, setBasename] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
@@ -38,6 +46,10 @@ export function NewFileControl({
   } | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const label = kind === "file" ? "File" : "Folder";
+  const titleId = `new-${kind}-title`;
+  const previewId = `new-${kind}-preview`;
+  const errorId = `new-${kind}-error`;
 
   const close = useCallback(
     (restoreFocus = true, force = false) => {
@@ -83,13 +95,17 @@ export function NewFileControl({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!parent || inFlight) return;
-    const error = validateNewFilePath(parent, basename);
+    const validation = validateNewFilePath(parent, basename);
+    const error =
+      kind === "folder" && validation
+        ? validation.replace(/^File/, "Folder")
+        : validation;
     if (error) {
       setLocalError(error);
       return;
     }
     setLocalError(null);
-    if (await createProjectFile(parent, basename)) close();
+    if (await createProjectResource(parent, basename)) close();
   };
 
   const containFocus = (event: KeyboardEvent<HTMLDialogElement>) => {
@@ -128,8 +144,8 @@ export function NewFileControl({
       <button
         ref={triggerRef}
         type="button"
-        aria-label="New File"
-        title={parent ? "New File" : "Select an available Project root"}
+        aria-label={`New ${label}`}
+        title={parent ? `New ${label}` : "Select an available Project root"}
         disabled={!parent || projectTransitioning}
         onClick={() => {
           const state = useWorkbenchStore.getState();
@@ -145,14 +161,18 @@ export function NewFileControl({
           setOpen(true);
         }}
       >
-        <FilePlus2 size={14} aria-hidden="true" />
+        {kind === "file" ? (
+          <FilePlus2 size={14} aria-hidden="true" />
+        ) : (
+          <FolderPlus size={14} aria-hidden="true" />
+        )}
       </button>
       {open && parent && scope ? (
         <dialog
           ref={dialogRef}
           className="dirty-dialog new-file-dialog"
           aria-modal="true"
-          aria-labelledby="new-file-title"
+          aria-labelledby={titleId}
           onCancel={(event) => {
             event.preventDefault();
             close();
@@ -160,13 +180,13 @@ export function NewFileControl({
           onKeyDown={containFocus}
         >
           <form className="new-file-dialog__form" onSubmit={submit}>
-            <h2 id="new-file-title">New File</h2>
-            <p>Create one empty file in the selected Explorer directory.</p>
+            <h2 id={titleId}>New {label}</h2>
+            <p>Create one empty {kind} in the selected Explorer directory.</p>
             <label className="new-file-dialog__field">
-              <span>File name</span>
+              <span>{label} name</span>
               <input
                 autoFocus
-                aria-describedby="new-file-preview new-file-error"
+                aria-describedby={`${previewId} ${errorId}`}
                 disabled={inFlight}
                 maxLength={255}
                 value={basename}
@@ -177,14 +197,10 @@ export function NewFileControl({
                 }}
               />
             </label>
-            <p id="new-file-preview" className="new-file-dialog__preview">
+            <p id={previewId} className="new-file-dialog__preview">
               Path: {preview}
             </p>
-            <p
-              id="new-file-error"
-              className="new-file-dialog__error"
-              role="alert"
-            >
+            <p id={errorId} className="new-file-dialog__error" role="alert">
               {localError ?? nativeError ?? ""}
             </p>
             <div className="dirty-dialog__actions">
@@ -201,7 +217,11 @@ export function NewFileControl({
                 type="submit"
                 disabled={inFlight || basename.length === 0}
               >
-                {inFlight ? "Creating…" : "Create"}
+                {inFlight
+                  ? "Creating…"
+                  : kind === "file"
+                    ? "Create"
+                    : "Create Folder"}
               </button>
             </div>
           </form>
@@ -209,4 +229,18 @@ export function NewFileControl({
       ) : null}
     </>
   );
+}
+
+export function NewFileControl(props: {
+  parent: ResourceRef | null;
+  rootName: string | null;
+}) {
+  return <NewEntryControl {...props} kind="file" />;
+}
+
+export function NewFolderControl(props: {
+  parent: ResourceRef | null;
+  rootName: string | null;
+}) {
+  return <NewEntryControl {...props} kind="folder" />;
 }

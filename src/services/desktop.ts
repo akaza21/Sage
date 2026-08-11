@@ -5,6 +5,8 @@ import type {
   DirectoryListing,
   CreateProjectFileRequest,
   CreateProjectFileResult,
+  CreateProjectFolderRequest,
+  CreateProjectFolderResult,
   EditorDocument,
   EditorSaveResult,
   FileDiff,
@@ -82,6 +84,14 @@ export const desktop = {
     return isTauriRuntime()
       ? invoke("create_project_file", { request })
       : browserDesktop.createProjectFile(request);
+  },
+
+  createProjectFolder(
+    request: CreateProjectFolderRequest,
+  ): Promise<CreateProjectFolderResult> {
+    return isTauriRuntime()
+      ? invoke("create_project_folder", { request })
+      : browserDesktop.createProjectFolder(request);
   },
 
   readTextFile(resource: ResourceRef): Promise<TextFile> {
