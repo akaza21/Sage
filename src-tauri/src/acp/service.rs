@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     acp::{
-        bindings::codex::CodexBindingSnapshot,
+        bindings::codex::CodexBindingRegistration,
         contract::{ProjectGeneration, SageChatId, SageProjectId},
         intent::{AcpChatPage, IntentSnapshot, PageCursor},
         page_admission::{PageAdmissionError, PageReadAdmission, PageReadLease},
@@ -23,7 +23,10 @@ use crate::{
 };
 
 #[cfg(test)]
-use crate::acp::bindings::codex::AdmittedCodexBinding;
+use crate::acp::{
+    bindings::{adapter::AdapterRuntimeError, codex::CodexRuntime},
+    contract::{RuntimeEpoch, SageAgentSessionId},
+};
 
 #[cfg(all(windows, feature = "acp-fixture"))]
 mod characterization;
@@ -56,7 +59,7 @@ pub(crate) struct AcpService {
     publisher: Arc<dyn ProjectionPublisher>,
     notifier: Option<Arc<ProjectionNotifier>>,
     page_reads: PageReadAdmission,
-    codex: CodexBindingSnapshot,
+    codex: CodexBindingRegistration,
     #[cfg(all(windows, feature = "acp-fixture"))]
     characterization: Option<CharacterizationBinding>,
 }
@@ -123,8 +126,29 @@ impl AcpService {
     }
 
     #[cfg(test)]
-    pub(crate) fn codex_binding(&self) -> Option<&Arc<AdmittedCodexBinding>> {
-        self.codex.binding()
+    pub(crate) fn codex_registration(&self) -> CodexBindingRegistration {
+        self.codex.clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn codex_runtime(
+        &self,
+        runtime_epoch: RuntimeEpoch,
+        session_id: SageAgentSessionId,
+    ) -> Result<CodexRuntime, AdapterRuntimeError> {
+        let binding = self
+            .codex
+            .refresh()
+            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        CodexRuntime::from_admitted_binding(binding, runtime_epoch, session_id).inspect_err(|_| {
+            self.codex.invalidate_drift();
+        })
+    }
+
+    pub(crate) fn refresh_codex_registration(
+        &self,
+    ) -> Result<(), crate::acp::bindings::codex::CodexAdmissionUnavailable> {
+        self.codex.refresh().map(drop)
     }
 
     pub(crate) fn reserve_page_read(
@@ -270,7 +294,7 @@ impl std::fmt::Debug for AcpService {
             .field("journal", &self.journal)
             .field("sessions", &self.sessions)
             .field("runtime_active", &self.runtime.is_active())
-            .field("codex_admitted", &self.codex.binding().is_some())
+            .field("codex_admitted", &self.codex.is_available())
             .field("notification_active", &self.notifier.is_some())
             .finish_non_exhaustive()
     }

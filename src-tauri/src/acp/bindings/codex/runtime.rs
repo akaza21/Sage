@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterBatchBuilder, AdapterCommand, AdapterEgress, AdapterEvent,
@@ -9,6 +11,7 @@ use crate::acp::{
 };
 
 use super::{
+    admission::AdmittedCodexBinding,
     incoming::{IncomingEvent, IngressDisposition},
     managed::ManagedStagingPrerequisite,
     manifest::MetadataValidatedPacket,
@@ -33,6 +36,7 @@ mod snapshots;
 use snapshots::ItemSnapshots;
 
 pub(crate) struct CodexRuntime {
+    admission: Option<Arc<AdmittedCodexBinding>>,
     inner: CodexAdapter,
     next_request_id: u64,
     snapshots: ItemSnapshots,
@@ -86,6 +90,7 @@ impl CodexRuntime {
         session_id: SageAgentSessionId,
     ) -> Self {
         Self {
+            admission: None,
             inner: CodexAdapter::from_metadata_packet(
                 packet,
                 binding_digest,

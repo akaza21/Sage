@@ -78,6 +78,9 @@ pub(crate) async fn start_acp_session_inner(
         &snapshot,
     )
     .map_err(intent_error)?;
+    if request.binding_id.as_str() == "codex-app-server" {
+        let _ = state.acp.refresh_codex_registration();
+    }
     #[cfg(all(windows, feature = "acp-fixture"))]
     if state.acp.accepts_characterization(&request.binding_id) {
         return characterization::start(state, request).await;

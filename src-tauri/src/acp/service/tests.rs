@@ -33,16 +33,34 @@ use super::AcpService;
 
 #[cfg(windows)]
 #[test]
-fn service_and_catalog_share_the_exact_admitted_codex_snapshot() {
-    let snapshot = crate::acp::bindings::codex::CodexBindingSnapshot::admitted_for_test();
+fn codex_drift_transition_invalidates_the_shared_service_and_catalog_registration() {
+    let registration = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
     let database = Database::open(std::path::Path::new(":memory:")).unwrap();
-    let service = AcpService::new_with_codex_for_test(database, snapshot.clone()).unwrap();
-    let catalog = crate::harnesses::HarnessCatalog::with_codex_snapshot(snapshot);
+    let service = AcpService::new_with_codex_for_test(database, registration.clone()).unwrap();
+    let catalog = crate::harnesses::HarnessCatalog::with_codex_registration(registration.clone());
 
-    assert!(Arc::ptr_eq(
-        service.codex_binding().unwrap(),
-        catalog.codex_binding().unwrap(),
-    ));
+    assert!(registration.same_authority(&service.codex_registration()));
+    assert_eq!(catalog.definitions().remove(0).install_state, "available");
+
+    registration.induce_drift_for_test();
+    assert_eq!(
+        catalog.refresh_codex_registration(),
+        Err(crate::acp::bindings::codex::CodexAdmissionUnavailable::Drift)
+    );
+    assert_eq!(
+        catalog.definitions().remove(0).install_state,
+        "notInstalled"
+    );
+    assert!(catalog.models("codex").unwrap().is_empty());
+
+    assert!(
+        service
+            .codex_runtime(
+                RuntimeEpoch::new(1).unwrap(),
+                SageAgentSessionId::parse("session-drifted-registration").unwrap(),
+            )
+            .is_err()
+    );
 }
 
 #[test]

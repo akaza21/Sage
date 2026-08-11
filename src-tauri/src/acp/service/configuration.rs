@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     acp::{
-        bindings::codex::{CodexBindingSnapshot, startup_codex_binding_snapshot},
+        bindings::codex::{CodexBindingRegistration, startup_codex_binding_registration},
         runtime::{NotificationSink, ProjectionNotifier},
         store::StoreError,
     },
@@ -14,7 +14,7 @@ use super::AcpService;
 use super::CharacterizationBinding;
 
 pub(super) struct ServiceConfiguration {
-    pub(super) codex: CodexBindingSnapshot,
+    pub(super) codex: CodexBindingRegistration,
     #[cfg(all(windows, feature = "acp-fixture"))]
     pub(super) characterization: Option<CharacterizationBinding>,
 }
@@ -22,7 +22,7 @@ pub(super) struct ServiceConfiguration {
 impl Default for ServiceConfiguration {
     fn default() -> Self {
         Self {
-            codex: startup_codex_binding_snapshot(),
+            codex: startup_codex_binding_registration(),
             #[cfg(all(windows, feature = "acp-fixture"))]
             characterization: None,
         }
@@ -45,13 +45,17 @@ impl AcpService {
         database: Database,
         sink: Arc<dyn NotificationSink>,
     ) -> Result<Self, StoreError> {
-        Self::new_with_notification_sink_and_codex(database, sink, startup_codex_binding_snapshot())
+        Self::new_with_notification_sink_and_codex(
+            database,
+            sink,
+            startup_codex_binding_registration(),
+        )
     }
 
     pub(crate) fn new_with_notification_sink_and_codex(
         database: Database,
         sink: Arc<dyn NotificationSink>,
-        codex: CodexBindingSnapshot,
+        codex: CodexBindingRegistration,
     ) -> Result<Self, StoreError> {
         let runtime = tauri::async_runtime::handle();
         let notifier = Arc::new(ProjectionNotifier::start_with(sink, move |worker| {
@@ -69,10 +73,10 @@ impl AcpService {
         )
     }
 
-    #[cfg(all(test, windows))]
+    #[cfg(test)]
     pub(crate) fn new_with_codex_for_test(
         database: Database,
-        codex: CodexBindingSnapshot,
+        codex: CodexBindingRegistration,
     ) -> Result<Self, StoreError> {
         Self::build(
             database,
@@ -91,7 +95,7 @@ impl AcpService {
         database: Database,
         sink: Arc<dyn NotificationSink>,
         binding: CharacterizationBinding,
-        codex: CodexBindingSnapshot,
+        codex: CodexBindingRegistration,
     ) -> Result<Self, StoreError> {
         let runtime = tauri::async_runtime::handle();
         let notifier = Arc::new(ProjectionNotifier::start_with(sink, move |worker| {
@@ -112,7 +116,7 @@ impl AcpService {
     pub(crate) fn new_characterization_for_test(
         database: Database,
         binding: CharacterizationBinding,
-        codex: CodexBindingSnapshot,
+        codex: CodexBindingRegistration,
     ) -> Result<Self, StoreError> {
         Self::build(
             database,

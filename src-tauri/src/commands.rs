@@ -15,6 +15,9 @@ pub fn list_harness_models(
     state: State<'_, AppState>,
     harness_id: String,
 ) -> Result<Vec<ModelOption>, String> {
+    if harness_id == "codex" {
+        let _ = state.harnesses.refresh_codex_registration();
+    }
     state
         .harnesses
         .models(&harness_id)

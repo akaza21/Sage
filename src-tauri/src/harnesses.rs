@@ -1,5 +1,5 @@
 use crate::{
-    acp::bindings::codex::{CodexBindingSnapshot, startup_codex_binding_snapshot},
+    acp::bindings::codex::{CodexBindingRegistration, startup_codex_binding_registration},
     domain::{HarnessDefinition, HarnessTransport, ModelOption},
     error::{AppError, AppResult},
 };
@@ -10,19 +10,19 @@ pub const SIMULATOR_DEEP_MODEL_ID: &str = "sim-deep";
 
 #[derive(Debug)]
 pub struct HarnessCatalog {
-    codex: CodexBindingSnapshot,
+    codex: CodexBindingRegistration,
     #[cfg(all(windows, feature = "acp-fixture"))]
     characterization_available: bool,
 }
 
 impl Default for HarnessCatalog {
     fn default() -> Self {
-        Self::with_codex_snapshot(startup_codex_binding_snapshot())
+        Self::with_codex_registration(startup_codex_binding_registration())
     }
 }
 
 impl HarnessCatalog {
-    pub(crate) fn with_codex_snapshot(codex: CodexBindingSnapshot) -> Self {
+    pub(crate) fn with_codex_registration(codex: CodexBindingRegistration) -> Self {
         Self {
             codex,
             #[cfg(all(windows, feature = "acp-fixture"))]
@@ -30,20 +30,26 @@ impl HarnessCatalog {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn codex_binding(
+    pub(crate) fn refresh_codex_registration(
         &self,
-    ) -> Option<&std::sync::Arc<crate::acp::bindings::codex::AdmittedCodexBinding>> {
-        self.codex.binding()
+    ) -> Result<(), crate::acp::bindings::codex::CodexAdmissionUnavailable> {
+        self.codex.refresh().map(drop)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn codex_registration(&self) -> CodexBindingRegistration {
+        self.codex.clone()
     }
 
     #[cfg(all(test, windows, feature = "acp-fixture"))]
     pub(crate) fn with_characterization() -> Self {
-        Self::with_codex_snapshot_and_characterization(startup_codex_binding_snapshot())
+        Self::with_codex_registration_and_characterization(startup_codex_binding_registration())
     }
 
     #[cfg(all(windows, feature = "acp-fixture"))]
-    pub(crate) fn with_codex_snapshot_and_characterization(codex: CodexBindingSnapshot) -> Self {
+    pub(crate) fn with_codex_registration_and_characterization(
+        codex: CodexBindingRegistration,
+    ) -> Self {
         Self {
             codex,
             characterization_available: true,
@@ -51,7 +57,7 @@ impl HarnessCatalog {
     }
 
     pub fn definitions(&self) -> Vec<HarnessDefinition> {
-        let codex_available = self.codex.binding().is_some();
+        let codex_available = self.codex.is_available();
         let definitions = vec![
             definition(
                 "codex",
@@ -310,16 +316,17 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn codex_availability_and_models_come_from_one_admitted_snapshot() {
-        let unavailable = HarnessCatalog::with_codex_snapshot(
-            crate::acp::bindings::codex::startup_codex_binding_snapshot(),
+    fn codex_availability_and_models_come_from_one_admitted_registration() {
+        let unavailable = HarnessCatalog::with_codex_registration(
+            crate::acp::bindings::codex::startup_codex_binding_registration(),
         );
         let codex = unavailable.definitions().remove(0);
         assert_eq!(codex.install_state, "notInstalled");
         assert!(unavailable.models("codex").unwrap().is_empty());
 
-        let snapshot = crate::acp::bindings::codex::CodexBindingSnapshot::admitted_for_test();
-        let admitted = HarnessCatalog::with_codex_snapshot(snapshot);
+        let registration =
+            crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
+        let admitted = HarnessCatalog::with_codex_registration(registration);
         let codex = admitted.definitions().remove(0);
         assert_eq!(codex.install_state, "available");
         assert_eq!(codex.binding_id.as_deref(), Some("codex-app-server"));

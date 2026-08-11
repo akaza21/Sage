@@ -1,4 +1,7 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex, MutexGuard},
+};
 
 use sha2::{Digest, Sha256};
 
@@ -117,39 +120,114 @@ pub(crate) enum CodexAdmissionUnavailable {
     Drift,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct CodexBindingSnapshot {
-    binding: Option<Arc<AdmittedCodexBinding>>,
-    unavailable: Option<CodexAdmissionUnavailable>,
+#[derive(Debug)]
+enum CodexRegistrationState {
+    Admitted(Arc<AdmittedCodexBinding>),
+    Unavailable(CodexAdmissionUnavailable),
 }
 
-impl CodexBindingSnapshot {
-    pub(crate) fn binding(&self) -> Option<&Arc<AdmittedCodexBinding>> {
-        self.binding.as_ref()
+#[derive(Debug)]
+struct CodexRegistrationAuthority {
+    state: Mutex<CodexRegistrationState>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CodexBindingRegistration {
+    authority: Arc<CodexRegistrationAuthority>,
+}
+
+impl CodexBindingRegistration {
+    pub(crate) fn is_available(&self) -> bool {
+        matches!(*self.lock_state(), CodexRegistrationState::Admitted(_))
     }
 
     pub(crate) fn unavailable(&self) -> Option<CodexAdmissionUnavailable> {
-        self.unavailable
+        match *self.lock_state() {
+            CodexRegistrationState::Admitted(_) => None,
+            CodexRegistrationState::Unavailable(reason) => Some(reason),
+        }
+    }
+
+    pub(crate) fn refresh(&self) -> Result<Arc<AdmittedCodexBinding>, CodexAdmissionUnavailable> {
+        let candidate = match &*self.lock_state() {
+            CodexRegistrationState::Admitted(binding) => Arc::clone(binding),
+            CodexRegistrationState::Unavailable(reason) => return Err(*reason),
+        };
+        let validation = candidate.revalidate();
+        let mut state = self.lock_state();
+        match &*state {
+            CodexRegistrationState::Admitted(current) if Arc::ptr_eq(current, &candidate) => {
+                if validation.is_err() {
+                    *state = CodexRegistrationState::Unavailable(CodexAdmissionUnavailable::Drift);
+                    Err(CodexAdmissionUnavailable::Drift)
+                } else {
+                    Ok(candidate)
+                }
+            }
+            CodexRegistrationState::Admitted(_) => Err(CodexAdmissionUnavailable::Drift),
+            CodexRegistrationState::Unavailable(reason) => Err(*reason),
+        }
+    }
+
+    pub(crate) fn invalidate_drift(&self) {
+        *self.lock_state() = CodexRegistrationState::Unavailable(CodexAdmissionUnavailable::Drift);
+    }
+
+    fn lock_state(&self) -> MutexGuard<'_, CodexRegistrationState> {
+        match self.authority.state.lock() {
+            Ok(state) => state,
+            Err(poisoned) => {
+                let mut state = poisoned.into_inner();
+                *state = CodexRegistrationState::Unavailable(CodexAdmissionUnavailable::Drift);
+                state
+            }
+        }
     }
 
     #[cfg(all(test, windows))]
     pub(crate) fn admitted_for_test() -> Self {
         Self {
-            binding: Some(Arc::new(admitted_binding_fixture())),
-            unavailable: None,
+            authority: Arc::new(CodexRegistrationAuthority {
+                state: Mutex::new(CodexRegistrationState::Admitted(Arc::new(
+                    admitted_binding_fixture(),
+                ))),
+            }),
         }
+    }
+
+    #[cfg(all(test, windows))]
+    pub(crate) fn induce_drift_for_test(&self) {
+        let binding = match &*self.lock_state() {
+            CodexRegistrationState::Admitted(binding) => Arc::clone(binding),
+            CodexRegistrationState::Unavailable(_) => panic!("registration already unavailable"),
+        };
+        std::fs::write(
+            binding
+                .packet()
+                .codex_home()
+                .join("sessions")
+                .join("registration-drift"),
+            b"drift",
+        )
+        .unwrap();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn same_authority(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.authority, &other.authority)
     }
 }
 
-pub(crate) fn startup_codex_binding_snapshot() -> CodexBindingSnapshot {
+pub(crate) fn startup_codex_binding_registration() -> CodexBindingRegistration {
     let unavailable = if cfg!(windows) {
         CodexAdmissionUnavailable::IndependentAdmission
     } else {
         CodexAdmissionUnavailable::Platform
     };
-    CodexBindingSnapshot {
-        binding: None,
-        unavailable: Some(unavailable),
+    CodexBindingRegistration {
+        authority: Arc::new(CodexRegistrationAuthority {
+            state: Mutex::new(CodexRegistrationState::Unavailable(unavailable)),
+        }),
     }
 }
 
@@ -239,12 +317,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn startup_snapshot_is_typed_unavailable_without_independent_admission() {
-        let snapshot = startup_codex_binding_snapshot();
+    fn startup_registration_is_typed_unavailable_without_independent_admission() {
+        let registration = startup_codex_binding_registration();
 
-        assert!(snapshot.binding().is_none());
+        assert!(!registration.is_available());
         assert_eq!(
-            snapshot.unavailable(),
+            registration.unavailable(),
             Some(if cfg!(windows) {
                 CodexAdmissionUnavailable::IndependentAdmission
             } else {
@@ -269,5 +347,36 @@ mod tests {
             "83751f15cb6a0a7b97df67752c001e3fe1c20e18ffbfec3ff63567296205eb6c"
         );
         assert_eq!(binding.entrypoint().byte_len, 359_245_096);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn concurrent_refreshes_converge_on_one_fail_closed_drift_transition() {
+        let registration = CodexBindingRegistration::admitted_for_test();
+        registration.induce_drift_for_test();
+        let gate = Arc::new(std::sync::Barrier::new(5));
+        let workers = (0..4)
+            .map(|_| {
+                let registration = registration.clone();
+                let gate = Arc::clone(&gate);
+                std::thread::spawn(move || {
+                    gate.wait();
+                    registration.refresh().err()
+                })
+            })
+            .collect::<Vec<_>>();
+        gate.wait();
+
+        for worker in workers {
+            assert_eq!(
+                worker.join().unwrap(),
+                Some(CodexAdmissionUnavailable::Drift)
+            );
+        }
+        assert!(!registration.is_available());
+        assert_eq!(
+            registration.unavailable(),
+            Some(CodexAdmissionUnavailable::Drift)
+        );
     }
 }

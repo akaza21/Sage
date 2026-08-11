@@ -17,8 +17,8 @@ mod runtime;
 mod state;
 
 pub(crate) use admission::{
-    AdmittedCodexBinding, CodexAdmissionUnavailable, CodexBindingSnapshot,
-    startup_codex_binding_snapshot,
+    AdmittedCodexBinding, CodexAdmissionUnavailable, CodexBindingRegistration,
+    startup_codex_binding_registration,
 };
 pub(crate) use authority::{
     ConfigAuthorityError, EnvironmentAuthorityError, ResidueMarker, RetentionDecision,

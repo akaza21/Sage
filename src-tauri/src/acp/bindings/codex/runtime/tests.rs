@@ -159,8 +159,8 @@ fn launch_stays_unavailable_without_exact_artifact_admission() {
 #[cfg(windows)]
 #[test]
 fn admitted_binding_is_the_only_constructor_that_crosses_the_launch_gate() {
-    let snapshot = crate::acp::bindings::codex::CodexBindingSnapshot::admitted_for_test();
-    let binding = snapshot.binding().unwrap();
+    let registration = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
+    let binding = registration.refresh().unwrap();
 
     assert!(
         CodexRuntime::from_admitted_binding(
@@ -170,6 +170,27 @@ fn admitted_binding_is_the_only_constructor_that_crosses_the_launch_gate() {
         )
         .is_ok()
     );
+}
+
+#[cfg(windows)]
+#[test]
+fn runtime_retains_admission_authority_and_frozen_environment_until_teardown() {
+    let registration = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
+    let binding = registration.refresh().unwrap();
+    let expected_environment = binding.environment().entries().to_vec();
+    let retained = std::sync::Arc::downgrade(&binding);
+    let runtime = CodexRuntime::from_admitted_binding(
+        binding,
+        RuntimeEpoch::new(1).expect("epoch"),
+        SageAgentSessionId::parse("session-retained-authority").expect("session"),
+    )
+    .unwrap();
+
+    drop(registration);
+    assert!(retained.upgrade().is_some());
+    assert_eq!(runtime.launch_environment().unwrap(), expected_environment);
+    drop(runtime);
+    assert!(retained.upgrade().is_none());
 }
 
 #[test]

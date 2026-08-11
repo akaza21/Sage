@@ -31,6 +31,7 @@ pub(crate) async fn build_bootstrap_snapshot(
     state: &AppState,
     transition_epoch: u64,
 ) -> crate::error::AppResult<BootstrapSnapshot> {
+    let _ = state.harnesses.refresh_codex_registration();
     let mut snapshot = state
         .database
         .bootstrap_snapshot_with_catalog(&state.harnesses)?;

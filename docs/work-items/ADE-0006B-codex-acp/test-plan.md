@@ -216,9 +216,14 @@ The registration increment additionally proves that production startup has a
 typed `IndependentAdmission` stop, that only a private test authority can mint
 the opaque non-Clone admitted Binding, that the Binding revalidates its exact
 transitive package/security/state/environment and immutable identity proofs,
-and that `AcpService` and `HarnessCatalog` share the same snapshot. A test-only
-admitted snapshot can light the catalog while exposing no invented models; the
-normal startup snapshot cannot.
+and that `AcpService` and `HarnessCatalog` share one atomically invalidating
+registration. A test-only admitted registration can light the catalog while
+exposing no invented models; the normal startup registration cannot. A
+post-registration physical-state drift test proves one explicit bounded refresh
+makes the catalog unavailable and prevents the service from constructing a
+runtime. Concurrent refreshes converge on the same typed `Drift` state. A
+`Weak` lifetime proof shows that an admitted runtime retains the Binding and
+frozen launch environment until runtime teardown, but not afterward.
 
 No test in these increments proves a live elevated executable/UAC boundary or
 the exact candidate's applied canonical-root ACLs, an adequate or

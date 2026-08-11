@@ -1,6 +1,6 @@
 use crate::{
     acp::{
-        bindings::codex::startup_codex_binding_snapshot,
+        bindings::codex::startup_codex_binding_registration,
         intent::{ACP_PROJECTION_CHANGED_EVENT, ProjectionChangedV1},
         runtime::{NotificationError, NotificationSink, NotificationSinkFuture},
         service::AcpService,
@@ -23,22 +23,24 @@ pub struct AppState {
 impl AppState {
     #[cfg(test)]
     pub fn try_new(database: Database) -> AppResult<Self> {
-        let acp = AcpService::new(database.clone()).map_err(|_| {
-            crate::error::AppError::InvalidRequest(
-                "bounded ACP restart recovery failed; durable history was preserved".into(),
-            )
-        })?;
+        let codex = startup_codex_binding_registration();
+        let acp =
+            AcpService::new_with_codex_for_test(database.clone(), codex.clone()).map_err(|_| {
+                crate::error::AppError::InvalidRequest(
+                    "bounded ACP restart recovery failed; durable history was preserved".into(),
+                )
+            })?;
         Ok(Self {
             database,
             acp,
-            harnesses: HarnessCatalog::default(),
+            harnesses: HarnessCatalog::with_codex_registration(codex),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(0),
         })
     }
 
     pub fn try_new_desktop(database: Database, app: tauri::AppHandle) -> AppResult<Self> {
-        let codex = startup_codex_binding_snapshot();
+        let codex = startup_codex_binding_registration();
         let acp = AcpService::new_with_notification_sink_and_codex(
             database.clone(),
             std::sync::Arc::new(DesktopProjectionSink(app)),
@@ -52,7 +54,7 @@ impl AppState {
         Ok(Self {
             database,
             acp,
-            harnesses: HarnessCatalog::with_codex_snapshot(codex),
+            harnesses: HarnessCatalog::with_codex_registration(codex),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(0),
         })
@@ -64,7 +66,7 @@ impl AppState {
         app: tauri::AppHandle,
         binding: crate::acp::service::CharacterizationBinding,
     ) -> AppResult<Self> {
-        let codex = startup_codex_binding_snapshot();
+        let codex = startup_codex_binding_registration();
         let acp = AcpService::new_with_characterization_sink(
             database.clone(),
             std::sync::Arc::new(DesktopProjectionSink(app)),
@@ -79,7 +81,7 @@ impl AppState {
         Ok(Self {
             database,
             acp,
-            harnesses: HarnessCatalog::with_codex_snapshot_and_characterization(codex),
+            harnesses: HarnessCatalog::with_codex_registration_and_characterization(codex),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(0),
         })
@@ -90,7 +92,7 @@ impl AppState {
         database: Database,
         binding: crate::acp::service::CharacterizationBinding,
     ) -> AppResult<Self> {
-        let codex = startup_codex_binding_snapshot();
+        let codex = startup_codex_binding_registration();
         let acp =
             AcpService::new_characterization_for_test(database.clone(), binding, codex.clone())
                 .map_err(|_| {
@@ -101,7 +103,7 @@ impl AppState {
         Ok(Self {
             database,
             acp,
-            harnesses: HarnessCatalog::with_codex_snapshot_and_characterization(codex),
+            harnesses: HarnessCatalog::with_codex_registration_and_characterization(codex),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(0),
         })
@@ -124,5 +126,21 @@ impl NotificationSink for DesktopProjectionSink {
                 .emit(ACP_PROJECTION_CHANGED_EVENT, event)
                 .map_err(|_| NotificationError::SinkUnavailable)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_state_shares_one_codex_registration_with_service_and_catalog() {
+        let state = AppState::new(Database::open(std::path::Path::new(":memory:")).unwrap());
+        assert!(
+            state
+                .acp
+                .codex_registration()
+                .same_authority(&state.harnesses.codex_registration())
+        );
     }
 }
