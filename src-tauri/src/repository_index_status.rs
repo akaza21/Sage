@@ -12,7 +12,7 @@ const MAX_CHANGES: usize = 300;
 const INDEX_ONLY_MESSAGE: &str = "Post-commit index-only projection. Refresh Source Control to inspect worktree changes and confirm repository state.";
 
 pub(crate) async fn project_status(
-    roots: Vec<(String, Result<Workspace, String>)>,
+    roots: Vec<(String, AppResult<Workspace>)>,
 ) -> ProjectRepositoryStatus {
     let started = Instant::now();
     let mut results = vec![None; roots.len()];
@@ -27,17 +27,23 @@ pub(crate) async fn project_status(
                 ));
             }
             Err(message) => {
-                results[index] = Some(RootRepositoryStatus::unavailable(root_id, message));
+                results[index] = Some(RootRepositoryStatus::unavailable(
+                    root_id,
+                    crate::repository_public_error::projection(&message),
+                ));
             }
         }
     }
     for (index, root_id, task) in tasks {
         results[index] = Some(match task.await {
             Ok(Ok(status)) => status,
-            Ok(Err(error)) => RootRepositoryStatus::unavailable(root_id, error.to_string()),
-            Err(error) => RootRepositoryStatus::unavailable(
+            Ok(Err(error)) => RootRepositoryStatus::unavailable(
                 root_id,
-                format!("Git index status task failed: {error}"),
+                crate::repository_public_error::projection(&error),
+            ),
+            Err(_error) => RootRepositoryStatus::unavailable(
+                root_id,
+                crate::repository_public_error::projection_task(),
             ),
         });
     }

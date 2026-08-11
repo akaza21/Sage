@@ -13,7 +13,6 @@ use crate::{
 
 const MAX_GIT_PROJECT_ID_BYTES: usize = 512;
 const MAX_GIT_ROOT_ID_BYTES: usize = 512;
-const MAX_PUBLIC_GIT_ERROR_BYTES: usize = 512;
 
 #[tauri::command]
 pub async fn commit_git_repository(
@@ -37,45 +36,12 @@ fn commit_command_error(error: AppError) -> GitFileMutationCommandError {
                     crate::domain::GitProcessState::PotentiallyRunning
                 }
             },
-            message: "A prior Git process has not finished exiting. Wait for Source Control recovery before retrying."
-                .into(),
+            message: crate::repository_public_error::containment().into(),
         },
         error => GitFileMutationCommandError::Failed {
-            message: public_commit_error(&error),
+            message: crate::repository_public_error::commit(&error),
         },
     }
-}
-
-fn public_commit_error(error: &AppError) -> String {
-    let message = match error {
-        AppError::InvalidRequest(message) | AppError::ResourceLimit(message) => message.as_str(),
-        AppError::Git(_) => {
-            "Git could not complete the commit. Refresh Source Control, resolve the repository error, and retry."
-        }
-        AppError::Io(_) => "Git could not access the selected repository.",
-        AppError::Database(_) => "Sage could not load the active Project for this Git commit.",
-        AppError::GitEffectUnknown(_) => {
-            "The Git commit outcome is uncertain. Refresh Source Control before continuing."
-        }
-        AppError::GitContainment { .. } => {
-            "A prior Git process has not finished exiting. Wait for Source Control recovery before retrying."
-        }
-        AppError::UnknownHarness(_) | AppError::HarnessUnavailable(_) => {
-            "Sage could not complete the Git commit."
-        }
-    };
-    truncate_public_error(message)
-}
-
-fn truncate_public_error(message: &str) -> String {
-    if message.len() <= MAX_PUBLIC_GIT_ERROR_BYTES {
-        return message.into();
-    }
-    let mut boundary = MAX_PUBLIC_GIT_ERROR_BYTES;
-    while !message.is_char_boundary(boundary) {
-        boundary -= 1;
-    }
-    message[..boundary].into()
 }
 
 async fn commit_git_repository_inner(
@@ -155,8 +121,7 @@ async fn commit_git_repository_inner_with_policy_override(
                 Ok(workspace.clone())
             } else {
                 Workspace::open(&root.project_id, &root.id, &root.absolute_path)
-            }
-            .map_err(|error| error.to_string());
+            };
             (root.id.clone(), workspace)
         })
         .collect();

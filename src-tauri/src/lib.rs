@@ -28,6 +28,7 @@ mod repository_index_status;
 mod repository_mutation;
 mod repository_mutation_commands;
 mod repository_parse;
+mod repository_public_error;
 mod repository_workspace;
 mod resource_commands;
 mod session_events;

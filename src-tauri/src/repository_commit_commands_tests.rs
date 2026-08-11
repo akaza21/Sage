@@ -338,6 +338,81 @@ fn ordinary_git_failure_never_exposes_an_absolute_repository_path() {
 }
 
 #[test]
+fn post_commit_index_projection_never_exposes_oversized_absolute_git_diagnostics() {
+    let fixture = TwoRootProject::new();
+    let database = Database::open(&fixture.base.join("sage.db")).unwrap();
+    let project = database.create_project_from_root(&fixture.root_a).unwrap();
+    let root_id = database.root_records(&project.id).unwrap()[0].id.clone();
+    let state = AppState::new(database);
+    let hook_root = fixture.root_a.clone();
+    let policy = repository::GitProcessPolicy::mutation(Duration::from_secs(3))
+        .with_after_process_hook(move || {
+            let head = Command::new("git")
+                .arg("-C")
+                .arg(&hook_root)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap();
+            assert!(head.status.success());
+            let head = String::from_utf8(head.stdout).unwrap();
+            let alternates = hook_root.join(".git/objects/info/alternates");
+            fs::create_dir_all(alternates.parent().unwrap()).unwrap();
+            let missing = hook_root
+                .join(format!("missing-{}", "x".repeat(70 * 1024)))
+                .to_string_lossy()
+                .into_owned();
+            fs::write(alternates, format!("{missing}\n")).unwrap();
+            let head = head.trim();
+            fs::remove_file(
+                hook_root
+                    .join(".git/objects")
+                    .join(&head[..2])
+                    .join(&head[2..]),
+            )
+            .unwrap();
+        });
+
+    let result = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(commit_git_repository_inner_with_policy_override(
+            &state,
+            GitRepositoryCommitRequest {
+                project_id: project.id,
+                root_id: root_id.clone(),
+                message: "projection diagnostic must stay native".into(),
+            },
+            0,
+            Some(policy),
+        ))
+        .unwrap();
+
+    let raw = Command::new("git")
+        .arg("-C")
+        .arg(&fixture.root_a)
+        .args(["diff", "--cached", "--name-status", "HEAD", "--"])
+        .output()
+        .unwrap();
+    let native_root = fixture.root_a.to_string_lossy().replace('\\', "/");
+    let raw_stderr = String::from_utf8_lossy(&raw.stderr).replace('\\', "/");
+    assert!(!raw.status.success());
+    assert!(raw.stderr.len() > 512);
+    assert!(raw_stderr.contains(&native_root));
+
+    let projection = result
+        .repositories
+        .roots
+        .iter()
+        .find(|candidate| candidate.root_id == root_id)
+        .unwrap();
+    assert_eq!(projection.state, "unavailable");
+    assert!(projection.changes.is_empty());
+    let message = projection.message.as_deref().unwrap();
+    assert!(message.len() <= 512);
+    assert!(!message.replace('\\', "/").contains(&native_root));
+    assert!(!message.contains(".git"));
+}
+
+#[test]
 fn stale_epoch_foreign_root_and_oversized_ids_reject_before_commit() {
     let fixture = TwoRootProject::new();
     let database = Database::open(&fixture.base.join("sage.db")).unwrap();
