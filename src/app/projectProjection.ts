@@ -53,6 +53,7 @@ export function snapshotProjection(snapshot: BootstrapSnapshot) {
     pendingCloseTabId: null,
     fileCreateInFlight: false,
     fileCreateError: null,
+    fileCreateNotice: null,
     requestGenerations: {},
     models: [],
     composerText: "",

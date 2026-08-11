@@ -313,6 +313,22 @@ describe("RightSidebar Source Control mutations", () => {
 });
 
 describe("RightSidebar Explorer New File", () => {
+  it("announces a committed creation warning outside the closed dialog", () => {
+    useWorkbenchStore.setState({
+      sidebarOpen: true,
+      sidebarView: "explorer",
+      project: { id: "project-a", name: "A", roots: [] },
+      fileCreateNotice:
+        "File created, but its durability could not be confirmed.",
+    });
+
+    render(<RightSidebar compact={false} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "File created, but its durability could not be confirmed.",
+    );
+  });
+
   it("previews an active file's parent, reports errors, and restores trigger focus", async () => {
     const createProjectFile = vi.fn(async () => {
       useWorkbenchStore.setState({ fileCreateError: "File already exists." });

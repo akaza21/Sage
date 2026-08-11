@@ -17,6 +17,9 @@ describe("browser file creation fixture", () => {
       rootId: "browser-root",
       relativePath: "src/new.ts",
     });
+    expect(result.outcome).toBe("committed");
+    expect(result.resourceConfirmed).toBe(true);
+    expect(result.warning).toBeNull();
     expect(result.parentListing.entries).toContainEqual({
       name: "new.ts",
       resource: result.resource,

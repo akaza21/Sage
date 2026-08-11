@@ -146,6 +146,7 @@ function ExplorerView() {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const listings = useWorkbenchStore((state) => state.directoryListings);
+  const fileCreateNotice = useWorkbenchStore((state) => state.fileCreateNotice);
   const parent = project
     ? explorerCreateParent(
         project,
@@ -167,6 +168,11 @@ function ExplorerView() {
           <NewFileControl parent={parent} rootName={rootName} />
         </span>
       </div>
+      {fileCreateNotice ? (
+        <p className="tree__limit" role="status">
+          {fileCreateNotice}
+        </p>
+      ) : null}
       <div className="tree" role="tree" aria-label="Project files">
         {project?.roots.map((root) => (
           <RootTree key={root.id} root={root} />

@@ -15,7 +15,8 @@ import type { ResourceState } from "../../app/store";
 export const MAX_NEW_FILE_NAME_BYTES = 255;
 export const MAX_NEW_FILE_PATH_BYTES = 16 * 1024;
 const MAX_RAW_NAME_UNITS = MAX_NEW_FILE_NAME_BYTES;
-const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i;
+const MAX_FILE_CREATE_WARNING_UNITS = 2_048;
 
 export function validateNewFileBasename(basename: string): string | null {
   if (!basename || basename.length > MAX_RAW_NAME_UNITS) {
@@ -125,11 +126,22 @@ export function validateCreateProjectFileResult(
     parent: ResourceRef;
     resource: ResourceRef;
   },
-): void {
+): boolean {
   const created = result.parentListing.entries.filter((entry) =>
     sameResource(entry.resource, expected.resource),
   );
+  const validCreatedEntry =
+    created.length === 1 &&
+    created[0].kind === "file" &&
+    created[0].byteLen !== null;
   if (
+    (result.outcome !== "committed" && result.outcome !== "effectUnknown") ||
+    (result.outcome === "effectUnknown" && !result.warning) ||
+    typeof result.resourceConfirmed !== "boolean" ||
+    (result.outcome === "committed" && !result.resourceConfirmed) ||
+    (result.warning !== null &&
+      (typeof result.warning !== "string" ||
+        result.warning.length > MAX_FILE_CREATE_WARNING_UNITS)) ||
     result.projectId !== expected.projectId ||
     result.projectGeneration !== expected.projectGeneration ||
     result.transitionEpoch !== expected.transitionEpoch ||
@@ -140,10 +152,10 @@ export function validateCreateProjectFileResult(
     result.parentListing.entries.some(
       (entry) => entry.resource.rootId !== expected.parent.rootId,
     ) ||
-    created.length !== 1 ||
-    created[0].kind !== "file" ||
-    created[0].byteLen !== 0
+    (result.resourceConfirmed && !validCreatedEntry) ||
+    (!result.resourceConfirmed && created.length !== 0 && !validCreatedEntry)
   ) {
     throw new Error("native file creation returned stale or invalid identity");
   }
+  return result.resourceConfirmed;
 }

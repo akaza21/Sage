@@ -268,6 +268,7 @@ export const createResourceSlice: StateCreator<
       selectedRootId: resource.rootId,
       selectedResource: resource,
       fileCreateError: null,
+      fileCreateNotice: null,
     });
   },
 

@@ -147,11 +147,14 @@ export interface CreateProjectFileRequest {
 }
 
 export interface CreateProjectFileResult {
+  outcome: "committed" | "effectUnknown";
+  resourceConfirmed: boolean;
   projectId: string;
   projectGeneration: number;
   transitionEpoch: number;
   resource: ResourceRef;
   parentListing: DirectoryListing;
+  warning: string | null;
 }
 
 export interface TextFile {

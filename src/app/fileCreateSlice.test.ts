@@ -33,6 +33,8 @@ function document(resource: ResourceRef, content = ""): EditorDocument {
 
 function result(): CreateProjectFileResult {
   return {
+    outcome: "committed",
+    resourceConfirmed: true,
     projectId: "project-a",
     projectGeneration: 3,
     transitionEpoch: 5,
@@ -44,6 +46,7 @@ function result(): CreateProjectFileResult {
         { name: "new.ts", resource: created, kind: "file", byteLen: 0 },
       ],
     },
+    warning: null,
   };
 }
 
@@ -151,6 +154,66 @@ describe("file creation store transaction", () => {
     ).toEqual({
       phase: "ready",
       value: result().parentListing,
+    });
+    expect(useWorkbenchStore.getState().fileCreateNotice).toBeNull();
+  });
+
+  it("applies committed disk truth and opens the exact file when durability or refresh warns", async () => {
+    vi.spyOn(desktop, "createProjectFile").mockResolvedValue({
+      ...result(),
+      outcome: "effectUnknown",
+      warning:
+        "The file exists, but durability could not be confirmed; Explorer used a reconciled projection.",
+    });
+
+    expect(
+      await useWorkbenchStore.getState().createProjectFile(parent, "new.ts"),
+    ).toBe(true);
+
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: expect.stringContaining("src/new.ts"),
+      fileCreateError: null,
+      fileCreateNotice:
+        "The file exists, but durability could not be confirmed; Explorer used a reconciled projection.",
+    });
+    expect(
+      useWorkbenchStore.getState().directoryListings[resourceKey(parent)],
+    ).toEqual({ phase: "ready", value: result().parentListing });
+    expect(desktop.openEditorDocument).toHaveBeenCalledWith(created);
+  });
+
+  it("refreshes and warns without opening an unconfirmed effect", async () => {
+    const loadDirectory = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({
+      loadDirectory,
+      directoryListings: {
+        [resourceKey(parent)]: {
+          phase: "ready",
+          value: { resource: parent, entries: [], truncated: false },
+        },
+      },
+    });
+    vi.spyOn(desktop, "createProjectFile").mockResolvedValue({
+      ...result(),
+      outcome: "effectUnknown",
+      resourceConfirmed: false,
+      parentListing: { ...result().parentListing, entries: [] },
+      warning: "The file creation outcome is unknown; Explorer is refreshing.",
+    });
+
+    expect(
+      await useWorkbenchStore.getState().createProjectFile(parent, "new.ts"),
+    ).toBe(true);
+
+    expect(loadDirectory).toHaveBeenCalledWith(parent);
+    expect(desktop.openEditorDocument).not.toHaveBeenCalled();
+    expect(
+      useWorkbenchStore.getState().directoryListings[resourceKey(parent)],
+    ).toBeUndefined();
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: "old",
+      fileCreateNotice:
+        "The file creation outcome is unknown; Explorer is refreshing.",
     });
   });
 

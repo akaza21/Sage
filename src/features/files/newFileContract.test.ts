@@ -5,6 +5,7 @@ import type { ProjectSummary, WorkbenchTab } from "../../domain/workbench";
 import {
   explorerCreateParent,
   MAX_NEW_FILE_NAME_BYTES,
+  validateCreateProjectFileResult,
   validateNewFileBasename,
   validateNewFilePath,
 } from "./newFileContract";
@@ -48,6 +49,12 @@ describe("new file portable contract", () => {
     "a\\b",
     "CON",
     "nul.txt",
+    "COM¹",
+    "com².ts",
+    "CoM³",
+    "LPT¹",
+    "lpt².md",
+    "LpT³",
     "bad.",
     "bad ",
     "a\u0000b",
@@ -70,6 +77,66 @@ describe("new file portable contract", () => {
         "x",
       ),
     ).toContain("path exceeds");
+  });
+
+  it("accepts a committed warning projection but rejects missing committed disk truth", () => {
+    const parent = { rootId: "root-a", relativePath: "src" };
+    const resource = { rootId: "root-a", relativePath: "src/new.ts" };
+    const result = {
+      outcome: "committed" as const,
+      resourceConfirmed: true,
+      projectId: "project-a",
+      projectGeneration: 3,
+      transitionEpoch: 4,
+      resource,
+      parentListing: {
+        resource: parent,
+        entries: [
+          { name: "new.ts", resource, kind: "file" as const, byteLen: 0 },
+        ],
+        truncated: false,
+      },
+      warning: "Created, but durability sync failed.",
+    };
+    expect(() =>
+      validateCreateProjectFileResult(result, {
+        projectId: "project-a",
+        projectGeneration: 3,
+        transitionEpoch: 4,
+        parent,
+        resource,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateCreateProjectFileResult(
+        { ...result, parentListing: { ...result.parentListing, entries: [] } },
+        {
+          projectId: "project-a",
+          projectGeneration: 3,
+          transitionEpoch: 4,
+          parent,
+          resource,
+        },
+      ),
+    ).toThrow("invalid identity");
+
+    expect(() =>
+      validateCreateProjectFileResult(
+        {
+          ...result,
+          outcome: "effectUnknown",
+          resourceConfirmed: false,
+          parentListing: { ...result.parentListing, entries: [] },
+        },
+        {
+          projectId: "project-a",
+          projectGeneration: 3,
+          transitionEpoch: 4,
+          parent,
+          resource,
+        },
+      ),
+    ).not.toThrow();
   });
 });
 

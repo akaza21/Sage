@@ -1,22 +1,74 @@
 use crate::{
-    domain::ResourceRef,
+    domain::{DirectoryListing, ResourceRef, WorkspaceEntry},
     error::{AppError, AppResult},
 };
 
-#[cfg(unix)]
 use std::path::Path;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use super::{Workspace, join_contract_path, validate_contract_path};
 
 pub(crate) const MAX_NEW_FILE_NAME_BYTES: usize = 255;
 pub(crate) const MAX_NEW_FILE_PATH_BYTES: usize = 16 * 1024;
 
+#[derive(Debug)]
+pub(crate) struct FileCreateCommit {
+    pub(crate) resource: ResourceRef,
+    pub(crate) resource_confirmed: bool,
+    pub(crate) parent_listing: DirectoryListing,
+    pub(crate) warning: Option<String>,
+}
+
 impl Workspace {
+    #[cfg(test)]
     pub(crate) fn create_empty_file(
         &self,
         parent: &ResourceRef,
         basename: &str,
-    ) -> AppResult<ResourceRef> {
+    ) -> AppResult<FileCreateCommit> {
+        self.create_empty_file_with(
+            parent,
+            basename,
+            |_| Ok(()),
+            |file| file.sync_all(),
+            |workspace, resource| workspace.list_directory(resource),
+        )
+    }
+
+    pub(crate) fn create_empty_file_observed(
+        &self,
+        parent: &ResourceRef,
+        basename: &str,
+        committed: Arc<AtomicBool>,
+    ) -> AppResult<FileCreateCommit> {
+        self.create_empty_file_with(
+            parent,
+            basename,
+            |_| Ok(()),
+            move |file| {
+                committed.store(true, Ordering::Release);
+                file.sync_all()
+            },
+            |workspace, resource| workspace.list_directory(resource),
+        )
+    }
+
+    fn create_empty_file_with<B, S, L>(
+        &self,
+        parent: &ResourceRef,
+        basename: &str,
+        before_create: B,
+        sync_file: S,
+        list_after: L,
+    ) -> AppResult<FileCreateCommit>
+    where
+        B: FnOnce(&Path) -> std::io::Result<()>,
+        S: FnOnce(&std::fs::File) -> std::io::Result<()>,
+        L: FnOnce(&Workspace, &ResourceRef) -> AppResult<DirectoryListing>,
+    {
         let relative_path = validate_new_file_path(&parent.relative_path, basename)?;
         let parent_path = self.validate_resource(parent, true)?;
         let before = self.list_directory(parent)?;
@@ -26,11 +78,118 @@ impl Workspace {
                 super::MAX_DIRECTORY_ENTRIES
             )));
         }
-        platform::create_new(self.root(), self.root_identity(), &parent_path, basename)?;
-        Ok(ResourceRef {
+        let resource = ResourceRef {
             root_id: self.root_id().into(),
             relative_path,
+        };
+        let (sync_warning, after_listing, resource_confirmed) = platform::create_new(
+            self.root(),
+            self.root_identity(),
+            &parent_path,
+            basename,
+            before_create,
+            sync_file,
+            || list_after(self, parent),
+        )?;
+        let (parent_listing, refresh_warning) = match (resource_confirmed, after_listing) {
+            (true, Ok(listing))
+                if !listing.truncated
+                    && listing.entries.iter().any(|entry| {
+                        entry.resource == resource
+                            && entry.kind == "file"
+                            && entry.byte_len.is_some()
+                    }) =>
+            {
+                (listing, None)
+            }
+            (true, _) => (
+                reconciled_listing(before, basename, resource.clone()),
+                Some(
+                    "Explorer refresh could not be confirmed; the created file was inserted into the last authoritative parent listing."
+                        .to_owned(),
+                ),
+            ),
+            (false, Ok(listing)) if !listing.truncated => (
+                listing,
+                Some(
+                    "File creation completed under the held parent, but the requested path identity is unknown; Explorer is refreshing."
+                        .to_owned(),
+                ),
+            ),
+            (false, _) => (
+                before,
+                Some(
+                    "File creation completed under the held parent, but the requested path identity is unknown; Explorer is refreshing."
+                        .to_owned(),
+                ),
+            ),
+        };
+        Ok(FileCreateCommit {
+            resource,
+            resource_confirmed,
+            parent_listing,
+            warning: combine_warnings(sync_warning, refresh_warning),
         })
+    }
+
+    pub(crate) fn confirm_created_file(
+        &self,
+        parent: &ResourceRef,
+        basename: &str,
+    ) -> AppResult<FileCreateCommit> {
+        let relative_path = validate_new_file_path(&parent.relative_path, basename)?;
+        let resource = ResourceRef {
+            root_id: self.root_id().into(),
+            relative_path,
+        };
+        let parent_listing = self.list_directory(parent)?;
+        let confirmed = !parent_listing.truncated
+            && parent_listing.entries.iter().any(|entry| {
+                entry.resource == resource && entry.kind == "file" && entry.byte_len.is_some()
+            });
+        if !confirmed {
+            return Err(AppError::InvalidRequest(
+                "file creation outcome could not be confirmed; refresh Explorer before retrying"
+                    .into(),
+            ));
+        }
+        Ok(FileCreateCommit {
+            resource,
+            resource_confirmed: true,
+            parent_listing,
+            warning: Some(
+                "The file exists, but the interrupted operation left its durability status unknown."
+                    .into(),
+            ),
+        })
+    }
+}
+
+fn reconciled_listing(
+    mut before: DirectoryListing,
+    basename: &str,
+    resource: ResourceRef,
+) -> DirectoryListing {
+    before.entries.push(WorkspaceEntry {
+        name: basename.into(),
+        resource,
+        kind: "file".into(),
+        byte_len: Some(0),
+    });
+    before.entries.sort_unstable_by(|left, right| {
+        let rank = |kind: &str| u8::from(kind != "directory");
+        rank(&left.kind)
+            .cmp(&rank(&right.kind))
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    before
+}
+
+fn combine_warnings(left: Option<String>, right: Option<String>) -> Option<String> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(format!("{left} {right}")),
+        (left, right) => left.or(right),
     }
 }
 
@@ -62,7 +221,10 @@ pub(crate) fn validate_new_file_basename(basename: &str) -> AppResult<()> {
             .strip_prefix("com")
             .or_else(|| folded.strip_prefix("lpt"))
             .is_some_and(|suffix| {
-                matches!(suffix, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
+                matches!(
+                    suffix,
+                    "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+                )
             });
     if reserved {
         return Err(AppError::InvalidRequest(
@@ -109,195 +271,7 @@ fn ensure_root_identity(
     Ok(())
 }
 
-#[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
-mod platform {
-    use std::{
-        ffi::CString,
-        fs::{File, OpenOptions},
-        os::{
-            fd::{AsRawFd, FromRawFd},
-            raw::{c_char, c_int},
-            unix::fs::OpenOptionsExt,
-        },
-        path::{Component, Path},
-    };
-
-    use crate::error::{AppError, AppResult};
-
-    use super::ensure_root_identity;
-
-    #[cfg(target_os = "macos")]
-    const O_DIRECTORY: c_int = 0x10_0000;
-    #[cfg(not(target_os = "macos"))]
-    const O_DIRECTORY: c_int = 0x1_0000;
-    #[cfg(target_os = "macos")]
-    const O_NOFOLLOW: c_int = 0x100;
-    #[cfg(not(target_os = "macos"))]
-    const O_NOFOLLOW: c_int = 0x2_0000;
-    #[cfg(target_os = "macos")]
-    const O_CLOEXEC: c_int = 0x100_0000;
-    #[cfg(not(target_os = "macos"))]
-    const O_CLOEXEC: c_int = 0x8_0000;
-    #[cfg(target_os = "macos")]
-    const O_CREAT: c_int = 0x200;
-    #[cfg(not(target_os = "macos"))]
-    const O_CREAT: c_int = 0x40;
-    #[cfg(target_os = "macos")]
-    const O_EXCL: c_int = 0x800;
-    #[cfg(not(target_os = "macos"))]
-    const O_EXCL: c_int = 0x80;
-    const O_RDONLY: c_int = 0;
-    const O_WRONLY: c_int = 1;
-
-    #[cfg(target_os = "macos")]
-    type Mode = u16;
-    #[cfg(not(target_os = "macos"))]
-    type Mode = u32;
-
-    unsafe extern "C" {
-        fn openat(dirfd: c_int, path: *const c_char, flags: c_int, mode: Mode) -> c_int;
-    }
-
-    pub(super) fn create_new(
-        root: &Path,
-        expected_root: super::super::RootIdentity,
-        parent: &str,
-        basename: &str,
-    ) -> AppResult<()> {
-        let mut directory = OpenOptions::new()
-            .read(true)
-            .custom_flags(O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-            .open(root)?;
-        ensure_root_identity(&directory.metadata()?, expected_root)?;
-        for component in Path::new(parent).components() {
-            let Component::Normal(name) = component else {
-                return Err(AppError::InvalidRequest(
-                    "file parent is not canonical".into(),
-                ));
-            };
-            let name = CString::new(name.as_encoded_bytes())
-                .map_err(|_| AppError::InvalidRequest("file parent contains a null byte".into()))?;
-            // SAFETY: the directory descriptor and NUL-terminated name remain valid for the call.
-            let descriptor = unsafe {
-                openat(
-                    directory.as_raw_fd(),
-                    name.as_ptr(),
-                    O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC,
-                    0,
-                )
-            };
-            if descriptor < 0 {
-                return Err(std::io::Error::last_os_error().into());
-            }
-            // SAFETY: openat returned a new owned descriptor on success.
-            directory = unsafe { File::from_raw_fd(descriptor) };
-        }
-        let basename = CString::new(basename)
-            .map_err(|_| AppError::InvalidRequest("file name contains a null byte".into()))?;
-        // SAFETY: the directory descriptor and NUL-terminated basename remain valid for the call.
-        let descriptor = unsafe {
-            openat(
-                directory.as_raw_fd(),
-                basename.as_ptr(),
-                O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
-                0o666 as Mode,
-            )
-        };
-        if descriptor < 0 {
-            return Err(std::io::Error::last_os_error().into());
-        }
-        // SAFETY: openat returned a new owned descriptor on success.
-        unsafe { File::from_raw_fd(descriptor) }.sync_all()?;
-        Ok(())
-    }
-}
-
-#[cfg(windows)]
-mod platform {
-    use std::{
-        fs::{File, OpenOptions},
-        os::windows::fs::{MetadataExt, OpenOptionsExt},
-        path::{Component, Path},
-    };
-    use windows_sys::Win32::Storage::FileSystem::{
-        FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
-        FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE,
-    };
-
-    use crate::error::{AppError, AppResult};
-
-    fn open_directory(path: &Path) -> AppResult<File> {
-        let directory = OpenOptions::new()
-            .access_mode(FILE_READ_ATTRIBUTES)
-            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
-            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
-            .open(path)?;
-        let metadata = directory.metadata()?;
-        if !metadata.is_dir() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-            return Err(AppError::InvalidRequest(
-                "file parent traverses a reparse point".into(),
-            ));
-        }
-        Ok(directory)
-    }
-
-    pub(super) fn create_new(
-        root: &Path,
-        expected_root: super::super::RootIdentity,
-        parent: &str,
-        basename: &str,
-    ) -> AppResult<()> {
-        let root_guard = open_directory(root)?;
-        if super::super::root_identity_file(&root_guard)? != expected_root {
-            return Err(AppError::InvalidRequest(
-                "workspace root identity changed before file creation".into(),
-            ));
-        }
-        let mut guards = vec![root_guard];
-        let mut directory = root.to_path_buf();
-        for component in Path::new(parent).components() {
-            let Component::Normal(name) = component else {
-                return Err(AppError::InvalidRequest(
-                    "file parent is not canonical".into(),
-                ));
-            };
-            directory.push(name);
-            guards.push(open_directory(&directory)?);
-        }
-        let target = directory.join(basename);
-        let file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
-            .open(target)?;
-        file.sync_all()?;
-        drop(guards);
-        Ok(())
-    }
-}
-
-#[cfg(not(any(
-    windows,
-    target_os = "linux",
-    target_os = "android",
-    target_os = "macos"
-)))]
-mod platform {
-    use std::path::Path;
-
-    use crate::error::{AppError, AppResult};
-
-    pub(super) fn create_new(
-        _root: &Path,
-        _expected_root: super::super::RootIdentity,
-        _parent: &str,
-        _basename: &str,
-    ) -> AppResult<()> {
-        Err(AppError::InvalidRequest(
-            "safe file creation is unavailable on this platform".into(),
-        ))
-    }
-}
+mod platform;
 
 #[cfg(test)]
 mod tests;

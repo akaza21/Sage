@@ -18,6 +18,7 @@ const MAX_FILE_CREATE_ERROR_UNITS = 2_048;
 export interface FileCreateSlice {
   fileCreateInFlight: boolean;
   fileCreateError: string | null;
+  fileCreateNotice: string | null;
   fileCreateRequestGeneration: number;
   clearFileCreateError: () => void;
   createProjectFile: (
@@ -46,6 +47,15 @@ function boundedListingUpdate(
   return next;
 }
 
+function withoutListing(
+  current: Record<string, ResourceState<DirectoryListing>>,
+  resource: ResourceRef,
+) {
+  const next = { ...current };
+  delete next[resourceKey(resource)];
+  return next;
+}
+
 function boundedExpandedUpdate(current: Record<string, boolean>, key: string) {
   const next = { ...current };
   delete next[key];
@@ -65,6 +75,7 @@ export const createFileCreateSlice: StateCreator<
 > = (set, get) => ({
   fileCreateInFlight: false,
   fileCreateError: null,
+  fileCreateNotice: null,
   fileCreateRequestGeneration: 0,
 
   clearFileCreateError: () => set({ fileCreateError: null }),
@@ -104,6 +115,7 @@ export const createFileCreateSlice: StateCreator<
     set({
       fileCreateInFlight: true,
       fileCreateError: null,
+      fileCreateNotice: null,
       fileCreateRequestGeneration: requestGeneration,
     });
     try {
@@ -122,7 +134,7 @@ export const createFileCreateSlice: StateCreator<
         parent,
         basename,
       });
-      validateCreateProjectFileResult(result, {
+      const resourceConfirmed = validateCreateProjectFileResult(result, {
         projectId: project.id,
         projectGeneration,
         transitionEpoch,
@@ -137,20 +149,25 @@ export const createFileCreateSlice: StateCreator<
         return false;
       }
       set((state) => ({
-        ...resourceTabUpdate(state, "file", resource),
-        activeEditor: null,
-        directoryListings: boundedListingUpdate(
-          state.directoryListings,
-          result.parentListing,
-        ),
+        ...(resourceConfirmed
+          ? {
+              ...resourceTabUpdate(state, "file", result.resource),
+              activeEditor: null,
+            }
+          : {}),
+        directoryListings: resourceConfirmed
+          ? boundedListingUpdate(state.directoryListings, result.parentListing)
+          : withoutListing(state.directoryListings, parent),
         expandedDirectories: boundedExpandedUpdate(
           state.expandedDirectories,
           resourceKey(parent),
         ),
         fileCreateInFlight: false,
         fileCreateError: null,
+        fileCreateNotice: result.warning,
       }));
-      await get().loadEditor(resource);
+      if (resourceConfirmed) await get().loadEditor(result.resource);
+      else await get().loadDirectory(parent);
       return true;
     } catch (error) {
       if (

@@ -70,10 +70,13 @@ export function createBrowserProjectFile(
   };
   browserDirectories.set(parentKey, nextListing);
   return structuredClone({
+    outcome: "committed" as const,
+    resourceConfirmed: true,
     projectId: request.projectId,
     projectGeneration: request.projectGeneration,
     transitionEpoch: request.expectedTransitionEpoch,
     resource,
     parentListing: nextListing,
+    warning: null,
   });
 }

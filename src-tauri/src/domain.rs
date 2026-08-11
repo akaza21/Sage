@@ -206,14 +206,24 @@ pub struct CreateProjectFileRequest {
     pub basename: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FileCreationOutcome {
+    Committed,
+    EffectUnknown,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateProjectFileResult {
+    pub outcome: FileCreationOutcome,
+    pub resource_confirmed: bool,
     pub project_id: String,
     pub project_generation: u64,
     pub transition_epoch: u64,
     pub resource: ResourceRef,
     pub parent_listing: DirectoryListing,
+    pub warning: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

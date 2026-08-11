@@ -3,7 +3,10 @@ use std::{fs, path::Path, sync::Arc};
 use uuid::Uuid;
 
 use super::*;
-use crate::{domain::ResourceRef, persistence::Database};
+use crate::{
+    domain::{FileCreationOutcome, ResourceRef},
+    persistence::Database,
+};
 
 fn fixture() -> (
     std::path::PathBuf,
@@ -37,6 +40,9 @@ fn returns_exact_identity_and_authoritative_parent_listing() {
         let result = execute(&state, request(&project.id, &project.roots[0].id, "new.rs"))
             .await
             .unwrap();
+        assert_eq!(result.outcome, FileCreationOutcome::Committed);
+        assert!(result.resource_confirmed);
+        assert!(result.warning.is_none());
         assert_eq!(result.project_id, project.id);
         assert_eq!(result.project_generation, 7);
         assert_eq!(result.transition_epoch, 0);
@@ -46,6 +52,40 @@ fn returns_exact_identity_and_authoritative_parent_listing() {
         }));
         fs::remove_dir_all(root).unwrap();
     });
+}
+
+#[test]
+fn bounds_project_and_root_ids_before_database_access() {
+    let exact = "a".repeat(512);
+    let plus_one = "a".repeat(513);
+    assert!(validate_request_id("Project ID", &exact).is_ok());
+    assert!(validate_request_id("root ID", &exact).is_ok());
+    assert!(validate_request_id("Project ID", &plus_one).is_err());
+    assert!(validate_request_id("root ID", &plus_one).is_err());
+    assert!(validate_request_id("Project ID", "").is_err());
+}
+
+#[test]
+fn interrupted_committed_operation_recovers_as_effect_unknown() {
+    let (root, state, project) = fixture();
+    fs::write(root.join("src/interrupted.rs"), b"").unwrap();
+    let result = recover_effect_unknown(
+        state.database.clone(),
+        request(&project.id, &project.roots[0].id, "interrupted.rs"),
+        0,
+    )
+    .unwrap();
+    assert_eq!(result.outcome, FileCreationOutcome::EffectUnknown);
+    assert!(result.resource_confirmed);
+    assert!(result.warning.as_deref().unwrap().contains("unknown"));
+    assert!(
+        result
+            .parent_listing
+            .entries
+            .iter()
+            .any(|entry| entry.resource == result.resource && entry.kind == "file")
+    );
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
