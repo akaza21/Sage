@@ -58,8 +58,8 @@
     {
       "id": "codex-0145-test-plan",
       "relativePath": "../../ADE-0006B-codex-acp/test-plan.md",
-      "bytes": 14340,
-      "sha256": "b5401b02c13c5765c53aa1ed5f5633a06a925629bce91526bfda9a11053abaf1"
+      "bytes": 16105,
+      "sha256": "ea2a05f6e74d0c74ea521b7617ad5b69eda0f750437bb0ee2e829d8bf5463ad3"
     },
     {
       "id": "codex-0145-security-policy-source",

@@ -48,7 +48,7 @@ const betaAcceptanceSha256 = createHash("sha256")
   .digest("hex");
 if (
   betaAcceptanceSha256 !==
-    "3a6513190351bb71398a2ec1081e2db6f2a3c21aa860235d565f0523f49b85e4" ||
+    "c947f075aea6ae44f425a9a1db983024bb4acebc7b1de64194e5d774776a6b7a" ||
   betaAcceptance.schemaVersion !== 1 ||
   betaAcceptance.status !== "frozen-thresholds-awaiting-candidate-verifier" ||
   betaAcceptance.workItem !== "BETA-0001"
