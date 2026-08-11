@@ -1,7 +1,4 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::Arc;
 
 use rusqlite::{OptionalExtension, params};
 use tauri::State;
@@ -14,7 +11,10 @@ use crate::{
     resource_commands::build_bootstrap_snapshot,
     state::AppState,
     workbench_persistence::validate_layout,
-    workspace::{Workspace, file_rename::FileRenameCommit},
+    workspace::{
+        Workspace,
+        file_rename::{FileRenameCommit, FileRenameMarker},
+    },
 };
 
 const MAX_JAVASCRIPT_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
@@ -34,9 +34,10 @@ async fn execute(
     state: &AppState,
     request: RenameProjectFileRequest,
 ) -> AppResult<RenameProjectFileResult> {
-    execute_with(state, request, |_| Ok(())).await
+    execute_with_hooks(state, request, |_| Ok(()), || Ok(()), || Ok(())).await
 }
 
+#[cfg(test)]
 async fn execute_with<F>(
     state: &AppState,
     request: RenameProjectFileRequest,
@@ -45,44 +46,92 @@ async fn execute_with<F>(
 where
     F: FnOnce(&rusqlite::Transaction<'_>) -> AppResult<()> + Send + 'static,
 {
+    execute_with_hooks(state, request, after_rename, || Ok(()), || Ok(())).await
+}
+
+async fn execute_with_hooks<F, R, S>(
+    state: &AppState,
+    request: RenameProjectFileRequest,
+    after_rename: F,
+    before_recovery: R,
+    before_snapshot: S,
+) -> AppResult<RenameProjectFileResult>
+where
+    F: FnOnce(&rusqlite::Transaction<'_>) -> AppResult<()> + Send + 'static,
+    R: FnOnce() -> AppResult<()>,
+    S: FnOnce() -> AppResult<()>,
+{
     validate_request(&request)?;
-    let transition_epoch = state.project_transitions.lock().await;
+    let mut transition_epoch = state.project_transitions.lock().await;
     if *transition_epoch != request.expected_transition_epoch {
         return Err(AppError::InvalidRequest(
             "project changed before file rename could run".into(),
         ));
     }
-    let response_epoch = *transition_epoch;
+    if *transition_epoch >= MAX_JAVASCRIPT_SAFE_INTEGER {
+        return Err(AppError::InvalidRequest(
+            "project transition epoch exhausted before file rename".into(),
+        ));
+    }
     let database = state.database.clone();
     let recovery_database = database.clone();
     let operation_request = request.clone();
     let recovery_request = request.clone();
-    let committed = Arc::new(AtomicBool::new(false));
-    let operation_committed = Arc::clone(&committed);
+    let marker = Arc::new(FileRenameMarker::default());
+    let operation_marker = Arc::clone(&marker);
+    let operations = state.editor_operations.clone();
+    let operation_ticket = operations.issue_ticket()?;
     let operation = tauri::async_runtime::spawn_blocking(move || {
-        execute_blocking(
-            database,
-            operation_request,
-            operation_committed,
-            after_rename,
-        )
+        let coordinated_marker = Arc::clone(&operation_marker);
+        let coordinated = operations.execute_project_transition(operation_ticket, || {
+            let result =
+                execute_blocking(database, operation_request, operation_marker, after_rename);
+            if result.is_ok() || coordinated_marker.committed() {
+                Ok(result)
+            } else {
+                Err(result.expect_err("failed rename result exists"))
+            }
+        });
+        coordinated.and_then(std::convert::identity)
     })
     .await;
-    let (outcome, commit) = match operation {
+    let filesystem_committed = marker.committed();
+    if filesystem_committed {
+        *transition_epoch += 1;
+    }
+    let response_epoch = *transition_epoch;
+    let (mut outcome, mut commit) = match operation {
         Ok(Ok(commit)) if commit.resource_confirmed => (FileRenameOutcome::Committed, commit),
         Ok(Ok(commit)) => (FileRenameOutcome::EffectUnknown, commit),
-        Ok(Err(_error)) if committed.load(Ordering::Acquire) => (
-            FileRenameOutcome::EffectUnknown,
-            recover_effect_unknown(recovery_database, recovery_request)?,
-        ),
-        Err(_) if committed.load(Ordering::Acquire) => (
-            FileRenameOutcome::EffectUnknown,
-            recover_effect_unknown(recovery_database, recovery_request)?,
-        ),
+        Ok(Err(_)) | Err(_) if filesystem_committed => {
+            let recovered = before_recovery().and_then(|()| {
+                recover_effect_unknown(recovery_database, recovery_request, &marker)
+            });
+            (
+                FileRenameOutcome::EffectUnknown,
+                recovered.unwrap_or_else(|_| {
+                    fallback_commit(
+                        &request,
+                        "File rename changed the filesystem, but retained-authority recovery failed; Explorer is refreshing.",
+                    )
+                }),
+            )
+        }
         Ok(Err(error)) => return Err(error),
         Err(error) => return Err(AppError::InvalidRequest(error.to_string())),
     };
-    let snapshot = build_bootstrap_snapshot(state, response_epoch).await?;
+    let snapshot = if before_snapshot().is_ok() {
+        build_bootstrap_snapshot(state, response_epoch).await.ok()
+    } else {
+        None
+    };
+    if snapshot.is_none() {
+        outcome = FileRenameOutcome::EffectUnknown;
+        append_warning(
+            &mut commit,
+            "The authoritative layout snapshot was unavailable after file rename; live UI state was preserved and Explorer is refreshing.",
+        );
+    }
     Ok(result_from_commit(
         request,
         response_epoch,
@@ -95,7 +144,7 @@ where
 fn execute_blocking<F>(
     database: Database,
     request: RenameProjectFileRequest,
-    committed: Arc<AtomicBool>,
+    marker: Arc<FileRenameMarker>,
     after_rename: F,
 ) -> AppResult<FileRenameCommit>
 where
@@ -108,7 +157,7 @@ where
     ensure_resources_closed(&transaction, &request.project_id, &request.source, &target)?;
     validate_layout(&transaction, &request.current_layout)?;
     ensure_request_resources_closed(&request, &target)?;
-    let commit = workspace.rename_file_observed(&request.source, &request.basename, committed)?;
+    let commit = workspace.rename_file_observed(&request.source, &request.basename, marker)?;
     if commit.resource_confirmed {
         migrate_selection(
             &transaction,
@@ -125,6 +174,7 @@ where
 fn recover_effect_unknown(
     database: Database,
     request: RenameProjectFileRequest,
+    marker: &FileRenameMarker,
 ) -> AppResult<FileRenameCommit> {
     let mut connection = database.write_connection()?;
     let transaction = connection.transaction()?;
@@ -133,7 +183,7 @@ fn recover_effect_unknown(
     ensure_resources_closed(&transaction, &request.project_id, &request.source, &target)?;
     validate_layout(&transaction, &request.current_layout)?;
     ensure_request_resources_closed(&request, &target)?;
-    let commit = workspace.confirm_renamed_file(&request.source, &request.basename)?;
+    let commit = workspace.confirm_renamed_file(&request.source, &request.basename, marker)?;
     if commit.resource_confirmed {
         migrate_selection(
             &transaction,
@@ -273,6 +323,34 @@ fn migrate_selection(
     Ok(())
 }
 
+fn fallback_commit(request: &RenameProjectFileRequest, warning: &str) -> FileRenameCommit {
+    let parent = request
+        .source
+        .relative_path
+        .rsplit_once('/')
+        .map_or("", |(parent, _)| parent);
+    let relative_path = if parent.is_empty() {
+        request.basename.clone()
+    } else {
+        format!("{parent}/{}", request.basename)
+    };
+    FileRenameCommit::unconfirmed(
+        request.source.clone(),
+        ResourceRef {
+            root_id: request.source.root_id.clone(),
+            relative_path,
+        },
+        warning,
+    )
+}
+
+fn append_warning(commit: &mut FileRenameCommit, warning: &str) {
+    commit.warning = Some(match commit.warning.take() {
+        Some(existing) => format!("{existing} {warning}"),
+        None => warning.into(),
+    });
+}
+
 fn validate_request(request: &RenameProjectFileRequest) -> AppResult<()> {
     validate_request_id("Project ID", &request.project_id)?;
     validate_request_id("root ID", &request.source.root_id)?;
@@ -308,7 +386,7 @@ fn result_from_commit(
     transition_epoch: u64,
     outcome: FileRenameOutcome,
     commit: FileRenameCommit,
-    snapshot: crate::domain::BootstrapSnapshot,
+    snapshot: Option<crate::domain::BootstrapSnapshot>,
 ) -> RenameProjectFileResult {
     RenameProjectFileResult {
         outcome,

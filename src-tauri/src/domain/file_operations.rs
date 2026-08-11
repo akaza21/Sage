@@ -128,6 +128,6 @@ pub struct RenameProjectFileResult {
     pub source: ResourceRef,
     pub target: ResourceRef,
     pub parent_listing: Option<DirectoryListing>,
-    pub snapshot: BootstrapSnapshot,
+    pub snapshot: Option<BootstrapSnapshot>,
     pub warning: Option<String>,
 }

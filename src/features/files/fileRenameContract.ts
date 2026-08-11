@@ -52,18 +52,22 @@ export function validateFileRenameResult(
     targetEntries[0].byteLen !== null;
   const snapshot = result.snapshot;
   const snapshotIdentityValid =
-    snapshot.transitionEpoch === expected.transitionEpoch &&
-    snapshot.project?.id === expected.projectId &&
-    snapshot.project.roots.some((root) => root.id === expected.source.rootId) &&
-    !snapshot.tabs.some(
-      (tab) =>
-        (tab.kind === "file" || tab.kind === "diff") &&
-        (sameResource(tab.resource, expected.source) ||
-          sameResource(tab.resource, expected.target)),
-    );
+    snapshot === null ||
+    (snapshot.transitionEpoch === expected.transitionEpoch + 1 &&
+      snapshot.project?.id === expected.projectId &&
+      snapshot.project.roots.some(
+        (root) => root.id === expected.source.rootId,
+      ) &&
+      !snapshot.tabs.some(
+        (tab) =>
+          (tab.kind === "file" || tab.kind === "diff") &&
+          (sameResource(tab.resource, expected.source) ||
+            sameResource(tab.resource, expected.target)),
+      ));
   if (
     (result.outcome !== "committed" && result.outcome !== "effectUnknown") ||
     (result.outcome === "committed" && !result.resourceConfirmed) ||
+    (result.outcome === "committed" && snapshot === null) ||
     (result.outcome === "effectUnknown" && !result.warning) ||
     typeof result.resourceConfirmed !== "boolean" ||
     (result.warning !== null &&
@@ -71,13 +75,14 @@ export function validateFileRenameResult(
         result.warning.length > MAX_FILE_RENAME_WARNING_UNITS)) ||
     result.projectId !== expected.projectId ||
     result.projectGeneration !== expected.projectGeneration ||
-    result.transitionEpoch !== expected.transitionEpoch ||
+    result.transitionEpoch !== expected.transitionEpoch + 1 ||
     !sameResource(result.source, expected.source) ||
     !sameResource(result.target, expected.target) ||
     !snapshotIdentityValid ||
     (result.resourceConfirmed && !confirmedListing) ||
     (!result.resourceConfirmed && listing?.truncated === true) ||
     (result.resourceConfirmed &&
+      snapshot !== null &&
       !sameResource(snapshot.selectedResource, expected.target))
   ) {
     throw new Error("native file rename returned stale or invalid identity");

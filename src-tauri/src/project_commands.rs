@@ -72,29 +72,47 @@ pub async fn add_project_root_from_picker(
 }
 
 #[tauri::command]
-pub fn persist_project_layout(
+pub async fn persist_project_layout(
     state: State<'_, AppState>,
     request: ProjectLayoutRequest,
+    expected_transition_epoch: u64,
 ) -> Result<(), String> {
-    state
-        .database
-        .persist_project_layout(&request)
+    persist_project_layout_inner(&state, Some(request), expected_transition_epoch)
+        .await
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-pub fn persist_project_layout_and_close(
+pub async fn persist_project_layout_and_close(
     window: WebviewWindow,
     state: State<'_, AppState>,
     request: Option<ProjectLayoutRequest>,
+    expected_transition_epoch: u64,
 ) -> Result<(), String> {
-    if let Some(request) = request {
-        state
-            .database
-            .persist_project_layout(&request)
-            .map_err(|error| error.to_string())?;
-    }
+    persist_project_layout_inner(&state, request, expected_transition_epoch)
+        .await
+        .map_err(|error| error.to_string())?;
     window.destroy().map_err(|error| error.to_string())
+}
+
+pub(crate) async fn persist_project_layout_inner(
+    state: &AppState,
+    request: Option<ProjectLayoutRequest>,
+    expected_transition_epoch: u64,
+) -> AppResult<()> {
+    let transition_epoch = state.project_transitions.lock().await;
+    if *transition_epoch != expected_transition_epoch {
+        return Err(crate::error::AppError::InvalidRequest(
+            "project changed before layout persistence could run".into(),
+        ));
+    }
+    let Some(request) = request else {
+        return Ok(());
+    };
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || database.persist_project_layout(&request))
+        .await
+        .map_err(|error| crate::error::AppError::InvalidRequest(error.to_string()))?
 }
 
 #[tauri::command]
@@ -241,6 +259,51 @@ mod tests {
         assert!(!apply_create_selection(&database, None).unwrap());
         assert!(!apply_add_root_selection(&database, "unused", None).unwrap());
         assert_eq!(database.project_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn layout_persistence_is_epoch_checked_without_advancing_the_epoch() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let root = std::env::temp_dir().join(format!("sage-layout-epoch-{}", Uuid::new_v4()));
+            std::fs::create_dir_all(&root).unwrap();
+            let database = Database::open(Path::new(":memory:")).unwrap();
+            let project = database.create_project_from_root(&root).unwrap();
+            let snapshot = database.bootstrap_snapshot().unwrap();
+            let selected = crate::domain::ResourceRef {
+                root_id: project.roots[0].id.clone(),
+                relative_path: "selected.txt".into(),
+            };
+            let layout = ProjectLayoutRequest {
+                project_id: project.id,
+                tabs: snapshot.tabs,
+                active_tab_id: snapshot.active_tab_id,
+                selected_root_id: Some(project.roots[0].id.clone()),
+                selected_resource: Some(selected.clone()),
+            };
+            let state = AppState::new(database);
+
+            persist_project_layout_inner(&state, Some(layout.clone()), 0)
+                .await
+                .unwrap();
+            assert_eq!(*state.project_transitions.lock().await, 0);
+            *state.project_transitions.lock().await = 1;
+            let mut stale = layout;
+            stale.selected_resource = None;
+            assert!(
+                persist_project_layout_inner(&state, Some(stale), 0)
+                    .await
+                    .is_err()
+            );
+            assert_eq!(
+                state
+                    .database
+                    .bootstrap_snapshot()
+                    .unwrap()
+                    .selected_resource,
+                Some(selected)
+            );
+            std::fs::remove_dir_all(root).unwrap();
+        });
     }
 
     #[test]

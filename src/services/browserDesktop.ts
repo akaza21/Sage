@@ -145,7 +145,13 @@ export const browserDesktop = {
       "Git stage, unstage, and discard require the native Sage desktop",
     );
   },
-  async persistProjectLayout(request: ProjectLayoutRequest) {
+  async persistProjectLayout(
+    request: ProjectLayoutRequest,
+    expectedTransitionEpoch: number,
+  ) {
+    if (expectedTransitionEpoch !== snapshot.transitionEpoch) {
+      throw new Error("project changed before layout persistence could run");
+    }
     snapshot.tabs = structuredClone(
       projectBrowserChatTitles(request.tabs, chatTitles),
     );
@@ -166,7 +172,7 @@ export const browserDesktop = {
       snapshot.project?.id,
       durableChatIds.size,
     );
-    await this.persistProjectLayout(currentLayout);
+    await this.persistProjectLayout(currentLayout, expectedTransitionEpoch);
     const chatCount = durableChatIds.size;
     const chat = createBrowserChatTab(snapshot.tabs, chatCount);
     snapshot.tabs = [...snapshot.tabs, chat];
@@ -195,7 +201,7 @@ export const browserDesktop = {
       snapshot.transitionEpoch,
       durableChatIds,
     );
-    await this.persistProjectLayout(currentLayout);
+    await this.persistProjectLayout(currentLayout, expectedTransitionEpoch);
     snapshot.transitionEpoch += 1;
     return {
       committed: true,
@@ -252,7 +258,7 @@ export const browserDesktop = {
     );
     assertExactBrowserChatAttachments(request.currentLayout, snapshot.tabs);
     const next = archiveChatLayout(request.currentLayout, request.chatId);
-    await this.persistProjectLayout(next);
+    await this.persistProjectLayout(next, expectedTransitionEpoch);
     snapshot.transitionEpoch += 1;
     return {
       committed: true,
@@ -291,7 +297,7 @@ export const browserDesktop = {
       request.projectId,
       snapshot.project?.roots ?? [],
     );
-    await this.persistProjectLayout(next);
+    await this.persistProjectLayout(next, expectedTransitionEpoch);
     snapshot.transitionEpoch += 1;
     return {
       committed: true,
@@ -307,7 +313,10 @@ export const browserDesktop = {
     if (expectedTransitionEpoch !== snapshot.transitionEpoch) {
       throw new Error("project changed before the requested transition");
     }
-    await this.persistProjectLayout(request.currentLayout);
+    await this.persistProjectLayout(
+      request.currentLayout,
+      expectedTransitionEpoch,
+    );
     if (request.targetProjectId !== snapshot.project?.id) {
       throw new Error("Browser fixture has one project.");
     }

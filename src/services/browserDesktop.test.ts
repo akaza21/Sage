@@ -445,7 +445,10 @@ describe("browser simulator history bounds", () => {
         })),
       ],
     };
-    await browserDesktop.persistProjectLayout(fullLayout);
+    await browserDesktop.persistProjectLayout(
+      fullLayout,
+      archivedLast.transitionEpoch,
+    );
     const beforePlusOne = await browserDesktop.getBootstrapSnapshot();
     await expect(
       browserDesktop.restoreChat(

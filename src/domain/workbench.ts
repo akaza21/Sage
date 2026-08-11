@@ -179,7 +179,7 @@ export interface RenameProjectFileResult {
   source: ResourceRef;
   target: ResourceRef;
   parentListing: DirectoryListing | null;
-  snapshot: BootstrapSnapshot;
+  snapshot: BootstrapSnapshot | null;
   warning: string | null;
 }
 

@@ -16,7 +16,7 @@ const parent = { rootId: "root-a", relativePath: "src" };
 
 function snapshot(selectedResource: ResourceRef | null = target) {
   return {
-    transitionEpoch: 5,
+    transitionEpoch: 6,
     project: { id: "project-a", roots: [{ id: "root-a" }] },
     selectedResource,
     selectedRootId: "root-a",
@@ -30,7 +30,7 @@ function result(): RenameProjectFileResult {
     resourceConfirmed: true,
     projectId: "project-a",
     projectGeneration: 3,
-    transitionEpoch: 5,
+    transitionEpoch: 6,
     source,
     target,
     parentListing: {
@@ -59,7 +59,8 @@ describe("file rename contract", () => {
 
   it("rejects stale, source-present, truncated, and unconfirmed committed results", () => {
     const cases: RenameProjectFileResult[] = [
-      { ...result(), transitionEpoch: 6 },
+      { ...result(), transitionEpoch: 5 },
+      { ...result(), transitionEpoch: 7 },
       { ...result(), resourceConfirmed: false },
       {
         ...result(),
@@ -108,5 +109,25 @@ describe("file rename contract", () => {
         target,
       }),
     ).toBe(false);
+  });
+
+  it("allows a typed effect-unknown envelope when snapshot recovery fails", () => {
+    expect(
+      validateFileRenameResult(
+        {
+          ...result(),
+          outcome: "effectUnknown",
+          snapshot: null,
+          warning: "The authoritative layout snapshot was unavailable.",
+        },
+        {
+          projectId: "project-a",
+          projectGeneration: 3,
+          transitionEpoch: 5,
+          source,
+          target,
+        },
+      ),
+    ).toBe(true);
   });
 });

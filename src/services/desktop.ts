@@ -215,19 +215,26 @@ export const desktop = {
       : browserDesktop.restoreChat(request, expectedTransitionEpoch);
   },
 
-  persistProjectLayout(request: ProjectLayoutRequest): Promise<void> {
+  persistProjectLayout(
+    request: ProjectLayoutRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<void> {
     return isTauriRuntime()
-      ? invoke("persist_project_layout", { request })
-      : browserDesktop.persistProjectLayout(request);
+      ? invoke("persist_project_layout", { request, expectedTransitionEpoch })
+      : browserDesktop.persistProjectLayout(request, expectedTransitionEpoch);
   },
 
   persistProjectLayoutAndClose(
     request: ProjectLayoutRequest | null,
+    expectedTransitionEpoch: number,
   ): Promise<void> {
     return isTauriRuntime()
-      ? invoke("persist_project_layout_and_close", { request })
+      ? invoke("persist_project_layout_and_close", {
+          request,
+          expectedTransitionEpoch,
+        })
       : request
-        ? browserDesktop.persistProjectLayout(request)
+        ? browserDesktop.persistProjectLayout(request, expectedTransitionEpoch)
         : Promise.resolve();
   },
 

@@ -192,16 +192,26 @@ export const createProjectSlice: StateCreator<
     },
 
     persistLayout: async () => {
+      if (get().projectTransitioning) return;
       await get().flushActiveEditor();
       const request = layout(get());
       if (request) {
-        await desktop.persistProjectLayout(request);
+        await desktop.persistProjectLayout(
+          request,
+          get().nativeTransitionEpoch,
+        );
       }
     },
 
     closeWorkbench: async () => {
+      if (get().projectTransitioning) {
+        throw new Error("Project layout mutation is already in progress");
+      }
       await get().flushActiveEditor();
-      await desktop.persistProjectLayoutAndClose(layout(get()));
+      await desktop.persistProjectLayoutAndClose(
+        layout(get()),
+        get().nativeTransitionEpoch,
+      );
     },
 
     createProject: async () => {

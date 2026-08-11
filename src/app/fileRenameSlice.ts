@@ -11,7 +11,7 @@ import {
   validateFileRenameResult,
 } from "../features/files/fileRenameContract";
 import { desktop } from "../services/desktop";
-import { currentProjectLayout, snapshotProjection } from "./projectProjection";
+import { currentProjectLayout } from "./projectProjection";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import type { WorkbenchState } from "./store";
 
@@ -57,9 +57,57 @@ function intentMatches(
   return (
     matchesProjectIntent(state, projectGeneration, projectId) &&
     state.nativeTransitionEpoch === transitionEpoch &&
-    !state.projectTransitioning &&
+    state.projectTransitioning &&
+    state.fileRenameInFlight &&
     state.fileRenameRequestGeneration === requestGeneration
   );
+}
+
+function renameProjection(
+  state: WorkbenchState,
+  result: Awaited<ReturnType<typeof desktop.renameProjectFile>>,
+  parent: ResourceRef,
+) {
+  const parentKey = resourceKey(parent);
+  const directoryListings = { ...state.directoryListings };
+  if (result.resourceConfirmed && result.parentListing) {
+    delete directoryListings[parentKey];
+    directoryListings[parentKey] = {
+      phase: "ready" as const,
+      value: result.parentListing,
+    };
+  } else {
+    delete directoryListings[parentKey];
+  }
+  const diffs = { ...state.diffs };
+  delete diffs[resourceKey(result.source)];
+  delete diffs[resourceKey(result.target)];
+  const snapshot = result.snapshot;
+  return {
+    nativeTransitionEpoch: result.transitionEpoch,
+    ...(snapshot
+      ? {
+          tabs: snapshot.tabs,
+          archivedChats: snapshot.archivedChats,
+          activeTabId: snapshot.activeTabId,
+          selectedRootId: snapshot.selectedRootId,
+          selectedResource: snapshot.selectedResource,
+          repositories: snapshot.repositories,
+          recoveryNotice: snapshot.recoveryNotice,
+        }
+      : result.resourceConfirmed
+        ? {
+            selectedRootId: result.target.rootId,
+            selectedResource: result.target,
+          }
+        : {}),
+    directoryListings,
+    expandedDirectories: {
+      ...state.expandedDirectories,
+      [parentKey]: true,
+    },
+    diffs,
+  };
 }
 
 export const createFileRenameSlice: StateCreator<
@@ -136,6 +184,7 @@ export const createFileRenameSlice: StateCreator<
     );
     set({
       fileRenameInFlight: true,
+      projectTransitioning: true,
       fileRenameError: null,
       fileRenameNotice: null,
       fileRenameRequestGeneration: requestGeneration,
@@ -159,7 +208,7 @@ export const createFileRenameSlice: StateCreator<
           "Close File and Diff tabs for the source and target before renaming.",
         );
       }
-      await desktop.persistProjectLayout(currentLayout);
+      await desktop.persistProjectLayout(currentLayout, transitionEpoch);
       if (
         !intentMatches(
           get(),
@@ -198,19 +247,15 @@ export const createFileRenameSlice: StateCreator<
         source,
         target,
       });
-      const parentKey = resourceKey(parent);
-      set({
-        ...snapshotProjection(result.snapshot),
+      set((state) => ({
+        ...renameProjection(state, result, parent),
+        projectGeneration: nextProjectGeneration(projectGeneration),
+        projectTransitioning: false,
         fileRenameInFlight: false,
         fileRenameError: null,
         fileRenameNotice: result.warning,
         fileRenameRequestGeneration: requestGeneration,
-        directoryListings:
-          resourceConfirmed && result.parentListing
-            ? { [parentKey]: { phase: "ready", value: result.parentListing } }
-            : {},
-        expandedDirectories: { [parentKey]: true },
-      });
+      }));
       if (!resourceConfirmed) {
         await get().loadDirectory(parent);
       }
@@ -227,13 +272,17 @@ export const createFileRenameSlice: StateCreator<
       ) {
         set({
           fileRenameInFlight: false,
+          projectTransitioning: false,
           fileRenameError: boundedError(error),
         });
       }
       return false;
     } finally {
-      if (get().fileRenameRequestGeneration === requestGeneration) {
-        set({ fileRenameInFlight: false });
+      if (
+        get().fileRenameRequestGeneration === requestGeneration &&
+        matchesProjectIntent(get(), projectGeneration, project.id)
+      ) {
+        set({ fileRenameInFlight: false, projectTransitioning: false });
       }
     }
   },

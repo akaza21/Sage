@@ -15,7 +15,7 @@ const parent = { rootId: "root-a", relativePath: "src" };
 
 function snapshot(selected = target): BootstrapSnapshot {
   return {
-    transitionEpoch: 5,
+    transitionEpoch: 6,
     projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
     project: {
       id: "project-a",
@@ -62,7 +62,7 @@ function result(): RenameProjectFileResult {
     resourceConfirmed: true,
     projectId: "project-a",
     projectGeneration: 3,
-    transitionEpoch: 5,
+    transitionEpoch: 6,
     source,
     target,
     parentListing: {
@@ -143,9 +143,13 @@ describe("file rename store transaction", () => {
         tabs: [expect.objectContaining({ id: "chat-a" })],
         selectedResource: source,
       }),
+      5,
     );
     expect(useWorkbenchStore.getState()).toMatchObject({
       selectedResource: target,
+      nativeTransitionEpoch: 6,
+      projectGeneration: 4,
+      projectTransitioning: false,
       fileRenameInFlight: false,
       fileRenameError: null,
       fileRenameNotice: null,
@@ -153,6 +157,74 @@ describe("file rename store transaction", () => {
     expect(
       useWorkbenchStore.getState().directoryListings[resourceKey(parent)],
     ).toEqual({ phase: "ready", value: result().parentListing });
+  });
+
+  it("preserves unrelated live UI and nested Explorer state", async () => {
+    const root = { rootId: "root-a", relativePath: "" };
+    const nested = { rootId: "root-a", relativePath: "other/nested" };
+    const unrelatedDiff = { rootId: "root-a", relativePath: "other/change.ts" };
+    const rootListing = {
+      resource: root,
+      truncated: false,
+      entries: [
+        {
+          name: "src",
+          resource: parent,
+          kind: "directory" as const,
+          byteLen: null,
+        },
+      ],
+    };
+    const nestedListing = {
+      resource: nested,
+      truncated: false,
+      entries: [],
+    };
+    const diffState = {
+      phase: "ready" as const,
+      value: {
+        resource: unrelatedDiff,
+        hunks: [{ header: "@@ preserved @@", lines: [] }],
+        binary: false,
+        truncated: false,
+      },
+    };
+    useWorkbenchStore.setState((state) => ({
+      composerText: "unsent draft",
+      models: [{ id: "model-live", name: "Live model" }],
+      selectedModelId: "model-live",
+      directoryListings: {
+        ...state.directoryListings,
+        [resourceKey(root)]: { phase: "ready", value: rootListing },
+        [resourceKey(nested)]: { phase: "ready", value: nestedListing },
+      },
+      expandedDirectories: {
+        [resourceKey(root)]: true,
+        [resourceKey(parent)]: true,
+        [resourceKey(nested)]: true,
+      },
+      diffs: { [resourceKey(unrelatedDiff)]: diffState },
+    }));
+    vi.spyOn(desktop, "renameProjectFile").mockResolvedValue(result());
+
+    await expect(
+      useWorkbenchStore.getState().renameProjectFile(source, "new.ts"),
+    ).resolves.toBe(true);
+
+    const state = useWorkbenchStore.getState();
+    expect(state.composerText).toBe("unsent draft");
+    expect(state.models).toEqual([{ id: "model-live", name: "Live model" }]);
+    expect(state.selectedModelId).toBe("model-live");
+    expect(state.directoryListings[resourceKey(root)]).toEqual({
+      phase: "ready",
+      value: rootListing,
+    });
+    expect(state.directoryListings[resourceKey(nested)]).toEqual({
+      phase: "ready",
+      value: nestedListing,
+    });
+    expect(state.expandedDirectories[resourceKey(nested)]).toBe(true);
+    expect(state.diffs[resourceKey(unrelatedDiff)]).toEqual(diffState);
   });
 
   it("rejects an open source or target File/Diff tab before native mutation", async () => {
@@ -210,6 +282,40 @@ describe("file rename store transaction", () => {
     expect(useWorkbenchStore.getState().selectedResource).toEqual(source);
   });
 
+  it("owns shared Chat and window layout admission while persistence is deferred", async () => {
+    const persistence = deferred<void>();
+    vi.mocked(desktop.persistProjectLayout).mockReturnValue(
+      persistence.promise,
+    );
+    vi.spyOn(desktop, "renameProjectFile").mockResolvedValue(result());
+    const createChat = vi.spyOn(desktop, "createChat");
+    const activateChat = vi.spyOn(desktop, "activateChat");
+    const close = vi.spyOn(desktop, "persistProjectLayoutAndClose");
+
+    const rename = useWorkbenchStore
+      .getState()
+      .renameProjectFile(source, "new.ts");
+    await vi.waitFor(() =>
+      expect(useWorkbenchStore.getState()).toMatchObject({
+        fileRenameInFlight: true,
+        projectTransitioning: true,
+      }),
+    );
+
+    await useWorkbenchStore.getState().createChat();
+    await useWorkbenchStore.getState().activateChat("chat-a");
+    await expect(useWorkbenchStore.getState().closeWorkbench()).rejects.toThrow(
+      "layout mutation",
+    );
+    expect(createChat).not.toHaveBeenCalled();
+    expect(activateChat).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+
+    persistence.resolve();
+    await expect(rename).resolves.toBe(true);
+    expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+  });
+
   it("keeps an unconfirmed effect typed, visible, and refreshable", async () => {
     const loadDirectory = vi.fn(async () => undefined);
     useWorkbenchStore.setState({ loadDirectory });
@@ -232,5 +338,49 @@ describe("file rename store transaction", () => {
       fileRenameError: null,
       fileRenameNotice: "Rename outcome is unknown; Explorer was refreshed.",
     });
+  });
+
+  it("applies confirmed parent evidence when the snapshot is unavailable", async () => {
+    const unrelated = { rootId: "root-a", relativePath: "other" };
+    const unrelatedListing = {
+      resource: unrelated,
+      truncated: false,
+      entries: [],
+    };
+    useWorkbenchStore.setState((state) => ({
+      composerText: "preserve this draft",
+      directoryListings: {
+        ...state.directoryListings,
+        [resourceKey(unrelated)]: {
+          phase: "ready" as const,
+          value: unrelatedListing,
+        },
+      },
+    }));
+    vi.spyOn(desktop, "renameProjectFile").mockResolvedValue({
+      ...result(),
+      outcome: "effectUnknown",
+      snapshot: null,
+      warning: "The authoritative layout snapshot was unavailable.",
+    });
+
+    await expect(
+      useWorkbenchStore.getState().renameProjectFile(source, "new.ts"),
+    ).resolves.toBe(true);
+
+    const state = useWorkbenchStore.getState();
+    expect(state.selectedResource).toEqual(target);
+    expect(state.directoryListings[resourceKey(parent)]).toEqual({
+      phase: "ready",
+      value: result().parentListing,
+    });
+    expect(state.directoryListings[resourceKey(unrelated)]).toEqual({
+      phase: "ready",
+      value: unrelatedListing,
+    });
+    expect(state.composerText).toBe("preserve this draft");
+    expect(state.fileRenameNotice).toBe(
+      "The authoritative layout snapshot was unavailable.",
+    );
   });
 });

@@ -1,7 +1,4 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::{Arc, Mutex};
 
 use crate::{
     domain::{DirectoryListing, ResourceRef},
@@ -17,6 +14,50 @@ pub(crate) struct FileRenameCommit {
     pub(crate) resource_confirmed: bool,
     pub(crate) parent_listing: Option<DirectoryListing>,
     pub(crate) warning: Option<String>,
+}
+
+impl FileRenameCommit {
+    pub(crate) fn unconfirmed(
+        source: ResourceRef,
+        target: ResourceRef,
+        warning: impl Into<String>,
+    ) -> Self {
+        Self {
+            source,
+            target,
+            resource_confirmed: false,
+            parent_listing: None,
+            warning: Some(warning.into()),
+        }
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct FileRenameMarker {
+    authority: Mutex<Option<Arc<platform::FileRenameAuthority>>>,
+}
+
+impl FileRenameMarker {
+    fn record(&self, authority: Arc<platform::FileRenameAuthority>) {
+        *self
+            .authority
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(authority);
+    }
+
+    pub(crate) fn committed(&self) -> bool {
+        self.authority
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_some()
+    }
+
+    fn authority(&self) -> Option<Arc<platform::FileRenameAuthority>> {
+        self.authority
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
 }
 
 impl Workspace {
@@ -53,24 +94,63 @@ impl Workspace {
         source: &ResourceRef,
         basename: &str,
     ) -> AppResult<FileRenameCommit> {
-        self.rename_file_with(source, basename, Arc::new(AtomicBool::new(false)))
+        self.rename_file_with(
+            source,
+            basename,
+            Arc::new(FileRenameMarker::default()),
+            || Ok(()),
+            |parent| self.list_directory(parent),
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn rename_file_with_hooks<P, L>(
+        &self,
+        source: &ResourceRef,
+        basename: &str,
+        before_mutation: P,
+        list_after: L,
+    ) -> AppResult<FileRenameCommit>
+    where
+        P: FnOnce() -> AppResult<()>,
+        L: FnOnce(&ResourceRef) -> AppResult<DirectoryListing>,
+    {
+        self.rename_file_with(
+            source,
+            basename,
+            Arc::new(FileRenameMarker::default()),
+            before_mutation,
+            list_after,
+        )
     }
 
     pub(crate) fn rename_file_observed(
         &self,
         source: &ResourceRef,
         basename: &str,
-        committed: Arc<AtomicBool>,
+        marker: Arc<FileRenameMarker>,
     ) -> AppResult<FileRenameCommit> {
-        self.rename_file_with(source, basename, committed)
+        self.rename_file_with(
+            source,
+            basename,
+            marker,
+            || Ok(()),
+            |parent| self.list_directory(parent),
+        )
     }
 
-    fn rename_file_with(
+    fn rename_file_with<P, L>(
         &self,
         source: &ResourceRef,
         basename: &str,
-        committed: Arc<AtomicBool>,
-    ) -> AppResult<FileRenameCommit> {
+        marker: Arc<FileRenameMarker>,
+        before_mutation: P,
+        list_after: L,
+    ) -> AppResult<FileRenameCommit>
+    where
+        P: FnOnce() -> AppResult<()>,
+        L: FnOnce(&ResourceRef) -> AppResult<DirectoryListing>,
+    {
         let source_path = self.validate_resource(source, false)?;
         let (parent_path, source_name) = source_path
             .rsplit_once('/')
@@ -80,20 +160,24 @@ impl Workspace {
             root_id: self.root_id().into(),
             relative_path: parent_path.into(),
         };
-        let before = self.list_directory(&parent)?;
-        if before.truncated {
-            return Err(AppError::ResourceLimit(
-                "file rename requires a complete parent listing".into(),
-            ));
-        }
-        let source_is_regular_file = before.entries.iter().any(|entry| {
-            entry.name == source_name && entry.resource == *source && entry.kind == "file"
-        });
-        if !source_is_regular_file {
-            return Err(AppError::InvalidRequest(
-                "file rename source must be one exact regular file".into(),
-            ));
-        }
+        let preflight = || {
+            let before = self.list_directory(&parent)?;
+            if before.truncated {
+                return Err(AppError::ResourceLimit(
+                    "file rename requires a complete parent listing".into(),
+                ));
+            }
+            let source_is_regular_file = before.entries.iter().any(|entry| {
+                entry.name == source_name && entry.resource == *source && entry.kind == "file"
+            });
+            if !source_is_regular_file {
+                return Err(AppError::InvalidRequest(
+                    "file rename source must be one exact regular file".into(),
+                ));
+            }
+            before_mutation()
+        };
+        let observed_marker = Arc::clone(&marker);
         let observation = platform::rename_file_noreplace(
             platform::ParentAuthority {
                 root: self.root(),
@@ -102,72 +186,76 @@ impl Workspace {
             },
             source_name,
             basename,
-            move || committed.store(true, Ordering::Release),
+            move |authority| observed_marker.record(authority),
+            preflight,
             sync_parent_directory,
-            || self.list_directory(&parent),
+            || list_after(&parent),
         )?;
-        let parent_listing = observation.listing.ok().filter(|listing| {
-            !listing.truncated
-                && listing.entries.iter().any(|entry| {
-                    entry.resource == target && entry.kind == "file" && entry.byte_len.is_some()
-                })
-                && !listing
-                    .entries
-                    .iter()
-                    .any(|entry| entry.resource == *source)
-        });
-        let resource_confirmed = observation.target_identity_confirmed && parent_listing.is_some();
-        let refresh_warning = (!resource_confirmed).then(|| {
-            "File rename completed under held authority, but the requested path identity could not be confirmed; Explorer is refreshing."
-                .to_owned()
-        });
-        let warning = combine_warnings(observation.warning, refresh_warning);
-        drop(observation.guards);
-        Ok(FileRenameCommit {
-            source: source.clone(),
-            target,
-            resource_confirmed,
-            parent_listing,
-            warning,
-        })
+        Ok(commit_from_observation(source, target, observation))
     }
 
     pub(crate) fn confirm_renamed_file(
         &self,
         source: &ResourceRef,
         basename: &str,
+        marker: &FileRenameMarker,
     ) -> AppResult<FileRenameCommit> {
         let target = self.rename_file_target(source, basename)?;
         let parent_path = source
             .relative_path
             .rsplit_once('/')
             .map_or("", |(parent, _)| parent);
+        let source_name = source.relative_path.rsplit('/').next().unwrap_or_default();
         let parent = ResourceRef {
             root_id: self.root_id().into(),
             relative_path: parent_path.into(),
         };
-        let listing = self.list_directory(&parent)?;
-        if listing.truncated {
-            return Err(AppError::ResourceLimit(
-                "file rename recovery requires a complete parent listing".into(),
-            ));
-        }
-        let resource_confirmed = listing.entries.iter().any(|entry| {
-            entry.resource == target && entry.kind == "file" && entry.byte_len.is_some()
-        }) && !listing
-            .entries
-            .iter()
-            .any(|entry| entry.resource == *source);
-        Ok(FileRenameCommit {
-            source: source.clone(),
-            target,
-            resource_confirmed,
-            parent_listing: Some(listing),
-            warning: Some(
-                "File rename outcome was interrupted; Explorer and the durable layout were recovered from authoritative state."
-                    .into(),
-            ),
-        })
+        let authority = marker.authority().ok_or_else(|| {
+            AppError::InvalidRequest("file rename recovery authority is unavailable".into())
+        })?;
+        let observation = platform::observe_recovery(
+            authority,
+            self.root(),
+            parent_path,
+            source_name,
+            basename,
+            || self.list_directory(&parent),
+        )?;
+        let mut commit = commit_from_observation(source, target, observation);
+        commit.warning = Some(
+            "File rename outcome was interrupted; Explorer and the durable layout were recovered from retained filesystem authority."
+                .into(),
+        );
+        Ok(commit)
+    }
+}
+
+fn commit_from_observation(
+    source: &ResourceRef,
+    target: ResourceRef,
+    observation: platform::RenameObservation,
+) -> FileRenameCommit {
+    let parent_listing = observation.listing.ok().filter(|listing| {
+        !listing.truncated
+            && listing.entries.iter().any(|entry| {
+                entry.resource == target && entry.kind == "file" && entry.byte_len.is_some()
+            })
+            && !listing
+                .entries
+                .iter()
+                .any(|entry| entry.resource == *source)
+    });
+    let resource_confirmed = observation.target_identity_confirmed && parent_listing.is_some();
+    let refresh_warning = (!resource_confirmed).then(|| {
+        "File rename completed under held authority, but the requested path identity could not be confirmed; Explorer is refreshing."
+            .to_owned()
+    });
+    FileRenameCommit {
+        source: source.clone(),
+        target,
+        resource_confirmed,
+        parent_listing,
+        warning: combine_warnings(observation.warning, refresh_warning),
     }
 }
 

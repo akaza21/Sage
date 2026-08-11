@@ -127,3 +127,130 @@ fn link_source_fails_before_mutation() {
     assert!(link.exists());
     assert!(fixture.root.join("src/old.rs").is_file());
 }
+
+#[test]
+fn source_replacement_after_held_preflight_fails_before_mutation() {
+    let fixture = Fixture::new();
+    let source = fixture.workspace.resource("src/old.rs").unwrap();
+    let source_path = fixture.root.join("src/old.rs");
+
+    let error = fixture
+        .workspace
+        .rename_file_with_hooks(
+            &source,
+            "new.rs",
+            || {
+                fs::remove_file(&source_path)?;
+                fs::write(&source_path, "replacement\n")?;
+                Ok(())
+            },
+            |parent| fixture.workspace.list_directory(parent),
+        )
+        .unwrap_err();
+
+    assert!(error.to_string().contains("identity changed"));
+    assert_eq!(fs::read_to_string(source_path).unwrap(), "replacement\n");
+    assert!(!fixture.root.join("src/new.rs").exists());
+}
+
+#[test]
+fn post_commit_listing_failure_is_unconfirmed_instead_of_escaping() {
+    let fixture = Fixture::new();
+    let source = fixture.workspace.resource("src/old.rs").unwrap();
+
+    let result = fixture
+        .workspace
+        .rename_file_with_hooks(
+            &source,
+            "new.rs",
+            || Ok(()),
+            |_| {
+                Err(crate::error::AppError::InvalidRequest(
+                    "injected listing failure".into(),
+                ))
+            },
+        )
+        .unwrap();
+
+    assert!(!result.resource_confirmed);
+    assert!(result.parent_listing.is_none());
+    assert!(result.warning.as_deref().unwrap().contains("refreshing"));
+    assert!(!fixture.root.join("src/old.rs").exists());
+    assert!(fixture.root.join("src/new.rs").is_file());
+}
+
+#[test]
+fn parent_swap_during_reconciliation_never_confirms_the_replacement_path() {
+    let fixture = Fixture::new();
+    let source = fixture.workspace.resource("src/old.rs").unwrap();
+    let retained = fixture.root.join("retained-src");
+    let visible = fixture.root.join("src");
+
+    let result = fixture
+        .workspace
+        .rename_file_with_hooks(
+            &source,
+            "new.rs",
+            || Ok(()),
+            |parent| {
+                fs::rename(&visible, &retained)?;
+                fs::create_dir(&visible)?;
+                fs::write(visible.join("new.rs"), "replacement\n")?;
+                fixture.workspace.list_directory(parent)
+            },
+        )
+        .unwrap();
+
+    assert!(!result.resource_confirmed);
+    assert!(result.parent_listing.is_none());
+    if retained.exists() {
+        assert_eq!(
+            fs::read_to_string(retained.join("new.rs")).unwrap(),
+            "preserve\n"
+        );
+        fs::remove_dir_all(retained).unwrap();
+    } else {
+        assert_eq!(
+            fs::read_to_string(visible.join("new.rs")).unwrap(),
+            "preserve\n"
+        );
+    }
+}
+
+#[test]
+fn root_swap_during_reconciliation_never_confirms_the_replacement_path() {
+    let fixture = Fixture::new();
+    let source = fixture.workspace.resource("src/old.rs").unwrap();
+    let retained = fixture.root.with_extension("retained-root");
+    let visible = fixture.root.clone();
+
+    let result = fixture
+        .workspace
+        .rename_file_with_hooks(
+            &source,
+            "new.rs",
+            || Ok(()),
+            |parent| {
+                fs::rename(&visible, &retained)?;
+                fs::create_dir_all(visible.join("src"))?;
+                fs::write(visible.join("src/new.rs"), "replacement\n")?;
+                fixture.workspace.list_directory(parent)
+            },
+        )
+        .unwrap();
+
+    assert!(!result.resource_confirmed);
+    assert!(result.parent_listing.is_none());
+    if retained.exists() {
+        assert_eq!(
+            fs::read_to_string(retained.join("src/new.rs")).unwrap(),
+            "preserve\n"
+        );
+        fs::remove_dir_all(retained).unwrap();
+    } else {
+        assert_eq!(
+            fs::read_to_string(visible.join("src/new.rs")).unwrap(),
+            "preserve\n"
+        );
+    }
+}

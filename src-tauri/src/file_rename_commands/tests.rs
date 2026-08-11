@@ -1,4 +1,9 @@
-use std::{fs, path::Path, sync::Arc};
+use std::{
+    fs,
+    path::Path,
+    sync::{Arc, mpsc},
+    time::Duration,
+};
 
 use rusqlite::params;
 use uuid::Uuid;
@@ -9,7 +14,9 @@ use crate::{
         FileRenameOutcome, ProjectLayoutRequest, RenameProjectFileRequest, ResourceRef,
         WorkbenchTab,
     },
+    editor_coordination::EditorOperationKind,
     persistence::{Database, now_millis},
+    project_commands::persist_project_layout_inner,
     state::AppState,
 };
 
@@ -150,11 +157,11 @@ fn commits_exact_file_and_migrates_only_the_selected_resource() {
         assert_eq!(result.outcome, FileRenameOutcome::Committed);
         assert!(result.resource_confirmed);
         assert_eq!(result.project_generation, 7);
-        assert_eq!(result.transition_epoch, 0);
+        assert_eq!(result.transition_epoch, 1);
         assert_eq!(result.source.relative_path, "src/old.rs");
         assert_eq!(result.target.relative_path, "src/new.rs");
         assert_eq!(
-            result.snapshot.selected_resource.as_ref(),
+            result.snapshot.as_ref().unwrap().selected_resource.as_ref(),
             Some(&result.target)
         );
         assert!(
@@ -239,9 +246,252 @@ fn post_filesystem_transaction_failure_recovers_as_effect_unknown() {
         assert_eq!(result.outcome, FileRenameOutcome::EffectUnknown);
         assert!(result.resource_confirmed);
         assert!(result.warning.as_deref().unwrap().contains("interrupted"));
-        assert_eq!(result.snapshot.selected_resource, Some(result.target));
+        assert_eq!(result.transition_epoch, 1);
+        assert_eq!(
+            result.snapshot.unwrap().selected_resource,
+            Some(result.target)
+        );
         assert!(!fixture.root.join("src/old.rs").exists());
         assert!(fixture.root.join("src/new.rs").is_file());
+    });
+}
+
+#[test]
+fn replacement_target_is_never_confirmed_or_selected_during_recovery() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let target = fixture.root.join("src/new.rs");
+
+        let result = execute_with(&fixture.state, fixture.request("new.rs"), move |_| {
+            fs::remove_file(&target)?;
+            fs::write(&target, "replacement\n")?;
+            Err(AppError::InvalidRequest(
+                "injected post-rename transaction failure".into(),
+            ))
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(result.outcome, FileRenameOutcome::EffectUnknown);
+        assert!(!result.resource_confirmed);
+        assert_eq!(
+            result.snapshot.unwrap().selected_resource,
+            Some(result.source)
+        );
+        assert_eq!(
+            fs::read_to_string(fixture.root.join("src/new.rs")).unwrap(),
+            "replacement\n"
+        );
+    });
+}
+
+#[test]
+fn recovery_failure_stays_typed_with_a_safe_snapshot_envelope() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+
+        let result = execute_with_hooks(
+            &fixture.state,
+            fixture.request("new.rs"),
+            |_| {
+                Err(AppError::InvalidRequest(
+                    "injected post-rename transaction failure".into(),
+                ))
+            },
+            || Err(AppError::InvalidRequest("injected recovery failure".into())),
+            || Ok(()),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.outcome, FileRenameOutcome::EffectUnknown);
+        assert!(!result.resource_confirmed);
+        assert!(result.snapshot.is_some());
+        assert!(
+            result
+                .warning
+                .as_deref()
+                .unwrap()
+                .contains("recovery failed")
+        );
+        assert_eq!(result.transition_epoch, 1);
+    });
+}
+
+#[test]
+fn snapshot_failure_after_commit_stays_typed_with_parent_evidence() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+
+        let result = execute_with_hooks(
+            &fixture.state,
+            fixture.request("new.rs"),
+            |_| Ok(()),
+            || Ok(()),
+            || Err(AppError::InvalidRequest("injected snapshot failure".into())),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.outcome, FileRenameOutcome::EffectUnknown);
+        assert!(result.resource_confirmed);
+        assert!(result.parent_listing.is_some());
+        assert!(result.snapshot.is_none());
+        assert!(result.warning.as_deref().unwrap().contains("snapshot"));
+        assert_eq!(result.transition_epoch, 1);
+    });
+}
+
+#[test]
+fn committed_rename_rejects_chat_and_window_layouts_queued_at_the_old_epoch() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let rename_state = Arc::clone(&fixture.state);
+        let request = fixture.request("new.rs");
+        let rename = tokio::spawn(async move {
+            execute_with(&rename_state, request, move |_| {
+                started_tx.send(()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+                Ok(())
+            })
+            .await
+        });
+        started_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+
+        let stale_window_state = Arc::clone(&fixture.state);
+        let mut stale_window_layout = fixture.layout.clone();
+        stale_window_layout.tabs.push(fixture.resource_tab(
+            "stale-window-source",
+            "file",
+            "src/old.rs",
+        ));
+        let window = tokio::spawn(async move {
+            persist_project_layout_inner(&stale_window_state, Some(stale_window_layout), 0).await
+        });
+        let stale_chat_state = Arc::clone(&fixture.state);
+        let stale_chat_layout = fixture.layout.clone();
+        let chat = tokio::spawn(async move {
+            crate::chat_commands::execute_chat_transition(
+                &stale_chat_state,
+                0,
+                "stale queued Chat layout",
+                move |database| database.create_chat(&stale_chat_layout).map(drop),
+            )
+            .await
+        });
+        tokio::task::yield_now().await;
+        release_tx.send(()).unwrap();
+
+        let renamed = rename.await.unwrap().unwrap();
+        let window = window.await.unwrap();
+        let chat = chat.await.unwrap();
+        assert_eq!(renamed.transition_epoch, 1);
+        assert!(window.is_err());
+        assert!(!chat.committed);
+        assert_eq!(chat.transition_epoch, 1);
+        let snapshot = fixture.state.database.bootstrap_snapshot().unwrap();
+        assert_eq!(snapshot.selected_resource, Some(renamed.target));
+        assert!(!snapshot.tabs.iter().any(|tab| {
+            matches!(tab.kind.as_str(), "file" | "diff")
+                && tab.resource.as_ref() == Some(&renamed.source)
+        }));
+    });
+}
+
+#[test]
+fn rename_and_editor_snapshot_are_serialized_in_ticket_order() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let old_snapshot_ticket = fixture.state.editor_operations.issue_ticket().unwrap();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let rename_state = Arc::clone(&fixture.state);
+        let request = fixture.request("new.rs");
+        let rename = tokio::spawn(async move {
+            execute_with(&rename_state, request, move |_| {
+                started_tx.send(()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+                Ok(())
+            })
+            .await
+        });
+        started_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+
+        let operations = fixture.state.editor_operations.clone();
+        let database = fixture.state.database.clone();
+        let project_id = fixture.project_id.clone();
+        let root_id = fixture.root_id.clone();
+        let snapshot = tokio::task::spawn_blocking(move || {
+            operations.execute(old_snapshot_ticket, EditorOperationKind::Snapshot, || {
+                database.write_connection()?.execute(
+                    "INSERT INTO editor_buffers(
+                       project_id,root_id,relative_path,base_fingerprint,base_byte_len,
+                       base_modified_at,line_ending,buffer_content,buffer_byte_len,
+                       buffer_fingerprint,revision,pending_temp_path,updated_at
+                     ) VALUES(?1,?2,'src/old.rs','base',0,NULL,'none','',0,'buffer',1,NULL,?3)",
+                    params![project_id, root_id, now_millis()],
+                )?;
+                Ok(())
+            })
+        });
+        release_tx.send(()).unwrap();
+
+        assert!(rename.await.unwrap().unwrap().resource_confirmed);
+        assert!(snapshot.await.unwrap().is_err());
+        assert!(
+            !fixture
+                .state
+                .database
+                .bootstrap_snapshot()
+                .unwrap()
+                .recovered_buffers
+                .iter()
+                .any(|buffer| buffer.resource.relative_path == "src/old.rs")
+        );
+    });
+}
+
+#[test]
+fn editor_snapshot_that_wins_admission_blocks_rename_before_mutation() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let snapshot_ticket = fixture.state.editor_operations.issue_ticket().unwrap();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let operations = fixture.state.editor_operations.clone();
+        let database = fixture.state.database.clone();
+        let project_id = fixture.project_id.clone();
+        let root_id = fixture.root_id.clone();
+        let snapshot = tokio::task::spawn_blocking(move || {
+            operations.execute(snapshot_ticket, EditorOperationKind::Snapshot, || {
+                database.write_connection()?.execute(
+                    "INSERT INTO editor_buffers(
+                       project_id,root_id,relative_path,base_fingerprint,base_byte_len,
+                       base_modified_at,line_ending,buffer_content,buffer_byte_len,
+                       buffer_fingerprint,revision,pending_temp_path,updated_at
+                     ) VALUES(?1,?2,'src/old.rs','base',0,NULL,'none','',0,'buffer',1,NULL,?3)",
+                    params![project_id, root_id, now_millis()],
+                )?;
+                started_tx.send(()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+                Ok(())
+            })
+        });
+        started_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+
+        let rename_state = Arc::clone(&fixture.state);
+        let request = fixture.request("new.rs");
+        let rename = tokio::spawn(async move { execute(&rename_state, request).await });
+        tokio::task::yield_now().await;
+        release_tx.send(()).unwrap();
+
+        snapshot.await.unwrap().unwrap();
+        let error = rename.await.unwrap().unwrap_err();
+        assert!(error.to_string().contains("editor buffer"));
+        assert!(fixture.root.join("src/old.rs").is_file());
+        assert!(!fixture.root.join("src/new.rs").exists());
     });
 }
 
