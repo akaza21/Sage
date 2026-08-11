@@ -9,9 +9,49 @@
   "state": {
     "isolation": "isolatedBindingDirectory",
     "inheritAmbientConfig": false,
+    "configRelativePath": "config.toml",
+    "configSha256": "cda4ac431cf5f9c615c36513e2831d159bdfc0b3d106cb475012d1677748afd3",
     "cliAuthCredentialsStore": "file",
     "checkForUpdateOnStartup": false,
     "maximumLiveProcessTrees": 1
+  },
+  "auth": {
+    "loginMode": "chatgptBrowser",
+    "automaticLoginStart": false,
+    "sageStoresCredentials": false,
+    "logoutRequiresAccountUpdatedNull": true
+  },
+  "storage": {
+    "maximumLogicalBytes": 536870912,
+    "maximumAllocatedBytes": 536870912,
+    "maximumRegularFiles": 2048,
+    "maximumDirectories": 512,
+    "maximumDepth": 8,
+    "maximumSingleFileBytes": 134217728,
+    "maximumCredentialFileBytes": 262144,
+    "maximumRelativePathBytes": 16384,
+    "maximumNativePathBytes": 32768,
+    "temporaryResidueRetentionHours": 24,
+    "automaticCredentialDeletion": false,
+    "automaticSessionDeletion": false,
+    "preserveBindingHomeOnUpdate": true
+  },
+  "network": {
+    "provider": "builtInOpenAi",
+    "customEndpointsAllowed": false,
+    "proxy": "none",
+    "tlsTrust": "platformRoots",
+    "customTlsRootsAllowed": false,
+    "offline": false,
+    "analyticsEnabled": false,
+    "otelLogExporter": "none",
+    "otelTraceExporter": "none",
+    "otelMetricsExporter": "none",
+    "logUserPrompt": false
+  },
+  "consent": {
+    "loginRequiresExplicitUserAction": true,
+    "deleteDataRequiresExplicitConsent": true
   },
   "environment": {
     "inheritAmbient": false,

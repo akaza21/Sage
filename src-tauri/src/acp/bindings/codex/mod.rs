@@ -3,6 +3,7 @@
 //! This module deliberately has no launcher. A validated candidate remains
 //! unavailable until a separately admitted native artifact is supplied.
 
+mod authority;
 mod incoming;
 mod managed;
 mod manifest;
@@ -14,6 +15,10 @@ mod request;
 mod runtime;
 mod state;
 
+pub(crate) use authority::{
+    ConfigAuthorityError, EnvironmentAuthorityError, build_codex_launch_environment,
+    verify_codex_config,
+};
 pub(crate) use incoming::{IncomingEvent, IngressDisposition, ResourceMapper};
 pub(crate) use managed::{
     ManagedStagingError, ManagedStagingPrerequisite, inspect_managed_staging,

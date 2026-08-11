@@ -15,6 +15,7 @@ const PACKET_FIXTURE: &[u8] =
     include_bytes!("../../../../testdata/acp/codex/candidate-windows.json");
 const SECURITY_POLICY_FIXTURE: &[u8] =
     include_bytes!("../../../../testdata/acp/codex/security-policy-v1.json");
+const CONFIG_FIXTURE: &[u8] = include_bytes!("../../../../testdata/acp/codex/config-v1.toml");
 const REPRODUCTION_FIXTURE: &[u8] =
     include_bytes!("../../../../testdata/acp/codex/package-reproduction-v1.json");
 const PACKAGE_ROOT: &str = r"C:\SageHarnesses\Codex\0.145.0\package";
@@ -286,6 +287,156 @@ fn security_policy_rejects_malformed_unknown_and_exact_plus_one_bytes() {
     assert_eq!(
         parse_security_policy(&vec![b' '; policy::SECURITY_POLICY_BYTES + 1], &packet),
         Err(SecurityPolicyError::PolicyBytes)
+    );
+}
+
+#[test]
+fn security_policy_freezes_auth_storage_network_and_retention_stop_limits() {
+    let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
+    parse_security_policy(SECURITY_POLICY_FIXTURE, &packet).unwrap();
+
+    for (pointer, replacement, error) in [
+        (
+            "/auth/loginMode",
+            json!("apiKey"),
+            SecurityPolicyError::Auth,
+        ),
+        (
+            "/auth/automaticLoginStart",
+            json!(true),
+            SecurityPolicyError::Auth,
+        ),
+        (
+            "/storage/maximumAllocatedBytes",
+            json!(536_870_913_u64),
+            SecurityPolicyError::Storage,
+        ),
+        (
+            "/storage/maximumRegularFiles",
+            json!(2_049),
+            SecurityPolicyError::Storage,
+        ),
+        (
+            "/storage/temporaryResidueRetentionHours",
+            json!(25),
+            SecurityPolicyError::Storage,
+        ),
+        (
+            "/network/customEndpointsAllowed",
+            json!(true),
+            SecurityPolicyError::Network,
+        ),
+        (
+            "/network/proxy",
+            json!("system"),
+            SecurityPolicyError::Network,
+        ),
+        (
+            "/network/offline",
+            json!(true),
+            SecurityPolicyError::Network,
+        ),
+        (
+            "/network/otelTraceExporter",
+            json!("otlpHttp"),
+            SecurityPolicyError::Network,
+        ),
+        (
+            "/consent/deleteDataRequiresExplicitConsent",
+            json!(false),
+            SecurityPolicyError::Consent,
+        ),
+    ] {
+        let mut changed = security_policy_value();
+        *changed.pointer_mut(pointer).unwrap() = replacement;
+        assert_eq!(
+            parse_security_policy(&serde_json::to_vec(&changed).unwrap(), &packet),
+            Err(error),
+            "pointer {pointer}"
+        );
+    }
+}
+
+#[test]
+fn exact_codex_config_is_required_byte_for_byte() {
+    let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
+    let policy = parse_security_policy(SECURITY_POLICY_FIXTURE, &packet).unwrap();
+    verify_codex_config(CONFIG_FIXTURE, &policy).unwrap();
+
+    let mut changed = CONFIG_FIXTURE.to_vec();
+    changed[0] ^= 1;
+    assert_eq!(
+        verify_codex_config(&changed, &policy),
+        Err(ConfigAuthorityError::Config)
+    );
+    assert_eq!(
+        verify_codex_config(&vec![b' '; 4_097], &policy),
+        Err(ConfigAuthorityError::ConfigBytes)
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn launch_environment_is_exactly_five_keys_with_state_local_temp() {
+    let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
+    let policy = parse_security_policy(SECURITY_POLICY_FIXTURE, &packet).unwrap();
+    let config = verify_codex_config(CONFIG_FIXTURE, &policy).unwrap();
+    let environment = build_codex_launch_environment(
+        &packet,
+        &policy,
+        &config,
+        std::path::Path::new(r"C:\Windows"),
+        std::path::Path::new(r"c:\WINDOWS"),
+    )
+    .unwrap();
+    assert_eq!(
+        environment.entries(),
+        &[
+            ("CODEX_HOME".into(), ISOLATED_CODEX_HOME.into()),
+            ("SystemRoot".into(), r"C:\Windows".into()),
+            (
+                "TEMP".into(),
+                r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167\tmp".into(),
+            ),
+            (
+                "TMP".into(),
+                r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167\tmp".into(),
+            ),
+            ("WINDIR".into(), r"C:\Windows".into()),
+        ]
+    );
+    assert!(environment.entries().iter().all(|(key, _)| !matches!(
+        key.as_str(),
+        "PATH" | "OPENAI_API_KEY" | "HTTP_PROXY" | "HTTPS_PROXY" | "SSL_CERT_FILE"
+    )));
+
+    assert_eq!(
+        build_codex_launch_environment(
+            &packet,
+            &policy,
+            &config,
+            std::path::Path::new(r"C:\Windows"),
+            std::path::Path::new(r"D:\Windows"),
+        ),
+        Err(EnvironmentAuthorityError::SystemRoot)
+    );
+}
+
+#[cfg(not(windows))]
+#[test]
+fn codex_launch_environment_is_unavailable_off_windows() {
+    let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
+    let policy = parse_security_policy(SECURITY_POLICY_FIXTURE, &packet).unwrap();
+    let config = verify_codex_config(CONFIG_FIXTURE, &policy).unwrap();
+    assert_eq!(
+        build_codex_launch_environment(
+            &packet,
+            &policy,
+            &config,
+            std::path::Path::new("/does/not/exist"),
+            std::path::Path::new("/also/absent"),
+        ),
+        Err(EnvironmentAuthorityError::PlatformUnavailable)
     );
 }
 
