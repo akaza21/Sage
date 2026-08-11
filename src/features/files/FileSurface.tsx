@@ -1,23 +1,13 @@
-import {
-  AlertTriangle,
-  CaseSensitive,
-  ChevronDown,
-  ChevronUp,
-  FileCode2,
-  Save,
-  Undo2,
-  X,
-} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import { resourceKey, sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
-import {
-  findLiteralMatches,
-  MAX_EDITABLE_CONTENT_BYTES,
-  MAX_FIND_QUERY_LENGTH,
-} from "./inFileFind";
+import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
+import { FileEditorHeader } from "./FileEditorHeader";
+import { FileEditorNotices } from "./FileEditorNotices";
+import { FileFindBar } from "./FileFindBar";
+import { findLiteralMatches, MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
 import { fileNavigationSelection } from "./fileNavigation";
 
 const SNAPSHOT_DELAY_MS = 750;
@@ -26,7 +16,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
   const resource = tab.resource;
   const path = resource?.relativePath ?? tab.title;
   const activeResourceKey = resource ? resourceKey(resource) : "";
-  const editorInputRef = useRef<HTMLTextAreaElement>(null);
+  const editorInputRef = useRef<EditorAdapterHandle>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const selectedMatchRef = useRef<{ start: number; end: number } | null>(null);
   const [findOpen, setFindOpen] = useState(false);
@@ -139,7 +129,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
       fileNavigationTarget,
     );
     input.focus();
-    input.setSelectionRange(selection.start, selection.end);
+    input.setSelection(selection.start, selection.end);
     consumeFileNavigationTarget(fileNavigationTarget);
   }, [
     consumeFileNavigationTarget,
@@ -164,17 +154,17 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
       const selected = selectedMatchRef.current;
       if (
         selected &&
-        input.selectionStart === selected.start &&
-        input.selectionEnd === selected.end
+        input.selection().start === selected.start &&
+        input.selection().end === selected.end
       ) {
-        input.setSelectionRange(selected.start, selected.start);
+        input.setSelection(selected.start, selected.start);
       }
       selectedMatchRef.current = null;
       return;
     }
     const start = Math.min(offset, findContent.length);
     const end = Math.min(offset + findQuery.length, findContent.length);
-    input.setSelectionRange(start, end);
+    input.setSelection(start, end);
     selectedMatchRef.current = { start, end };
   }, [
     findContent,
@@ -272,132 +262,44 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
         }
       }}
     >
-      <header className="file-header">
-        <span className="file-header__path">
-          <FileCode2 size={16} aria-hidden="true" />
-          {path}
-        </span>
-        <span className="file-header__metadata">
-          UTF-8 · {editor.document.lineEnding.toUpperCase()} ·{" "}
-          {editor.document.disk.byteLen.toLocaleString()} disk bytes
-          {editor.persisting ? " · Recovering…" : ""}
-        </span>
-        <span className="file-header__actions">
-          <button
-            className="button button--compact"
-            type="button"
-            disabled={!tab.dirty || editor.saving || projectTransitioning}
-            onClick={() => void discardActiveEditor()}
-          >
-            <Undo2 size={14} aria-hidden="true" />
-            Discard
-          </button>
-          <button
-            className="button button--compact button--primary"
-            type="button"
-            disabled={
-              !tab.dirty ||
-              editor.saving ||
-              editor.persisting ||
-              projectTransitioning
-            }
-            onClick={() => void saveActiveEditor()}
-          >
-            <Save size={14} aria-hidden="true" />
-            {editor.saving ? "Saving…" : "Save"}
-          </button>
-        </span>
-      </header>
-      {conflict ? (
-        <div className="editor-notice editor-notice--conflict" role="alert">
-          <AlertTriangle size={16} aria-hidden="true" />
-          <span>
-            <strong>External change detected.</strong> {conflict.message}
-          </span>
-        </div>
-      ) : null}
-      {editor.message ? (
-        <div className="editor-notice editor-notice--error" role="alert">
-          <AlertTriangle size={16} aria-hidden="true" />
-          <span>{editor.message}</span>
-        </div>
-      ) : null}
+      <FileEditorHeader
+        path={path}
+        lineEnding={editor.document.lineEnding}
+        diskByteLen={editor.document.disk.byteLen}
+        persisting={editor.persisting}
+        dirty={tab.dirty}
+        saving={editor.saving}
+        transitioning={projectTransitioning}
+        onDiscard={() => void discardActiveEditor()}
+        onSave={() => void saveActiveEditor()}
+      />
+      <FileEditorNotices conflict={conflict} message={editor.message} />
       {findOpen ? (
-        <div className="editor-find" role="search" aria-label="Find in file">
-          <label className="editor-find__query">
-            <span className="sr-only">Find text</span>
-            <input
-              ref={findInputRef}
-              type="text"
-              aria-label="Find text"
-              maxLength={MAX_FIND_QUERY_LENGTH}
-              value={findQuery}
-              onChange={(event) => {
-                setFindQuery(
-                  event.target.value.slice(0, MAX_FIND_QUERY_LENGTH),
-                );
-                setMatchCursor({ contextKey: findContextKey, index: 0 });
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  moveMatch(event.shiftKey ? -1 : 1);
-                }
-              }}
-            />
-          </label>
-          <span className="editor-find__status" role="status">
-            {findStatus}
-          </span>
-          <button
-            className="icon-button editor-find__button"
-            type="button"
-            aria-label="Previous match"
-            disabled={findMatches.offsets.length === 0}
-            onClick={() => moveMatch(-1)}
-          >
-            <ChevronUp size={14} aria-hidden="true" />
-          </button>
-          <button
-            className="icon-button editor-find__button"
-            type="button"
-            aria-label="Next match"
-            disabled={findMatches.offsets.length === 0}
-            onClick={() => moveMatch(1)}
-          >
-            <ChevronDown size={14} aria-hidden="true" />
-          </button>
-          <button
-            className="icon-button editor-find__button"
-            type="button"
-            aria-label="Match case"
-            aria-pressed={caseSensitive}
-            onClick={() => {
-              setCaseSensitive((value) => !value);
-              setMatchCursor({ contextKey: findContextKey, index: 0 });
-            }}
-          >
-            <CaseSensitive size={14} aria-hidden="true" />
-          </button>
-          <button
-            className="icon-button editor-find__button"
-            type="button"
-            aria-label="Close find"
-            onClick={closeFind}
-          >
-            <X size={14} aria-hidden="true" />
-          </button>
-        </div>
+        <FileFindBar
+          inputRef={findInputRef}
+          query={findQuery}
+          status={findStatus}
+          caseSensitive={caseSensitive}
+          hasMatches={findMatches.offsets.length > 0}
+          onQueryChange={(query) => {
+            setFindQuery(query);
+            setMatchCursor({ contextKey: findContextKey, index: 0 });
+          }}
+          onMove={moveMatch}
+          onToggleCase={() => {
+            setCaseSensitive((value) => !value);
+            setMatchCursor({ contextKey: findContextKey, index: 0 });
+          }}
+          onClose={closeFind}
+        />
       ) : null}
-      <textarea
+      <EditorAdapter
         ref={editorInputRef}
-        className="editor-input"
-        aria-label={`Edit ${path}`}
-        value={editor.content}
-        maxLength={MAX_EDITABLE_CONTENT_BYTES}
+        ariaLabel={`Edit ${path}`}
+        content={editor.content}
+        maxContentLength={MAX_EDITABLE_CONTENT_BYTES}
         disabled={editor.saving || projectTransitioning}
-        spellCheck={false}
-        onChange={(event) => updateEditorContent(event.target.value)}
+        onChange={updateEditorContent}
       />
     </section>
   );

@@ -76,6 +76,46 @@ afterEach(() => {
 });
 
 describe("FileSurface durability cadence", () => {
+  it("keeps edit, save, discard, and conflict behavior at the File surface", () => {
+    const save = vi.fn(async () => true);
+    const discard = vi.fn(async () => true);
+    setReadyEditor({ ...tab, dirty: true });
+    useWorkbenchStore.setState((state) => ({
+      saveActiveEditor: save,
+      discardActiveEditor: discard,
+      activeEditor:
+        state.activeEditor?.phase === "ready"
+          ? {
+              ...state.activeEditor,
+              document: {
+                ...state.activeEditor.document,
+                conflict: {
+                  kind: "external-change",
+                  message: "Disk content changed",
+                },
+              },
+            }
+          : state.activeEditor,
+    }));
+    render(<FileSurface tab={{ ...tab, dirty: true }} />);
+
+    const editor = screen.getByRole("textbox", { name: `Edit ${path}` });
+    fireEvent.change(editor, { target: { value: "edited\n" } });
+    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+      phase: "ready",
+      content: "edited\n",
+      revision: 1,
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "External change detected. Disk content changed",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(save).toHaveBeenCalledOnce();
+    expect(discard).toHaveBeenCalledOnce();
+  });
+
   it("sends one trailing snapshot after 750 ms", async () => {
     vi.useFakeTimers();
     const snapshot = vi
