@@ -156,6 +156,22 @@ fn launch_stays_unavailable_without_exact_artifact_admission() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn admitted_binding_is_the_only_constructor_that_crosses_the_launch_gate() {
+    let snapshot = crate::acp::bindings::codex::CodexBindingSnapshot::admitted_for_test();
+    let binding = snapshot.binding().unwrap();
+
+    assert!(
+        CodexRuntime::from_admitted_binding(
+            binding,
+            RuntimeEpoch::new(1).expect("epoch"),
+            SageAgentSessionId::parse("session-admitted").expect("session"),
+        )
+        .is_ok()
+    );
+}
+
 #[test]
 fn initialize_session_prompt_stream_tool_usage_cancel_and_terminal_are_normalized() {
     let mut runtime = fixture_runtime();

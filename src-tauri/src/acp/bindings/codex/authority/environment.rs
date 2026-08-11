@@ -42,6 +42,55 @@ impl CodexLaunchEnvironment {
     pub(crate) fn entries(&self) -> &[(String, String)] {
         &self.entries
     }
+
+    pub(crate) fn revalidate(
+        &self,
+        packet: &MetadataValidatedPacket,
+    ) -> Result<(), EnvironmentAuthorityError> {
+        if !cfg!(windows) || packet.metadata().platform != Platform::WindowsX86_64 {
+            return Err(EnvironmentAuthorityError::PlatformUnavailable);
+        }
+        let codex_home = packet
+            .codex_home()
+            .to_str()
+            .ok_or(EnvironmentAuthorityError::Binding)?;
+        let state_temp = format!(r"{codex_home}\tmp");
+        let expected_keys = ["CODEX_HOME", "SystemRoot", "TEMP", "TMP", "WINDIR"];
+        if self.entries.len() != expected_keys.len()
+            || self
+                .entries
+                .iter()
+                .zip(expected_keys)
+                .any(|((key, _), expected)| key != expected)
+            || self.entries[0].1 != codex_home
+            || self.entries[2].1 != state_temp
+            || self.entries[3].1 != state_temp
+            || !self.entries[1].1.eq_ignore_ascii_case(&self.entries[4].1)
+        {
+            return Err(EnvironmentAuthorityError::Binding);
+        }
+        validate_limits(&self.entries)?;
+        #[cfg(windows)]
+        windows::revalidate(&self._windows_directory, &self.entries[1].1)?;
+        Ok(())
+    }
+}
+
+pub(crate) fn build_system_codex_launch_environment(
+    packet: &MetadataValidatedPacket,
+    policy: &SecurityPolicyPrerequisite,
+    config: &VerifiedCodexConfig,
+) -> Result<CodexLaunchEnvironment, EnvironmentAuthorityError> {
+    #[cfg(windows)]
+    {
+        let windows = windows::system_windows_directory()?;
+        build_codex_launch_environment(packet, policy, config, &windows, &windows)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (packet, policy, config);
+        Err(EnvironmentAuthorityError::PlatformUnavailable)
+    }
 }
 
 pub(crate) fn build_codex_launch_environment(

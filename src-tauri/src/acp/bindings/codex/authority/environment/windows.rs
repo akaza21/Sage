@@ -20,7 +20,7 @@ const WINDOWS_PATH_WIDE_MAX: usize = 32 * 1024;
 
 #[derive(Debug)]
 pub(super) struct WindowsDirectoryProof {
-    _directory: File,
+    directory: File,
 }
 
 pub(super) fn inspect(
@@ -59,15 +59,10 @@ pub(super) fn inspect(
         .to_str()
         .ok_or(EnvironmentAuthorityError::SystemRoot)?
         .to_owned();
-    Ok((
-        value,
-        WindowsDirectoryProof {
-            _directory: directory,
-        },
-    ))
+    Ok((value, WindowsDirectoryProof { directory }))
 }
 
-fn system_windows_directory() -> Result<PathBuf, EnvironmentAuthorityError> {
+pub(super) fn system_windows_directory() -> Result<PathBuf, EnvironmentAuthorityError> {
     let mut buffer = vec![0_u16; WINDOWS_PATH_WIDE_MAX];
     let length = unsafe {
         GetSystemWindowsDirectoryW(
@@ -80,6 +75,19 @@ fn system_windows_directory() -> Result<PathBuf, EnvironmentAuthorityError> {
         return Err(EnvironmentAuthorityError::SystemRoot);
     }
     Ok(PathBuf::from(OsString::from_wide(&buffer[..length])))
+}
+
+pub(super) fn revalidate(
+    proof: &WindowsDirectoryProof,
+    expected: &str,
+) -> Result<(), EnvironmentAuthorityError> {
+    let current = system_windows_directory()?;
+    if path_key(&current) != path_key(Path::new(expected))
+        || path_key(&final_path(&proof.directory)?) != path_key(Path::new(expected))
+    {
+        return Err(EnvironmentAuthorityError::SystemRoot);
+    }
+    Ok(())
 }
 
 fn final_path(file: &File) -> Result<PathBuf, EnvironmentAuthorityError> {

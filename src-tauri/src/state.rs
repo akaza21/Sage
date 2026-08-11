@@ -1,5 +1,6 @@
 use crate::{
     acp::{
+        bindings::codex::startup_codex_binding_snapshot,
         intent::{ACP_PROJECTION_CHANGED_EVENT, ProjectionChangedV1},
         runtime::{NotificationError, NotificationSink, NotificationSinkFuture},
         service::AcpService,
@@ -37,9 +38,11 @@ impl AppState {
     }
 
     pub fn try_new_desktop(database: Database, app: tauri::AppHandle) -> AppResult<Self> {
-        let acp = AcpService::new_with_notification_sink(
+        let codex = startup_codex_binding_snapshot();
+        let acp = AcpService::new_with_notification_sink_and_codex(
             database.clone(),
             std::sync::Arc::new(DesktopProjectionSink(app)),
+            codex.clone(),
         )
         .map_err(|_| {
             crate::error::AppError::InvalidRequest(
@@ -49,7 +52,7 @@ impl AppState {
         Ok(Self {
             database,
             acp,
-            harnesses: HarnessCatalog::default(),
+            harnesses: HarnessCatalog::with_codex_snapshot(codex),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(0),
         })
@@ -61,10 +64,12 @@ impl AppState {
         app: tauri::AppHandle,
         binding: crate::acp::service::CharacterizationBinding,
     ) -> AppResult<Self> {
+        let codex = startup_codex_binding_snapshot();
         let acp = AcpService::new_with_characterization_sink(
             database.clone(),
             std::sync::Arc::new(DesktopProjectionSink(app)),
             binding,
+            codex.clone(),
         )
         .map_err(|_| {
             crate::error::AppError::InvalidRequest(
@@ -74,7 +79,7 @@ impl AppState {
         Ok(Self {
             database,
             acp,
-            harnesses: HarnessCatalog::with_characterization(),
+            harnesses: HarnessCatalog::with_codex_snapshot_and_characterization(codex),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(0),
         })
@@ -85,16 +90,18 @@ impl AppState {
         database: Database,
         binding: crate::acp::service::CharacterizationBinding,
     ) -> AppResult<Self> {
+        let codex = startup_codex_binding_snapshot();
         let acp =
-            AcpService::new_characterization_for_test(database.clone(), binding).map_err(|_| {
-                crate::error::AppError::InvalidRequest(
-                    "bounded ACP restart recovery failed; durable history was preserved".into(),
-                )
-            })?;
+            AcpService::new_characterization_for_test(database.clone(), binding, codex.clone())
+                .map_err(|_| {
+                    crate::error::AppError::InvalidRequest(
+                        "bounded ACP restart recovery failed; durable history was preserved".into(),
+                    )
+                })?;
         Ok(Self {
             database,
             acp,
-            harnesses: HarnessCatalog::with_characterization(),
+            harnesses: HarnessCatalog::with_codex_snapshot_and_characterization(codex),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(0),
         })

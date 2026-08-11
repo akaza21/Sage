@@ -8,12 +8,13 @@ use std::{
 
 use crate::{
     acp::{
+        bindings::codex::CodexBindingSnapshot,
         contract::{ProjectGeneration, SageChatId, SageProjectId},
         intent::{AcpChatPage, IntentSnapshot, PageCursor},
         page_admission::{PageAdmissionError, PageReadAdmission, PageReadLease},
         runtime::{
-            BoundedThread, JournalError, JournalHandle, JournalLane, NotificationSink,
-            ProjectionNotifier, ProjectionPublisher, SessionCoordinator, ThreadWaitError,
+            BoundedThread, JournalError, JournalHandle, JournalLane, ProjectionNotifier,
+            ProjectionPublisher, SessionCoordinator, ThreadWaitError,
         },
         scheduler::Scheduler,
         store::{DatabaseAcpStore, StoreError, StoreMutation, StoreMutationResult, load_chat_page},
@@ -21,8 +22,12 @@ use crate::{
     persistence::Database,
 };
 
+#[cfg(test)]
+use crate::acp::bindings::codex::AdmittedCodexBinding;
+
 #[cfg(all(windows, feature = "acp-fixture"))]
 mod characterization;
+mod configuration;
 mod intent_snapshot;
 #[cfg(any(test, feature = "acp-fixture"))]
 #[allow(dead_code)] // The packaged reload orchestrator consumes this next.
@@ -35,16 +40,11 @@ pub(crate) use characterization::{
     BINDING_ID as CHARACTERIZATION_BINDING_ID, CharacterizationArtifact, CharacterizationBinding,
     CharacterizationCase, CharacterizationError,
 };
+use configuration::ServiceConfiguration;
 use intent_snapshot::load_intent_snapshot;
 #[cfg(any(test, feature = "acp-fixture"))]
 use renderer_recreation::RendererRecreationNativeSnapshot;
 use runtime_slot::RuntimeSlot;
-
-#[derive(Default)]
-struct ServiceConfiguration {
-    #[cfg(all(windows, feature = "acp-fixture"))]
-    characterization: Option<CharacterizationBinding>,
-}
 
 pub(crate) struct AcpService {
     database: Database,
@@ -56,72 +56,12 @@ pub(crate) struct AcpService {
     publisher: Arc<dyn ProjectionPublisher>,
     notifier: Option<Arc<ProjectionNotifier>>,
     page_reads: PageReadAdmission,
+    codex: CodexBindingSnapshot,
     #[cfg(all(windows, feature = "acp-fixture"))]
     characterization: Option<CharacterizationBinding>,
 }
 
 impl AcpService {
-    #[cfg(test)]
-    pub(crate) fn new(database: Database) -> Result<Self, StoreError> {
-        Self::build(
-            database,
-            Arc::new(crate::acp::runtime::ProjectionMailbox::default()),
-            None,
-            ServiceConfiguration::default(),
-        )
-    }
-
-    pub(crate) fn new_with_notification_sink(
-        database: Database,
-        sink: Arc<dyn NotificationSink>,
-    ) -> Result<Self, StoreError> {
-        let runtime = tauri::async_runtime::handle();
-        let notifier = Arc::new(ProjectionNotifier::start_with(sink, move |worker| {
-            runtime.inner().spawn(worker)
-        }));
-        Self::build(
-            database,
-            notifier.clone(),
-            Some(notifier),
-            ServiceConfiguration::default(),
-        )
-    }
-
-    #[cfg(all(windows, feature = "acp-fixture"))]
-    pub(crate) fn new_with_characterization_sink(
-        database: Database,
-        sink: Arc<dyn NotificationSink>,
-        binding: CharacterizationBinding,
-    ) -> Result<Self, StoreError> {
-        let runtime = tauri::async_runtime::handle();
-        let notifier = Arc::new(ProjectionNotifier::start_with(sink, move |worker| {
-            runtime.inner().spawn(worker)
-        }));
-        Self::build(
-            database,
-            notifier.clone(),
-            Some(notifier),
-            ServiceConfiguration {
-                characterization: Some(binding),
-            },
-        )
-    }
-
-    #[cfg(all(test, windows, feature = "acp-fixture"))]
-    pub(crate) fn new_characterization_for_test(
-        database: Database,
-        binding: CharacterizationBinding,
-    ) -> Result<Self, StoreError> {
-        Self::build(
-            database,
-            Arc::new(crate::acp::runtime::ProjectionMailbox::default()),
-            None,
-            ServiceConfiguration {
-                characterization: Some(binding),
-            },
-        )
-    }
-
     fn build(
         database: Database,
         publisher: Arc<dyn ProjectionPublisher>,
@@ -176,9 +116,15 @@ impl AcpService {
             publisher,
             notifier,
             page_reads: PageReadAdmission::default(),
+            codex: configuration.codex,
             #[cfg(all(windows, feature = "acp-fixture"))]
             characterization: configuration.characterization,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn codex_binding(&self) -> Option<&Arc<AdmittedCodexBinding>> {
+        self.codex.binding()
     }
 
     pub(crate) fn reserve_page_read(
@@ -324,6 +270,7 @@ impl std::fmt::Debug for AcpService {
             .field("journal", &self.journal)
             .field("sessions", &self.sessions)
             .field("runtime_active", &self.runtime.is_active())
+            .field("codex_admitted", &self.codex.binding().is_some())
             .field("notification_active", &self.notifier.is_some())
             .finish_non_exhaustive()
     }

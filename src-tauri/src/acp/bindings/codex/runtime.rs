@@ -25,6 +25,9 @@ use super::manifest::{Platform, parse_packet_metadata};
 mod support;
 use support::*;
 
+#[path = "runtime/admission.rs"]
+mod admission;
+
 #[path = "runtime/snapshots.rs"]
 mod snapshots;
 use snapshots::ItemSnapshots;

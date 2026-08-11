@@ -31,6 +31,20 @@ use crate::{
 
 use super::AcpService;
 
+#[cfg(windows)]
+#[test]
+fn service_and_catalog_share_the_exact_admitted_codex_snapshot() {
+    let snapshot = crate::acp::bindings::codex::CodexBindingSnapshot::admitted_for_test();
+    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let service = AcpService::new_with_codex_for_test(database, snapshot.clone()).unwrap();
+    let catalog = crate::harnesses::HarnessCatalog::with_codex_snapshot(snapshot);
+
+    assert!(Arc::ptr_eq(
+        service.codex_binding().unwrap(),
+        catalog.codex_binding().unwrap(),
+    ));
+}
+
 #[test]
 fn renderer_recreation_snapshot_covers_the_exact_native_invariance_boundary() {
     let database = Database::open(std::path::Path::new(":memory:")).unwrap();

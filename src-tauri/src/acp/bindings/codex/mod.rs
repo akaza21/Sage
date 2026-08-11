@@ -3,6 +3,7 @@
 //! This module deliberately has no launcher. A validated candidate remains
 //! unavailable until a separately admitted native artifact is supplied.
 
+mod admission;
 mod authority;
 mod incoming;
 mod managed;
@@ -15,6 +16,10 @@ mod request;
 mod runtime;
 mod state;
 
+pub(crate) use admission::{
+    AdmittedCodexBinding, CodexAdmissionUnavailable, CodexBindingSnapshot,
+    startup_codex_binding_snapshot,
+};
 pub(crate) use authority::{
     ConfigAuthorityError, EnvironmentAuthorityError, ResidueMarker, RetentionDecision,
     StateAuthorityError, build_codex_launch_environment, classify_codex_state_path,

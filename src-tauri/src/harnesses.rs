@@ -1,4 +1,5 @@
 use crate::{
+    acp::bindings::codex::{CodexBindingSnapshot, startup_codex_binding_snapshot},
     domain::{HarnessDefinition, HarnessTransport, ModelOption},
     error::{AppError, AppResult},
 };
@@ -7,27 +8,60 @@ pub const SIMULATOR_ID: &str = "sage-simulator";
 pub const SIMULATOR_DEFAULT_MODEL_ID: &str = "sim-fast";
 pub const SIMULATOR_DEEP_MODEL_ID: &str = "sim-deep";
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct HarnessCatalog {
+    codex: CodexBindingSnapshot,
     #[cfg(all(windows, feature = "acp-fixture"))]
     characterization_available: bool,
 }
 
+impl Default for HarnessCatalog {
+    fn default() -> Self {
+        Self::with_codex_snapshot(startup_codex_binding_snapshot())
+    }
+}
+
 impl HarnessCatalog {
-    #[cfg(all(windows, feature = "acp-fixture"))]
-    pub(crate) fn with_characterization() -> Self {
+    pub(crate) fn with_codex_snapshot(codex: CodexBindingSnapshot) -> Self {
         Self {
+            codex,
+            #[cfg(all(windows, feature = "acp-fixture"))]
+            characterization_available: false,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn codex_binding(
+        &self,
+    ) -> Option<&std::sync::Arc<crate::acp::bindings::codex::AdmittedCodexBinding>> {
+        self.codex.binding()
+    }
+
+    #[cfg(all(test, windows, feature = "acp-fixture"))]
+    pub(crate) fn with_characterization() -> Self {
+        Self::with_codex_snapshot_and_characterization(startup_codex_binding_snapshot())
+    }
+
+    #[cfg(all(windows, feature = "acp-fixture"))]
+    pub(crate) fn with_codex_snapshot_and_characterization(codex: CodexBindingSnapshot) -> Self {
+        Self {
+            codex,
             characterization_available: true,
         }
     }
 
     pub fn definitions(&self) -> Vec<HarnessDefinition> {
-        let mut definitions = vec![
+        let codex_available = self.codex.binding().is_some();
+        let definitions = vec![
             definition(
                 "codex",
                 "Codex",
                 "Curated ACP adapter, installed only when requested.",
-                "notInstalled",
+                if codex_available {
+                    "available"
+                } else {
+                    "notInstalled"
+                },
                 "builtIn",
                 HarnessTransport::Acp,
                 Some("codex-app-server"),
@@ -71,6 +105,7 @@ impl HarnessCatalog {
         ];
         #[cfg(all(windows, feature = "acp-fixture"))]
         if self.characterization_available {
+            let mut definitions = definitions;
             definitions.insert(
                 4,
                 definition(
@@ -83,6 +118,7 @@ impl HarnessCatalog {
                     Some(crate::acp::service::CHARACTERIZATION_BINDING_ID),
                 ),
             );
+            return definitions;
         }
         definitions
     }
@@ -270,5 +306,23 @@ mod tests {
             Some("sage-characterization".into())
         );
         assert!(admitted.models("sage-characterization").unwrap().is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn codex_availability_and_models_come_from_one_admitted_snapshot() {
+        let unavailable = HarnessCatalog::with_codex_snapshot(
+            crate::acp::bindings::codex::startup_codex_binding_snapshot(),
+        );
+        let codex = unavailable.definitions().remove(0);
+        assert_eq!(codex.install_state, "notInstalled");
+        assert!(unavailable.models("codex").unwrap().is_empty());
+
+        let snapshot = crate::acp::bindings::codex::CodexBindingSnapshot::admitted_for_test();
+        let admitted = HarnessCatalog::with_codex_snapshot(snapshot);
+        let codex = admitted.definitions().remove(0);
+        assert_eq!(codex.install_state, "available");
+        assert_eq!(codex.binding_id.as_deref(), Some("codex-app-server"));
+        assert!(admitted.models("codex").unwrap().is_empty());
     }
 }
