@@ -10,6 +10,7 @@ pub(crate) fn commit(error: &AppError) -> String {
         }
         AppError::Io(_) => "Git could not access the selected repository.",
         AppError::Database(_) => "Sage could not load the active Project for this Git commit.",
+        AppError::Unsupported(_) => "Git commits are unavailable on this platform.",
         AppError::GitEffectUnknown(_) => {
             "The Git commit outcome is uncertain. Refresh Source Control before continuing."
         }
@@ -34,6 +35,7 @@ pub(crate) fn projection(error: &AppError) -> String {
         }
         AppError::Io(_) => "Repository status could not access the selected root.",
         AppError::Database(_) => "Repository status could not load the active Project.",
+        AppError::Unsupported(_) => "Repository status is unavailable on this platform.",
         AppError::GitEffectUnknown(_) => {
             "Repository status is unavailable while a Git outcome remains uncertain. Refresh Source Control."
         }
@@ -62,4 +64,22 @@ fn bounded(message: &str) -> String {
         boundary -= 1;
     }
     message[..boundary].into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_platform_diagnostics_never_cross_the_public_git_boundary() {
+        let native = AppError::Unsupported(
+            r"unsupported native operation at C:\private\workspace\.git".into(),
+        );
+
+        for message in [commit(&native), projection(&native)] {
+            assert!(message.len() <= MAX_PUBLIC_REPOSITORY_ERROR_BYTES);
+            assert!(!message.contains("C:\\private"));
+            assert!(!message.contains(".git"));
+        }
+    }
 }
