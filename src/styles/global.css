@@ -1598,6 +1598,55 @@ textarea:focus-visible {
   margin-top: 20px;
 }
 
+.new-file-dialog {
+  width: min(480px, calc(100vw - 32px));
+  color: var(--text);
+}
+
+.new-file-dialog::backdrop {
+  background: rgb(0 0 0 / 52%);
+}
+
+.new-file-dialog__form,
+.new-file-dialog__field {
+  display: grid;
+  gap: 8px;
+}
+
+.new-file-dialog__form > h2 {
+  margin: 0;
+}
+
+.new-file-dialog__field {
+  margin-top: 12px;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.new-file-dialog__field input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text);
+  outline: none;
+  background: var(--surface-raised);
+}
+
+.new-file-dialog__field input:focus {
+  border-color: var(--accent);
+}
+
+.new-file-dialog .new-file-dialog__preview {
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+}
+
+.new-file-dialog .new-file-dialog__error {
+  min-height: 18px;
+  color: var(--danger);
+}
+
 .handoff-control {
   position: relative;
   display: flex;

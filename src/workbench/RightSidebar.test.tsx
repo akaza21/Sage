@@ -311,3 +311,75 @@ describe("RightSidebar Source Control mutations", () => {
     ).toBeNull();
   });
 });
+
+describe("RightSidebar Explorer New File", () => {
+  it("previews an active file's parent, reports errors, and restores trigger focus", async () => {
+    const createProjectFile = vi.fn(async () => {
+      useWorkbenchStore.setState({ fileCreateError: "File already exists." });
+      return false;
+    });
+    useWorkbenchStore.setState({
+      sidebarOpen: true,
+      sidebarView: "explorer",
+      phase: "ready",
+      projectGeneration: 2,
+      nativeTransitionEpoch: 3,
+      project: {
+        id: "project-a",
+        name: "A",
+        roots: [
+          {
+            id: "root-a",
+            name: "Root A",
+            ordinal: 0,
+            availability: "available",
+            message: null,
+          },
+        ],
+      },
+      selectedRootId: "root-a",
+      selectedResource: { rootId: "root-a", relativePath: "src/main.ts" },
+      tabs: [
+        {
+          id: "file-a",
+          kind: "file",
+          title: "main.ts",
+          position: 0,
+          pinned: false,
+          dirty: true,
+          resource: { rootId: "root-a", relativePath: "src/main.ts" },
+        },
+      ],
+      activeTabId: "file-a",
+      directoryListings: {},
+      createProjectFile,
+      fileCreateError: null,
+      fileCreateInFlight: false,
+    });
+
+    render(<RightSidebar compact={false} />);
+    const trigger = screen.getByRole("button", { name: "New File" });
+    fireEvent.click(trigger);
+    const input = await screen.findByLabelText("File name");
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { value: "new.ts" } });
+    expect(screen.getByText("Path: Root A/src/new.ts")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(createProjectFile).toHaveBeenCalledWith(
+      { rootId: "root-a", relativePath: "src" },
+      "new.ts",
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "File already exists.",
+    );
+    useWorkbenchStore.setState({ fileCreateInFlight: true });
+    await vi.waitFor(() => expect(input).toBeDisabled());
+    expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    useWorkbenchStore.setState({ fileCreateInFlight: false });
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    await vi.waitFor(() => expect(cancel).toBeEnabled());
+    fireEvent.click(cancel);
+    await vi.waitFor(() => expect(trigger).toHaveFocus());
+  });
+});

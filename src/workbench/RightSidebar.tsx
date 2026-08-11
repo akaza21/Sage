@@ -20,6 +20,8 @@ import {
 } from "../domain/resourceIdentity";
 import type { ProjectRootSummary } from "../domain/workbench";
 import { flattenFileTree } from "../features/files/fileTree";
+import { NewFileControl } from "../features/files/NewFileControl";
+import { explorerCreateParent } from "../features/files/newFileContract";
 import { WorkspaceSearchView } from "../features/search";
 import { SourceControlView } from "./SourceControlView";
 
@@ -42,6 +44,7 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
   const listings = useWorkbenchStore((state) => state.directoryListings);
   const expanded = useWorkbenchStore((state) => state.expandedDirectories);
   const toggleDirectory = useWorkbenchStore((state) => state.toggleDirectory);
+  const selectDirectory = useWorkbenchStore((state) => state.selectDirectory);
   const openFile = useWorkbenchStore((state) => state.openFile);
   const selectRoot = useWorkbenchStore((state) => state.selectRoot);
   const selectedRow = useRef<HTMLButtonElement>(null);
@@ -102,11 +105,14 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
             aria-expanded={directory ? Boolean(expanded[key]) : undefined}
             style={{ paddingLeft: 9 + entry.depth * 16 }}
             disabled={!directory && !file}
-            onClick={() =>
-              directory
-                ? toggleDirectory(entry.resource)
-                : void openFile(entry.resource)
-            }
+            onClick={() => {
+              if (directory) {
+                selectDirectory(entry.resource);
+                toggleDirectory(entry.resource);
+              } else {
+                void openFile(entry.resource);
+              }
+            }}
           >
             {directory ? (
               <ChevronRight
@@ -135,11 +141,31 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
 
 function ExplorerView() {
   const project = useWorkbenchStore((state) => state.project);
+  const selectedRootId = useWorkbenchStore((state) => state.selectedRootId);
+  const selectedResource = useWorkbenchStore((state) => state.selectedResource);
+  const tabs = useWorkbenchStore((state) => state.tabs);
+  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
+  const listings = useWorkbenchStore((state) => state.directoryListings);
+  const parent = project
+    ? explorerCreateParent(
+        project,
+        selectedRootId,
+        selectedResource,
+        tabs,
+        activeTabId,
+        listings,
+      )
+    : null;
+  const rootName =
+    project?.roots.find((root) => root.id === parent?.rootId)?.name ?? null;
   return (
     <>
       <div className="sidebar__heading">
         <span>Explorer</span>
-        <span className="muted">{project?.name ?? "No project"}</span>
+        <span className="sidebar__heading-actions">
+          <span className="muted">{project?.name ?? "No project"}</span>
+          <NewFileControl parent={parent} rootName={rootName} />
+        </span>
       </div>
       <div className="tree" role="tree" aria-label="Project files">
         {project?.roots.map((root) => (

@@ -16,6 +16,7 @@ import type {
 import { preferredModelId } from "../features/harnesses/modelSelection";
 import { desktop } from "../services/desktop";
 import { createEditorSlice, type EditorSlice } from "./editorSlice";
+import { createFileCreateSlice, type FileCreateSlice } from "./fileCreateSlice";
 import { createChatSlice, type ChatSlice } from "./chatSlice";
 import {
   createChatArchiveSlice,
@@ -56,6 +57,7 @@ export interface WorkbenchState
     ChatHandoffSlice,
     ChatOwnershipSlice,
     EditorSlice,
+    FileCreateSlice,
     ProjectSlice,
     RepositoryMutationSlice,
     ResourceSlice,
@@ -190,10 +192,15 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createResourceSlice(set, get, store),
     ...createSearchNavigationSlice(set, get, store),
     ...createEditorSlice(set, get, store),
+    ...createFileCreateSlice(set, get, store),
 
     selectRoot: (selectedRootId) => {
       if (get().projectTransitioning) return;
-      set({ selectedRootId });
+      set({
+        selectedRootId,
+        selectedResource: childResource(selectedRootId),
+        fileCreateError: null,
+      });
       void get().loadDirectory(childResource(selectedRootId));
     },
 

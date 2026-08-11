@@ -12,6 +12,7 @@ mod editor_content;
 mod editor_coordination;
 mod editor_persistence;
 mod error;
+mod file_create_commands;
 mod git_process;
 mod harnesses;
 mod launch_profile;
@@ -146,6 +147,7 @@ pub fn run() {
             resource_commands::snapshot_editor_buffer,
             resource_commands::save_editor_document,
             resource_commands::discard_editor_buffer,
+            file_create_commands::create_project_file,
             project_commands::create_project_from_picker,
             project_commands::add_project_root_from_picker,
             chat_commands::create_chat,

@@ -13,6 +13,7 @@ const buffers = new Map<
   string,
   { request: BufferSnapshotRequest; fingerprint: string }
 >();
+const fixtureCreatedFiles = new Set<string>();
 
 function diskContent(resource: ResourceRef): string {
   return (
@@ -132,10 +133,27 @@ function discard(resource: ResourceRef): EditorDocument {
   return open(resource);
 }
 
+function createEmpty(resource: ResourceRef) {
+  const key = resourceKey(resource);
+  if (files.has(key)) throw new Error("file already exists");
+  files.set(key, "");
+  fixtureCreatedFiles.add(key);
+}
+
+function resetCreatedFiles() {
+  for (const key of fixtureCreatedFiles) {
+    files.delete(key);
+    buffers.delete(key);
+  }
+  fixtureCreatedFiles.clear();
+}
+
 export const browserEditor = {
   readTextFile,
   open,
   snapshot,
   save,
   discard,
+  createEmpty,
+  resetCreatedFiles,
 };

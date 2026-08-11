@@ -198,6 +198,26 @@ pub struct DirectoryListing {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CreateProjectFileRequest {
+    pub project_id: String,
+    pub project_generation: u64,
+    pub expected_transition_epoch: u64,
+    pub parent: ResourceRef,
+    pub basename: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateProjectFileResult {
+    pub project_id: String,
+    pub project_generation: u64,
+    pub transition_epoch: u64,
+    pub resource: ResourceRef,
+    pub parent_listing: DirectoryListing,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TextFile {
     pub resource: ResourceRef,
     pub content: String,

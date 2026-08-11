@@ -191,3 +191,17 @@ export const browserDirectories = new Map<string, DirectoryListing>([
     },
   ],
 ]);
+
+const initialBrowserDirectories = new Map(
+  [...browserDirectories].map(([key, listing]) => [
+    key,
+    structuredClone(listing),
+  ]),
+);
+
+export function resetBrowserDirectories() {
+  browserDirectories.clear();
+  for (const [key, listing] of initialBrowserDirectories) {
+    browserDirectories.set(key, structuredClone(listing));
+  }
+}

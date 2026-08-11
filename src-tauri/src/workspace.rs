@@ -9,9 +9,10 @@ use crate::{
     error::{AppError, AppResult},
 };
 
+pub(crate) mod file_create;
 pub(crate) mod search;
 
-const MAX_DIRECTORY_ENTRIES: usize = 500;
+pub(crate) const MAX_DIRECTORY_ENTRIES: usize = 500;
 const MAX_TEXT_FILE_BYTES: u64 = 2 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
@@ -19,6 +20,13 @@ pub struct Workspace {
     project_id: String,
     root_id: String,
     root: PathBuf,
+    root_identity: RootIdentity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RootIdentity {
+    first: u64,
+    second: u64,
 }
 
 impl Workspace {
@@ -32,6 +40,7 @@ impl Workspace {
         Ok(Self {
             project_id: project_id.into(),
             root_id: root_id.into(),
+            root_identity: root_identity_path(&root)?,
             root,
         })
     }
@@ -46,6 +55,10 @@ impl Workspace {
 
     pub fn root_id(&self) -> &str {
         &self.root_id
+    }
+
+    pub(crate) fn root_identity(&self) -> RootIdentity {
+        self.root_identity
     }
 
     #[cfg(test)]
@@ -243,6 +256,67 @@ impl Workspace {
             relative_path: relative_path.into(),
         }
     }
+}
+
+#[cfg(unix)]
+pub(crate) fn root_identity_path(path: &Path) -> AppResult<RootIdentity> {
+    root_identity_metadata(&path.metadata()?)
+}
+
+#[cfg(unix)]
+pub(crate) fn root_identity_metadata(metadata: &fs::Metadata) -> AppResult<RootIdentity> {
+    use std::os::unix::fs::MetadataExt;
+
+    Ok(RootIdentity {
+        first: metadata.dev(),
+        second: metadata.ino(),
+    })
+}
+
+#[cfg(windows)]
+pub(crate) fn root_identity_path(path: &Path) -> AppResult<RootIdentity> {
+    use std::{fs::OpenOptions, os::windows::fs::OpenOptionsExt};
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ,
+        FILE_SHARE_WRITE,
+    };
+
+    let file = OpenOptions::new()
+        .access_mode(FILE_READ_ATTRIBUTES)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)?;
+    root_identity_file(&file)
+}
+
+#[cfg(windows)]
+pub(crate) fn root_identity_file(file: &fs::File) -> AppResult<RootIdentity> {
+    use std::{mem::MaybeUninit, os::windows::io::AsRawHandle};
+    use windows_sys::Win32::Storage::FileSystem::{
+        BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+    };
+
+    let mut information = MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::uninit();
+    // SAFETY: the file handle is live and the output points to writable storage for the call.
+    let success =
+        unsafe { GetFileInformationByHandle(file.as_raw_handle(), information.as_mut_ptr()) };
+    if success == 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    // SAFETY: GetFileInformationByHandle initialized the output on success.
+    let information = unsafe { information.assume_init() };
+    Ok(RootIdentity {
+        first: u64::from(information.dwVolumeSerialNumber),
+        second: (u64::from(information.nFileIndexHigh) << 32)
+            | u64::from(information.nFileIndexLow),
+    })
+}
+
+#[cfg(not(any(unix, windows)))]
+pub(crate) fn root_identity_path(_path: &Path) -> AppResult<RootIdentity> {
+    Err(AppError::InvalidRequest(
+        "safe file creation is unavailable on this platform".into(),
+    ))
 }
 
 fn validate_relative_path(relative_path: &str, allow_root: bool) -> AppResult<()> {

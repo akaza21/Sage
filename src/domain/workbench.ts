@@ -138,6 +138,22 @@ export interface DirectoryListing {
   truncated: boolean;
 }
 
+export interface CreateProjectFileRequest {
+  projectId: string;
+  projectGeneration: number;
+  expectedTransitionEpoch: number;
+  parent: ResourceRef;
+  basename: string;
+}
+
+export interface CreateProjectFileResult {
+  projectId: string;
+  projectGeneration: number;
+  transitionEpoch: number;
+  resource: ResourceRef;
+  parentListing: DirectoryListing;
+}
+
 export interface TextFile {
   resource: ResourceRef;
   content: string;

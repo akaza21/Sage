@@ -31,6 +31,7 @@ export interface ResourceSlice {
   openFile: (resource: ResourceRef) => Promise<void>;
   loadDirectory: (resource: ResourceRef) => Promise<void>;
   toggleDirectory: (resource: ResourceRef) => void;
+  selectDirectory: (resource: ResourceRef) => void;
   revealFile: (resource: ResourceRef) => Promise<void>;
   loadDiff: (resource: ResourceRef) => Promise<void>;
 }
@@ -94,6 +95,7 @@ export const createResourceSlice: StateCreator<
     const projectId = get().project?.id;
     if (
       !projectId ||
+      get().fileCreateInFlight ||
       get().projectTransitioning ||
       !matchesResourceIntent(get(), generation, projectId, resource)
     ) {
@@ -128,6 +130,7 @@ export const createResourceSlice: StateCreator<
     const projectId = get().project?.id;
     if (
       !projectId ||
+      get().fileCreateInFlight ||
       get().projectTransitioning ||
       !matchesResourceIntent(get(), generation, projectId, resource)
     ) {
@@ -257,6 +260,15 @@ export const createResourceSlice: StateCreator<
     if (expanded) {
       void get().loadDirectory(resource);
     }
+  },
+
+  selectDirectory: (resource) => {
+    if (get().projectTransitioning) return;
+    set({
+      selectedRootId: resource.rootId,
+      selectedResource: resource,
+      fileCreateError: null,
+    });
   },
 
   revealFile: async (resource) => {

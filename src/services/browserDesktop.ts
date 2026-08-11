@@ -2,6 +2,7 @@ import type {
   ArchivedChatSummary,
   ChatLifecycleRequest,
   ChatMessage,
+  CreateProjectFileRequest,
   FileDiff,
   GitFileMutationRequest,
   ProjectLayoutRequest,
@@ -29,11 +30,16 @@ import {
   type BrowserPromptRequest,
 } from "./browserChat";
 import { browserEditor } from "./browserEditor";
+import {
+  createBrowserProjectFile,
+  resetBrowserFileCreate,
+} from "./browserFileCreate";
 import { assertBrowserProjectLayout } from "./browserLayout";
 import {
   browserDirectories as directories,
   browserRepository as repository,
   browserSnapshot as snapshot,
+  resetBrowserDirectories,
 } from "./browserWorkspaceFixture";
 
 export { appendBrowserSimulatorTurn } from "./browserChat";
@@ -54,6 +60,8 @@ let simulatorSessions = new Map<
 let durableChatIds = new Set(["tab-chat"]);
 let chatTitles = new Map([["tab-chat", snapshot.tabs[0].title]]);
 export function resetBrowserDesktopForTests() {
+  resetBrowserDirectories();
+  resetBrowserFileCreate();
   snapshot.transitionEpoch = 0;
   snapshot.tabs = structuredClone(initialTabs);
   snapshot.archivedChats = [];
@@ -102,6 +110,9 @@ export const browserDesktop = {
         truncated: false,
       },
     );
+  },
+  async createProjectFile(request: CreateProjectFileRequest) {
+    return createBrowserProjectFile(request);
   },
   readTextFile: browserEditor.readTextFile,
   openEditorDocument: browserEditor.open,

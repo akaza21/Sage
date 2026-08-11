@@ -3,6 +3,8 @@ import type {
   BufferSnapshotAck,
   BufferSnapshotRequest,
   DirectoryListing,
+  CreateProjectFileRequest,
+  CreateProjectFileResult,
   EditorDocument,
   EditorSaveResult,
   FileDiff,
@@ -72,6 +74,14 @@ export const desktop = {
     return isTauriRuntime()
       ? invoke("list_directory", { resource })
       : browserDesktop.listDirectory(resource);
+  },
+
+  createProjectFile(
+    request: CreateProjectFileRequest,
+  ): Promise<CreateProjectFileResult> {
+    return isTauriRuntime()
+      ? invoke("create_project_file", { request })
+      : browserDesktop.createProjectFile(request);
   },
 
   readTextFile(resource: ResourceRef): Promise<TextFile> {
