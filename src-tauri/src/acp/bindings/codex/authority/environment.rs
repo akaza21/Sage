@@ -14,13 +14,18 @@ use super::VerifiedCodexConfig;
 #[path = "environment/windows.rs"]
 mod windows;
 
+#[cfg(all(test, windows))]
+pub(crate) use windows::system_windows_directory_for_test;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum EnvironmentAuthorityError {
     #[error("Codex launch environment is unavailable on this platform")]
     PlatformUnavailable,
     #[error("Codex launch environment is not bound to the packet and configuration")]
     Binding,
-    #[error("Windows SystemRoot and WINDIR are not the physically verified OS Windows directory")]
+    #[error(
+        "Windows SystemRoot and WINDIR are not the physically verified shared system Windows directory"
+    )]
     SystemRoot,
     #[error("Codex launch environment exceeds its bounded size")]
     Limit,

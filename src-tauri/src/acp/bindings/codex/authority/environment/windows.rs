@@ -12,7 +12,7 @@ use windows_sys::Win32::Storage::FileSystem::{
     FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TYPE_DISK,
     GetFileInformationByHandle, GetFileType, GetFinalPathNameByHandleW, VOLUME_NAME_DOS,
 };
-use windows_sys::Win32::System::SystemInformation::GetWindowsDirectoryW;
+use windows_sys::Win32::System::SystemInformation::GetSystemWindowsDirectoryW;
 
 use super::EnvironmentAuthorityError;
 
@@ -27,7 +27,7 @@ pub(super) fn inspect(
     supplied_system_root: &str,
     supplied_windir: &str,
 ) -> Result<(String, WindowsDirectoryProof), EnvironmentAuthorityError> {
-    let windows_directory = os_windows_directory()?;
+    let windows_directory = system_windows_directory()?;
     let windows_key = path_key(&windows_directory);
     if path_key(Path::new(supplied_system_root)) != windows_key
         || path_key(Path::new(supplied_windir)) != windows_key
@@ -67,10 +67,10 @@ pub(super) fn inspect(
     ))
 }
 
-fn os_windows_directory() -> Result<PathBuf, EnvironmentAuthorityError> {
+fn system_windows_directory() -> Result<PathBuf, EnvironmentAuthorityError> {
     let mut buffer = vec![0_u16; WINDOWS_PATH_WIDE_MAX];
     let length = unsafe {
-        GetWindowsDirectoryW(
+        GetSystemWindowsDirectoryW(
             buffer.as_mut_ptr(),
             u32::try_from(buffer.len()).map_err(|_| EnvironmentAuthorityError::SystemRoot)?,
         )
@@ -113,4 +113,20 @@ fn path_key(path: &Path) -> Vec<u16> {
         }
     }
     wide
+}
+
+#[cfg(test)]
+pub(crate) fn system_windows_directory_for_test() -> Result<PathBuf, EnvironmentAuthorityError> {
+    system_windows_directory()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_system_windows_directory_query_has_the_expected_abi() {
+        let query: unsafe extern "system" fn(*mut u16, u32) -> u32 = GetSystemWindowsDirectoryW;
+        let _ = query;
+    }
 }

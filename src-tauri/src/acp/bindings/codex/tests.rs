@@ -381,12 +381,15 @@ fn launch_environment_is_exactly_five_keys_with_state_local_temp() {
     let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
     let policy = parse_security_policy(SECURITY_POLICY_FIXTURE, &packet).unwrap();
     let config = verify_codex_config(CONFIG_FIXTURE, &policy).unwrap();
+    let system_windows = authority::system_windows_directory_for_test().unwrap();
+    let lower_system_windows =
+        std::path::PathBuf::from(system_windows.to_str().unwrap().to_ascii_lowercase());
     let environment = build_codex_launch_environment(
         &packet,
         &policy,
         &config,
-        std::path::Path::new(r"C:\Windows"),
-        std::path::Path::new(r"c:\WINDOWS"),
+        &system_windows,
+        &lower_system_windows,
     )
     .unwrap();
     let entries = environment.entries();
@@ -411,6 +414,7 @@ fn launch_environment_is_exactly_five_keys_with_state_local_temp() {
         )
     );
     assert_eq!(entries[4].0, "WINDIR");
+    assert_eq!(entries[1].1, system_windows.to_str().unwrap());
     assert!(entries[1].1.eq_ignore_ascii_case(&entries[4].1));
     assert!(std::path::Path::new(&entries[1].1).is_dir());
     assert!(environment.entries().iter().all(|(key, _)| !matches!(
@@ -418,13 +422,14 @@ fn launch_environment_is_exactly_five_keys_with_state_local_temp() {
         "PATH" | "OPENAI_API_KEY" | "HTTP_PROXY" | "HTTPS_PROXY" | "SSL_CERT_FILE"
     )));
 
+    let private_windows = system_windows.join("per-user-private-windows");
     assert!(matches!(
         build_codex_launch_environment(
             &packet,
             &policy,
             &config,
-            std::path::Path::new(r"C:\Windows"),
-            std::path::Path::new(r"D:\Windows"),
+            &system_windows,
+            &private_windows,
         ),
         Err(EnvironmentAuthorityError::SystemRoot)
     ));
@@ -433,8 +438,8 @@ fn launch_environment_is_exactly_five_keys_with_state_local_temp() {
             &packet,
             &policy,
             &config,
-            std::path::Path::new(r"C:\attacker"),
-            std::path::Path::new(r"C:\attacker"),
+            &private_windows,
+            &private_windows,
         ),
         Err(EnvironmentAuthorityError::SystemRoot)
     ));

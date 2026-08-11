@@ -14,6 +14,8 @@ mod retention;
 mod storage;
 
 pub(crate) use config::{ConfigAuthorityError, VerifiedCodexConfig, verify_codex_config};
+#[cfg(all(test, windows))]
+pub(crate) use environment::system_windows_directory_for_test;
 pub(crate) use environment::{
     CodexLaunchEnvironment, EnvironmentAuthorityError, build_codex_launch_environment,
 };
