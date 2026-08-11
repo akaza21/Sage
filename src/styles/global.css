@@ -1747,7 +1747,8 @@ textarea:focus-visible {
 }
 
 .editor-input .cm-focused {
-  outline: 0;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .dialog-backdrop {
