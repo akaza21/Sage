@@ -395,6 +395,7 @@ fn identity_bound_probe_crash_prefixes_converge() {
         "complete-with-shm",
     ] {
         let (directory, writer, paths) = create_wal_source(prefix);
+        let directory_path = directory.0.clone();
         let _lock = MigrationLock::acquire(paths.parent()).unwrap();
         probe::write_current_identity(&paths).unwrap();
         if prefix != "manifest" {
@@ -430,13 +431,16 @@ fn identity_bound_probe_crash_prefixes_converge() {
         assert_eq!(probe::classify_live(&paths).unwrap(), SchemaClass::LegacyV4);
         assert_probe_clean(&paths);
         drop(writer);
+        drop(_lock);
         drop(directory);
+        assert!(!directory_path.exists());
     }
 }
 
 #[test]
 fn foreign_probe_identity_is_preserved_and_blocks() {
     let (directory, writer, paths) = create_wal_source("foreign-probe-identity");
+    let directory_path = directory.0.clone();
     let _lock = MigrationLock::acquire(paths.parent()).unwrap();
     probe::write_current_identity(&paths).unwrap();
     let manifest = fs::read_to_string(&paths.probe_manifest).unwrap();
@@ -463,7 +467,9 @@ fn foreign_probe_identity_is_preserved_and_blocks() {
     );
     fs::remove_file(&paths.probe_manifest).unwrap();
     drop(writer);
+    drop(_lock);
     drop(directory);
+    assert!(!directory_path.exists());
 }
 
 #[test]
