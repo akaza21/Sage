@@ -13,6 +13,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check:policy": "node scripts/generate-acp-fixture-cases.mjs --check && node scripts/check-policy.mjs",
+    "check:dev": "node scripts/check-dev.mjs",
+    "check:integration": "node scripts/check-integration.mjs",
+    "check:release": "node scripts/check-release.mjs",
     "check": "npm run format:check && npm run lint && npm run test && npm run test:budgets && npm run build && npm run check:policy",
     "tauri": "tauri"
   },
