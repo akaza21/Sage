@@ -146,6 +146,32 @@ impl Scheduler {
             .is_none_or(|tree| &tree.owner != owner)
     }
 
+    /// Releases the exact scheduler tree after durable terminalization and a
+    /// native zero-process proof. This is the only recovery path allowed to
+    /// clear an active Turn together with its failed runtime tree.
+    pub(crate) fn recover_owner_after_zero_process(
+        &self,
+        owner: &RuntimeOwner,
+    ) -> Result<(), SchedulerError> {
+        let mut state = self.lock();
+        let Some(tree) = state.tree.as_ref() else {
+            return Ok(());
+        };
+        if &tree.owner != owner {
+            return Err(SchedulerError::StaleOwner);
+        }
+        if state
+            .turn
+            .as_ref()
+            .is_some_and(|turn| turn.tree_token != tree.token)
+        {
+            return Err(SchedulerError::StaleToken);
+        }
+        state.turn = None;
+        state.tree = None;
+        Ok(())
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, State> {
         self.inner
             .lock()

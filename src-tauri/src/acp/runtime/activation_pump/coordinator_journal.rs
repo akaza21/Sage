@@ -17,6 +17,11 @@ pub(crate) enum CoordinatorActivationHandoff {
     RecoveryRequired,
 }
 
+pub(crate) enum CoordinatorShutdownHandoff {
+    Activation(SessionTreeLease),
+    Runtime(SessionTreeLease),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
     Pending,
@@ -63,6 +68,51 @@ impl CoordinatorActivationJournal {
 
     pub(crate) fn into_teardown_lease(mut self) -> Result<SessionTreeLease, Box<Self>> {
         if !matches!(self.state, State::Pending | State::Rejected) {
+            return Err(Box::new(self));
+        }
+        Ok(self
+            .lease
+            .take()
+            .expect("activation journal owns its lease"))
+    }
+
+    pub(crate) fn into_shutdown_handoff(mut self) -> CoordinatorShutdownHandoff {
+        let lease = self
+            .lease
+            .take()
+            .expect("activation journal owns its lease");
+        match self.state {
+            State::Pending | State::Rejected => CoordinatorShutdownHandoff::Activation(lease),
+            State::Ready | State::BootstrapRequired | State::RecoveryRequired => {
+                CoordinatorShutdownHandoff::Runtime(lease)
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_shutdown_phase_for_test(&mut self, runtime: bool) {
+        self.state = if runtime {
+            State::Ready
+        } else {
+            State::Rejected
+        };
+    }
+
+    pub(crate) fn into_pending_lease(mut self) -> Result<SessionTreeLease, Box<Self>> {
+        if self.state != State::Pending {
+            return Err(Box::new(self));
+        }
+        Ok(self
+            .lease
+            .take()
+            .expect("activation journal owns its lease"))
+    }
+
+    pub(crate) fn into_recovery_lease(mut self) -> Result<SessionTreeLease, Box<Self>> {
+        if !matches!(
+            self.state,
+            State::BootstrapRequired | State::RecoveryRequired
+        ) {
             return Err(Box::new(self));
         }
         Ok(self

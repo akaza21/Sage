@@ -1,13 +1,13 @@
 #![allow(dead_code)] // Removed when the isolated packet receives central wiring.
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use crate::acp::{
     contract::{ProjectionRevision, SageTurnId},
     lifecycle::{DeliveryState, SessionState, TurnState},
     store::{
-        RecoveryCandidate, StoreError, load_recovery_candidates, next_projection_revision,
-        terminalize_recovery_epoch,
+        RecoverRuntimeCommand, RecoveryCandidate, StoreError, load_recovery_candidates,
+        next_projection_revision, terminalize_recovery_epoch,
     },
 };
 
@@ -31,6 +31,90 @@ pub(crate) fn recover_after_restart(
         });
     };
     recover_candidate(connection, candidate, now_millis)
+}
+
+pub(crate) fn recover_runtime_after_zero_process(
+    connection: &mut rusqlite::Connection,
+    command: RecoverRuntimeCommand,
+) -> Result<RecoveryReport, StoreError> {
+    let mut candidates = load_recovery_candidates(connection)?;
+    match candidates.pop() {
+        Some(candidate) if exact_candidate(&candidate, &command) => {
+            recover_candidate(connection, candidate, command.now_millis)
+        }
+        Some(_) => Err(StoreError::Conflict {
+            resource: "runtimeRecovery",
+        }),
+        None => replay_recovered_runtime(connection, &command),
+    }
+}
+
+fn exact_candidate(candidate: &RecoveryCandidate, command: &RecoverRuntimeCommand) -> bool {
+    candidate.project_id == command.project_id
+        && candidate.chat_id == command.chat_id
+        && candidate.session_id == command.session_id
+        && candidate.runtime_epoch == command.runtime_epoch
+}
+
+/// Replays only an exact recovery postcondition. Returning the persisted
+/// projection revision makes commit-unknown and publication failures safely
+/// retryable without treating an arbitrary missing candidate as success.
+fn replay_recovered_runtime(
+    connection: &rusqlite::Connection,
+    command: &RecoverRuntimeCommand,
+) -> Result<RecoveryReport, StoreError> {
+    let row = connection
+        .query_row(
+            "SELECT s.state,s.residency,s.projection_revision,e.state,e.exit_kind,
+                    EXISTS(SELECT 1 FROM chat_session_heads h WHERE h.session_id=s.id),
+                    EXISTS(SELECT 1 FROM turns t WHERE t.session_id=s.id
+                      AND t.runtime_epoch=e.runtime_epoch AND t.state IN
+                      ('queued','sending','running','waitingModel','waitingTool',
+                       'waitingApproval','waitingUser','cancelling'))
+             FROM agent_sessions s JOIN session_runtime_epochs e ON e.session_id=s.id
+             WHERE s.project_id=?1 AND s.chat_id=?2 AND s.id=?3 AND e.runtime_epoch=?4",
+            params![
+                command.project_id.as_str(),
+                command.chat_id.as_str(),
+                command.session_id.as_str(),
+                command.runtime_epoch.get() as i64,
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, bool>(5)?,
+                    row.get::<_, bool>(6)?,
+                ))
+            },
+        )
+        .optional()?;
+    let Some((session, residency, revision, epoch, exit, has_head, has_live_turn)) = row else {
+        return Err(StoreError::Conflict {
+            resource: "runtimeRecovery",
+        });
+    };
+    if session != "failed"
+        || residency != "cold"
+        || epoch != "failed"
+        || exit.as_deref() != Some("restartRecovery")
+        || has_head
+        || has_live_turn
+    {
+        return Err(StoreError::Corrupt("runtime recovery postcondition"));
+    }
+    let projection_revision = u64::try_from(revision)
+        .ok()
+        .and_then(|value| ProjectionRevision::new(value).ok())
+        .ok_or(StoreError::Corrupt("runtime recovery projection"))?;
+    Ok(RecoveryReport {
+        recovered_sessions: 0,
+        terminal_turn: None,
+        projection_revision: Some(projection_revision),
+    })
 }
 
 fn recover_candidate(

@@ -9,21 +9,23 @@ use crate::{
         bindings::codex::CodexProjectRootAuthority,
         contract::{
             ClientIntentId, ProjectGeneration, ProjectionRevision, RequiredText, RuntimeEpoch,
-            SageAgentSessionId, SageChatId, SageProjectId, SageRootId, SageTurnId,
+            SafeText, SageAgentSessionId, SageChatId, SageProjectId, SageRootId, SageTurnId,
         },
         intent::{CapabilitySnapshotV1, ExternalId, IntentSnapshot, ProjectionChangedV1, Prompt},
         lifecycle::TurnState,
         runtime::{
-            ActiveTurnIntent, AdapterBatchJournal, DurableAdapterEvent, HostCancelIntent,
-            HostCloseIntent, HostError, HostPromptIntent, HostState, NotificationError,
-            NotificationSink, NotificationSinkFuture, PrepareDispatch, ProjectIntentAuthority,
-            PromptWrite, PublishOutcome, RuntimeEngine, RuntimeHost, SendCoordinator,
-            SessionPumpIntent, SqliteAdapterBatchJournal, TurnScope,
+            ActivationMode, ActiveTurnIntent, AdapterBatchJournal, DurableAdapterEvent,
+            HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, HostState,
+            NotificationError, NotificationSink, NotificationSinkFuture, PrepareDispatch,
+            ProjectIntentAuthority, PromptWrite, PublishOutcome, RuntimeEngine, RuntimeHost,
+            SendCoordinator, SessionPumpIntent, SqliteAdapterBatchJournal, TurnScope,
+            ZeroProcessProof,
         },
         scheduler::RuntimeOwner,
         store::{
-            ActivateSessionCommand, AdapterTurnCursor, CompleteActivationCommand,
-            PrepareTurnCommand, StartSessionCommand,
+            AbortActivationCommand, ActivateSessionCommand, ActivationAbortCategory,
+            AdapterTurnCursor, CompleteActivationCommand, ParkSessionCommand, PrepareTurnCommand,
+            StartSessionCommand,
         },
     },
     domain::{ProjectLayoutRequest, ProjectSwitchRequest},
@@ -73,6 +75,685 @@ fn codex_drift_transition_invalidates_the_shared_service_and_catalog_registratio
             )
             .is_err()
     );
+}
+
+#[cfg(windows)]
+#[test]
+fn admitted_codex_session_start_persists_the_exact_curated_identity() {
+    tauri::async_runtime::block_on(async {
+        let registration =
+            crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
+        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let root = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let project = database.create_project_from_root(&root).unwrap();
+        let snapshot = database.bootstrap_snapshot().unwrap();
+        let project_id = SageProjectId::parse(project.id).unwrap();
+        let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
+        let service = AcpService::new_with_codex_for_test(database.clone(), registration).unwrap();
+        let project_root = codex_root(&project_id, &project.roots[0].id, &root);
+        seed_codex_discovery(&service, &project_root, None);
+        let revision = service
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
+
+        let client_intent_id = ClientIntentId::new();
+        let first = service
+            .start_codex_session(
+                &project_root,
+                StartSessionCommand {
+                    project_id: project_id.clone(),
+                    chat_id: chat_id.clone(),
+                    expected_projection_revision: revision,
+                    client_intent_id: client_intent_id.clone(),
+                    binding_id: crate::acp::intent::BindingId::new("bindingId", "codex-app-server")
+                        .unwrap(),
+                    binding_digest: "forged-digest".into(),
+                    harness_version: Some(SafeText::new("version", "forged-version").unwrap()),
+                    model_id: None,
+                    now_millis: crate::persistence::now_millis(),
+                },
+            )
+            .await
+            .unwrap();
+        let duplicate = service
+            .start_codex_session(
+                &project_root,
+                StartSessionCommand {
+                    project_id: project_id.clone(),
+                    chat_id: chat_id.clone(),
+                    expected_projection_revision: revision,
+                    client_intent_id,
+                    binding_id: crate::acp::intent::BindingId::new("bindingId", "codex-app-server")
+                        .unwrap(),
+                    binding_digest: "different-forged-digest".into(),
+                    harness_version: None,
+                    model_id: None,
+                    now_millis: crate::persistence::now_millis(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(duplicate.session_id, first.session_id);
+
+        let identity: (String, String, Option<String>) = database
+            .connection()
+            .query_row(
+                "SELECT binding_id,binding_digest,harness_version FROM agent_sessions
+                 WHERE project_id=?1 AND chat_id=?2 AND binding_id='codex-app-server'",
+                rusqlite::params![project_id.as_str(), chat_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(identity.0, "codex-app-server");
+        assert_eq!(
+            identity.1,
+            "f8c2b995be263fe4bf00974043312673378081734ca8c98155d2a33887444b9e"
+        );
+        assert_eq!(identity.2.as_deref(), Some("0.145.0"));
+        service.shutdown_blocking().unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn codex_start_rejects_a_model_without_current_scoped_discovery() {
+    tauri::async_runtime::block_on(async {
+        let registration =
+            crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
+        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let root = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let project = database.create_project_from_root(&root).unwrap();
+        let snapshot = database.bootstrap_snapshot().unwrap();
+        let project_id = SageProjectId::parse(project.id).unwrap();
+        let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
+        let service = AcpService::new_with_codex_for_test(database.clone(), registration).unwrap();
+        let project_root = codex_root(&project_id, &project.roots[0].id, &root);
+        seed_codex_discovery(&service, &project_root, None);
+        let revision = service
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
+
+        let result = service
+            .start_codex_session(
+                &project_root,
+                StartSessionCommand {
+                    project_id,
+                    chat_id,
+                    expected_projection_revision: revision,
+                    client_intent_id: ClientIntentId::new(),
+                    binding_id: crate::acp::intent::BindingId::new("bindingId", "codex-app-server")
+                        .unwrap(),
+                    binding_digest: "forged".into(),
+                    harness_version: None,
+                    model_id: Some(
+                        crate::acp::intent::ModelId::new("modelId", "forged-model").unwrap(),
+                    ),
+                    now_millis: crate::persistence::now_millis(),
+                },
+            )
+            .await;
+        assert!(matches!(result, Err(super::CodexSessionError::Intent)));
+        let sessions: i64 = database
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM agent_sessions WHERE binding_id='codex-app-server'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(sessions, 0);
+        service.shutdown_blocking().unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn codex_start_rejects_drift_before_any_durable_write() {
+    tauri::async_runtime::block_on(async {
+        let registration =
+            crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
+        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let root = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let project = database.create_project_from_root(&root).unwrap();
+        let snapshot = database.bootstrap_snapshot().unwrap();
+        let project_id = SageProjectId::parse(project.id).unwrap();
+        let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
+        let service =
+            AcpService::new_with_codex_for_test(database.clone(), registration.clone()).unwrap();
+        let project_root = codex_root(&project_id, &project.roots[0].id, &root);
+        seed_codex_discovery(&service, &project_root, None);
+        let revision = service
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
+        registration.induce_drift_for_test();
+
+        let result = service
+            .start_codex_session(
+                &project_root,
+                StartSessionCommand {
+                    project_id,
+                    chat_id,
+                    expected_projection_revision: revision,
+                    client_intent_id: ClientIntentId::new(),
+                    binding_id: crate::acp::intent::BindingId::new("bindingId", "codex-app-server")
+                        .unwrap(),
+                    binding_digest: "forged".into(),
+                    harness_version: Some(SafeText::new("version", "forged").unwrap()),
+                    model_id: None,
+                    now_millis: crate::persistence::now_millis(),
+                },
+            )
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(super::CodexSessionError::Binding(
+                crate::acp::bindings::codex::CodexAdmissionUnavailable::Drift
+            ))
+        ));
+        let sessions: i64 = database
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM agent_sessions WHERE binding_id='codex-app-server'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(sessions, 0);
+        service.shutdown_blocking().unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn codex_activation_intent_uses_new_only_for_an_exact_created_cold_session() {
+    tauri::async_runtime::block_on(async {
+        let (database, service, project, project_id, chat_id, root) = codex_session_setup();
+        let authority = codex_root(&project_id, &project.roots[0].id, &root);
+        seed_codex_discovery(&service, &authority, None);
+        let revision = service
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
+        let started = service
+            .start_codex_session(
+                &authority,
+                codex_start_command(&project_id, &chat_id, revision),
+            )
+            .await
+            .unwrap();
+        let authority = codex_root(&project_id, &project.roots[0].id, &root);
+        let (command, prepared) = service
+            .prepare_codex_activation(
+                ActivateSessionCommand {
+                    project_id: project_id.clone(),
+                    chat_id: chat_id.clone(),
+                    expected_projection_revision: started.projection_revision,
+                    client_intent_id: ClientIntentId::new(),
+                    session_id: started.session_id,
+                    runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+                    artifact_digest: "forged".into(),
+                    now_millis: crate::persistence::now_millis(),
+                },
+                authority,
+            )
+            .unwrap();
+
+        assert!(matches!(
+            prepared.intent.mode,
+            ActivationMode::New { model: None, .. }
+        ));
+        assert_eq!(command.artifact_digest, prepared.intent.artifact_digest);
+        assert_ne!(command.artifact_digest, "forged");
+        drop(prepared);
+        service.shutdown_blocking().unwrap();
+        drop(database);
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn codex_activation_intent_resumes_only_the_exact_durable_external_session() {
+    tauri::async_runtime::block_on(async {
+        let (_database, service, project, project_id, chat_id, root) = codex_session_setup();
+        let authority = codex_root(&project_id, &project.roots[0].id, &root);
+        seed_codex_discovery(&service, &authority, None);
+        let revision = service
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
+        let started = service
+            .start_codex_session(
+                &authority,
+                codex_start_command(&project_id, &chat_id, revision),
+            )
+            .await
+            .unwrap();
+        let binding = service.codex_registration().refresh().unwrap();
+        let owner = RuntimeOwner {
+            project_id: project_id.clone(),
+            chat_id: chat_id.clone(),
+            session_id: started.session_id.clone(),
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+        };
+        let mut lease = service
+            .sessions
+            .activate_session(ActivateSessionCommand {
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                expected_projection_revision: started.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: started.session_id.clone(),
+                runtime_epoch: owner.runtime_epoch,
+                artifact_digest: binding.artifact_digest().to_owned(),
+                now_millis: crate::persistence::now_millis(),
+            })
+            .await
+            .unwrap();
+        lease
+            .complete_activation(CompleteActivationCommand {
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                session_id: started.session_id.clone(),
+                runtime_epoch: owner.runtime_epoch,
+                binding_digest: binding.binding_digest_hex().to_owned(),
+                artifact_digest: binding.artifact_digest().to_owned(),
+                external_session_id: ExternalId::new("externalSessionId", "thread-durable-1")
+                    .unwrap(),
+                capabilities_json: serde_json::to_string(&binding.capability_ceiling().unwrap())
+                    .unwrap(),
+                now_millis: crate::persistence::now_millis(),
+            })
+            .await
+            .unwrap();
+        lease
+            .park_after_zero_process(
+                ParkSessionCommand {
+                    project_id: project_id.clone(),
+                    chat_id: chat_id.clone(),
+                    session_id: started.session_id.clone(),
+                    runtime_epoch: owner.runtime_epoch,
+                    exit_kind: RequiredText::new("exitKind", "testIdle").unwrap(),
+                    now_millis: crate::persistence::now_millis(),
+                },
+                ZeroProcessProof::confirmed(owner),
+            )
+            .await
+            .unwrap();
+        let authority = codex_root(&project_id, &project.roots[0].id, &root);
+        let (_, prepared) = service
+            .prepare_codex_activation(
+                ActivateSessionCommand {
+                    project_id,
+                    chat_id,
+                    expected_projection_revision: started.projection_revision,
+                    client_intent_id: ClientIntentId::new(),
+                    session_id: started.session_id,
+                    runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+                    artifact_digest: "forged".into(),
+                    now_millis: crate::persistence::now_millis(),
+                },
+                authority,
+            )
+            .unwrap();
+
+        match &prepared.intent.mode {
+            ActivationMode::Resume {
+                external_session_id,
+                model: None,
+                ..
+            } => {
+                assert_eq!(external_session_id.as_str(), "thread-durable-1");
+            }
+            _ => panic!("durable ready/cold session must resume"),
+        }
+        drop(prepared);
+        service.shutdown_blocking().unwrap();
+    });
+}
+
+#[test]
+fn abort_activation_after_zero_restores_created_cold_and_is_idempotent() {
+    tauri::async_runtime::block_on(async {
+        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let root = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let project = database.create_project_from_root(&root).unwrap();
+        let snapshot = database.bootstrap_snapshot().unwrap();
+        let project_id = SageProjectId::parse(project.id).unwrap();
+        let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
+        let service = AcpService::new(database.clone()).unwrap();
+        let revision = service
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
+        let started = service
+            .sessions
+            .start_session(StartSessionCommand {
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                expected_projection_revision: revision,
+                client_intent_id: ClientIntentId::new(),
+                binding_id: crate::acp::intent::BindingId::new("bindingId", "test-abort").unwrap(),
+                binding_digest: "11".repeat(32),
+                harness_version: None,
+                model_id: None,
+                now_millis: crate::persistence::now_millis(),
+            })
+            .await
+            .unwrap();
+        let owner = RuntimeOwner {
+            project_id: project_id.clone(),
+            chat_id: chat_id.clone(),
+            session_id: started.session_id.clone(),
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+        };
+        let mut lease = service
+            .sessions
+            .activate_session(ActivateSessionCommand {
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                expected_projection_revision: started.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: started.session_id.clone(),
+                runtime_epoch: owner.runtime_epoch,
+                artifact_digest: "22".repeat(32),
+                now_millis: crate::persistence::now_millis(),
+            })
+            .await
+            .unwrap();
+        let abort = AbortActivationCommand {
+            project_id,
+            chat_id,
+            session_id: started.session_id.clone(),
+            runtime_epoch: owner.runtime_epoch,
+            binding_digest: "11".repeat(32),
+            artifact_digest: "22".repeat(32),
+            category: ActivationAbortCategory::AssemblyFailure,
+            now_millis: crate::persistence::now_millis(),
+        };
+        assert!(
+            database
+                .connection()
+                .execute(
+                    "UPDATE agent_sessions SET state='created',residency='cold' WHERE id=?1",
+                    [started.session_id.as_str()],
+                )
+                .is_err(),
+            "rollback without the matching aborted epoch must fail"
+        );
+        let mutation = lease
+            .abort_activation_after_zero_process(
+                abort.clone(),
+                ZeroProcessProof::confirmed(owner.clone()),
+            )
+            .await
+            .unwrap();
+        assert_eq!(mutation.state, crate::acp::lifecycle::SessionState::Created);
+        let row: (String, String, String) = database
+            .connection()
+            .query_row(
+                "SELECT s.state,s.residency,e.state FROM agent_sessions s
+             JOIN session_runtime_epochs e ON e.session_id=s.id
+             WHERE s.id=?1 AND e.runtime_epoch=1",
+                [started.session_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(row, ("created".into(), "cold".into(), "aborted".into()));
+        let duplicate =
+            crate::acp::store::abort_activation(&mut database.connection(), abort.clone()).unwrap();
+        assert_eq!(
+            duplicate.disposition,
+            crate::acp::store::MutationDisposition::Duplicate
+        );
+        let second = crate::acp::store::activate_session(
+            &mut database.connection(),
+            ActivateSessionCommand {
+                project_id: abort.project_id.clone(),
+                chat_id: abort.chat_id.clone(),
+                expected_projection_revision: mutation.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: started.session_id.clone(),
+                runtime_epoch: RuntimeEpoch::new(2).unwrap(),
+                artifact_digest: "22".repeat(32),
+                now_millis: crate::persistence::now_millis(),
+            },
+        )
+        .unwrap();
+        assert!(
+            crate::acp::store::abort_activation(&mut database.connection(), abort).is_err(),
+            "an older aborted epoch must not masquerade as an idempotent retry"
+        );
+        let current: (String, String, String) = database
+            .connection()
+            .query_row(
+                "SELECT s.state,s.residency,e.state FROM agent_sessions s
+                 JOIN session_runtime_epochs e ON e.session_id=s.id
+                 WHERE s.id=?1 AND e.runtime_epoch=2",
+                [started.session_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            current,
+            ("starting".into(), "hot".into(), "starting".into())
+        );
+        assert_eq!(second.state, crate::acp::lifecycle::SessionState::Starting);
+        service.shutdown_blocking().unwrap();
+    });
+}
+
+#[test]
+fn activation_abort_category_is_a_closed_non_diagnostic_allowlist() {
+    assert_eq!(
+        ActivationAbortCategory::parse("launchFailure"),
+        Some(ActivationAbortCategory::LaunchFailure)
+    );
+    assert_eq!(ActivationAbortCategory::parse("C:\\secret\\path"), None);
+    assert_eq!(ActivationAbortCategory::parse("arbitrary diagnostic"), None);
+}
+
+#[test]
+fn abort_resume_restores_ready_cold_and_retains_external_identity() {
+    tauri::async_runtime::block_on(async {
+        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let root = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let project = database.create_project_from_root(&root).unwrap();
+        let snapshot = database.bootstrap_snapshot().unwrap();
+        let project_id = SageProjectId::parse(project.id).unwrap();
+        let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
+        let service = AcpService::new(database.clone()).unwrap();
+        let started = service
+            .sessions
+            .start_session(StartSessionCommand {
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                expected_projection_revision: service
+                    .load_chat_page(project_id.clone(), chat_id.clone(), None)
+                    .unwrap()
+                    .projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                binding_id: crate::acp::intent::BindingId::new("bindingId", "test-resume-abort")
+                    .unwrap(),
+                binding_digest: "33".repeat(32),
+                harness_version: None,
+                model_id: None,
+                now_millis: crate::persistence::now_millis(),
+            })
+            .await
+            .unwrap();
+        let owner_one = RuntimeOwner {
+            project_id: project_id.clone(),
+            chat_id: chat_id.clone(),
+            session_id: started.session_id.clone(),
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+        };
+        let mut first = service
+            .sessions
+            .activate_session(ActivateSessionCommand {
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                expected_projection_revision: started.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: started.session_id.clone(),
+                runtime_epoch: owner_one.runtime_epoch,
+                artifact_digest: "44".repeat(32),
+                now_millis: crate::persistence::now_millis(),
+            })
+            .await
+            .unwrap();
+        let capabilities = serde_json::to_string(&capabilities()).unwrap();
+        let ready = first
+            .complete_activation(CompleteActivationCommand {
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                session_id: started.session_id.clone(),
+                runtime_epoch: owner_one.runtime_epoch,
+                binding_digest: "33".repeat(32),
+                artifact_digest: "44".repeat(32),
+                external_session_id: ExternalId::new("external", "durable-external").unwrap(),
+                capabilities_json: capabilities.clone(),
+                now_millis: crate::persistence::now_millis(),
+            })
+            .await
+            .unwrap();
+        first
+            .park_after_zero_process(
+                ParkSessionCommand {
+                    project_id: project_id.clone(),
+                    chat_id: chat_id.clone(),
+                    session_id: started.session_id.clone(),
+                    runtime_epoch: owner_one.runtime_epoch,
+                    exit_kind: RequiredText::new("exitKind", "testIdle").unwrap(),
+                    now_millis: crate::persistence::now_millis(),
+                },
+                ZeroProcessProof::confirmed(owner_one),
+            )
+            .await
+            .unwrap();
+        let owner_two = RuntimeOwner {
+            project_id: project_id.clone(),
+            chat_id: chat_id.clone(),
+            session_id: started.session_id.clone(),
+            runtime_epoch: RuntimeEpoch::new(2).unwrap(),
+        };
+        let mut second = service
+            .sessions
+            .activate_session(ActivateSessionCommand {
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                expected_projection_revision: ready.projection_revision.next().unwrap(),
+                client_intent_id: ClientIntentId::new(),
+                session_id: started.session_id.clone(),
+                runtime_epoch: owner_two.runtime_epoch,
+                artifact_digest: "44".repeat(32),
+                now_millis: crate::persistence::now_millis(),
+            })
+            .await
+            .unwrap();
+        second
+            .abort_activation_after_zero_process(
+                AbortActivationCommand {
+                    project_id,
+                    chat_id,
+                    session_id: started.session_id.clone(),
+                    runtime_epoch: owner_two.runtime_epoch,
+                    binding_digest: "33".repeat(32),
+                    artifact_digest: "44".repeat(32),
+                    category: ActivationAbortCategory::RuntimeHandoffFailure,
+                    now_millis: crate::persistence::now_millis(),
+                },
+                ZeroProcessProof::confirmed(owner_two),
+            )
+            .await
+            .unwrap();
+
+        let row: (String, String, String, String) = database
+            .connection()
+            .query_row(
+                "SELECT state,residency,external_session_id,capabilities_json
+                 FROM agent_sessions WHERE id=?1",
+                [started.session_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(row.0, "ready");
+        assert_eq!(row.1, "cold");
+        assert_eq!(row.2, "durable-external");
+        assert_eq!(row.3, capabilities);
+        service.shutdown_blocking().unwrap();
+    });
+}
+
+#[cfg(windows)]
+fn seed_codex_discovery(
+    service: &AcpService,
+    project_root: &CodexProjectRootAuthority,
+    model: Option<crate::acp::intent::ModelId>,
+) {
+    let binding = service.codex_registration().refresh().unwrap();
+    service
+        .codex_discovery_manager()
+        .seed_session_validation_for_test(project_root, binding.binding_digest(), model);
+}
+
+#[cfg(windows)]
+fn codex_root(
+    project_id: &SageProjectId,
+    root_id: &str,
+    root: &std::path::Path,
+) -> CodexProjectRootAuthority {
+    CodexProjectRootAuthority::for_test(
+        ProjectRootAuthority::for_test(
+            project_id.clone(),
+            ProjectGeneration::ZERO,
+            SageRootId::parse(root_id).unwrap(),
+            root,
+        )
+        .unwrap(),
+    )
+}
+
+#[cfg(windows)]
+fn codex_session_setup() -> (
+    Database,
+    AcpService,
+    crate::domain::ProjectSummary,
+    SageProjectId,
+    SageChatId,
+    std::path::PathBuf,
+) {
+    let registration = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
+    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let root = std::env::current_dir().unwrap().canonicalize().unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let snapshot = database.bootstrap_snapshot().unwrap();
+    let project_id = SageProjectId::parse(project.id.clone()).unwrap();
+    let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
+    let service = AcpService::new_with_codex_for_test(database.clone(), registration).unwrap();
+    (database, service, project, project_id, chat_id, root)
+}
+
+#[cfg(windows)]
+fn codex_start_command(
+    project_id: &SageProjectId,
+    chat_id: &SageChatId,
+    revision: ProjectionRevision,
+) -> StartSessionCommand {
+    StartSessionCommand {
+        project_id: project_id.clone(),
+        chat_id: chat_id.clone(),
+        expected_projection_revision: revision,
+        client_intent_id: ClientIntentId::new(),
+        binding_id: crate::acp::intent::BindingId::new("bindingId", "codex-app-server").unwrap(),
+        binding_digest: "forged".into(),
+        harness_version: None,
+        model_id: None,
+        now_millis: crate::persistence::now_millis(),
+    }
 }
 
 #[test]

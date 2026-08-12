@@ -32,6 +32,10 @@ impl CodexProjectRootAuthority {
         self.0.identity_bytes()
     }
 
+    pub(crate) fn as_path(&self) -> &std::path::Path {
+        self.0.as_path()
+    }
+
     pub(crate) fn revalidate(&self) -> AppResult<()> {
         self.0.revalidate()
     }

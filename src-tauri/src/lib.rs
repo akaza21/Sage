@@ -55,6 +55,18 @@ use crate::{
     workspace::development_workspace_root,
 };
 
+fn handle_exit_request(
+    shutdown: impl FnOnce() -> Result<(), crate::acp::runtime::HostError>,
+    prevent_exit: impl FnOnce(),
+) -> bool {
+    if shutdown().is_err() {
+        prevent_exit();
+        true
+    } else {
+        false
+    }
+}
+
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 fn initialize_tracing() {
     let sage_targets = tracing_subscriber::filter::filter_fn(is_sage_target);
@@ -192,9 +204,12 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("failed to build Sage")
         .run(|app_handle, event| {
-            if matches!(event, RunEvent::ExitRequested { .. }) {
+            if let RunEvent::ExitRequested { api, .. } = event {
                 let state = app_handle.state::<AppState>();
-                let _ = state.acp.shutdown_blocking();
+                if handle_exit_request(|| state.acp.shutdown_blocking(), || api.prevent_exit()) {
+                    info!("Sage host exit deferred for bounded ACP recovery retry");
+                    return;
+                }
                 info!("Sage host exit requested");
             }
         });
@@ -202,4 +217,21 @@ pub fn run() {
 
 pub fn run_workspace_search_helper_if_requested() {
     workspace::search::run_stdio_helper_if_requested();
+}
+
+#[cfg(test)]
+mod exit_tests {
+    use super::*;
+
+    #[test]
+    fn exit_is_deferred_until_bounded_shutdown_succeeds() {
+        let prevented = std::cell::Cell::new(0);
+        assert!(handle_exit_request(
+            || Err(crate::acp::runtime::HostError::RecoveryRequired),
+            || prevented.set(prevented.get() + 1),
+        ));
+        assert_eq!(prevented.get(), 1);
+        assert!(!handle_exit_request(|| Ok(()), || prevented.set(99)));
+        assert_eq!(prevented.get(), 1);
+    }
 }

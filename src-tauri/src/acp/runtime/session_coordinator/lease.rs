@@ -1,5 +1,7 @@
 use super::*;
 
+mod terminal;
+
 impl ZeroProcessProof {
     pub(crate) fn from_supervisor(
         owner: RuntimeOwner,
@@ -15,11 +17,51 @@ impl ZeroProcessProof {
     pub(crate) fn confirmed(owner: RuntimeOwner) -> Self {
         Self { owner }
     }
+
+    #[cfg(test)]
+    pub(crate) fn confirmed_for_test(owner: RuntimeOwner) -> Self {
+        Self { owner }
+    }
 }
 
 impl SessionTreeLease {
     pub(crate) fn owner(&self) -> &RuntimeOwner {
         &self.owner
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reserve_turn_for_test(
+        &self,
+    ) -> Result<crate::acp::scheduler::TurnReservation, SessionCoordinatorError> {
+        self.tree
+            .as_ref()
+            .ok_or(SessionCoordinatorError::Converged)?
+            .reserve_turn()
+            .map_err(Into::into)
+    }
+
+    /// Releases only in-memory scheduler authority during final-window
+    /// shutdown. Durable Starting/Ready state is intentionally left for the
+    /// existing restart-recovery transaction.
+    // Failure returns the exact lease and one-shot proof for retry.
+    #[allow(clippy::result_large_err)]
+    pub(crate) fn shutdown_after_zero_process(
+        mut self,
+        proof: ZeroProcessProof,
+    ) -> Result<(), (Self, ZeroProcessProof)> {
+        if self.validate_proof(&proof).is_err() {
+            return Err((self, proof));
+        }
+        let Some(tree) = self.tree.take() else {
+            return Err((self, proof));
+        };
+        match tree.zero_process_converged_retained() {
+            Ok(()) => Ok(()),
+            Err((tree, _)) => {
+                self.tree = Some(tree);
+                Err((self, proof))
+            }
+        }
     }
 
     #[cfg(feature = "acp-fixture")]
@@ -123,74 +165,68 @@ impl SessionTreeLease {
             .await
     }
 
-    pub(crate) async fn close_session(
+    pub(crate) async fn abort_activation_after_zero_process(
         &mut self,
-        command: CloseSessionCommand,
-    ) -> Result<SessionMutation, SessionCoordinatorError> {
-        self.validate(
-            &command.project_id,
-            &command.chat_id,
-            &command.session_id,
-            command.runtime_epoch,
-        )?;
-        let mutation = self
-            .coordinator
-            .commit(JournalLane::Control, StoreMutation::CloseSession(command))
-            .await?;
-        validate_mutation(&self.owner, &mutation)?;
-        self.tree
-            .as_ref()
-            .ok_or(SessionCoordinatorError::Converged)?
-            .begin_draining()?;
-        self.coordinator
-            .publish(&self.owner.project_id, &self.owner.chat_id, &mutation)?;
-        Ok(mutation)
-    }
-
-    pub(crate) async fn finalize_close_after_zero_process(
-        &mut self,
-        command: FinalizeCloseCommand,
+        command: crate::acp::store::AbortActivationCommand,
         proof: ZeroProcessProof,
     ) -> Result<SessionMutation, SessionCoordinatorError> {
-        self.finalize_close_after_zero_process_retained(command, proof)
+        self.abort_activation_after_zero_process_retained(command, proof)
             .await
             .map_err(|(error, _proof)| error)
     }
 
-    pub(crate) async fn finalize_close_after_zero_process_retained(
+    /// Retains the one-shot zero-process proof and tree reservation until the
+    /// durable abort and its projection publication are both known. This lets
+    /// recovery retry the same command after a commit-unknown result without
+    /// falsely advertising process capacity.
+    pub(crate) async fn abort_activation_after_zero_process_retained(
         &mut self,
-        command: FinalizeCloseCommand,
+        command: crate::acp::store::AbortActivationCommand,
         proof: ZeroProcessProof,
     ) -> Result<SessionMutation, (SessionCoordinatorError, ZeroProcessProof)> {
         if let Err(error) = self.validate_proof(&proof) {
             return Err((error, proof));
         }
         if let Err(error) = self.validate(
-            &command.request.project_id,
-            &command.request.chat_id,
-            &command.request.session_id,
-            command.request.runtime_epoch,
+            &command.project_id,
+            &command.chat_id,
+            &command.session_id,
+            command.runtime_epoch,
         ) {
             return Err((error, proof));
         }
-        let committed = match self
-            .coordinator
-            .commit(JournalLane::Control, StoreMutation::FinalizeClose(command))
+        self.commit_terminal_retained(StoreMutation::AbortActivation(command), proof)
             .await
-        {
+    }
+
+    // The proof is intentionally returned by value so callers cannot reuse it
+    // after a successful durable abort.
+    #[allow(clippy::result_large_err)]
+    pub(crate) fn abort_activation_after_zero_process_blocking_retained(
+        &mut self,
+        command: crate::acp::store::AbortActivationCommand,
+        proof: ZeroProcessProof,
+    ) -> Result<SessionMutation, (SessionCoordinatorError, ZeroProcessProof)> {
+        if let Err(error) = self.validate_proof(&proof) {
+            return Err((error, proof));
+        }
+        if let Err(error) = self.validate(
+            &command.project_id,
+            &command.chat_id,
+            &command.session_id,
+            command.runtime_epoch,
+        ) {
+            return Err((error, proof));
+        }
+        let committed = match self.coordinator.commit_blocking(
+            JournalLane::Control,
+            StoreMutation::AbortActivation(command),
+        ) {
             Ok(committed) => committed,
             Err(error) => return Err((error, proof)),
         };
         if let Err(error) = validate_mutation(&self.owner, &committed) {
             return Err((error, proof));
-        }
-        #[cfg(feature = "acp-fixture")]
-        if committed.disposition == crate::acp::store::MutationDisposition::Applied
-            && let Some(observation) = &self.characterization_observation
-        {
-            observation.record(
-                crate::acp::characterization_observation::CharacterizationObservationEvent::CloseCommitted,
-            );
         }
         if let Err(error) =
             self.coordinator
@@ -210,41 +246,10 @@ impl SessionTreeLease {
         }
     }
 
-    pub(crate) async fn park_after_zero_process(
+    pub(super) fn converge(
         &mut self,
-        command: ParkSessionCommand,
         proof: ZeroProcessProof,
-    ) -> Result<SessionMutation, SessionCoordinatorError> {
-        self.validate_proof(&proof)?;
-        self.validate(
-            &command.project_id,
-            &command.chat_id,
-            &command.session_id,
-            command.runtime_epoch,
-        )?;
-        self.commit_terminal(StoreMutation::ParkSession(command), proof)
-            .await
-    }
-
-    async fn commit_terminal(
-        &mut self,
-        mutation: StoreMutation,
-        proof: ZeroProcessProof,
-    ) -> Result<SessionMutation, SessionCoordinatorError> {
-        let committed = self
-            .coordinator
-            .commit(JournalLane::Control, mutation)
-            .await?;
-        validate_mutation(&self.owner, &committed)?;
-        let publication =
-            self.coordinator
-                .publish(&self.owner.project_id, &self.owner.chat_id, &committed);
-        self.converge(proof)?;
-        publication?;
-        Ok(committed)
-    }
-
-    fn converge(&mut self, proof: ZeroProcessProof) -> Result<(), SessionCoordinatorError> {
+    ) -> Result<(), SessionCoordinatorError> {
         self.validate_proof(&proof)?;
         self.tree
             .take()
@@ -253,14 +258,17 @@ impl SessionTreeLease {
         Ok(())
     }
 
-    fn validate_proof(&self, proof: &ZeroProcessProof) -> Result<(), SessionCoordinatorError> {
+    pub(super) fn validate_proof(
+        &self,
+        proof: &ZeroProcessProof,
+    ) -> Result<(), SessionCoordinatorError> {
         if proof.owner != self.owner {
             return Err(SessionCoordinatorError::Intent);
         }
         Ok(())
     }
 
-    fn validate(
+    pub(super) fn validate(
         &self,
         project: &SageProjectId,
         chat: &SageChatId,

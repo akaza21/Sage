@@ -130,3 +130,26 @@ fn terminal_turn_releases_only_turn_slot_until_session_close_drains_tree() {
     );
     tree.zero_process_converged().unwrap();
 }
+
+#[test]
+fn final_window_recovery_clears_only_the_exact_owner_and_is_idempotent() {
+    let scheduler = Scheduler::new();
+    let exact = owner("one", 9);
+    let tree = scheduler.reserve_tree(exact.clone()).unwrap();
+    let running = tree
+        .reserve_turn()
+        .unwrap()
+        .bind(SageTurnId::parse("turn-recovery").unwrap())
+        .unwrap();
+    drop(running);
+    drop(tree);
+
+    assert_eq!(
+        scheduler.recover_owner_after_zero_process(&owner("foreign", 9)),
+        Err(SchedulerError::StaleOwner)
+    );
+    assert!(scheduler.active().unwrap().turn_reserved);
+    scheduler.recover_owner_after_zero_process(&exact).unwrap();
+    assert!(scheduler.active().is_none());
+    scheduler.recover_owner_after_zero_process(&exact).unwrap();
+}

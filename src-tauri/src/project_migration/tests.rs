@@ -90,13 +90,27 @@ fn migrates_legacy_root_tabs_session_and_dirty_buffer() {
     let buffers = database.dirty_editor_buffers("legacy", None).unwrap();
     assert_eq!(buffers[0].content, "dirty");
     assert_eq!(buffers[0].resource.root_id, project.roots[0].id);
-    let version: i64 = database
-        .connection()
-        .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
-            row.get(0)
-        })
+    let connection = database.connection();
+    let versions = connection
+        .prepare("SELECT version FROM schema_migrations ORDER BY version")
+        .unwrap()
+        .query_map([], |row| row.get::<_, i64>(0))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
         .unwrap();
-    assert_eq!(version, 6);
+    assert_eq!(versions, [1, 2, 3, 4, 5, 6, 7]);
+    let abort_trigger: String = connection
+        .query_row(
+            "SELECT name FROM sqlite_master WHERE type='trigger' AND name=?1",
+            ["require_agent_session_activation_abort_epoch"],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        abort_trigger,
+        "require_agent_session_activation_abort_epoch"
+    );
+    drop(connection);
     drop(database);
     fs::remove_dir_all(folder).unwrap();
 }

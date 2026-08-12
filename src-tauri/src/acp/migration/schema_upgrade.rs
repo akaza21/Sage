@@ -1,0 +1,107 @@
+use super::*;
+
+pub(super) fn apply_through_v7(connection: &mut Connection) -> AppResult<()> {
+    let versions = connection
+        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 8")?
+        .query_map([], |row| row.get::<_, i64>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    if versions.is_empty()
+        || versions.len() > 6
+        || versions
+            .iter()
+            .enumerate()
+            .any(|(index, version)| *version != index as i64 + 1)
+    {
+        return invalid("replacement source has unsupported migration history");
+    }
+    let last = versions.last().copied().unwrap_or(0);
+    if last < 2 {
+        connection.execute_batch(V2)?;
+    }
+    if last < 3 {
+        connection.execute_batch(V3)?;
+    }
+    if last < 4 {
+        project_migration::migrate(connection)?;
+    }
+    if last < 5 {
+        apply_v5(connection)?;
+    }
+    if last < 6 {
+        apply_v6(connection)?;
+    }
+    apply_v7(connection)
+}
+
+pub(super) fn apply_v5(connection: &mut Connection) -> AppResult<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    legacy::convert(&transaction, now_millis())?;
+    let foreign_key_error = transaction
+        .query_row("PRAGMA foreign_key_check", [], |_| Ok(true))
+        .optional()?
+        .unwrap_or(false);
+    if foreign_key_error {
+        return invalid("ACP migration failed its foreign-key check");
+    }
+    transaction.commit()?;
+    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV5 {
+        return invalid("database did not reach exact schema v5");
+    }
+    Ok(())
+}
+
+pub(super) fn apply_v6(connection: &mut Connection) -> AppResult<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    transaction.execute_batch(V6)?;
+    transaction.execute(
+        "INSERT INTO schema_migrations(version, applied_at) VALUES (6, ?1)",
+        [now_millis()],
+    )?;
+    transaction.pragma_update(None, "user_version", 6)?;
+    transaction.commit()?;
+    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV6 {
+        return invalid("database did not reach exact schema v6");
+    }
+    Ok(())
+}
+
+pub(super) fn apply_v7(connection: &mut Connection) -> AppResult<()> {
+    let foreign_keys: bool =
+        connection.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
+    if foreign_keys {
+        connection.pragma_update(None, "foreign_keys", "OFF")?;
+    }
+    let result: AppResult<()> = (|| {
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute_batch(V7)?;
+        transaction.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (7, ?1)",
+            [now_millis()],
+        )?;
+        transaction.pragma_update(None, "user_version", 7)?;
+        let foreign_key_error = transaction
+            .query_row("PRAGMA foreign_key_check", [], |_| Ok(true))
+            .optional()?
+            .unwrap_or(false);
+        if foreign_key_error {
+            return invalid("ACP activation-abort migration failed its foreign-key check");
+        }
+        transaction.commit()?;
+        Ok(())
+    })();
+    if foreign_keys {
+        connection.pragma_update(None, "foreign_keys", "ON")?;
+    }
+    result?;
+    verify_current(connection)
+}
+
+pub(super) fn build_fresh_v7(connection: &mut Connection) -> AppResult<()> {
+    connection.execute_batch(INITIAL)?;
+    connection.execute_batch(V2)?;
+    connection.execute_batch(V3)?;
+    project_migration::migrate(connection)?;
+    apply_v5(connection)?;
+    apply_v6(connection)?;
+    apply_v7(connection)
+}

@@ -94,8 +94,10 @@ fn lifecycle_tables_reject_reopen_and_implement_first_terminal_wins() {
     assert!(SessionState::Incompatible.is_terminal());
 
     assert!(RuntimeEpochState::Starting.can_transition_to(RuntimeEpochState::Running));
+    assert!(RuntimeEpochState::Starting.can_transition_to(RuntimeEpochState::Aborted));
     assert!(!RuntimeEpochState::Exited.can_transition_to(RuntimeEpochState::Running));
     assert!(RuntimeEpochState::Legacy.is_terminal());
+    assert!(RuntimeEpochState::Aborted.is_terminal());
 
     assert!(TurnState::Queued.can_transition_to(TurnState::Sending));
     assert!(!TurnState::Queued.can_transition_to(TurnState::Failed));

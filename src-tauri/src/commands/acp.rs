@@ -2,10 +2,13 @@
 mod characterization;
 pub(crate) mod codex_auth;
 mod errors;
+mod session_routes;
+
+pub(crate) use session_routes::{activate_acp_session_inner, start_acp_session_inner};
 
 use errors::{
-    binding_unavailable, codex_discovery_error, intent_error, internal_error, page_admission_error,
-    safe_message, session_unavailable, store_error,
+    binding_unavailable, codex_discovery_error, codex_session_error, intent_error, internal_error,
+    page_admission_error, safe_message, store_error,
 };
 
 use tauri::State;
@@ -20,6 +23,11 @@ use crate::{
             GetAcpChatPageRequest, GetCodexDiscoveryRequest, IntentError, IntentSnapshot,
             SendAcpTurnRequest, StartAcpSessionRequest, validate_base_intent,
             validate_cancel_intent, validate_session_intent,
+        },
+        runtime::HostCancelIntent,
+        scheduler::RuntimeOwner,
+        store::{
+            ActivateSessionCommand, CloseSessionCommand, PrepareTurnCommand, StartSessionCommand,
         },
     },
     state::{ActiveProjectContext, ActiveProjectError, AppState},
@@ -109,69 +117,12 @@ pub async fn start_acp_session(
     start_acp_session_inner(&state, request).await
 }
 
-pub(crate) async fn start_acp_session_inner(
-    state: &AppState,
-    request: StartAcpSessionRequest,
-) -> Result<AcpMutationResponse, AcpIpcError> {
-    let (_transition, snapshot) = snapshot_for(
-        state,
-        request.project_id.clone(),
-        request.project_generation,
-        request.chat_id.clone(),
-    )
-    .await?;
-    validate_base_intent(
-        &request.project_id,
-        request.project_generation,
-        &request.chat_id,
-        request.expected_projection_revision,
-        &snapshot,
-    )
-    .map_err(intent_error)?;
-    if request.binding_id.as_str() == "codex-app-server" {
-        let _ = state.acp.refresh_codex_registration();
-    }
-    #[cfg(all(windows, feature = "acp-fixture"))]
-    if state.acp.accepts_characterization(&request.binding_id) {
-        return characterization::start(state, request).await;
-    }
-    Err(binding_unavailable())
-}
-
 #[tauri::command]
 pub async fn activate_acp_session(
     state: State<'_, AppState>,
     request: ActivateAcpSessionRequest,
 ) -> Result<AcpMutationResponse, AcpIpcError> {
     activate_acp_session_inner(&state, request).await
-}
-
-pub(crate) async fn activate_acp_session_inner(
-    state: &AppState,
-    request: ActivateAcpSessionRequest,
-) -> Result<AcpMutationResponse, AcpIpcError> {
-    let (_transition, snapshot) = snapshot_for(
-        state,
-        request.project_id.clone(),
-        request.project_generation,
-        request.chat_id.clone(),
-    )
-    .await?;
-    validate_session_intent(&request, &snapshot).map_err(intent_error)?;
-    #[cfg(all(windows, feature = "acp-fixture"))]
-    if state.acp.characterization_enabled() {
-        let project_root = state
-            .database
-            .selected_project_root_authority(&_transition)
-            .map_err(|_| AcpIpcError::Unavailable {
-                reason: crate::acp::intent::AcpUnavailableReason::CapabilityUnavailable,
-                message: safe_message(
-                    "The selected project root is unavailable or changed; reselect it and retry.",
-                ),
-            })?;
-        return characterization::activate(state, request, project_root).await;
-    }
-    Err(binding_unavailable())
 }
 
 #[tauri::command]
@@ -193,6 +144,33 @@ pub(crate) async fn send_acp_turn_inner(
     #[cfg(all(windows, feature = "acp-fixture"))]
     if state.acp.characterization_enabled() {
         return characterization::send(state, request);
+    }
+    if let SendAcpTurnRequest::Session {
+        project_id,
+        project_generation,
+        chat_id,
+        expected_projection_revision,
+        client_intent_id,
+        session_id,
+        runtime_epoch,
+        prompt,
+    } = request
+    {
+        state
+            .acp
+            .send_codex_turn(PrepareTurnCommand {
+                project_id: project_id.clone(),
+                project_generation,
+                chat_id: chat_id.clone(),
+                session_id,
+                runtime_epoch,
+                expected_projection_revision,
+                client_intent_id,
+                prompt,
+                now_millis: crate::persistence::now_millis(),
+            })
+            .map_err(codex_session_error)?;
+        return mutation_response(state, project_id, chat_id);
     }
     Err(binding_unavailable())
 }
@@ -221,7 +199,23 @@ pub(crate) async fn cancel_acp_turn_inner(
     if state.acp.characterization_enabled() {
         return characterization::cancel(state, request);
     }
-    Err(session_unavailable())
+    let project_id = request.project_id.clone();
+    let chat_id = request.chat_id.clone();
+    state
+        .acp
+        .cancel_codex_turn(HostCancelIntent {
+            owner: RuntimeOwner {
+                project_id: request.project_id,
+                chat_id: request.chat_id,
+                session_id: request.session_id,
+                runtime_epoch: request.runtime_epoch,
+            },
+            turn_id: request.turn_id,
+            client_intent_id: request.client_intent_id,
+            now_millis: crate::persistence::now_millis(),
+        })
+        .map_err(codex_session_error)?;
+    mutation_response(state, project_id, chat_id)
 }
 
 #[tauri::command]
@@ -261,7 +255,21 @@ pub(crate) async fn close_acp_session_inner(
     if state.acp.characterization_enabled() {
         return characterization::close(state, request);
     }
-    Err(session_unavailable())
+    let project_id = request.project_id.clone();
+    let chat_id = request.chat_id.clone();
+    state
+        .acp
+        .close_codex_session(CloseSessionCommand {
+            project_id: request.project_id,
+            chat_id: request.chat_id,
+            expected_projection_revision: request.expected_projection_revision,
+            client_intent_id: request.client_intent_id,
+            session_id: request.session_id,
+            runtime_epoch: request.runtime_epoch,
+            now_millis: crate::persistence::now_millis(),
+        })
+        .map_err(codex_session_error)?;
+    mutation_response(state, project_id, chat_id)
 }
 
 async fn snapshot_for<'a>(

@@ -54,6 +54,18 @@ where
     first_delivery_unknown: Option<FirstDeliveryUnknown>,
 }
 
+pub(crate) type RetainedActivationDriverConstruction<A, J, R, T, C> = Result<
+    ActivationProcessDriver<A, J, R, T, C>,
+    Box<(
+        ActivationPump<A, J, R>,
+        T,
+        C,
+        RuntimeOwner,
+        Arc<dyn DriverClock>,
+        ActivationDriverError,
+    )>,
+>;
+
 impl<A, J, R, T, C> ActivationProcessDriver<A, J, R, T, C>
 where
     A: HarnessAdapter,
@@ -69,10 +81,27 @@ where
         owner: RuntimeOwner,
         clock: Arc<dyn DriverClock>,
     ) -> Result<Self, ActivationDriverError> {
+        Self::new_retained(pump, transport, control, owner, clock).map_err(|failure| failure.5)
+    }
+
+    pub(crate) fn new_retained(
+        pump: ActivationPump<A, J, R>,
+        transport: T,
+        control: C,
+        owner: RuntimeOwner,
+        clock: Arc<dyn DriverClock>,
+    ) -> RetainedActivationDriverConstruction<A, J, R, T, C> {
         if pump.runtime_owner() != owner
             || owner.runtime_epoch == crate::acp::contract::RuntimeEpoch::ZERO
         {
-            return Err(ActivationDriverError::IdentityMismatch);
+            return Err(Box::new((
+                pump,
+                transport,
+                control,
+                owner,
+                clock,
+                ActivationDriverError::IdentityMismatch,
+            )));
         }
         Ok(Self {
             pump,
@@ -83,6 +112,12 @@ where
             state: State::Running,
             first_delivery_unknown: None,
         })
+    }
+
+    pub(crate) fn fail_before_runner(&mut self) {
+        if matches!(self.state, State::Running) {
+            let _ = self.latch(TeardownCause::HostTermination);
+        }
     }
 
     pub(crate) fn begin(&mut self) -> Result<DriverProgress, ActivationDriverError> {

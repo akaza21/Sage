@@ -129,6 +129,86 @@ fn restart_recovery_commits_delivery_unknown_and_converges_to_cold_zero_runtime(
 }
 
 #[test]
+fn exact_zero_process_recovery_replays_only_the_proven_terminal_postcondition() {
+    let mut connection = recovery_connection();
+    let command = RecoverRuntimeCommand {
+        project_id: crate::acp::contract::SageProjectId::parse("project-one").unwrap(),
+        chat_id: crate::acp::contract::SageChatId::parse("chat-one").unwrap(),
+        session_id: crate::acp::contract::SageAgentSessionId::parse("session-one").unwrap(),
+        runtime_epoch: crate::acp::contract::RuntimeEpoch::new(1).unwrap(),
+        now_millis: 50,
+    };
+    let first = recover_runtime_after_zero_process(&mut connection, command.clone()).unwrap();
+    assert_eq!(first.recovered_sessions, 1);
+    let replay = recover_runtime_after_zero_process(&mut connection, command.clone()).unwrap();
+    assert_eq!(replay.recovered_sessions, 0);
+    assert_eq!(replay.projection_revision, first.projection_revision);
+
+    let mut missing = command;
+    missing.session_id =
+        crate::acp::contract::SageAgentSessionId::parse("session-missing").unwrap();
+    assert!(matches!(
+        recover_runtime_after_zero_process(&mut connection, missing),
+        Err(StoreError::Conflict {
+            resource: "runtimeRecovery"
+        })
+    ));
+}
+
+#[test]
+fn zero_process_recovery_rejects_a_foreign_live_tree() {
+    let mut connection = recovery_connection();
+    let command = RecoverRuntimeCommand {
+        project_id: crate::acp::contract::SageProjectId::parse("project-one").unwrap(),
+        chat_id: crate::acp::contract::SageChatId::parse("chat-one").unwrap(),
+        session_id: crate::acp::contract::SageAgentSessionId::parse("session-foreign").unwrap(),
+        runtime_epoch: crate::acp::contract::RuntimeEpoch::new(1).unwrap(),
+        now_millis: 50,
+    };
+    assert!(matches!(
+        recover_runtime_after_zero_process(&mut connection, command),
+        Err(StoreError::Conflict {
+            resource: "runtimeRecovery"
+        })
+    ));
+    let state: String = connection
+        .query_row(
+            "SELECT state FROM session_runtime_epochs WHERE session_id='session-one'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(state, "running");
+}
+
+fn recovery_connection() -> Connection {
+    let connection = Connection::open_in_memory().unwrap();
+    connection.execute_batch(
+        "CREATE TABLE chats(id TEXT PRIMARY KEY, project_id TEXT, projection_revision INTEGER, updated_at INTEGER);
+         CREATE TABLE agent_sessions(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, state TEXT, residency TEXT, revision INTEGER, projection_revision INTEGER, updated_at INTEGER, terminal_at INTEGER);
+         CREATE TABLE chat_session_heads(session_id TEXT PRIMARY KEY);
+         CREATE TABLE session_runtime_epochs(session_id TEXT, runtime_epoch INTEGER, state TEXT, terminal_at INTEGER, exit_kind TEXT, started_at INTEGER, PRIMARY KEY(session_id,runtime_epoch));
+         CREATE TABLE turns(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, session_id TEXT, runtime_epoch INTEGER, state TEXT, delivery_state TEXT, revision INTEGER, updated_at INTEGER, terminal_at INTEGER);
+         CREATE TABLE items(id TEXT PRIMARY KEY,session_id TEXT,runtime_epoch INTEGER,kind TEXT,lifecycle TEXT,tool_state TEXT,revision INTEGER,updated_at INTEGER,terminal_at INTEGER);
+         CREATE TABLE session_activities(id TEXT PRIMARY KEY,session_id TEXT,runtime_epoch INTEGER,lifecycle TEXT,revision INTEGER,updated_at INTEGER,terminal_at INTEGER);
+         CREATE TABLE server_requests(id TEXT PRIMARY KEY,session_id TEXT,runtime_epoch INTEGER,state TEXT,revision INTEGER,updated_at INTEGER,resolved_at INTEGER);
+         CREATE TABLE session_facts(project_id TEXT, chat_id TEXT, session_id TEXT, sequence INTEGER, turn_id TEXT, kind TEXT, payload_json TEXT, payload_bytes INTEGER, payload_digest TEXT, projection_revision INTEGER, created_at INTEGER, PRIMARY KEY(session_id,sequence));
+         CREATE TABLE acp_session_usage(session_id TEXT PRIMARY KEY, fact_count INTEGER, fact_bytes INTEGER, payload_bytes INTEGER, revision INTEGER);
+         CREATE TABLE acp_project_usage(project_id TEXT PRIMARY KEY, fact_count INTEGER, payload_bytes INTEGER, revision INTEGER);
+         CREATE TABLE acp_store_usage(singleton INTEGER PRIMARY KEY, fact_count INTEGER, fact_bytes INTEGER, shared_payload_bytes INTEGER, revision INTEGER);
+         INSERT INTO chats VALUES('chat-one','project-one',0,0);
+         INSERT INTO agent_sessions VALUES('session-one','project-one','chat-one','active','hot',0,0,0,NULL);
+         INSERT INTO chat_session_heads VALUES('session-one');
+         INSERT INTO session_runtime_epochs VALUES('session-one',1,'running',NULL,NULL,0);
+         INSERT INTO turns VALUES('turn-one','project-one','chat-one','session-one',1,'running','correlated',0,0,NULL);
+         INSERT INTO acp_session_usage VALUES('session-one',0,0,0,0);
+         INSERT INTO acp_project_usage VALUES('project-one',0,0,0);
+         INSERT INTO acp_store_usage VALUES(1,0,0,0,0);",
+    ).unwrap();
+    connection
+}
+
+#[test]
 fn restart_limit_plus_one_fails_without_recovering_either_tree() {
     let mut connection = Connection::open_in_memory().unwrap();
     connection.execute_batch(

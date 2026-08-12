@@ -277,6 +277,7 @@ fn kind(mutation: &StoreMutation) -> &'static str {
         StoreMutation::ActivityIngress(_) => "activityIngress",
         StoreMutation::AdapterInboundBatch(_) => "adapterInboundBatch",
         StoreMutation::RecoverAfterRestart { .. } => "recoverAfterRestart",
+        StoreMutation::RecoverRuntimeAfterZero(_) => "recoverRuntimeAfterZero",
         _ => "legacy",
     }
 }

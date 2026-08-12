@@ -14,7 +14,7 @@ use crate::{
         page_admission::{PageAdmissionError, PageReadAdmission, PageReadLease},
         runtime::{
             BoundedThread, JournalError, JournalHandle, JournalLane, ProjectionNotifier,
-            ProjectionPublisher, SessionCoordinator, ThreadWaitError,
+            ProjectionPublisher, SessionCoordinator, SessionCoordinatorError, ThreadWaitError,
         },
         scheduler::Scheduler,
         store::{DatabaseAcpStore, StoreError, StoreMutation, StoreMutationResult, load_chat_page},
@@ -35,13 +35,16 @@ use crate::acp::{
 mod characterization;
 mod codex_auth;
 mod codex_discovery;
+mod codex_live;
 mod codex_operation;
+mod codex_session;
 mod configuration;
 mod intent_snapshot;
 #[cfg(any(test, feature = "acp-fixture"))]
 #[allow(dead_code)] // The packaged reload orchestrator consumes this next.
 mod renderer_recreation;
 mod runtime_slot;
+mod shutdown;
 
 #[cfg(all(windows, feature = "acp-fixture"))]
 pub(crate) use characterization::{
@@ -56,6 +59,23 @@ use intent_snapshot::load_intent_snapshot;
 #[cfg(any(test, feature = "acp-fixture"))]
 use renderer_recreation::RendererRecreationNativeSnapshot;
 use runtime_slot::RuntimeSlot;
+use shutdown::map_discovery_shutdown;
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum CodexSessionError {
+    #[error("the exact Codex binding is unavailable")]
+    Binding(crate::acp::bindings::codex::CodexAdmissionUnavailable),
+    #[error("the Codex session intent is stale or foreign")]
+    Intent,
+    #[error(transparent)]
+    Session(#[from] SessionCoordinatorError),
+    #[error("Codex runtime capacity is occupied")]
+    Capacity,
+    #[error("Codex live runtime requires recovery")]
+    Recovery,
+    #[error("Codex process launch failed")]
+    Launch,
+}
 
 pub(crate) struct AcpService {
     database: Database,
@@ -68,8 +88,14 @@ pub(crate) struct AcpService {
     notifier: Option<Arc<ProjectionNotifier>>,
     page_reads: PageReadAdmission,
     codex: CodexBindingRegistration,
+    codex_gate: Arc<codex_operation::CodexOperationGate>,
     codex_discovery: Arc<CodexDiscoveryManager>,
     codex_auth: Arc<CodexAuthManager>,
+    codex_recovery: Arc<Mutex<Option<codex_live::PendingCodexRecovery>>>,
+    #[cfg(test)]
+    codex_runtime_release_fail_once: AtomicBool,
+    #[cfg(test)]
+    codex_runtime_release_fail_always: AtomicBool,
     #[cfg(all(windows, feature = "acp-fixture"))]
     characterization: Option<CharacterizationBinding>,
 }
@@ -122,7 +148,8 @@ impl AcpService {
         let codex_gate = codex_operation::CodexOperationGate::new();
         let codex_discovery =
             CodexDiscoveryManager::with_gate(configuration.codex.clone(), Arc::clone(&codex_gate));
-        let codex_auth = CodexAuthManager::new(configuration.codex.clone(), codex_gate);
+        let codex_auth =
+            CodexAuthManager::new(configuration.codex.clone(), Arc::clone(&codex_gate));
         Ok(Self {
             database,
             scheduler,
@@ -134,8 +161,14 @@ impl AcpService {
             notifier,
             page_reads: PageReadAdmission::default(),
             codex: configuration.codex,
+            codex_gate,
             codex_discovery,
             codex_auth,
+            codex_recovery: Arc::new(Mutex::new(None)),
+            #[cfg(test)]
+            codex_runtime_release_fail_once: AtomicBool::new(false),
+            #[cfg(test)]
+            codex_runtime_release_fail_always: AtomicBool::new(false),
             #[cfg(all(windows, feature = "acp-fixture"))]
             characterization: configuration.characterization,
         })
@@ -154,22 +187,12 @@ impl AcpService {
         session_id: SageAgentSessionId,
     ) -> Result<CodexRuntime, AdapterRuntimeError> {
         let binding = self
-            .codex
-            .refresh()
+            .refresh_codex_binding()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         CodexRuntime::from_admitted_binding(binding, project_root, runtime_epoch, session_id)
             .inspect_err(|_| {
                 self.codex.invalidate_drift();
             })
-    }
-
-    pub(crate) fn refresh_codex_registration(
-        &self,
-    ) -> Result<(), crate::acp::bindings::codex::CodexAdmissionUnavailable> {
-        self.codex.refresh().map(drop).inspect_err(|_| {
-            self.codex_discovery.invalidate();
-            self.codex_auth.invalidate();
-        })
     }
 
     pub(crate) fn codex_discovery_manager(&self) -> Arc<CodexDiscoveryManager> {
@@ -178,6 +201,18 @@ impl AcpService {
 
     pub(crate) fn codex_auth_manager(&self) -> Arc<CodexAuthManager> {
         Arc::clone(&self.codex_auth)
+    }
+
+    pub(super) fn refresh_codex_binding(
+        &self,
+    ) -> Result<
+        Arc<crate::acp::bindings::codex::AdmittedCodexBinding>,
+        crate::acp::bindings::codex::CodexAdmissionUnavailable,
+    > {
+        self.codex.refresh().inspect_err(|_| {
+            self.codex_discovery.invalidate();
+            self.codex_auth.invalidate();
+        })
     }
 
     pub(crate) fn reserve_page_read(
@@ -212,7 +247,7 @@ impl AcpService {
     ) -> Result<(), crate::acp::runtime::HostError> {
         let discovery = self
             .codex_discovery
-            .invalidate_and_wait(Duration::from_millis(
+            .project_switched(Duration::from_millis(
                 crate::acp::limits::LIMITS.deadlines_ms.explicit_close,
             ))
             .map_err(map_discovery_shutdown);
@@ -253,75 +288,6 @@ impl AcpService {
         )
     }
 
-    pub(crate) fn shutdown_blocking(&self) -> Result<(), crate::acp::runtime::HostError> {
-        let started = Instant::now();
-        let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
-        let mut failure = None;
-        if let Err(error) = self
-            .codex_discovery
-            .shutdown(budget.saturating_sub(started.elapsed()))
-        {
-            failure = Some(map_discovery_shutdown(error));
-        }
-        self.codex_auth.invalidate();
-        let mut runtime_stopped = true;
-        if let Some(runtime) = self.runtime.begin_shutdown()
-            && let Err(error) = runtime.shutdown()
-        {
-            let _ = self.runtime.shutdown_failed();
-            runtime_stopped = false;
-            failure = Some(error);
-        }
-        if let Err(error) = self.stop_notifier(budget.saturating_sub(started.elapsed())) {
-            failure.get_or_insert(error);
-        }
-        self.journal.close_when_drained();
-        if let Err(error) = self.wait_journal(budget.saturating_sub(started.elapsed())) {
-            self.journal.shutdown();
-            failure.get_or_insert(error);
-        }
-        if runtime_stopped && self.runtime.finish_shutdown().is_err() {
-            failure.get_or_insert(crate::acp::runtime::HostError::RecoveryRequired);
-        }
-        failure.map_or(Ok(()), Err)
-    }
-
-    fn stop_notifier(&self, timeout: Duration) -> Result<(), crate::acp::runtime::HostError> {
-        let Some(notifier) = self.notifier.as_ref().map(Arc::clone) else {
-            return Ok(());
-        };
-        let clean = Arc::new(AtomicBool::new(false));
-        let completed = Arc::clone(&clean);
-        let mut thread = BoundedThread::spawn("sage-acp-notifier-stop", move || {
-            let stopped = tauri::async_runtime::block_on(notifier.shutdown_with_timeout(timeout));
-            completed.store(stopped, Ordering::Release);
-        })
-        .map_err(|_| crate::acp::runtime::HostError::Unavailable)?;
-        thread.wait(timeout).map_err(map_thread_wait)?;
-        if clean.load(Ordering::Acquire) {
-            Ok(())
-        } else {
-            Err(crate::acp::runtime::HostError::Deadline)
-        }
-    }
-
-    fn wait_journal(&self, timeout: Duration) -> Result<(), crate::acp::runtime::HostError> {
-        let mut thread = self
-            .journal_thread
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let Some(worker) = thread.as_mut() else {
-            return Ok(());
-        };
-        match worker.wait(timeout) {
-            Ok(()) => {
-                *thread = None;
-                Ok(())
-            }
-            Err(error) => Err(map_thread_wait(error)),
-        }
-    }
-
     #[cfg(test)]
     pub(crate) fn install_runtime_for_test(
         &self,
@@ -344,56 +310,6 @@ impl std::fmt::Debug for AcpService {
             .field("codex_admitted", &self.codex.is_available())
             .field("notification_active", &self.notifier.is_some())
             .finish_non_exhaustive()
-    }
-}
-
-impl Drop for AcpService {
-    fn drop(&mut self) {
-        let started = Instant::now();
-        let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
-        let _ = self
-            .codex_discovery
-            .shutdown(budget.saturating_sub(started.elapsed()));
-        self.codex_auth.invalidate();
-        let mut runtime_stopped = true;
-        if let Some(runtime) = self.runtime.begin_shutdown()
-            && runtime.shutdown().is_err()
-        {
-            let _ = self.runtime.shutdown_failed();
-            runtime_stopped = false;
-        }
-        let _ = self.stop_notifier(budget.saturating_sub(started.elapsed()));
-        self.journal.close_when_drained();
-        if self
-            .wait_journal(budget.saturating_sub(started.elapsed()))
-            .is_err()
-        {
-            self.journal.shutdown();
-        }
-        if runtime_stopped {
-            let _ = self.runtime.finish_shutdown();
-        }
-    }
-}
-
-fn map_thread_wait(error: ThreadWaitError) -> crate::acp::runtime::HostError {
-    match error {
-        ThreadWaitError::Timeout => crate::acp::runtime::HostError::Deadline,
-        ThreadWaitError::Panicked => crate::acp::runtime::HostError::Unavailable,
-    }
-}
-
-fn map_discovery_shutdown(
-    error: crate::acp::bindings::codex::CodexDiscoveryRunError,
-) -> crate::acp::runtime::HostError {
-    match error {
-        crate::acp::bindings::codex::CodexDiscoveryRunError::Timeout => {
-            crate::acp::runtime::HostError::Deadline
-        }
-        crate::acp::bindings::codex::CodexDiscoveryRunError::Cleanup => {
-            crate::acp::runtime::HostError::RecoveryRequired
-        }
-        _ => crate::acp::runtime::HostError::Unavailable,
     }
 }
 

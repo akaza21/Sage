@@ -234,6 +234,15 @@ impl RuntimeHost {
         }
     }
 
+    /// Stops a host that was assembled for an activation which never became
+    /// a usable runtime. Closing the mailbox prevents the actor from issuing
+    /// any new process command; joining is the ownership barrier.
+    pub(crate) fn abandon_startup(&self) -> Result<(), HostError> {
+        self.mailbox.close();
+        self.lifecycle.store(HOST_AWAITING_EXIT, Ordering::Release);
+        self.join_with_timeout(self.cleanup_timeout())
+    }
+
     fn outcome(&self, command: HostCommand) -> Result<HostOutcome, HostError> {
         match self.submit(command)? {
             HostReply::Outcome(outcome) => Ok(outcome),

@@ -74,7 +74,13 @@ pub(super) fn decode_item(
         .as_deref()
         .map(super::state::parse_tool_state)
         .transpose()?;
-    let content = content(normalized, legacy_role, activity_id.as_ref(), permission)?;
+    let content = content(
+        normalized,
+        lifecycle,
+        legacy_role,
+        activity_id.as_ref(),
+        permission,
+    )?;
     if content.requires_tool_state() != tool_state.is_some() {
         return Err(StoreError::Corrupt("item tool state"));
     }
@@ -122,6 +128,7 @@ fn validate_resource_membership(
 
 fn content(
     value: NormalizedPayload,
+    lifecycle: crate::acp::lifecycle::ItemLifecycle,
     legacy_role: Option<TextRole>,
     activity: Option<&SageActivityId>,
     permission: Option<(SageServerRequestId, ServerRequestState)>,
@@ -137,7 +144,11 @@ fn content(
                 "planEntries",
                 vec![PlanEntry {
                     label: summary_label(summary.as_str())?,
-                    state: PlanEntryState::Completed,
+                    state: if lifecycle.is_terminal() {
+                        PlanEntryState::Completed
+                    } else {
+                        PlanEntryState::InProgress
+                    },
                 }],
             )
             .map_err(contract)?,
@@ -347,4 +358,42 @@ fn parse<T, E>(
 }
 fn contract(_: ContractError) -> StoreError {
     StoreError::Corrupt("projection contract")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plan_projection_tracks_streaming_and_terminal_lifecycle() {
+        let payload = NormalizedPayload::Plan {
+            summary: SafeText::new("plan", "Inspect the project").unwrap(),
+        };
+        let streaming = content(
+            payload.clone(),
+            crate::acp::lifecycle::ItemLifecycle::Streaming,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let completed = content(
+            payload,
+            crate::acp::lifecycle::ItemLifecycle::Completed,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(matches!(
+            streaming,
+            ItemContent::Plan { ref entries }
+                if entries.as_slice()[0].state == PlanEntryState::InProgress
+        ));
+        assert!(matches!(
+            completed,
+            ItemContent::Plan { ref entries }
+                if entries.as_slice()[0].state == PlanEntryState::Completed
+        ));
+    }
 }

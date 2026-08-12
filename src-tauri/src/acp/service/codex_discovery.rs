@@ -162,12 +162,54 @@ impl CodexDiscoveryManager {
         self.clear_cache();
     }
 
+    pub(super) fn validate_session_model(
+        &self,
+        project_root: &CodexProjectRootAuthority,
+        binding_id: &crate::acp::intent::BindingId,
+        binding_digest: [u8; 32],
+        model_id: Option<&crate::acp::intent::ModelId>,
+    ) -> Result<(), CodexDiscoveryRunError> {
+        project_root
+            .revalidate()
+            .map_err(|_| CodexDiscoveryRunError::Drift)?;
+        let cache = self
+            .cache
+            .lock()
+            .map_err(|_| CodexDiscoveryRunError::Drift)?;
+        let entry = cache
+            .as_ref()
+            .filter(|entry| {
+                entry.key.scope.project_id == *project_root.project_id()
+                    && entry.key.scope.project_generation == project_root.project_generation()
+                    && entry.key.scope.root_id == *project_root.root_id()
+                    && entry.key.scope.root_identity == project_root.identity_bytes()
+                    && entry.key.scope.binding_digest == binding_digest
+            })
+            .ok_or(CodexDiscoveryRunError::InvalidScope)?;
+        let response = &entry.response;
+        if &response.binding_id != binding_id
+            || response.account != crate::acp::ipc::CodexDiscoveryAccount::ManagedChatgpt
+        {
+            return Err(CodexDiscoveryRunError::InvalidScope);
+        }
+        if model_id.is_some_and(|model| !response.models.iter().any(|entry| &entry.id == model)) {
+            return Err(CodexDiscoveryRunError::InvalidScope);
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
     pub(crate) fn invalidate_and_wait(
         &self,
         timeout: Duration,
     ) -> Result<(), CodexDiscoveryRunError> {
         self.clear_cache();
         self.gate.invalidate_and_wait(timeout)
+    }
+
+    pub(crate) fn project_switched(&self, timeout: Duration) -> Result<(), CodexDiscoveryRunError> {
+        self.clear_cache();
+        self.gate.invalidate_ephemeral_and_wait(timeout)
     }
 
     pub(crate) fn shutdown(&self, timeout: Duration) -> Result<(), CodexDiscoveryRunError> {
@@ -208,6 +250,56 @@ impl CodexDiscoveryManager {
             Ok(mut cache) => *cache = None,
             Err(poisoned) => *poisoned.into_inner() = None,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn seed_session_validation_for_test(
+        &self,
+        project_root: &CodexProjectRootAuthority,
+        binding_digest: [u8; 32],
+        model: Option<crate::acp::intent::ModelId>,
+    ) {
+        use crate::acp::{
+            contract::{RequiredText, RuntimeEpoch},
+            intent::BindingId,
+            ipc::{CodexDiscoveryAccount, CodexDiscoveryModel, CodexDiscoveryResponse},
+        };
+        let scope = CacheScope {
+            project_id: project_root.project_id().clone(),
+            project_generation: project_root.project_generation(),
+            root_id: project_root.root_id().clone(),
+            root_identity: project_root.identity_bytes(),
+            binding_digest,
+        };
+        let runtime_epoch = RuntimeEpoch::new(97).unwrap();
+        let models = model
+            .map(|id| {
+                vec![CodexDiscoveryModel {
+                    id,
+                    name: RequiredText::new("modelName", "Codex test model").unwrap(),
+                    is_default: true,
+                }]
+            })
+            .unwrap_or_default();
+        *self
+            .cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(CachedDiscovery {
+            key: CacheKey {
+                scope: scope.clone(),
+                runtime_epoch,
+            },
+            response: CodexDiscoveryResponse {
+                project_id: project_root.project_id().clone(),
+                project_generation: project_root.project_generation(),
+                root_id: scope.root_id,
+                binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
+                runtime_epoch,
+                account: CodexDiscoveryAccount::ManagedChatgpt,
+                models,
+                default_model_id: None,
+            },
+        });
     }
 }
 

@@ -158,16 +158,16 @@ fn recovering_to_ready_cannot_change_activation_identity() {
 }
 
 #[test]
-fn in_memory_creation_reaches_exact_v5() {
+fn in_memory_creation_reaches_exact_v7() {
     let connection = open_or_migrate(Path::new(":memory:")).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV6
+        SchemaClass::CurrentV7
     );
 }
 
 #[test]
-fn exact_v1_v2_v3_sources_migrate_through_v5() {
+fn exact_v1_v2_v3_sources_migrate_through_v7() {
     for version in 1..=3 {
         let directory = TestDir::new();
         let connection = Connection::open(directory.database()).unwrap();
@@ -185,7 +185,7 @@ fn exact_v1_v2_v3_sources_migrate_through_v5() {
         let migrated = open_or_migrate(&directory.database()).unwrap();
         assert_eq!(
             fingerprint::classify_connection(&migrated).unwrap(),
-            SchemaClass::CurrentV6,
+            SchemaClass::CurrentV7,
             "source version {version}"
         );
     }
@@ -210,7 +210,7 @@ fn exact_v5_source_migrates_to_bounded_resource_trash_intents() {
 
     assert_eq!(
         fingerprint::classify_connection(&migrated).unwrap(),
-        SchemaClass::CurrentV6
+        SchemaClass::CurrentV7
     );
     let columns: i64 = migrated
         .query_row(
@@ -220,6 +220,118 @@ fn exact_v5_source_migrates_to_bounded_resource_trash_intents() {
         )
         .unwrap();
     assert_eq!(columns, 13);
+}
+
+#[test]
+fn exact_v6_source_upgrades_to_v7_without_losing_epoch_children() {
+    let directory = TestDir::new();
+    let mut connection = Connection::open(directory.database()).unwrap();
+    connection.execute_batch(INITIAL).unwrap();
+    connection.execute_batch(V2).unwrap();
+    connection.execute_batch(V3).unwrap();
+    project_migration::migrate(&mut connection).unwrap();
+    apply_v5(&mut connection).unwrap();
+    apply_v6(&mut connection).unwrap();
+    assert_eq!(
+        fingerprint::classify_connection(&connection).unwrap(),
+        SchemaClass::CurrentV6
+    );
+    connection
+        .execute(
+            "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at)
+             VALUES ('project','Project',1,1,1)",
+            [],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at)
+             VALUES ('chat','project',0,'Chat',1,1)",
+            [],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO agent_sessions(
+               id,project_id,chat_id,ordinal,binding_id,binding_digest,
+               capabilities_json,state,residency,legacy,revision,
+               projection_revision,created_at,updated_at,terminal_at
+             ) VALUES ('session','project','chat',0,'binding',?1,?2,
+                       'starting','hot',0,0,0,1,1,NULL)",
+            params!["a".repeat(64), PENDING_CAPABILITIES],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO session_runtime_epochs(
+               project_id,chat_id,session_id,runtime_epoch,state,artifact_digest,
+               started_at,terminal_at,exit_kind
+             ) VALUES ('project','chat','session',1,'starting',?1,1,NULL,NULL)",
+            ["b".repeat(64)],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO turns(
+               id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,
+               state,delivery_state,revision,created_at,updated_at,terminal_at
+             ) VALUES ('turn','project','chat','session',1,0,'intent','queued',
+                       'notWritten',0,1,1,NULL)",
+            [],
+        )
+        .unwrap();
+    connection.close().unwrap();
+
+    let migrated = open_or_migrate(&directory.database()).unwrap();
+
+    assert_eq!(
+        fingerprint::classify_connection(&migrated).unwrap(),
+        SchemaClass::CurrentV7
+    );
+    assert_eq!(
+        migrated
+            .query_row("SELECT COUNT(*) FROM turns WHERE id='turn'", [], |row| row
+                .get::<_, i64>(
+                0
+            ))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        migrated
+            .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row
+                .get::<_, i64>(0))
+            .unwrap(),
+        7
+    );
+    assert!(
+        migrated
+            .query_row("PRAGMA foreign_key_check", [], |_| Ok(true))
+            .optional()
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn fresh_v7_schema_equals_a_v6_schema_upgraded_in_place() {
+    let fresh = open_or_migrate(Path::new(":memory:")).unwrap();
+    let fresh_fingerprint = database_fingerprint(&fresh).unwrap();
+    let mut upgraded = Connection::open_in_memory().unwrap();
+    upgraded.execute_batch(INITIAL).unwrap();
+    upgraded.execute_batch(V2).unwrap();
+    upgraded.execute_batch(V3).unwrap();
+    project_migration::migrate(&mut upgraded).unwrap();
+    apply_v5(&mut upgraded).unwrap();
+    apply_v6(&mut upgraded).unwrap();
+    apply_v7(&mut upgraded).unwrap();
+    let upgraded_fingerprint = database_fingerprint(&upgraded).unwrap();
+
+    assert_eq!(fresh_fingerprint.schema, SchemaClass::CurrentV7);
+    assert_eq!(
+        fresh_fingerprint.schema_sha256,
+        upgraded_fingerprint.schema_sha256
+    );
 }
 
 #[test]
@@ -253,6 +365,31 @@ fn faux_v5_is_rejected_without_changing_database_bytes() {
     );
     assert_eq!(wal_before, wal.exists());
     assert_eq!(shm_before, shm.exists());
+}
+
+#[test]
+fn faux_v7_marker_on_a_v6_schema_is_rejected_without_changing_bytes() {
+    let directory = TestDir::new();
+    let mut connection = Connection::open(directory.database()).unwrap();
+    connection.execute_batch(INITIAL).unwrap();
+    connection.execute_batch(V2).unwrap();
+    connection.execute_batch(V3).unwrap();
+    project_migration::migrate(&mut connection).unwrap();
+    apply_v5(&mut connection).unwrap();
+    apply_v6(&mut connection).unwrap();
+    connection
+        .execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (7, 0)",
+            [],
+        )
+        .unwrap();
+    connection.pragma_update(None, "user_version", 7).unwrap();
+    connection.close().unwrap();
+    let before = file_fingerprint(&directory.database()).unwrap();
+
+    assert!(classify_path(&directory.database()).is_err());
+
+    assert_eq!(before, file_fingerprint(&directory.database()).unwrap());
 }
 
 #[test]
@@ -510,7 +647,7 @@ fn committed_wal_data_is_included_in_migration() {
     let migrated = Connection::open(&paths.live).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&migrated).unwrap(),
-        SchemaClass::CurrentV6
+        SchemaClass::CurrentV7
     );
     let name: String = migrated
         .query_row(
@@ -579,7 +716,7 @@ fn replacement_build_intent_crash_prefixes_converge() {
         let migrated = open_or_migrate(&directory.database()).unwrap();
         assert_eq!(
             fingerprint::classify_connection(&migrated).unwrap(),
-            SchemaClass::CurrentV6,
+            SchemaClass::CurrentV7,
             "prefix {prefix}"
         );
         drop(migrated);
@@ -660,7 +797,7 @@ fn v4_history_converts_and_retains_the_verified_backup_pair() {
     let connection = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV6
+        SchemaClass::CurrentV7
     );
     let item: (String, i64) = connection
         .query_row("SELECT id, ordinal FROM items", [], |row| {
@@ -928,7 +1065,7 @@ fn restart_adopts_the_complete_retirement_prefix() {
     let connection = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV6
+        SchemaClass::CurrentV7
     );
     drop(connection);
     assert!(!paths.retired_live.exists());
@@ -947,7 +1084,7 @@ fn restart_cleans_a_published_v5_prefix_idempotently() {
     let connection = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV6
+        SchemaClass::CurrentV7
     );
     drop(connection);
     assert!(!paths.retired_live.exists());
@@ -995,7 +1132,7 @@ fn replacement_restore_prefixes_converge_sidecars_before_main() {
         let connection = open_or_migrate(&directory.database()).unwrap();
         assert_eq!(
             fingerprint::classify_connection(&connection).unwrap(),
-            SchemaClass::CurrentV6,
+            SchemaClass::CurrentV7,
             "restore prefix {prefix}"
         );
         assert!(!paths.retired_live.exists());
@@ -1117,7 +1254,7 @@ fn real_partial_sqlite_backup_copy_converges_after_restart() {
     let connection = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV6
+        SchemaClass::CurrentV7
     );
     assert!(!paths.replacement_stage_owner.exists());
     assert!(!paths.replacement_journal.exists());
@@ -1141,7 +1278,7 @@ fn injected_replacement_write_failure_preserves_legacy_and_retry_converges() {
     let connection = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV6
+        SchemaClass::CurrentV7
     );
     assert!(!paths.replacement_build_intent.exists());
     assert!(!paths.replacement_stage_owner.exists());
@@ -1176,7 +1313,7 @@ pub(crate) fn fixture_backup_failpoint_observation() -> FixtureBackupFailpointOb
     let verified_retained_backup = backup::verify_retained_pair(&paths).is_ok();
     let connection = open_or_migrate(&directory.database()).unwrap();
     let new_schema_visible =
-        fingerprint::classify_connection(&connection).unwrap() == SchemaClass::CurrentV6;
+        fingerprint::classify_connection(&connection).unwrap() == SchemaClass::CurrentV7;
     FixtureBackupFailpointObservation {
         old_schema_readable,
         new_schema_visible,
@@ -1302,7 +1439,7 @@ pub(crate) fn fixture_retirement_observation() -> FixtureRetirementObservation {
         let connection = open_or_migrate(&directory.database()).unwrap();
         assert_eq!(
             fingerprint::classify_connection(&connection).unwrap(),
-            SchemaClass::CurrentV6,
+            SchemaClass::CurrentV7,
             "restart did not converge after {failpoint}"
         );
         verify_current(&connection).unwrap();
@@ -1502,7 +1639,7 @@ fn owned_partial_backup_stage_is_removed_and_rebuilt_after_restart() {
     let connection = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV6
+        SchemaClass::CurrentV7
     );
     assert!(!paths.backup_build_intent.exists());
     assert!(!paths.backup_stage_owner.exists());
@@ -1698,7 +1835,7 @@ fn replacement_retirement_prefixes_converge() {
         let connection = open_or_migrate(&directory.database()).unwrap();
         assert_eq!(
             fingerprint::classify_connection(&connection).unwrap(),
-            SchemaClass::CurrentV6,
+            SchemaClass::CurrentV7,
             "retirement prefix {prefix}"
         );
     }
@@ -1725,7 +1862,7 @@ fn replacement_cleanup_prefixes_converge() {
         let connection = open_or_migrate(&directory.database()).unwrap();
         assert_eq!(
             fingerprint::classify_connection(&connection).unwrap(),
-            SchemaClass::CurrentV6,
+            SchemaClass::CurrentV7,
             "cleanup prefix {prefix}"
         );
         assert!(!paths.replacement_manifest.exists());

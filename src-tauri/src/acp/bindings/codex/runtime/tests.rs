@@ -217,6 +217,93 @@ fn running_turn(runtime: &mut CodexRuntime) {
 }
 
 #[test]
+fn notification_first_turn_start_ignores_the_late_response_state_regression() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let egress = runtime
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Inspect only").unwrap(),
+            client_message_id: RequiredText::new("client", "notification-first").unwrap(),
+        })
+        .unwrap();
+    let id = request_id(&egress);
+    let running = runtime
+        .ingest(
+            &frame(json!({"method":"turn/started","params":{
+                "threadId":"thread-1","turn":{"id":"turn-notification-first"}
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(
+        running.events(),
+        [AdapterEvent::Turn {
+            state: crate::acp::lifecycle::TurnState::Running,
+            ..
+        }]
+    ));
+    let late = runtime
+        .ingest(
+            &frame(json!({"id":id,"result":{"turn":{"id":"turn-notification-first"}}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(late.events(), [AdapterEvent::IgnoredLate]));
+}
+
+#[test]
+fn prompt_and_interrupt_rpc_errors_emit_terminal_failure_without_replay() {
+    let mut prompt_failed = fixture_runtime();
+    ready(&mut prompt_failed);
+    let prompt = prompt_failed
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Never replay").unwrap(),
+            client_message_id: RequiredText::new("client", "failed-prompt").unwrap(),
+        })
+        .unwrap();
+    let prompt_id = request_id(&prompt);
+    let failed = prompt_failed
+        .ingest(
+            &frame(json!({"id":prompt_id,"error":{"message":"rejected"}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(
+        failed.events(),
+        [
+            AdapterEvent::Error(_),
+            AdapterEvent::Turn {
+                state: crate::acp::lifecycle::TurnState::Failed,
+                ..
+            }
+        ]
+    ));
+    assert!(prompt_failed.command(AdapterCommand::Cancel).is_err());
+
+    let mut interrupt_failed = fixture_runtime();
+    ready(&mut interrupt_failed);
+    running_turn(&mut interrupt_failed);
+    let cancel = interrupt_failed.command(AdapterCommand::Cancel).unwrap();
+    let cancel_id = request_id(&cancel);
+    let failed = interrupt_failed
+        .ingest(
+            &frame(json!({"id":cancel_id,"error":{"message":"interrupt failed"}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(
+        failed.events(),
+        [
+            AdapterEvent::Error(_),
+            AdapterEvent::Turn {
+                state: crate::acp::lifecycle::TurnState::Failed,
+                ..
+            }
+        ]
+    ));
+}
+
+#[test]
 fn launch_stays_unavailable_without_exact_artifact_admission() {
     let packet = parse_packet_metadata(include_bytes!(
         "../../../../../testdata/acp/codex/candidate-windows.json"

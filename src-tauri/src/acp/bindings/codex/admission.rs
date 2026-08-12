@@ -97,6 +97,10 @@ impl AdmittedCodexBinding {
         &self.packet.metadata().entrypoint.sha256
     }
 
+    pub(crate) fn harness_version(&self) -> &str {
+        &self.packet.metadata().codex_runtime_version
+    }
+
     pub(crate) fn entrypoint(&self) -> &EntrypointIdentity {
         &self.entrypoint
     }
@@ -107,6 +111,36 @@ impl AdmittedCodexBinding {
 
     pub(crate) fn environment(&self) -> &CodexLaunchEnvironment {
         &self.environment
+    }
+
+    pub(crate) fn capability_ceiling(
+        &self,
+    ) -> Result<crate::acp::intent::CapabilitySnapshotV1, CodexAdmissionUnavailable> {
+        use crate::acp::{
+            contract::{RequiredText, SchemaVersionV1},
+            intent::CapabilitySnapshotV1,
+        };
+
+        let value = self.packet.capability_ceiling();
+        Ok(CapabilitySnapshotV1 {
+            schema_version: SchemaVersionV1,
+            protocol_version: RequiredText::new("protocolVersion", &value.protocol_identity)
+                .map_err(|_| CodexAdmissionUnavailable::Drift)?,
+            new_session: value.new_session,
+            resume_session: value.resume_session,
+            load_session: value.load_session,
+            close_session: value.close_session,
+            prompt: value.prompt,
+            cancel: value.cancel,
+            native_session_fork: false,
+            active_turn_steer: false,
+            child_conversation_projection: value.child_conversation_projection,
+            child_transcript_read: false,
+            collaboration_event_projection: value.collaboration_event_projection,
+            multi_root_extension_schema_id: None,
+            model_count: 0,
+            config_count: 0,
+        })
     }
 }
 

@@ -20,7 +20,7 @@ impl SessionState {
         matches!(
             (self, next),
             (Created, Starting | Closing)
-                | (Starting, Ready | Incompatible | Failed | Closing)
+                | (Starting, Created | Ready | Incompatible | Failed | Closing)
                 | (Ready, Active | Recovering | Closing | Failed)
                 | (Active, Ready | Recovering | Closing | Failed)
                 | (Recovering, Ready | Incompatible | Failed | Closing)
@@ -48,6 +48,7 @@ pub enum RuntimeEpochState {
     Terminating,
     Exited,
     Failed,
+    Aborted,
 }
 
 impl RuntimeEpochState {
@@ -55,13 +56,16 @@ impl RuntimeEpochState {
         use RuntimeEpochState::*;
         matches!(
             (self, next),
-            (Starting, Running | Terminating | Exited | Failed)
+            (Starting, Running | Terminating | Failed | Aborted)
                 | (Running, Terminating | Exited | Failed)
                 | (Terminating, Exited | Failed)
         )
     }
     pub fn is_terminal(self) -> bool {
-        matches!(self, Self::Legacy | Self::Exited | Self::Failed)
+        matches!(
+            self,
+            Self::Legacy | Self::Exited | Self::Failed | Self::Aborted
+        )
     }
 }
 

@@ -1,5 +1,6 @@
 use std::{
-    sync::{Arc, Weak},
+    any::Any,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -8,27 +9,43 @@ use crate::acp::{
     process::{TreeControl, TreeExit},
     runtime::{
         ActivationProcessDriver, ActivationTransport, CoordinatorActivationJournal, HostError,
-        ProjectIntentAuthority, RuntimeHost,
+        ProjectIntentAuthority,
     },
-    store::AdapterTurnCursor,
 };
 
 use super::{
     BlockingStdoutReader, ControlMessage, DriverMailbox, DriverStep, FirstTurnWorkerContext,
     FirstTurnWorkerRecovery, FirstTurnWorkerState, ProcessExitWatcher, StdinTransport,
-    WorkerCommand, WorkerEnvelope, WorkerReply,
+    WorkerEnvelope, WorkerReply,
 };
 use crate::acp::runtime::BoundedThread;
 
 mod activation;
+mod drive;
 mod handle;
 mod terminal;
 
+use drive::drive;
 use handle::RunInput;
-pub(crate) use handle::{LiveRunnerExit, LiveRunnerHandle};
+pub(crate) use handle::{ActivationStartFailure, LiveRunnerExit, LiveRunnerHandle};
 use terminal::{acknowledge as acknowledge_terminal, cursor as terminal_cursor};
 
 type WorkerState<A, R, T> = FirstTurnWorkerState<A, R, T, TreeControl>;
+type RetainedRunnerRecovery = Box<dyn Any + Send>;
+
+struct RunOutcome {
+    exit: LiveRunnerExit,
+    recovery: Option<RetainedRunnerRecovery>,
+}
+
+impl RunOutcome {
+    fn failed(recovery: impl Any + Send) -> Self {
+        Self {
+            exit: LiveRunnerExit::Failed,
+            recovery: Some(Box::new(recovery)),
+        }
+    }
+}
 
 enum RunnerAction<A, R, T>
 where
@@ -52,160 +69,10 @@ where
     reason: TreeExit,
 }
 
-async fn drive<A, R, T, Auth>(
-    mut state: WorkerState<A, R, T>,
-    context: &FirstTurnWorkerContext<Auth>,
-    host: Weak<RuntimeHost>,
-) -> RunnerExit<A, R, T>
-where
-    A: HarnessAdapter,
-    R: ResourceMapper,
-    T: StdinTransport,
-    Auth: ProjectIntentAuthority,
-{
-    let mut notified = None;
-    let mut pending = None;
-    loop {
-        if terminal::queue(&state, &host, &notified, &mut pending).is_err() {
-            return failed(state);
-        }
-        let (action, terminal_callback) = match state {
-            FirstTurnWorkerState::Active(mut active) if active.stdout_allowed() => {
-                match active
-                    .turn
-                    .driver
-                    .run_next_step(context.mailbox.as_ref())
-                    .await
-                {
-                    Ok(DriverStep::Progress(_)) => (
-                        RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
-                        None,
-                    ),
-                    Ok(DriverStep::YieldWorker { envelope, .. }) => {
-                        handle_worker(FirstTurnWorkerState::Active(active), context, envelope).await
-                    }
-                    Err(_) => return failed(FirstTurnWorkerState::Active(active)),
-                }
-            }
-            FirstTurnWorkerState::Active(active) => {
-                match context
-                    .mailbox
-                    .wait_control_until(None, context.clock.as_ref())
-                {
-                    Ok(Some(ControlMessage::Worker(envelope))) => {
-                        handle_worker(FirstTurnWorkerState::Active(active), context, envelope).await
-                    }
-                    _ => return failed(FirstTurnWorkerState::Active(active)),
-                }
-            }
-            retained => match context
-                .mailbox
-                .wait_next_until(None, context.clock.as_ref())
-            {
-                Ok(Some(ControlMessage::Worker(envelope))) => {
-                    handle_worker(retained, context, envelope).await
-                }
-                Ok(Some(message)) if closing(&retained) && process_tail(&message) => {
-                    (RunnerAction::Continue(retained), None)
-                }
-                _ => return failed(retained),
-            },
-        };
-        match action {
-            RunnerAction::Continue(next) => {
-                if terminal_callback.as_ref().is_some_and(|cursor| {
-                    acknowledge_terminal(cursor, &mut pending, &mut notified).is_err()
-                }) {
-                    return failed(next);
-                }
-                state = next;
-            }
-            RunnerAction::Failure(state) => return failed(state),
-            RunnerAction::Shutdown(state, envelope) => {
-                return RunnerExit {
-                    state: *state,
-                    shutdown: Some(envelope),
-                    reason: TreeExit::ParentShutdown,
-                };
-            }
-        }
-    }
-}
-
-async fn handle_worker<A, R, T, Auth>(
-    state: WorkerState<A, R, T>,
-    context: &FirstTurnWorkerContext<Auth>,
-    envelope: WorkerEnvelope,
-) -> (RunnerAction<A, R, T>, Option<AdapterTurnCursor>)
-where
-    A: HarnessAdapter,
-    R: ResourceMapper,
-    T: StdinTransport,
-    Auth: ProjectIntentAuthority,
-{
-    if matches!(&envelope.command, WorkerCommand::Shutdown) {
-        return (RunnerAction::Shutdown(Box::new(state), envelope), None);
-    }
-    let mut terminal_callback = terminal_cursor(&envelope);
-    let mut state = state.handle(context, envelope).await;
-    loop {
-        let FirstTurnWorkerState::Active(mut active) = state else {
-            return (RunnerAction::Continue(state), terminal_callback);
-        };
-        if !active.stdout_allowed() {
-            return (
-                RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
-                terminal_callback,
-            );
-        }
-        match active
-            .turn
-            .driver
-            .resume_after_worker_control(context.mailbox.as_ref())
-            .await
-        {
-            Ok(DriverStep::Progress(_)) => {
-                return (
-                    RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
-                    terminal_callback,
-                );
-            }
-            Ok(DriverStep::YieldWorker { envelope, .. }) => {
-                if matches!(&envelope.command, WorkerCommand::Shutdown) {
-                    return (
-                        RunnerAction::Shutdown(
-                            Box::new(FirstTurnWorkerState::Active(active)),
-                            envelope,
-                        ),
-                        terminal_callback,
-                    );
-                }
-                if let Some(cursor) = terminal_cursor(&envelope)
-                    && terminal_callback.replace(cursor).is_some()
-                {
-                    return (
-                        RunnerAction::Failure(FirstTurnWorkerState::Active(active)),
-                        terminal_callback,
-                    );
-                }
-                state = FirstTurnWorkerState::Active(active)
-                    .handle(context, envelope)
-                    .await;
-            }
-            Err(_) => {
-                return (
-                    RunnerAction::Failure(FirstTurnWorkerState::Active(active)),
-                    terminal_callback,
-                );
-            }
-        }
-    }
-}
-
 fn run<A, R, T, Auth>(
     activation: ActivationProcessDriver<A, CoordinatorActivationJournal, R, T, TreeControl>,
-    input: RunInput<Auth>,
-) -> LiveRunnerExit
+    input: RunInput<A, R, T, Auth>,
+) -> RunOutcome
 where
     A: HarnessAdapter + Send + 'static,
     R: ResourceMapper + Send + 'static,
@@ -227,9 +94,21 @@ where
     }) {
         Ok(reader) => reader,
         Err(_) => {
-            fail_startup(mailbox.as_ref(), &control, None, None, cleanup_deadline);
-            let _ = ready.send(Err(HostError::Unavailable));
-            return LiveRunnerExit::Failed;
+            let failure = recover_activation_startup(
+                activation,
+                HostError::Unavailable,
+                mailbox.as_ref(),
+                None,
+                None,
+                cleanup_deadline,
+            );
+            return match ready.send(Err(failure)) {
+                Ok(()) => RunOutcome {
+                    exit: LiveRunnerExit::Failed,
+                    recovery: None,
+                },
+                Err(error) => RunOutcome::failed(error.0),
+            };
         }
     };
     let watcher_mailbox = Arc::clone(&mailbox);
@@ -239,41 +118,57 @@ where
     }) {
         Ok(watcher) => watcher,
         Err(_) => {
-            fail_startup(
+            let failure = recover_activation_startup(
+                activation,
+                HostError::Unavailable,
                 mailbox.as_ref(),
-                &control,
                 Some(&mut reader),
                 None,
                 cleanup_deadline,
             );
-            let _ = ready.send(Err(HostError::Unavailable));
-            return LiveRunnerExit::Failed;
+            return match ready.send(Err(failure)) {
+                Ok(()) => RunOutcome {
+                    exit: LiveRunnerExit::Failed,
+                    recovery: None,
+                },
+                Err(error) => RunOutcome::failed(error.0),
+            };
         }
     };
     let initial =
         match tauri::async_runtime::block_on(activation::complete(activation, mailbox.as_ref())) {
             Ok(initial) => initial,
-            Err(error) => {
-                fail_startup(
+            Err(failure) => {
+                let failure = recover_activation_startup(
+                    failure.driver,
+                    failure.error,
                     mailbox.as_ref(),
-                    &control,
                     Some(&mut reader),
                     Some(&mut watcher),
                     cleanup_deadline,
                 );
-                let _ = ready.send(Err(error));
-                return LiveRunnerExit::Failed;
+                return match ready.send(Err(failure)) {
+                    Ok(()) => RunOutcome {
+                        exit: LiveRunnerExit::Failed,
+                        recovery: None,
+                    },
+                    Err(error) => RunOutcome::failed(error.0),
+                };
             }
         };
     if ready.send(Ok(())).is_err() {
-        fail_startup(
+        let recovery = finish(
+            failed(initial),
             mailbox.as_ref(),
             &control,
-            Some(&mut reader),
-            Some(&mut watcher),
+            &mut reader,
+            &mut watcher,
             cleanup_deadline,
         );
-        return LiveRunnerExit::Failed;
+        return RunOutcome {
+            exit: LiveRunnerExit::Failed,
+            recovery,
+        };
     }
     let exit = tauri::async_runtime::block_on(drive(initial, &context, host));
     let disposition = if exit.shutdown.is_some() {
@@ -281,7 +176,7 @@ where
     } else {
         LiveRunnerExit::Failed
     };
-    finish(
+    let recovery = finish(
         exit,
         mailbox.as_ref(),
         &control,
@@ -289,25 +184,51 @@ where
         &mut watcher,
         cleanup_deadline,
     );
-    disposition
+    RunOutcome {
+        exit: if recovery.is_some() {
+            LiveRunnerExit::Failed
+        } else {
+            disposition
+        },
+        recovery,
+    }
 }
 
-fn fail_startup(
+fn recover_activation_startup<A, R, T>(
+    driver: ActivationProcessDriver<A, CoordinatorActivationJournal, R, T, TreeControl>,
+    error: HostError,
     mailbox: &DriverMailbox,
-    control: &TreeControl,
     reader: Option<&mut BoundedThread>,
     watcher: Option<&mut BoundedThread>,
     deadline: Instant,
-) {
-    let _ = control.request_termination(TreeExit::ParentShutdown);
+) -> handle::ActivationStartFailure<A, R, T>
+where
+    A: HarnessAdapter,
+    R: ResourceMapper,
+    T: StdinTransport + ActivationTransport,
+{
     mailbox.close();
-    let _ = control.wait_before(deadline);
+    let failure = match driver.take_projection_recovery_before(deadline) {
+        Ok(handoff) => handle::ActivationStartFailure::Projection { handoff, error },
+        Err(failure) => {
+            let mut driver = failure.driver;
+            driver.fail_before_runner();
+            match driver.take_zero_process_handoff_before(deadline) {
+                Ok(handoff) => handle::ActivationStartFailure::Teardown { handoff, error },
+                Err(failure) => handle::ActivationStartFailure::Retained {
+                    driver: failure.driver,
+                    error,
+                },
+            }
+        }
+    };
     if let Some(reader) = reader {
         let _ = reader.wait(deadline.saturating_duration_since(Instant::now()));
     }
     if let Some(watcher) = watcher {
         let _ = watcher.wait(deadline.saturating_duration_since(Instant::now()));
     }
+    failure
 }
 
 fn closing<A, R, T>(state: &WorkerState<A, R, T>) -> bool
@@ -369,10 +290,12 @@ fn finish<A, R, T>(
     reader: &mut BoundedThread,
     watcher: &mut BoundedThread,
     cleanup_deadline: Instant,
-) where
+) -> Option<RetainedRunnerRecovery>
+where
     A: HarnessAdapter,
-    R: ResourceMapper,
-    T: StdinTransport,
+    R: ResourceMapper + Send + 'static,
+    T: StdinTransport + Send + 'static,
+    A: Send + 'static,
 {
     let deadline = exit
         .shutdown
@@ -392,7 +315,8 @@ fn finish<A, R, T>(
     let watcher_done = watcher
         .wait(deadline.saturating_duration_since(Instant::now()))
         .is_ok();
-    drop(exit.state);
+    let clean_shutdown =
+        exit.shutdown.is_some() && already_closed && converged && reader_done && watcher_done;
     if let Some(envelope) = exit.shutdown {
         envelope.respond(if converged && reader_done && watcher_done {
             Ok(WorkerReply::Unit)
@@ -400,6 +324,7 @@ fn finish<A, R, T>(
             Err(HostError::RecoveryRequired)
         });
     }
+    (!clean_shutdown).then(|| Box::new(exit.state) as RetainedRunnerRecovery)
 }
 
 fn cleanup_budget() -> Duration {

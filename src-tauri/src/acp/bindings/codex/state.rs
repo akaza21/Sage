@@ -78,6 +78,7 @@ struct PermissionRequestEntry {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TurnBinding {
+    NewlyActive,
     Active,
     PreviousTerminal,
 }
@@ -298,6 +299,35 @@ impl CodexAdapter {
             self.clear_turn_start(id)?;
         }
         Ok(())
+    }
+
+    pub(super) fn fail_turn_start(&mut self, id: u64) -> Result<ScopedExternalId, AdapterError> {
+        let client = self
+            .pending_turn_start
+            .as_ref()
+            .filter(|intent| intent.request_id == id)
+            .map(|intent| intent.client_message_id.clone())
+            .ok_or(AdapterError::TurnIntentConflict)?;
+        self.pending_turn_start = None;
+        self.active_turn_client_message_id = Some(client);
+        self.active_turn_id = Some(ExternalId::new("externalTurnId", format!("rejected-{id}"))?);
+        self.accept_active_failure()
+    }
+
+    pub(super) fn fail_interrupt(&mut self) -> Result<ScopedExternalId, AdapterError> {
+        self.accept_active_failure()
+    }
+
+    fn accept_active_failure(&mut self) -> Result<ScopedExternalId, AdapterError> {
+        let id = self
+            .active_turn_id
+            .as_ref()
+            .ok_or(AdapterError::TurnUnavailable)?
+            .as_str()
+            .to_owned();
+        let scoped = self.scoped_in_turn(ExternalKind::Turn, &id, &id)?;
+        self.accept_turn_terminal(&id, TurnState::Failed)?;
+        Ok(scoped)
     }
 
     fn clear_turn_start(&mut self, id: u64) -> Result<(), AdapterError> {

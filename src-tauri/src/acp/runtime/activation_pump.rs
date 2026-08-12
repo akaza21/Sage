@@ -20,7 +20,9 @@ mod coordinator_journal;
 mod ingress;
 mod parts;
 
-pub(crate) use coordinator_journal::{CoordinatorActivationHandoff, CoordinatorActivationJournal};
+pub(crate) use coordinator_journal::{
+    CoordinatorActivationHandoff, CoordinatorActivationJournal, CoordinatorShutdownHandoff,
+};
 pub(crate) use parts::{IdleActivationParts, RecoveryActivationParts, TeardownActivationParts};
 
 #[cfg(test)]
@@ -169,6 +171,8 @@ pub(crate) struct ActivationPump<A, J, R> {
 }
 
 type ActivationHandoff<T, A, J, R> = Result<T, Box<(ActivationPump<A, J, R>, ActivationPumpError)>>;
+pub(crate) type RetainedActivationConstruction<A, J, R> =
+    Result<ActivationPump<A, J, R>, Box<(A, J, R, ActivationPumpError)>>;
 
 impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<A, J, R> {
     pub(crate) fn new(
@@ -177,14 +181,34 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
         resources: R,
         intent: ActivationIntent,
     ) -> Result<Self, ActivationPumpError> {
-        validate_intent(&intent)?;
-        let egress = ReservedQueue::new(
+        Self::new_retained(adapter, journal, resources, intent).map_err(|error| error.3)
+    }
+
+    pub(crate) fn new_retained(
+        adapter: A,
+        journal: J,
+        resources: R,
+        intent: ActivationIntent,
+    ) -> RetainedActivationConstruction<A, J, R> {
+        if let Err(error) = validate_intent(&intent) {
+            return Err(Box::new((adapter, journal, resources, error)));
+        }
+        let egress = match ReservedQueue::new(
             LIMITS.queues.egress_frames as usize,
             LIMITS.queues.egress_bytes as usize,
             LIMITS.queues.egress_control_frames_inside_total as usize,
             LIMITS.queues.egress_control_bytes_inside_total as usize,
-        )
-        .map_err(|_| ActivationPumpError::Backpressure)?;
+        ) {
+            Ok(egress) => egress,
+            Err(_) => {
+                return Err(Box::new((
+                    adapter,
+                    journal,
+                    resources,
+                    ActivationPumpError::Backpressure,
+                )));
+            }
+        };
         Ok(Self {
             adapter,
             journal,

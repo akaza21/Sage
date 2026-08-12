@@ -18,8 +18,8 @@ pub(crate) mod permissions;
 pub(crate) use activation_pump::{
     ActivatedSession, ActivationFlush, ActivationIntent, ActivationJournal, ActivationJournalError,
     ActivationMode, ActivationPump, ActivationPumpError, ActivationReceipt, ActivationTransport,
-    CoordinatorActivationHandoff, CoordinatorActivationJournal, IdleActivationParts,
-    RecoveryActivationParts, TeardownActivationParts,
+    CoordinatorActivationHandoff, CoordinatorActivationJournal, CoordinatorShutdownHandoff,
+    IdleActivationParts, RecoveryActivationParts, TeardownActivationParts,
 };
 #[allow(unused_imports)]
 pub(crate) use adapter_pump::{
@@ -66,19 +66,20 @@ pub(crate) use notifier::{
 };
 #[allow(unused_imports)]
 pub(crate) use process_driver::{
-    ActivationDriverError, ActivationProcessDriver, ActivationZeroProcessHandoff,
-    ActiveCloseBeginState, BindTurnResult, BlockingStdout, BlockingStdoutReader, CancelIntent,
-    CompleteTurnResult, CompletedActivationDriverParts, CompletedDriverParts,
-    CoordinatorZeroProcessHandoff, DriverAdmission, DriverClock, DriverError, DriverMailbox,
-    DriverProgress, DriverStep, FirstDeliveryUnknown, FirstTurnBindError, FirstTurnBindFailure,
-    FirstTurnDriverResult, FirstTurnRecoveryParts, FirstTurnWorkerContext, FirstTurnWorkerRecovery,
-    FirstTurnWorkerState, LiveRunnerExit, LiveRunnerHandle, MailboxError as DriverMailboxError,
+    ActivationDriverError, ActivationProcessDriver, ActivationProjectionRecoveryHandoff,
+    ActivationStartFailure, ActivationZeroProcessHandoff, ActiveCloseBeginState, BindTurnResult,
+    BlockingStdout, BlockingStdoutReader, CancelIntent, CompleteTurnResult,
+    CompletedActivationDriverParts, CompletedDriverParts, CoordinatorZeroProcessHandoff,
+    DriverAdmission, DriverClock, DriverError, DriverMailbox, DriverProgress, DriverStep,
+    FirstDeliveryUnknown, FirstTurnBindError, FirstTurnBindFailure, FirstTurnDriverResult,
+    FirstTurnRecoveryParts, FirstTurnWorkerContext, FirstTurnWorkerRecovery, FirstTurnWorkerState,
+    LiveRunnerExit, LiveRunnerHandle, MailboxError as DriverMailboxError,
     PrepareActivationTurnError, PrepareActivationTurnFailure, PrepareDriverTurnError,
     PrepareDriverTurnFailure, PreparedActivationTurn, PreparedDriverTurn, PreparedProcessWrite,
     PreparedWriteError, PreparedWriteFailure, ProcessAdapterDriver, ProcessExitWatcher,
     ProcessLivePort, ProcessTreeControl, PromptIntent, ReaderTerminal, RebindFailure,
-    RecoveryActivationDriverParts, StdinTransport, SystemDriverClock, TeardownCause,
-    TreeLeaseOwner, ZeroProcessHandoff,
+    RecoveryActivationDriverParts, RetainedActivationDriverConstruction, StdinTransport,
+    SystemDriverClock, TeardownCause, TreeLeaseOwner, ZeroProcessHandoff,
 };
 #[allow(unused_imports)]
 pub(crate) use projection_publisher::{

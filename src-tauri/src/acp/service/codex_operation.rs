@@ -36,12 +36,20 @@ impl Drop for AdmissionLease {
 
 pub(super) struct PreparedCodexOperation {
     invalidation_epoch: u64,
+    class: OperationClass,
     _admission: AdmissionLease,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OperationClass {
+    Ephemeral,
+    Live,
 }
 
 #[derive(Default)]
 struct ActiveState {
     running: bool,
+    class: Option<OperationClass>,
     cancel_requested: bool,
     cancellation: Option<Arc<dyn CodexOperationCancellation>>,
     settlement: Option<Result<(), CodexDiscoveryRunError>>,
@@ -117,6 +125,17 @@ impl CodexOperationGate {
     }
 
     pub(super) fn prepare(&self) -> Result<PreparedCodexOperation, CodexDiscoveryRunError> {
+        self.prepare_class(OperationClass::Ephemeral)
+    }
+
+    pub(super) fn prepare_live(&self) -> Result<PreparedCodexOperation, CodexDiscoveryRunError> {
+        self.prepare_class(OperationClass::Live)
+    }
+
+    fn prepare_class(
+        &self,
+        class: OperationClass,
+    ) -> Result<PreparedCodexOperation, CodexDiscoveryRunError> {
         if self.shutting_down.load(Ordering::Acquire) {
             return Err(CodexDiscoveryRunError::Unavailable);
         }
@@ -131,6 +150,7 @@ impl CodexOperationGate {
         }
         Ok(PreparedCodexOperation {
             invalidation_epoch: self.invalidation_epoch.load(Ordering::Acquire),
+            class,
             _admission: admission,
         })
     }
@@ -156,6 +176,7 @@ impl CodexOperationGate {
             return Err(CodexDiscoveryRunError::Busy);
         }
         active.running = true;
+        active.class = Some(prepared.class);
         active.cancel_requested = false;
         active.cancellation = None;
         active.settlement = None;
@@ -187,11 +208,20 @@ impl CodexOperationGate {
         let _ = self.invalidate_active().1;
     }
 
+    #[cfg(test)]
     pub(super) fn invalidate_and_wait(
         &self,
         timeout: Duration,
     ) -> Result<(), CodexDiscoveryRunError> {
         let (was_running, cancellation) = self.invalidate_active();
+        cancellation.and(self.wait_for_idle(timeout, was_running))
+    }
+
+    pub(super) fn invalidate_ephemeral_and_wait(
+        &self,
+        timeout: Duration,
+    ) -> Result<(), CodexDiscoveryRunError> {
+        let (was_running, cancellation) = self.invalidate_ephemeral();
         cancellation.and(self.wait_for_idle(timeout, was_running))
     }
 
@@ -203,6 +233,22 @@ impl CodexOperationGate {
 
     fn invalidate_active(&self) -> (bool, Result<(), CodexDiscoveryRunError>) {
         self.invalidate_active_with(|| {})
+    }
+
+    fn invalidate_ephemeral(&self) -> (bool, Result<(), CodexDiscoveryRunError>) {
+        self.invalidation_epoch.fetch_add(1, Ordering::AcqRel);
+        let cancellation = match self.active.lock() {
+            Ok(mut active) => {
+                if !active.running || active.class == Some(OperationClass::Live) {
+                    return (false, Ok(()));
+                }
+                active.cancel_requested = true;
+                active.cancellation.clone()
+            }
+            Err(_) => return (true, Err(CodexDiscoveryRunError::Cleanup)),
+        };
+        let result = cancellation.map_or(Ok(()), |value| value.request_parent_shutdown());
+        (true, result)
     }
 
     fn invalidate_active_with(
@@ -235,6 +281,9 @@ impl CodexOperationGate {
         timeout: Duration,
         require_settlement: bool,
     ) -> Result<(), CodexDiscoveryRunError> {
+        if !require_settlement {
+            return Ok(());
+        }
         let deadline = Instant::now()
             .checked_add(timeout)
             .ok_or(CodexDiscoveryRunError::Timeout)?;
@@ -270,6 +319,7 @@ impl CodexOperationGate {
         match self.active.lock() {
             Ok(mut active) => {
                 active.running = false;
+                active.class = None;
                 active.cancel_requested = false;
                 active.cancellation = None;
                 active.settlement = Some(settlement);
@@ -278,6 +328,7 @@ impl CodexOperationGate {
             Err(poisoned) => {
                 let mut active = poisoned.into_inner();
                 active.running = false;
+                active.class = None;
                 active.cancellation = None;
                 active.settlement = Some(Err(CodexDiscoveryRunError::Cleanup));
                 self.active_changed.notify_all();
@@ -338,5 +389,24 @@ mod tests {
         active.settle(Ok(()));
         assert_eq!(worker.join().unwrap(), Ok(()));
         assert!(!gate.is_current(CodexOperationGate::prepared_epoch(&prepared)));
+    }
+
+    #[test]
+    fn project_switch_invalidates_ephemeral_work_but_preserves_a_live_session() {
+        let gate = CodexOperationGate::new();
+        let prepared = gate.prepare_live().unwrap();
+        let active = gate.begin(&prepared).unwrap();
+        let cancellation = Arc::new(TestCancellation {
+            requested: AtomicBool::new(false),
+        });
+        active.register_cancellation(cancellation.clone()).unwrap();
+
+        assert_eq!(
+            gate.invalidate_ephemeral_and_wait(Duration::from_millis(10)),
+            Ok(())
+        );
+        assert!(!cancellation.requested.load(Ordering::Acquire));
+        assert!(!gate.is_current(CodexOperationGate::prepared_epoch(&prepared)));
+        active.settle(Ok(()));
     }
 }

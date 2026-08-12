@@ -13,10 +13,22 @@ pub(crate) struct RecoveryActivationParts<A, J, R> {
     pub(crate) resources: R,
 }
 
+impl<A, J, R> RecoveryActivationParts<A, J, R> {
+    pub(crate) fn into_parts(self) -> (A, J, R) {
+        (self.adapter, self.journal, self.resources)
+    }
+}
+
 pub(crate) struct TeardownActivationParts<A, J, R> {
     pub(crate) adapter: A,
     pub(crate) journal: J,
     pub(crate) resources: R,
+}
+
+impl<A, J, R> TeardownActivationParts<A, J, R> {
+    pub(crate) fn into_parts(self) -> (A, J, R) {
+        (self.adapter, self.journal, self.resources)
+    }
 }
 
 impl<A, J, R> IdleActivationParts<A, J, R> {

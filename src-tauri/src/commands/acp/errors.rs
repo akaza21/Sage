@@ -8,6 +8,29 @@ use crate::acp::{
     store::StoreError,
 };
 
+pub(super) fn codex_session_error(error: crate::acp::service::CodexSessionError) -> AcpIpcError {
+    match error {
+        crate::acp::service::CodexSessionError::Binding(_) => binding_unavailable(),
+        crate::acp::service::CodexSessionError::Intent => AcpIpcError::Conflict {
+            resource: AcpConflictResource::Session,
+            message: safe_message("The Codex session identity is stale or foreign."),
+        },
+        crate::acp::service::CodexSessionError::Capacity => AcpIpcError::Capacity {
+            resource: AcpCapacityResource::LiveTree,
+            limit: crate::acp::limits::LIMITS.process.operational_live_trees,
+            message: safe_message("The Codex live runtime capacity is occupied."),
+        },
+        crate::acp::service::CodexSessionError::Recovery => AcpIpcError::RecoveryRequired {
+            message: safe_message("The Codex runtime requires authoritative recovery."),
+        },
+        crate::acp::service::CodexSessionError::Launch => AcpIpcError::Unavailable {
+            reason: AcpUnavailableReason::CapabilityUnavailable,
+            message: safe_message("Codex launch failed safely; retry the session."),
+        },
+        crate::acp::service::CodexSessionError::Session(_) => internal_error(),
+    }
+}
+
 pub(super) fn codex_discovery_error(error: CodexDiscoveryRunError) -> AcpIpcError {
     match error {
         CodexDiscoveryRunError::Unavailable => AcpIpcError::Unavailable {
@@ -69,13 +92,6 @@ pub(super) fn page_admission_error(error: PageAdmissionError) -> AcpIpcError {
 
 pub(super) fn safe_message(message: &'static str) -> SafeText<8192> {
     SafeText::new("message", message).expect("static ACP message is bounded")
-}
-
-pub(super) fn session_unavailable() -> AcpIpcError {
-    AcpIpcError::Unavailable {
-        reason: AcpUnavailableReason::SessionUnavailable,
-        message: safe_message("The requested ACP runtime tree is not live."),
-    }
 }
 
 pub(super) fn internal_error() -> AcpIpcError {

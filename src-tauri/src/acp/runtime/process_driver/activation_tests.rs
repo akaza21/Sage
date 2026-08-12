@@ -275,6 +275,43 @@ fn activation_delivery_unknown_never_replays_and_requires_zero_proof() {
     assert_eq!(control.lock().unwrap().requested, 1);
 }
 
+#[test]
+fn constructor_identity_failure_retains_all_activation_parts() {
+    let pump = ActivationPump::new(
+        Adapter {
+            batches: VecDeque::new(),
+            next: 0,
+        },
+        Journal(Arc::new(Mutex::new(0))),
+        Mapper,
+        intent(),
+    )
+    .unwrap();
+    let foreign = RuntimeOwner {
+        runtime_epoch: RuntimeEpoch::new(4).unwrap(),
+        ..owner()
+    };
+    let failure = match ActivationProcessDriver::new_retained(
+        pump,
+        Transport {
+            outcomes: VecDeque::new(),
+            writes: 0,
+            closes: 0,
+        },
+        Control(Arc::new(Mutex::new(ControlState::default()))),
+        foreign.clone(),
+        Arc::new(Clock),
+    ) {
+        Ok(_) => panic!("foreign owner must be rejected"),
+        Err(failure) => failure,
+    };
+    let (pump, transport, _, retained_owner, _, error) = *failure;
+    assert_eq!(pump.runtime_owner(), owner());
+    assert_eq!(retained_owner, foreign);
+    assert_eq!(transport.closes, 0);
+    assert_eq!(error, ActivationDriverError::IdentityMismatch);
+}
+
 fn intent() -> ActivationIntent {
     ActivationIntent {
         binding_digest: [7; 32],

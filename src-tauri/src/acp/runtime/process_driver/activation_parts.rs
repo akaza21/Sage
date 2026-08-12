@@ -309,3 +309,10 @@ pub(crate) struct ActivationZeroProcessHandoff<A, J, R, P> {
     pub(crate) owner: RuntimeOwner,
     pub(crate) first_delivery_unknown: Option<FirstDeliveryUnknown>,
 }
+
+pub(crate) struct ActivationProjectionRecoveryHandoff<A, J, R, P> {
+    pub(crate) parts: RecoveryActivationParts<A, J, R>,
+    pub(crate) proof: P,
+    pub(crate) owner: RuntimeOwner,
+    pub(crate) first_delivery_unknown: Option<FirstDeliveryUnknown>,
+}

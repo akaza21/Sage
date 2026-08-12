@@ -17,6 +17,9 @@ use super::{
     state::session_state_text,
 };
 
+mod abort;
+pub(crate) use abort::{AbortActivationCommand, ActivationAbortCategory, abort_activation};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CompleteActivationCommand {
     pub project_id: SageProjectId,
@@ -53,6 +56,7 @@ struct ActivationRow {
     epoch_state: String,
     artifact_digest: Option<String>,
     exit_kind: Option<String>,
+    latest_epoch: i64,
 }
 
 pub(crate) fn complete_activation(
@@ -313,7 +317,9 @@ fn activation_row(
     connection
         .query_row(
             "SELECT s.state,s.external_session_id,s.capabilities_json,s.revision,
-                    s.projection_revision,s.binding_digest,e.state,e.artifact_digest,e.exit_kind
+                    s.projection_revision,s.binding_digest,e.state,e.artifact_digest,e.exit_kind,
+                    (SELECT MAX(latest.runtime_epoch) FROM session_runtime_epochs latest
+                     WHERE latest.session_id=s.id)
              FROM agent_sessions s JOIN session_runtime_epochs e ON e.session_id=s.id
              WHERE s.project_id=?1 AND s.chat_id=?2 AND s.id=?3 AND e.runtime_epoch=?4",
             params![
@@ -333,6 +339,7 @@ fn activation_row(
                     epoch_state: row.get(6)?,
                     artifact_digest: row.get(7)?,
                     exit_kind: row.get(8)?,
+                    latest_epoch: row.get(9)?,
                 })
             },
         )

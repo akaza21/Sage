@@ -13,6 +13,7 @@ mod platform;
 mod platform_anchor;
 mod probe;
 mod publish;
+mod schema_upgrade;
 mod stage_owner;
 #[cfg(test)]
 mod test_failpoint;
@@ -39,15 +40,19 @@ use self::{
     paths::MigrationPaths,
     platform::{MigrationLock, sync_file, sync_parent},
     publish::recover_or_publish,
+    schema_upgrade::{apply_through_v7, apply_v6, apply_v7, build_fresh_v7},
 };
 
 #[cfg(test)]
 use self::manifest::{ReplacementManifest, write_stage};
+#[cfg(test)]
+use self::schema_upgrade::apply_v5;
 
 const INITIAL: &str = include_str!("../../../migrations/001_initial.sql");
 const V2: &str = include_str!("../../../migrations/002_diff_tabs.sql");
 const V3: &str = include_str!("../../../migrations/003_editor_buffers.sql");
 const V6: &str = include_str!("../../../migrations/006_resource_trash_intents.sql");
+const V7: &str = include_str!("../../../migrations/007_acp_activation_abort.sql");
 
 pub(crate) struct OpenedDatabase {
     connection: Connection,
@@ -82,7 +87,7 @@ impl std::ops::DerefMut for OpenedDatabase {
 pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     if path == Path::new(":memory:") {
         let mut connection = Connection::open_in_memory()?;
-        build_fresh_v6(&mut connection)?;
+        build_fresh_v7(&mut connection)?;
         return Ok(OpenedDatabase {
             connection,
             live_path_anchor: LivePathAnchor { _anchor: None },
@@ -118,7 +123,18 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
                 platform::create_sqlite_stage(path)?
             };
             let mut connection = Connection::open(path)?;
-            build_fresh_v6(&mut connection)?;
+            build_fresh_v7(&mut connection)?;
+            verify_current(&connection)?;
+            anchor.verify_path(path)?;
+            Ok(opened_database(connection, anchor))
+        }
+        SchemaClass::CurrentV7 => {
+            reject_partial_backup_publication(&paths)?;
+            let anchor = platform::anchor_existing_sqlite(path, true)?;
+            if probe::classify_live(&paths)? != SchemaClass::CurrentV7 {
+                return invalid("current SQLite path changed before its anchored open");
+            }
+            let connection = Connection::open(path)?;
             verify_current(&connection)?;
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
@@ -127,10 +143,10 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
             reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
             if probe::classify_live(&paths)? != SchemaClass::CurrentV6 {
-                return invalid("current SQLite path changed before its anchored open");
+                return invalid("schema v6 SQLite path changed before its anchored upgrade");
             }
-            let connection = Connection::open(path)?;
-            verify_current(&connection)?;
+            let mut connection = Connection::open(path)?;
+            apply_v7(&mut connection)?;
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
         }
@@ -142,6 +158,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
             }
             let mut connection = Connection::open(path)?;
             apply_v6(&mut connection)?;
+            apply_v7(&mut connection)?;
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
         }
@@ -211,7 +228,7 @@ fn build_replacement(
     )?;
     Backup::new(&source, &mut destination)?.run_to_completion(256, Duration::ZERO, None)?;
     drop(source);
-    apply_through_v6(&mut destination)?;
+    apply_through_v7(&mut destination)?;
     verify_current(&destination)?;
     destination.close().map_err(|(_, error)| error)?;
     anchor.verify_path(&paths.replacement_stage)?;
@@ -235,74 +252,6 @@ fn fail_replacement_build_if_injected() -> AppResult<()> {
     #[cfg(test)]
     test_failpoint::hit("replacement-build")?;
     Ok(())
-}
-
-fn apply_through_v6(connection: &mut Connection) -> AppResult<()> {
-    let versions = connection
-        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 7")?
-        .query_map([], |row| row.get::<_, i64>(0))?
-        .collect::<Result<Vec<_>, _>>()?;
-    if versions.is_empty()
-        || versions.len() > 5
-        || versions
-            .iter()
-            .enumerate()
-            .any(|(index, version)| *version != index as i64 + 1)
-    {
-        return invalid("replacement source has unsupported migration history");
-    }
-    let last = versions.last().copied().unwrap_or(0);
-    if last < 2 {
-        connection.execute_batch(V2)?;
-    }
-    if last < 3 {
-        connection.execute_batch(V3)?;
-    }
-    if last < 4 {
-        project_migration::migrate(connection)?;
-    }
-    if last < 5 {
-        apply_v5(connection)?;
-    }
-    apply_v6(connection)
-}
-
-fn apply_v5(connection: &mut Connection) -> AppResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    legacy::convert(&transaction, now_millis())?;
-    let foreign_key_error = transaction
-        .query_row("PRAGMA foreign_key_check", [], |_| Ok(true))
-        .optional()?
-        .unwrap_or(false);
-    if foreign_key_error {
-        return invalid("ACP migration failed its foreign-key check");
-    }
-    transaction.commit()?;
-    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV5 {
-        return invalid("database did not reach exact schema v5");
-    }
-    Ok(())
-}
-
-fn apply_v6(connection: &mut Connection) -> AppResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(V6)?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (6, ?1)",
-        [now_millis()],
-    )?;
-    transaction.pragma_update(None, "user_version", 6)?;
-    transaction.commit()?;
-    verify_current(connection)
-}
-
-fn build_fresh_v6(connection: &mut Connection) -> AppResult<()> {
-    connection.execute_batch(INITIAL)?;
-    connection.execute_batch(V2)?;
-    connection.execute_batch(V3)?;
-    project_migration::migrate(connection)?;
-    apply_v5(connection)?;
-    apply_v6(connection)
 }
 
 fn checkpoint_source(
@@ -342,8 +291,8 @@ fn checkpoint_source(
 }
 
 fn verify_current(connection: &Connection) -> AppResult<()> {
-    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV6 {
-        return invalid("database did not reach exact schema v6");
+    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV7 {
+        return invalid("database did not reach exact schema v7");
     }
     verify_sqlite(connection)?;
     let store_rows: i64 = connection.query_row(

@@ -6,11 +6,12 @@ use crate::acp::{
 };
 
 use super::{
-    ActivateSessionCommand, ActivityIngressCommand, ActivityIngressMutation, AdapterBatchMutation,
-    AdapterInboundBatchCommand, BeginCancelCommand, CompleteActivationCommand, EntityMutation,
-    FailActivationCommand, FinalizeCloseCommand, ItemIngressCommand, ItemIngressMutation,
-    ParkSessionCommand, PrepareTurnCommand, PreparedTurn, RequestStateCommand, SendObservation,
-    SessionMutation, StartSessionCommand, StoreError, TurnMutation, TurnMutationCommand,
+    AbortActivationCommand, ActivateSessionCommand, ActivityIngressCommand,
+    ActivityIngressMutation, AdapterBatchMutation, AdapterInboundBatchCommand, BeginCancelCommand,
+    CompleteActivationCommand, EntityMutation, FailActivationCommand, FinalizeCloseCommand,
+    ItemIngressCommand, ItemIngressMutation, ParkSessionCommand, PrepareTurnCommand, PreparedTurn,
+    RecoverRuntimeCommand, RequestStateCommand, SendObservation, SessionMutation,
+    StartSessionCommand, StoreError, TurnMutation, TurnMutationCommand,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +41,7 @@ pub(crate) enum StoreMutation {
     },
     StartSession(StartSessionCommand),
     ActivateSession(ActivateSessionCommand),
+    AbortActivation(AbortActivationCommand),
     CompleteActivation(CompleteActivationCommand),
     FailActivation(FailActivationCommand),
     TurnTerminal {
@@ -61,6 +63,7 @@ pub(crate) enum StoreMutation {
     RecoverAfterRestart {
         now_millis: i64,
     },
+    RecoverRuntimeAfterZero(RecoverRuntimeCommand),
 }
 
 impl StoreMutation {
@@ -89,6 +92,9 @@ pub(super) fn standalone_commit(
         }
         StoreMutation::ActivateSession(command) => {
             StoreMutationResult::Session(super::activate_session(connection, command.clone())?)
+        }
+        StoreMutation::AbortActivation(command) => {
+            StoreMutationResult::Session(super::abort_activation(connection, command.clone())?)
         }
         StoreMutation::CompleteActivation(command) => {
             StoreMutationResult::Session(super::complete_activation(connection, command.clone())?)
@@ -132,6 +138,9 @@ pub(super) fn standalone_commit(
         ),
         StoreMutation::RecoverAfterRestart { now_millis } => StoreMutationResult::Recovery(
             crate::acp::recovery::recover_after_restart(connection, *now_millis)?,
+        ),
+        StoreMutation::RecoverRuntimeAfterZero(command) => StoreMutationResult::Recovery(
+            crate::acp::recovery::recover_runtime_after_zero_process(connection, command.clone())?,
         ),
         StoreMutation::LookupTurn(_)
         | StoreMutation::LookupActiveTurn(_)

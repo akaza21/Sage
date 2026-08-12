@@ -75,6 +75,15 @@ pub(super) fn mutation_retained_bytes(mutation: &StoreMutation) -> usize {
                 + command.artifact_digest.len()
                 + command.exit_kind.as_str().len()
         }
+        StoreMutation::AbortActivation(command) => {
+            session_command_bytes(
+                command.project_id.as_str(),
+                command.chat_id.as_str(),
+                command.session_id.as_str(),
+            ) + command.binding_digest.len()
+                + command.artifact_digest.len()
+                + command.category.as_str().len()
+        }
         StoreMutation::TurnTerminal { command, .. } => {
             session_command_bytes(
                 command.project_id.as_str(),
@@ -157,6 +166,11 @@ pub(super) fn mutation_retained_bytes(mutation: &StoreMutation) -> usize {
         }
         StoreMutation::AdapterInboundBatch(command) => command.retained_bytes(),
         StoreMutation::RecoverAfterRestart { .. } => 0,
+        StoreMutation::RecoverRuntimeAfterZero(command) => session_command_bytes(
+            command.project_id.as_str(),
+            command.chat_id.as_str(),
+            command.session_id.as_str(),
+        ),
     };
     size_of::<StoreMutation>() + heap_utf8
 }

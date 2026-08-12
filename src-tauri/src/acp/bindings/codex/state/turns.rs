@@ -67,7 +67,7 @@ impl CodexAdapter {
         self.active_turn_id = Some(id.clone());
         Ok((
             self.scoped_in_turn(ExternalKind::Turn, value, value)?,
-            TurnBinding::Active,
+            TurnBinding::NewlyActive,
         ))
     }
 

@@ -56,7 +56,8 @@ type StartDuplicateRow = (
 
 #[allow(unused_imports)]
 pub(crate) use activation_outcome::{
-    CompleteActivationCommand, FailActivationCommand, complete_activation, fail_activation,
+    AbortActivationCommand, ActivationAbortCategory, CompleteActivationCommand,
+    FailActivationCommand, abort_activation, complete_activation, fail_activation,
 };
 #[allow(unused_imports)]
 pub(crate) use activity_ingress::{
@@ -134,6 +135,15 @@ pub(crate) struct PrepareTurnCommand {
     pub expected_projection_revision: ProjectionRevision,
     pub client_intent_id: ClientIntentId,
     pub prompt: Prompt,
+    pub now_millis: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RecoverRuntimeCommand {
+    pub project_id: SageProjectId,
+    pub chat_id: SageChatId,
+    pub session_id: SageAgentSessionId,
+    pub runtime_epoch: RuntimeEpoch,
     pub now_millis: i64,
 }
 
