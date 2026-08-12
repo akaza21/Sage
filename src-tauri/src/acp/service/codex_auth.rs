@@ -103,6 +103,8 @@ impl CodexAuthManager {
         self: &Arc<Self>,
         prepared: PreparedCodexAuth,
     ) -> Result<CodexAuthResponse, CodexDiscoveryRunError> {
+        let action = prepared.action;
+        let operation_epoch = CodexOperationGate::prepared_epoch(&prepared.operation);
         let active = self.gate.begin(&prepared.operation)?;
         let result = self.run_active(prepared, &active);
         let settlement = if result == Err(CodexDiscoveryRunError::Cleanup) {
@@ -112,6 +114,12 @@ impl CodexAuthManager {
         };
         active.settle(settlement);
         self.clear_cancel();
+        if result.is_err()
+            && matches!(action, CodexAuthAction::Login | CodexAuthAction::Logout)
+            && self.gate.is_current(operation_epoch)
+        {
+            self.publish(CodexAuthPhase::Recovery);
+        }
         result
     }
 
@@ -404,6 +412,18 @@ mod tests {
         manager.invalidate();
         assert_eq!(manager.snapshot(scope()).phase, CodexAuthPhase::SignedOut);
         assert!(manager.cancel.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn effect_unknown_phase_is_memory_only_and_later_observation_can_replace_it() {
+        let gate = CodexOperationGate::new();
+        let manager = CodexAuthManager::new(startup_codex_binding_registration(), gate);
+        let recovery = manager.publish(CodexAuthPhase::Recovery);
+        assert_eq!(manager.snapshot(scope()).phase, CodexAuthPhase::Recovery);
+
+        let observed = manager.publish(CodexAuthPhase::SignedIn);
+        assert!(observed.revision > recovery.revision);
+        assert_eq!(manager.snapshot(scope()).phase, CodexAuthPhase::SignedIn);
     }
 
     fn scope() -> CodexAuthScope {

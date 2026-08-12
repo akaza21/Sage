@@ -328,7 +328,7 @@ export interface CodexAuthScope {
   bindingId: CuratedBindingId;
 }
 
-export type CodexAuthPhase = "signedOut" | "waiting" | "signedIn";
+export type CodexAuthPhase = "signedOut" | "waiting" | "recovery" | "signedIn";
 
 export interface CodexAuthResponse extends CodexAuthScope {
   phase: CodexAuthPhase;

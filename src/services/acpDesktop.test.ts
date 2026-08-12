@@ -90,6 +90,22 @@ describe("ACP desktop bridge", () => {
       failure: { kind: "internal" },
     });
   });
+
+  it("accepts only the sanitized auth recovery projection", async () => {
+    setDesktopRuntime(true);
+    invokeMock.mockResolvedValue({
+      ...authRequest,
+      phase: "recovery",
+      revision: "4",
+      error: "never-forward",
+    });
+
+    await expect(acpDesktop.getCodexAuth(authRequest)).resolves.toEqual({
+      ...authRequest,
+      phase: "recovery",
+      revision: "4",
+    });
+  });
   it("validates and narrows the bounded Codex discovery response", async () => {
     setDesktopRuntime(true);
     invokeMock.mockResolvedValue({

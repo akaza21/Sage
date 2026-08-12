@@ -182,6 +182,63 @@ fn account_observation_recovers_effect_without_replaying_a_mutation() {
 }
 
 #[test]
+fn account_updated_may_arrive_before_account_read_response() {
+    let mut observed = transport([initialize(1), updated(true), signed_in(2)]);
+    assert_eq!(
+        run_account_protocol(
+            &mut protocol(),
+            &mut observed,
+            73,
+            CodexAuthDeadline::test()
+        ),
+        Ok(CodexAuthOutcome::SignedIn)
+    );
+    assert_settled(&observed, false);
+
+    let mut login = transport([
+        initialize(1),
+        updated(false),
+        signed_out(2),
+        started(3),
+        completed(LOGIN, true),
+        updated(true),
+    ]);
+    assert_eq!(
+        run_login_protocol(
+            &mut protocol(),
+            &mut login,
+            &std::sync::Mutex::new(Browser { opened: false }),
+            73,
+            CodexAuthDeadline::test()
+        ),
+        Ok(CodexAuthOutcome::SignedIn)
+    );
+    assert_settled(&login, false);
+}
+
+#[test]
+fn early_account_update_must_match_the_bounded_account_response() {
+    for frames in [
+        vec![initialize(1), updated(true), signed_out(2)],
+        vec![initialize(1), updated(false), signed_in(2)],
+        vec![initialize(1), updated(true), updated(true), signed_in(2)],
+        vec![initialize(1), completed(LOGIN, false), signed_out(2)],
+    ] {
+        let mut transport = transport_vec(frames);
+        assert_eq!(
+            run_account_protocol(
+                &mut protocol(),
+                &mut transport,
+                73,
+                CodexAuthDeadline::test()
+            ),
+            Err(CodexDiscoveryRunError::Protocol)
+        );
+        assert_settled(&transport, true);
+    }
+}
+
+#[test]
 fn wrong_ids_login_identity_methods_eof_timeout_and_cleanup_fail_closed() {
     let cases = [
         vec![initialize(1), signed_out(2), started_with(9, LOGIN)],

@@ -132,15 +132,10 @@ pub(crate) fn run_account_protocol(
 ) -> Result<CodexAuthOutcome, CodexDiscoveryRunError> {
     let result = (|| {
         initialize(protocol, transport, deadline)?;
-        let request = protocol.account_request()?;
-        let expected = request.id();
-        write(transport, request.into_frame())?;
-        Ok(
-            match protocol.accept_account(&read(transport, deadline)?, expected)? {
-                CodexAuthAccount::SignedIn => CodexAuthOutcome::SignedIn,
-                CodexAuthAccount::SignedOut => CodexAuthOutcome::SignedOut,
-            },
-        )
+        Ok(match read_account(protocol, transport, deadline)? {
+            CodexAuthAccount::SignedIn => CodexAuthOutcome::SignedIn,
+            CodexAuthAccount::SignedOut => CodexAuthOutcome::SignedOut,
+        })
     })();
     settle(transport, runtime_epoch, deadline, result)
 }
@@ -152,12 +147,7 @@ fn login(
     deadline: CodexAuthDeadline,
 ) -> Result<CodexAuthOutcome, CodexDiscoveryRunError> {
     initialize(protocol, transport, deadline)?;
-    let account = protocol.account_request()?;
-    let account_id = account.id();
-    write(transport, account.into_frame())?;
-    if protocol.accept_account(&read(transport, deadline)?, account_id)?
-        != CodexAuthAccount::SignedOut
-    {
+    if read_account(protocol, transport, deadline)? != CodexAuthAccount::SignedOut {
         return Ok(CodexAuthOutcome::SignedIn);
     }
     let request = protocol.login_request()?;
@@ -199,6 +189,43 @@ fn login(
             RoutedFrame::Response { id, frame } if Some(id) == cancel_id => {
                 protocol.accept_cancel_response(&frame, id)?;
                 cancel_ack = true;
+            }
+            RoutedFrame::Response { .. } => return Err(CodexDiscoveryRunError::Protocol),
+            RoutedFrame::Notification => {}
+        }
+    }
+}
+
+fn read_account(
+    protocol: &mut CodexAuthProtocol,
+    transport: &mut dyn AuthTransport,
+    deadline: CodexAuthDeadline,
+) -> Result<CodexAuthAccount, CodexDiscoveryRunError> {
+    let request = protocol.account_request()?;
+    let expected = request.id();
+    write(transport, request.into_frame())?;
+    let mut router = AuthFrameRouter::new();
+    let mut early_update = None;
+    loop {
+        let frame = read(transport, deadline)?;
+        match router.route(protocol, frame)? {
+            RoutedFrame::Response { id, frame } if id == expected => {
+                while let Some(notification) = router.pop_notification() {
+                    match notification {
+                        CodexAuthNotification::AccountUpdated { signed_in }
+                            if early_update.is_none() =>
+                        {
+                            early_update = Some(signed_in)
+                        }
+                        _ => return Err(CodexDiscoveryRunError::Protocol),
+                    }
+                }
+                let account = protocol.accept_account(&frame, expected)?;
+                let observed_signed_in = account == CodexAuthAccount::SignedIn;
+                if early_update.is_some_and(|signed_in| signed_in != observed_signed_in) {
+                    return Err(CodexDiscoveryRunError::Protocol);
+                }
+                return Ok(account);
             }
             RoutedFrame::Response { .. } => return Err(CodexDiscoveryRunError::Protocol),
             RoutedFrame::Notification => {}

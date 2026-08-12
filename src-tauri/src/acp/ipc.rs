@@ -67,6 +67,7 @@ pub struct CodexAuthScope {
 pub enum CodexAuthPhase {
     SignedOut,
     Waiting,
+    Recovery,
     SignedIn,
 }
 

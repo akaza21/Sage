@@ -86,6 +86,9 @@ async fn run_codex_auth(
     let prepared = manager
         .prepare(scope, root, action, consent, deadline)
         .map_err(codex_discovery_error)?;
+    if requires_pre_worker_invalidation(action) {
+        state.acp.codex_discovery_manager().forget_snapshot();
+    }
     drop(transition);
     let result = tauri::async_runtime::spawn_blocking(move || manager.run(prepared))
         .await
@@ -95,7 +98,23 @@ async fn run_codex_auth(
     Ok(result)
 }
 
+fn requires_pre_worker_invalidation(action: CodexAuthAction) -> bool {
+    matches!(action, CodexAuthAction::Login | CodexAuthAction::Logout)
+}
+
 async fn validate_auth_scope(state: &AppState, scope: &CodexAuthScope) -> Result<(), AcpIpcError> {
     let _transition = lock_acp_context(state, &scope.project_id, scope.project_generation).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn effectful_auth_actions_require_pre_worker_cache_invalidation() {
+        assert!(!requires_pre_worker_invalidation(CodexAuthAction::Observe));
+        assert!(requires_pre_worker_invalidation(CodexAuthAction::Login));
+        assert!(requires_pre_worker_invalidation(CodexAuthAction::Logout));
+    }
 }

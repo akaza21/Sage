@@ -129,7 +129,12 @@ function safeCodexAuth(value: unknown): CodexAuthResponse | null {
     !projectGeneration ||
     !bindingId ||
     !revision ||
-    !isOneOf(value.phase, ["signedOut", "waiting", "signedIn"] as const)
+    !isOneOf(value.phase, [
+      "signedOut",
+      "waiting",
+      "recovery",
+      "signedIn",
+    ] as const)
   ) {
     return null;
   }

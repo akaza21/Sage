@@ -158,6 +158,10 @@ impl CodexDiscoveryManager {
         self.clear_cache();
     }
 
+    pub(crate) fn forget_snapshot(&self) {
+        self.clear_cache();
+    }
+
     pub(crate) fn invalidate_and_wait(
         &self,
         timeout: Duration,
@@ -392,6 +396,29 @@ mod tests {
         manager.invalidate();
 
         assert!(manager.cached(&scope).unwrap().is_none());
+    }
+
+    #[test]
+    fn effect_unknown_recovery_can_forget_only_the_cached_snapshot() {
+        let manager = CodexDiscoveryManager::new(startup_codex_binding_registration());
+        let scope = scope();
+        let runtime_epoch = RuntimeEpoch::new(113).unwrap();
+        manager
+            .publish(
+                manager.gate.current_epoch(),
+                CacheKey {
+                    scope: scope.clone(),
+                    runtime_epoch,
+                },
+                response(&scope, runtime_epoch),
+            )
+            .unwrap();
+        let operation_epoch = manager.gate.current_epoch();
+
+        manager.forget_snapshot();
+
+        assert!(manager.cached(&scope).unwrap().is_none());
+        assert_eq!(manager.gate.current_epoch(), operation_epoch);
     }
 
     #[test]
