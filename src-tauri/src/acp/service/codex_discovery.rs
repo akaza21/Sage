@@ -1,18 +1,15 @@
-use std::sync::{
-    Arc, Condvar, Mutex,
-    atomic::{AtomicBool, AtomicU64, Ordering},
-};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::acp::{
     bindings::codex::{
         CodexBindingRegistration, CodexDiscoveryDeadline, CodexDiscoveryRunError,
         CodexProjectRootAuthority, discover_admitted,
     },
-    contract::RuntimeEpoch,
     ipc::{CodexDiscoveryResponse, GetCodexDiscoveryRequest},
-    process::{TreeControl, TreeExit},
 };
+
+use super::codex_operation::{ActiveCodexOperation, CodexOperationGate, PreparedCodexOperation};
 
 mod cache;
 use cache::{CacheKey, CacheScope, CachedDiscovery, response_from, validate_scope};
@@ -22,110 +19,30 @@ use cache::{CacheKey, CacheScope, CachedDiscovery, response_from, validate_scope
 pub(crate) struct PreparedCodexDiscovery {
     request: GetCodexDiscoveryRequest,
     project_root: CodexProjectRootAuthority,
-    invalidation_epoch: u64,
+    operation: PreparedCodexOperation,
     deadline: CodexDiscoveryDeadline,
-    _admission: DiscoveryAdmissionLease,
-}
-
-struct DiscoveryAdmissionLease {
-    occupied: Arc<AtomicBool>,
-}
-
-impl Drop for DiscoveryAdmissionLease {
-    fn drop(&mut self) {
-        self.occupied.store(false, Ordering::Release);
-    }
-}
-
-#[derive(Default)]
-struct ActiveDiscoveryState {
-    running: bool,
-    cancel_requested: bool,
-    cancellation: Option<Arc<dyn DiscoveryCancellation>>,
-    settlement: Option<Result<(), CodexDiscoveryRunError>>,
-}
-
-trait DiscoveryCancellation: Send + Sync {
-    fn request_parent_shutdown(&self) -> Result<(), CodexDiscoveryRunError>;
-}
-
-struct TreeDiscoveryCancellation(TreeControl);
-
-impl DiscoveryCancellation for TreeDiscoveryCancellation {
-    fn request_parent_shutdown(&self) -> Result<(), CodexDiscoveryRunError> {
-        self.0
-            .request_termination(TreeExit::ParentShutdown)
-            .map_err(|_| CodexDiscoveryRunError::Cleanup)
-    }
-}
-
-struct ActiveDiscoveryGuard<'a> {
-    manager: &'a CodexDiscoveryManager,
-    settled: bool,
-}
-
-impl ActiveDiscoveryGuard<'_> {
-    fn register_control(&self, control: TreeControl) -> Result<(), CodexDiscoveryRunError> {
-        self.register_cancellation(Arc::new(TreeDiscoveryCancellation(control)))
-    }
-
-    fn register_cancellation(
-        &self,
-        cancellation: Arc<dyn DiscoveryCancellation>,
-    ) -> Result<(), CodexDiscoveryRunError> {
-        let mut active = self
-            .manager
-            .active
-            .lock()
-            .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
-        if !active.running || active.cancellation.is_some() {
-            return Err(CodexDiscoveryRunError::Cleanup);
-        }
-        active.cancellation = Some(cancellation);
-        if active.cancel_requested || self.manager.shutting_down.load(Ordering::Acquire) {
-            Err(CodexDiscoveryRunError::Drift)
-        } else {
-            Ok(())
-        }
-    }
-
-    fn settle(mut self, settlement: Result<(), CodexDiscoveryRunError>) {
-        self.manager.finish_active(settlement);
-        self.settled = true;
-    }
-}
-
-impl Drop for ActiveDiscoveryGuard<'_> {
-    fn drop(&mut self) {
-        if !self.settled {
-            self.manager
-                .finish_active(Err(CodexDiscoveryRunError::Cleanup));
-        }
-    }
 }
 
 pub(crate) struct CodexDiscoveryManager {
     registration: CodexBindingRegistration,
-    admission_occupied: Arc<AtomicBool>,
+    gate: Arc<CodexOperationGate>,
     cache: Mutex<Option<CachedDiscovery>>,
-    next_runtime_epoch: AtomicU64,
-    invalidation_epoch: AtomicU64,
-    shutting_down: AtomicBool,
-    active: Mutex<ActiveDiscoveryState>,
-    active_changed: Condvar,
 }
 
 impl CodexDiscoveryManager {
+    #[cfg(test)]
     pub(crate) fn new(registration: CodexBindingRegistration) -> Arc<Self> {
+        Self::with_gate(registration, CodexOperationGate::new())
+    }
+
+    pub(super) fn with_gate(
+        registration: CodexBindingRegistration,
+        gate: Arc<CodexOperationGate>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             registration,
-            admission_occupied: Arc::new(AtomicBool::new(false)),
+            gate,
             cache: Mutex::new(None),
-            next_runtime_epoch: AtomicU64::new(1),
-            invalidation_epoch: AtomicU64::new(1),
-            shutting_down: AtomicBool::new(false),
-            active: Mutex::new(ActiveDiscoveryState::default()),
-            active_changed: Condvar::new(),
         })
     }
 
@@ -137,16 +54,12 @@ impl CodexDiscoveryManager {
     ) -> Result<PreparedCodexDiscovery, CodexDiscoveryRunError> {
         deadline.ensure_operation()?;
         validate_scope(&request, &project_root)?;
-        let admission = self.acquire_admission()?;
-        if self.shutting_down.load(Ordering::Acquire) {
-            return Err(CodexDiscoveryRunError::Unavailable);
-        }
+        let operation = self.gate.prepare()?;
         Ok(PreparedCodexDiscovery {
             request,
             project_root,
-            invalidation_epoch: self.invalidation_epoch.load(Ordering::Acquire),
+            operation,
             deadline,
-            _admission: admission,
         })
     }
 
@@ -154,7 +67,7 @@ impl CodexDiscoveryManager {
         &self,
         prepared: PreparedCodexDiscovery,
     ) -> Result<CodexDiscoveryResponse, CodexDiscoveryRunError> {
-        let active = self.begin_active()?;
+        let active = self.gate.begin(&prepared.operation)?;
         let result = self.discover_active(prepared, &active);
         let settlement = if result == Err(CodexDiscoveryRunError::Cleanup) {
             Err(CodexDiscoveryRunError::Cleanup)
@@ -168,17 +81,13 @@ impl CodexDiscoveryManager {
     fn discover_active(
         &self,
         prepared: PreparedCodexDiscovery,
-        active: &ActiveDiscoveryGuard<'_>,
+        active: &ActiveCodexOperation,
     ) -> Result<CodexDiscoveryResponse, CodexDiscoveryRunError> {
-        if self.invalidation_epoch.load(Ordering::Acquire) != prepared.invalidation_epoch {
-            return Err(CodexDiscoveryRunError::Drift);
-        }
         let PreparedCodexDiscovery {
             request,
             project_root,
-            invalidation_epoch,
+            operation,
             deadline,
-            _admission,
         } = prepared;
         deadline.ensure_operation()?;
         let binding = self.registration.refresh().map_err(|error| {
@@ -213,7 +122,7 @@ impl CodexDiscoveryManager {
             return Ok(response);
         }
 
-        let runtime_epoch = self.allocate_runtime_epoch()?;
+        let runtime_epoch = self.gate.allocate_runtime_epoch()?;
         let discovery =
             discover_admitted(binding, project_root, runtime_epoch, deadline, |control| {
                 active.register_control(control)
@@ -234,7 +143,7 @@ impl CodexDiscoveryManager {
         );
         deadline.ensure_total()?;
         self.publish(
-            invalidation_epoch,
+            CodexOperationGate::prepared_epoch(&operation),
             CacheKey {
                 scope,
                 runtime_epoch,
@@ -245,7 +154,7 @@ impl CodexDiscoveryManager {
     }
 
     pub(crate) fn invalidate(&self) {
-        let _ = self.invalidate_active().1;
+        self.gate.invalidate();
         self.clear_cache();
     }
 
@@ -253,59 +162,13 @@ impl CodexDiscoveryManager {
         &self,
         timeout: Duration,
     ) -> Result<(), CodexDiscoveryRunError> {
-        let (was_running, cancellation) = self.invalidate_active();
         self.clear_cache();
-        let convergence = self.wait_for_idle(timeout, was_running);
-        cancellation.and(convergence)
+        self.gate.invalidate_and_wait(timeout)
     }
 
     pub(crate) fn shutdown(&self, timeout: Duration) -> Result<(), CodexDiscoveryRunError> {
-        self.shutting_down.store(true, Ordering::Release);
-        let (was_running, cancellation) = self.invalidate_active();
         self.clear_cache();
-        let convergence = self.wait_for_idle(timeout, was_running);
-        cancellation.and(convergence)
-    }
-
-    fn wait_for_idle(
-        &self,
-        timeout: Duration,
-        require_settlement: bool,
-    ) -> Result<(), CodexDiscoveryRunError> {
-        let deadline = Instant::now()
-            .checked_add(timeout)
-            .ok_or(CodexDiscoveryRunError::Timeout)?;
-        let mut active = self
-            .active
-            .lock()
-            .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
-        while active.running {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                return Err(CodexDiscoveryRunError::Timeout);
-            }
-            let (next, wait) = self
-                .active_changed
-                .wait_timeout(active, remaining)
-                .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
-            active = next;
-            if wait.timed_out() && active.running {
-                return Err(CodexDiscoveryRunError::Timeout);
-            }
-        }
-        if require_settlement {
-            active
-                .settlement
-                .take()
-                .unwrap_or(Err(CodexDiscoveryRunError::Cleanup))
-        } else {
-            Ok(())
-        }
-    }
-
-    fn allocate_runtime_epoch(&self) -> Result<RuntimeEpoch, CodexDiscoveryRunError> {
-        let epoch = self.next_runtime_epoch.fetch_add(1, Ordering::AcqRel);
-        RuntimeEpoch::new(epoch).map_err(|_| CodexDiscoveryRunError::Transport)
+        self.gate.shutdown(timeout)
     }
 
     fn cached(
@@ -329,7 +192,7 @@ impl CodexDiscoveryManager {
             .cache
             .lock()
             .map_err(|_| CodexDiscoveryRunError::Drift)?;
-        if self.invalidation_epoch.load(Ordering::Acquire) != expected_invalidation_epoch {
+        if !self.gate.is_current(expected_invalidation_epoch) {
             return Err(CodexDiscoveryRunError::Drift);
         }
         *cache = Some(CachedDiscovery { key, response });
@@ -342,95 +205,12 @@ impl CodexDiscoveryManager {
             Err(poisoned) => *poisoned.into_inner() = None,
         }
     }
-
-    fn acquire_admission(&self) -> Result<DiscoveryAdmissionLease, CodexDiscoveryRunError> {
-        if self.shutting_down.load(Ordering::Acquire) {
-            return Err(CodexDiscoveryRunError::Unavailable);
-        }
-        self.admission_occupied
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| CodexDiscoveryRunError::Busy)?;
-        Ok(DiscoveryAdmissionLease {
-            occupied: Arc::clone(&self.admission_occupied),
-        })
-    }
-
-    fn begin_active(&self) -> Result<ActiveDiscoveryGuard<'_>, CodexDiscoveryRunError> {
-        if self.shutting_down.load(Ordering::Acquire) {
-            return Err(CodexDiscoveryRunError::Unavailable);
-        }
-        let mut active = self
-            .active
-            .lock()
-            .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
-        if self.shutting_down.load(Ordering::Acquire) {
-            return Err(CodexDiscoveryRunError::Unavailable);
-        }
-        if active.running {
-            return Err(CodexDiscoveryRunError::Busy);
-        }
-        active.running = true;
-        active.cancel_requested = false;
-        active.cancellation = None;
-        active.settlement = None;
-        Ok(ActiveDiscoveryGuard {
-            manager: self,
-            settled: false,
-        })
-    }
-
-    fn invalidate_active(&self) -> (bool, Result<(), CodexDiscoveryRunError>) {
-        self.invalidate_active_with(|| {})
-    }
-
-    fn invalidate_active_with(
-        &self,
-        before_active_lock: impl FnOnce(),
-    ) -> (bool, Result<(), CodexDiscoveryRunError>) {
-        before_active_lock();
-        let cancellation = match self.active.lock() {
-            Ok(mut active) => {
-                self.invalidation_epoch.fetch_add(1, Ordering::AcqRel);
-                if !active.running {
-                    return (false, Ok(()));
-                }
-                active.cancel_requested = true;
-                active.cancellation.clone()
-            }
-            Err(_) => {
-                self.invalidation_epoch.fetch_add(1, Ordering::AcqRel);
-                return (true, Err(CodexDiscoveryRunError::Cleanup));
-            }
-        };
-        let result = cancellation.map_or(Ok(()), |cancellation| {
-            cancellation.request_parent_shutdown()
-        });
-        (true, result)
-    }
-
-    fn finish_active(&self, settlement: Result<(), CodexDiscoveryRunError>) {
-        match self.active.lock() {
-            Ok(mut active) => {
-                active.running = false;
-                active.cancel_requested = false;
-                active.cancellation = None;
-                active.settlement = Some(settlement);
-                self.active_changed.notify_all();
-            }
-            Err(poisoned) => {
-                let mut active = poisoned.into_inner();
-                active.running = false;
-                active.cancellation = None;
-                active.settlement = Some(Err(CodexDiscoveryRunError::Cleanup));
-                self.active_changed.notify_all();
-            }
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::acp::service::codex_operation::CodexOperationCancellation;
     use crate::acp::{
         bindings::codex::{
             CodexDiscoveryProtocol, CodexProjectRootAuthority, DiscoveryTransport,
@@ -444,7 +224,11 @@ mod tests {
     };
     use crate::project_registry::ProjectRootAuthority;
     use std::{
-        sync::{Condvar, mpsc},
+        sync::{
+            Condvar,
+            atomic::{AtomicBool, Ordering},
+            mpsc,
+        },
         thread,
         time::Duration,
     };
@@ -509,7 +293,7 @@ mod tests {
         }
     }
 
-    impl DiscoveryCancellation for TestCancellation {
+    impl CodexOperationCancellation for TestCancellation {
         fn request_parent_shutdown(&self) -> Result<(), CodexDiscoveryRunError> {
             *self.requested.lock().unwrap() = true;
             self.changed.notify_all();
@@ -595,7 +379,7 @@ mod tests {
         let runtime_epoch = RuntimeEpoch::new(13).unwrap();
         manager
             .publish(
-                manager.invalidation_epoch.load(Ordering::Acquire),
+                manager.gate.current_epoch(),
                 CacheKey {
                     scope: scope.clone(),
                     runtime_epoch,
@@ -615,7 +399,7 @@ mod tests {
         let manager = CodexDiscoveryManager::new(startup_codex_binding_registration());
         let scope = scope();
         let runtime_epoch = RuntimeEpoch::new(14).unwrap();
-        let stale_epoch = manager.invalidation_epoch.load(Ordering::Acquire);
+        let stale_epoch = manager.gate.current_epoch();
 
         manager.invalidate();
         assert_eq!(
@@ -632,28 +416,6 @@ mod tests {
             CodexDiscoveryRunError::Drift
         );
         assert!(manager.cached(&scope).unwrap().is_none());
-    }
-
-    #[test]
-    fn concurrent_discovery_is_rejected_without_waiting() {
-        let manager = CodexDiscoveryManager::new(startup_codex_binding_registration());
-        let held = manager.acquire_admission().unwrap();
-        let concurrent = Arc::clone(&manager);
-        let (sender, receiver) = mpsc::sync_channel(1);
-        let worker = thread::spawn(move || {
-            let result = concurrent.acquire_admission().map(drop);
-            sender.send(result).unwrap();
-        });
-
-        assert_eq!(
-            receiver.recv_timeout(Duration::from_millis(100)),
-            Ok(Err(CodexDiscoveryRunError::Busy)),
-        );
-        drop(held);
-        worker.join().unwrap();
-        let transferable = manager.acquire_admission().unwrap();
-        thread::spawn(move || drop(transferable)).join().unwrap();
-        assert!(manager.acquire_admission().is_ok());
     }
 
     #[test]
@@ -688,7 +450,8 @@ mod tests {
     #[test]
     fn shutdown_waits_for_the_active_discovery_to_finish() {
         let manager = CodexDiscoveryManager::new(startup_codex_binding_registration());
-        let active = manager.begin_active().unwrap();
+        let prepared = manager.gate.prepare().unwrap();
+        let active = manager.gate.begin(&prepared).unwrap();
         let shutting_down = Arc::clone(&manager);
         let (sender, receiver) = mpsc::sync_channel(1);
         let worker = thread::spawn(move || {
@@ -716,7 +479,7 @@ mod tests {
         let runtime_epoch = RuntimeEpoch::new(21).unwrap();
         manager
             .publish(
-                manager.invalidation_epoch.load(Ordering::Acquire),
+                manager.gate.current_epoch(),
                 CacheKey {
                     scope: scope.clone(),
                     runtime_epoch,
@@ -729,7 +492,7 @@ mod tests {
 
         assert!(manager.cached(&scope).unwrap().is_none());
         assert!(matches!(
-            manager.begin_active(),
+            manager.gate.prepare(),
             Err(CodexDiscoveryRunError::Unavailable)
         ));
     }
@@ -747,8 +510,9 @@ mod tests {
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let (result_tx, result_rx) = mpsc::sync_channel(1);
         let worker = thread::spawn(move || {
-            let active = worker_manager.begin_active().unwrap();
-            let cancellation_authority: Arc<dyn DiscoveryCancellation> =
+            let prepared = worker_manager.gate.prepare().unwrap();
+            let active = worker_manager.gate.begin(&prepared).unwrap();
+            let cancellation_authority: Arc<dyn CodexOperationCancellation> =
                 worker_cancellation.clone();
             active
                 .register_cancellation(cancellation_authority)
@@ -797,8 +561,9 @@ mod tests {
         let worker_cancellation = Arc::clone(&cancellation);
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let worker = thread::spawn(move || {
-            let active = worker_manager.begin_active().unwrap();
-            let cancellation_authority: Arc<dyn DiscoveryCancellation> =
+            let prepared = worker_manager.gate.prepare().unwrap();
+            let active = worker_manager.gate.begin(&prepared).unwrap();
+            let cancellation_authority: Arc<dyn CodexOperationCancellation> =
                 worker_cancellation.clone();
             active
                 .register_cancellation(cancellation_authority)
@@ -830,51 +595,6 @@ mod tests {
     }
 
     #[test]
-    fn invalidation_epoch_and_active_settlement_capture_are_linearized() {
-        let manager = CodexDiscoveryManager::new(startup_codex_binding_registration());
-        let active = manager.begin_active().unwrap();
-        let cancellation = TestCancellation::new(false);
-        let cancellation_authority: Arc<dyn DiscoveryCancellation> = cancellation.clone();
-        active
-            .register_cancellation(cancellation_authority)
-            .unwrap();
-        let epoch = manager.invalidation_epoch.load(Ordering::Acquire);
-        let held_state = manager.active.lock().unwrap();
-        let invalidating = Arc::clone(&manager);
-        let (attempted_tx, attempted_rx) = mpsc::sync_channel(1);
-        let (result_tx, result_rx) = mpsc::sync_channel(1);
-        let worker = thread::spawn(move || {
-            let (was_running, cancellation) = invalidating.invalidate_active_with(|| {
-                attempted_tx.send(()).unwrap();
-            });
-            let convergence = invalidating.wait_for_idle(Duration::from_millis(500), was_running);
-            result_tx.send(cancellation.and(convergence)).unwrap();
-        });
-        attempted_rx
-            .recv_timeout(Duration::from_millis(500))
-            .unwrap();
-
-        assert_eq!(manager.invalidation_epoch.load(Ordering::Acquire), epoch);
-        assert_eq!(
-            result_rx.recv_timeout(Duration::from_millis(50)),
-            Err(mpsc::RecvTimeoutError::Timeout)
-        );
-        drop(held_state);
-        cancellation.wait_requested();
-        active.settle(Err(CodexDiscoveryRunError::Cleanup));
-
-        assert_eq!(
-            result_rx.recv_timeout(Duration::from_millis(500)),
-            Ok(Err(CodexDiscoveryRunError::Cleanup))
-        );
-        assert_eq!(
-            manager.invalidation_epoch.load(Ordering::Acquire),
-            epoch + 1
-        );
-        worker.join().unwrap();
-    }
-
-    #[test]
     fn project_invalidation_surfaces_cancellation_dispatch_failure_after_convergence() {
         let manager = CodexDiscoveryManager::new(startup_codex_binding_registration());
         let cancellation = TestCancellation::new(true);
@@ -882,7 +602,8 @@ mod tests {
         let worker_cancellation = Arc::clone(&cancellation);
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let worker = thread::spawn(move || {
-            let active = worker_manager.begin_active().unwrap();
+            let prepared = worker_manager.gate.prepare().unwrap();
+            let active = worker_manager.gate.begin(&prepared).unwrap();
             active.register_cancellation(worker_cancellation).unwrap();
             ready_tx.send(()).unwrap();
             cancellation.wait_requested();

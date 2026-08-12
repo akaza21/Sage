@@ -14,19 +14,19 @@ use crate::acp::{
 #[path = "discovery/runner.rs"]
 mod runner;
 #[path = "discovery/schema.rs"]
-mod schema;
+pub(crate) mod schema;
 #[path = "discovery/transport.rs"]
 mod transport;
-pub(crate) use runner::{CodexDiscoveryDeadline, CodexDiscoveryRunError};
+pub(crate) use runner::{CodexDiscoveryDeadline, CodexDiscoveryRunError, DiscoveryZeroProcess};
 #[cfg(test)]
-pub(crate) use runner::{
-    DiscoveryTransport, DiscoveryZeroProcess, RevalidationCheckpoint, run_discovery_protocol,
-};
+pub(crate) use runner::{DiscoveryTransport, RevalidationCheckpoint, run_discovery_protocol};
 use schema::{
     NoResources, json_request, managed_chatgpt, parse_cursor, parse_model, request_frame,
     require_response_id, response_result,
 };
-pub(crate) use transport::{AdmittedDiscovery, discover_admitted};
+pub(crate) use transport::{
+    AdmittedDiscovery, CodexProcessTransport, ProcessLaunchPolicy, discover_admitted,
+};
 
 const MODEL_PAGE_SIZE: u32 = 32;
 const MODEL_PAGE_LIMIT: usize = 4;

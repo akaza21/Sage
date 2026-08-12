@@ -1,5 +1,6 @@
 #[cfg(all(windows, feature = "acp-fixture"))]
 mod characterization;
+pub(crate) mod codex_auth;
 mod errors;
 
 use errors::{

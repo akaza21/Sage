@@ -101,19 +101,23 @@ export function ChatSurface() {
       ? "Checking"
       : harnessDiscoveryPhase === "signInRequired"
         ? "Sign in required"
-        : harnessDiscoveryPhase === "error"
-          ? "Unavailable"
-          : selectedHarness.source === "development"
-            ? "Test simulator"
-            : !harnessAvailable
-              ? selectedHarness.installState === "installing"
-                ? "Installing"
-                : "Unavailable"
-              : selectedCurrentSession?.state === "active"
-                ? "Live"
-                : selectedCurrentSession
-                  ? `${selectedCurrentSession.state[0].toUpperCase()}${selectedCurrentSession.state.slice(1)}`
-                  : "Ready";
+        : harnessDiscoveryPhase === "consent"
+          ? "Sign-in consent"
+          : harnessDiscoveryPhase === "waiting"
+            ? "Waiting for sign in"
+            : harnessDiscoveryPhase === "error"
+              ? "Unavailable"
+              : selectedHarness.source === "development"
+                ? "Test simulator"
+                : !harnessAvailable
+                  ? selectedHarness.installState === "installing"
+                    ? "Installing"
+                    : "Unavailable"
+                  : selectedCurrentSession?.state === "active"
+                    ? "Live"
+                    : selectedCurrentSession
+                      ? `${selectedCurrentSession.state[0].toUpperCase()}${selectedCurrentSession.state.slice(1)}`
+                      : "Ready";
   const actionBusy = useNativeAcp ? acpActions.busy : sending;
   const activeAcpTurn = useNativeAcp ? currentNonterminalTurn(acpPage) : null;
   const canCloseSession = Boolean(
@@ -293,7 +297,7 @@ export function ChatSurface() {
         ) : null}
         <HarnessDiscoveryNotice />
         {!canPrompt &&
-        !["checking", "signInRequired", "error"].includes(
+        !["checking", "signInRequired", "consent", "waiting", "error"].includes(
           harnessDiscoveryPhase,
         ) ? (
           <div className="composer__notice">

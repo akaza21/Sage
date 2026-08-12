@@ -33,7 +33,9 @@ use crate::acp::{
 
 #[cfg(all(windows, feature = "acp-fixture"))]
 mod characterization;
+mod codex_auth;
 mod codex_discovery;
+mod codex_operation;
 mod configuration;
 mod intent_snapshot;
 #[cfg(any(test, feature = "acp-fixture"))]
@@ -47,6 +49,7 @@ pub(crate) use characterization::{
     BINDING_ID as CHARACTERIZATION_BINDING_ID, CharacterizationArtifact, CharacterizationBinding,
     CharacterizationCase, CharacterizationError,
 };
+pub(crate) use codex_auth::{CodexAuthAction, CodexAuthManager};
 use codex_discovery::CodexDiscoveryManager;
 use configuration::ServiceConfiguration;
 use intent_snapshot::load_intent_snapshot;
@@ -66,6 +69,7 @@ pub(crate) struct AcpService {
     page_reads: PageReadAdmission,
     codex: CodexBindingRegistration,
     codex_discovery: Arc<CodexDiscoveryManager>,
+    codex_auth: Arc<CodexAuthManager>,
     #[cfg(all(windows, feature = "acp-fixture"))]
     characterization: Option<CharacterizationBinding>,
 }
@@ -115,7 +119,10 @@ impl AcpService {
         {
             notifier.set_active_project(project_id);
         }
-        let codex_discovery = CodexDiscoveryManager::new(configuration.codex.clone());
+        let codex_gate = codex_operation::CodexOperationGate::new();
+        let codex_discovery =
+            CodexDiscoveryManager::with_gate(configuration.codex.clone(), Arc::clone(&codex_gate));
+        let codex_auth = CodexAuthManager::new(configuration.codex.clone(), codex_gate);
         Ok(Self {
             database,
             scheduler,
@@ -128,6 +135,7 @@ impl AcpService {
             page_reads: PageReadAdmission::default(),
             codex: configuration.codex,
             codex_discovery,
+            codex_auth,
             #[cfg(all(windows, feature = "acp-fixture"))]
             characterization: configuration.characterization,
         })
@@ -160,11 +168,16 @@ impl AcpService {
     ) -> Result<(), crate::acp::bindings::codex::CodexAdmissionUnavailable> {
         self.codex.refresh().map(drop).inspect_err(|_| {
             self.codex_discovery.invalidate();
+            self.codex_auth.invalidate();
         })
     }
 
     pub(crate) fn codex_discovery_manager(&self) -> Arc<CodexDiscoveryManager> {
         Arc::clone(&self.codex_discovery)
+    }
+
+    pub(crate) fn codex_auth_manager(&self) -> Arc<CodexAuthManager> {
+        Arc::clone(&self.codex_auth)
     }
 
     pub(crate) fn reserve_page_read(
@@ -204,6 +217,7 @@ impl AcpService {
             ))
             .map_err(map_discovery_shutdown);
         self.scheduler.project_switched(active_project);
+        self.codex_auth.invalidate();
         let runtime = self.runtime.active();
         if let Some(runtime) = runtime {
             let _ = runtime.project_switched(active_project.clone());
@@ -249,6 +263,7 @@ impl AcpService {
         {
             failure = Some(map_discovery_shutdown(error));
         }
+        self.codex_auth.invalidate();
         let mut runtime_stopped = true;
         if let Some(runtime) = self.runtime.begin_shutdown()
             && let Err(error) = runtime.shutdown()
@@ -339,6 +354,7 @@ impl Drop for AcpService {
         let _ = self
             .codex_discovery
             .shutdown(budget.saturating_sub(started.elapsed()));
+        self.codex_auth.invalidate();
         let mut runtime_stopped = true;
         if let Some(runtime) = self.runtime.begin_shutdown()
             && runtime.shutdown().is_err()

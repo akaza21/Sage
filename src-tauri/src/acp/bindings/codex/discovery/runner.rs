@@ -149,6 +149,10 @@ impl DiscoveryZeroProcess {
         }
     }
 
+    pub(crate) fn runtime_epoch(&self) -> u64 {
+        self.runtime_epoch
+    }
+
     #[cfg(test)]
     pub(crate) fn fixture(runtime_epoch: u64) -> Self {
         Self { runtime_epoch }

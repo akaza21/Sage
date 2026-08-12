@@ -56,6 +56,32 @@ pub struct CodexDiscoveryResponse {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CodexAuthScope {
+    pub project_id: SageProjectId,
+    pub project_generation: ProjectGeneration,
+    pub binding_id: BindingId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CodexAuthPhase {
+    SignedOut,
+    Waiting,
+    SignedIn,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CodexAuthResponse {
+    pub project_id: SageProjectId,
+    pub project_generation: ProjectGeneration,
+    pub binding_id: BindingId,
+    pub phase: CodexAuthPhase,
+    pub revision: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StartAcpSessionRequest {
     pub project_id: SageProjectId,
     pub project_generation: ProjectGeneration,

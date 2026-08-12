@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   ClientIntentId,
   CuratedBindingId,
+  CodexAuthScope,
   GetCodexDiscoveryRequest,
   ProjectGeneration,
   ProjectionRevision,
@@ -34,6 +35,7 @@ const discoveryRequest: GetCodexDiscoveryRequest = {
   projectGeneration: "7" as ProjectGeneration,
   bindingId: "codex-app-server" as CuratedBindingId,
 };
+const authRequest: CodexAuthScope = discoveryRequest;
 
 function setDesktopRuntime(active: boolean): void {
   if (active) {
@@ -53,6 +55,41 @@ afterEach(() => {
 });
 
 describe("ACP desktop bridge", () => {
+  it("projects only sanitized auth lifecycle fields and sends explicit consent", async () => {
+    setDesktopRuntime(true);
+    invokeMock.mockResolvedValue({
+      ...authRequest,
+      phase: "signedIn",
+      revision: "3",
+      authUrl: "https://auth.openai.com/secret",
+      loginId: "never-forward",
+      email: "never-forward@example.test",
+    });
+
+    const response = await acpDesktop.startCodexAuth(authRequest);
+
+    expect(invokeMock).toHaveBeenCalledWith("start_codex_auth", {
+      request: { ...authRequest, consent: true },
+    });
+    expect(response).toEqual({
+      ...authRequest,
+      phase: "signedIn",
+      revision: "3",
+    });
+    expect(JSON.stringify(response)).not.toContain("never-forward");
+  });
+
+  it("rejects invalid auth phases and revisions at the WebView boundary", async () => {
+    setDesktopRuntime(true);
+    invokeMock.mockResolvedValue({
+      ...authRequest,
+      phase: "consent",
+      revision: "0",
+    });
+    await expect(acpDesktop.getCodexAuth(authRequest)).rejects.toMatchObject({
+      failure: { kind: "internal" },
+    });
+  });
   it("validates and narrows the bounded Codex discovery response", async () => {
     setDesktopRuntime(true);
     invokeMock.mockResolvedValue({
@@ -100,6 +137,33 @@ describe("ACP desktop bridge", () => {
       acpDesktop.discoverCodex(discoveryRequest),
     ).rejects.toMatchObject({
       failure: { kind: "internal" },
+    });
+  });
+
+  it("accepts only an empty signed-out discovery projection", async () => {
+    setDesktopRuntime(true);
+    invokeMock.mockResolvedValue({
+      projectId: "project-a",
+      projectGeneration: "7",
+      rootId: "root-a",
+      bindingId: "codex-app-server",
+      runtimeEpoch: "2",
+      account: "signedOut",
+      models: [],
+      defaultModelId: null,
+      email: "never-retain@example.test",
+    });
+
+    const response = await acpDesktop.discoverCodex(discoveryRequest);
+    expect(response).toEqual({
+      projectId: "project-a",
+      projectGeneration: "7",
+      rootId: "root-a",
+      bindingId: "codex-app-server",
+      runtimeEpoch: "2",
+      account: "signedOut",
+      models: [],
+      defaultModelId: null,
     });
   });
 

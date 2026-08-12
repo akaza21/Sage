@@ -2126,6 +2126,12 @@ textarea:focus-visible {
   background: #292319;
 }
 
+.composer__notice--account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .placeholder-surface {
   display: grid;
   height: 100%;

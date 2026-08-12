@@ -61,7 +61,7 @@ pub(super) fn response_result(
         .ok_or(CodexDiscoveryError::Protocol)
 }
 
-pub(super) fn managed_chatgpt(account: &Map<String, Value>) -> Result<bool, CodexDiscoveryError> {
+pub(crate) fn managed_chatgpt(account: &Map<String, Value>) -> Result<bool, CodexDiscoveryError> {
     if account.get("type").and_then(Value::as_str) != Some("chatgpt") {
         return Ok(false);
     }

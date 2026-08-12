@@ -4,6 +4,7 @@
 //! unavailable until a separately admitted native artifact is supplied.
 
 mod admission;
+mod auth;
 mod authority;
 mod discovery;
 mod incoming;
@@ -21,6 +22,12 @@ pub(crate) use admission::{
     AdmittedCodexBinding, CodexAdmissionUnavailable, CodexBindingRegistration,
     startup_codex_binding_registration,
 };
+pub(crate) use auth::{
+    AuthBrowser, AuthTransport, CodexAuthDeadline, CodexAuthError, CodexAuthNotification,
+    CodexAuthOutcome, CodexAuthProtocol, CodexAuthRequest, NativeAuthUrl, NativeBrowser,
+    NativeLoginId, ProductionAuthTransport, run_account_protocol, run_login_protocol,
+    run_logout_protocol,
+};
 pub(crate) use authority::{
     ConfigAuthorityError, EnvironmentAuthorityError, ResidueMarker, RetentionDecision,
     StateAuthorityError, build_codex_launch_environment, classify_codex_state_path,
@@ -28,12 +35,12 @@ pub(crate) use authority::{
 };
 pub(crate) use discovery::{
     AdmittedDiscovery, CodexAccountSnapshot, CodexDiscoveryContent, CodexDiscoveryDeadline,
-    CodexDiscoveryRunError, CodexModelSnapshot, discover_admitted,
+    CodexDiscoveryRunError, CodexModelSnapshot, CodexProcessTransport, DiscoveryZeroProcess,
+    ProcessLaunchPolicy, discover_admitted,
 };
 #[cfg(test)]
 pub(crate) use discovery::{
-    CodexDiscoveryProtocol, DiscoveryTransport, DiscoveryZeroProcess, RevalidationCheckpoint,
-    run_discovery_protocol,
+    CodexDiscoveryProtocol, DiscoveryTransport, RevalidationCheckpoint, run_discovery_protocol,
 };
 pub(crate) use incoming::{IncomingEvent, IngressDisposition, ResourceMapper};
 pub(crate) use managed::{

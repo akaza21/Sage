@@ -7,6 +7,8 @@ import type {
   CancelAcpTurnRequest,
   CloseAcpSessionRequest,
   CodexDiscoveryResponse,
+  CodexAuthResponse,
+  CodexAuthScope,
   GetAcpChatPageRequest,
   GetCodexDiscoveryRequest,
   SendAcpTurnRequest,
@@ -66,7 +68,6 @@ function safeCodexDiscovery(value: unknown): CodexDiscoveryResponse | null {
     !bindingId ||
     !runtimeEpoch ||
     !isOneOf(value.account, ["managedChatgpt", "signedOut"] as const) ||
-    value.models.length === 0 ||
     value.models.length > 128
   ) {
     return null;
@@ -93,6 +94,9 @@ function safeCodexDiscovery(value: unknown): CodexDiscoveryResponse | null {
   const defaultModelId =
     value.defaultModelId === null ? null : safeIdentifier(value.defaultModelId);
   if (
+    (value.account === "signedOut" &&
+      (models.length !== 0 || defaultModelId !== null)) ||
+    (value.account === "managedChatgpt" && models.length === 0) ||
     defaults > 1 ||
     (value.defaultModelId !== null && !defaultModelId) ||
     (defaultModelId !== null && !ids.has(defaultModelId)) ||
@@ -112,6 +116,30 @@ function safeCodexDiscovery(value: unknown): CodexDiscoveryResponse | null {
     models,
     defaultModelId,
   } as unknown as CodexDiscoveryResponse;
+}
+
+function safeCodexAuth(value: unknown): CodexAuthResponse | null {
+  if (!isRecord(value)) return null;
+  const projectId = safeIdentifier(value.projectId);
+  const projectGeneration = safeCounter(value.projectGeneration, true);
+  const bindingId = safeIdentifier(value.bindingId);
+  const revision = safeCounter(value.revision, false);
+  if (
+    !projectId ||
+    !projectGeneration ||
+    !bindingId ||
+    !revision ||
+    !isOneOf(value.phase, ["signedOut", "waiting", "signedIn"] as const)
+  ) {
+    return null;
+  }
+  return {
+    projectId,
+    projectGeneration,
+    bindingId,
+    phase: value.phase,
+    revision,
+  } as CodexAuthResponse;
 }
 
 function safeProjectionChanged(
@@ -248,6 +276,22 @@ async function invokeAcp<T, Request extends object>(
 }
 
 export const acpDesktop = {
+  async getCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
+    return invokeCodexAuth("get_codex_auth", request);
+  },
+
+  async startCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
+    return invokeCodexAuth("start_codex_auth", { ...request, consent: true });
+  },
+
+  async cancelCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
+    return invokeCodexAuth("cancel_codex_auth", request);
+  },
+
+  async logoutCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
+    return invokeCodexAuth("logout_codex_auth", request);
+  },
+
   async discoverCodex(
     request: GetCodexDiscoveryRequest,
   ): Promise<CodexDiscoveryResponse> {
@@ -302,3 +346,18 @@ export const acpDesktop = {
     });
   },
 };
+
+async function invokeCodexAuth(
+  command: string,
+  request: CodexAuthScope | (CodexAuthScope & { consent: true }),
+): Promise<CodexAuthResponse> {
+  const response = await invokeAcp<unknown, typeof request>(command, request);
+  const safe = safeCodexAuth(response);
+  if (!safe) {
+    throw new AcpDesktopError({
+      kind: "internal",
+      message: "Codex authentication returned an invalid bounded response.",
+    });
+  }
+  return safe;
+}

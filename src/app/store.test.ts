@@ -2712,6 +2712,157 @@ describe("workbench resource and project navigation", () => {
     );
   });
 
+  it("advances signed-out through consent and waiting into automatic discovery", async () => {
+    const onlyRoot = useWorkbenchStore.getState().project!.roots[0];
+    useWorkbenchStore.setState({
+      project: { ...useWorkbenchStore.getState().project!, roots: [onlyRoot] },
+      harnesses: [
+        {
+          id: "account-harness",
+          name: "Account harness",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          transport: "acp",
+          bindingId: "codex-app-server",
+          accountModelDiscovery: true,
+        },
+      ],
+    });
+    const discover = vi
+      .spyOn(acpDesktop, "discoverCodex")
+      .mockResolvedValueOnce({
+        projectId: "project-a",
+        projectGeneration: "0",
+        rootId: "root-a",
+        bindingId: "codex-app-server",
+        runtimeEpoch: "1",
+        account: "signedOut",
+        models: [],
+        defaultModelId: null,
+      } as never)
+      .mockResolvedValueOnce({
+        projectId: "project-a",
+        projectGeneration: "0",
+        rootId: "root-a",
+        bindingId: "codex-app-server",
+        runtimeEpoch: "2",
+        account: "managedChatgpt",
+        models: [{ id: "gpt-auth", name: "GPT Auth", isDefault: true }],
+        defaultModelId: "gpt-auth",
+      } as never);
+    const login =
+      deferred<Awaited<ReturnType<typeof acpDesktop.startCodexAuth>>>();
+    vi.spyOn(acpDesktop, "startCodexAuth").mockReturnValue(login.promise);
+
+    await useWorkbenchStore.getState().selectHarness("account-harness");
+    useWorkbenchStore.getState().requestHarnessSignIn();
+    expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe("consent");
+    const signingIn = useWorkbenchStore.getState().confirmHarnessSignIn();
+    expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe("waiting");
+    login.resolve({
+      projectId: "project-a",
+      projectGeneration: "0",
+      bindingId: "codex-app-server",
+      phase: "signedIn",
+      revision: "2",
+    } as never);
+    await signingIn;
+
+    expect(discover).toHaveBeenCalledTimes(2);
+    expect(useWorkbenchStore.getState()).toEqual(
+      expect.objectContaining({
+        harnessDiscoveryPhase: "ready",
+        selectedModelId: "gpt-auth",
+      }),
+    );
+  });
+
+  it("sends cancel and logout only through capability-derived auth scope", async () => {
+    const onlyRoot = useWorkbenchStore.getState().project!.roots[0];
+    useWorkbenchStore.setState({
+      project: { ...useWorkbenchStore.getState().project!, roots: [onlyRoot] },
+      harnesses: [
+        {
+          id: "future-auth",
+          name: "Future auth",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          transport: "acp",
+          bindingId: "future-auth-binding",
+          accountModelDiscovery: true,
+        },
+      ],
+      selectedHarnessId: "future-auth",
+      harnessDiscoveryPhase: "waiting",
+    });
+    const cancel = vi.spyOn(acpDesktop, "cancelCodexAuth").mockResolvedValue({
+      projectId: "project-a",
+      projectGeneration: "0",
+      bindingId: "future-auth-binding",
+      phase: "waiting",
+      revision: "2",
+    } as never);
+    await useWorkbenchStore.getState().cancelHarnessSignIn();
+    expect(cancel).toHaveBeenCalledWith({
+      projectId: "project-a",
+      projectGeneration: "0",
+      bindingId: "future-auth-binding",
+    });
+
+    useWorkbenchStore.setState({ harnessDiscoveryPhase: "ready" });
+    const logout = vi.spyOn(acpDesktop, "logoutCodexAuth").mockResolvedValue({
+      projectId: "project-a",
+      projectGeneration: "0",
+      bindingId: "future-auth-binding",
+      phase: "signedOut",
+      revision: "3",
+    } as never);
+    await useWorkbenchStore.getState().logoutHarness();
+    expect(logout).toHaveBeenCalledOnce();
+    expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe(
+      "signInRequired",
+    );
+  });
+
+  it("ignores a completed auth request after the native project epoch changes", async () => {
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "auth-stale",
+          name: "Auth stale",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          transport: "acp",
+          bindingId: "auth-stale-binding",
+          accountModelDiscovery: true,
+        },
+      ],
+      selectedHarnessId: "auth-stale",
+      harnessDiscoveryPhase: "consent",
+    });
+    const pending =
+      deferred<Awaited<ReturnType<typeof acpDesktop.startCodexAuth>>>();
+    vi.spyOn(acpDesktop, "startCodexAuth").mockReturnValue(pending.promise);
+    const discover = vi.spyOn(acpDesktop, "discoverCodex");
+
+    const signingIn = useWorkbenchStore.getState().confirmHarnessSignIn();
+    useWorkbenchStore.setState({ nativeTransitionEpoch: 1 });
+    pending.resolve({
+      projectId: "project-a",
+      projectGeneration: "0",
+      bindingId: "auth-stale-binding",
+      phase: "signedIn",
+      revision: "2",
+    } as never);
+    await signingIn;
+
+    expect(discover).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe("waiting");
+  });
+
   it("ignores Codex discovery from a stale native transition epoch", async () => {
     const pending = deferred<CodexDiscoveryResponse>();
     useWorkbenchStore.setState({

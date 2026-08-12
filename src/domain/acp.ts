@@ -322,6 +322,19 @@ export interface CodexDiscoveryResponse {
   defaultModelId: CuratedModelId | null;
 }
 
+export interface CodexAuthScope {
+  projectId: SageProjectId;
+  projectGeneration: ProjectGeneration;
+  bindingId: CuratedBindingId;
+}
+
+export type CodexAuthPhase = "signedOut" | "waiting" | "signedIn";
+
+export interface CodexAuthResponse extends CodexAuthScope {
+  phase: CodexAuthPhase;
+  revision: string;
+}
+
 export interface AcpMutationIntent {
   projectId: SageProjectId;
   projectGeneration: ProjectGeneration;

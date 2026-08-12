@@ -13,6 +13,7 @@ import { useAcpProjectionStore } from "../../app/acpProjectionStore";
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage, AcpItem } from "../../domain/acp";
 import type { ResourceRef } from "../../domain/workbench";
+import { acpDesktop } from "../../services/acpDesktop";
 import type * as AcpModule from "./acp";
 
 const hooks = vi.hoisted(() => ({
@@ -864,21 +865,36 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
   });
 
-  it("shows signed-out discovery with a bounded retry action", () => {
-    const retryHarnessDiscovery = vi.fn().mockResolvedValue(undefined);
+  it("requires consent before starting bounded browser sign-in", () => {
+    const start = vi
+      .spyOn(acpDesktop, "startCodexAuth")
+      .mockReturnValue(new Promise(() => {}));
     useWorkbenchStore.setState({
+      project: { id: "project-a", name: "Project A", roots: [] },
       harnessDiscoveryPhase: "signInRequired",
-      retryHarnessDiscovery,
       models: [],
       selectedModelId: null,
     });
 
     render(<ChatSurface />);
 
-    expect(screen.getByText(/sign in to chatgpt through codex/i)).toBeVisible();
+    expect(
+      screen.getByText(/sign in to chatgpt to load models/i),
+    ).toBeVisible();
     expect(screen.getByLabelText("Message agent")).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(retryHarnessDiscovery).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(screen.getByText(/official openai sign-in page/i)).toBeVisible();
+    expect(screen.getByText(/does not receive or retain them/i)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(start).toHaveBeenCalledOnce();
+    expect(
+      screen.getByText(/finish signing in through your browser/i),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeVisible();
   });
 
   it("does not let a stale ACP page mask simulator messages", () => {

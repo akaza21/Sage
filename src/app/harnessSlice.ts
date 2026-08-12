@@ -13,7 +13,13 @@ import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import type { WorkbenchState } from "./store";
 
 export type HarnessDiscoveryPhase =
-  "idle" | "checking" | "signInRequired" | "ready" | "error";
+  | "idle"
+  | "checking"
+  | "signInRequired"
+  | "consent"
+  | "waiting"
+  | "ready"
+  | "error";
 
 export interface HarnessSlice {
   harnesses: HarnessDefinition[];
@@ -31,6 +37,10 @@ export interface HarnessSlice {
     projectId: string,
   ) => Promise<void>;
   retryHarnessDiscovery: () => Promise<void>;
+  requestHarnessSignIn: () => void;
+  confirmHarnessSignIn: () => Promise<void>;
+  cancelHarnessSignIn: () => Promise<void>;
+  logoutHarness: () => Promise<void>;
   selectModel: (modelId: string) => void;
 }
 
@@ -170,6 +180,71 @@ export const createHarnessSlice: StateCreator<
       const harnessId = get().selectedHarnessId;
       if (harnessId) await get().selectHarness(harnessId);
     },
+    requestHarnessSignIn: () => {
+      if (get().harnessDiscoveryPhase === "signInRequired") {
+        set({ harnessDiscoveryPhase: "consent", harnessDiscoveryError: null });
+      }
+    },
+    confirmHarnessSignIn: async () => {
+      const scope = authScope(get());
+      if (!scope || get().harnessDiscoveryPhase !== "consent") return;
+      const requestGeneration = get().harnessRequestGeneration;
+      set({ harnessDiscoveryPhase: "waiting", harnessDiscoveryError: null });
+      try {
+        const response = await acpDesktop.startCodexAuth(scope);
+        if (!authCurrent(get(), scope, requestGeneration)) return;
+        if (response.phase !== "signedIn") {
+          set({ harnessDiscoveryPhase: "signInRequired" });
+          return;
+        }
+        await get().retryHarnessDiscovery();
+      } catch (error) {
+        if (!authCurrent(get(), scope, requestGeneration)) return;
+        set({
+          harnessDiscoveryPhase: "error",
+          harnessDiscoveryError:
+            error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+    cancelHarnessSignIn: async () => {
+      if (get().harnessDiscoveryPhase === "consent") {
+        set({ harnessDiscoveryPhase: "signInRequired" });
+        return;
+      }
+      const scope = authScope(get());
+      if (!scope || get().harnessDiscoveryPhase !== "waiting") return;
+      await acpDesktop.cancelCodexAuth(scope);
+    },
+    logoutHarness: async () => {
+      const scope = authScope(get());
+      if (!scope || get().harnessDiscoveryPhase !== "ready") return;
+      const requestGeneration = get().harnessRequestGeneration;
+      set({
+        harnessDiscoveryPhase: "checking",
+        models: [],
+        selectedModelId: null,
+      });
+      try {
+        const response = await acpDesktop.logoutCodexAuth(scope);
+        if (!authCurrent(get(), scope, requestGeneration)) return;
+        set({
+          harnessDiscoveryPhase:
+            response.phase === "signedOut" ? "signInRequired" : "error",
+          harnessDiscoveryError:
+            response.phase === "signedOut"
+              ? null
+              : "Codex logout did not converge safely.",
+        });
+      } catch (error) {
+        if (!authCurrent(get(), scope, requestGeneration)) return;
+        set({
+          harnessDiscoveryPhase: "error",
+          harnessDiscoveryError:
+            error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
     selectModel: (selectedModelId) => {
       if (
         get().harnessDiscoveryPhase === "ready" &&
@@ -180,3 +255,37 @@ export const createHarnessSlice: StateCreator<
     },
   };
 };
+
+function authScope(state: WorkbenchState) {
+  const harness = state.harnesses.find(
+    (candidate) => candidate.id === state.selectedHarnessId,
+  );
+  if (
+    !state.project ||
+    harness?.transport !== "acp" ||
+    !harness.accountModelDiscovery ||
+    !harness.bindingId
+  ) {
+    return null;
+  }
+  return {
+    projectId: state.project.id as SageProjectId,
+    projectGeneration: String(state.nativeTransitionEpoch) as ProjectGeneration,
+    bindingId: harness.bindingId as CuratedBindingId,
+  };
+}
+
+function authCurrent(
+  state: WorkbenchState,
+  scope: NonNullable<ReturnType<typeof authScope>>,
+  requestGeneration: number,
+) {
+  return (
+    state.project?.id === scope.projectId &&
+    String(state.nativeTransitionEpoch) === scope.projectGeneration &&
+    state.harnessRequestGeneration === requestGeneration &&
+    state.harnesses.find(
+      (candidate) => candidate.id === state.selectedHarnessId,
+    )?.bindingId === scope.bindingId
+  );
+}

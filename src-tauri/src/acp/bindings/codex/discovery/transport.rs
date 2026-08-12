@@ -36,6 +36,13 @@ enum ReaderEvent {
     Failed,
 }
 
+pub(crate) struct ProcessLaunchPolicy {
+    pub(crate) session_kind: &'static str,
+    pub(crate) spawn_timeout: Duration,
+    pub(crate) cleanup_end: Instant,
+    pub(crate) reader_slots: usize,
+}
+
 struct ReaderThread {
     events: mpsc::Receiver<ReaderEvent>,
     completion: mpsc::Receiver<ReaderCompletion>,
@@ -80,12 +87,25 @@ pub(crate) fn discover_admitted(
 ) -> Result<AdmittedDiscovery, CodexDiscoveryRunError> {
     let mut protocol =
         CodexDiscoveryProtocol::new(binding.packet(), binding.binding_digest(), runtime_epoch);
-    let mut transport =
-        ProductionTransport::launch(binding, project_root, runtime_epoch, deadline, on_launch)?;
+    let spawn_timeout = deadline.operation_remaining(Duration::from_millis(
+        crate::acp::limits::LIMITS.deadlines_ms.spawn,
+    ))?;
+    let mut transport = CodexProcessTransport::launch(
+        binding,
+        project_root,
+        runtime_epoch,
+        ProcessLaunchPolicy {
+            session_kind: "discovery",
+            spawn_timeout,
+            cleanup_end: deadline.cleanup_end(),
+            reader_slots: 1,
+        },
+        on_launch,
+    )?;
     let content =
         run_discovery_protocol(&mut protocol, &mut transport, runtime_epoch.get(), deadline)?;
     deadline.ensure_total()?;
-    transport.revalidate(RevalidationCheckpoint::Publish)?;
+    transport.revalidate()?;
     let (binding, project_root) = transport.into_authorities();
     Ok(AdmittedDiscovery {
         content,
@@ -95,7 +115,7 @@ pub(crate) fn discover_admitted(
     })
 }
 
-struct ProductionTransport {
+pub(crate) struct CodexProcessTransport {
     stdin: StdinEndpoint,
     control: TreeControl,
     binding: Arc<AdmittedCodexBinding>,
@@ -103,17 +123,20 @@ struct ProductionTransport {
     reader: ReaderThread,
 }
 
-impl ProductionTransport {
-    fn launch(
+impl CodexProcessTransport {
+    pub(crate) fn launch(
         binding: Arc<AdmittedCodexBinding>,
         project_root: CodexProjectRootAuthority,
         runtime_epoch: RuntimeEpoch,
-        deadline: CodexDiscoveryDeadline,
+        policy: ProcessLaunchPolicy,
         on_launch: impl FnOnce(TreeControl) -> Result<(), CodexDiscoveryRunError>,
     ) -> Result<Self, CodexDiscoveryRunError> {
-        let session =
-            SageAgentSessionId::parse(format!("session-codex-discovery-{}", runtime_epoch.get()))
-                .map_err(|_| CodexDiscoveryRunError::Transport)?;
+        let session = SageAgentSessionId::parse(format!(
+            "session-codex-{}-{}",
+            policy.session_kind,
+            runtime_epoch.get()
+        ))
+        .map_err(|_| CodexDiscoveryRunError::Transport)?;
         let mut runtime = CodexRuntime::from_admitted_binding(
             Arc::clone(&binding),
             project_root,
@@ -123,12 +146,13 @@ impl ProductionTransport {
         .map_err(map_runtime)?;
         let mut spec = runtime.launch_spec().map_err(map_runtime)?;
         spec.deadlines.spawn_ms = u64::try_from(
-            deadline
-                .operation_remaining(Duration::from_millis(spec.deadlines.spawn_ms))?
+            policy
+                .spawn_timeout
+                .min(Duration::from_millis(spec.deadlines.spawn_ms))
                 .as_millis(),
         )
         .unwrap_or(u64::MAX);
-        spec.absolute_cleanup_deadline = Some(deadline.cleanup_end());
+        spec.absolute_cleanup_deadline = Some(policy.cleanup_end);
         let lease = TreeCapacityPool::global()
             .try_acquire(spec.limits.descendants)
             .map_err(map_launch)?;
@@ -136,28 +160,29 @@ impl ProductionTransport {
             .map_err(|failure| settle_launch_failure(failure, runtime_epoch.get()))?;
         let project_root = spec.project_root;
         let (mut stdin, stdout, control) = tree.into_parts();
-        if let Err(error) = deadline.ensure_operation() {
+        if policy.spawn_timeout.is_zero() {
             stdin.close();
-            return match control.terminate_zero_before(TreeExit::Deadline, deadline.cleanup_end()) {
-                Ok((_, zero)) if zero.runtime_epoch() == runtime_epoch.get() => Err(error),
+            return match control.terminate_zero_before(TreeExit::Deadline, policy.cleanup_end) {
+                Ok((_, zero)) if zero.runtime_epoch() == runtime_epoch.get() => {
+                    Err(CodexDiscoveryRunError::Timeout)
+                }
                 _ => Err(CodexDiscoveryRunError::Cleanup),
             };
         }
         if let Err(error) = on_launch(control.clone()) {
             stdin.close();
-            return match control
-                .terminate_zero_before(TreeExit::ParentShutdown, deadline.cleanup_end())
+            return match control.terminate_zero_before(TreeExit::ParentShutdown, policy.cleanup_end)
             {
                 Ok((_, zero)) if zero.runtime_epoch() == runtime_epoch.get() => Err(error),
                 _ => Err(CodexDiscoveryRunError::Cleanup),
             };
         }
-        let reader = match ReaderThread::spawn(stdout) {
+        let reader = match ReaderThread::spawn(stdout, policy.reader_slots, policy.session_kind) {
             Ok(reader) => reader,
             Err(error) => {
                 stdin.close();
                 return match control
-                    .terminate_zero_before(TreeExit::ProtocolFailure, deadline.cleanup_end())
+                    .terminate_zero_before(TreeExit::ProtocolFailure, policy.cleanup_end)
                 {
                     Ok((_, zero)) if zero.runtime_epoch() == runtime_epoch.get() => Err(error),
                     _ => Err(CodexDiscoveryRunError::Cleanup),
@@ -173,7 +198,7 @@ impl ProductionTransport {
         })
     }
 
-    fn into_authorities(
+    pub(crate) fn into_authorities(
         self,
     ) -> (
         Arc<AdmittedCodexBinding>,
@@ -181,14 +206,15 @@ impl ProductionTransport {
     ) {
         (self.binding, self.project_root)
     }
-}
 
-impl DiscoveryTransport for ProductionTransport {
-    fn write(&mut self, frame: &OutboundFrame) -> FrameWriteOutcome {
+    pub(crate) fn write(&mut self, frame: &OutboundFrame) -> FrameWriteOutcome {
         self.stdin.write_frame(frame)
     }
 
-    fn read_frame(&mut self, timeout: Duration) -> Result<Option<Frame>, CodexDiscoveryRunError> {
+    pub(crate) fn read_frame(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<Option<Frame>, CodexDiscoveryRunError> {
         if self.reader.overflowed() {
             return Err(CodexDiscoveryRunError::Transport);
         }
@@ -202,7 +228,7 @@ impl DiscoveryTransport for ProductionTransport {
         }
     }
 
-    fn revalidate(&self, _: RevalidationCheckpoint) -> Result<(), CodexDiscoveryRunError> {
+    pub(crate) fn revalidate(&self) -> Result<(), CodexDiscoveryRunError> {
         if self.reader.overflowed() {
             return Err(CodexDiscoveryRunError::Transport);
         }
@@ -214,8 +240,44 @@ impl DiscoveryTransport for ProductionTransport {
             .map_err(|_| CodexDiscoveryRunError::Drift)
     }
 
-    fn close_stdin(&mut self) {
+    pub(crate) fn close_stdin(&mut self) {
         self.stdin.close();
+    }
+
+    pub(crate) fn terminate_zero_before(
+        &mut self,
+        failed: bool,
+        cleanup_end: Instant,
+    ) -> Result<DiscoveryZeroProcess, CodexDiscoveryRunError> {
+        let reason = if failed {
+            TreeExit::ProtocolFailure
+        } else {
+            TreeExit::ParentShutdown
+        };
+        let (_, zero) = self
+            .control
+            .terminate_zero_before(reason, cleanup_end)
+            .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
+        self.reader.finish_before(cleanup_end)?;
+        Ok(DiscoveryZeroProcess::from_supervisor(zero))
+    }
+}
+
+impl DiscoveryTransport for CodexProcessTransport {
+    fn write(&mut self, frame: &OutboundFrame) -> FrameWriteOutcome {
+        self.write(frame)
+    }
+
+    fn read_frame(&mut self, timeout: Duration) -> Result<Option<Frame>, CodexDiscoveryRunError> {
+        self.read_frame(timeout)
+    }
+
+    fn revalidate(&self, _: RevalidationCheckpoint) -> Result<(), CodexDiscoveryRunError> {
+        self.revalidate()
+    }
+
+    fn close_stdin(&mut self) {
+        self.close_stdin();
     }
 
     fn terminate_zero(
@@ -223,30 +285,25 @@ impl DiscoveryTransport for ProductionTransport {
         protocol_failure: bool,
         deadline: CodexDiscoveryDeadline,
     ) -> Result<DiscoveryZeroProcess, CodexDiscoveryRunError> {
-        let reason = if protocol_failure {
-            TreeExit::ProtocolFailure
-        } else {
-            TreeExit::ParentShutdown
-        };
-        let (_, zero) = self
-            .control
-            .terminate_zero_before(reason, deadline.cleanup_end())
-            .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
-        self.reader.finish_before(deadline.cleanup_end())?;
-        Ok(DiscoveryZeroProcess::from_supervisor(zero))
+        self.terminate_zero_before(protocol_failure, deadline.cleanup_end())
     }
 }
 
 impl ReaderThread {
     fn spawn(
         mut stdout: crate::acp::process::StdoutEndpoint,
+        slots: usize,
+        session_kind: &str,
     ) -> Result<Self, CodexDiscoveryRunError> {
-        let (send_event, events) = mpsc::sync_channel(1);
+        if !(1..=4).contains(&slots) {
+            return Err(CodexDiscoveryRunError::Transport);
+        }
+        let (send_event, events) = mpsc::sync_channel(slots);
         let (send_completion, completion) = mpsc::sync_channel(1);
         let overflowed = Arc::new(AtomicBool::new(false));
         let reader_overflowed = Arc::clone(&overflowed);
         let handle = thread::Builder::new()
-            .name("sage-codex-discovery-stdout".to_owned())
+            .name(format!("sage-codex-{session_kind}-stdout"))
             .spawn(move || {
                 let completion = loop {
                     let event = match stdout.read_frame() {
