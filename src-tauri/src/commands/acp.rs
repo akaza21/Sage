@@ -3,24 +3,73 @@ mod characterization;
 mod errors;
 
 use errors::{
-    binding_unavailable, intent_error, internal_error, page_admission_error, safe_message,
-    session_unavailable, store_error,
+    binding_unavailable, codex_discovery_error, intent_error, internal_error, page_admission_error,
+    safe_message, session_unavailable, store_error,
 };
 
 use tauri::State;
 
 use crate::{
     acp::{
+        bindings::codex::CodexDiscoveryDeadline,
         contract::{ProjectGeneration, SageChatId, SageProjectId},
         intent::{
             AcpChatPage, AcpIpcError, AcpMutationResponse, ActivateAcpSessionRequest,
-            CancelAcpTurnRequest, CloseAcpSessionRequest, GetAcpChatPageRequest, IntentError,
-            IntentSnapshot, SendAcpTurnRequest, StartAcpSessionRequest, validate_base_intent,
+            CancelAcpTurnRequest, CloseAcpSessionRequest, CodexDiscoveryResponse,
+            GetAcpChatPageRequest, GetCodexDiscoveryRequest, IntentError, IntentSnapshot,
+            SendAcpTurnRequest, StartAcpSessionRequest, validate_base_intent,
             validate_cancel_intent, validate_session_intent,
         },
     },
     state::{ActiveProjectContext, ActiveProjectError, AppState},
 };
+
+#[tauri::command]
+pub async fn get_codex_discovery(
+    state: State<'_, AppState>,
+    request: GetCodexDiscoveryRequest,
+) -> Result<CodexDiscoveryResponse, AcpIpcError> {
+    get_codex_discovery_inner(&state, request).await
+}
+
+pub(crate) async fn get_codex_discovery_inner(
+    state: &AppState,
+    request: GetCodexDiscoveryRequest,
+) -> Result<CodexDiscoveryResponse, AcpIpcError> {
+    let deadline = CodexDiscoveryDeadline::new().map_err(codex_discovery_error)?;
+    get_codex_discovery_with_deadline(state, request, deadline).await
+}
+
+pub(crate) async fn get_codex_discovery_with_deadline(
+    state: &AppState,
+    request: GetCodexDiscoveryRequest,
+    deadline: CodexDiscoveryDeadline,
+) -> Result<CodexDiscoveryResponse, AcpIpcError> {
+    let transition = tokio::time::timeout_at(
+        tokio::time::Instant::from_std(deadline.operation_end()),
+        lock_acp_context(state, &request.project_id, request.project_generation),
+    )
+    .await
+    .map_err(|_| {
+        codex_discovery_error(crate::acp::bindings::codex::CodexDiscoveryRunError::Timeout)
+    })??;
+    let project_root = state
+        .database
+        .codex_project_root_authority(&transition)
+        .map_err(|_| AcpIpcError::Unavailable {
+            reason: crate::acp::intent::AcpUnavailableReason::CapabilityUnavailable,
+            message: safe_message("Codex beta requires one unchanged Project root."),
+        })?;
+    let manager = state.acp.codex_discovery_manager();
+    let prepared = manager
+        .prepare(request, project_root, deadline)
+        .map_err(codex_discovery_error)?;
+    drop(transition);
+    tauri::async_runtime::spawn_blocking(move || manager.discover(prepared))
+        .await
+        .map_err(|_| internal_error())?
+        .map_err(codex_discovery_error)
+}
 
 #[tauri::command]
 pub async fn get_acp_chat_page(

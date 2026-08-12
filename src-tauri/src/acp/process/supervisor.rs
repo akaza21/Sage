@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
-#[cfg(any(test, all(windows, feature = "acp-fixture")))]
 use std::time::Instant;
 
 use uuid::Uuid;
@@ -183,7 +182,6 @@ pub(crate) struct LaunchSpec {
     pub(crate) required_guarantee: RequiredContainment,
     pub(crate) limits: TreeLimits,
     pub(crate) deadlines: ProcessDeadlines,
-    #[cfg(any(test, all(windows, feature = "acp-fixture")))]
     pub(crate) absolute_cleanup_deadline: Option<Instant>,
     #[cfg(all(test, windows))]
     pub(crate) test_after_artifact_verified: Option<Box<dyn Fn() + Send + Sync>>,

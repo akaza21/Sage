@@ -158,12 +158,20 @@ async fn execute_committed_transition<T: Send + 'static>(
         return failed_transition(*transition_epoch, error);
     }
     *transition_epoch = committed_epoch;
-    if let Ok(Some(active_project)) = state.database.active_project_id()
+    let acp_recovery_error = if let Ok(Some(active_project)) = state.database.active_project_id()
         && let Ok(active_project) = SageProjectId::parse(active_project)
     {
-        state.acp.project_switched(&active_project);
+        state.acp.project_switched(&active_project).err().map(|_| {
+            "Codex discovery cleanup did not converge; restart Sage before retrying.".to_owned()
+        })
+    } else {
+        None
+    };
+    let mut result = committed_projection(state, committed_epoch).await;
+    if result.recovery_error.is_none() {
+        result.recovery_error = acp_recovery_error;
     }
-    committed_projection(state, committed_epoch).await
+    result
 }
 
 async fn committed_projection(state: &AppState, transition_epoch: u64) -> ProjectTransitionResult {

@@ -48,7 +48,6 @@ impl CodexRuntime {
             required_guarantee: RequiredContainment::EnforcedTree,
             limits: TreeLimits::ade_0006a(),
             deadlines: ProcessDeadlines::ade_0006a(),
-            #[cfg(any(test, all(windows, feature = "acp-fixture")))]
             absolute_cleanup_deadline: None,
             #[cfg(all(test, windows))]
             test_after_artifact_verified: None,

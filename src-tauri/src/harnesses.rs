@@ -69,8 +69,7 @@ impl HarnessCatalog {
                     "notInstalled"
                 },
                 "builtIn",
-                HarnessTransport::Acp,
-                Some("codex-app-server"),
+                CuratedProtocol::account_models("codex-app-server"),
             ),
             definition(
                 "pi",
@@ -78,8 +77,7 @@ impl HarnessCatalog {
                 "Curated ACP adapter, installed only when requested.",
                 "notInstalled",
                 "builtIn",
-                HarnessTransport::Acp,
-                None,
+                CuratedProtocol::acp(None),
             ),
             definition(
                 "claude-code",
@@ -87,8 +85,7 @@ impl HarnessCatalog {
                 "Curated ACP adapter, installed only when requested.",
                 "notInstalled",
                 "builtIn",
-                HarnessTransport::Acp,
-                None,
+                CuratedProtocol::acp(None),
             ),
             definition(
                 "oh-my-pi",
@@ -96,8 +93,7 @@ impl HarnessCatalog {
                 "Curated native ACP binding, admitted last.",
                 "notInstalled",
                 "builtIn",
-                HarnessTransport::Acp,
-                None,
+                CuratedProtocol::acp(None),
             ),
             definition(
                 SIMULATOR_ID,
@@ -105,8 +101,7 @@ impl HarnessCatalog {
                 "Deterministic development harness for contract and recovery tests.",
                 "available",
                 "development",
-                HarnessTransport::LegacySimulator,
-                None,
+                CuratedProtocol::legacy_simulator(),
             ),
         ];
         #[cfg(all(windows, feature = "acp-fixture"))]
@@ -120,8 +115,7 @@ impl HarnessCatalog {
                     "Exact fixture binding for disposable acceptance campaigns only.",
                     "available",
                     "development",
-                    HarnessTransport::Acp,
-                    Some(crate::acp::service::CHARACTERIZATION_BINDING_ID),
+                    CuratedProtocol::acp(Some(crate::acp::service::CHARACTERIZATION_BINDING_ID)),
                 ),
             );
             return definitions;
@@ -179,14 +173,45 @@ impl HarnessCatalog {
     }
 }
 
+struct CuratedProtocol<'a> {
+    transport: HarnessTransport,
+    binding_id: Option<&'a str>,
+    account_model_discovery: bool,
+}
+
+impl<'a> CuratedProtocol<'a> {
+    fn account_models(binding_id: &'a str) -> Self {
+        Self {
+            transport: HarnessTransport::Acp,
+            binding_id: Some(binding_id),
+            account_model_discovery: true,
+        }
+    }
+
+    fn acp(binding_id: Option<&'a str>) -> Self {
+        Self {
+            transport: HarnessTransport::Acp,
+            binding_id,
+            account_model_discovery: false,
+        }
+    }
+
+    fn legacy_simulator() -> Self {
+        Self {
+            transport: HarnessTransport::LegacySimulator,
+            binding_id: None,
+            account_model_discovery: false,
+        }
+    }
+}
+
 fn definition(
     id: &str,
     name: &str,
     description: &str,
     install_state: &str,
     source: &str,
-    transport: HarnessTransport,
-    binding_id: Option<&str>,
+    protocol: CuratedProtocol<'_>,
 ) -> HarnessDefinition {
     let definition = HarnessDefinition {
         id: id.into(),
@@ -194,8 +219,9 @@ fn definition(
         description: description.into(),
         install_state: install_state.into(),
         source: source.into(),
-        transport,
-        binding_id: binding_id.map(str::to_owned),
+        transport: protocol.transport,
+        binding_id: protocol.binding_id.map(str::to_owned),
+        account_model_discovery: protocol.account_model_discovery,
     };
     definition
         .validate_transport_contract()
@@ -261,9 +287,11 @@ mod tests {
         let codex = serde_json::to_value(&definitions[0]).unwrap();
         assert_eq!(codex["transport"], "acp");
         assert_eq!(codex["bindingId"], "codex-app-server");
+        assert_eq!(codex["accountModelDiscovery"], true);
         let simulator = serde_json::to_value(&definitions[4]).unwrap();
         assert_eq!(simulator["transport"], "legacySimulator");
         assert!(simulator["bindingId"].is_null());
+        assert_eq!(simulator["accountModelDiscovery"], false);
     }
 
     #[test]

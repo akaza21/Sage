@@ -5,6 +5,7 @@
 
 mod admission;
 mod authority;
+mod discovery;
 mod incoming;
 mod managed;
 mod manifest;
@@ -24,6 +25,15 @@ pub(crate) use authority::{
     ConfigAuthorityError, EnvironmentAuthorityError, ResidueMarker, RetentionDecision,
     StateAuthorityError, build_codex_launch_environment, classify_codex_state_path,
     inspect_codex_authority, verify_codex_config,
+};
+pub(crate) use discovery::{
+    AdmittedDiscovery, CodexAccountSnapshot, CodexDiscoveryContent, CodexDiscoveryDeadline,
+    CodexDiscoveryRunError, CodexModelSnapshot, discover_admitted,
+};
+#[cfg(test)]
+pub(crate) use discovery::{
+    CodexDiscoveryProtocol, DiscoveryTransport, DiscoveryZeroProcess, RevalidationCheckpoint,
+    run_discovery_protocol,
 };
 pub(crate) use incoming::{IncomingEvent, IngressDisposition, ResourceMapper};
 pub(crate) use managed::{

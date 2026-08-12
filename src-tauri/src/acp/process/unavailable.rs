@@ -108,9 +108,24 @@ impl TreeControl {
         Err(LaunchError::PlatformUnavailable)
     }
 
+    pub(crate) fn wait_zero_before(
+        &self,
+        _deadline: std::time::Instant,
+    ) -> Result<(TreeExit, ZeroProcessToken), LaunchError> {
+        Err(LaunchError::PlatformUnavailable)
+    }
+
     pub(crate) fn terminate_zero(
         &self,
         _reason: TreeExit,
+    ) -> Result<(TreeExit, ZeroProcessToken), LaunchError> {
+        Err(LaunchError::PlatformUnavailable)
+    }
+
+    pub(crate) fn terminate_zero_before(
+        &self,
+        _reason: TreeExit,
+        _deadline: std::time::Instant,
     ) -> Result<(TreeExit, ZeroProcessToken), LaunchError> {
         Err(LaunchError::PlatformUnavailable)
     }

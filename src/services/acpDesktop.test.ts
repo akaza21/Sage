@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   ClientIntentId,
   CuratedBindingId,
+  GetCodexDiscoveryRequest,
   ProjectGeneration,
   ProjectionRevision,
   SageChatId,
@@ -28,6 +29,12 @@ const request: StartAcpSessionRequest = {
   modelId: null,
 };
 
+const discoveryRequest: GetCodexDiscoveryRequest = {
+  projectId: "project-a" as SageProjectId,
+  projectGeneration: "7" as ProjectGeneration,
+  bindingId: "codex-app-server" as CuratedBindingId,
+};
+
 function setDesktopRuntime(active: boolean): void {
   if (active) {
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
@@ -46,6 +53,96 @@ afterEach(() => {
 });
 
 describe("ACP desktop bridge", () => {
+  it("validates and narrows the bounded Codex discovery response", async () => {
+    setDesktopRuntime(true);
+    invokeMock.mockResolvedValue({
+      projectId: "project-a",
+      projectGeneration: "7",
+      rootId: "root-a",
+      bindingId: "codex-app-server",
+      runtimeEpoch: "2",
+      account: "managedChatgpt",
+      models: [
+        { id: "gpt-a", name: "GPT A", isDefault: false },
+        { id: "gpt-b", name: "GPT B", isDefault: true },
+      ],
+      defaultModelId: "gpt-b",
+      email: "never-retain@example.test",
+      rawFrame: "never-retain",
+    });
+
+    const response = await acpDesktop.discoverCodex(discoveryRequest);
+
+    expect(invokeMock).toHaveBeenCalledWith("get_codex_discovery", {
+      request: discoveryRequest,
+    });
+    expect(response.defaultModelId).toBe("gpt-b");
+    expect(JSON.stringify(response)).not.toContain("never-retain");
+  });
+
+  it("rejects duplicate or inconsistent discovery models", async () => {
+    setDesktopRuntime(true);
+    invokeMock.mockResolvedValue({
+      projectId: "project-a",
+      projectGeneration: "7",
+      rootId: "root-a",
+      bindingId: "codex-app-server",
+      runtimeEpoch: "2",
+      account: "managedChatgpt",
+      models: [
+        { id: "same", name: "One", isDefault: true },
+        { id: "same", name: "Two", isDefault: false },
+      ],
+      defaultModelId: "same",
+    });
+
+    await expect(
+      acpDesktop.discoverCodex(discoveryRequest),
+    ).rejects.toMatchObject({
+      failure: { kind: "internal" },
+    });
+  });
+
+  it("rejects discovery counters beyond the native signed range", async () => {
+    setDesktopRuntime(true);
+    invokeMock.mockResolvedValue({
+      projectId: "project-a",
+      projectGeneration: "9223372036854775808",
+      rootId: "root-a",
+      bindingId: "codex-app-server",
+      runtimeEpoch: "2",
+      account: "managedChatgpt",
+      models: [{ id: "gpt-a", name: "GPT A", isDefault: true }],
+      defaultModelId: "gpt-a",
+    });
+
+    await expect(
+      acpDesktop.discoverCodex(discoveryRequest),
+    ).rejects.toMatchObject({
+      failure: { kind: "internal" },
+    });
+  });
+
+  it("rejects NUL-bearing discovery identifiers at the WebView boundary", async () => {
+    setDesktopRuntime(true);
+    invokeMock.mockResolvedValue({
+      projectId: "project-a",
+      projectGeneration: "7",
+      rootId: "root-a",
+      bindingId: "codex-app-server",
+      runtimeEpoch: "2",
+      account: "managedChatgpt",
+      models: [{ id: "gpt\0a", name: "GPT A", isDefault: true }],
+      defaultModelId: "gpt\0a",
+    });
+
+    await expect(
+      acpDesktop.discoverCodex(discoveryRequest),
+    ).rejects.toMatchObject({
+      failure: { kind: "internal" },
+    });
+  });
+
   it("nests the exact closed request under the Tauri request argument", async () => {
     setDesktopRuntime(true);
     invokeMock.mockRejectedValue({

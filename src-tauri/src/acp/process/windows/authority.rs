@@ -169,6 +169,15 @@ impl TreeControl {
         Ok((exit, ZeroProcessToken::new(self.0.runtime_epoch)))
     }
 
+    pub(crate) fn wait_zero_before(
+        &self,
+        deadline: Instant,
+    ) -> Result<(TreeExit, ZeroProcessToken), LaunchError> {
+        let native_deadline = Instant::now() + self.0.terminate_deadline;
+        let exit = self.wait_until(deadline.min(native_deadline))?;
+        Ok((exit, ZeroProcessToken::new(self.0.runtime_epoch)))
+    }
+
     #[cfg(test)]
     pub(crate) fn wait_zero_within(
         &self,
@@ -183,6 +192,15 @@ impl TreeControl {
         reason: TreeExit,
     ) -> Result<(TreeExit, ZeroProcessToken), LaunchError> {
         let deadline = Instant::now() + self.0.terminate_deadline;
+        self.terminate_zero_before(reason, deadline)
+    }
+
+    pub(crate) fn terminate_zero_before(
+        &self,
+        reason: TreeExit,
+        deadline: Instant,
+    ) -> Result<(TreeExit, ZeroProcessToken), LaunchError> {
+        let deadline = deadline.min(Instant::now() + self.0.terminate_deadline);
         self.request_termination(reason)?;
         let exit = self.wait_until(deadline)?;
         Ok((exit, ZeroProcessToken::new(self.0.runtime_epoch)))
@@ -218,7 +236,6 @@ pub(super) struct TreeAuthority {
     pub(super) lease: Mutex<Option<TreeCapacityLease>>,
     pub(super) active_process_limit: u32,
     pub(super) terminate_deadline: Duration,
-    #[cfg(any(test, feature = "acp-fixture"))]
     pub(super) absolute_cleanup_deadline: Option<Instant>,
     pub(super) requested_exit: Mutex<Option<TreeExit>>,
     pub(super) convergence: Mutex<bool>,
@@ -284,12 +301,9 @@ impl TreeAuthority {
 
     fn shutdown(&self) -> Result<(), LaunchError> {
         let native_deadline = Instant::now() + self.terminate_deadline;
-        #[cfg(any(test, feature = "acp-fixture"))]
         let deadline = self
             .absolute_cleanup_deadline
             .map_or(native_deadline, |absolute| native_deadline.min(absolute));
-        #[cfg(not(any(test, feature = "acp-fixture")))]
-        let deadline = native_deadline;
         if *self
             .convergence
             .lock()

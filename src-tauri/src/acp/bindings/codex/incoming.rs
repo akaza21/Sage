@@ -14,7 +14,7 @@ use super::{
 
 #[path = "incoming_support.rs"]
 mod support;
-pub(super) use support::*;
+pub(in crate::acp::bindings::codex) use support::*;
 
 #[path = "incoming_items.rs"]
 mod items;

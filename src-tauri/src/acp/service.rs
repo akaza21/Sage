@@ -33,6 +33,7 @@ use crate::acp::{
 
 #[cfg(all(windows, feature = "acp-fixture"))]
 mod characterization;
+mod codex_discovery;
 mod configuration;
 mod intent_snapshot;
 #[cfg(any(test, feature = "acp-fixture"))]
@@ -46,6 +47,7 @@ pub(crate) use characterization::{
     BINDING_ID as CHARACTERIZATION_BINDING_ID, CharacterizationArtifact, CharacterizationBinding,
     CharacterizationCase, CharacterizationError,
 };
+use codex_discovery::CodexDiscoveryManager;
 use configuration::ServiceConfiguration;
 use intent_snapshot::load_intent_snapshot;
 #[cfg(any(test, feature = "acp-fixture"))]
@@ -63,6 +65,7 @@ pub(crate) struct AcpService {
     notifier: Option<Arc<ProjectionNotifier>>,
     page_reads: PageReadAdmission,
     codex: CodexBindingRegistration,
+    codex_discovery: Arc<CodexDiscoveryManager>,
     #[cfg(all(windows, feature = "acp-fixture"))]
     characterization: Option<CharacterizationBinding>,
 }
@@ -112,6 +115,7 @@ impl AcpService {
         {
             notifier.set_active_project(project_id);
         }
+        let codex_discovery = CodexDiscoveryManager::new(configuration.codex.clone());
         Ok(Self {
             database,
             scheduler,
@@ -123,6 +127,7 @@ impl AcpService {
             notifier,
             page_reads: PageReadAdmission::default(),
             codex: configuration.codex,
+            codex_discovery,
             #[cfg(all(windows, feature = "acp-fixture"))]
             characterization: configuration.characterization,
         })
@@ -153,7 +158,13 @@ impl AcpService {
     pub(crate) fn refresh_codex_registration(
         &self,
     ) -> Result<(), crate::acp::bindings::codex::CodexAdmissionUnavailable> {
-        self.codex.refresh().map(drop)
+        self.codex.refresh().map(drop).inspect_err(|_| {
+            self.codex_discovery.invalidate();
+        })
+    }
+
+    pub(crate) fn codex_discovery_manager(&self) -> Arc<CodexDiscoveryManager> {
+        Arc::clone(&self.codex_discovery)
     }
 
     pub(crate) fn reserve_page_read(
@@ -182,7 +193,16 @@ impl AcpService {
         load_intent_snapshot(&self.database, project_id, project_generation, chat_id)
     }
 
-    pub(crate) fn project_switched(&self, active_project: &SageProjectId) {
+    pub(crate) fn project_switched(
+        &self,
+        active_project: &SageProjectId,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        let discovery = self
+            .codex_discovery
+            .invalidate_and_wait(Duration::from_millis(
+                crate::acp::limits::LIMITS.deadlines_ms.explicit_close,
+            ))
+            .map_err(map_discovery_shutdown);
         self.scheduler.project_switched(active_project);
         let runtime = self.runtime.active();
         if let Some(runtime) = runtime {
@@ -191,6 +211,7 @@ impl AcpService {
         if let Some(notifier) = &self.notifier {
             notifier.set_active_project(active_project.clone());
         }
+        discovery
     }
 
     pub(crate) fn acknowledge_projection_bootstrap(&self) {
@@ -222,6 +243,12 @@ impl AcpService {
         let started = Instant::now();
         let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
         let mut failure = None;
+        if let Err(error) = self
+            .codex_discovery
+            .shutdown(budget.saturating_sub(started.elapsed()))
+        {
+            failure = Some(map_discovery_shutdown(error));
+        }
         let mut runtime_stopped = true;
         if let Some(runtime) = self.runtime.begin_shutdown()
             && let Err(error) = runtime.shutdown()
@@ -309,6 +336,9 @@ impl Drop for AcpService {
     fn drop(&mut self) {
         let started = Instant::now();
         let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+        let _ = self
+            .codex_discovery
+            .shutdown(budget.saturating_sub(started.elapsed()));
         let mut runtime_stopped = true;
         if let Some(runtime) = self.runtime.begin_shutdown()
             && runtime.shutdown().is_err()
@@ -334,6 +364,20 @@ fn map_thread_wait(error: ThreadWaitError) -> crate::acp::runtime::HostError {
     match error {
         ThreadWaitError::Timeout => crate::acp::runtime::HostError::Deadline,
         ThreadWaitError::Panicked => crate::acp::runtime::HostError::Unavailable,
+    }
+}
+
+fn map_discovery_shutdown(
+    error: crate::acp::bindings::codex::CodexDiscoveryRunError,
+) -> crate::acp::runtime::HostError {
+    match error {
+        crate::acp::bindings::codex::CodexDiscoveryRunError::Timeout => {
+            crate::acp::runtime::HostError::Deadline
+        }
+        crate::acp::bindings::codex::CodexDiscoveryRunError::Cleanup => {
+            crate::acp::runtime::HostError::RecoveryRequired
+        }
+        _ => crate::acp::runtime::HostError::Unavailable,
     }
 }
 

@@ -176,6 +176,7 @@ pub fn run() {
             commands::list_harness_models,
             commands::send_simulated_prompt,
             commands::acp::get_acp_chat_page,
+            commands::acp::get_codex_discovery,
             commands::acp::start_acp_session,
             commands::acp::activate_acp_session,
             commands::acp::send_acp_turn,

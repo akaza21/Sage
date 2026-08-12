@@ -38,7 +38,6 @@ struct StartedRecovery {
     lease: Option<TreeCapacityLease>,
     active_process_limit: u32,
     deadline: Duration,
-    #[cfg(any(test, feature = "acp-fixture"))]
     absolute_cleanup_deadline: Option<Instant>,
     assigned_to_job: bool,
     tracker: LaunchFailureTracker,
@@ -74,7 +73,6 @@ impl LaunchRecovery {
                 lease: Some(lease),
                 active_process_limit: spec.limits.active_processes,
                 deadline: Duration::from_millis(spec.deadlines.spawn_ms),
-                #[cfg(any(test, feature = "acp-fixture"))]
                 absolute_cleanup_deadline: spec.absolute_cleanup_deadline,
                 assigned_to_job: false,
                 tracker: LaunchFailureTracker::child_created(spec.runtime_epoch),
@@ -176,7 +174,6 @@ impl LaunchRecovery {
                 ));
             }
         };
-        #[cfg(any(test, feature = "acp-fixture"))]
         let absolute_cleanup_deadline = started.absolute_cleanup_deadline;
         let (
             process,
@@ -233,7 +230,6 @@ impl LaunchRecovery {
             lease: Mutex::new(Some(lease)),
             active_process_limit,
             terminate_deadline: deadline,
-            #[cfg(any(test, feature = "acp-fixture"))]
             absolute_cleanup_deadline,
             requested_exit: Mutex::new(None),
             convergence: Mutex::new(false),
@@ -262,14 +258,11 @@ impl StartedRecovery {
         // SAFETY: the retained root handle is valid. This fallback also covers
         // failures that occur before successful Job assignment.
         unsafe { TerminateProcess(process.raw(), 1) };
-        #[cfg(any(test, feature = "acp-fixture"))]
         let deadline = {
             let native_deadline = Instant::now() + self.deadline;
             self.absolute_cleanup_deadline
                 .map_or(native_deadline, |absolute| native_deadline.min(absolute))
         };
-        #[cfg(not(any(test, feature = "acp-fixture")))]
-        let deadline = Instant::now() + self.deadline;
         wait_until(process.raw(), deadline)?;
         if self.assigned_to_job {
             self.job

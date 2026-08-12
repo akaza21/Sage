@@ -299,6 +299,29 @@ export interface GetAcpChatPageRequest {
   cursor: AcpPageCursor | null;
 }
 
+export interface GetCodexDiscoveryRequest {
+  projectId: SageProjectId;
+  projectGeneration: ProjectGeneration;
+  bindingId: CuratedBindingId;
+}
+
+export interface CodexDiscoveryModel {
+  id: CuratedModelId;
+  name: string;
+  isDefault: boolean;
+}
+
+export interface CodexDiscoveryResponse {
+  projectId: SageProjectId;
+  projectGeneration: ProjectGeneration;
+  rootId: string;
+  bindingId: CuratedBindingId;
+  runtimeEpoch: RuntimeEpoch;
+  account: "managedChatgpt" | "signedOut";
+  models: readonly CodexDiscoveryModel[];
+  defaultModelId: CuratedModelId | null;
+}
+
 export interface AcpMutationIntent {
   projectId: SageProjectId;
   projectGeneration: ProjectGeneration;

@@ -20,6 +20,42 @@ pub struct GetAcpChatPageRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GetCodexDiscoveryRequest {
+    pub project_id: SageProjectId,
+    pub project_generation: ProjectGeneration,
+    pub binding_id: BindingId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CodexDiscoveryAccount {
+    ManagedChatgpt,
+    SignedOut,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CodexDiscoveryModel {
+    pub id: ModelId,
+    pub name: RequiredText<512>,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CodexDiscoveryResponse {
+    pub project_id: SageProjectId,
+    pub project_generation: ProjectGeneration,
+    pub root_id: SageRootId,
+    pub binding_id: BindingId,
+    pub runtime_epoch: RuntimeEpoch,
+    pub account: CodexDiscoveryAccount,
+    pub models: Vec<CodexDiscoveryModel>,
+    pub default_model_id: Option<ModelId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StartAcpSessionRequest {
     pub project_id: SageProjectId,
     pub project_generation: ProjectGeneration,

@@ -99,7 +99,7 @@ pub(super) fn parse_usage(params: &Map<String, Value>) -> Result<NormalizedPaylo
     })
 }
 
-pub(super) fn validate_shape(value: &Value) -> Result<(), IngressError> {
+pub(in crate::acp::bindings::codex) fn validate_shape(value: &Value) -> Result<(), IngressError> {
     let mut nodes = 0_u64;
     fn visit(value: &Value, depth: u64, nodes: &mut u64) -> bool {
         *nodes = nodes.saturating_add(1);

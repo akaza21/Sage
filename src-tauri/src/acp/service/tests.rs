@@ -335,7 +335,9 @@ fn service_keeps_background_turn_live_and_stops_runtime_before_journal_drop() {
         .unwrap();
     service.install_runtime_for_test(owner, Arc::clone(&runtime));
 
-    service.project_switched(&SageProjectId::parse("project-other").unwrap());
+    service
+        .project_switched(&SageProjectId::parse("project-other").unwrap())
+        .unwrap();
     assert_eq!(runtime.state().unwrap(), HostState::Running);
     service.shutdown_blocking().unwrap();
     assert_eq!(
@@ -511,7 +513,7 @@ fn running_turn_terminal_after_project_switch_is_durable_but_cannot_touch_active
                 current_layout: layout(&snapshot_a),
             })
             .unwrap();
-        service.project_switched(&project_b_id);
+        service.project_switched(&project_b_id).unwrap();
         let before_b = service
             .load_chat_page(project_b_id.clone(), chat_b.clone(), None)
             .unwrap();

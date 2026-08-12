@@ -348,6 +348,7 @@ interface HarnessDefinitionBase {
   name: string;
   description: string;
   source: "builtIn" | "registry" | "custom" | "development";
+  accountModelDiscovery: boolean;
 }
 
 export type HarnessDefinition = HarnessDefinitionBase &
@@ -373,6 +374,7 @@ export interface ModelOption {
   id: string;
   name: string;
   description?: string;
+  isDefault?: boolean;
 }
 
 export interface ChatMessage {

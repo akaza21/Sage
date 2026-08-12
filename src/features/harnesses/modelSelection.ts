@@ -12,5 +12,5 @@ export function preferredModelId(
     return previousModelId;
   }
 
-  return models[0]?.id ?? null;
+  return models.find((model) => model.isDefault)?.id ?? models[0]?.id ?? null;
 }

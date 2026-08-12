@@ -67,6 +67,8 @@ export function snapshotProjection(snapshot: BootstrapSnapshot) {
     resourceTrashNotice: null,
     requestGenerations: {},
     models: [],
+    harnessDiscoveryPhase: "idle" as const,
+    harnessDiscoveryError: null,
     composerText: "",
     sending: false,
   };

@@ -5,19 +5,17 @@ import type {
   ChatMessage,
   ArchivedChatSummary,
   FileChange,
-  HarnessDefinition,
-  ModelOption,
   ProjectListItem,
   ProjectRepositoryStatus,
   ProjectSummary,
   ResourceRef,
   WorkbenchTab,
 } from "../domain/workbench";
-import { preferredModelId } from "../features/harnesses/modelSelection";
 import { desktop } from "../services/desktop";
 import { createEditorSlice, type EditorSlice } from "./editorSlice";
 import { createFileCreateSlice, type FileCreateSlice } from "./fileCreateSlice";
 import { createFileRenameSlice, type FileRenameSlice } from "./fileRenameSlice";
+import { createHarnessSlice, type HarnessSlice } from "./harnessSlice";
 import {
   createResourceTrashSlice,
   type ResourceTrashSlice,
@@ -67,6 +65,7 @@ export interface WorkbenchState
     EditorSlice,
     FileCreateSlice,
     FileRenameSlice,
+    HarnessSlice,
     ProjectSlice,
     RepositoryCommitSlice,
     RepositoryMutationSlice,
@@ -84,10 +83,6 @@ export interface WorkbenchState
   selectedResource: ResourceRef | null;
   sidebarOpen: boolean;
   sidebarView: SidebarView;
-  harnesses: HarnessDefinition[];
-  selectedHarnessId: string | null;
-  models: ModelOption[];
-  selectedModelId: string | null;
   sessionId: string | null;
   messages: ChatMessage[];
   repositories: ProjectRepositoryStatus;
@@ -99,21 +94,12 @@ export interface WorkbenchState
   repositoryRefreshing: boolean;
   repositoryRefreshSuperseded: boolean;
   repositoryRequestGeneration: number;
-  harnessRequestGeneration: number;
   selectRoot: (rootId: string) => void;
   activateTab: (tabId: string) => Promise<void>;
   closeTab: (tabId: string) => void;
   refreshRepository: () => Promise<void>;
   setSidebarView: (view: SidebarView) => void;
   toggleSidebar: () => void;
-  selectHarness: (harnessId: string) => Promise<void>;
-  loadHarnessModelsForProjection: (
-    harnessId: string,
-    selectedModelId: string | null,
-    projectGeneration: number,
-    projectId: string,
-  ) => Promise<void>;
-  selectModel: (modelId: string) => void;
 }
 
 const emptyRepositories: ProjectRepositoryStatus = {
@@ -127,45 +113,6 @@ function errorMessage(error: unknown): string {
 }
 
 export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
-  const loadHarnessModels = async (
-    harnessId: string,
-    previousModelId: string | null,
-    generation: number,
-    projectId: string,
-  ) => {
-    const requestGeneration = nextProjectGeneration(
-      get().harnessRequestGeneration,
-    );
-    set({
-      selectedHarnessId: harnessId,
-      models: [],
-      selectedModelId: null,
-      harnessRequestGeneration: requestGeneration,
-    });
-    try {
-      const models = await desktop.listHarnessModels(harnessId);
-      if (
-        matchesProjectIntent(get(), generation, projectId) &&
-        get().harnessRequestGeneration === requestGeneration &&
-        get().selectedHarnessId === harnessId
-      ) {
-        set({
-          models,
-          selectedModelId: preferredModelId(models, previousModelId),
-          error: null,
-        });
-      }
-    } catch (error) {
-      if (
-        matchesProjectIntent(get(), generation, projectId) &&
-        get().harnessRequestGeneration === requestGeneration &&
-        get().selectedHarnessId === harnessId
-      ) {
-        set({ error: errorMessage(error) });
-      }
-    }
-  };
-
   return {
     phase: "booting",
     error: null,
@@ -178,10 +125,6 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     selectedResource: null,
     sidebarOpen: true,
     sidebarView: "explorer",
-    harnesses: [],
-    selectedHarnessId: null,
-    models: [],
-    selectedModelId: null,
     sessionId: null,
     messages: [],
     repositories: emptyRepositories,
@@ -193,7 +136,6 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     repositoryRefreshing: false,
     repositoryRefreshSuperseded: false,
     repositoryRequestGeneration: 0,
-    harnessRequestGeneration: 0,
     ...createProjectSlice(set, get, store),
     ...createChatSlice(set, get, store),
     ...createChatArchiveSlice(set, get, store),
@@ -207,6 +149,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createFileCreateSlice(set, get, store),
     ...createFileRenameSlice(set, get, store),
     ...createResourceTrashSlice(set, get, store),
+    ...createHarnessSlice(set, get, store),
 
     selectRoot: (selectedRootId) => {
       if (
@@ -342,36 +285,5 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
 
     setSidebarView: (sidebarView) => set({ sidebarView, sidebarOpen: true }),
     toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-
-    selectHarness: async (harnessId) => {
-      if (get().projectTransitioning) return;
-      const generation = get().projectGeneration;
-      const projectId = get().project?.id;
-      if (!projectId) return;
-      const previous =
-        get().selectedHarnessId === harnessId ? get().selectedModelId : null;
-      await loadHarnessModels(harnessId, previous, generation, projectId);
-    },
-
-    loadHarnessModelsForProjection: async (
-      harnessId,
-      selectedModelId,
-      projectGeneration,
-      projectId,
-    ) => {
-      if (!matchesProjectIntent(get(), projectGeneration, projectId)) return;
-      await loadHarnessModels(
-        harnessId,
-        selectedModelId,
-        projectGeneration,
-        projectId,
-      );
-    },
-
-    selectModel: (selectedModelId) => {
-      if (get().models.some((model) => model.id === selectedModelId)) {
-        set({ selectedModelId });
-      }
-    },
   };
 });

@@ -60,6 +60,10 @@ impl ProjectRootAuthority {
         &self.canonical_path
     }
 
+    pub(crate) fn identity_bytes(&self) -> [u8; 24] {
+        self.identity.stable_bytes()
+    }
+
     pub(crate) fn revalidate(&self) -> AppResult<()> {
         let canonical = self.canonical_path.canonicalize().map_err(|_| {
             AppError::InvalidRequest("selected project root is missing or unavailable".into())

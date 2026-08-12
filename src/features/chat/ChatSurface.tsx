@@ -1,4 +1,4 @@
-import { ArrowUp, Check, ChevronDown, ShieldCheck } from "lucide-react";
+import { ArrowUp, Check } from "lucide-react";
 import { type FormEvent, useEffect, useRef } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
@@ -12,6 +12,8 @@ import type { ResourceRef } from "../../domain/workbench";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { EditSummary } from "./EditSummary";
 import { ChatHandoffControl } from "./ChatHandoffControl";
+import { ChatHarnessControls } from "./ChatHarnessControls";
+import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
 import {
   AcpChatProjection,
   type OpenResourceTarget,
@@ -44,8 +46,10 @@ export function ChatSurface() {
   const selectedHarnessId = useWorkbenchStore(
     (state) => state.selectedHarnessId,
   );
-  const models = useWorkbenchStore((state) => state.models);
   const selectedModelId = useWorkbenchStore((state) => state.selectedModelId);
+  const harnessDiscoveryPhase = useWorkbenchStore(
+    (state) => state.harnessDiscoveryPhase,
+  );
   const composerText = useWorkbenchStore((state) => state.composerText);
   const sending = useWorkbenchStore((state) => state.sending);
   const projectTransitioning = useWorkbenchStore(
@@ -54,8 +58,6 @@ export function ChatSurface() {
   const project = useWorkbenchStore((state) => state.project);
   const error = useWorkbenchStore((state) => state.error);
   const chatError = useWorkbenchStore((state) => state.chatError);
-  const selectHarness = useWorkbenchStore((state) => state.selectHarness);
-  const selectModel = useWorkbenchStore((state) => state.selectModel);
   const setComposerText = useWorkbenchStore((state) => state.setComposerText);
   const sendPrompt = useWorkbenchStore((state) => state.sendPrompt);
   const openDiff = useWorkbenchStore((state) => state.openDiff);
@@ -95,23 +97,23 @@ export function ChatSurface() {
       : null;
   const harnessStatus = !selectedHarness
     ? "No harness"
-    : selectedHarness.source === "development"
-      ? "Test simulator"
-      : !harnessAvailable
-        ? selectedHarness.installState === "installing"
-          ? "Installing"
-          : "Unavailable"
-        : selectedCurrentSession?.state === "active"
-          ? "Live"
-          : selectedCurrentSession
-            ? `${selectedCurrentSession.state[0].toUpperCase()}${selectedCurrentSession.state.slice(1)}`
-            : "Ready";
-  const visibleHarnesses = harnesses.filter(
-    (harness) =>
-      harness.installState === "available" ||
-      harness.source === "development" ||
-      harness.id === selectedHarnessId,
-  );
+    : harnessDiscoveryPhase === "checking"
+      ? "Checking"
+      : harnessDiscoveryPhase === "signInRequired"
+        ? "Sign in required"
+        : harnessDiscoveryPhase === "error"
+          ? "Unavailable"
+          : selectedHarness.source === "development"
+            ? "Test simulator"
+            : !harnessAvailable
+              ? selectedHarness.installState === "installing"
+                ? "Installing"
+                : "Unavailable"
+              : selectedCurrentSession?.state === "active"
+                ? "Live"
+                : selectedCurrentSession
+                  ? `${selectedCurrentSession.state[0].toUpperCase()}${selectedCurrentSession.state.slice(1)}`
+                  : "Ready";
   const actionBusy = useNativeAcp ? acpActions.busy : sending;
   const activeAcpTurn = useNativeAcp ? currentNonterminalTurn(acpPage) : null;
   const canCloseSession = Boolean(
@@ -125,6 +127,7 @@ export function ChatSurface() {
         acpPage &&
         harnessAvailable &&
         selectedAcpBindingId &&
+        harnessDiscoveryPhase === "ready" &&
         (!selectedCurrentSession || selectedCurrentSession.capabilities.prompt),
       )
     : harnessAvailable;
@@ -288,7 +291,11 @@ export function ChatSurface() {
             {foregroundError}
           </div>
         ) : null}
-        {!canPrompt ? (
+        <HarnessDiscoveryNotice />
+        {!canPrompt &&
+        !["checking", "signInRequired", "error"].includes(
+          harnessDiscoveryPhase,
+        ) ? (
           <div className="composer__notice">
             No reviewed local binding is available for this harness.
           </div>
@@ -321,62 +328,10 @@ export function ChatSurface() {
           }}
         />
         <div className="composer__toolbar">
-          <div className="composer__controls">
-            <label className="select-control">
-              <span className="sr-only">Harness</span>
-              <select
-                value={selectedHarnessId ?? ""}
-                disabled={projectTransitioning}
-                onChange={(event) => void selectHarness(event.target.value)}
-              >
-                {visibleHarnesses.map((harness) => (
-                  <option
-                    key={harness.id}
-                    value={harness.id}
-                    disabled={harness.installState !== "available"}
-                  >
-                    {harness.name}
-                    {harness.source === "development"
-                      ? " — test only"
-                      : harness.installState !== "available"
-                        ? " — unavailable"
-                        : ""}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={14} aria-hidden="true" />
-            </label>
-            <label className="select-control">
-              <span className="sr-only">Model</span>
-              <select
-                value={selectedModelId ?? ""}
-                disabled={
-                  projectTransitioning || !canPrompt || models.length === 0
-                }
-                onChange={(event) => selectModel(event.target.value)}
-              >
-                {models.length === 0 ? (
-                  <option value="">Harness default</option>
-                ) : (
-                  models.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name}
-                    </option>
-                  ))
-                )}
-              </select>
-              <ChevronDown size={14} aria-hidden="true" />
-            </label>
-            {availableBinding ? (
-              <span
-                className="access-mode"
-                title="Permission requests fail closed"
-              >
-                <ShieldCheck size={14} aria-hidden="true" />
-                Read-only policy
-              </span>
-            ) : null}
-          </div>
+          <ChatHarnessControls
+            availableBinding={availableBinding}
+            canPrompt={canPrompt}
+          />
           {useNativeAcp && acpActions.cancellableTurnId ? (
             <button
               className="send-button"

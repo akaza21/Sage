@@ -136,9 +136,15 @@ export const createProjectSlice: StateCreator<
         generation,
         preserveChatOwnership,
       );
+      if (result.recoveryError) {
+        throw new Error(result.recoveryError);
+      }
       return;
     }
     await loadCommittedProjection(generation, validate, preserveChatOwnership);
+    if (result.recoveryError) {
+      throw new Error(result.recoveryError);
+    }
   };
 
   const recoverUnknownTransition = async (

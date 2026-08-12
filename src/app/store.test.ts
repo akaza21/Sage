@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { CodexDiscoveryResponse } from "../domain/acp";
 import { resourceKey } from "../domain/resourceIdentity";
 import type {
   BootstrapSnapshot,
@@ -14,6 +15,7 @@ import type {
   WorkbenchTab,
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
+import { acpDesktop } from "../services/acpDesktop";
 import { useWorkbenchStore } from "./store";
 
 const resource = (relativePath: string, rootId = "root-a"): ResourceRef => ({
@@ -203,6 +205,8 @@ describe("workbench resource and project navigation", () => {
       selectedHarnessId: null,
       selectedModelId: null,
       models: [],
+      harnessDiscoveryPhase: "idle",
+      harnessDiscoveryError: null,
       sendRequestGeneration: 0,
       chatOwnershipEpoch: 0,
       chatUiById: {},
@@ -2576,6 +2580,218 @@ describe("workbench resource and project navigation", () => {
     expect(state.selectedModelId).toBe("new-model");
   });
 
+  it("publishes admitted Codex models only after managed-account discovery completes", async () => {
+    const onlyRoot = useWorkbenchStore.getState().project!.roots[0];
+    useWorkbenchStore.setState({
+      project: { ...useWorkbenchStore.getState().project!, roots: [onlyRoot] },
+      harnesses: [
+        {
+          id: "codex",
+          name: "Codex",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          transport: "acp",
+          bindingId: "codex-app-server",
+          accountModelDiscovery: true,
+        },
+      ],
+    });
+    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+      projectId: "project-a",
+      projectGeneration: "0",
+      rootId: "root-a",
+      bindingId: "codex-app-server",
+      runtimeEpoch: "1",
+      account: "managedChatgpt",
+      models: [
+        { id: "gpt-a", name: "GPT A", isDefault: false },
+        { id: "gpt-b", name: "GPT B", isDefault: true },
+      ],
+      defaultModelId: "gpt-b",
+    } as never);
+
+    const selecting = useWorkbenchStore.getState().selectHarness("codex");
+    expect(useWorkbenchStore.getState()).toEqual(
+      expect.objectContaining({
+        harnessDiscoveryPhase: "checking",
+        models: [],
+        selectedModelId: null,
+      }),
+    );
+    await selecting;
+
+    expect(useWorkbenchStore.getState()).toEqual(
+      expect.objectContaining({
+        harnessDiscoveryPhase: "ready",
+        selectedModelId: "gpt-b",
+        models: [
+          { id: "gpt-a", name: "GPT A", isDefault: false },
+          { id: "gpt-b", name: "GPT B", isDefault: true },
+        ],
+      }),
+    );
+  });
+
+  it("routes account model discovery through curated capability metadata", async () => {
+    const onlyRoot = useWorkbenchStore.getState().project!.roots[0];
+    useWorkbenchStore.setState({
+      project: { ...useWorkbenchStore.getState().project!, roots: [onlyRoot] },
+      harnesses: [
+        {
+          id: "curated-account-models",
+          name: "Curated account models",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          transport: "acp",
+          bindingId: "future-curated-binding",
+          accountModelDiscovery: true,
+        },
+      ],
+    });
+    const genericModels = vi.spyOn(desktop, "listHarnessModels");
+    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+      projectId: "project-a",
+      projectGeneration: "0",
+      rootId: "root-a",
+      bindingId: "future-curated-binding",
+      runtimeEpoch: "1",
+      account: "managedChatgpt",
+      models: [{ id: "capability-model", name: "Capability", isDefault: true }],
+      defaultModelId: "capability-model",
+    } as never);
+
+    await useWorkbenchStore.getState().selectHarness("curated-account-models");
+
+    expect(genericModels).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState()).toEqual(
+      expect.objectContaining({
+        harnessDiscoveryPhase: "ready",
+        selectedModelId: "capability-model",
+      }),
+    );
+  });
+
+  it("keeps the Codex composer model state empty while sign-in is required", async () => {
+    const onlyRoot = useWorkbenchStore.getState().project!.roots[0];
+    useWorkbenchStore.setState({
+      project: { ...useWorkbenchStore.getState().project!, roots: [onlyRoot] },
+      harnesses: [
+        {
+          id: "codex",
+          name: "Codex",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          transport: "acp",
+          bindingId: "codex-app-server",
+          accountModelDiscovery: true,
+        },
+      ],
+    });
+    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+      projectId: "project-a",
+      projectGeneration: "0",
+      rootId: "root-a",
+      bindingId: "codex-app-server",
+      runtimeEpoch: "1",
+      account: "signedOut",
+      models: [{ id: "gpt-a", name: "GPT A", isDefault: true }],
+      defaultModelId: "gpt-a",
+    } as never);
+
+    await useWorkbenchStore.getState().selectHarness("codex");
+
+    expect(useWorkbenchStore.getState()).toEqual(
+      expect.objectContaining({
+        harnessDiscoveryPhase: "signInRequired",
+        models: [],
+        selectedModelId: null,
+      }),
+    );
+  });
+
+  it("ignores Codex discovery from a stale native transition epoch", async () => {
+    const pending = deferred<CodexDiscoveryResponse>();
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "codex",
+          name: "Codex",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          transport: "acp",
+          bindingId: "codex-app-server",
+          accountModelDiscovery: true,
+        },
+      ],
+    });
+    vi.spyOn(acpDesktop, "discoverCodex").mockReturnValue(pending.promise);
+
+    const selecting = useWorkbenchStore.getState().selectHarness("codex");
+    useWorkbenchStore.setState({ nativeTransitionEpoch: 1 });
+    pending.resolve({
+      projectId: "project-a",
+      projectGeneration: "0",
+      rootId: "root-a",
+      bindingId: "codex-app-server",
+      runtimeEpoch: "1",
+      account: "managedChatgpt",
+      models: [{ id: "stale", name: "Stale", isDefault: true }],
+      defaultModelId: "stale",
+    } as unknown as CodexDiscoveryResponse);
+    await selecting;
+
+    expect(useWorkbenchStore.getState()).toEqual(
+      expect.objectContaining({
+        harnessDiscoveryPhase: "checking",
+        models: [],
+        selectedModelId: null,
+      }),
+    );
+  });
+
+  it("ignores Codex discovery for a different Project root", async () => {
+    const onlyRoot = useWorkbenchStore.getState().project!.roots[0];
+    useWorkbenchStore.setState({
+      project: { ...useWorkbenchStore.getState().project!, roots: [onlyRoot] },
+      harnesses: [
+        {
+          id: "codex",
+          name: "Codex",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          transport: "acp",
+          bindingId: "codex-app-server",
+          accountModelDiscovery: true,
+        },
+      ],
+    });
+    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+      projectId: "project-a",
+      projectGeneration: "0",
+      rootId: "root-foreign",
+      bindingId: "codex-app-server",
+      runtimeEpoch: "1",
+      account: "managedChatgpt",
+      models: [{ id: "foreign", name: "Foreign", isDefault: true }],
+      defaultModelId: "foreign",
+    } as never);
+
+    await useWorkbenchStore.getState().selectHarness("codex");
+
+    expect(useWorkbenchStore.getState()).toEqual(
+      expect.objectContaining({
+        harnessDiscoveryPhase: "checking",
+        models: [],
+        selectedModelId: null,
+      }),
+    );
+  });
+
   it.each(["success", "error"] as const)(
     "ignores late harness/model %s after switching projects",
     async (outcome) => {
@@ -2714,6 +2930,34 @@ describe("workbench resource and project navigation", () => {
     expect(state.phase).toBe("error");
     expect(state.error).toContain("project change committed");
     expect(state.projectTransitioning).toBe(false);
+  });
+
+  it("applies a committed Project snapshot but blocks when native cleanup is unsafe", async () => {
+    vi.spyOn(desktop, "switchProject").mockResolvedValue({
+      committed: true,
+      transitionEpoch: 1,
+      snapshot: snapshotB(),
+      recoveryError:
+        "Codex discovery cleanup did not converge; restart Sage before retrying.",
+    });
+    vi.spyOn(desktop, "listDirectory").mockResolvedValue({
+      resource: resource("", "root-b"),
+      entries: [],
+      truncated: false,
+    });
+
+    await useWorkbenchStore.getState().switchProject("project-b");
+
+    expect(useWorkbenchStore.getState()).toEqual(
+      expect.objectContaining({
+        phase: "error",
+        projectTransitioning: false,
+        project: expect.objectContaining({ id: "project-b" }),
+        error: expect.stringContaining(
+          "Codex discovery cleanup did not converge",
+        ),
+      }),
+    );
   });
 
   it("blocks the workbench if projection recovery fails after project creation", async () => {

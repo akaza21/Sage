@@ -1,4 +1,5 @@
 use crate::acp::{
+    bindings::codex::CodexDiscoveryRunError,
     contract::SafeText,
     intent::{
         AcpCapacityResource, AcpConflictResource, AcpIpcError, AcpUnavailableReason, IntentError,
@@ -6,6 +7,38 @@ use crate::acp::{
     page_admission::PageAdmissionError,
     store::StoreError,
 };
+
+pub(super) fn codex_discovery_error(error: CodexDiscoveryRunError) -> AcpIpcError {
+    match error {
+        CodexDiscoveryRunError::Unavailable => AcpIpcError::Unavailable {
+            reason: AcpUnavailableReason::PlatformUnsupported,
+            message: safe_message("Codex discovery is unsupported on this platform."),
+        },
+        CodexDiscoveryRunError::BindingUnavailable => binding_unavailable(),
+        CodexDiscoveryRunError::InvalidScope => AcpIpcError::InvalidRequest {
+            message: safe_message("The Codex discovery scope is invalid."),
+        },
+        CodexDiscoveryRunError::Busy => AcpIpcError::Capacity {
+            resource: AcpCapacityResource::Queue,
+            limit: 1,
+            message: safe_message("Codex discovery is already running; retry it."),
+        },
+        CodexDiscoveryRunError::Drift => AcpIpcError::Unavailable {
+            reason: AcpUnavailableReason::CapabilityUnavailable,
+            message: safe_message("Codex or the selected Project root changed; retry discovery."),
+        },
+        CodexDiscoveryRunError::Cleanup => AcpIpcError::RecoveryRequired {
+            message: safe_message("Codex discovery could not prove process cleanup; restart Sage."),
+        },
+        CodexDiscoveryRunError::Protocol
+        | CodexDiscoveryRunError::Timeout
+        | CodexDiscoveryRunError::Eof
+        | CodexDiscoveryRunError::Transport => AcpIpcError::Unavailable {
+            reason: AcpUnavailableReason::CapabilityUnavailable,
+            message: safe_message("Codex discovery failed safely; retry it."),
+        },
+    }
+}
 
 pub(super) fn binding_unavailable() -> AcpIpcError {
     AcpIpcError::Unavailable {

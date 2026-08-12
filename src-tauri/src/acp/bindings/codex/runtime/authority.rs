@@ -16,14 +16,24 @@ use crate::{
 pub(crate) struct CodexProjectRootAuthority(ProjectRootAuthority);
 
 impl CodexProjectRootAuthority {
-    #[cfg(test)]
     pub(crate) fn project_id(&self) -> &SageProjectId {
         self.0.scope().0
     }
 
-    #[cfg(test)]
+    pub(crate) fn project_generation(&self) -> crate::acp::contract::ProjectGeneration {
+        self.0.scope().1
+    }
+
     pub(crate) fn root_id(&self) -> &SageRootId {
         self.0.scope().2
+    }
+
+    pub(crate) fn identity_bytes(&self) -> [u8; 24] {
+        self.0.identity_bytes()
+    }
+
+    pub(crate) fn revalidate(&self) -> AppResult<()> {
+        self.0.revalidate()
     }
 
     fn into_inner(self) -> ProjectRootAuthority {

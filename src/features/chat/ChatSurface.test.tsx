@@ -168,11 +168,14 @@ beforeEach(() => {
         description: "ACP",
         installState: "available",
         source: "builtIn",
+        accountModelDiscovery: true,
         transport: "acp",
         bindingId: "codex-app-server",
       },
     ],
     selectedHarnessId: "codex",
+    harnessDiscoveryPhase: "ready",
+    harnessDiscoveryError: null,
   });
 });
 
@@ -193,6 +196,7 @@ describe("ChatSurface ACP resource integration", () => {
           description: "ACP",
           installState: "notInstalled",
           source: "builtIn",
+          accountModelDiscovery: true,
           transport: "acp",
           bindingId: "codex-app-server",
         },
@@ -202,6 +206,7 @@ describe("ChatSurface ACP resource integration", () => {
           description: "Later harness",
           installState: "notInstalled",
           source: "builtIn",
+          accountModelDiscovery: false,
           transport: "acp",
           bindingId: null,
         },
@@ -211,6 +216,7 @@ describe("ChatSurface ACP resource integration", () => {
           description: "Later harness",
           installState: "notInstalled",
           source: "builtIn",
+          accountModelDiscovery: false,
           transport: "acp",
           bindingId: null,
         },
@@ -220,6 +226,7 @@ describe("ChatSurface ACP resource integration", () => {
           description: "Later harness",
           installState: "notInstalled",
           source: "builtIn",
+          accountModelDiscovery: false,
           transport: "acp",
           bindingId: null,
         },
@@ -229,6 +236,7 @@ describe("ChatSurface ACP resource integration", () => {
           description: "Development",
           installState: "available",
           source: "development",
+          accountModelDiscovery: false,
           transport: "legacySimulator",
           bindingId: null,
         },
@@ -263,6 +271,7 @@ describe("ChatSurface ACP resource integration", () => {
           description: "Later harness",
           installState: "notInstalled",
           source: "builtIn",
+          accountModelDiscovery: false,
           transport: "acp",
           bindingId: null,
         },
@@ -272,6 +281,7 @@ describe("ChatSurface ACP resource integration", () => {
           description: "Development",
           installState: "available",
           source: "development",
+          accountModelDiscovery: false,
           transport: "legacySimulator",
           bindingId: null,
         },
@@ -298,6 +308,7 @@ describe("ChatSurface ACP resource integration", () => {
           description: "Development",
           installState: "available",
           source: "development",
+          accountModelDiscovery: false,
           transport: "legacySimulator",
           bindingId: null,
         },
@@ -369,6 +380,7 @@ describe("ChatSurface ACP resource integration", () => {
             description: "Second admitted binding",
             installState: "available",
             source: "builtIn",
+            accountModelDiscovery: false,
             transport: "acp",
             bindingId: "pi-acp",
           },
@@ -404,6 +416,7 @@ describe("ChatSurface ACP resource integration", () => {
           description: "Development",
           installState: "available",
           source: "development",
+          accountModelDiscovery: false,
           transport: "legacySimulator",
           bindingId: null,
         },
@@ -453,6 +466,7 @@ describe("ChatSurface ACP resource integration", () => {
           description: "Development",
           installState: "available",
           source: "development",
+          accountModelDiscovery: false,
           transport: "legacySimulator",
           bindingId: null,
         },
@@ -678,6 +692,7 @@ describe("ChatSurface ACP resource integration", () => {
           description: "Development",
           installState: "available",
           source: "development",
+          accountModelDiscovery: false,
           transport: "legacySimulator",
           bindingId: null,
         },
@@ -832,6 +847,40 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.getByLabelText("Message agent")).toBeDisabled();
   });
 
+  it("keeps model selection and prompting disabled while Codex discovery checks", () => {
+    useWorkbenchStore.setState({
+      harnessDiscoveryPhase: "checking",
+      models: [],
+      selectedModelId: null,
+    });
+
+    render(<ChatSurface />);
+
+    expect(
+      screen.getByText(/Checking Codex account and available models/),
+    ).toBeVisible();
+    expect(screen.getByLabelText("Model")).toBeDisabled();
+    expect(screen.getByLabelText("Message agent")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+  });
+
+  it("shows signed-out discovery with a bounded retry action", () => {
+    const retryHarnessDiscovery = vi.fn().mockResolvedValue(undefined);
+    useWorkbenchStore.setState({
+      harnessDiscoveryPhase: "signInRequired",
+      retryHarnessDiscovery,
+      models: [],
+      selectedModelId: null,
+    });
+
+    render(<ChatSurface />);
+
+    expect(screen.getByText(/sign in to chatgpt through codex/i)).toBeVisible();
+    expect(screen.getByLabelText("Message agent")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retryHarnessDiscovery).toHaveBeenCalledOnce();
+  });
+
   it("does not let a stale ACP page mask simulator messages", () => {
     useWorkbenchStore.setState({
       harnesses: [
@@ -841,6 +890,7 @@ describe("ChatSurface ACP resource integration", () => {
           description: "Legacy simulator",
           installState: "available",
           source: "development",
+          accountModelDiscovery: false,
           transport: "legacySimulator",
           bindingId: null,
         },
@@ -946,6 +996,7 @@ describe("ChatSurface ACP resource integration", () => {
           description: "Legacy simulator",
           installState: "available",
           source: "development",
+          accountModelDiscovery: false,
           transport: "legacySimulator",
           bindingId: null,
         },
