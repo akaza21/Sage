@@ -10,7 +10,7 @@ use crate::{
     acp::{
         bindings::codex::CodexBindingRegistration,
         contract::{ProjectGeneration, SageChatId, SageProjectId},
-        intent::{AcpChatPage, IntentSnapshot, PageCursor},
+        intent::{AcpChatPage, BindingId, IntentSnapshot, PageCursor},
         page_admission::{PageAdmissionError, PageReadAdmission, PageReadLease},
         runtime::{
             BoundedThread, JournalError, JournalHandle, JournalLane, ProjectionNotifier,
@@ -201,6 +201,11 @@ impl AcpService {
 
     pub(crate) fn codex_auth_manager(&self) -> Arc<CodexAuthManager> {
         Arc::clone(&self.codex_auth)
+    }
+
+    pub(crate) fn accepts_codex_binding(&self, requested: &BindingId) -> bool {
+        self.refresh_codex_binding()
+            .is_ok_and(|binding| binding.binding_id() == requested.as_str())
     }
 
     pub(super) fn refresh_codex_binding(

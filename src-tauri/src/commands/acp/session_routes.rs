@@ -19,7 +19,7 @@ pub(crate) async fn start_acp_session_inner(
         &snapshot,
     )
     .map_err(intent_error)?;
-    if request.binding_id.as_str() == "codex-app-server" {
+    if state.acp.accepts_codex_binding(&request.binding_id) {
         let project_root = state
             .database
             .codex_project_root_authority(&_transition)

@@ -581,6 +581,88 @@ fn unavailable_binding_is_typed_and_never_mutates_durable_history() {
     });
 }
 
+#[test]
+fn unavailable_registration_rejects_the_codex_name_without_routing_by_name() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, chat, root) = state_with_project();
+        let project = SageProjectId::parse(project).unwrap();
+        let chat = SageChatId::parse(chat).unwrap();
+        let page = state
+            .acp
+            .load_chat_page(project.clone(), chat.clone(), None)
+            .unwrap();
+        fs::remove_dir_all(&root).unwrap();
+
+        let result = start_acp_session_inner(
+            &state,
+            StartAcpSessionRequest {
+                project_id: project.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
+                model_id: None,
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(AcpIpcError::Unavailable {
+                reason: AcpUnavailableReason::BindingUnavailable,
+                ..
+            })
+        ));
+        let after = state
+            .acp
+            .load_chat_page(project.clone(), chat, None)
+            .unwrap();
+        assert_eq!(after, page);
+        drop(state);
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn admitted_registration_rejects_a_foreign_binding_name() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, chat, root) = state_with_admitted_codex_project();
+        let project = SageProjectId::parse(project).unwrap();
+        let chat = SageChatId::parse(chat).unwrap();
+        let page = state
+            .acp
+            .load_chat_page(project.clone(), chat.clone(), None)
+            .unwrap();
+
+        let result = start_acp_session_inner(
+            &state,
+            StartAcpSessionRequest {
+                project_id: project.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                binding_id: BindingId::new("bindingId", "foreign-app-server").unwrap(),
+                model_id: None,
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(AcpIpcError::Unavailable {
+                reason: AcpUnavailableReason::BindingUnavailable,
+                ..
+            })
+        ));
+        let after = state.acp.load_chat_page(project, chat, None).unwrap();
+        assert_eq!(after, page);
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
 #[cfg(windows)]
 #[test]
 fn admitted_codex_start_command_routes_to_the_durable_service() {
