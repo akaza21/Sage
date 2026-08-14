@@ -162,13 +162,17 @@ fn response(
         .get("id")
         .and_then(Value::as_u64)
         .ok_or(IngressError::Malformed)?;
-    let kind = adapter.take_pending(id).ok_or(IngressError::Uncorrelated)?;
+    let kind = adapter.pending_kind(id).ok_or(IngressError::Uncorrelated)?;
     if let Some(error) = object.get("error") {
         let message = error
             .get("message")
             .and_then(Value::as_str)
             .unwrap_or("Codex request failed");
         let payload = error_payload("codexRpc", message, false)?;
+        if kind != RequestKind::TurnStart {
+            let removed = adapter.take_pending(id);
+            debug_assert_eq!(removed, Some(kind));
+        }
         return match kind {
             RequestKind::TurnStart => match adapter.fail_turn_start(id).map_err(identity)? {
                 super::state::TurnStartFailure::Failed(turn) => {
@@ -198,16 +202,17 @@ fn response(
                     closes_session: false,
                 },
             ])),
-            _ => {
-                adapter.fail_response(id, kind).map_err(permission)?;
-                Ok(IncomingEvent::Error(payload).into())
-            }
+            _ => Ok(IncomingEvent::Error(payload).into()),
         };
     }
     let result = object
         .get("result")
         .and_then(Value::as_object)
         .ok_or(IngressError::Malformed)?;
+    if kind != RequestKind::TurnStart {
+        let removed = adapter.take_pending(id);
+        debug_assert_eq!(removed, Some(kind));
+    }
     let event = match kind {
         RequestKind::Initialize => IncomingEvent::Initialized {
             capabilities: adapter.accept_initialize(result).map_err(capability)?,

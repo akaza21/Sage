@@ -5,7 +5,7 @@ use crate::acp::{
 };
 
 use super::{
-    AdapterError, CodexAdapter, ExternalKind, ItemTerminal, ScopedExternalId, StartedTurnStart,
+    AdapterError, CodexAdapter, CorrelationMatch, ExternalKind, ItemTerminal, ScopedExternalId,
     TERMINAL_ID_BYTES, TurnBinding, TurnTombstone,
 };
 
@@ -52,30 +52,26 @@ impl CodexAdapter {
                 TurnBinding::PreviousTerminal,
             ));
         }
-        if self.pending_turn_start.is_none() {
-            return Err(AdapterError::TurnIntentConflict);
+        match self.turn_start_correlations.observe(&id)? {
+            CorrelationMatch::Pending(client_message_id) => {
+                self.active_turn_client_message_id = Some(client_message_id);
+                self.active_item_terminals.clear();
+                self.active_terminal_id_bytes = 0;
+                self.active_turn_id = Some(id.clone());
+                Ok((
+                    self.scoped_in_turn(ExternalKind::Turn, value, value)?,
+                    TurnBinding::NewlyActive,
+                ))
+            }
+            CorrelationMatch::Terminal {
+                turn_id,
+                client_message_id,
+            } => Ok((
+                self.scoped_correlated_turn(&turn_id, &client_message_id)?,
+                TurnBinding::PreviousTerminal,
+            )),
+            CorrelationMatch::Active { .. } => Err(AdapterError::TurnIntentConflict),
         }
-        if self.started_turn_starts.len() >= LIMITS.queues.outstanding_rpc_per_session as usize {
-            return Err(AdapterError::PendingFull);
-        }
-        let (request_id, client_message_id) = self
-            .pending_turn_start
-            .as_ref()
-            .map(|intent| (intent.request_id, intent.client_message_id.clone()))
-            .ok_or(AdapterError::TurnIntentConflict)?;
-        self.pending_turn_start = None;
-        self.active_turn_client_message_id = Some(client_message_id);
-        self.active_item_terminals.clear();
-        self.active_terminal_id_bytes = 0;
-        self.active_turn_id = Some(id.clone());
-        self.started_turn_starts.push(StartedTurnStart {
-            request_id,
-            turn_id: id.clone(),
-        });
-        Ok((
-            self.scoped_in_turn(ExternalKind::Turn, value, value)?,
-            TurnBinding::NewlyActive,
-        ))
     }
 
     pub(crate) fn complete_turn_start(
@@ -83,46 +79,46 @@ impl CodexAdapter {
         request_id: u64,
         value: &str,
     ) -> Result<(ScopedExternalId, TurnBinding), AdapterError> {
-        if let Some(index) = self
-            .started_turn_starts
-            .iter()
-            .position(|started| started.request_id == request_id)
-        {
-            let started = self.started_turn_starts.swap_remove(index);
-            if started.turn_id.as_str() != value {
-                return Err(AdapterError::IdentityConflict);
+        let turn_id = ExternalId::new("externalTurnId", value.to_owned())?;
+        let correlation = self
+            .turn_start_correlations
+            .response(request_id, &turn_id)?;
+        let result = match correlation {
+            CorrelationMatch::Pending(client_message_id) => {
+                if self.active_turn_id.as_ref() == Some(&turn_id)
+                    || self
+                        .previous_turn
+                        .as_ref()
+                        .is_some_and(|previous| previous.id == turn_id)
+                {
+                    return Err(AdapterError::IdentityConflict);
+                }
+                self.active_turn_client_message_id = Some(client_message_id);
+                self.active_item_terminals.clear();
+                self.active_terminal_id_bytes = 0;
+                self.active_turn_id = Some(turn_id);
+                (
+                    self.scoped_in_turn(ExternalKind::Turn, value, value)?,
+                    TurnBinding::NewlyActive,
+                )
             }
-        }
-        if self
-            .pending_turn_start
-            .as_ref()
-            .is_some_and(|intent| intent.request_id == request_id)
-        {
-            let result = self.observe_turn_started(value)?;
-            let _ = self.started_turn_starts.pop();
-            return Ok(result);
-        }
-        if self
-            .active_turn_id
-            .as_ref()
-            .is_some_and(|turn| turn.as_str() == value)
-        {
-            return Ok((
-                self.scoped_in_turn(ExternalKind::Turn, value, value)?,
+            CorrelationMatch::Active {
+                turn_id,
+                client_message_id,
+            } => (
+                self.scoped_correlated_turn(&turn_id, &client_message_id)?,
                 TurnBinding::Active,
-            ));
-        }
-        if self
-            .previous_turn
-            .as_ref()
-            .is_some_and(|turn| turn.id.as_str() == value)
-        {
-            return Ok((
-                self.scoped_in_turn(ExternalKind::Turn, value, value)?,
+            ),
+            CorrelationMatch::Terminal {
+                turn_id,
+                client_message_id,
+            } => (
+                self.scoped_correlated_turn(&turn_id, &client_message_id)?,
                 TurnBinding::PreviousTerminal,
-            ));
-        }
-        Err(AdapterError::TurnIntentConflict)
+            ),
+        };
+        self.finish_turn_start_response(request_id)?;
+        Ok(result)
     }
 
     pub(crate) fn expect_turn(&self, value: &str) -> Result<(), AdapterError> {
@@ -210,6 +206,7 @@ impl CodexAdapter {
             .active_turn_client_message_id
             .take()
             .ok_or(AdapterError::TurnIntentConflict)?;
+        self.turn_start_correlations.mark_terminal(&active);
         self.previous_turn = Some(TurnTombstone {
             id: active,
             client_message_id,
@@ -282,5 +279,16 @@ impl CodexAdapter {
                 .filter(|previous| previous.id.as_str() == turn)
                 .map(|previous| previous.item_terminals.as_slice())
         }
+    }
+
+    fn scoped_correlated_turn(
+        &self,
+        turn_id: &ExternalId,
+        client_message_id: &crate::acp::contract::RequiredText<512>,
+    ) -> Result<ScopedExternalId, AdapterError> {
+        let mut scoped = self.scoped(ExternalKind::Turn, turn_id.clone());
+        scoped.turn_id = Some(turn_id.clone());
+        scoped.turn_client_message_id = Some(client_message_id.clone());
+        Ok(scoped)
     }
 }

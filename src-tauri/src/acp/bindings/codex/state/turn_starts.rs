@@ -1,0 +1,189 @@
+use crate::acp::{contract::RequiredText, intent::ExternalId, limits::LIMITS};
+
+use super::AdapterError;
+
+#[derive(Debug)]
+enum CorrelationState {
+    Pending,
+    Active(ExternalId),
+    Terminal(ExternalId),
+}
+
+#[derive(Debug)]
+struct TurnStartCorrelation {
+    request_id: u64,
+    client_message_id: RequiredText<512>,
+    state: CorrelationState,
+}
+
+#[derive(Debug)]
+pub(super) struct TurnStartCorrelations {
+    entries: Vec<TurnStartCorrelation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum CorrelationMatch {
+    Pending(RequiredText<512>),
+    Active {
+        turn_id: ExternalId,
+        client_message_id: RequiredText<512>,
+    },
+    Terminal {
+        turn_id: ExternalId,
+        client_message_id: RequiredText<512>,
+    },
+}
+
+impl TurnStartCorrelations {
+    pub(super) fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+
+    pub(super) fn has_pending(&self) -> bool {
+        self.entries
+            .iter()
+            .any(|entry| matches!(entry.state, CorrelationState::Pending))
+    }
+
+    pub(super) fn register(&mut self, request_id: u64, client_message_id: RequiredText<512>) {
+        debug_assert!(self.entries.len() < LIMITS.queues.outstanding_rpc_per_session as usize);
+        debug_assert!(
+            !self
+                .entries
+                .iter()
+                .any(|entry| entry.request_id == request_id)
+        );
+        debug_assert!(!self.has_pending());
+        self.entries.push(TurnStartCorrelation {
+            request_id,
+            client_message_id,
+            state: CorrelationState::Pending,
+        });
+    }
+
+    pub(super) fn observe(
+        &mut self,
+        turn_id: &ExternalId,
+    ) -> Result<CorrelationMatch, AdapterError> {
+        if let Some(known) = self.known_turn(turn_id) {
+            return Ok(known);
+        }
+        let entry = self
+            .entries
+            .iter_mut()
+            .find(|entry| matches!(entry.state, CorrelationState::Pending))
+            .ok_or(AdapterError::TurnIntentConflict)?;
+        entry.state = CorrelationState::Active(turn_id.clone());
+        Ok(CorrelationMatch::Pending(entry.client_message_id.clone()))
+    }
+
+    pub(super) fn response(
+        &self,
+        request_id: u64,
+        turn_id: &ExternalId,
+    ) -> Result<CorrelationMatch, AdapterError> {
+        let entry = self
+            .entries
+            .iter()
+            .find(|entry| entry.request_id == request_id)
+            .ok_or(AdapterError::TurnIntentConflict)?;
+        match &entry.state {
+            CorrelationState::Pending => {
+                if self.entries.iter().any(|other| {
+                    other.request_id != request_id
+                        && match &other.state {
+                            CorrelationState::Active(known) | CorrelationState::Terminal(known) => {
+                                known == turn_id
+                            }
+                            CorrelationState::Pending => false,
+                        }
+                }) {
+                    return Err(AdapterError::IdentityConflict);
+                }
+                Ok(CorrelationMatch::Pending(entry.client_message_id.clone()))
+            }
+            CorrelationState::Active(known) if known == turn_id => Ok(CorrelationMatch::Active {
+                turn_id: known.clone(),
+                client_message_id: entry.client_message_id.clone(),
+            }),
+            CorrelationState::Terminal(known) if known == turn_id => {
+                Ok(CorrelationMatch::Terminal {
+                    turn_id: known.clone(),
+                    client_message_id: entry.client_message_id.clone(),
+                })
+            }
+            CorrelationState::Active(_) | CorrelationState::Terminal(_) => {
+                Err(AdapterError::IdentityConflict)
+            }
+        }
+    }
+
+    pub(super) fn failure(&self, request_id: u64) -> Result<CorrelationMatch, AdapterError> {
+        let entry = self
+            .entries
+            .iter()
+            .find(|entry| entry.request_id == request_id)
+            .ok_or(AdapterError::TurnIntentConflict)?;
+        Ok(match &entry.state {
+            CorrelationState::Pending => CorrelationMatch::Pending(entry.client_message_id.clone()),
+            CorrelationState::Active(turn_id) => CorrelationMatch::Active {
+                turn_id: turn_id.clone(),
+                client_message_id: entry.client_message_id.clone(),
+            },
+            CorrelationState::Terminal(turn_id) => CorrelationMatch::Terminal {
+                turn_id: turn_id.clone(),
+                client_message_id: entry.client_message_id.clone(),
+            },
+        })
+    }
+
+    pub(super) fn discard_pending(&mut self, request_id: u64) -> Result<(), AdapterError> {
+        let index = self
+            .entries
+            .iter()
+            .position(|entry| {
+                entry.request_id == request_id && matches!(entry.state, CorrelationState::Pending)
+            })
+            .ok_or(AdapterError::TurnIntentConflict)?;
+        self.entries.swap_remove(index);
+        Ok(())
+    }
+
+    pub(super) fn consume(&mut self, request_id: u64) -> Result<(), AdapterError> {
+        let index = self
+            .entries
+            .iter()
+            .position(|entry| entry.request_id == request_id)
+            .ok_or(AdapterError::TurnIntentConflict)?;
+        self.entries.swap_remove(index);
+        Ok(())
+    }
+
+    pub(super) fn mark_terminal(&mut self, turn_id: &ExternalId) {
+        if let Some(entry) = self.entries.iter_mut().find(
+            |entry| matches!(&entry.state, CorrelationState::Active(active) if active == turn_id),
+        ) {
+            entry.state = CorrelationState::Terminal(turn_id.clone());
+        }
+    }
+
+    fn known_turn(&self, turn_id: &ExternalId) -> Option<CorrelationMatch> {
+        self.entries.iter().find_map(|entry| match &entry.state {
+            CorrelationState::Active(known) if known == turn_id => Some(CorrelationMatch::Active {
+                turn_id: known.clone(),
+                client_message_id: entry.client_message_id.clone(),
+            }),
+            CorrelationState::Terminal(known) if known == turn_id => {
+                Some(CorrelationMatch::Terminal {
+                    turn_id: known.clone(),
+                    client_message_id: entry.client_message_id.clone(),
+                })
+            }
+            CorrelationState::Pending
+            | CorrelationState::Active(_)
+            | CorrelationState::Terminal(_) => None,
+        })
+    }
+}

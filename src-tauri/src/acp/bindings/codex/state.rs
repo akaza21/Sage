@@ -1,6 +1,9 @@
 mod capabilities;
 mod permissions;
+mod turn_starts;
 mod turns;
+
+use turn_starts::{CorrelationMatch, TurnStartCorrelations};
 
 use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
@@ -53,18 +56,6 @@ struct TurnTombstone {
     terminal_id_bytes: usize,
 }
 
-#[derive(Debug)]
-struct TurnStartIntent {
-    request_id: u64,
-    client_message_id: RequiredText<512>,
-}
-
-#[derive(Debug)]
-struct StartedTurnStart {
-    request_id: u64,
-    turn_id: ExternalId,
-}
-
 #[derive(Debug, Clone)]
 struct NegotiatedMethods {
     snapshot: CapabilitySnapshotV1,
@@ -113,8 +104,7 @@ pub(crate) struct CodexAdapter {
     pending: Vec<(u64, RequestKind)>,
     negotiated: Option<NegotiatedMethods>,
     external_thread_id: Option<ExternalId>,
-    pending_turn_start: Option<TurnStartIntent>,
-    started_turn_starts: Vec<StartedTurnStart>,
+    turn_start_correlations: TurnStartCorrelations,
     active_turn_id: Option<ExternalId>,
     active_turn_client_message_id: Option<RequiredText<512>>,
     active_item_terminals: Vec<ItemTerminal>,
@@ -141,8 +131,7 @@ impl CodexAdapter {
             pending: Vec::new(),
             negotiated: None,
             external_thread_id: None,
-            pending_turn_start: None,
-            started_turn_starts: Vec::new(),
+            turn_start_correlations: TurnStartCorrelations::new(),
             active_turn_id: None,
             active_turn_client_message_id: None,
             active_item_terminals: Vec::new(),
@@ -235,7 +224,7 @@ impl CodexAdapter {
         client_message_id: &RequiredText<512>,
     ) -> Result<OutgoingRequest, AdapterError> {
         self.require_method(|methods| methods.snapshot.prompt)?;
-        if self.pending_turn_start.is_some() || self.active_turn_id.is_some() {
+        if self.turn_start_correlations.has_pending() || self.active_turn_id.is_some() {
             return Err(AdapterError::TurnAlreadyActive);
         }
         let thread = self
@@ -248,10 +237,8 @@ impl CodexAdapter {
             prompt,
             client_message_id,
         )?)?;
-        self.pending_turn_start = Some(TurnStartIntent {
-            request_id: id,
-            client_message_id: client_message_id.clone(),
-        });
+        self.turn_start_correlations
+            .register(id, client_message_id.clone());
         Ok(request)
     }
 
@@ -278,12 +265,12 @@ impl CodexAdapter {
     }
 
     pub(crate) fn reject_before_write(&mut self, id: u64) -> Result<(), AdapterError> {
-        let kind = self
-            .remove_pending(id)
-            .ok_or(AdapterError::ForeignRequest)?;
+        let kind = self.pending_kind(id).ok_or(AdapterError::ForeignRequest)?;
         if kind == RequestKind::TurnStart {
-            self.clear_turn_start(id)?;
+            self.turn_start_correlations.discard_pending(id)?;
         }
+        let removed = self.remove_pending(id);
+        debug_assert_eq!(removed, Some(kind));
         Ok(())
     }
 
@@ -305,38 +292,28 @@ impl CodexAdapter {
         self.remove_pending(id)
     }
 
-    pub(super) fn fail_response(&mut self, id: u64, kind: RequestKind) -> Result<(), AdapterError> {
-        if kind == RequestKind::TurnStart {
-            if self.active_turn_id.is_some() {
-                return Err(AdapterError::TurnIntentConflict);
-            }
-            self.clear_turn_start(id)?;
-        }
-        Ok(())
-    }
-
     pub(super) fn fail_turn_start(&mut self, id: u64) -> Result<TurnStartFailure, AdapterError> {
-        if let Some(client) = self
-            .pending_turn_start
-            .as_ref()
-            .filter(|intent| intent.request_id == id)
-            .map(|intent| intent.client_message_id.clone())
-        {
-            self.pending_turn_start = None;
-            self.active_turn_client_message_id = Some(client);
-            self.active_turn_id =
-                Some(ExternalId::new("externalTurnId", format!("rejected-{id}"))?);
-            return self.accept_active_failure().map(TurnStartFailure::Failed);
+        if self.pending_kind(id) != Some(RequestKind::TurnStart) {
+            return Err(AdapterError::TurnIntentConflict);
         }
-        let started = self.take_started_turn_start(id)?;
-        if self
-            .active_turn_id
-            .as_ref()
-            .is_some_and(|active| active == &started.turn_id)
-        {
-            return self.accept_active_failure().map(TurnStartFailure::Failed);
-        }
-        Ok(TurnStartFailure::Late)
+        let correlation = self.turn_start_correlations.failure(id)?;
+        let result = match correlation {
+            CorrelationMatch::Pending(client) => {
+                self.active_turn_client_message_id = Some(client);
+                self.active_turn_id =
+                    Some(ExternalId::new("externalTurnId", format!("rejected-{id}"))?);
+                self.accept_active_failure().map(TurnStartFailure::Failed)?
+            }
+            CorrelationMatch::Active { turn_id, .. }
+                if self.active_turn_id.as_ref() == Some(&turn_id) =>
+            {
+                self.accept_active_failure().map(TurnStartFailure::Failed)?
+            }
+            CorrelationMatch::Terminal { .. } => TurnStartFailure::Late,
+            CorrelationMatch::Active { .. } => return Err(AdapterError::TurnIntentConflict),
+        };
+        self.finish_turn_start_response(id)?;
+        Ok(result)
     }
 
     pub(super) fn fail_interrupt(&mut self) -> Result<ScopedExternalId, AdapterError> {
@@ -355,16 +332,6 @@ impl CodexAdapter {
         Ok(scoped)
     }
 
-    fn clear_turn_start(&mut self, id: u64) -> Result<(), AdapterError> {
-        match self.pending_turn_start.as_ref() {
-            Some(intent) if intent.request_id == id => {
-                self.pending_turn_start = None;
-                Ok(())
-            }
-            _ => Err(AdapterError::TurnIntentConflict),
-        }
-    }
-
     fn remove_pending(&mut self, id: u64) -> Option<RequestKind> {
         let index = self
             .pending
@@ -373,13 +340,14 @@ impl CodexAdapter {
         Some(self.pending.swap_remove(index).1)
     }
 
-    fn take_started_turn_start(&mut self, id: u64) -> Result<StartedTurnStart, AdapterError> {
-        let index = self
-            .started_turn_starts
-            .iter()
-            .position(|started| started.request_id == id)
-            .ok_or(AdapterError::TurnIntentConflict)?;
-        Ok(self.started_turn_starts.swap_remove(index))
+    pub(super) fn finish_turn_start_response(&mut self, id: u64) -> Result<(), AdapterError> {
+        if self.pending_kind(id) != Some(RequestKind::TurnStart) {
+            return Err(AdapterError::TurnIntentConflict);
+        }
+        self.turn_start_correlations.consume(id)?;
+        let removed = self.remove_pending(id);
+        debug_assert_eq!(removed, Some(RequestKind::TurnStart));
+        Ok(())
     }
 
     fn reserve(&mut self, request: OutgoingRequest) -> Result<OutgoingRequest, AdapterError> {

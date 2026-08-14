@@ -7,7 +7,7 @@ use crate::acp::{
 };
 
 use super::*;
-use super::{incoming::IngressError, state::AdapterError};
+use super::{incoming::IngressError, request::RequestKind, state::AdapterError};
 
 struct Mapper;
 
@@ -1089,6 +1089,109 @@ fn notification_first_turn_start_error_fails_active_turn_or_is_late() {
     assert_eq!(
         adapter
             .ingest(br#"{"id":3,"error":{"message":"late rejection"}}"#, &Mapper)
+            .unwrap(),
+        IngressDisposition::DuplicateTerminal
+    );
+}
+
+#[test]
+fn response_first_turn_start_rejects_previous_terminal_without_corrupting_correlations() {
+    let mut adapter = adapter();
+    ready(&mut adapter);
+
+    arm_turn(&mut adapter, 2, "client-delayed-response");
+    let started = json!({"method":"turn/started","params":{
+        "threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}
+    }});
+    adapter
+        .ingest(&serde_json::to_vec(&started).unwrap(), &Mapper)
+        .unwrap();
+    let completed = json!({"method":"turn/completed","params":{
+        "threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}
+    }});
+    adapter
+        .ingest(&serde_json::to_vec(&completed).unwrap(), &Mapper)
+        .unwrap();
+
+    arm_turn(&mut adapter, 3, "client-new-response-first");
+    assert!(matches!(
+        adapter.ingest(
+            br#"{"id":3,"result":{"turn":{"id":"turn-1","status":"inProgress"}}}"#,
+            &Mapper,
+        ),
+        Err(AdapterError::Ingress(IngressError::Identity))
+    ));
+    assert_eq!(adapter.pending_kind(2), Some(RequestKind::TurnStart));
+    assert_eq!(adapter.pending_kind(3), Some(RequestKind::TurnStart));
+
+    assert_eq!(
+        adapter
+            .ingest(
+                br#"{"id":2,"result":{"turn":{"id":"turn-1","status":"inProgress"}}}"#,
+                &Mapper,
+            )
+            .unwrap(),
+        IngressDisposition::DuplicateTerminal
+    );
+    assert!(matches!(
+        adapter
+            .ingest(
+                br#"{"id":3,"result":{"turn":{"id":"turn-2","status":"inProgress"}}}"#,
+                &Mapper,
+            )
+            .unwrap(),
+        IngressDisposition::Events(_)
+    ));
+}
+
+#[test]
+fn delayed_turn_start_response_stays_terminal_after_tombstone_eviction() {
+    let mut adapter = adapter();
+    ready(&mut adapter);
+    let started = |turn: &str| {
+        json!({"method":"turn/started","params":{
+            "threadId":"thread-1","turn":{"id":turn,"status":"inProgress"}
+        }})
+    };
+    let completed = |turn: &str| {
+        json!({"method":"turn/completed","params":{
+            "threadId":"thread-1","turn":{"id":turn,"status":"completed"}
+        }})
+    };
+
+    arm_turn(&mut adapter, 2, "client-delayed-oldest");
+    for frame in [started("turn-1"), completed("turn-1")] {
+        adapter
+            .ingest(&serde_json::to_vec(&frame).unwrap(), &Mapper)
+            .unwrap();
+    }
+
+    for (request_id, turn_id) in [(3, "turn-2"), (4, "turn-3")] {
+        arm_turn(&mut adapter, request_id, &format!("client-{turn_id}"));
+        adapter
+            .ingest(&serde_json::to_vec(&started(turn_id)).unwrap(), &Mapper)
+            .unwrap();
+        let response = json!({
+            "id": request_id,
+            "result": {"turn":{"id":turn_id,"status":"inProgress"}}
+        });
+        assert_eq!(
+            adapter
+                .ingest(&serde_json::to_vec(&response).unwrap(), &Mapper)
+                .unwrap(),
+            IngressDisposition::IgnoredLate
+        );
+        adapter
+            .ingest(&serde_json::to_vec(&completed(turn_id)).unwrap(), &Mapper)
+            .unwrap();
+    }
+
+    assert_eq!(
+        adapter
+            .ingest(
+                br#"{"id":2,"result":{"turn":{"id":"turn-1","status":"inProgress"}}}"#,
+                &Mapper,
+            )
             .unwrap(),
         IngressDisposition::DuplicateTerminal
     );
