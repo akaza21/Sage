@@ -15,7 +15,7 @@ use super::{
     mailbox::{Envelope, HostMailbox},
     types::{
         HostCancelIntent, HostCloseIntent, HostCommand, HostError, HostOutcome, HostPromptIntent,
-        HostReply, HostState, RuntimeEngine,
+        HostReply, HostState, RuntimeEngine, RuntimeShutdownRecovery,
     },
 };
 
@@ -43,6 +43,7 @@ pub(crate) struct RuntimeHost {
     pub(super) mailbox: Arc<HostMailbox>,
     thread: Mutex<Option<BoundedThread>>,
     lifecycle: AtomicU8,
+    shutdown_recovery: Option<Arc<dyn RuntimeShutdownRecovery>>,
     #[cfg(any(test, all(windows, feature = "acp-fixture")))]
     timeout_override: Option<TimeoutOverride>,
 }
@@ -60,7 +61,19 @@ enum TimeoutOverride {
 
 impl RuntimeHost {
     pub(crate) fn start<E: RuntimeEngine>(engine: E) -> Result<Self, HostError> {
-        Self::start_inner(engine, None)
+        Self::start_inner(engine, None, None)
+    }
+
+    pub(crate) fn start_with_shutdown_recovery<E, R>(
+        engine: E,
+        shutdown_recovery: Arc<R>,
+    ) -> Result<Self, HostError>
+    where
+        E: RuntimeEngine,
+        R: RuntimeShutdownRecovery + 'static,
+    {
+        let shutdown_recovery: Arc<dyn RuntimeShutdownRecovery> = shutdown_recovery;
+        Self::start_inner(engine, None, Some(shutdown_recovery))
     }
 
     #[cfg(test)]
@@ -68,7 +81,7 @@ impl RuntimeHost {
         engine: E,
         timeout: Duration,
     ) -> Result<Self, HostError> {
-        Self::start_inner(engine, Some(TimeoutOverride::Duration(timeout)))
+        Self::start_inner(engine, Some(TimeoutOverride::Duration(timeout)), None)
     }
 
     #[cfg(all(windows, feature = "acp-fixture"))]
@@ -80,6 +93,26 @@ impl RuntimeHost {
         Self::start_inner(
             engine,
             Some(TimeoutOverride::Deadline { operation, cleanup }),
+            None,
+        )
+    }
+
+    #[cfg(all(windows, feature = "acp-fixture"))]
+    pub(crate) fn start_with_deadline_and_shutdown_recovery<E, R>(
+        engine: E,
+        operation: Instant,
+        cleanup: Instant,
+        shutdown_recovery: Arc<R>,
+    ) -> Result<Self, HostError>
+    where
+        E: RuntimeEngine,
+        R: RuntimeShutdownRecovery + 'static,
+    {
+        let shutdown_recovery: Arc<dyn RuntimeShutdownRecovery> = shutdown_recovery;
+        Self::start_inner(
+            engine,
+            Some(TimeoutOverride::Deadline { operation, cleanup }),
+            Some(shutdown_recovery),
         )
     }
 
@@ -91,6 +124,7 @@ impl RuntimeHost {
         #[cfg(not(any(test, all(windows, feature = "acp-fixture"))))] _timeout_override: Option<
             Duration,
         >,
+        shutdown_recovery: Option<Arc<dyn RuntimeShutdownRecovery>>,
     ) -> Result<Self, HostError> {
         let mailbox = Arc::new(HostMailbox::new()?);
         let actor_mailbox = Arc::clone(&mailbox);
@@ -102,6 +136,7 @@ impl RuntimeHost {
             mailbox,
             thread: Mutex::new(Some(thread)),
             lifecycle: AtomicU8::new(HOST_RUNNING),
+            shutdown_recovery,
             #[cfg(any(test, all(windows, feature = "acp-fixture")))]
             timeout_override,
         })
@@ -215,7 +250,14 @@ impl RuntimeHost {
 
     pub(crate) fn shutdown(&self) -> Result<(), HostError> {
         let started = Instant::now();
-        let budget = self.cleanup_timeout();
+        self.shutdown_before(started + self.cleanup_timeout())
+    }
+
+    fn shutdown_before(&self, deadline: Instant) -> Result<(), HostError> {
+        let started = Instant::now();
+        let budget = self
+            .cleanup_timeout()
+            .min(deadline.saturating_duration_since(started));
         match self.lifecycle.load(Ordering::Acquire) {
             HOST_JOINED => return Ok(()),
             HOST_AWAITING_EXIT | HOST_SHUTDOWN_ACKNOWLEDGED => {
@@ -224,7 +266,7 @@ impl RuntimeHost {
             HOST_RUNNING => {}
             _ => return Err(HostError::RecoveryRequired),
         }
-        match self.outcome(HostCommand::Shutdown)? {
+        match self.outcome_with_timeout(HostCommand::Shutdown, budget)? {
             HostOutcome::Shutdown => {
                 self.lifecycle
                     .store(HOST_SHUTDOWN_ACKNOWLEDGED, Ordering::Release);
@@ -232,6 +274,20 @@ impl RuntimeHost {
             }
             _ => Err(HostError::State),
         }
+    }
+
+    /// Joins the host actor, then consumes the managed runner's retained
+    /// recovery and returns supervisor-minted zero-process evidence. Plain
+    /// in-memory hosts have no native recovery authority and return `None`.
+    pub(crate) fn shutdown_recovery_before(
+        &self,
+        deadline: Instant,
+    ) -> Result<Option<crate::acp::process::ZeroProcessToken>, HostError> {
+        self.shutdown_before(deadline)?;
+        self.shutdown_recovery
+            .as_ref()
+            .map(|recovery| recovery.shutdown_recovery_before(deadline))
+            .transpose()
     }
 
     /// Stops a host that was assembled for an activation which never became

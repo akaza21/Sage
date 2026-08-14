@@ -98,6 +98,11 @@ impl CoordinatorActivationJournal {
         };
     }
 
+    #[cfg(test)]
+    pub(crate) fn set_recovery_phase_for_test(&mut self) {
+        self.state = State::RecoveryRequired;
+    }
+
     pub(crate) fn into_pending_lease(mut self) -> Result<SessionTreeLease, Box<Self>> {
         if self.state != State::Pending {
             return Err(Box::new(self));

@@ -169,10 +169,13 @@ impl AcpService {
             }
         };
         let runner = LiveRunnerHandle::new(Arc::clone(&mailbox), control);
-        let host = match RuntimeHost::start(LiveRuntimeEngine::new(ProcessLivePort::new_managed(
-            abort.owner.clone(),
+        let host = match RuntimeHost::start_with_shutdown_recovery(
+            LiveRuntimeEngine::new(ProcessLivePort::new_managed(
+                abort.owner.clone(),
+                Arc::clone(&runner),
+            )),
             Arc::clone(&runner),
-        ))) {
+        ) {
             Ok(host) => Arc::new(host),
             Err(_) => {
                 return self

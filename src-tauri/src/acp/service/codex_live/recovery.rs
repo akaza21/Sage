@@ -1,3 +1,4 @@
+use super::live_recovery::LiveHostRecovery;
 use super::*;
 
 // Each variant is a unique, non-cloneable recovery authority. Keeping its
@@ -55,10 +56,7 @@ pub(in crate::acp::service) enum PendingCodexRecovery {
     /// A live command reached an effect-unknown outcome.  The slot and this
     /// payload intentionally retain the same host until bounded shutdown (or
     /// the close recovery path) proves it is safe to release capacity.
-    LiveHost {
-        owner: RuntimeOwner,
-        host: Arc<RuntimeHost>,
-    },
+    LiveHost(LiveHostRecovery),
     Driver {
         abort: ActivationAbortIntent,
         category: ActivationAbortCategory,
@@ -68,6 +66,13 @@ pub(in crate::acp::service) enum PendingCodexRecovery {
         owner: RuntimeOwner,
         lease: SessionTreeLease,
         proof: ZeroProcessProof,
+        host: Arc<RuntimeHost>,
+    },
+    ProjectionToken {
+        owner: RuntimeOwner,
+        lease: SessionTreeLease,
+        token: crate::acp::process::ZeroProcessToken,
+        host: Arc<RuntimeHost>,
     },
     Runner {
         owner: RuntimeOwner,
@@ -221,14 +226,9 @@ impl AcpService {
                     claimed,
                 }),
             },
-            PendingCodexRecovery::LiveHost { owner, host } => match host.shutdown() {
-                Ok(()) => self
-                    .runtime
-                    .recover_after_zero_process(&owner)
-                    .err()
-                    .map(|_| PendingCodexRecovery::LiveHost { owner, host }),
-                Err(_) => Some(PendingCodexRecovery::LiveHost { owner, host }),
-            },
+            PendingCodexRecovery::LiveHost(recovery) => {
+                self.shutdown_live_host_recovery(recovery, deadline)
+            }
             PendingCodexRecovery::Driver {
                 abort,
                 category,
@@ -266,18 +266,55 @@ impl AcpService {
                 owner,
                 lease,
                 proof,
-            } => match self
-                .sessions
-                .recover_runtime_after_zero_process_retained(owner.clone(), proof)
-            {
-                Ok(proof) => {
-                    drop(lease);
-                    self.release_runtime_slot(owner, proof).err()
-                }
-                Err((_, proof)) => Some(PendingCodexRecovery::Projection {
+                host,
+            } => match host.abandon_startup() {
+                Ok(()) => match self
+                    .sessions
+                    .recover_runtime_after_zero_process_retained(owner.clone(), proof)
+                {
+                    Ok(proof) => {
+                        drop(lease);
+                        self.release_runtime_slot(owner, proof).err()
+                    }
+                    Err((_, proof)) => Some(PendingCodexRecovery::Projection {
+                        owner,
+                        lease,
+                        proof,
+                        host,
+                    }),
+                },
+                Err(_) => Some(PendingCodexRecovery::Projection {
                     owner,
                     lease,
                     proof,
+                    host,
+                }),
+            },
+            PendingCodexRecovery::ProjectionToken {
+                owner,
+                lease,
+                token,
+                host,
+            } => match host.abandon_startup() {
+                Ok(()) => match ZeroProcessProof::from_supervisor(owner.clone(), &token) {
+                    Ok(proof) => Some(PendingCodexRecovery::Projection {
+                        owner,
+                        lease,
+                        proof,
+                        host,
+                    }),
+                    Err(_) => Some(PendingCodexRecovery::ProjectionToken {
+                        owner,
+                        lease,
+                        token,
+                        host,
+                    }),
+                },
+                Err(_) => Some(PendingCodexRecovery::ProjectionToken {
+                    owner,
+                    lease,
+                    token,
+                    host,
                 }),
             },
             PendingCodexRecovery::Runner { owner, runner } => {
@@ -367,15 +404,6 @@ impl AcpService {
                 proof,
             }),
         }
-    }
-
-    fn release_activation_slot(
-        &self,
-        owner: &RuntimeOwner,
-    ) -> Result<(), crate::acp::service::runtime_slot::RuntimeSlotError> {
-        self.runtime
-            .abort_start(owner)
-            .or_else(|_| self.runtime.recover_after_zero_process(owner))
     }
 }
 

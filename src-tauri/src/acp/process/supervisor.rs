@@ -223,6 +223,11 @@ impl ZeroProcessToken {
     pub(crate) fn runtime_epoch(&self) -> u64 {
         self.runtime_epoch
     }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(runtime_epoch: u64) -> Self {
+        Self { runtime_epoch }
+    }
 }
 
 /// Small platform-neutral launch state used to prevent early or duplicate

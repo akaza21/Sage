@@ -409,12 +409,14 @@ impl LiveRuntimePort for ProcessLivePort {
                 Some(runner) => runner.join_before(deadline),
                 None => Ok(()),
             },
-            Err(HostError::Closed) if self.managed_runner.is_some() => self
-                .managed_runner
-                .as_ref()
-                .expect("managed runner checked")
-                .shutdown_recovery_before(deadline)
-                .map(|_| ()),
+            Err(HostError::Closed) if self.managed_runner.is_some() => {
+                let runner = self
+                    .managed_runner
+                    .as_ref()
+                    .expect("managed runner checked");
+                runner.abort(TreeExit::ParentShutdown);
+                runner.join_before(deadline)
+            }
             Err(error) => Err(error),
             Ok(WorkerReply::Prepared(_) | WorkerReply::Write(_) | WorkerReply::Zero(_)) => {
                 Err(HostError::State)

@@ -185,13 +185,14 @@ impl AcpService {
         }
         let stdin = ObservedStdin::new(stdin, observation, binding.case);
         let runner = LiveRunnerHandle::new(Arc::clone(&mailbox), control.clone());
-        let host = match RuntimeHost::start_with_deadline(
+        let host = match RuntimeHost::start_with_deadline_and_shutdown_recovery(
             LiveRuntimeEngine::new(ProcessLivePort::new_managed(
                 owner.clone(),
                 Arc::clone(&runner),
             )),
             operation_deadline,
             cleanup_deadline,
+            Arc::clone(&runner),
         ) {
             Ok(host) => Arc::new(host),
             Err(_) => {

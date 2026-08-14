@@ -132,6 +132,15 @@ pub(crate) trait RuntimeEngine: Send + 'static {
     fn shutdown(&mut self, deadline: Instant) -> Result<(), HostError>;
 }
 
+/// Exact native authority retained alongside a managed runtime host. A host
+/// shutdown acknowledgement alone is not zero-process evidence.
+pub(crate) trait RuntimeShutdownRecovery: Send + Sync {
+    fn shutdown_recovery_before(
+        &self,
+        deadline: Instant,
+    ) -> Result<crate::acp::process::ZeroProcessToken, HostError>;
+}
+
 pub(super) enum HostCommand {
     Activate(RuntimeOwner),
     PreparePrompt(HostPromptIntent),

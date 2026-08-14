@@ -1,3 +1,4 @@
+use super::live_recovery::{ClosedShutdownAuthority, LiveHostRecovery, LiveHostRecoveryPhase};
 use super::*;
 
 impl AcpService {
@@ -14,7 +15,12 @@ impl AcpService {
         let host = self.runtime.for_owner(&owner).map_err(map_slot_error)?;
         match host.send(crate::acp::runtime::HostPromptIntent { command }) {
             Ok(outcome) => Ok(outcome),
-            Err(error) => Err(self.retain_live_host_error(owner, host, error)),
+            Err(error) => Err(self.retain_live_host_error(
+                owner,
+                host,
+                LiveHostRecoveryPhase::SendEffect,
+                error,
+            )),
         }
     }
 
@@ -26,7 +32,12 @@ impl AcpService {
         let host = self.runtime.for_owner(&owner).map_err(map_slot_error)?;
         match host.cancel(intent) {
             Ok(outcome) => Ok(outcome),
-            Err(error) => Err(self.retain_live_host_error(owner, host, error)),
+            Err(error) => Err(self.retain_live_host_error(
+                owner,
+                host,
+                LiveHostRecoveryPhase::CancelEffect,
+                error,
+            )),
         }
     }
 
@@ -48,17 +59,18 @@ impl AcpService {
             }
             Err(error) => return Err(map_slot_error(error)),
         };
-        let outcome = match host.close(intent) {
+        let outcome = match host.close(intent.clone()) {
             Ok(outcome) => outcome,
-            Err(error) => return Err(self.retain_live_host_error(owner, host, error)),
+            Err(error) => {
+                return Err(self.retain_live_host_error(
+                    owner,
+                    host,
+                    LiveHostRecoveryPhase::CloseEffect { intent },
+                    error,
+                ));
+            }
         };
-        if let Err(error) = host.shutdown() {
-            return Err(self.retain_live_host_error(owner, host, error));
-        }
-        self.runtime
-            .release(&owner, &host)
-            .map_err(map_slot_error)?;
-        Ok(outcome)
+        self.finish_closed_shutdown(owner, host, intent, outcome, false)
     }
 
     fn recover_live_close(
@@ -66,33 +78,166 @@ impl AcpService {
         owner: RuntimeOwner,
         intent: crate::acp::runtime::HostCloseIntent,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
-        let Some(host) = self.take_live_host_recovery(&owner) else {
+        let Some(recovery) = self.take_live_host_recovery(&owner) else {
             return Err(CodexSessionError::Recovery);
         };
-        let outcome = match host.recover_close(intent) {
-            Ok(outcome) => outcome,
-            Err(error) => return Err(self.retain_live_host_error(owner, host, error)),
-        };
-        if let Err(error) = host.shutdown() {
-            return Err(self.retain_live_host_error(owner, host, error));
+        if recovery.owner != owner {
+            self.retain_codex_recovery(PendingCodexRecovery::LiveHost(recovery));
+            return Err(CodexSessionError::Intent);
         }
-        self.runtime
-            .release_recovered(&owner, &host)
-            .map_err(map_slot_error)?;
-        Ok(outcome)
+        let LiveHostRecovery { host, phase, .. } = recovery;
+        match phase {
+            LiveHostRecoveryPhase::SendEffect => {
+                self.retain_live_recovery(LiveHostRecovery {
+                    owner,
+                    host,
+                    phase: LiveHostRecoveryPhase::SendEffect,
+                });
+                Err(CodexSessionError::Recovery)
+            }
+            LiveHostRecoveryPhase::CancelEffect => {
+                self.retain_live_recovery(LiveHostRecovery {
+                    owner,
+                    host,
+                    phase: LiveHostRecoveryPhase::CancelEffect,
+                });
+                Err(CodexSessionError::Recovery)
+            }
+            LiveHostRecoveryPhase::CloseEffect {
+                intent: retained_intent,
+            } => {
+                if retained_intent != intent {
+                    self.retain_live_recovery(LiveHostRecovery {
+                        owner,
+                        host,
+                        phase: LiveHostRecoveryPhase::CloseEffect {
+                            intent: retained_intent,
+                        },
+                    });
+                    return Err(CodexSessionError::Intent);
+                }
+                match host.recover_close(intent.clone()) {
+                    Ok(outcome) => self.finish_closed_shutdown(owner, host, intent, outcome, true),
+                    Err(error) => {
+                        self.retain_live_recovery(LiveHostRecovery {
+                            owner,
+                            host,
+                            phase: LiveHostRecoveryPhase::CloseEffect { intent },
+                        });
+                        Err(map_host_error(error))
+                    }
+                }
+            }
+            LiveHostRecoveryPhase::Closed {
+                intent: retained_intent,
+                outcome,
+                authority,
+            } => {
+                if retained_intent != intent {
+                    self.retain_live_recovery(LiveHostRecovery {
+                        owner,
+                        host,
+                        phase: LiveHostRecoveryPhase::Closed {
+                            intent: retained_intent,
+                            outcome,
+                            authority,
+                        },
+                    });
+                    return Err(CodexSessionError::Intent);
+                }
+                self.finish_closed_authority(owner, host, intent, outcome, authority, true)
+            }
+        }
     }
 
-    fn take_live_host_recovery(&self, owner: &RuntimeOwner) -> Option<Arc<RuntimeHost>> {
+    fn finish_closed_shutdown(
+        &self,
+        owner: RuntimeOwner,
+        host: Arc<RuntimeHost>,
+        intent: crate::acp::runtime::HostCloseIntent,
+        outcome: crate::acp::runtime::HostOutcome,
+        recovering: bool,
+    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
+        self.finish_closed_authority(
+            owner,
+            host,
+            intent,
+            outcome,
+            ClosedShutdownAuthority::Host,
+            recovering,
+        )
+    }
+
+    fn finish_closed_authority(
+        &self,
+        owner: RuntimeOwner,
+        host: Arc<RuntimeHost>,
+        intent: crate::acp::runtime::HostCloseIntent,
+        outcome: crate::acp::runtime::HostOutcome,
+        authority: ClosedShutdownAuthority,
+        recovering: bool,
+    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
+        let deadline = Instant::now()
+            + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+        match self.converge_closed_shutdown(&owner, &host, authority, recovering, deadline) {
+            Ok(()) => Ok(outcome),
+            Err(authority) => {
+                let _ = self.runtime.mark_recovery(&owner);
+                self.retain_live_recovery(LiveHostRecovery {
+                    owner,
+                    host,
+                    phase: LiveHostRecoveryPhase::Closed {
+                        intent,
+                        outcome,
+                        authority,
+                    },
+                });
+                Err(CodexSessionError::Recovery)
+            }
+        }
+    }
+
+    pub(super) fn converge_closed_shutdown(
+        &self,
+        owner: &RuntimeOwner,
+        host: &Arc<RuntimeHost>,
+        mut authority: ClosedShutdownAuthority,
+        recovering: bool,
+        deadline: Instant,
+    ) -> Result<(), ClosedShutdownAuthority> {
+        loop {
+            authority = match authority {
+                ClosedShutdownAuthority::Host => match host.shutdown_recovery_before(deadline) {
+                    Ok(Some(token)) => ClosedShutdownAuthority::Token(token),
+                    Ok(None) => ClosedShutdownAuthority::Release(None),
+                    Err(_) => return Err(ClosedShutdownAuthority::Host),
+                },
+                ClosedShutdownAuthority::Token(token) => {
+                    match ZeroProcessProof::from_supervisor(owner.clone(), &token) {
+                        Ok(proof) => ClosedShutdownAuthority::Release(Some(proof)),
+                        Err(_) => return Err(ClosedShutdownAuthority::Token(token)),
+                    }
+                }
+                ClosedShutdownAuthority::Release(proof) => {
+                    let release = if recovering {
+                        self.runtime.release_recovered(owner, host)
+                    } else {
+                        self.runtime.release(owner, host)
+                    };
+                    return release.map_err(|_| ClosedShutdownAuthority::Release(proof));
+                }
+            };
+        }
+    }
+
+    fn take_live_host_recovery(&self, owner: &RuntimeOwner) -> Option<LiveHostRecovery> {
         let mut retained = self
             .codex_recovery
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let recovery = retained.take()?;
         match recovery {
-            PendingCodexRecovery::LiveHost {
-                owner: retained_owner,
-                host,
-            } if &retained_owner == owner => Some(host),
+            PendingCodexRecovery::LiveHost(recovery) if &recovery.owner == owner => Some(recovery),
             recovery => {
                 *retained = Some(recovery);
                 None
@@ -104,13 +249,18 @@ impl AcpService {
         &self,
         owner: RuntimeOwner,
         host: Arc<RuntimeHost>,
+        phase: LiveHostRecoveryPhase,
         error: crate::acp::runtime::HostError,
     ) -> CodexSessionError {
         if requires_live_recovery(&error) {
             let _ = self.runtime.mark_recovery(&owner);
-            self.retain_codex_recovery(PendingCodexRecovery::LiveHost { owner, host });
+            self.retain_live_recovery(LiveHostRecovery { owner, host, phase });
         }
         map_host_error(error)
+    }
+
+    fn retain_live_recovery(&self, recovery: LiveHostRecovery) {
+        self.retain_codex_recovery(PendingCodexRecovery::LiveHost(recovery));
     }
 }
 

@@ -9,7 +9,7 @@ use crate::acp::{
     runtime::{
         ActivationProcessDriver, ActivationProjectionRecoveryHandoff, ActivationTransport,
         ActivationZeroProcessHandoff, BoundedThread, CoordinatorActivationJournal, HostError,
-        ProjectIntentAuthority, RuntimeHost, ThreadWaitError,
+        ProjectIntentAuthority, RuntimeHost, RuntimeShutdownRecovery, ThreadWaitError,
     },
 };
 
@@ -365,6 +365,15 @@ fn finish_failed_start(retained: &mut Option<BoundedThread>, deadline: Instant) 
 impl WorkerDeadlineAbort for LiveRunnerHandle {
     fn request_termination(&self, reason: TreeExit) {
         self.abort(reason);
+    }
+}
+
+impl RuntimeShutdownRecovery for LiveRunnerHandle {
+    fn shutdown_recovery_before(
+        &self,
+        deadline: Instant,
+    ) -> Result<crate::acp::process::ZeroProcessToken, HostError> {
+        LiveRunnerHandle::shutdown_recovery_before(self, deadline)
     }
 }
 

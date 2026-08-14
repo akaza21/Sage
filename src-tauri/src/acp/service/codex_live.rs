@@ -44,6 +44,8 @@ type CodexActivationDriver = ActivationProcessDriver<
 mod assembly;
 mod cleanup;
 mod live_commands;
+mod live_recovery;
+mod projection_recovery;
 mod recovery;
 
 pub(super) use recovery::PendingCodexRecovery;

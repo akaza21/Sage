@@ -339,25 +339,8 @@ impl AcpService {
                 .await
             }
             ActivationStartFailure::Projection { handoff, .. } => {
-                if let Some(active) = active {
-                    active.settle(Err(
-                        crate::acp::bindings::codex::CodexDiscoveryRunError::Cleanup,
-                    ));
-                }
                 let (_, journal, _) = handoff.parts.into_parts();
-                let lease = journal
-                    .into_recovery_lease()
-                    .map_err(|_| CodexSessionError::Recovery)?;
-                let proof = ZeroProcessProof::from_supervisor(abort.owner.clone(), &handoff.proof)
-                    .map_err(|_| CodexSessionError::Recovery)?;
-                let _ = self.runtime.mark_recovery(&abort.owner);
-                let _ = host.abandon_startup();
-                self.retain_codex_recovery(PendingCodexRecovery::Projection {
-                    owner: abort.owner.clone(),
-                    lease,
-                    proof,
-                });
-                Err(CodexSessionError::Recovery)
+                self.recover_projection_authorities(abort, journal, handoff.proof, host, active)
             }
             ActivationStartFailure::Retained { driver, .. } => {
                 if let Some(active) = active {
@@ -388,5 +371,14 @@ impl AcpService {
                 Err(CodexSessionError::Recovery)
             }
         }
+    }
+
+    pub(super) fn release_activation_slot(
+        &self,
+        owner: &RuntimeOwner,
+    ) -> Result<(), crate::acp::service::runtime_slot::RuntimeSlotError> {
+        self.runtime
+            .abort_start(owner)
+            .or_else(|_| self.runtime.recover_after_zero_process(owner))
     }
 }
