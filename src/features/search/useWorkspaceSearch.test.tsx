@@ -17,7 +17,19 @@ function response(query: string): WorkspaceSearchResponse {
     transitionEpoch: 4,
     query,
     matches: [],
-    roots: [],
+    roots: [
+      {
+        rootId: "root-a",
+        rootName: "Sage",
+        state: "complete",
+        filesScanned: 0,
+        bytesScanned: 0,
+        entriesVisited: 0,
+        skippedFiles: 0,
+        errorCount: 0,
+        message: null,
+      },
+    ],
     truncated: false,
     limitReasons: [],
     elapsedMs: 1,
@@ -119,6 +131,58 @@ describe("workspace Search state", () => {
       phase: "idle",
       caseSensitive: true,
       response: null,
+    });
+  });
+
+  it("rejects an out-of-scope gateway response without retaining it", async () => {
+    const search = vi.fn().mockResolvedValue({
+      ...response("needle"),
+      projectId: "project-b",
+    });
+    const { result } = renderHook(() =>
+      useWorkspaceSearch({
+        projectId: "project-a",
+        transitionEpoch: 4,
+        gateway: { search },
+      }),
+    );
+
+    act(() => result.current.setQuery("needle"));
+    await act(async () => void (await result.current.submit()));
+
+    expect(result.current.state).toMatchObject({
+      phase: "error",
+      response: null,
+      error: "invalid workspace Search response",
+    });
+  });
+
+  it("rejects an over-limit gateway response without retaining it", async () => {
+    const match = {
+      resource: { rootId: "root-a", relativePath: "safe.txt" },
+      lineNumber: 1,
+      columnNumber: 1,
+      preview: "needle",
+    };
+    const search = vi.fn().mockResolvedValue({
+      ...response("needle"),
+      matches: Array.from({ length: 501 }, () => match),
+    });
+    const { result } = renderHook(() =>
+      useWorkspaceSearch({
+        projectId: "project-a",
+        transitionEpoch: 4,
+        gateway: { search },
+      }),
+    );
+
+    act(() => result.current.setQuery("needle"));
+    await act(async () => void (await result.current.submit()));
+
+    expect(result.current.state).toMatchObject({
+      phase: "error",
+      response: null,
+      error: "invalid workspace Search response",
     });
   });
 });

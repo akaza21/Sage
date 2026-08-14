@@ -4,6 +4,7 @@ import type {
   WorkspaceSearchGateway,
   WorkspaceSearchResponse,
 } from "./workspaceSearchDomain";
+import { parseWorkspaceSearchResponse } from "./workspaceSearchDomain";
 
 export type WorkspaceSearchPhase = "idle" | "searching" | "results" | "error";
 
@@ -146,11 +147,19 @@ export function useWorkspaceSearch({
       ) {
         return;
       }
+      const validated = parseWorkspaceSearchResponse(response);
+      if (
+        validated.projectId !== projectId ||
+        validated.transitionEpoch !== transitionEpoch ||
+        validated.query !== query
+      ) {
+        throw new Error("invalid workspace Search response");
+      }
       active.current = null;
       setState((current) => ({
         ...current,
         phase: "results",
-        response,
+        response: validated,
         error: null,
       }));
     } catch (error: unknown) {
