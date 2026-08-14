@@ -135,6 +135,67 @@ describe("compact Workbench project tools", () => {
     expect(activateTab).not.toHaveBeenCalled();
   });
 
+  it("keeps the chat sidebar scroll position while saving a rename", async () => {
+    let resolveRename!: (committed: boolean) => void;
+    const renameChat = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveRename = resolve;
+        }),
+    );
+    useWorkbenchStore.setState({
+      renameChat,
+      project: { id: "project-a", name: "A", roots: [] },
+      projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
+      tabs: [
+        {
+          id: "chat:b",
+          kind: "chat",
+          title: "Chat: B",
+          position: 0,
+          pinned: true,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat:b",
+    });
+    const { container } = render(<Workbench />);
+    const sidebarScroll = container.querySelector(".project-sidebar__scroll");
+    expect(sidebarScroll).not.toBeNull();
+    sidebarScroll!.scrollTop = 72;
+
+    fireEvent.click(screen.getByRole("button", { name: "Rename chat B" }));
+    const input = screen.getByRole("textbox", { name: "New name for B" });
+    fireEvent.change(input, {
+      target: { value: "Release notes" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save chat name" }));
+    expect(input).toBeDisabled();
+
+    await act(async () => {
+      useWorkbenchStore.setState((state) => ({
+        tabs: state.tabs.map((tab) =>
+          tab.id === "chat:b" ? { ...tab, title: "Chat: Release notes" } : tab,
+        ),
+      }));
+      resolveRename(true);
+    });
+
+    await vi.waitFor(() => {
+      expect(renameChat).toHaveBeenCalledWith("chat:b", "Release notes");
+      expect(
+        screen.queryByRole("textbox", { name: "New name for B" }),
+      ).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Rename chat Release notes" }),
+      ).toHaveFocus();
+      expect(container.querySelector(".project-sidebar__scroll")).toBe(
+        sidebarScroll,
+      );
+      expect(sidebarScroll).toHaveProperty("scrollTop", 72);
+    });
+  });
+
   it("restores the same Chat rename trigger after Cancel and Escape", async () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "A", roots: [] },
