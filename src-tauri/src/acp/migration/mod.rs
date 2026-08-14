@@ -40,13 +40,13 @@ use self::{
     paths::MigrationPaths,
     platform::{MigrationLock, sync_file, sync_parent},
     publish::recover_or_publish,
-    schema_upgrade::{apply_through_v7, apply_v6, apply_v7, build_fresh_v7},
+    schema_upgrade::{apply_through_v7, apply_v6_and_v7_atomically, apply_v7, build_fresh_v7},
 };
 
 #[cfg(test)]
 use self::manifest::{ReplacementManifest, write_stage};
 #[cfg(test)]
-use self::schema_upgrade::apply_v5;
+use self::schema_upgrade::{apply_v5, apply_v6};
 
 const INITIAL: &str = include_str!("../../../migrations/001_initial.sql");
 const V2: &str = include_str!("../../../migrations/002_diff_tabs.sql");
@@ -162,9 +162,10 @@ fn upgrade_current_through_v7(
         return invalid("current source changed after original-schema backup publication");
     }
     if source_schema == SchemaClass::CurrentV5 {
-        apply_v6(&mut connection)?;
+        apply_v6_and_v7_atomically(&mut connection)?;
+    } else {
+        apply_v7(&mut connection)?;
     }
-    apply_v7(&mut connection)?;
     anchor.verify_path(&paths.live)?;
     Ok(opened_database(connection, anchor))
 }

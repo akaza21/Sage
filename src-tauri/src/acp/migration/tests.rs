@@ -368,6 +368,100 @@ fn current_structural_upgrade_preserves_an_existing_verified_backup() {
 }
 
 #[test]
+fn v5_to_v7_failure_after_v6_work_rolls_back_and_retry_preserves_original_backup() {
+    let directory = TestDir::new();
+    create_current_schema(
+        &directory.database(),
+        SchemaClass::CurrentV5,
+        "atomic-retry",
+    );
+    let paths = MigrationPaths::new(&directory.database()).unwrap();
+
+    test_failpoint::arm("v5-to-v7-after-v6");
+    assert!(open_or_migrate(&directory.database()).is_err());
+    assert!(!test_failpoint::is_armed());
+    assert_eq!(
+        classify_path(&directory.database()).unwrap(),
+        SchemaClass::CurrentV5
+    );
+    backup::verify_retained_pair(&paths).unwrap();
+    let backup_after_failure = fs::read(&paths.backup_final).unwrap();
+    let manifest_after_failure = fs::read(&paths.manifest_final).unwrap();
+
+    let migrated = open_or_migrate(&directory.database()).unwrap();
+
+    assert_eq!(
+        fingerprint::classify_connection(&migrated).unwrap(),
+        SchemaClass::CurrentV7
+    );
+    let item: (String, i64) = migrated
+        .query_row("SELECT id, ordinal FROM items", [], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .unwrap();
+    assert_eq!(item, ("event-1".into(), 1));
+    drop(migrated);
+    backup::verify_retained_pair(&paths).unwrap();
+    assert_eq!(backup_after_failure, fs::read(&paths.backup_final).unwrap());
+    assert_eq!(
+        manifest_after_failure,
+        fs::read(&paths.manifest_final).unwrap()
+    );
+    let original = open_read_only(&paths.backup_final).unwrap();
+    assert_eq!(
+        fingerprint::classify_connection(&original).unwrap(),
+        SchemaClass::CurrentV5
+    );
+}
+
+#[test]
+fn tampered_v6_intermediate_with_v5_backup_is_rejected_unchanged() {
+    let directory = TestDir::new();
+    create_current_schema(&directory.database(), SchemaClass::CurrentV5, "original-v5");
+    let paths = MigrationPaths::new(&directory.database()).unwrap();
+    {
+        let _lock = MigrationLock::acquire(paths.parent()).unwrap();
+        backup::ensure(&paths).unwrap();
+    }
+    let backup_before = fs::read(&paths.backup_final).unwrap();
+    let manifest_before = fs::read(&paths.manifest_final).unwrap();
+    let mut intermediate = Connection::open(&paths.live).unwrap();
+    apply_v6(&mut intermediate).unwrap();
+    intermediate
+        .execute(
+            "UPDATE projects SET name='tampered-v6' WHERE id='project-a'",
+            [],
+        )
+        .unwrap();
+    intermediate.close().unwrap();
+    let live_file_before = file_fingerprint(&paths.live).unwrap();
+    let live_database_before = {
+        let connection = open_read_only(&paths.live).unwrap();
+        database_fingerprint(&connection).unwrap()
+    };
+
+    assert!(open_or_migrate(&paths.live).is_err());
+
+    assert_eq!(live_file_before, file_fingerprint(&paths.live).unwrap());
+    let unchanged = open_read_only(&paths.live).unwrap();
+    assert_eq!(
+        database_fingerprint(&unchanged).unwrap(),
+        live_database_before
+    );
+    let name: String = unchanged
+        .query_row(
+            "SELECT name FROM projects WHERE id='project-a'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(name, "tampered-v6");
+    assert_eq!(backup_before, fs::read(&paths.backup_final).unwrap());
+    assert_eq!(manifest_before, fs::read(&paths.manifest_final).unwrap());
+    backup::verify_retained_pair(&paths).unwrap();
+}
+
+#[test]
 fn current_v5_upgrade_rejects_missing_tampered_and_mismatched_backups_unchanged() {
     for corruption in ["missing-manifest", "missing-backup", "tampered"] {
         let directory = TestDir::new();

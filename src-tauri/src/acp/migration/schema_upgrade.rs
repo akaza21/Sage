@@ -28,7 +28,7 @@ pub(super) fn apply_through_v7(connection: &mut Connection) -> AppResult<()> {
         apply_v5(connection)?;
     }
     if last < 6 {
-        apply_v6(connection)?;
+        return apply_v6_and_v7_atomically(connection);
     }
     apply_v7(connection)
 }
@@ -50,14 +50,10 @@ pub(super) fn apply_v5(connection: &mut Connection) -> AppResult<()> {
     Ok(())
 }
 
+#[cfg(test)]
 pub(super) fn apply_v6(connection: &mut Connection) -> AppResult<()> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(V6)?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (6, ?1)",
-        [now_millis()],
-    )?;
-    transaction.pragma_update(None, "user_version", 6)?;
+    apply_v6_steps(&transaction)?;
     transaction.commit()?;
     if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV6 {
         return invalid("database did not reach exact schema v6");
@@ -66,34 +62,75 @@ pub(super) fn apply_v6(connection: &mut Connection) -> AppResult<()> {
 }
 
 pub(super) fn apply_v7(connection: &mut Connection) -> AppResult<()> {
+    with_foreign_keys_disabled(connection, |connection| {
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        apply_v7_steps(&transaction)?;
+        verify_v7_foreign_keys(&transaction)?;
+        transaction.commit()?;
+        Ok(())
+    })?;
+    verify_current(connection)
+}
+
+pub(super) fn apply_v6_and_v7_atomically(connection: &mut Connection) -> AppResult<()> {
+    with_foreign_keys_disabled(connection, |connection| {
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        apply_v6_steps(&transaction)?;
+        #[cfg(test)]
+        super::test_failpoint::hit("v5-to-v7-after-v6")?;
+        apply_v7_steps(&transaction)?;
+        verify_v7_foreign_keys(&transaction)?;
+        transaction.commit()?;
+        Ok(())
+    })?;
+    verify_current(connection)
+}
+
+fn with_foreign_keys_disabled(
+    connection: &mut Connection,
+    migration: impl FnOnce(&mut Connection) -> AppResult<()>,
+) -> AppResult<()> {
     let foreign_keys: bool =
         connection.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
     if foreign_keys {
         connection.pragma_update(None, "foreign_keys", "OFF")?;
     }
-    let result: AppResult<()> = (|| {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        transaction.execute_batch(V7)?;
-        transaction.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (7, ?1)",
-            [now_millis()],
-        )?;
-        transaction.pragma_update(None, "user_version", 7)?;
-        let foreign_key_error = transaction
-            .query_row("PRAGMA foreign_key_check", [], |_| Ok(true))
-            .optional()?
-            .unwrap_or(false);
-        if foreign_key_error {
-            return invalid("ACP activation-abort migration failed its foreign-key check");
-        }
-        transaction.commit()?;
-        Ok(())
-    })();
+    let result = migration(connection);
     if foreign_keys {
         connection.pragma_update(None, "foreign_keys", "ON")?;
     }
-    result?;
-    verify_current(connection)
+    result
+}
+
+fn apply_v6_steps(transaction: &rusqlite::Transaction<'_>) -> AppResult<()> {
+    transaction.execute_batch(V6)?;
+    transaction.execute(
+        "INSERT INTO schema_migrations(version, applied_at) VALUES (6, ?1)",
+        [now_millis()],
+    )?;
+    transaction.pragma_update(None, "user_version", 6)?;
+    Ok(())
+}
+
+fn apply_v7_steps(transaction: &rusqlite::Transaction<'_>) -> AppResult<()> {
+    transaction.execute_batch(V7)?;
+    transaction.execute(
+        "INSERT INTO schema_migrations(version, applied_at) VALUES (7, ?1)",
+        [now_millis()],
+    )?;
+    transaction.pragma_update(None, "user_version", 7)?;
+    Ok(())
+}
+
+fn verify_v7_foreign_keys(transaction: &rusqlite::Transaction<'_>) -> AppResult<()> {
+    let foreign_key_error = transaction
+        .query_row("PRAGMA foreign_key_check", [], |_| Ok(true))
+        .optional()?
+        .unwrap_or(false);
+    if foreign_key_error {
+        return invalid("ACP activation-abort migration failed its foreign-key check");
+    }
+    Ok(())
 }
 
 pub(super) fn build_fresh_v7(connection: &mut Connection) -> AppResult<()> {
@@ -102,6 +139,5 @@ pub(super) fn build_fresh_v7(connection: &mut Connection) -> AppResult<()> {
     connection.execute_batch(V3)?;
     project_migration::migrate(connection)?;
     apply_v5(connection)?;
-    apply_v6(connection)?;
-    apply_v7(connection)
+    apply_v6_and_v7_atomically(connection)
 }
