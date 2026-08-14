@@ -269,19 +269,19 @@ fn publish_stages(paths: &MigrationPaths, nonce: &str) -> AppResult<()> {
 fn verify_final_pair(paths: &MigrationPaths, source: &BackupSource) -> AppResult<VerifiedBackup> {
     let manifest: BackupManifest = read(&paths.manifest_final)?;
     manifest.validate_identity()?;
-    if &manifest.source != source {
+    if manifest.source.database != source.database {
         return invalid("retained backup is bound to a different source database");
     }
     let backup_file = file_fingerprint(&paths.backup_final)?;
     if backup_file != manifest.backup {
         return invalid("retained backup bytes do not match its manifest");
     }
-    let backup_database = verify_backup_database(&paths.backup_final, &source.database)?;
+    let backup_database = verify_backup_database(&paths.backup_final, &manifest.source.database)?;
     if backup_database != manifest.backup_database {
         return invalid("retained backup logical fingerprint does not match its manifest");
     }
     Ok(VerifiedBackup {
-        source: source.clone(),
+        source: manifest.source,
         backup_file,
         backup_database,
     })

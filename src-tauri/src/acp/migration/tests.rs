@@ -415,6 +415,128 @@ fn v5_to_v7_failure_after_v6_work_rolls_back_and_retry_preserves_original_backup
 }
 
 #[test]
+fn wal_v5_retry_reuses_original_backup_after_physical_checkpoint() {
+    let directory = TestDir::new();
+    create_current_schema(&directory.database(), SchemaClass::CurrentV5, "before-wal");
+    let paths = MigrationPaths::new(&directory.database()).unwrap();
+    let reader = Connection::open(&paths.live).unwrap();
+    reader.pragma_update(None, "journal_mode", "WAL").unwrap();
+    reader.pragma_update(None, "wal_autocheckpoint", 0).unwrap();
+    reader.execute_batch("BEGIN").unwrap();
+    assert_eq!(
+        reader
+            .query_row(
+                "SELECT name FROM projects WHERE id='project-a'",
+                [],
+                |row| { row.get::<_, String>(0) }
+            )
+            .unwrap(),
+        "before-wal"
+    );
+    let writer = Connection::open(&paths.live).unwrap();
+    writer.pragma_update(None, "wal_autocheckpoint", 0).unwrap();
+    writer
+        .execute(
+            "UPDATE projects SET name='committed-in-wal' WHERE id='project-a'",
+            [],
+        )
+        .unwrap();
+    writer.close().unwrap();
+    let wal_with_committed_frames = file_fingerprint(&paths.live_wal).unwrap();
+    assert!(wal_with_committed_frames.present && wal_with_committed_frames.bytes > 0);
+
+    test_failpoint::arm("v5-to-v7-after-v6");
+    assert!(open_or_migrate(&paths.live).is_err());
+    assert!(!test_failpoint::is_armed());
+    assert_eq!(
+        probe::classify_live(&paths).unwrap(),
+        SchemaClass::CurrentV5
+    );
+    backup::verify_retained_pair(&paths).unwrap();
+    let backup_after_failure = fs::read(&paths.backup_final).unwrap();
+    let manifest_after_failure = fs::read(&paths.manifest_final).unwrap();
+    let physical_before_checkpoint = (
+        file_fingerprint(&paths.live).unwrap(),
+        file_fingerprint(&paths.live_wal).unwrap(),
+    );
+
+    reader.execute_batch("ROLLBACK").unwrap();
+    reader.close().unwrap();
+    let checkpoint = Connection::open(&paths.live).unwrap();
+    let (busy, _log, _checkpointed): (i64, i64, i64) = checkpoint
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .unwrap();
+    assert_eq!(busy, 0);
+    checkpoint.close().unwrap();
+    let physical_after_checkpoint = (
+        file_fingerprint(&paths.live).unwrap(),
+        file_fingerprint(&paths.live_wal).unwrap(),
+    );
+    assert_ne!(physical_before_checkpoint, physical_after_checkpoint);
+    assert!(
+        !physical_after_checkpoint.1.present || physical_after_checkpoint.1.bytes == 0,
+        "checkpoint must consume the committed WAL frames"
+    );
+    let checkpointed = open_read_only(&paths.live).unwrap();
+    assert_eq!(
+        fingerprint::classify_connection(&checkpointed).unwrap(),
+        SchemaClass::CurrentV5
+    );
+    assert_eq!(
+        checkpointed
+            .query_row(
+                "SELECT name FROM projects WHERE id='project-a'",
+                [],
+                |row| { row.get::<_, String>(0) }
+            )
+            .unwrap(),
+        "committed-in-wal"
+    );
+    drop(checkpointed);
+
+    let migrated = open_or_migrate(&paths.live).unwrap();
+
+    assert_eq!(
+        fingerprint::classify_connection(&migrated).unwrap(),
+        SchemaClass::CurrentV7
+    );
+    assert_eq!(
+        migrated
+            .query_row(
+                "SELECT name FROM projects WHERE id='project-a'",
+                [],
+                |row| { row.get::<_, String>(0) }
+            )
+            .unwrap(),
+        "committed-in-wal"
+    );
+    drop(migrated);
+    backup::verify_retained_pair(&paths).unwrap();
+    assert_eq!(backup_after_failure, fs::read(&paths.backup_final).unwrap());
+    assert_eq!(
+        manifest_after_failure,
+        fs::read(&paths.manifest_final).unwrap()
+    );
+    let original = open_read_only(&paths.backup_final).unwrap();
+    assert_eq!(
+        fingerprint::classify_connection(&original).unwrap(),
+        SchemaClass::CurrentV5
+    );
+    assert_eq!(
+        original
+            .query_row(
+                "SELECT name FROM projects WHERE id='project-a'",
+                [],
+                |row| { row.get::<_, String>(0) }
+            )
+            .unwrap(),
+        "committed-in-wal"
+    );
+}
+
+#[test]
 fn tampered_v6_intermediate_with_v5_backup_is_rejected_unchanged() {
     let directory = TestDir::new();
     create_current_schema(&directory.database(), SchemaClass::CurrentV5, "original-v5");
@@ -463,7 +585,12 @@ fn tampered_v6_intermediate_with_v5_backup_is_rejected_unchanged() {
 
 #[test]
 fn current_v5_upgrade_rejects_missing_tampered_and_mismatched_backups_unchanged() {
-    for corruption in ["missing-manifest", "missing-backup", "tampered"] {
+    for corruption in [
+        "missing-manifest",
+        "missing-backup",
+        "tampered-manifest",
+        "tampered-backup",
+    ] {
         let directory = TestDir::new();
         create_current_schema(&directory.database(), SchemaClass::CurrentV5, corruption);
         let paths = MigrationPaths::new(&directory.database()).unwrap();
@@ -475,6 +602,16 @@ fn current_v5_upgrade_rejects_missing_tampered_and_mismatched_backups_unchanged(
             fs::remove_file(&paths.manifest_final).unwrap();
         } else if corruption == "missing-backup" {
             fs::remove_file(&paths.backup_final).unwrap();
+        } else if corruption == "tampered-manifest" {
+            let mut manifest: serde_json::Value =
+                serde_json::from_slice(&fs::read(&paths.manifest_final).unwrap()).unwrap();
+            manifest["source"]["database"]["logicalSha256"] =
+                serde_json::Value::String("0".repeat(64));
+            fs::write(
+                &paths.manifest_final,
+                serde_json::to_vec(&manifest).unwrap(),
+            )
+            .unwrap();
         } else {
             use std::io::Write;
             let mut backup = fs::OpenOptions::new()
