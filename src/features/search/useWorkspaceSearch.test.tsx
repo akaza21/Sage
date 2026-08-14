@@ -134,28 +134,34 @@ describe("workspace Search state", () => {
     });
   });
 
-  it("rejects an out-of-scope gateway response without retaining it", async () => {
-    const search = vi.fn().mockResolvedValue({
-      ...response("needle"),
-      projectId: "project-b",
-    });
-    const { result } = renderHook(() =>
-      useWorkspaceSearch({
-        projectId: "project-a",
-        transitionEpoch: 4,
-        gateway: { search },
-      }),
-    );
+  it.each([
+    ["Project ID", { projectId: "project-b" }],
+    ["transition epoch", { transitionEpoch: 5 }],
+    ["query", { query: "other" }],
+  ])(
+    "rejects a response with the wrong %s without retaining it",
+    async (_identity, mismatch) => {
+      const search = vi
+        .fn()
+        .mockResolvedValue({ ...response("needle"), ...mismatch });
+      const { result } = renderHook(() =>
+        useWorkspaceSearch({
+          projectId: "project-a",
+          transitionEpoch: 4,
+          gateway: { search },
+        }),
+      );
 
-    act(() => result.current.setQuery("needle"));
-    await act(async () => void (await result.current.submit()));
+      act(() => result.current.setQuery("needle"));
+      await act(async () => void (await result.current.submit()));
 
-    expect(result.current.state).toMatchObject({
-      phase: "error",
-      response: null,
-      error: "invalid workspace Search response",
-    });
-  });
+      expect(result.current.state).toMatchObject({
+        phase: "error",
+        response: null,
+        error: "invalid workspace Search response",
+      });
+    },
+  );
 
   it("rejects an over-limit gateway response without retaining it", async () => {
     const match = {
