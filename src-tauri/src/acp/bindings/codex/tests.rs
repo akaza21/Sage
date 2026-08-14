@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageRootId},
     intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef},
-    lifecycle::ServerRequestState,
+    lifecycle::{ServerRequestState, TurnState},
 };
 
 use super::*;
@@ -950,6 +950,148 @@ fn only_one_turn_start_can_be_pending_or_active_and_failed_egress_rolls_back() {
         adapter.prompt(4, &prompt, &client),
         Err(AdapterError::TurnAlreadyActive)
     ));
+}
+
+#[test]
+fn pinned_error_notification_validates_identity_and_preserves_retryability() {
+    let mut adapter = adapter();
+    ready(&mut adapter);
+    arm_turn(&mut adapter, 2, "client-error");
+    let started = json!({"method":"turn/started","params":{
+        "threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}
+    }});
+    adapter
+        .ingest(&serde_json::to_vec(&started).unwrap(), &Mapper)
+        .unwrap();
+
+    let error = |thread: &str, turn: &str| {
+        json!({"method":"error","params":{
+            "threadId":thread,
+            "turnId":turn,
+            "willRetry":true,
+            "error":{"message":"retrying error"}
+        }})
+    };
+    let IngressDisposition::Events(events) = adapter
+        .ingest(
+            &serde_json::to_vec(&error("thread-1", "turn-1")).unwrap(),
+            &Mapper,
+        )
+        .unwrap()
+    else {
+        panic!()
+    };
+    assert!(matches!(
+        events.as_slice(),
+        [IncomingEvent::Error(NormalizedPayload::Error {
+            code,
+            message,
+            retryable: true,
+        })] if code.as_str() == "codex" && message.as_str() == "retrying error"
+    ));
+
+    for foreign in [
+        error("foreign-thread", "turn-1"),
+        error("thread-1", "foreign-turn"),
+    ] {
+        assert!(matches!(
+            adapter.ingest(&serde_json::to_vec(&foreign).unwrap(), &Mapper),
+            Err(AdapterError::Ingress(IngressError::Identity))
+        ));
+    }
+    let delta = json!({"method":"item/agentMessage/delta","params":{
+        "threadId":"thread-1","turnId":"turn-1","itemId":"item-1","delta":"still active"
+    }});
+    assert!(matches!(
+        adapter.ingest(&serde_json::to_vec(&delta).unwrap(), &Mapper),
+        Ok(IngressDisposition::Events(_))
+    ));
+}
+
+#[test]
+fn malformed_pinned_error_notifications_fail_closed() {
+    let mut adapter = adapter();
+    ready(&mut adapter);
+    arm_turn(&mut adapter, 2, "client-error-malformed");
+    let started = json!({"method":"turn/started","params":{
+        "threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}
+    }});
+    adapter
+        .ingest(&serde_json::to_vec(&started).unwrap(), &Mapper)
+        .unwrap();
+
+    for params in [
+        json!({"threadId":"thread-1","turnId":"turn-1","willRetry":true}),
+        json!({"threadId":"thread-1","turnId":"turn-1","willRetry":true,"error":{}}),
+        json!({"threadId":"thread-1","turnId":"turn-1","willRetry":true,"error":{"message":false}}),
+        json!({"threadId":"thread-1","turnId":"turn-1","error":{"message":"missing retry"}}),
+        json!({"threadId":"thread-1","turnId":"turn-1","willRetry":"true","error":{"message":"wrong retry"}}),
+    ] {
+        let frame = json!({"method":"error","params":params});
+        assert!(matches!(
+            adapter.ingest(&serde_json::to_vec(&frame).unwrap(), &Mapper),
+            Err(AdapterError::Ingress(IngressError::Malformed))
+        ));
+    }
+    let delta = json!({"method":"item/agentMessage/delta","params":{
+        "threadId":"thread-1","turnId":"turn-1","itemId":"item-1","delta":"still active"
+    }});
+    assert!(matches!(
+        adapter.ingest(&serde_json::to_vec(&delta).unwrap(), &Mapper),
+        Ok(IngressDisposition::Events(_))
+    ));
+}
+
+#[test]
+fn notification_first_turn_start_error_fails_active_turn_or_is_late() {
+    let mut adapter = adapter();
+    ready(&mut adapter);
+    arm_turn(&mut adapter, 2, "client-notification-first");
+    let started = json!({"method":"turn/started","params":{
+        "threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}
+    }});
+    adapter
+        .ingest(&serde_json::to_vec(&started).unwrap(), &Mapper)
+        .unwrap();
+    let response_error = br#"{"id":2,"error":{"message":"start rejected"}}"#;
+    let IngressDisposition::Events(events) = adapter.ingest(response_error, &Mapper).unwrap()
+    else {
+        panic!()
+    };
+    assert!(matches!(
+        events.as_slice(),
+        [
+            IncomingEvent::Error(_),
+            IncomingEvent::Turn {
+                state: TurnState::Failed,
+                ..
+            }
+        ]
+    ));
+    assert!(matches!(
+        adapter.ingest(response_error, &Mapper),
+        Err(AdapterError::Ingress(IngressError::Uncorrelated))
+    ));
+
+    arm_turn(&mut adapter, 3, "client-terminal-first");
+    let next_started = json!({"method":"turn/started","params":{
+        "threadId":"thread-1","turn":{"id":"turn-2","status":"inProgress"}
+    }});
+    adapter
+        .ingest(&serde_json::to_vec(&next_started).unwrap(), &Mapper)
+        .unwrap();
+    let completed = json!({"method":"turn/completed","params":{
+        "threadId":"thread-1","turn":{"id":"turn-2","status":"failed"}
+    }});
+    adapter
+        .ingest(&serde_json::to_vec(&completed).unwrap(), &Mapper)
+        .unwrap();
+    assert_eq!(
+        adapter
+            .ingest(br#"{"id":3,"error":{"message":"late rejection"}}"#, &Mapper)
+            .unwrap(),
+        IngressDisposition::DuplicateTerminal
+    );
 }
 
 #[test]

@@ -216,11 +216,18 @@ fn contains_absolute_path(token: &str) -> bool {
     false
 }
 
-pub(super) fn error_payload(code: &str, message: &str) -> Result<NormalizedPayload, IngressError> {
+pub(super) fn error_payload(
+    code: &str,
+    message: &str,
+    retryable: bool,
+) -> Result<NormalizedPayload, IngressError> {
+    if message.len() > LIMITS.wire.error_bytes as usize {
+        return Err(IngressError::Content);
+    }
     Ok(NormalizedPayload::Error {
         code: SafeText::new("errorCode", code).map_err(content)?,
         message: SafeText::new("errorMessage", sanitize(message)).map_err(content)?,
-        retryable: false,
+        retryable,
     })
 }
 

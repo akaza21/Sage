@@ -58,11 +58,21 @@ pub(super) fn notification<M: ResourceMapper>(
             .into())
         }
         "error" => {
-            let message = params
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("Codex error");
-            Ok(IncomingEvent::Error(error_payload("codex", message)?).into())
+            expect_thread_and_turn(adapter, params)?;
+            let will_retry = params
+                .get("willRetry")
+                .and_then(Value::as_bool)
+                .ok_or(IngressError::Malformed)?;
+            let error = params
+                .get("error")
+                .and_then(Value::as_object)
+                .ok_or(IngressError::Malformed)?;
+            let message = text(
+                error,
+                "message",
+                crate::acp::limits::LIMITS.wire.error_bytes as usize,
+            )?;
+            Ok(IncomingEvent::Error(error_payload("codex", message, will_retry)?).into())
         }
         other => {
             Ok(IncomingEvent::Unsupported(unsupported(other, "Unsupported Codex event")?).into())

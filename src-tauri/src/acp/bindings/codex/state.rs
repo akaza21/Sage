@@ -59,6 +59,12 @@ struct TurnStartIntent {
     client_message_id: RequiredText<512>,
 }
 
+#[derive(Debug)]
+struct StartedTurnStart {
+    request_id: u64,
+    turn_id: ExternalId,
+}
+
 #[derive(Debug, Clone)]
 struct NegotiatedMethods {
     snapshot: CapabilitySnapshotV1,
@@ -84,6 +90,12 @@ pub(crate) enum TurnBinding {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum TurnStartFailure {
+    Failed(ScopedExternalId),
+    Late,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum PermissionRegistration {
     New(ScopedExternalId),
     DuplicatePending,
@@ -102,6 +114,7 @@ pub(crate) struct CodexAdapter {
     negotiated: Option<NegotiatedMethods>,
     external_thread_id: Option<ExternalId>,
     pending_turn_start: Option<TurnStartIntent>,
+    started_turn_starts: Vec<StartedTurnStart>,
     active_turn_id: Option<ExternalId>,
     active_turn_client_message_id: Option<RequiredText<512>>,
     active_item_terminals: Vec<ItemTerminal>,
@@ -129,6 +142,7 @@ impl CodexAdapter {
             negotiated: None,
             external_thread_id: None,
             pending_turn_start: None,
+            started_turn_starts: Vec::new(),
             active_turn_id: None,
             active_turn_client_message_id: None,
             active_item_terminals: Vec::new(),
@@ -301,17 +315,28 @@ impl CodexAdapter {
         Ok(())
     }
 
-    pub(super) fn fail_turn_start(&mut self, id: u64) -> Result<ScopedExternalId, AdapterError> {
-        let client = self
+    pub(super) fn fail_turn_start(&mut self, id: u64) -> Result<TurnStartFailure, AdapterError> {
+        if let Some(client) = self
             .pending_turn_start
             .as_ref()
             .filter(|intent| intent.request_id == id)
             .map(|intent| intent.client_message_id.clone())
-            .ok_or(AdapterError::TurnIntentConflict)?;
-        self.pending_turn_start = None;
-        self.active_turn_client_message_id = Some(client);
-        self.active_turn_id = Some(ExternalId::new("externalTurnId", format!("rejected-{id}"))?);
-        self.accept_active_failure()
+        {
+            self.pending_turn_start = None;
+            self.active_turn_client_message_id = Some(client);
+            self.active_turn_id =
+                Some(ExternalId::new("externalTurnId", format!("rejected-{id}"))?);
+            return self.accept_active_failure().map(TurnStartFailure::Failed);
+        }
+        let started = self.take_started_turn_start(id)?;
+        if self
+            .active_turn_id
+            .as_ref()
+            .is_some_and(|active| active == &started.turn_id)
+        {
+            return self.accept_active_failure().map(TurnStartFailure::Failed);
+        }
+        Ok(TurnStartFailure::Late)
     }
 
     pub(super) fn fail_interrupt(&mut self) -> Result<ScopedExternalId, AdapterError> {
@@ -346,6 +371,15 @@ impl CodexAdapter {
             .iter()
             .position(|(pending, _)| *pending == id)?;
         Some(self.pending.swap_remove(index).1)
+    }
+
+    fn take_started_turn_start(&mut self, id: u64) -> Result<StartedTurnStart, AdapterError> {
+        let index = self
+            .started_turn_starts
+            .iter()
+            .position(|started| started.request_id == id)
+            .ok_or(AdapterError::TurnIntentConflict)?;
+        Ok(self.started_turn_starts.swap_remove(index))
     }
 
     fn reserve(&mut self, request: OutgoingRequest) -> Result<OutgoingRequest, AdapterError> {

@@ -168,18 +168,20 @@ fn response(
             .get("message")
             .and_then(Value::as_str)
             .unwrap_or("Codex request failed");
-        let payload = error_payload("codexRpc", message)?;
+        let payload = error_payload("codexRpc", message, false)?;
         return match kind {
-            RequestKind::TurnStart => {
-                let turn = adapter.fail_turn_start(id).map_err(identity)?;
-                Ok(IngressDisposition::Events(vec![
-                    IncomingEvent::Error(payload),
-                    IncomingEvent::Turn {
-                        id: turn,
-                        state: TurnState::Failed,
-                    },
-                ]))
-            }
+            RequestKind::TurnStart => match adapter.fail_turn_start(id).map_err(identity)? {
+                super::state::TurnStartFailure::Failed(turn) => {
+                    Ok(IngressDisposition::Events(vec![
+                        IncomingEvent::Error(payload),
+                        IncomingEvent::Turn {
+                            id: turn,
+                            state: TurnState::Failed,
+                        },
+                    ]))
+                }
+                super::state::TurnStartFailure::Late => Ok(IngressDisposition::DuplicateTerminal),
+            },
             RequestKind::Interrupt => {
                 let turn = adapter.fail_interrupt().map_err(identity)?;
                 Ok(IngressDisposition::Events(vec![

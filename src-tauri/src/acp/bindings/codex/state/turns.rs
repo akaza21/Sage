@@ -5,8 +5,8 @@ use crate::acp::{
 };
 
 use super::{
-    AdapterError, CodexAdapter, ExternalKind, ItemTerminal, ScopedExternalId, TERMINAL_ID_BYTES,
-    TurnBinding, TurnTombstone,
+    AdapterError, CodexAdapter, ExternalKind, ItemTerminal, ScopedExternalId, StartedTurnStart,
+    TERMINAL_ID_BYTES, TurnBinding, TurnTombstone,
 };
 
 impl CodexAdapter {
@@ -55,16 +55,23 @@ impl CodexAdapter {
         if self.pending_turn_start.is_none() {
             return Err(AdapterError::TurnIntentConflict);
         }
-        let client_message_id = self
+        if self.started_turn_starts.len() >= LIMITS.queues.outstanding_rpc_per_session as usize {
+            return Err(AdapterError::PendingFull);
+        }
+        let (request_id, client_message_id) = self
             .pending_turn_start
             .as_ref()
-            .map(|intent| intent.client_message_id.clone())
+            .map(|intent| (intent.request_id, intent.client_message_id.clone()))
             .ok_or(AdapterError::TurnIntentConflict)?;
         self.pending_turn_start = None;
         self.active_turn_client_message_id = Some(client_message_id);
         self.active_item_terminals.clear();
         self.active_terminal_id_bytes = 0;
         self.active_turn_id = Some(id.clone());
+        self.started_turn_starts.push(StartedTurnStart {
+            request_id,
+            turn_id: id.clone(),
+        });
         Ok((
             self.scoped_in_turn(ExternalKind::Turn, value, value)?,
             TurnBinding::NewlyActive,
@@ -76,12 +83,24 @@ impl CodexAdapter {
         request_id: u64,
         value: &str,
     ) -> Result<(ScopedExternalId, TurnBinding), AdapterError> {
+        if let Some(index) = self
+            .started_turn_starts
+            .iter()
+            .position(|started| started.request_id == request_id)
+        {
+            let started = self.started_turn_starts.swap_remove(index);
+            if started.turn_id.as_str() != value {
+                return Err(AdapterError::IdentityConflict);
+            }
+        }
         if self
             .pending_turn_start
             .as_ref()
             .is_some_and(|intent| intent.request_id == request_id)
         {
-            return self.observe_turn_started(value);
+            let result = self.observe_turn_started(value)?;
+            let _ = self.started_turn_starts.pop();
+            return Ok(result);
         }
         if self
             .active_turn_id
