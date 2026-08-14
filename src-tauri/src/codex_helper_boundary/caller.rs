@@ -7,8 +7,8 @@ use uuid::Uuid;
 use super::entrypoint::protocol_argument;
 use super::executable::VerifiedHelperExecutable;
 use super::protocol::{
-    BoundaryError, BoundaryStatus, HelperIdentity, OneShotSecret, RESPONSE_FRAME_BYTES,
-    SealedRequest, verify_response, wire_request,
+    BoundaryError, BoundaryStatus, HelperIdentity, OneShotSecret, REQUEST_PAYLOAD_BYTES_MAX,
+    RESPONSE_FRAME_BYTES, SealedRequest, verify_response, wire_request,
 };
 use super::windows::{authority, channel};
 
@@ -26,9 +26,21 @@ pub fn direct_non_elevated_probe(
     opaque_request: &[u8],
     timeout: Duration,
 ) -> Result<BoundaryProbeReceipt, BoundaryError> {
-    run_helper_with_payload(helper_path, timeout, |_helper, _secret| {
-        Ok(opaque_request.to_vec())
+    with_bounded_direct_payload(opaque_request, |bounded_request| {
+        run_helper_with_payload(helper_path, timeout, |_helper, _secret| {
+            Ok(bounded_request.to_vec())
+        })
     })
+}
+
+fn with_bounded_direct_payload<T>(
+    opaque_request: &[u8],
+    accepted: impl FnOnce(&[u8]) -> Result<T, BoundaryError>,
+) -> Result<T, BoundaryError> {
+    if opaque_request.is_empty() || opaque_request.len() > REQUEST_PAYLOAD_BYTES_MAX {
+        return Err(BoundaryError::Bound);
+    }
+    accepted(opaque_request)
 }
 
 pub(crate) fn run_helper_with_payload(
@@ -36,26 +48,36 @@ pub(crate) fn run_helper_with_payload(
     timeout: Duration,
     payload_builder: impl FnOnce(HelperIdentity, &OneShotSecret) -> Result<Vec<u8>, BoundaryError>,
 ) -> Result<BoundaryProbeReceipt, BoundaryError> {
+    let started_at = Instant::now();
     if timeout.is_zero() || timeout > Duration::from_secs(30) {
         return Err(BoundaryError::Deadline);
     }
-    let helper = VerifiedHelperExecutable::open(helper_path)?;
-    let caller = authority::current_process_subject()?;
-    if caller.elevated {
-        return Err(BoundaryError::Authority);
-    }
-    let pipe_name = channel::fresh_name();
-    let secret = OneShotSecret::generate();
-    let payload = payload_builder(helper.identity(), &secret)?;
+    let deadline = started_at
+        .checked_add(timeout)
+        .ok_or(BoundaryError::Deadline)?;
+    let (helper, caller_sid_sha256, pipe_name, secret, payload) =
+        complete_before_deadline(deadline, || {
+            let helper = VerifiedHelperExecutable::open(helper_path)?;
+            let caller = authority::current_process_subject()?;
+            if caller.elevated {
+                return Err(BoundaryError::Authority);
+            }
+            let pipe_name = channel::fresh_name();
+            let secret = OneShotSecret::generate();
+            let payload = payload_builder(helper.identity(), &secret)?;
+            Ok((helper, caller.sid_sha256, pipe_name, secret, payload))
+        })?;
     let nonce = *Uuid::new_v4().as_bytes();
-    let request = SealedRequest::seal(
-        std::process::id(),
-        caller.sid_sha256,
-        nonce,
-        helper.identity(),
-        &payload,
-        &secret,
-    )?;
+    let request = complete_before_deadline(deadline, || {
+        SealedRequest::seal(
+            std::process::id(),
+            caller_sid_sha256,
+            nonce,
+            helper.identity(),
+            &payload,
+            &secret,
+        )
+    })?;
     let mut command = Command::new(helper.path());
     command
         .arg(protocol_argument())
@@ -69,9 +91,9 @@ pub(crate) fn run_helper_with_payload(
             command.env(name, value);
         }
     }
+    ensure_before_deadline(deadline)?;
     let mut child = command.spawn().map_err(|_| BoundaryError::Io)?;
     let child_pid = child.id();
-    let deadline = Instant::now() + timeout;
     let result = exchange(
         &mut child, child_pid, &pipe_name, &request, &secret, deadline,
     );
@@ -92,6 +114,23 @@ pub(crate) fn run_helper_with_payload(
             Err(error)
         }
     }
+}
+
+fn complete_before_deadline<T>(
+    deadline: Instant,
+    work: impl FnOnce() -> Result<T, BoundaryError>,
+) -> Result<T, BoundaryError> {
+    ensure_before_deadline(deadline)?;
+    let result = work();
+    ensure_before_deadline(deadline)?;
+    result
+}
+
+fn ensure_before_deadline(deadline: Instant) -> Result<(), BoundaryError> {
+    if Instant::now() >= deadline {
+        return Err(BoundaryError::Deadline);
+    }
+    Ok(())
 }
 
 fn exchange(
@@ -177,6 +216,7 @@ fn converge_process(
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
     use std::io;
 
     use super::*;
@@ -208,5 +248,44 @@ mod tests {
         assert_eq!(result, Err(BoundaryError::Io));
         assert_eq!(process.kill_calls, 1);
         assert_eq!(process.poll_calls, 1);
+    }
+
+    #[test]
+    fn invalid_direct_probe_payload_is_rejected_before_helper_identity_setup() {
+        let missing_helper = std::env::temp_dir().join(format!(
+            "sage-missing-helper-{}.exe",
+            Uuid::new_v4().simple()
+        ));
+        let retention_calls = Cell::new(0);
+
+        for payload in [&[][..], &vec![0; REQUEST_PAYLOAD_BYTES_MAX + 1]] {
+            assert_eq!(
+                with_bounded_direct_payload(payload, |_| {
+                    retention_calls.set(retention_calls.get() + 1);
+                    Ok(())
+                }),
+                Err(BoundaryError::Bound)
+            );
+            assert_eq!(
+                direct_non_elevated_probe(&missing_helper, payload, Duration::from_secs(1)),
+                Err(BoundaryError::Bound)
+            );
+        }
+        assert_eq!(retention_calls.get(), 0);
+    }
+
+    #[test]
+    fn payload_builder_cannot_extend_the_absolute_caller_deadline() {
+        let builder_calls = Cell::new(0);
+        let deadline = Instant::now() + Duration::from_millis(50);
+
+        let result = complete_before_deadline(deadline, || {
+            builder_calls.set(builder_calls.get() + 1);
+            std::thread::sleep(Duration::from_millis(75));
+            Ok(())
+        });
+
+        assert_eq!(result, Err(BoundaryError::Deadline));
+        assert_eq!(builder_calls.get(), 1);
     }
 }
