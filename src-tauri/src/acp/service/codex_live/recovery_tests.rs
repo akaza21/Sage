@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use super::*;
 use crate::acp::{
     contract::{ClientIntentId, RuntimeEpoch, SageChatId, SageProjectId},
@@ -243,6 +245,160 @@ fn drop_attempts_persistent_recovery_at_most_twice_before_forced_cleanup() {
         .load(std::sync::atomic::Ordering::Acquire)
         .saturating_sub(before);
     assert!(attempts <= 2);
+}
+
+#[test]
+fn effect_unknown_send_retains_the_exact_host_until_bounded_shutdown_without_replay() {
+    let service = AcpService::new(
+        crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap(),
+    )
+    .unwrap();
+    let owner = RuntimeOwner {
+        project_id: SageProjectId::parse("project-send-recovery").unwrap(),
+        chat_id: SageChatId::parse("chat-send-recovery").unwrap(),
+        session_id: crate::acp::contract::SageAgentSessionId::parse("session-send-recovery")
+            .unwrap(),
+        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+    };
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let host = Arc::new(
+        crate::acp::runtime::RuntimeHost::start(EffectUnknownSend(Arc::clone(&attempts))).unwrap(),
+    );
+    host.activate(owner.clone()).unwrap();
+    service.install_runtime_for_test(owner.clone(), Arc::clone(&host));
+
+    assert!(matches!(
+        service.send_codex_turn(prepare_turn(&owner)),
+        Err(CodexSessionError::Recovery)
+    ));
+    assert_eq!(attempts.load(Ordering::Acquire), 1);
+    assert!(matches!(
+        service.runtime.for_owner(&owner),
+        Err(super::super::super::runtime_slot::RuntimeSlotError::Recovery)
+    ));
+    assert!(service.codex_recovery.lock().unwrap().is_some());
+    assert!(matches!(
+        service.send_codex_turn(prepare_turn(&owner)),
+        Err(CodexSessionError::Recovery)
+    ));
+    assert_eq!(attempts.load(Ordering::Acquire), 1, "prompt was replayed");
+
+    assert!(
+        service
+            .shutdown_codex_recovery(Instant::now() + Duration::from_secs(1))
+            .unwrap()
+    );
+    assert!(service.codex_recovery.lock().unwrap().is_none());
+    assert!(service.runtime.active().is_none());
+    service.shutdown_blocking().unwrap();
+}
+
+fn prepare_turn(owner: &RuntimeOwner) -> crate::acp::store::PrepareTurnCommand {
+    crate::acp::store::PrepareTurnCommand {
+        project_id: owner.project_id.clone(),
+        project_generation: crate::acp::contract::ProjectGeneration::new(1).unwrap(),
+        chat_id: owner.chat_id.clone(),
+        session_id: owner.session_id.clone(),
+        runtime_epoch: owner.runtime_epoch,
+        expected_projection_revision: crate::acp::contract::ProjectionRevision::ZERO,
+        client_intent_id: ClientIntentId::new(),
+        prompt: crate::acp::intent::Prompt::new("prompt", "no replay").unwrap(),
+        now_millis: crate::persistence::now_millis(),
+    }
+}
+
+struct EffectUnknownSend(Arc<AtomicUsize>);
+
+impl crate::acp::runtime::RuntimeEngine for EffectUnknownSend {
+    fn activate(&mut self, _: &RuntimeOwner) -> Result<(), crate::acp::runtime::HostError> {
+        Ok(())
+    }
+
+    fn prepare_prompt(
+        &mut self,
+        _: &crate::acp::runtime::HostPromptIntent,
+    ) -> Result<crate::acp::contract::SageTurnId, crate::acp::runtime::HostError> {
+        self.0.fetch_add(1, Ordering::AcqRel);
+        Err(crate::acp::runtime::HostError::RecoveryRequired)
+    }
+
+    fn dispatch_prompt(
+        &mut self,
+        _: &RuntimeOwner,
+        _: &crate::acp::contract::SageTurnId,
+    ) -> Result<crate::acp::runtime::PromptWrite, crate::acp::runtime::HostError> {
+        unreachable!("an uncertain prepare never dispatches a prompt")
+    }
+
+    fn retry_prompt(
+        &mut self,
+        _: &RuntimeOwner,
+        _: &crate::acp::contract::SageTurnId,
+    ) -> Result<crate::acp::runtime::PromptWrite, crate::acp::runtime::HostError> {
+        unreachable!("prompt retry is prohibited after uncertain prepare")
+    }
+
+    fn record_delivery_unknown(
+        &mut self,
+        _: &RuntimeOwner,
+        _: &crate::acp::contract::SageTurnId,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        Ok(())
+    }
+
+    fn record_retry_exhausted(
+        &mut self,
+        _: &RuntimeOwner,
+        _: &crate::acp::contract::SageTurnId,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        Ok(())
+    }
+
+    fn begin_cancel(
+        &mut self,
+        _: &crate::acp::runtime::HostCancelIntent,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        Ok(())
+    }
+
+    fn dispatch_cancel(
+        &mut self,
+        _: &crate::acp::runtime::HostCancelIntent,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        Ok(())
+    }
+
+    fn accept_terminal(
+        &mut self,
+        _: &crate::acp::store::AdapterTurnCursor,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        Ok(())
+    }
+
+    fn begin_close(
+        &mut self,
+        _: &crate::acp::runtime::HostCloseIntent,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        Ok(())
+    }
+
+    fn converge_zero(
+        &mut self,
+        _: &crate::acp::runtime::HostCloseIntent,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        Ok(())
+    }
+
+    fn finalize_close(
+        &mut self,
+        _: &crate::acp::runtime::HostCloseIntent,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        Ok(())
+    }
+
+    fn shutdown(&mut self, _: Instant) -> Result<(), crate::acp::runtime::HostError> {
+        Ok(())
+    }
 }
 
 struct TestRuntime;

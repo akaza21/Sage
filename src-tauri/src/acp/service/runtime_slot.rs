@@ -316,6 +316,32 @@ impl RuntimeSlot {
         }
     }
 
+    /// Releases an exact host only after explicit close has converged while
+    /// the slot was retaining it for authoritative recovery.
+    pub(crate) fn release_recovered(
+        &self,
+        owner: &RuntimeOwner,
+        host: &Arc<RuntimeHost>,
+    ) -> Result<(), RuntimeSlotError> {
+        let mut state = self.lock();
+        match &*state {
+            State::Recovery {
+                owner: current,
+                host: current_host,
+            } if current == owner && Arc::ptr_eq(current_host, host) => {
+                *state = State::Empty;
+                Ok(())
+            }
+            State::Stopping { .. } | State::Stopped => Err(RuntimeSlotError::Stopping),
+            State::Empty
+            | State::Starting { .. }
+            | State::StartingRecovery { .. }
+            | State::Primed { .. }
+            | State::Claimed { .. }
+            | State::Recovery { .. } => Err(RuntimeSlotError::Foreign),
+        }
+    }
+
     /// Clears the exact runtime recovery slot only after durable final-window
     /// recovery and projection publication have both succeeded.
     pub(crate) fn recover_after_zero_process(

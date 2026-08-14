@@ -298,3 +298,23 @@ fn final_window_recovery_joins_exact_host_before_advertising_empty() {
         Err(RuntimeSlotError::Foreign)
     ));
 }
+
+#[test]
+fn explicit_recovery_close_releases_only_the_retained_exact_host() {
+    let slot = RuntimeSlot::new();
+    let exact_owner = owner("session-explicit-close");
+    let exact = host(&exact_owner);
+    let foreign = host(&exact_owner);
+    slot.claim(exact_owner.clone(), Arc::clone(&exact)).unwrap();
+    slot.mark_recovery(&exact_owner).unwrap();
+
+    assert_eq!(
+        slot.release_recovered(&exact_owner, &foreign),
+        Err(RuntimeSlotError::Foreign)
+    );
+    assert!(slot.is_active());
+    exact.shutdown().unwrap();
+    slot.release_recovered(&exact_owner, &exact).unwrap();
+    assert!(!slot.is_active());
+    foreign.shutdown().unwrap();
+}

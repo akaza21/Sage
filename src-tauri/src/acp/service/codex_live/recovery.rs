@@ -34,6 +34,31 @@ pub(in crate::acp::service) enum PendingCodexRecovery {
     ActivationCommitted {
         owner: RuntimeOwner,
     },
+    /// The activation journal could not be converted to a narrower lease.
+    /// It remains the only authority that can decide whether the durable
+    /// session is still activating or has entered the runtime phase.
+    Journal {
+        abort: ActivationAbortIntent,
+        category: ActivationAbortCategory,
+        journal: CoordinatorActivationJournal,
+        proof: crate::acp::process::ZeroProcessToken,
+        host: Option<(Arc<RuntimeHost>, bool)>,
+    },
+    /// A constructed host has closed its mailbox but did not join before the
+    /// activation cleanup deadline.  Keep the exact host until the join and
+    /// matching slot release both converge.
+    StartupHost {
+        owner: RuntimeOwner,
+        host: Arc<RuntimeHost>,
+        claimed: bool,
+    },
+    /// A live command reached an effect-unknown outcome.  The slot and this
+    /// payload intentionally retain the same host until bounded shutdown (or
+    /// the close recovery path) proves it is safe to release capacity.
+    LiveHost {
+        owner: RuntimeOwner,
+        host: Arc<RuntimeHost>,
+    },
     Driver {
         abort: ActivationAbortIntent,
         category: ActivationAbortCategory,
@@ -150,6 +175,60 @@ impl AcpService {
                 .release_activation_slot(&owner)
                 .err()
                 .map(|_| PendingCodexRecovery::ActivationCommitted { owner }),
+            PendingCodexRecovery::Journal {
+                abort,
+                category,
+                journal,
+                proof,
+                host,
+            } => {
+                if let Some((host, claimed)) = host {
+                    if host.abandon_startup().is_err() {
+                        Some(PendingCodexRecovery::Journal {
+                            abort,
+                            category,
+                            journal,
+                            proof,
+                            host: Some((host, claimed)),
+                        })
+                    } else {
+                        self.shutdown_journal_after_startup_host(
+                            abort, category, journal, proof, claimed,
+                        )
+                        .err()
+                    }
+                } else {
+                    self.shutdown_journal_after_startup_host(abort, category, journal, proof, false)
+                        .err()
+                }
+            }
+            PendingCodexRecovery::StartupHost {
+                owner,
+                host,
+                claimed,
+            } => match host.abandon_startup() {
+                Ok(()) => self
+                    .release_startup_host(&owner, &host, claimed)
+                    .err()
+                    .map(|_| PendingCodexRecovery::StartupHost {
+                        owner,
+                        host,
+                        claimed,
+                    }),
+                Err(_) => Some(PendingCodexRecovery::StartupHost {
+                    owner,
+                    host,
+                    claimed,
+                }),
+            },
+            PendingCodexRecovery::LiveHost { owner, host } => match host.shutdown() {
+                Ok(()) => self
+                    .runtime
+                    .recover_after_zero_process(&owner)
+                    .err()
+                    .map(|_| PendingCodexRecovery::LiveHost { owner, host }),
+                Err(_) => Some(PendingCodexRecovery::LiveHost { owner, host }),
+            },
             PendingCodexRecovery::Driver {
                 abort,
                 category,
@@ -232,7 +311,7 @@ impl AcpService {
     }
 
     #[allow(clippy::result_large_err)]
-    fn shutdown_runtime_after_token(
+    pub(super) fn shutdown_runtime_after_token(
         &self,
         owner: RuntimeOwner,
         token: crate::acp::process::ZeroProcessToken,
@@ -254,7 +333,7 @@ impl AcpService {
     }
 
     #[allow(clippy::result_large_err)]
-    fn shutdown_activation_after_token(
+    pub(super) fn shutdown_activation_after_token(
         &self,
         abort: ActivationAbortIntent,
         category: ActivationAbortCategory,
@@ -297,79 +376,6 @@ impl AcpService {
         self.runtime
             .abort_start(owner)
             .or_else(|_| self.runtime.recover_after_zero_process(owner))
-    }
-
-    #[allow(clippy::result_large_err)]
-    fn release_runtime_slot(
-        &self,
-        owner: RuntimeOwner,
-        proof: ZeroProcessProof,
-    ) -> Result<(), PendingCodexRecovery> {
-        #[cfg(test)]
-        let release = if self
-            .codex_runtime_release_fail_always
-            .load(std::sync::atomic::Ordering::Acquire)
-        {
-            Err(super::super::runtime_slot::RuntimeSlotError::Recovery)
-        } else {
-            self.runtime.recover_after_zero_process_fail_once_for_test(
-                &owner,
-                &self.codex_runtime_release_fail_once,
-            )
-        };
-        #[cfg(not(test))]
-        let release = self.runtime.recover_after_zero_process(&owner);
-        release.map_err(|_| PendingCodexRecovery::RuntimeProjection { owner, proof })
-    }
-
-    pub(crate) fn send_codex_turn(
-        &self,
-        command: PrepareTurnCommand,
-    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
-        let owner = RuntimeOwner {
-            project_id: command.project_id.clone(),
-            chat_id: command.chat_id.clone(),
-            session_id: command.session_id.clone(),
-            runtime_epoch: command.runtime_epoch,
-        };
-        self.runtime
-            .for_owner(&owner)
-            .map_err(map_slot_error)?
-            .send(crate::acp::runtime::HostPromptIntent { command })
-            .map_err(map_host_error)
-    }
-
-    pub(crate) fn cancel_codex_turn(
-        &self,
-        intent: crate::acp::runtime::HostCancelIntent,
-    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
-        let owner = intent.owner.clone();
-        self.runtime
-            .for_owner(&owner)
-            .map_err(map_slot_error)?
-            .cancel(intent)
-            .map_err(map_host_error)
-    }
-
-    pub(crate) fn close_codex_session(
-        &self,
-        command: crate::acp::store::CloseSessionCommand,
-    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
-        let owner = RuntimeOwner {
-            project_id: command.project_id.clone(),
-            chat_id: command.chat_id.clone(),
-            session_id: command.session_id.clone(),
-            runtime_epoch: command.runtime_epoch,
-        };
-        let host = self.runtime.for_owner(&owner).map_err(map_slot_error)?;
-        let outcome = host
-            .close(crate::acp::runtime::HostCloseIntent { command })
-            .map_err(map_host_error)?;
-        host.shutdown().map_err(map_host_error)?;
-        self.runtime
-            .release(&owner, &host)
-            .map_err(map_slot_error)?;
-        Ok(outcome)
     }
 }
 

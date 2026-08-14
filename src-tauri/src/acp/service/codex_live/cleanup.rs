@@ -1,6 +1,62 @@
 use super::*;
 
 impl AcpService {
+    #[allow(clippy::result_large_err)]
+    pub(super) fn shutdown_journal_after_startup_host(
+        &self,
+        abort: ActivationAbortIntent,
+        category: ActivationAbortCategory,
+        journal: CoordinatorActivationJournal,
+        proof: crate::acp::process::ZeroProcessToken,
+        _claimed: bool,
+    ) -> Result<(), PendingCodexRecovery> {
+        match journal.into_shutdown_handoff() {
+            CoordinatorShutdownHandoff::Runtime(lease) => {
+                drop(lease);
+                self.shutdown_runtime_after_token(abort.owner, proof)
+            }
+            CoordinatorShutdownHandoff::Activation(lease) => {
+                self.shutdown_activation_after_token(abort, category, lease, proof)
+            }
+        }
+    }
+
+    pub(super) fn release_startup_host(
+        &self,
+        owner: &RuntimeOwner,
+        host: &Arc<RuntimeHost>,
+        claimed: bool,
+    ) -> Result<(), crate::acp::service::runtime_slot::RuntimeSlotError> {
+        if claimed {
+            self.runtime.abort_claimed_start(owner, host)
+        } else {
+            self.runtime.abort_start(owner)
+        }
+    }
+
+    #[allow(clippy::result_large_err)]
+    pub(super) fn release_runtime_slot(
+        &self,
+        owner: RuntimeOwner,
+        proof: ZeroProcessProof,
+    ) -> Result<(), PendingCodexRecovery> {
+        #[cfg(test)]
+        let release = if self
+            .codex_runtime_release_fail_always
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            Err(super::super::runtime_slot::RuntimeSlotError::Recovery)
+        } else {
+            self.runtime.recover_after_zero_process_fail_once_for_test(
+                &owner,
+                &self.codex_runtime_release_fail_once,
+            )
+        };
+        #[cfg(not(test))]
+        let release = self.runtime.recover_after_zero_process(&owner);
+        release.map_err(|_| PendingCodexRecovery::RuntimeProjection { owner, proof })
+    }
+
     pub(super) async fn abort_failed_launch(
         &self,
         abort: &ActivationAbortIntent,
@@ -193,9 +249,20 @@ impl AcpService {
         active: Option<ActiveCodexOperation>,
     ) -> Result<(), CodexSessionError> {
         let (_, journal, _) = handoff.parts.into_parts();
-        let mut lease = journal
-            .into_teardown_lease()
-            .map_err(|_| CodexSessionError::Recovery)?;
+        let mut lease = match journal.into_teardown_lease() {
+            Ok(lease) => lease,
+            Err(journal) => {
+                let _ = self.runtime.mark_recovery(&abort.owner);
+                self.retain_codex_recovery(PendingCodexRecovery::Journal {
+                    abort: abort.clone(),
+                    category,
+                    journal: *journal,
+                    proof: handoff.proof,
+                    host,
+                });
+                return Err(CodexSessionError::Recovery);
+            }
+        };
         let proof = match ZeroProcessProof::from_supervisor(abort.owner.clone(), &handoff.proof) {
             Ok(proof) => proof,
             Err(_) => {
@@ -225,6 +292,11 @@ impl AcpService {
         if let Some((host, claimed)) = host {
             if host.abandon_startup().is_err() {
                 let _ = self.runtime.mark_recovery(&abort.owner);
+                self.retain_codex_recovery(PendingCodexRecovery::StartupHost {
+                    owner: abort.owner.clone(),
+                    host,
+                    claimed,
+                });
                 return Err(CodexSessionError::Recovery);
             }
             if claimed {
