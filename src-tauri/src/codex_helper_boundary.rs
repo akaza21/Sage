@@ -13,6 +13,9 @@ mod executable;
 #[path = "codex_helper_boundary/protocol.rs"]
 mod protocol;
 #[cfg(windows)]
+#[path = "codex_helper_boundary/watchdog.rs"]
+mod watchdog;
+#[cfg(windows)]
 #[path = "codex_helper_boundary/windows.rs"]
 mod windows;
 

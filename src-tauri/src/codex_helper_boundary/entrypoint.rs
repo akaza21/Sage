@@ -7,13 +7,14 @@ use super::protocol::{
     BoundaryError, HelperIdentity, OneShotSecret, WIRE_REQUEST_BYTES_MAX, decode_request,
     split_wire_request,
 };
+use super::watchdog::{HELPER_OPERATION_DEADLINE, run_with_watchdog, terminate_current_process};
 use super::windows::{authority, channel};
 use super::{
     ElevatedBoundaryAuthority, PublicationExecutor, PublicationFailure, authenticated_response,
 };
 
 const PROTOCOL_ARGUMENT: &str = "--sage-codex-helper-boundary-v1";
-const PROCESS_DEADLINE: Duration = Duration::from_secs(2);
+const ACCEPT_AND_READ_DEADLINE: Duration = Duration::from_secs(2);
 
 struct CorePublicationExecutor;
 
@@ -42,13 +43,22 @@ pub(crate) fn run(mut arguments: impl Iterator<Item = OsString>) -> Result<(), B
         .into_string()
         .map_err(|_| BoundaryError::Malformed)?;
     channel::validate_name(&pipe_name)?;
+    run_with_watchdog(
+        HELPER_OPERATION_DEADLINE,
+        terminate_current_process,
+        move || run_bounded(pipe_name),
+    )
+}
+
+fn run_bounded(pipe_name: String) -> Result<(), BoundaryError> {
     let helper_subject = authority::current_process_subject()?;
     let pipe = channel::create_server(&pipe_name, &helper_subject.sid)?;
-    let deadline = Instant::now() + PROCESS_DEADLINE;
+    let deadline = Instant::now() + ACCEPT_AND_READ_DEADLINE;
     channel::accept(&pipe, deadline)?;
-    let wire = channel::read_message(&pipe.0, WIRE_REQUEST_BYTES_MAX, deadline)?;
-    let (secret, sealed) = split_wire_request(&wire)?;
-    let request = decode_request(sealed, &secret)?;
+    let mut wire = channel::read_message(&pipe.0, WIRE_REQUEST_BYTES_MAX, deadline)?;
+    let (secret, sealed) = split_wire_request(&mut wire)?;
+    drop(wire);
+    let request = decode_request(&sealed, &secret)?;
 
     let image = VerifiedHelperExecutable::open(
         &std::env::current_exe().map_err(|_| BoundaryError::HelperIdentity)?,

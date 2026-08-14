@@ -72,8 +72,18 @@ impl OneShotSecret {
         Self(bytes)
     }
 
+    #[cfg(test)]
     pub(crate) fn from_bytes(bytes: [u8; 32]) -> Self {
         Self(bytes)
+    }
+
+    fn from_slice(bytes: &[u8]) -> Result<Self, BoundaryError> {
+        if bytes.len() != 32 {
+            return Err(BoundaryError::Malformed);
+        }
+        let mut secret = Self([0; 32]);
+        secret.0.copy_from_slice(bytes);
+        Ok(secret)
     }
 
     pub(crate) fn bytes(&self) -> &[u8; 32] {
@@ -94,10 +104,7 @@ impl std::fmt::Debug for OneShotSecret {
 
 impl Drop for OneShotSecret {
     fn drop(&mut self) {
-        for byte in &mut self.0 {
-            // Best-effort zeroing without widening the dependency graph.
-            unsafe { std::ptr::write_volatile(byte, 0) };
-        }
+        clear_volatile(&mut self.0);
     }
 }
 
@@ -200,21 +207,47 @@ pub(crate) fn decode_request<'a>(
     })
 }
 
-pub(crate) fn wire_request(secret: &OneShotSecret, request: &SealedRequest) -> Vec<u8> {
-    let mut wire = Vec::with_capacity(32 + request.bytes.len());
-    wire.extend_from_slice(secret.bytes());
-    wire.extend_from_slice(request.bytes());
-    wire
+pub(crate) struct ZeroingWireBuffer<'a> {
+    bytes: &'a mut Vec<u8>,
 }
 
-pub(crate) fn split_wire_request(bytes: &[u8]) -> Result<(OneShotSecret, &[u8]), BoundaryError> {
+impl ZeroingWireBuffer<'_> {
+    pub(crate) fn as_bytes(&self) -> &[u8] {
+        self.bytes
+    }
+}
+
+impl Drop for ZeroingWireBuffer<'_> {
+    fn drop(&mut self) {
+        clear_volatile(self.bytes);
+    }
+}
+
+pub(crate) fn wire_request<'a>(
+    storage: &'a mut Vec<u8>,
+    secret: &OneShotSecret,
+    request: &SealedRequest,
+) -> ZeroingWireBuffer<'a> {
+    clear_volatile(storage);
+    storage.clear();
+    storage.reserve(32 + request.bytes.len());
+    storage.extend_from_slice(secret.bytes());
+    storage.extend_from_slice(request.bytes());
+    ZeroingWireBuffer { bytes: storage }
+}
+
+pub(crate) fn split_wire_request(
+    bytes: &mut Vec<u8>,
+) -> Result<(OneShotSecret, Vec<u8>), BoundaryError> {
     if bytes.len() <= 32 || bytes.len() > WIRE_REQUEST_BYTES_MAX {
+        let secret_prefix_len = bytes.len().min(32);
+        clear_volatile(&mut bytes[..secret_prefix_len]);
         return Err(BoundaryError::Bound);
     }
-    Ok((
-        OneShotSecret::from_bytes(copy_array(&bytes[..32])?),
-        &bytes[32..],
-    ))
+    let secret = OneShotSecret::from_slice(&bytes[..32])?;
+    clear_volatile(&mut bytes[..32]);
+    let sealed = bytes.split_off(32);
+    Ok((secret, sealed))
 }
 
 pub(crate) fn seal_response(
@@ -282,6 +315,13 @@ fn constant_time_equal(left: &[u8], right: &[u8]) -> bool {
 
 fn copy_array<const N: usize>(bytes: &[u8]) -> Result<[u8; N], BoundaryError> {
     bytes.try_into().map_err(|_| BoundaryError::Malformed)
+}
+
+fn clear_volatile(bytes: &mut [u8]) {
+    for byte in bytes {
+        // Best-effort zeroing without widening the dependency graph.
+        unsafe { std::ptr::write_volatile(byte, 0) };
+    }
 }
 
 #[cfg(test)]
@@ -378,5 +418,36 @@ mod tests {
             format!("{:?}", OneShotSecret::fixture(0x7a)),
             "OneShotSecret([redacted])"
         );
+    }
+
+    #[test]
+    fn outbound_wire_buffer_is_zeroed_when_its_guard_drops() {
+        let secret = OneShotSecret::fixture(0x33);
+        let request = request(b"opaque-core-request", &secret);
+        let mut transport = Vec::new();
+
+        {
+            let wire = wire_request(&mut transport, &secret, &request);
+            assert_eq!(wire.as_bytes().len(), 32 + request.bytes().len());
+        }
+
+        assert!(!transport.is_empty());
+        assert!(transport.iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn inbound_secret_prefix_is_cleared_when_the_sealed_frame_is_extracted() {
+        let secret = OneShotSecret::fixture(0x33);
+        let request = request(b"opaque-core-request", &secret);
+        let mut inbound = Vec::from(secret.bytes());
+        inbound.extend_from_slice(request.bytes());
+
+        let (extracted, sealed): (OneShotSecret, Vec<u8>) =
+            split_wire_request(&mut inbound).unwrap();
+
+        assert_eq!(extracted.bytes(), secret.bytes());
+        assert_eq!(sealed, request.bytes());
+        assert_eq!(inbound.len(), 32);
+        assert!(inbound.iter().all(|byte| *byte == 0));
     }
 }

@@ -106,7 +106,11 @@ fn exchange(
         return Err(BoundaryError::Io);
     }
     let pipe = channel::connect_client(pipe_name, child_pid, deadline)?;
-    channel::write_message(&pipe, &wire_request(secret, request))?;
+    let mut transport = Vec::new();
+    {
+        let wire = wire_request(&mut transport, secret, request);
+        channel::write_message(&pipe, wire.as_bytes())?;
+    }
     let response = channel::read_message(&pipe, RESPONSE_FRAME_BYTES, deadline)?;
     verify_response(&response, request, secret)
 }
