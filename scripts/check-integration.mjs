@@ -32,7 +32,6 @@ export function createIntegrationPlan({
     ["frontend:lint", ["run", "lint"], COMMAND_DEADLINES_MS.lint],
     ["frontend:vitest", ["run", "test"], COMMAND_DEADLINES_MS.frontendTests],
     ["frontend:budgets", ["run", "test:budgets"], COMMAND_DEADLINES_MS.budgets],
-    ["frontend:build", ["run", "build"], COMMAND_DEADLINES_MS.build],
     ["frontend:policy", ["run", "check:policy"], COMMAND_DEADLINES_MS.policy],
   ].map(([label, npmArguments, timeoutMs]) =>
     npmCommand({
@@ -51,6 +50,22 @@ export function createIntegrationPlan({
   });
   return {
     mode: "integration",
+    prerequisiteGroups: [
+      {
+        label: "frontend-bundle-prerequisite",
+        concurrency: 1,
+        timeoutMs: VALIDATION_DEADLINES_MS.integrationFrontendLane,
+        commands: [
+          npmCommand({
+            label: "frontend:build",
+            npmArguments: ["run", "build"],
+            repositoryRoot: root,
+            timeoutMs: COMMAND_DEADLINES_MS.build,
+            npmInvocation,
+          }),
+        ],
+      },
+    ],
     groups: [
       {
         label: "frontend",

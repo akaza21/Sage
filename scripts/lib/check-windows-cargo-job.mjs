@@ -58,6 +58,9 @@ function powershellPath(environment) {
 
 function resolveExecutable(command, environment) {
   if (path.isAbsolute(command)) return realpathSync(command);
+  if (path.basename(command) !== command) {
+    throw new Error("relative executable must be a PATH leaf");
+  }
   const extensions = (environment.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";");
   for (const directory of (environment.PATH ?? "").split(path.delimiter)) {
     if (!directory) continue;
@@ -66,8 +69,10 @@ function resolveExecutable(command, environment) {
       : extensions.map((extension) => `${command}${extension}`);
     for (const candidateName of candidates) {
       try {
-        const candidate = realpathSync(path.join(directory, candidateName));
-        if (statSync(candidate).isFile()) return candidate;
+        const physicalDirectory = realpathSync(directory);
+        const candidate = path.join(physicalDirectory, candidateName);
+        const physicalCandidate = realpathSync(candidate);
+        if (statSync(physicalCandidate).isFile()) return candidate;
       } catch {
         // Continue through the finite PATH/PATHEXT candidate set.
       }

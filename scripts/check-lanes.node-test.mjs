@@ -170,6 +170,46 @@ test("developer plan keeps Cargo filters sequential and overlaps only language l
   ]);
 });
 
+test("Rust validation plans build the frontend bundle before concurrent groups", () => {
+  const npmInvocation = {
+    command: "C:\\node\\node.exe",
+    argsPrefix: ["C:\\node\\node_modules\\npm\\bin\\npm-cli.js"],
+  };
+  const developer = createDevPlan(
+    parseDevArguments(["--rust-filter", "module::focused_test"]),
+    {
+      platform: "win32",
+      repositoryRoot,
+      rustEnvironment: { CARGO_TARGET_DIR: "C:\\SageCaches\\target" },
+      npmInvocation,
+    },
+  );
+  const integration = createIntegrationPlan({
+    platform: "win32",
+    repositoryRoot,
+    rustEnvironment: { CARGO_TARGET_DIR: "C:\\SageCaches\\target" },
+    npmInvocation,
+  });
+
+  for (const plan of [developer, integration]) {
+    assert.deepEqual(
+      plan.prerequisiteGroups.flatMap(({ commands }) =>
+        commands.map(({ args }) => args.slice(-2)),
+      ),
+      [["run", "build"]],
+    );
+    assert.ok(
+      plan.groups.some(({ cargoTargetDir }) => cargoTargetDir !== undefined),
+    );
+  }
+  assert.equal(integration.groups[0].concurrency, 3);
+  assert.ok(
+    !integration.groups[0].commands.some(
+      ({ label }) => label === "frontend:build",
+    ),
+  );
+});
+
 test("integration plan preserves every frontend phase and serializes Rust tools", () => {
   const plan = createIntegrationPlan({
     platform: "win32",
@@ -188,9 +228,14 @@ test("integration plan preserves every frontend phase and serializes Rust tools"
       "frontend:lint",
       "frontend:vitest",
       "frontend:budgets",
-      "frontend:build",
       "frontend:policy",
     ],
+  );
+  assert.deepEqual(
+    plan.prerequisiteGroups.flatMap(({ commands }) =>
+      commands.map(({ label }) => label),
+    ),
+    ["frontend:build"],
   );
   assert.equal(plan.groups[0].concurrency, 3);
   assert.equal(plan.groups[1].concurrency, 1);
@@ -267,14 +312,14 @@ test("resolved npm invocation executes without a shell command string", async ()
 });
 
 test(
-  "Windows Cargo Job resolves the production cargo.exe command from PATH",
+  "Windows Cargo Job preserves Cargo proxy command semantics",
   { skip: process.platform !== "win32" },
   async () => {
     await executeWindowsCargoJobCommand(
       {
-        label: "cargo-version",
+        label: "cargo-locate-project",
         command: "cargo.exe",
-        args: ["--version"],
+        args: ["locate-project", "--manifest-path", "src-tauri/Cargo.toml"],
         cwd: path.resolve("."),
         timeoutMs: 10_000,
         terminationGraceMs: 500,

@@ -232,41 +232,46 @@ export async function runCommandGroups(
   }
 }
 
+function printableGroups(groups) {
+  return groups.map((group) => ({
+    label: group.label,
+    concurrency: group.concurrency,
+    timeoutMs: group.timeoutMs,
+    cargoTargetDir: group.cargoTargetDir,
+    repositoryRoot: group.repositoryRoot,
+    commands: group.commands.map(
+      ({
+        label,
+        command,
+        args,
+        cwd,
+        env = {},
+        timeoutMs,
+        terminationGraceMs,
+        settlementTimeoutMs,
+        maximumLineBytes,
+        maximumOutputBytes,
+      }) => ({
+        label,
+        command,
+        args,
+        cwd,
+        env,
+        timeoutMs,
+        terminationGraceMs,
+        settlementTimeoutMs,
+        maximumLineBytes,
+        maximumOutputBytes,
+      }),
+    ),
+  }));
+}
+
 export function printablePlan(plan) {
   return {
     mode: plan.mode,
-    groups: plan.groups.map((group) => ({
-      label: group.label,
-      concurrency: group.concurrency,
-      timeoutMs: group.timeoutMs,
-      cargoTargetDir: group.cargoTargetDir,
-      repositoryRoot: group.repositoryRoot,
-      commands: group.commands.map(
-        ({
-          label,
-          command,
-          args,
-          cwd,
-          env = {},
-          timeoutMs,
-          terminationGraceMs,
-          settlementTimeoutMs,
-          maximumLineBytes,
-          maximumOutputBytes,
-        }) => ({
-          label,
-          command,
-          args,
-          cwd,
-          env,
-          timeoutMs,
-          terminationGraceMs,
-          settlementTimeoutMs,
-          maximumLineBytes,
-          maximumOutputBytes,
-        }),
-      ),
-    })),
+    prerequisiteGroups: printableGroups(plan.prerequisiteGroups ?? []),
+    groups: printableGroups(plan.groups),
   };
 }
 
@@ -274,6 +279,9 @@ export async function runCliPlan(plan, { dryRun }) {
   if (dryRun) {
     process.stdout.write(`${JSON.stringify(printablePlan(plan), null, 2)}\n`);
     return;
+  }
+  if (plan.prerequisiteGroups?.length > 0) {
+    await runCommandGroups(plan.prerequisiteGroups);
   }
   await runCommandGroups(plan.groups);
 }

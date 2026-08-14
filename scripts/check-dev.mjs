@@ -86,7 +86,22 @@ export function createDevPlan(
   } = {},
 ) {
   const groups = [];
+  const prerequisiteGroups = [];
   if (options.rustFilters.length > 0) {
+    prerequisiteGroups.push({
+      label: "frontend-bundle-prerequisite",
+      concurrency: 1,
+      timeoutMs: VALIDATION_DEADLINES_MS.devLane,
+      commands: [
+        npmCommand({
+          label: "developer:frontend-build",
+          npmArguments: ["run", "build"],
+          repositoryRoot: root,
+          timeoutMs: COMMAND_DEADLINES_MS.build,
+          npmInvocation,
+        }),
+      ],
+    });
     groups.push({
       label: "rust-focused",
       concurrency: 1,
@@ -129,7 +144,7 @@ export function createDevPlan(
       ),
     });
   }
-  return { mode: "developer", groups };
+  return { mode: "developer", prerequisiteGroups, groups };
 }
 
 async function main() {
