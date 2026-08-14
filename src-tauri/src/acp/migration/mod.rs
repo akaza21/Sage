@@ -139,34 +139,34 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
         }
-        SchemaClass::CurrentV6 => {
-            reject_partial_backup_publication(&paths)?;
-            let anchor = platform::anchor_existing_sqlite(path, true)?;
-            if probe::classify_live(&paths)? != SchemaClass::CurrentV6 {
-                return invalid("schema v6 SQLite path changed before its anchored upgrade");
-            }
-            let mut connection = Connection::open(path)?;
-            apply_v7(&mut connection)?;
-            anchor.verify_path(path)?;
-            Ok(opened_database(connection, anchor))
-        }
-        SchemaClass::CurrentV5 => {
-            reject_partial_backup_publication(&paths)?;
-            let anchor = platform::anchor_existing_sqlite(path, true)?;
-            if probe::classify_live(&paths)? != SchemaClass::CurrentV5 {
-                return invalid("schema v5 SQLite path changed before its anchored upgrade");
-            }
-            let mut connection = Connection::open(path)?;
-            apply_v6(&mut connection)?;
-            apply_v7(&mut connection)?;
-            anchor.verify_path(path)?;
-            Ok(opened_database(connection, anchor))
-        }
+        SchemaClass::CurrentV6 => upgrade_current_through_v7(&paths, SchemaClass::CurrentV6),
+        SchemaClass::CurrentV5 => upgrade_current_through_v7(&paths, SchemaClass::CurrentV5),
         class if class.is_legacy() => migrate_replacement(&paths),
         _ => Err(AppError::InvalidRequest(
             "database schema is not admitted for migration".into(),
         )),
     }
+}
+
+fn upgrade_current_through_v7(
+    paths: &MigrationPaths,
+    source_schema: SchemaClass,
+) -> AppResult<OpenedDatabase> {
+    let verified_backup = ensure(paths)?;
+    let anchor = platform::anchor_existing_sqlite(&paths.live, true)?;
+    if probe::classify_live(paths)? != source_schema {
+        return invalid("current SQLite path changed before its anchored upgrade");
+    }
+    let mut connection = Connection::open(&paths.live)?;
+    if database_fingerprint(&connection)? != verified_backup.source.database {
+        return invalid("current source changed after original-schema backup publication");
+    }
+    if source_schema == SchemaClass::CurrentV5 {
+        apply_v6(&mut connection)?;
+    }
+    apply_v7(&mut connection)?;
+    anchor.verify_path(&paths.live)?;
+    Ok(opened_database(connection, anchor))
 }
 
 fn migrate_replacement(paths: &MigrationPaths) -> AppResult<OpenedDatabase> {

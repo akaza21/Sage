@@ -9,10 +9,10 @@ use crate::{
 
 use super::{
     fingerprint::{
-        DatabaseFingerprint, SchemaClass, classify_connection, database_fingerprint,
-        file_fingerprint, open_read_only,
+        DatabaseFingerprint, classify_connection, database_fingerprint, file_fingerprint,
+        open_read_only,
     },
-    limits::{MIGRATION_FREE_BYTES, TEMP_SQLITE_BYTES, preflight},
+    limits::{MIGRATION_FREE_BYTES, TEMP_SQLITE_BYTES, preflight_original_schema},
     manifest::{BackupBuildIntent, BackupManifest, BackupSource, read, write_stage},
     paths::MigrationPaths,
     platform::{
@@ -36,10 +36,10 @@ pub(super) fn ensure(paths: &MigrationPaths) -> AppResult<VerifiedBackup> {
     )?;
     source.execute_batch("PRAGMA busy_timeout=0; BEGIN IMMEDIATE;")?;
     let class = classify_connection(&source)?;
-    if !class.is_legacy() {
-        return invalid("backup source is not an exact legacy Sage schema");
+    if !class.requires_retained_backup() {
+        return invalid("backup source does not require an original-schema backup");
     }
-    preflight(&source, &paths.live)?;
+    preflight_original_schema(&source, &paths.live, class)?;
     verify_sqlite(&source)?;
     let source_set = source_set(paths, &source)?;
 
@@ -81,7 +81,7 @@ pub(super) fn verify_retained_pair(paths: &MigrationPaths) -> AppResult<()> {
 pub(super) fn load_retained_pair(paths: &MigrationPaths) -> AppResult<VerifiedBackup> {
     let manifest: BackupManifest = read(&paths.manifest_final)?;
     manifest.validate_identity()?;
-    if !manifest.source.database.schema.is_legacy()
+    if !manifest.source.database.schema.requires_retained_backup()
         || manifest.backup_database != manifest.source.database
     {
         return invalid("retained backup manifest has an invalid legacy source binding");
@@ -325,14 +325,8 @@ pub(super) fn source_set(
     connection: &Connection,
 ) -> AppResult<BackupSource> {
     let database = database_fingerprint(connection)?;
-    if !matches!(
-        database.schema,
-        SchemaClass::LegacyV1
-            | SchemaClass::LegacyV2
-            | SchemaClass::LegacyV3
-            | SchemaClass::LegacyV4
-    ) {
-        return invalid("source set is not legacy");
+    if !database.schema.requires_retained_backup() {
+        return invalid("source set does not require an original-schema backup");
     }
     Ok(BackupSource {
         database,

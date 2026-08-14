@@ -220,6 +220,15 @@ fn exact_v5_source_migrates_to_bounded_resource_trash_intents() {
         )
         .unwrap();
     assert_eq!(columns, 13);
+    drop(migrated);
+
+    let paths = MigrationPaths::new(&directory.database()).unwrap();
+    backup::verify_retained_pair(&paths).unwrap();
+    let original = open_read_only(&paths.backup_final).unwrap();
+    assert_eq!(
+        fingerprint::classify_connection(&original).unwrap(),
+        SchemaClass::CurrentV5
+    );
 }
 
 #[test]
@@ -311,6 +320,106 @@ fn exact_v6_source_upgrades_to_v7_without_losing_epoch_children() {
             .unwrap()
             .is_none()
     );
+    drop(migrated);
+
+    let paths = MigrationPaths::new(&directory.database()).unwrap();
+    backup::verify_retained_pair(&paths).unwrap();
+    let original = open_read_only(&paths.backup_final).unwrap();
+    assert_eq!(
+        fingerprint::classify_connection(&original).unwrap(),
+        SchemaClass::CurrentV6
+    );
+}
+
+#[test]
+fn current_structural_upgrade_preserves_an_existing_verified_backup() {
+    for (source_schema, label) in [
+        (SchemaClass::CurrentV5, "preserved-v5"),
+        (SchemaClass::CurrentV6, "preserved-v6"),
+    ] {
+        let directory = TestDir::new();
+        create_current_schema(&directory.database(), source_schema, label);
+        let paths = MigrationPaths::new(&directory.database()).unwrap();
+        {
+            let _lock = MigrationLock::acquire(paths.parent()).unwrap();
+            backup::ensure(&paths).unwrap();
+        }
+        let backup_before = fs::read(&paths.backup_final).unwrap();
+        let manifest_before = fs::read(&paths.manifest_final).unwrap();
+
+        let migrated = open_or_migrate(&directory.database()).unwrap();
+        let item: (String, i64) = migrated
+            .query_row("SELECT id, ordinal FROM items", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(item, ("event-1".into(), 1));
+        drop(migrated);
+
+        backup::verify_retained_pair(&paths).unwrap();
+        assert_eq!(backup_before, fs::read(&paths.backup_final).unwrap());
+        assert_eq!(manifest_before, fs::read(&paths.manifest_final).unwrap());
+        let original = open_read_only(&paths.backup_final).unwrap();
+        assert_eq!(
+            fingerprint::classify_connection(&original).unwrap(),
+            source_schema
+        );
+    }
+}
+
+#[test]
+fn current_v5_upgrade_rejects_missing_tampered_and_mismatched_backups_unchanged() {
+    for corruption in ["missing-manifest", "missing-backup", "tampered"] {
+        let directory = TestDir::new();
+        create_current_schema(&directory.database(), SchemaClass::CurrentV5, corruption);
+        let paths = MigrationPaths::new(&directory.database()).unwrap();
+        {
+            let _lock = MigrationLock::acquire(paths.parent()).unwrap();
+            backup::ensure(&paths).unwrap();
+        }
+        if corruption == "missing-manifest" {
+            fs::remove_file(&paths.manifest_final).unwrap();
+        } else if corruption == "missing-backup" {
+            fs::remove_file(&paths.backup_final).unwrap();
+        } else {
+            use std::io::Write;
+            let mut backup = fs::OpenOptions::new()
+                .append(true)
+                .open(&paths.backup_final)
+                .unwrap();
+            backup.write_all(b"tampered").unwrap();
+            backup.sync_all().unwrap();
+        }
+        assert_current_v5_remains_unchanged(&directory.database(), corruption);
+    }
+
+    let source = TestDir::new();
+    let foreign = TestDir::new();
+    create_current_schema(&source.database(), SchemaClass::CurrentV5, "source");
+    create_current_schema(&foreign.database(), SchemaClass::CurrentV5, "foreign");
+    let source_paths = MigrationPaths::new(&source.database()).unwrap();
+    let foreign_paths = MigrationPaths::new(&foreign.database()).unwrap();
+    {
+        let _lock = MigrationLock::acquire(source_paths.parent()).unwrap();
+        backup::ensure(&source_paths).unwrap();
+    }
+    fs::copy(&source_paths.backup_final, &foreign_paths.backup_final).unwrap();
+    fs::copy(&source_paths.manifest_final, &foreign_paths.manifest_final).unwrap();
+    assert_current_v5_remains_unchanged(&foreign.database(), "foreign");
+}
+
+#[test]
+fn current_v7_open_creates_no_retained_backup() {
+    let directory = TestDir::new();
+    drop(open_or_migrate(&directory.database()).unwrap());
+    let paths = MigrationPaths::new(&directory.database()).unwrap();
+    assert!(!paths.backup_final.exists());
+    assert!(!paths.manifest_final.exists());
+
+    drop(open_or_migrate(&directory.database()).unwrap());
+
+    assert!(!paths.backup_final.exists());
+    assert!(!paths.manifest_final.exists());
 }
 
 #[test]
@@ -1880,6 +1989,41 @@ fn migration_artifact_symlink_is_rejected_without_touching_target() {
     let before = fs::read(&target).unwrap();
     assert!(MigrationPaths::new(&directory.database()).is_err());
     assert_eq!(before, fs::read(&target).unwrap());
+}
+
+fn create_current_schema(path: &Path, schema: SchemaClass, project_name: &str) {
+    create_v4(path, project_name, true);
+    let mut connection = Connection::open(path).unwrap();
+    apply_v5(&mut connection).unwrap();
+    if schema == SchemaClass::CurrentV6 {
+        apply_v6(&mut connection).unwrap();
+    }
+    assert_eq!(
+        fingerprint::classify_connection(&connection).unwrap(),
+        schema
+    );
+    connection.close().unwrap();
+}
+
+fn assert_current_v5_remains_unchanged(path: &Path, project_name: &str) {
+    let before = file_fingerprint(path).unwrap();
+
+    assert!(open_or_migrate(path).is_err());
+
+    assert_eq!(before, file_fingerprint(path).unwrap());
+    let connection = open_read_only(path).unwrap();
+    assert_eq!(
+        fingerprint::classify_connection(&connection).unwrap(),
+        SchemaClass::CurrentV5
+    );
+    let actual_name: String = connection
+        .query_row(
+            "SELECT name FROM projects WHERE id='project-a'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(actual_name, project_name);
 }
 
 fn create_v4(path: &Path, project_id: &str, event: bool) {

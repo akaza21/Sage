@@ -42,6 +42,18 @@ impl SchemaClass {
             Self::LegacyV1 | Self::LegacyV2 | Self::LegacyV3 | Self::LegacyV4
         )
     }
+
+    pub(super) fn requires_retained_backup(self) -> bool {
+        matches!(
+            self,
+            Self::LegacyV1
+                | Self::LegacyV2
+                | Self::LegacyV3
+                | Self::LegacyV4
+                | Self::CurrentV5
+                | Self::CurrentV6
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

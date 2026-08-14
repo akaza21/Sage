@@ -4,6 +4,8 @@ use rusqlite::{Connection, params};
 
 use crate::error::{AppError, AppResult};
 
+use super::fingerprint::SchemaClass;
+
 pub(super) const ROWS_PER_PAGE: usize = 256;
 pub(super) const BYTES_PER_PAGE: usize = 1_048_576;
 pub(super) const ITEM_BYTES: usize = 262_144;
@@ -75,6 +77,23 @@ pub(super) struct LegacyTotals {
 
 pub(super) fn preflight(connection: &Connection, live: &Path) -> AppResult<LegacyTotals> {
     preflight_with_bounds(connection, live, PRODUCTION_BOUNDS)
+}
+
+pub(super) fn preflight_original_schema(
+    connection: &Connection,
+    live: &Path,
+    schema: SchemaClass,
+) -> AppResult<()> {
+    if schema.is_legacy() {
+        preflight(connection, live)?;
+    } else if matches!(schema, SchemaClass::CurrentV5 | SchemaClass::CurrentV6) {
+        verify_file_envelope(live)?;
+    } else {
+        return Err(AppError::InvalidRequest(
+            "backup source does not require an original-schema backup".into(),
+        ));
+    }
+    Ok(())
 }
 
 pub(super) fn preflight_with_bounds(
