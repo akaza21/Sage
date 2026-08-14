@@ -319,12 +319,38 @@ for (const forbiddenReference of [
   "ElevatedHelperProcess",
   "acp::bindings::codex::provisioning",
   "provisioning::helper",
+  "authenticate_helper_request",
+  "execute_authenticated_request",
 ]) {
   if (helperBoundarySource.includes(forbiddenReference)) {
     fail(
-      `The inert Codex helper boundary must not reach the mutation core: ${forbiddenReference}`,
+      `The Codex helper boundary must not bypass its narrow managed-publication adapter: ${forbiddenReference}`,
     );
   }
+}
+if (
+  !helperBoundarySource.includes(
+    "crate::acp::bindings::codex::execute_boundary_publication",
+  )
+) {
+  fail(
+    "The feature-only Codex helper must reach publication only through the narrow authenticated managed-publication adapter.",
+  );
+}
+
+const helperEntrypointSource = await readFile(
+  path.join(root, "src-tauri/src/bin/codex_provisioning_helper.rs"),
+  "utf8",
+);
+if (
+  !helperEntrypointSource.includes(
+    "sage_lib::codex_helper_boundary::run_helper_process",
+  ) ||
+  helperEntrypointSource.includes("#[path =")
+) {
+  fail(
+    "The feature-only Codex helper binary must use the library-owned boundary without copying source modules.",
+  );
 }
 
 const candidatePackage = packageContract.participants?.candidate;

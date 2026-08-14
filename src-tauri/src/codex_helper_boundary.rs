@@ -3,6 +3,8 @@ mod authority;
 #[cfg(windows)]
 #[path = "codex_helper_boundary/caller.rs"]
 mod caller;
+#[path = "codex_helper_boundary/dispatch.rs"]
+mod dispatch;
 #[cfg(windows)]
 #[path = "codex_helper_boundary/entrypoint.rs"]
 mod entrypoint;
@@ -14,6 +16,10 @@ mod protocol;
 #[path = "codex_helper_boundary/windows.rs"]
 mod windows;
 
+pub(crate) use authority::ElevatedBoundaryAuthority;
+#[cfg(test)]
+pub(crate) use authority::{AuthorityObservation, PublicationAuthority, publication_authority};
+pub(crate) use dispatch::{PublicationExecutor, PublicationFailure, authenticated_response};
 pub use protocol::{BoundaryError, BoundaryStatus, HelperIdentity, OneShotSecret};
 
 #[cfg(windows)]

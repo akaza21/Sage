@@ -7,8 +7,8 @@ use uuid::Uuid;
 use super::entrypoint::protocol_argument;
 use super::executable::VerifiedHelperExecutable;
 use super::protocol::{
-    BoundaryError, BoundaryStatus, OneShotSecret, RESPONSE_FRAME_BYTES, SealedRequest,
-    verify_response, wire_request,
+    BoundaryError, BoundaryStatus, HelperIdentity, OneShotSecret, RESPONSE_FRAME_BYTES,
+    SealedRequest, verify_response, wire_request,
 };
 use super::windows::{authority, channel};
 
@@ -26,6 +26,16 @@ pub fn direct_non_elevated_probe(
     opaque_request: &[u8],
     timeout: Duration,
 ) -> Result<BoundaryProbeReceipt, BoundaryError> {
+    run_helper_with_payload(helper_path, timeout, |_helper, _secret| {
+        Ok(opaque_request.to_vec())
+    })
+}
+
+pub(crate) fn run_helper_with_payload(
+    helper_path: &Path,
+    timeout: Duration,
+    payload_builder: impl FnOnce(HelperIdentity, &OneShotSecret) -> Result<Vec<u8>, BoundaryError>,
+) -> Result<BoundaryProbeReceipt, BoundaryError> {
     if timeout.is_zero() || timeout > Duration::from_secs(30) {
         return Err(BoundaryError::Deadline);
     }
@@ -36,13 +46,14 @@ pub fn direct_non_elevated_probe(
     }
     let pipe_name = channel::fresh_name();
     let secret = OneShotSecret::generate();
+    let payload = payload_builder(helper.identity(), &secret)?;
     let nonce = *Uuid::new_v4().as_bytes();
     let request = SealedRequest::seal(
         std::process::id(),
         caller.sid_sha256,
         nonce,
         helper.identity(),
-        opaque_request,
+        &payload,
         &secret,
     )?;
     let mut command = Command::new(helper.path());

@@ -39,14 +39,18 @@ pub enum BoundaryError {
 #[repr(u8)]
 pub enum BoundaryStatus {
     ElevationRequired = 1,
-    ExecutorUnavailable = 2,
+    Published = 3,
+    PublicationFailed = 4,
+    RecoveryRequired = 5,
 }
 
 impl BoundaryStatus {
     fn decode(value: u8) -> Result<Self, BoundaryError> {
         match value {
             1 => Ok(Self::ElevationRequired),
-            2 => Ok(Self::ExecutorUnavailable),
+            3 => Ok(Self::Published),
+            4 => Ok(Self::PublicationFailed),
+            5 => Ok(Self::RecoveryRequired),
             _ => Err(BoundaryError::Malformed),
         }
     }
@@ -350,18 +354,18 @@ mod tests {
         let first = request(b"first", &secret);
         let second = request(b"second", &secret);
         let decoded = decode_request(first.bytes(), &secret).unwrap();
-        let response = seal_response(BoundaryStatus::ElevationRequired, &decoded, &secret);
+        let response = seal_response(BoundaryStatus::Published, &decoded, &secret);
 
         assert_eq!(
             verify_response(&response, &first, &secret),
-            Ok(BoundaryStatus::ElevationRequired)
+            Ok(BoundaryStatus::Published)
         );
         assert_eq!(
             verify_response(&response, &second, &secret),
             Err(BoundaryError::Replay)
         );
         let mut tampered = response;
-        tampered[9] = BoundaryStatus::ExecutorUnavailable as u8;
+        tampered[9] = BoundaryStatus::PublicationFailed as u8;
         assert_eq!(
             verify_response(&tampered, &first, &secret),
             Err(BoundaryError::Authentication)

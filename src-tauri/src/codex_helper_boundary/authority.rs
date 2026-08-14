@@ -1,4 +1,4 @@
-use crate::codex_helper_boundary::protocol::{BoundaryError, BoundaryStatus};
+use crate::codex_helper_boundary::protocol::BoundaryError;
 
 pub(crate) struct AuthorityObservation {
     pub(crate) expected_caller_pid: u32,
@@ -9,9 +9,27 @@ pub(crate) struct AuthorityObservation {
     pub(crate) helper_elevated: bool,
 }
 
-pub(crate) fn boundary_status(
+pub(crate) struct ElevatedBoundaryAuthority {
+    _private: (),
+}
+
+pub(crate) enum PublicationAuthority {
+    ElevationRequired,
+    Elevated(ElevatedBoundaryAuthority),
+}
+
+pub(crate) fn publication_authority(
     observation: &AuthorityObservation,
-) -> Result<BoundaryStatus, BoundaryError> {
+) -> Result<PublicationAuthority, BoundaryError> {
+    validate_caller(observation)?;
+    Ok(if observation.helper_elevated {
+        PublicationAuthority::Elevated(ElevatedBoundaryAuthority { _private: () })
+    } else {
+        PublicationAuthority::ElevationRequired
+    })
+}
+
+fn validate_caller(observation: &AuthorityObservation) -> Result<(), BoundaryError> {
     if observation.expected_caller_pid == 0
         || observation.expected_caller_pid != observation.observed_caller_pid
         || observation.expected_caller_sid_sha256 != observation.observed_caller_sid_sha256
@@ -19,11 +37,7 @@ pub(crate) fn boundary_status(
     {
         return Err(BoundaryError::Authority);
     }
-    Ok(if observation.helper_elevated {
-        BoundaryStatus::ExecutorUnavailable
-    } else {
-        BoundaryStatus::ElevationRequired
-    })
+    Ok(())
 }
 
 #[cfg(test)]
@@ -43,10 +57,10 @@ mod tests {
 
     #[test]
     fn exact_unelevated_process_authority_requires_elevation() {
-        assert_eq!(
-            boundary_status(&exact()),
-            Ok(BoundaryStatus::ElevationRequired)
-        );
+        assert!(matches!(
+            publication_authority(&exact()),
+            Ok(PublicationAuthority::ElevationRequired)
+        ));
     }
 
     #[test]
@@ -58,17 +72,20 @@ mod tests {
         let mut elevated = exact();
         elevated.caller_elevated = true;
         for changed in [pid, sid, elevated] {
-            assert_eq!(boundary_status(&changed), Err(BoundaryError::Authority));
+            assert!(matches!(
+                publication_authority(&changed),
+                Err(BoundaryError::Authority)
+            ));
         }
     }
 
     #[test]
-    fn elevated_helper_still_has_no_executor_authority() {
+    fn elevated_helper_receives_the_unforgeable_publication_authority() {
         let mut exact = exact();
         exact.helper_elevated = true;
-        assert_eq!(
-            boundary_status(&exact),
-            Ok(BoundaryStatus::ExecutorUnavailable)
-        );
+        assert!(matches!(
+            publication_authority(&exact),
+            Ok(PublicationAuthority::Elevated(_))
+        ));
     }
 }

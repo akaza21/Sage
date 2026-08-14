@@ -41,8 +41,18 @@ use transaction_lock::TransactionLock;
 const RECEIPT_BYTES_MAX: usize = 64 * 1024;
 
 /// Capability reserved for the separately built and verified elevated helper
-/// process. There is intentionally no production constructor in this lane.
+/// process. Production construction requires the boundary's unforgeable
+/// elevated-authority token.
 pub(crate) struct ElevatedHelperProcess(());
+
+#[cfg(feature = "codex-provisioning-helper")]
+impl ElevatedHelperProcess {
+    pub(super) fn from_authenticated_boundary(
+        _authority: &crate::codex_helper_boundary::ElevatedBoundaryAuthority,
+    ) -> Self {
+        Self(())
+    }
+}
 
 #[cfg(test)]
 impl ElevatedHelperProcess {

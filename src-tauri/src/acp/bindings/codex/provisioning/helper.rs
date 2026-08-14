@@ -15,6 +15,13 @@ mod transaction;
 #[path = "helper/windows.rs"]
 mod windows;
 
+#[cfg(all(windows, feature = "codex-provisioning-helper"))]
+#[path = "helper/boundary.rs"]
+mod boundary;
+
+#[cfg(all(windows, feature = "codex-provisioning-helper"))]
+pub(crate) use boundary::execute_boundary_publication;
+
 const REQUEST_BYTES_MAX: usize = 128 * 1024;
 const HELPER_EXECUTABLE_BYTES_MAX: u64 = 32 * 1024 * 1024;
 const HELPER_PRODUCT: &str = "sage-codex-0145-elevated-helper";
@@ -156,6 +163,15 @@ pub(crate) fn seal_helper_request(
     helper: &VerifiedHelperExecutable,
     secret: &OneTimeHelperSecret,
 ) -> Result<Vec<u8>, ElevatedHelperError> {
+    seal_helper_request_with_secret(handoff, stage_root, helper, &secret.0)
+}
+
+fn seal_helper_request_with_secret(
+    handoff: &SealedHandoff,
+    stage_root: PathBuf,
+    helper: &VerifiedHelperExecutable,
+    secret: &[u8; 32],
+) -> Result<Vec<u8>, ElevatedHelperError> {
     let payload = HelperRequestPayload {
         schema_version: REQUEST_SCHEMA_VERSION,
         stage_root,
@@ -164,7 +180,7 @@ pub(crate) fn seal_helper_request(
     };
     let payload_bytes = serde_json::to_vec(&payload).map_err(|_| ElevatedHelperError::Malformed)?;
     let envelope = HelperRequestEnvelope {
-        authenticator_sha256: hex(&hmac_sha256(&secret.0, &payload_bytes)),
+        authenticator_sha256: hex(&hmac_sha256(secret, &payload_bytes)),
         payload,
     };
     let bytes = serde_json::to_vec(&envelope).map_err(|_| ElevatedHelperError::Malformed)?;
@@ -180,6 +196,15 @@ pub(crate) fn authenticate_helper_request(
     observed_helper: &VerifiedHelperExecutable,
     packet: &MetadataValidatedPacket,
 ) -> Result<AuthenticatedHelperRequest, ElevatedHelperError> {
+    authenticate_helper_request_with_secret(bytes, &secret.0, observed_helper, packet)
+}
+
+fn authenticate_helper_request_with_secret(
+    bytes: &[u8],
+    secret: &[u8; 32],
+    observed_helper: &VerifiedHelperExecutable,
+    packet: &MetadataValidatedPacket,
+) -> Result<AuthenticatedHelperRequest, ElevatedHelperError> {
     if bytes.is_empty() || bytes.len() > REQUEST_BYTES_MAX {
         return Err(ElevatedHelperError::RequestBytes);
     }
@@ -187,7 +212,7 @@ pub(crate) fn authenticate_helper_request(
         serde_json::from_slice(bytes).map_err(|_| ElevatedHelperError::Malformed)?;
     let payload_bytes =
         serde_json::to_vec(&envelope.payload).map_err(|_| ElevatedHelperError::Malformed)?;
-    let expected = hex(&hmac_sha256(&secret.0, &payload_bytes));
+    let expected = hex(&hmac_sha256(secret, &payload_bytes));
     if !constant_time_equal(
         expected.as_bytes(),
         envelope.authenticator_sha256.as_bytes(),
@@ -201,7 +226,7 @@ pub(crate) fn authenticate_helper_request(
     journal_binding.extend_from_slice(&payload_bytes);
     Ok(AuthenticatedHelperRequest {
         payload: envelope.payload,
-        journal_key: hmac_sha256(&secret.0, &journal_binding),
+        journal_key: hmac_sha256(secret, &journal_binding),
     })
 }
 

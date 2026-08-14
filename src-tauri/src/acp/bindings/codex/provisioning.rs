@@ -23,6 +23,9 @@ mod windows;
 #[path = "provisioning/helper.rs"]
 mod helper;
 
+#[cfg(all(windows, feature = "codex-provisioning-helper"))]
+pub(crate) use helper::execute_boundary_publication;
+
 const SOURCE_FILE_COUNT: usize = 8;
 const SOURCE_BYTES_MAX: u64 = 1024 * 1024 * 1024;
 const SOURCE_PATH_BYTES_MAX: usize = 32 * 1024;

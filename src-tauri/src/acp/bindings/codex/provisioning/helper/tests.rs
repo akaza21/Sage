@@ -89,6 +89,54 @@ fn exact_authenticated_request_still_cannot_cross_unproven_elevation_boundary() 
     );
 }
 
+#[test]
+fn boundary_secret_and_observed_image_authenticate_the_core_request() {
+    use crate::codex_helper_boundary::{
+        AuthorityObservation, PublicationAuthority, publication_authority,
+    };
+    use crate::codex_helper_boundary::{HelperIdentity, OneShotSecret};
+
+    let packet = packet();
+    let secret = OneShotSecret::from_bytes([0x33; 32]);
+    let helper = HelperIdentity {
+        sha256: [0x22; 32],
+        byte_len: 1_048_576,
+    };
+    let request = super::boundary::seal_boundary_helper_request(
+        &handoff(),
+        packet
+            .managed_package_root()
+            .parent()
+            .unwrap()
+            .join(".sage-codex-0.145.0-stage"),
+        helper,
+        &secret,
+    )
+    .unwrap();
+    let authority = match publication_authority(&AuthorityObservation {
+        expected_caller_pid: 41,
+        observed_caller_pid: 41,
+        expected_caller_sid_sha256: [0x11; 32],
+        observed_caller_sid_sha256: [0x11; 32],
+        caller_elevated: false,
+        helper_elevated: true,
+    })
+    .unwrap()
+    {
+        PublicationAuthority::Elevated(authority) => authority,
+        PublicationAuthority::ElevationRequired => panic!("expected elevated authority"),
+    };
+
+    let authenticated =
+        super::boundary::authenticate_boundary_publication(&authority, &request, &secret, helper)
+            .unwrap();
+
+    assert_eq!(
+        authenticated.creation_nonce(),
+        "0123456789abcdef0123456789abcdef"
+    );
+}
+
 fn exact_request(helper: &VerifiedHelperExecutable, secret: &OneTimeHelperSecret) -> Vec<u8> {
     let packet = packet();
     seal_helper_request(
