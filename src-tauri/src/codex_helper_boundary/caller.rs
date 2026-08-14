@@ -12,7 +12,7 @@ use super::protocol::{
 };
 use super::windows::{authority, channel};
 
-const PROCESS_CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
+const PROCESS_CLEANUP_GRACE: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoundaryProbeReceipt {
@@ -92,7 +92,21 @@ pub(crate) fn run_helper_with_payload(
         }
     }
     ensure_before_deadline(deadline)?;
-    let mut child = command.spawn().map_err(|_| BoundaryError::Io)?;
+    let spawn_result = command.spawn();
+    let spawned_at = Instant::now();
+    let mut child = match spawn_result {
+        Ok(child) => child,
+        Err(_) => {
+            ensure_observed_before_deadline(deadline, spawned_at)?;
+            return Err(BoundaryError::Io);
+        }
+    };
+    continue_after_spawn(
+        &mut child,
+        deadline,
+        spawned_at,
+        spawned_at + PROCESS_CLEANUP_GRACE,
+    )?;
     let child_pid = child.id();
     let result = exchange(
         &mut child, child_pid, &pipe_name, &request, &secret, deadline,
@@ -110,7 +124,11 @@ pub(crate) fn run_helper_with_payload(
             })
         }
         Err(error) => {
-            converge_child(&mut child)?;
+            if error == BoundaryError::Deadline {
+                converge_expired_child(&mut child)?;
+            } else {
+                converge_child(&mut child)?;
+            }
             Err(error)
         }
     }
@@ -120,14 +138,29 @@ fn complete_before_deadline<T>(
     deadline: Instant,
     work: impl FnOnce() -> Result<T, BoundaryError>,
 ) -> Result<T, BoundaryError> {
-    ensure_before_deadline(deadline)?;
+    complete_before_deadline_with_clock(deadline, Instant::now, work)
+}
+
+fn complete_before_deadline_with_clock<T>(
+    deadline: Instant,
+    mut now: impl FnMut() -> Instant,
+    work: impl FnOnce() -> Result<T, BoundaryError>,
+) -> Result<T, BoundaryError> {
+    ensure_observed_before_deadline(deadline, now())?;
     let result = work();
-    ensure_before_deadline(deadline)?;
+    ensure_observed_before_deadline(deadline, now())?;
     result
 }
 
 fn ensure_before_deadline(deadline: Instant) -> Result<(), BoundaryError> {
-    if Instant::now() >= deadline {
+    ensure_observed_before_deadline(deadline, Instant::now())
+}
+
+fn ensure_observed_before_deadline(
+    deadline: Instant,
+    observed_at: Instant,
+) -> Result<(), BoundaryError> {
+    if observed_at >= deadline {
         return Err(BoundaryError::Deadline);
     }
     Ok(())
@@ -141,7 +174,7 @@ fn exchange(
     secret: &OneShotSecret,
     deadline: Instant,
 ) -> Result<BoundaryStatus, BoundaryError> {
-    if child.try_wait().map_err(|_| BoundaryError::Io)?.is_some() {
+    if observe_child_before_exchange(deadline, Instant::now(), || child.try_wait())?.is_some() {
         return Err(BoundaryError::Io);
     }
     let pipe = channel::connect_client(pipe_name, child_pid, deadline)?;
@@ -154,8 +187,21 @@ fn exchange(
     verify_response(&response, request, secret)
 }
 
+fn observe_child_before_exchange(
+    deadline: Instant,
+    observed_at: Instant,
+    observe_child: impl FnOnce() -> std::io::Result<Option<ExitStatus>>,
+) -> Result<Option<ExitStatus>, BoundaryError> {
+    ensure_observed_before_deadline(deadline, observed_at)?;
+    observe_child().map_err(|_| BoundaryError::Io)
+}
+
 fn wait_child(child: &mut Child, deadline: Instant) -> Result<ExitStatus, BoundaryError> {
     loop {
+        if Instant::now() >= deadline {
+            converge_expired_child(child)?;
+            return Err(BoundaryError::Deadline);
+        }
         match child.try_wait() {
             Ok(Some(status)) => return Ok(status),
             Ok(None) => {}
@@ -163,10 +209,6 @@ fn wait_child(child: &mut Child, deadline: Instant) -> Result<ExitStatus, Bounda
                 converge_child(child)?;
                 return Err(BoundaryError::Io);
             }
-        }
-        if Instant::now() >= deadline {
-            converge_child(child)?;
-            return Err(BoundaryError::Deadline);
         }
         std::thread::sleep(Duration::from_millis(5));
     }
@@ -188,7 +230,51 @@ impl ChildProcessControl for Child {
 }
 
 fn converge_child(child: &mut Child) -> Result<(), BoundaryError> {
-    converge_process(child, Instant::now() + PROCESS_CLEANUP_TIMEOUT)
+    converge_process(child, Instant::now() + PROCESS_CLEANUP_GRACE)
+}
+
+fn converge_expired_child(child: &mut Child) -> Result<(), BoundaryError> {
+    converge_expired_process(child, Instant::now() + PROCESS_CLEANUP_GRACE)
+}
+
+fn continue_after_spawn(
+    process: &mut impl ChildProcessControl,
+    operation_deadline: Instant,
+    observed_at: Instant,
+    cleanup_deadline: Instant,
+) -> Result<(), BoundaryError> {
+    if observed_at < operation_deadline {
+        return Ok(());
+    }
+    converge_expired_process(process, cleanup_deadline)?;
+    Err(BoundaryError::Deadline)
+}
+
+fn converge_expired_process(
+    process: &mut impl ChildProcessControl,
+    cleanup_deadline: Instant,
+) -> Result<(), BoundaryError> {
+    match process.poll_exit() {
+        Ok(Some(_)) => return Ok(()),
+        Ok(None) => {}
+        Err(_) => return Err(BoundaryError::Io),
+    }
+    let kill_failed = process.kill_process().is_err();
+    loop {
+        match process.poll_exit() {
+            Ok(Some(_)) => return Ok(()),
+            Err(_) => return Err(BoundaryError::Io),
+            Ok(None) => {}
+        }
+        if Instant::now() >= cleanup_deadline {
+            return Err(if kill_failed {
+                BoundaryError::Io
+            } else {
+                BoundaryError::Deadline
+            });
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
 }
 
 fn converge_process(
@@ -218,6 +304,7 @@ fn converge_process(
 mod tests {
     use std::cell::Cell;
     use std::io;
+    use std::os::windows::process::ExitStatusExt;
 
     use super::*;
 
@@ -236,6 +323,42 @@ mod tests {
         fn poll_exit(&mut self) -> io::Result<Option<ExitStatus>> {
             self.poll_calls += 1;
             Ok(None)
+        }
+    }
+
+    #[derive(Default)]
+    struct RunningThenExits {
+        kill_calls: usize,
+        poll_calls: usize,
+    }
+
+    impl ChildProcessControl for RunningThenExits {
+        fn kill_process(&mut self) -> io::Result<()> {
+            self.kill_calls += 1;
+            Ok(())
+        }
+
+        fn poll_exit(&mut self) -> io::Result<Option<ExitStatus>> {
+            self.poll_calls += 1;
+            Ok((self.poll_calls > 1).then(|| ExitStatus::from_raw(0)))
+        }
+    }
+
+    #[derive(Default)]
+    struct KillFailsThenExits {
+        kill_calls: usize,
+        poll_calls: usize,
+    }
+
+    impl ChildProcessControl for KillFailsThenExits {
+        fn kill_process(&mut self) -> io::Result<()> {
+            self.kill_calls += 1;
+            Err(io::Error::other("injected kill failure"))
+        }
+
+        fn poll_exit(&mut self) -> io::Result<Option<ExitStatus>> {
+            self.poll_calls += 1;
+            Ok((self.poll_calls > 1).then(|| ExitStatus::from_raw(0)))
         }
     }
 
@@ -277,15 +400,71 @@ mod tests {
     #[test]
     fn payload_builder_cannot_extend_the_absolute_caller_deadline() {
         let builder_calls = Cell::new(0);
-        let deadline = Instant::now() + Duration::from_millis(50);
+        let before_deadline = Instant::now();
+        let deadline = before_deadline + Duration::from_secs(1);
+        let after_deadline = deadline + Duration::from_nanos(1);
+        let mut observations = [before_deadline, after_deadline].into_iter();
 
-        let result = complete_before_deadline(deadline, || {
-            builder_calls.set(builder_calls.get() + 1);
-            std::thread::sleep(Duration::from_millis(75));
-            Ok(())
-        });
+        let result = complete_before_deadline_with_clock(
+            deadline,
+            || observations.next().unwrap(),
+            || {
+                builder_calls.set(builder_calls.get() + 1);
+                Ok(())
+            },
+        );
 
         assert_eq!(result, Err(BoundaryError::Deadline));
         assert_eq!(builder_calls.get(), 1);
+    }
+
+    #[test]
+    fn post_spawn_expiry_converges_the_child_before_returning_deadline() {
+        let mut process = RunningThenExits::default();
+        let operation_deadline = Instant::now() + Duration::from_secs(1);
+        let cleanup_deadline = operation_deadline + Duration::from_secs(1);
+
+        let result = continue_after_spawn(
+            &mut process,
+            operation_deadline,
+            operation_deadline,
+            cleanup_deadline,
+        );
+
+        assert_eq!(result, Err(BoundaryError::Deadline));
+        assert_eq!(process.kill_calls, 1);
+        assert_eq!(process.poll_calls, 2);
+    }
+
+    #[test]
+    fn expired_exchange_deadline_precedes_child_exit_observation() {
+        let observation_calls = Cell::new(0);
+        let deadline = Instant::now() + Duration::from_secs(1);
+
+        let result = observe_child_before_exchange(deadline, deadline, || {
+            observation_calls.set(observation_calls.get() + 1);
+            Ok(Some(ExitStatus::from_raw(1)))
+        });
+
+        assert_eq!(result, Err(BoundaryError::Deadline));
+        assert_eq!(observation_calls.get(), 0);
+    }
+
+    #[test]
+    fn converged_expired_child_preserves_deadline_when_kill_reports_failure() {
+        let mut process = KillFailsThenExits::default();
+        let operation_deadline = Instant::now() + Duration::from_secs(1);
+        let cleanup_deadline = operation_deadline + Duration::from_secs(1);
+
+        let result = continue_after_spawn(
+            &mut process,
+            operation_deadline,
+            operation_deadline,
+            cleanup_deadline,
+        );
+
+        assert_eq!(result, Err(BoundaryError::Deadline));
+        assert_eq!(process.kill_calls, 1);
+        assert_eq!(process.poll_calls, 2);
     }
 }
