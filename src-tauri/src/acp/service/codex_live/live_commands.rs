@@ -79,6 +79,11 @@ impl AcpService {
         intent: crate::acp::runtime::HostCloseIntent,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
         let Some(recovery) = self.take_live_host_recovery(&owner) else {
+            if self.has_runtime_recovery_for(&owner) {
+                let deadline = Instant::now()
+                    + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+                let _ = self.shutdown_codex_recovery(deadline);
+            }
             return Err(CodexSessionError::Recovery);
         };
         if recovery.owner != owner {
@@ -87,20 +92,14 @@ impl AcpService {
         }
         let LiveHostRecovery { host, phase, .. } = recovery;
         match phase {
-            LiveHostRecoveryPhase::SendEffect => {
-                self.retain_live_recovery(LiveHostRecovery {
-                    owner,
-                    host,
-                    phase: LiveHostRecoveryPhase::SendEffect,
-                });
-                Err(CodexSessionError::Recovery)
-            }
-            LiveHostRecoveryPhase::CancelEffect => {
-                self.retain_live_recovery(LiveHostRecovery {
-                    owner,
-                    host,
-                    phase: LiveHostRecoveryPhase::CancelEffect,
-                });
+            phase @ (LiveHostRecoveryPhase::SendEffect | LiveHostRecoveryPhase::CancelEffect) => {
+                let deadline = Instant::now()
+                    + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+                if let Some(recovery) = self
+                    .shutdown_live_host_recovery(LiveHostRecovery { owner, host, phase }, deadline)
+                {
+                    self.retain_codex_recovery(recovery);
+                }
                 Err(CodexSessionError::Recovery)
             }
             LiveHostRecoveryPhase::CloseEffect {
@@ -243,6 +242,23 @@ impl AcpService {
                 None
             }
         }
+    }
+
+    fn has_runtime_recovery_for(&self, owner: &RuntimeOwner) -> bool {
+        let retained = self
+            .codex_recovery
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        matches!(
+            retained.as_ref(),
+            Some(PendingCodexRecovery::RuntimeZeroToken {
+                owner: retained_owner,
+                ..
+            } | PendingCodexRecovery::RuntimeProjection {
+                owner: retained_owner,
+                ..
+            }) if retained_owner == owner
+        )
     }
 
     fn retain_live_host_error(
