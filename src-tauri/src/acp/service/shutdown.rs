@@ -15,13 +15,13 @@ impl AcpService {
         // Recovery still owns native/durable authority on error. The early
         // return keeps the slot, publisher, and journal alive for exact retry.
         self.shutdown_codex_recovery(started + budget)?;
-        let mut runtime_stopped = true;
         if let Some(runtime) = self.runtime.begin_shutdown()
             && let Err(error) = runtime.shutdown()
         {
-            let _ = self.runtime.shutdown_failed();
-            runtime_stopped = false;
-            failure = Some(error);
+            self.runtime
+                .shutdown_failed()
+                .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
+            return Err(error);
         }
         if let Err(error) = self.stop_notifier(budget.saturating_sub(started.elapsed())) {
             failure.get_or_insert(error);
@@ -31,7 +31,7 @@ impl AcpService {
             self.journal.shutdown();
             failure.get_or_insert(error);
         }
-        if runtime_stopped && self.runtime.finish_shutdown().is_err() {
+        if self.runtime.finish_shutdown().is_err() {
             failure.get_or_insert(crate::acp::runtime::HostError::RecoveryRequired);
         }
         failure.map_or(Ok(()), Err)

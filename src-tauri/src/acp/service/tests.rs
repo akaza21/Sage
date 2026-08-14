@@ -1,7 +1,7 @@
 use std::{
     fs,
     sync::{Arc, Condvar, Mutex},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use crate::{
@@ -15,7 +15,7 @@ use crate::{
         lifecycle::TurnState,
         runtime::{
             ActivationMode, ActiveTurnIntent, AdapterBatchJournal, DurableAdapterEvent,
-            HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, HostState,
+            HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, HostState, JournalLane,
             NotificationError, NotificationSink, NotificationSinkFuture, PrepareDispatch,
             ProjectIntentAuthority, PromptWrite, PublishOutcome, RuntimeEngine, RuntimeHost,
             SendCoordinator, SessionPumpIntent, SqliteAdapterBatchJournal, TurnScope,
@@ -1048,9 +1048,8 @@ fn final_window_shutdown_returns_at_deadline_and_retries_the_same_actor() {
     runtime.activate(owner.clone()).unwrap();
     service.install_runtime_for_test(owner, Arc::clone(&runtime));
 
-    let started = Instant::now();
     assert_eq!(service.shutdown_blocking(), Err(HostError::Deadline));
-    assert!(started.elapsed() < Duration::from_secs(1));
+    assert!(service.journal.batch(JournalLane::Control).is_ok());
 
     let (released, ready) = &*gate;
     *released.lock().unwrap() = true;
