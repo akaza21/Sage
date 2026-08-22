@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useWorkbenchStore } from "../app/store";
 import { sameResource } from "../domain/resourceIdentity";
@@ -12,7 +12,9 @@ import { renderRegisteredCanvas } from "./surfaceRegistry";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { TitleBar } from "./TitleBar";
 import {
+  agentCenterChatAction,
   DEFAULT_WORKBENCH_WINDOW_MODE,
+  isCompactDrawerOpen,
   type WorkbenchWindowMode,
 } from "./workbenchWindowMode";
 import "./workbench-window-mode.css";
@@ -87,10 +89,21 @@ function ActiveCanvas() {
 export function Workbench() {
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const compact = useCompactWorkbenchLayout();
-  const drawerOpen = compact && sidebarOpen;
   const [windowMode, setWindowMode] = useState<WorkbenchWindowMode>(
     DEFAULT_WORKBENCH_WINDOW_MODE,
   );
+  const drawerOpen = isCompactDrawerOpen(compact, sidebarOpen, windowMode);
+
+  useEffect(() => {
+    if (windowMode !== "agent") return;
+    const state = useWorkbenchStore.getState();
+    const decision = agentCenterChatAction(state.tabs, state.activeTabId);
+    if (decision.action === "activate") {
+      void state.activateTab(decision.tabId);
+    } else if (decision.action === "create") {
+      void state.createChat();
+    }
+  }, [windowMode]);
 
   return (
     <main className={`workbench workbench--${windowMode}`}>
