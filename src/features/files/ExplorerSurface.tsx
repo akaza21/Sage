@@ -17,6 +17,7 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
   const selected = useWorkbenchStore((state) => state.selectedResource);
   const listings = useWorkbenchStore((state) => state.directoryListings);
   const expanded = useWorkbenchStore((state) => state.expandedDirectories);
+  const loadDirectory = useWorkbenchStore((state) => state.loadDirectory);
   const toggleDirectory = useWorkbenchStore((state) => state.toggleDirectory);
   const selectDirectory = useWorkbenchStore((state) => state.selectDirectory);
   const openFile = useWorkbenchStore((state) => state.openFile);
@@ -26,6 +27,19 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
   const rootSelected = sameResource(rootResource, selected);
   const tree = flattenFileTree(rootResource, listings, expanded);
   const listing = listings[resourceKey(rootResource)];
+  const nestedTruncatedResource = tree.entries.find((entry) => {
+    const entryListing = listings[resourceKey(entry.resource)];
+    return (
+      entry.kind === "directory" &&
+      expanded[resourceKey(entry.resource)] &&
+      entryListing?.phase === "ready" &&
+      entryListing.value.truncated
+    );
+  })?.resource;
+  const truncatedResource =
+    listing?.phase === "ready" && listing.value.truncated
+      ? rootResource
+      : (nestedTruncatedResource ?? rootResource);
 
   useEffect(() => {
     selectedRow.current?.scrollIntoView({ block: "nearest" });
@@ -110,7 +124,13 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
       })}
       {tree.truncated ? (
         <p className="tree__limit">
-          More entries are hidden by the view limit.
+          More entries are hidden by the view limit.{" "}
+          <button
+            type="button"
+            onClick={() => void loadDirectory(truncatedResource, true)}
+          >
+            Refresh folder
+          </button>
         </p>
       ) : null}
     </section>

@@ -18,6 +18,11 @@ import {
   matchesResourceIntent,
   issueRequestIntent,
 } from "./projectIntent";
+import {
+  boundedExpandedUpdate,
+  boundedResourceStateUpdate,
+  errorMessage,
+} from "./resourceStateHelpers";
 import { resourceTabUpdate } from "./resourceTabs";
 import type { ResourceState, WorkbenchState } from "./store";
 
@@ -29,7 +34,7 @@ export interface ResourceSlice {
   requestIntentSequence: number;
   openDiff: (resource: ResourceRef) => Promise<void>;
   openFile: (resource: ResourceRef) => Promise<void>;
-  loadDirectory: (resource: ResourceRef) => Promise<void>;
+  loadDirectory: (resource: ResourceRef, refresh?: boolean) => Promise<void>;
   toggleDirectory: (resource: ResourceRef) => void;
   selectDirectory: (resource: ResourceRef) => void;
   revealFile: (resource: ResourceRef) => Promise<void>;
@@ -38,45 +43,6 @@ export interface ResourceSlice {
 
 const MAX_CACHED_RESOURCES = 32;
 export const MAX_CACHED_DIRECTORIES = 64;
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function boundedUpdate<T>(
-  current: Record<string, ResourceState<T>>,
-  key: string,
-  value: ResourceState<T>,
-  limit: number,
-) {
-  const next = { ...current };
-  delete next[key];
-  next[key] = value;
-  for (const expired of Object.keys(next).slice(
-    0,
-    Math.max(0, Object.keys(next).length - limit),
-  )) {
-    delete next[expired];
-  }
-  return next;
-}
-
-function boundedExpandedUpdate(
-  current: Record<string, boolean>,
-  keys: string[],
-) {
-  const next = { ...current };
-  for (const key of keys) {
-    delete next[key];
-    next[key] = true;
-  }
-  const overflow = Object.keys(next).length - MAX_CACHED_DIRECTORIES;
-  if (overflow > 0) {
-    for (const expired of Object.keys(next).slice(0, overflow)) {
-      delete next[expired];
-    }
-  }
-  return next;
-}
 
 export const createResourceSlice: StateCreator<
   WorkbenchState,
@@ -173,7 +139,7 @@ export const createResourceSlice: StateCreator<
     void get().revealFile(resource);
   },
 
-  loadDirectory: async (resource) => {
+  loadDirectory: async (resource, refresh = false) => {
     const generation = get().projectGeneration;
     const projectId = get().project?.id;
     if (
@@ -183,9 +149,13 @@ export const createResourceSlice: StateCreator<
       return;
     }
     const key = resourceKey(resource);
-    const requestKey = `directory:${key}`;
+    const requestKey = `directory:${generation}:${key}`;
     const existing = get().directoryListings[key];
-    if (existing?.phase === "loading" || existing?.phase === "ready") {
+    if (
+      (existing?.phase === "loading" &&
+        get().requestGenerations[requestKey] !== undefined) ||
+      (existing?.phase === "ready" && !refresh && !existing.value.truncated)
+    ) {
       return;
     }
     let requestGeneration = 0;
@@ -199,7 +169,7 @@ export const createResourceSlice: StateCreator<
       return {
         requestGenerations: request.intents,
         requestIntentSequence: request.sequence,
-        directoryListings: boundedUpdate(
+        directoryListings: boundedResourceStateUpdate(
           state.directoryListings,
           key,
           { phase: "loading" },
@@ -207,18 +177,49 @@ export const createResourceSlice: StateCreator<
         ),
       };
     });
+    const acceptsDirectoryResult = () => {
+      const current = get();
+      const projectMatches = matchesResourceIntent(
+        current,
+        generation,
+        projectId,
+        resource,
+      );
+      const requestMatches = matchesRequestIntent(
+        current,
+        requestKey,
+        requestGeneration,
+      );
+      const currentRequestKey = `directory:${current.projectGeneration}:${key}`;
+      const newerGenerationIsLoading =
+        currentRequestKey !== requestKey &&
+        current.requestGenerations[currentRequestKey] !== undefined;
+      if (!projectMatches && requestMatches && !newerGenerationIsLoading) {
+        set((state) => {
+          if (
+            state.requestGenerations[requestKey] !== requestGeneration ||
+            state.directoryListings[key]?.phase !== "loading"
+          ) {
+            return {};
+          }
+          const directoryListings = { ...state.directoryListings };
+          delete directoryListings[key];
+          return { directoryListings };
+        });
+      }
+      return (
+        projectMatches &&
+        requestMatches &&
+        current.directoryListings[key]?.phase === "loading"
+      );
+    };
     try {
       const value = await getWorkbenchPorts().project.listDirectory(resource);
-      if (
-        !matchesResourceIntent(get(), generation, projectId, resource) ||
-        !matchesRequestIntent(get(), requestKey, requestGeneration) ||
-        (resource.relativePath !== "" &&
-          !get().expandedDirectories[resourceKey(resource)])
-      ) {
+      if (!acceptsDirectoryResult()) {
         return;
       }
       set((state) => ({
-        directoryListings: boundedUpdate(
+        directoryListings: boundedResourceStateUpdate(
           state.directoryListings,
           key,
           { phase: "ready", value },
@@ -226,16 +227,11 @@ export const createResourceSlice: StateCreator<
         ),
       }));
     } catch (error) {
-      if (
-        !matchesResourceIntent(get(), generation, projectId, resource) ||
-        !matchesRequestIntent(get(), requestKey, requestGeneration) ||
-        (resource.relativePath !== "" &&
-          !get().expandedDirectories[resourceKey(resource)])
-      ) {
+      if (!acceptsDirectoryResult()) {
         return;
       }
       set((state) => ({
-        directoryListings: boundedUpdate(
+        directoryListings: boundedResourceStateUpdate(
           state.directoryListings,
           key,
           { phase: "error", message: errorMessage(error) },
@@ -257,7 +253,7 @@ export const createResourceSlice: StateCreator<
     set((state) => {
       let next = { ...state.expandedDirectories };
       if (expanded) {
-        next = boundedExpandedUpdate(next, [key]);
+        next = boundedExpandedUpdate(next, [key], MAX_CACHED_DIRECTORIES);
       } else if (state.directoryListings[key]?.phase === "loading") {
         delete next[key];
         const directoryListings = { ...state.directoryListings };
@@ -310,6 +306,7 @@ export const createResourceSlice: StateCreator<
         expandedDirectories: boundedExpandedUpdate(
           state.expandedDirectories,
           parents.map(resourceKey),
+          MAX_CACHED_DIRECTORIES,
         ),
       };
     });
@@ -342,7 +339,7 @@ export const createResourceSlice: StateCreator<
       return {
         requestGenerations: request.intents,
         requestIntentSequence: request.sequence,
-        diffs: boundedUpdate(
+        diffs: boundedResourceStateUpdate(
           state.diffs,
           key,
           { phase: "loading" },
@@ -365,7 +362,7 @@ export const createResourceSlice: StateCreator<
         return;
       }
       set((state) => ({
-        diffs: boundedUpdate(
+        diffs: boundedResourceStateUpdate(
           state.diffs,
           key,
           { phase: "ready", value },
@@ -386,7 +383,7 @@ export const createResourceSlice: StateCreator<
         return;
       }
       set((state) => ({
-        diffs: boundedUpdate(
+        diffs: boundedResourceStateUpdate(
           state.diffs,
           key,
           { phase: "error", message: errorMessage(error) },

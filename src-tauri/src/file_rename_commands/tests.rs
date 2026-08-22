@@ -190,6 +190,39 @@ fn commits_exact_file_and_migrates_only_the_selected_resource() {
     });
 }
 
+#[cfg(windows)]
+#[test]
+fn commits_an_empty_folder_and_rejects_a_non_empty_folder() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        fs::create_dir(fixture.root.join("src/empty")).unwrap();
+        let mut request = fixture.request("renamed");
+        request.source.relative_path = "src/empty".into();
+        request.current_layout.selected_resource = Some(request.source.clone());
+
+        let result = execute_folder(&fixture.state, request).await.unwrap();
+
+        assert_eq!(result.outcome, FileRenameOutcome::Committed);
+        assert!(result.resource_confirmed);
+        assert!(fixture.root.join("src/renamed").is_dir());
+        assert!(!fixture.root.join("src/empty").exists());
+        assert!(result.parent_listing.unwrap().entries.iter().any(|entry| {
+            entry.resource == result.target && entry.kind == "directory" && entry.byte_len.is_none()
+        }));
+
+        let fixture = Fixture::new();
+        fs::create_dir(fixture.root.join("src/non-empty")).unwrap();
+        fs::write(fixture.root.join("src/non-empty/child.txt"), "child").unwrap();
+        let mut request = fixture.request("renamed");
+        request.source.relative_path = "src/non-empty".into();
+        request.current_layout.selected_resource = Some(request.source.clone());
+
+        assert!(execute_folder(&fixture.state, request).await.is_err());
+        assert!(fixture.root.join("src/non-empty/child.txt").is_file());
+        assert!(!fixture.root.join("src/renamed").exists());
+    });
+}
+
 #[test]
 fn source_or_target_file_and_diff_tabs_fail_before_filesystem_mutation() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -213,6 +246,36 @@ fn source_or_target_file_and_diff_tabs_fail_before_filesystem_mutation() {
                 "preserve\n"
             );
             assert!(!fixture.root.join("src/new.rs").exists());
+        }
+    });
+}
+
+#[test]
+fn folder_rename_rejects_durable_descendant_file_and_diff_tabs() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        for kind in ["file", "diff"] {
+            let fixture = Fixture::new();
+            fs::create_dir(fixture.root.join("src/empty")).unwrap();
+            let mut durable_layout = fixture.layout.clone();
+            durable_layout.tabs.push(fixture.resource_tab(
+                &format!("{kind}:folder-descendant"),
+                kind,
+                "src/empty/closed.rs",
+            ));
+            fixture
+                .state
+                .database
+                .persist_project_layout(&durable_layout)
+                .unwrap();
+            let mut request = fixture.request("renamed");
+            request.source.relative_path = "src/empty".into();
+            request.current_layout.selected_resource = Some(request.source.clone());
+
+            let error = execute_folder(&fixture.state, request).await.unwrap_err();
+
+            assert!(error.to_string().contains("close File and Diff tabs"));
+            assert!(fixture.root.join("src/empty").is_dir());
+            assert!(!fixture.root.join("src/renamed").exists());
         }
     });
 }

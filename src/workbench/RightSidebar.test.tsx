@@ -1075,6 +1075,133 @@ describe("RightSidebar Explorer Rename File", () => {
   });
 });
 
+describe("RightSidebar Explorer folder lifecycle", () => {
+  it("renames a selected empty folder through its dedicated control", async () => {
+    const source = { rootId: "root-a", relativePath: "src/empty" };
+    const parent = { rootId: "root-a", relativePath: "src" };
+    const renameProjectFolder = vi.fn(async () => true);
+    useWorkbenchStore.setState({
+      sidebarOpen: true,
+      sidebarView: "explorer",
+      project: {
+        id: "project-a",
+        name: "A",
+        roots: [
+          {
+            id: "root-a",
+            name: "Root A",
+            ordinal: 0,
+            availability: "available",
+            message: null,
+          },
+        ],
+      },
+      selectedRootId: "root-a",
+      selectedResource: source,
+      directoryListings: {
+        [resourceKey(parent)]: {
+          phase: "ready",
+          value: {
+            resource: parent,
+            truncated: false,
+            entries: [
+              {
+                name: "empty",
+                resource: source,
+                kind: "directory",
+                byteLen: null,
+              },
+            ],
+          },
+        },
+        [resourceKey(source)]: {
+          phase: "ready",
+          value: { resource: source, truncated: false, entries: [] },
+        },
+      },
+      renameProjectFolder,
+      fileRenameError: null,
+      fileRenameInFlight: false,
+      projectTransitioning: false,
+    });
+
+    render(<RightSidebar compact={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename Folder" }));
+    fireEvent.change(await screen.findByLabelText("Folder name"), {
+      target: { value: "renamed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+
+    expect(renameProjectFolder).toHaveBeenCalledWith(source, "renamed");
+  });
+
+  it("refreshes the expanded truncated folder instead of an earlier collapsed cache", () => {
+    const root = { rootId: "root-a", relativePath: "" };
+    const collapsed = { rootId: "root-a", relativePath: "a-collapsed" };
+    const expanded = { rootId: "root-a", relativePath: "b-expanded" };
+    const loadDirectory = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({
+      sidebarOpen: true,
+      sidebarView: "explorer",
+      project: {
+        id: "project-a",
+        name: "A",
+        roots: [
+          {
+            id: "root-a",
+            name: "Root A",
+            ordinal: 0,
+            availability: "available",
+            message: null,
+          },
+        ],
+      },
+      selectedRootId: "root-a",
+      selectedResource: root,
+      directoryListings: {
+        [resourceKey(root)]: {
+          phase: "ready",
+          value: {
+            resource: root,
+            truncated: false,
+            entries: [
+              {
+                name: "a-collapsed",
+                resource: collapsed,
+                kind: "directory",
+                byteLen: null,
+              },
+              {
+                name: "b-expanded",
+                resource: expanded,
+                kind: "directory",
+                byteLen: null,
+              },
+            ],
+          },
+        },
+        [resourceKey(collapsed)]: {
+          phase: "ready",
+          value: { resource: collapsed, truncated: true, entries: [] },
+        },
+        [resourceKey(expanded)]: {
+          phase: "ready",
+          value: { resource: expanded, truncated: true, entries: [] },
+        },
+      },
+      expandedDirectories: { [resourceKey(expanded)]: true },
+      loadDirectory,
+    });
+
+    render(<RightSidebar compact={false} />);
+    expect(
+      screen.getByText("More entries are hidden by the view limit."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh folder" }));
+    expect(loadDirectory).toHaveBeenCalledWith(expanded, true);
+  });
+});
+
 describe("RightSidebar Explorer recoverable trash", () => {
   function trashState(
     selectedResource: ResourceRef,

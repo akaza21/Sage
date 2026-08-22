@@ -3,17 +3,29 @@ import type { StateCreator } from "zustand";
 import {
   parentResource,
   resourceKey,
+  sameOrDescendantResource,
   sameResource,
 } from "../domain/resourceIdentity";
-import type { ResourceRef } from "../domain/workbench";
+import type {
+  RenameProjectFolderResult,
+  ResourceRef,
+} from "../domain/workbench";
 import {
   renameTargetResource,
   validateFileRenameResult,
 } from "../features/files/fileRenameContract";
+import {
+  renameFolderTargetResource,
+  validateFolderRenameResult,
+} from "../features/files/folderRenameContract";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { ProjectPort } from "../ports/workbenchPorts";
 import { currentProjectLayout } from "./projectProjection";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
+import {
+  remapExpandedResourceHierarchy,
+  withoutResourceHierarchy,
+} from "./resourceStateHelpers";
 import type { WorkbenchState } from "./store";
 
 const MAX_FILE_RENAME_ERROR_UNITS = 2_048;
@@ -28,6 +40,10 @@ export interface FileRenameSlice {
     source: ResourceRef,
     basename: string,
   ) => Promise<boolean>;
+  renameProjectFolder: (
+    source: ResourceRef,
+    basename: string,
+  ) => Promise<boolean>;
 }
 
 function boundedError(error: unknown) {
@@ -39,14 +55,20 @@ function hasResourceTab(
   state: WorkbenchState,
   source: ResourceRef,
   target: ResourceRef,
+  kind: RenameKind,
 ) {
   return state.tabs.some(
     (tab) =>
       (tab.kind === "file" || tab.kind === "diff") &&
-      (sameResource(tab.resource, source) ||
-        sameResource(tab.resource, target)),
+      (kind === "folder"
+        ? sameOrDescendantResource(tab.resource, source) ||
+          sameOrDescendantResource(tab.resource, target)
+        : sameResource(tab.resource, source) ||
+          sameResource(tab.resource, target)),
   );
 }
+
+type RenameKind = "file" | "folder";
 
 function intentMatches(
   state: WorkbenchState,
@@ -70,7 +92,10 @@ function renameProjection(
   parent: ResourceRef,
 ) {
   const parentKey = resourceKey(parent);
-  const directoryListings = { ...state.directoryListings };
+  const directoryListings = withoutResourceHierarchy(
+    state.directoryListings,
+    result.source,
+  );
   if (result.resourceConfirmed && result.parentListing) {
     delete directoryListings[parentKey];
     directoryListings[parentKey] = {
@@ -80,9 +105,10 @@ function renameProjection(
   } else {
     delete directoryListings[parentKey];
   }
-  const diffs = { ...state.diffs };
-  delete diffs[resourceKey(result.source)];
-  delete diffs[resourceKey(result.target)];
+  const diffs = withoutResourceHierarchy(
+    withoutResourceHierarchy(state.diffs, result.source),
+    result.target,
+  );
   const snapshot = result.snapshot;
   return {
     nativeTransitionEpoch: result.transitionEpoch,
@@ -104,7 +130,11 @@ function renameProjection(
         : {}),
     directoryListings,
     expandedDirectories: {
-      ...state.expandedDirectories,
+      ...remapExpandedResourceHierarchy(
+        state.expandedDirectories,
+        result.source,
+        result.target,
+      ),
       [parentKey]: true,
     },
     diffs,
@@ -116,22 +146,22 @@ export const createFileRenameSlice: StateCreator<
   [],
   [],
   FileRenameSlice
-> = (set, get) => ({
-  fileRenameInFlight: false,
-  fileRenameError: null,
-  fileRenameNotice: null,
-  fileRenameRequestGeneration: 0,
-
-  clearFileRenameError: () => set({ fileRenameError: null }),
-
-  renameProjectFile: async (source, basename) => {
+> = (set, get) => {
+  const renameProjectResource = async (
+    kind: RenameKind,
+    source: ResourceRef,
+    basename: string,
+  ) => {
     const state = get();
     const project = state.project;
     const projectGeneration = state.projectGeneration;
     const transitionEpoch = state.nativeTransitionEpoch;
     let target: ResourceRef;
     try {
-      target = renameTargetResource(source, basename);
+      target =
+        kind === "file"
+          ? renameTargetResource(source, basename)
+          : renameFolderTargetResource(source, basename);
     } catch (error) {
       set({ fileRenameError: boundedError(error) });
       return false;
@@ -147,6 +177,15 @@ export const createFileRenameSlice: StateCreator<
             sameResource(entry.resource, source),
           )
         : undefined;
+    const sourceListing = state.directoryListings[resourceKey(source)];
+    const validSource =
+      kind === "file"
+        ? sourceEntry?.kind === "file"
+        : source.relativePath !== "" &&
+          sourceEntry?.kind === "directory" &&
+          sourceListing?.phase === "ready" &&
+          !sourceListing.value.truncated &&
+          sourceListing.value.entries.length === 0;
     if (
       !project ||
       !root ||
@@ -161,19 +200,23 @@ export const createFileRenameSlice: StateCreator<
       !sameResource(state.selectedResource, source) ||
       parentListing?.phase !== "ready" ||
       parentListing.value.truncated ||
-      sourceEntry?.kind !== "file"
+      !validSource
     ) {
       set({
         fileRenameError:
-          "Select one visible regular file in an available Project root to rename.",
+          kind === "file"
+            ? "Select one visible regular file in an available Project root to rename."
+            : "Select one visible empty folder in an available Project root to rename.",
       });
       return false;
     }
-    if (
-      hasResourceTab(state, source, target) ||
-      sameResource(state.activeEditor?.resource, source) ||
-      sameResource(state.activeEditor?.resource, target)
-    ) {
+    const activeEditorConflict =
+      kind === "folder"
+        ? sameOrDescendantResource(state.activeEditor?.resource, source) ||
+          sameOrDescendantResource(state.activeEditor?.resource, target)
+        : sameResource(state.activeEditor?.resource, source) ||
+          sameResource(state.activeEditor?.resource, target);
+    if (hasResourceTab(state, source, target, kind) || activeEditorConflict) {
       set({
         fileRenameError:
           "Close File and Diff tabs for the source and target before renaming.",
@@ -205,7 +248,7 @@ export const createFileRenameSlice: StateCreator<
         return false;
       }
       const currentLayout = currentProjectLayout(get());
-      if (!currentLayout || hasResourceTab(get(), source, target)) {
+      if (!currentLayout || hasResourceTab(get(), source, target, kind)) {
         throw new Error(
           "Close File and Diff tabs for the source and target before renaming.",
         );
@@ -222,18 +265,22 @@ export const createFileRenameSlice: StateCreator<
           transitionEpoch,
           requestGeneration,
         ) ||
-        hasResourceTab(get(), source, target)
+        hasResourceTab(get(), source, target, kind)
       ) {
         return false;
       }
-      const result = await getWorkbenchPorts().project.renameProjectFile({
+      const request = {
         projectId: project.id,
         projectGeneration,
         expectedTransitionEpoch: transitionEpoch,
         source,
         basename,
         currentLayout,
-      });
+      };
+      const result =
+        kind === "file"
+          ? await getWorkbenchPorts().project.renameProjectFile(request)
+          : await getWorkbenchPorts().project.renameProjectFolder(request);
       if (
         !intentMatches(
           get(),
@@ -245,15 +292,24 @@ export const createFileRenameSlice: StateCreator<
       ) {
         return false;
       }
-      const resourceConfirmed = validateFileRenameResult(result, {
-        projectId: project.id,
-        projectGeneration,
-        transitionEpoch,
-        source,
-        target,
-      });
+      const resourceConfirmed =
+        kind === "file"
+          ? validateFileRenameResult(result, {
+              projectId: project.id,
+              projectGeneration,
+              transitionEpoch,
+              source,
+              target,
+            })
+          : validateFolderRenameResult(result, {
+              projectId: project.id,
+              projectGeneration,
+              transitionEpoch,
+              source,
+              target,
+            });
       set((state) => ({
-        ...renameProjection(state, result, parent),
+        ...renameProjection(state, result as RenameProjectFolderResult, parent),
         projectGeneration: nextProjectGeneration(projectGeneration),
         projectTransitioning: false,
         fileRenameInFlight: false,
@@ -290,5 +346,19 @@ export const createFileRenameSlice: StateCreator<
         set({ fileRenameInFlight: false, projectTransitioning: false });
       }
     }
-  },
-});
+  };
+
+  return {
+    fileRenameInFlight: false,
+    fileRenameError: null,
+    fileRenameNotice: null,
+    fileRenameRequestGeneration: 0,
+
+    clearFileRenameError: () => set({ fileRenameError: null }),
+
+    renameProjectFile: (source, basename) =>
+      renameProjectResource("file", source, basename),
+    renameProjectFolder: (source, basename) =>
+      renameProjectResource("folder", source, basename),
+  };
+};

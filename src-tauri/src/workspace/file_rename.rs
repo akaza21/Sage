@@ -35,6 +35,7 @@ impl FileRenameCommit {
 #[derive(Default)]
 pub(crate) struct FileRenameMarker {
     authority: Mutex<Option<Arc<platform::FileRenameAuthority>>>,
+    committed: Mutex<bool>,
 }
 
 impl FileRenameMarker {
@@ -43,13 +44,24 @@ impl FileRenameMarker {
             .authority
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(authority);
+        *self
+            .committed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
+    }
+
+    pub(crate) fn mark_committed(&self) {
+        *self
+            .committed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
     }
 
     pub(crate) fn committed(&self) -> bool {
-        self.authority
+        *self
+            .committed
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_some()
     }
 
     fn authority(&self) -> Option<Arc<platform::FileRenameAuthority>> {
@@ -288,6 +300,8 @@ fn combine_warnings(left: Option<String>, right: Option<String>) -> Option<Strin
 }
 
 mod platform;
+
+mod folder;
 
 #[cfg(test)]
 mod tests;

@@ -342,6 +342,226 @@ describe("file rename store transaction", () => {
     });
   });
 
+  it("renames one selected empty folder through the folder Project port", async () => {
+    const folder = { rootId: "root-a", relativePath: "src/empty" };
+    const renamed = { rootId: "root-a", relativePath: "src/renamed" };
+    useWorkbenchStore.setState({
+      ...snapshot(folder),
+      phase: "ready",
+      projectGeneration: 3,
+      nativeTransitionEpoch: 5,
+      projectTransitioning: false,
+      directoryListings: {
+        [resourceKey(parent)]: {
+          phase: "ready",
+          value: {
+            resource: parent,
+            truncated: false,
+            entries: [
+              {
+                name: "empty",
+                resource: folder,
+                kind: "directory",
+                byteLen: null,
+              },
+            ],
+          },
+        },
+        [resourceKey(folder)]: {
+          phase: "ready",
+          value: { resource: folder, truncated: false, entries: [] },
+        },
+      },
+    });
+    const rename = vi
+      .spyOn(projectPort, "renameProjectFolder")
+      .mockResolvedValue({
+        ...result(),
+        source: folder,
+        target: renamed,
+        parentListing: {
+          resource: parent,
+          truncated: false,
+          entries: [
+            {
+              name: "renamed",
+              resource: renamed,
+              kind: "directory",
+              byteLen: null,
+            },
+          ],
+        },
+        snapshot: snapshot(renamed),
+      });
+
+    await expect(
+      useWorkbenchStore.getState().renameProjectFolder(folder, "renamed"),
+    ).resolves.toBe(true);
+
+    expect(rename).toHaveBeenCalledWith(
+      expect.objectContaining({ source: folder, basename: "renamed" }),
+    );
+    expect(useWorkbenchStore.getState().selectedResource).toEqual(renamed);
+  });
+
+  it("drops the renamed folder's stale cache and preserves its expanded state at the target", async () => {
+    const folder = { rootId: "root-a", relativePath: "src/empty" };
+    const renamed = { rootId: "root-a", relativePath: "src/renamed" };
+    const staleDescendant = {
+      rootId: "root-a",
+      relativePath: "src/empty/stale",
+    };
+    const staleSourceDiff = {
+      rootId: "root-a",
+      relativePath: "src/empty/stale.ts",
+    };
+    const staleTargetDiff = {
+      rootId: "root-a",
+      relativePath: "src/renamed/stale.ts",
+    };
+    const unrelatedDiff = {
+      rootId: "root-a",
+      relativePath: "other/preserved.ts",
+    };
+    const readyDiff = (resource: typeof staleSourceDiff) => ({
+      phase: "ready" as const,
+      value: {
+        resource,
+        hunks: [],
+        binary: false,
+        truncated: false,
+      },
+    });
+    useWorkbenchStore.setState({
+      ...snapshot(folder),
+      directoryListings: {
+        [resourceKey(parent)]: {
+          phase: "ready",
+          value: {
+            resource: parent,
+            truncated: false,
+            entries: [
+              {
+                name: "empty",
+                resource: folder,
+                kind: "directory",
+                byteLen: null,
+              },
+            ],
+          },
+        },
+        [resourceKey(folder)]: {
+          phase: "ready",
+          value: { resource: folder, truncated: false, entries: [] },
+        },
+        [resourceKey(staleDescendant)]: {
+          phase: "ready",
+          value: { resource: staleDescendant, truncated: false, entries: [] },
+        },
+      },
+      expandedDirectories: {
+        [resourceKey(folder)]: true,
+        [resourceKey(staleDescendant)]: true,
+      },
+      diffs: {
+        [resourceKey(staleSourceDiff)]: readyDiff(staleSourceDiff),
+        [resourceKey(staleTargetDiff)]: readyDiff(staleTargetDiff),
+        [resourceKey(unrelatedDiff)]: readyDiff(unrelatedDiff),
+      },
+    });
+    vi.spyOn(projectPort, "renameProjectFolder").mockResolvedValue({
+      ...result(),
+      source: folder,
+      target: renamed,
+      parentListing: {
+        resource: parent,
+        truncated: false,
+        entries: [
+          {
+            name: "renamed",
+            resource: renamed,
+            kind: "directory",
+            byteLen: null,
+          },
+        ],
+      },
+      snapshot: snapshot(renamed),
+    });
+
+    await useWorkbenchStore.getState().renameProjectFolder(folder, "renamed");
+
+    const state = useWorkbenchStore.getState();
+    expect(state.directoryListings[resourceKey(folder)]).toBeUndefined();
+    expect(
+      state.directoryListings[resourceKey(staleDescendant)],
+    ).toBeUndefined();
+    expect(state.expandedDirectories[resourceKey(folder)]).toBeUndefined();
+    expect(
+      state.expandedDirectories[resourceKey(staleDescendant)],
+    ).toBeUndefined();
+    expect(state.diffs[resourceKey(staleSourceDiff)]).toBeUndefined();
+    expect(state.diffs[resourceKey(staleTargetDiff)]).toBeUndefined();
+    expect(state.diffs[resourceKey(unrelatedDiff)]).toEqual(
+      readyDiff(unrelatedDiff),
+    );
+    expect(state.expandedDirectories[resourceKey(renamed)]).toBe(true);
+    expect(state.directoryListings[resourceKey(parent)]).toEqual({
+      phase: "ready",
+      value: expect.objectContaining({
+        entries: [expect.objectContaining({ resource: renamed })],
+      }),
+    });
+  });
+
+  it("refreshes the parent after an unconfirmed folder rename", async () => {
+    const folder = { rootId: "root-a", relativePath: "src/empty" };
+    useWorkbenchStore.setState({
+      ...snapshot(folder),
+      directoryListings: {
+        [resourceKey(parent)]: {
+          phase: "ready",
+          value: {
+            resource: parent,
+            truncated: false,
+            entries: [
+              {
+                name: "empty",
+                resource: folder,
+                kind: "directory",
+                byteLen: null,
+              },
+            ],
+          },
+        },
+        [resourceKey(folder)]: {
+          phase: "ready",
+          value: { resource: folder, truncated: false, entries: [] },
+        },
+      },
+    });
+    const loadDirectory = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({ loadDirectory });
+    vi.spyOn(projectPort, "renameProjectFolder").mockResolvedValue({
+      ...result(),
+      source: folder,
+      target: { rootId: "root-a", relativePath: "src/renamed" },
+      outcome: "effectUnknown",
+      resourceConfirmed: false,
+      parentListing: null,
+      snapshot: snapshot(folder),
+      warning: "Folder rename outcome is unknown; Explorer was refreshed.",
+    });
+
+    await expect(
+      useWorkbenchStore.getState().renameProjectFolder(folder, "renamed"),
+    ).resolves.toBe(true);
+
+    expect(loadDirectory).toHaveBeenCalledWith(parent);
+    expect(useWorkbenchStore.getState().fileRenameNotice).toContain(
+      "outcome is unknown",
+    );
+  });
+
   it("applies confirmed parent evidence when the snapshot is unavailable", async () => {
     const unrelated = { rootId: "root-a", relativePath: "other" };
     const unrelatedListing = {

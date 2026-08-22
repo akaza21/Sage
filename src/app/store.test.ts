@@ -1992,6 +1992,67 @@ describe("workbench resource and project navigation", () => {
     },
   );
 
+  it("drops a late old-generation directory request so the current Project can retry", async () => {
+    const target = resource("");
+    const pending = deferred<DirectoryListing>();
+    const listDirectory = vi
+      .spyOn(projectPort, "listDirectory")
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce({
+        resource: target,
+        entries: [],
+        truncated: false,
+      });
+
+    const oldLoad = useWorkbenchStore.getState().loadDirectory(target);
+    await vi.waitFor(() =>
+      expect(
+        useWorkbenchStore.getState().directoryListings[resourceKey(target)],
+      ).toEqual({ phase: "loading" }),
+    );
+    useWorkbenchStore.setState({ projectGeneration: 1 });
+    pending.resolve({ resource: target, entries: [], truncated: false });
+    await oldLoad;
+
+    expect(
+      useWorkbenchStore.getState().directoryListings[resourceKey(target)],
+    ).toBeUndefined();
+    await useWorkbenchStore.getState().loadDirectory(target);
+    expect(listDirectory).toHaveBeenCalledTimes(2);
+    expect(
+      useWorkbenchStore.getState().directoryListings[resourceKey(target)],
+    ).toEqual({
+      phase: "ready",
+      value: { resource: target, entries: [], truncated: false },
+    });
+  });
+
+  it("preserves authoritative directory evidence when an old generation resolves late", async () => {
+    const target = resource("");
+    const pending = deferred<DirectoryListing>();
+    vi.spyOn(projectPort, "listDirectory").mockReturnValue(pending.promise);
+
+    const oldLoad = useWorkbenchStore.getState().loadDirectory(target);
+    await vi.waitFor(() =>
+      expect(
+        useWorkbenchStore.getState().directoryListings[resourceKey(target)],
+      ).toEqual({ phase: "loading" }),
+    );
+    const authoritative = { resource: target, entries: [], truncated: false };
+    useWorkbenchStore.setState({
+      projectGeneration: 1,
+      directoryListings: {
+        [resourceKey(target)]: { phase: "ready", value: authoritative },
+      },
+    });
+    pending.resolve({ resource: target, entries: [], truncated: false });
+    await oldLoad;
+
+    expect(
+      useWorkbenchStore.getState().directoryListings[resourceKey(target)],
+    ).toEqual({ phase: "ready", value: authoritative });
+  });
+
   it.each(["success", "error"] as const)(
     "ignores a late old-project diff %s after switching",
     async (outcome) => {
