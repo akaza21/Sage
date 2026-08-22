@@ -141,7 +141,7 @@ export interface FileChangeProjection {
   summary: string;
 }
 
-interface ItemIdentity {
+export interface AcpItemIdentity {
   id: SageItemId;
   projectId: SageProjectId;
   chatId: SageChatId;
@@ -158,13 +158,13 @@ interface ItemIdentity {
   terminalAt: number | null;
 }
 
-type PlainItem<Kind extends string, Payload> = ItemIdentity & {
+type PlainItem<Kind extends string, Payload> = AcpItemIdentity & {
   kind: Kind;
   toolState: null;
   payload: Payload;
 };
 
-type ToolItem<Kind extends string, Payload> = ItemIdentity & {
+type ToolItem<Kind extends string, Payload> = AcpItemIdentity & {
   kind: Kind;
   toolState: ToolState;
   payload: Payload;

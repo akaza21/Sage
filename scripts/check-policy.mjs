@@ -4,6 +4,8 @@ import path from "node:path";
 import process from "node:process";
 
 import { cargoPackageFeatureErrors } from "./ade0006a-package-policy.mjs";
+import { acpTransportParityErrors } from "./acp-transport-parity.mjs";
+import { workbenchTransportParityErrors } from "./workbench-transport-parity.mjs";
 
 const root = process.cwd();
 const failures = [];
@@ -793,6 +795,13 @@ for (const file of productionFiles) {
       `${file} has ${lineCount} non-comment lines (limit ${lineLimit})${exceptionContext}.`,
     );
   }
+}
+
+for (const error of await workbenchTransportParityErrors(root)) {
+  fail(error);
+}
+for (const error of await acpTransportParityErrors(root)) {
+  fail(error);
 }
 
 if (failures.length > 0) {

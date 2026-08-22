@@ -132,11 +132,13 @@ impl HarnessCatalog {
                     description: Some(
                         "Short deterministic responses for the walking skeleton.".into(),
                     ),
+                    is_default: Some(true),
                 },
                 ModelOption {
                     id: SIMULATOR_DEEP_MODEL_ID.into(),
                     name: "Simulator Deep".into(),
                     description: Some("A second option for testing model changes.".into()),
+                    is_default: Some(false),
                 },
             ]);
         }
