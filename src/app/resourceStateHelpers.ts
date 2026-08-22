@@ -1,3 +1,9 @@
+import {
+  resourceKey,
+  resourceKeyIsSameOrDescendant,
+} from "../domain/resourceIdentity";
+import type { ResourceRef } from "../domain/workbench";
+
 import type { ResourceState } from "./store";
 
 export function errorMessage(error: unknown): string {
@@ -37,6 +43,30 @@ export function boundedExpandedUpdate(
     for (const expired of Object.keys(next).slice(0, overflow)) {
       delete next[expired];
     }
+  }
+  return next;
+}
+
+export function withoutResourceHierarchy<T>(
+  current: Record<string, T>,
+  source: ResourceRef,
+) {
+  return Object.fromEntries(
+    Object.entries(current).filter(
+      ([key]) => !resourceKeyIsSameOrDescendant(key, source),
+    ),
+  ) as Record<string, T>;
+}
+
+export function remapExpandedResourceHierarchy(
+  current: Record<string, boolean>,
+  source: ResourceRef,
+  target: ResourceRef,
+) {
+  const sourceWasExpanded = Boolean(current[resourceKey(source)]);
+  const next = withoutResourceHierarchy(current, source);
+  if (sourceWasExpanded) {
+    next[resourceKey(target)] = true;
   }
   return next;
 }

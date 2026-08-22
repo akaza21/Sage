@@ -22,6 +22,10 @@ import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { ProjectPort } from "../ports/workbenchPorts";
 import { currentProjectLayout } from "./projectProjection";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
+import {
+  remapExpandedResourceHierarchy,
+  withoutResourceHierarchy,
+} from "./resourceStateHelpers";
 import type { WorkbenchState } from "./store";
 
 const MAX_FILE_RENAME_ERROR_UNITS = 2_048;
@@ -88,7 +92,10 @@ function renameProjection(
   parent: ResourceRef,
 ) {
   const parentKey = resourceKey(parent);
-  const directoryListings = { ...state.directoryListings };
+  const directoryListings = withoutResourceHierarchy(
+    state.directoryListings,
+    result.source,
+  );
   if (result.resourceConfirmed && result.parentListing) {
     delete directoryListings[parentKey];
     directoryListings[parentKey] = {
@@ -122,7 +129,11 @@ function renameProjection(
         : {}),
     directoryListings,
     expandedDirectories: {
-      ...state.expandedDirectories,
+      ...remapExpandedResourceHierarchy(
+        state.expandedDirectories,
+        result.source,
+        result.target,
+      ),
       [parentKey]: true,
     },
     diffs,

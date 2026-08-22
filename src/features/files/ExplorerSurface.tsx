@@ -31,6 +31,7 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
     const entryListing = listings[resourceKey(entry.resource)];
     return (
       entry.kind === "directory" &&
+      expanded[resourceKey(entry.resource)] &&
       entryListing?.phase === "ready" &&
       entryListing.value.truncated
     );

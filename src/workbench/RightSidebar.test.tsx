@@ -1135,8 +1135,10 @@ describe("RightSidebar Explorer folder lifecycle", () => {
     expect(renameProjectFolder).toHaveBeenCalledWith(source, "renamed");
   });
 
-  it("keeps the truncated disclosure and refreshes the visible folder", () => {
+  it("refreshes the expanded truncated folder instead of an earlier collapsed cache", () => {
     const root = { rootId: "root-a", relativePath: "" };
+    const collapsed = { rootId: "root-a", relativePath: "a-collapsed" };
+    const expanded = { rootId: "root-a", relativePath: "b-expanded" };
     const loadDirectory = vi.fn(async () => undefined);
     useWorkbenchStore.setState({
       sidebarOpen: true,
@@ -1159,10 +1161,35 @@ describe("RightSidebar Explorer folder lifecycle", () => {
       directoryListings: {
         [resourceKey(root)]: {
           phase: "ready",
-          value: { resource: root, truncated: true, entries: [] },
+          value: {
+            resource: root,
+            truncated: false,
+            entries: [
+              {
+                name: "a-collapsed",
+                resource: collapsed,
+                kind: "directory",
+                byteLen: null,
+              },
+              {
+                name: "b-expanded",
+                resource: expanded,
+                kind: "directory",
+                byteLen: null,
+              },
+            ],
+          },
+        },
+        [resourceKey(collapsed)]: {
+          phase: "ready",
+          value: { resource: collapsed, truncated: true, entries: [] },
+        },
+        [resourceKey(expanded)]: {
+          phase: "ready",
+          value: { resource: expanded, truncated: true, entries: [] },
         },
       },
-      expandedDirectories: { [resourceKey(root)]: true },
+      expandedDirectories: { [resourceKey(expanded)]: true },
       loadDirectory,
     });
 
@@ -1171,7 +1198,7 @@ describe("RightSidebar Explorer folder lifecycle", () => {
       screen.getByText("More entries are hidden by the view limit."),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Refresh folder" }));
-    expect(loadDirectory).toHaveBeenCalledWith(root, true);
+    expect(loadDirectory).toHaveBeenCalledWith(expanded, true);
   });
 });
 
