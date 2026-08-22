@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use sha2::{Digest, Sha256};
+
 use super::manifest::MetadataValidatedPacket;
 use super::reproduction::{
     authenticode_certificate_thumbprint_sha1, authenticode_publisher_common_name,
@@ -34,6 +36,12 @@ pub struct PacketArtifactBinding {
 #[derive(Debug, PartialEq, Eq)]
 pub struct VerifiedSignature {
     binding: PacketArtifactBinding,
+}
+
+impl PacketArtifactBinding {
+    pub fn artifact_sha256(&self) -> &str {
+        &self.artifact_sha256
+    }
 }
 
 impl VerifiedSignature {
@@ -122,8 +130,58 @@ pub fn verify_installed_authenticode(
     pe_path: &Path,
 ) -> Result<VerifiedSignature, VerifyError> {
     let binding = bind_packet_artifact(packet, artifact_relative_path)?;
+    let observed = sha256_hex_file(pe_path)?;
+    finish_verified_signature(catalog, binding, pe_path, &observed)
+}
+
+pub(crate) fn verify_installed_authenticode_for_observed_digest(
+    catalog: &impl AuthenticodeCatalog,
+    packet: &MetadataValidatedPacket,
+    artifact_relative_path: &str,
+    pe_path: &Path,
+    observed_sha256: &str,
+) -> Result<VerifiedSignature, VerifyError> {
+    let binding = bind_packet_artifact(packet, artifact_relative_path)?;
+    finish_verified_signature(catalog, binding, pe_path, observed_sha256)
+}
+
+fn finish_verified_signature(
+    catalog: &impl AuthenticodeCatalog,
+    binding: PacketArtifactBinding,
+    pe_path: &Path,
+    observed_sha256: &str,
+) -> Result<VerifiedSignature, VerifyError> {
+    if !sha256_eq(binding.artifact_sha256(), observed_sha256) {
+        return Err(VerifyError::Artifact);
+    }
     catalog.win_verify_trust_file(pe_path, INSTALLED_AUTHENTICODE_POLICY)?;
     Ok(VerifiedSignature { binding })
+}
+
+fn sha256_hex_file(path: &Path) -> Result<String, VerifyError> {
+    let bytes = std::fs::read(path).map_err(|_| VerifyError::Artifact)?;
+    Ok(hex(&Sha256::digest(bytes)))
+}
+
+fn sha256_eq(claimed: &str, observed: &str) -> bool {
+    claimed.len() == 64
+        && claimed.len() == observed.len()
+        && claimed
+            .as_bytes()
+            .iter()
+            .zip(observed.as_bytes())
+            .fold(0u8, |acc, (left, right)| acc | (left ^ right))
+            == 0
+}
+
+fn hex(bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut value = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        value.push(DIGITS[(byte >> 4) as usize] as char);
+        value.push(DIGITS[(byte & 0x0f) as usize] as char);
+    }
+    value
 }
 
 #[cfg(test)]

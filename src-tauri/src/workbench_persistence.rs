@@ -13,7 +13,10 @@ use crate::{
     harnesses::{HarnessCatalog, SIMULATOR_ID},
     persistence::{Database, now_millis},
     project_registry::MAX_PROJECTS,
-    workbench_restore::{restore_layout, validate_resource_for_project, validate_tab_projection},
+    workbench_restore::{
+        restore_layout, validate_layout_tab_repository, validate_resource_for_project,
+        validate_root_membership, validate_tab_projection,
+    },
 };
 
 use self::bootstrap::{active_project_in, load_chat_id, load_session};
@@ -359,6 +362,13 @@ pub(crate) fn validate_layout(
                 "File and Diff tabs require a resource identity".into(),
             ));
         }
+        validate_layout_tab_repository(
+            transaction,
+            &request.project_id,
+            &tab.kind,
+            tab.resource.as_ref(),
+            tab.repository.as_ref(),
+        )?;
     }
     if request
         .active_tab_id
@@ -379,26 +389,6 @@ pub(crate) fn validate_layout(
                 "selected resource and selected root do not match".into(),
             ));
         }
-    }
-    Ok(())
-}
-
-fn validate_root_membership(
-    transaction: &rusqlite::Transaction<'_>,
-    project_id: &str,
-    root_id: &str,
-) -> AppResult<()> {
-    let matches: bool = transaction.query_row(
-        "SELECT EXISTS(
-           SELECT 1 FROM project_roots WHERE id = ?1 AND project_id = ?2
-         )",
-        params![root_id, project_id],
-        |row| row.get(0),
-    )?;
-    if !matches {
-        return Err(AppError::InvalidRequest(
-            "layout resource root does not belong to its project".into(),
-        ));
     }
     Ok(())
 }

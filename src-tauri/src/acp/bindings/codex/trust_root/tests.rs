@@ -4,7 +4,7 @@ use super::super::reproduction::authenticode_unsigned_relative_paths;
 use super::{
     AuthenticodeCatalog, INSTALLED_AUTHENTICODE_POLICY, InstalledAuthenticodePolicy, VerifyError,
     WinVerifyTrustCatalog, authenticode_win_verify_trust, bind_packet_artifact,
-    verify_installed_authenticode,
+    verify_installed_authenticode, verify_installed_authenticode_for_observed_digest,
 };
 use crate::acp::bindings::codex::parse_packet_metadata;
 
@@ -80,12 +80,23 @@ fn wrong_artifact_is_rejected() {
         ),
         Err(VerifyError::Artifact)
     );
-    let ok = verify_installed_authenticode(
+    let binding = bind_packet_artifact(&packet(), SIGNED_ENTRY).unwrap();
+    let ok = verify_installed_authenticode_for_observed_digest(
         &AcceptingCatalog,
         &packet(),
         SIGNED_ENTRY,
         Path::new("codex.exe"),
+        binding.artifact_sha256(),
     );
     assert!(ok.is_ok());
     assert_eq!(ok.unwrap().artifact_relative_path(), SIGNED_ENTRY);
+}
+
+#[test]
+fn signed_pe_cannot_mint_a_signature_for_a_different_claim() {
+    let path = std::env::temp_dir().join(format!("sage-wrong-pe-{}.bin", std::process::id()));
+    std::fs::write(&path, b"not the claimed artifact bytes").unwrap();
+    let err = verify_installed_authenticode(&AcceptingCatalog, &packet(), SIGNED_ENTRY, &path);
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(err, Err(VerifyError::Artifact));
 }

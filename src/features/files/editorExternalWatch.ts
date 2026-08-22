@@ -6,7 +6,10 @@ import {
 } from "../../domain/editorWatch";
 import type { ResourceRef } from "../../domain/workbench";
 import type { EditorPort } from "../../ports/workbenchPorts";
-import type { EditorStateBridge } from "./fileEditorController";
+import type {
+  ActiveEditorState,
+  EditorStateBridge,
+} from "./fileEditorController";
 
 export { EDITOR_EXTERNAL_WATCH_EVENT };
 
@@ -59,30 +62,37 @@ export async function applyEditorExternalWatchNotice(
     );
     return;
   }
+  const snapshot =
+    active.phase === "ready"
+      ? {
+          revision: active.revision,
+          persistedRevision: active.persistedRevision,
+          content: active.content,
+          fingerprint: active.document.buffer.fingerprint,
+        }
+      : null;
   const dirty =
     active.phase === "ready" && active.revision > active.persistedRevision;
   if (dirty) {
-    bridge.setActiveEditor(
-      {
-        ...active,
-        document: {
-          ...active.document,
-          conflict: {
-            kind: "external-change",
-            message: "This file changed outside Sage.",
-          },
-        },
-      },
-      { tabStatus: "failed" },
-    );
+    setExternalChangeConflict(bridge, active);
     return;
   }
   const document = await editor.openEditorDocument(notice.resource);
-  if (bridge.getActiveEditor()?.resource !== undefined) {
-    const current = bridge.getActiveEditor();
-    if (!current || !noticeMatchesWatch(notice, current.resource)) {
-      return;
-    }
+  const current = bridge.getActiveEditor();
+  if (!current || !noticeMatchesWatch(notice, current.resource)) {
+    return;
+  }
+  if (
+    current.phase === "ready" &&
+    snapshot !== null &&
+    (current.revision !== snapshot.revision ||
+      current.persistedRevision !== snapshot.persistedRevision ||
+      current.content !== snapshot.content ||
+      current.document.buffer.fingerprint !== snapshot.fingerprint ||
+      current.revision > current.persistedRevision)
+  ) {
+    setExternalChangeConflict(bridge, current);
+    return;
   }
   bridge.setActiveEditor(
     {
@@ -100,5 +110,24 @@ export async function applyEditorExternalWatchNotice(
       dirty: document.dirty,
       tabStatus: document.conflict ? "failed" : null,
     },
+  );
+}
+
+function setExternalChangeConflict(
+  bridge: EditorStateBridge,
+  current: Extract<ActiveEditorState, { phase: "ready" }>,
+): void {
+  bridge.setActiveEditor(
+    {
+      ...current,
+      document: {
+        ...current.document,
+        conflict: {
+          kind: "external-change",
+          message: "This file changed outside Sage.",
+        },
+      },
+    },
+    { tabStatus: "failed" },
   );
 }

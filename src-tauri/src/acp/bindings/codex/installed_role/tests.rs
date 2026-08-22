@@ -4,7 +4,7 @@ use super::admit_installed_role;
 use crate::acp::bindings::codex::parse_packet_metadata;
 use crate::acp::bindings::codex::trust_root::{
     AuthenticodeCatalog, INSTALLED_AUTHENTICODE_POLICY, InstalledAuthenticodePolicy, VerifyError,
-    verify_installed_authenticode,
+    bind_packet_artifact, verify_installed_authenticode_for_observed_digest,
 };
 
 const PACKET_FIXTURE: &[u8] =
@@ -29,11 +29,13 @@ impl AuthenticodeCatalog for AcceptingCatalog {
 #[test]
 fn admission_requires_a_packet_bound_verified_signature() {
     let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
-    let signature = verify_installed_authenticode(
+    let binding = bind_packet_artifact(&packet, SIGNED_ENTRY).unwrap();
+    let signature = verify_installed_authenticode_for_observed_digest(
         &AcceptingCatalog,
         &packet,
         SIGNED_ENTRY,
         Path::new("codex.exe"),
+        binding.artifact_sha256(),
     )
     .unwrap();
     let admitted = admit_installed_role(&packet, signature).unwrap();

@@ -2,11 +2,17 @@ use std::collections::{HashMap, HashSet};
 
 use rusqlite::{OptionalExtension, params};
 
+mod tab_repository;
+
 use crate::{
     domain::{RepositoryRef, ResourceRef, WorkbenchTab},
     error::{AppError, AppResult},
     project_registry::RootRecord,
     workspace::{Workspace, validate_contract_path},
+};
+
+pub use tab_repository::{
+    validate_layout_tab_repository, validate_root_membership, validate_tab_repository,
 };
 
 pub const MAX_RESTORED_TABS: usize = 64;
@@ -224,8 +230,22 @@ fn load_tabs(
                     .transpose()
                     .map_err(|error| AppError::InvalidRequest(error.to_string()))?
                     .filter(|repository| !repository.relative_path.is_empty());
+                validate_tab_repository(&kind, resource.as_ref(), repository.as_ref())?;
                 if let Some(repository) = &repository {
-                    validate_contract_path(&repository.relative_path, false)?;
+                    let repository_resource = ResourceRef {
+                        root_id: repository.root_id.clone(),
+                        relative_path: repository.relative_path.clone(),
+                    };
+                    let root =
+                        roots
+                            .get(repository_resource.root_id.as_str())
+                            .ok_or_else(|| {
+                                AppError::InvalidRequest(
+                                    "persisted tab repository root is foreign to its project"
+                                        .into(),
+                                )
+                            })?;
+                    validate_resource_metadata(root, &repository_resource)?;
                 }
                 if kind == "file" || kind == "diff" {
                     let resource = resource.as_ref().ok_or_else(|| {
@@ -557,5 +577,123 @@ mod tests {
                 .map(|resource| resource.relative_path.as_str()),
             Some("main.rs")
         );
+    }
+
+    fn persist_extra_tab(fixture: &Fixture, tab: WorkbenchTab) -> AppResult<()> {
+        let mut snapshot = fixture.database.bootstrap_snapshot().unwrap();
+        snapshot.tabs.push(tab);
+        fixture
+            .database
+            .persist_project_layout(&crate::domain::ProjectLayoutRequest {
+                project_id: fixture.project_id.clone(),
+                tabs: snapshot.tabs,
+                active_tab_id: snapshot.active_tab_id,
+                selected_root_id: Some(fixture.root_id.clone()),
+                selected_resource: snapshot.selected_resource,
+            })
+    }
+
+    fn nested_diff_tab(
+        id: &str,
+        resource_root: &str,
+        repository_root: &str,
+        kind: &str,
+    ) -> WorkbenchTab {
+        WorkbenchTab {
+            id: id.into(),
+            kind: kind.into(),
+            title: "main.rs".into(),
+            position: 1,
+            pinned: false,
+            dirty: false,
+            status: None,
+            resource: Some(ResourceRef {
+                root_id: resource_root.into(),
+                relative_path: "main.rs".into(),
+            }),
+            repository: Some(RepositoryRef {
+                root_id: repository_root.into(),
+                relative_path: "vendor/nested".into(),
+            }),
+        }
+    }
+
+    #[test]
+    fn durable_repository_ref_is_ownership_checked() {
+        let foreign = Fixture::new();
+        let fixture = Fixture::new();
+
+        assert!(
+            persist_extra_tab(
+                &fixture,
+                nested_diff_tab("file-with-repo", &fixture.root_id, &fixture.root_id, "file",),
+            )
+            .is_err()
+        );
+        assert!(
+            persist_extra_tab(
+                &fixture,
+                nested_diff_tab(
+                    "diff-mismatch",
+                    &fixture.root_id,
+                    "not-the-resource-root",
+                    "diff",
+                ),
+            )
+            .is_err()
+        );
+        assert!(
+            persist_extra_tab(
+                &fixture,
+                nested_diff_tab("diff-foreign", &fixture.root_id, &foreign.root_id, "diff",),
+            )
+            .is_err()
+        );
+
+        fixture.insert_tab(
+            "restored-file-repo",
+            "file",
+            &format!(
+                r#"{{"resource":{{"rootId":"{}","relativePath":"main.rs"}},"repository":{{"rootId":"{}","relativePath":"vendor/nested"}}}}"#,
+                fixture.root_id, fixture.root_id
+            ),
+        );
+        assert!(fixture.database.bootstrap_snapshot().is_err());
+        fixture
+            .database
+            .connection()
+            .execute(
+                "DELETE FROM workbench_tabs WHERE id = 'restored-file-repo'",
+                [],
+            )
+            .unwrap();
+
+        fixture.insert_tab(
+            "restored-mismatch",
+            "diff",
+            &format!(
+                r#"{{"resource":{{"rootId":"{}","relativePath":"main.rs"}},"repository":{{"rootId":"not-the-resource-root","relativePath":"vendor/nested"}}}}"#,
+                fixture.root_id
+            ),
+        );
+        assert!(fixture.database.bootstrap_snapshot().is_err());
+        fixture
+            .database
+            .connection()
+            .execute(
+                "DELETE FROM workbench_tabs WHERE id = 'restored-mismatch'",
+                [],
+            )
+            .unwrap();
+
+        fixture.insert_tab(
+            "restored-foreign-repo",
+            "diff",
+            &format!(
+                r#"{{"resource":{{"rootId":"{}","relativePath":"main.rs"}},"repository":{{"rootId":"{}","relativePath":"vendor/nested"}}}}"#,
+                fixture.root_id, foreign.root_id
+            ),
+        );
+        assert!(fixture.database.bootstrap_snapshot().is_err());
     }
 }
