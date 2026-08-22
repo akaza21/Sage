@@ -411,6 +411,27 @@ describe("file rename store transaction", () => {
       rootId: "root-a",
       relativePath: "src/empty/stale",
     };
+    const staleSourceDiff = {
+      rootId: "root-a",
+      relativePath: "src/empty/stale.ts",
+    };
+    const staleTargetDiff = {
+      rootId: "root-a",
+      relativePath: "src/renamed/stale.ts",
+    };
+    const unrelatedDiff = {
+      rootId: "root-a",
+      relativePath: "other/preserved.ts",
+    };
+    const readyDiff = (resource: typeof staleSourceDiff) => ({
+      phase: "ready" as const,
+      value: {
+        resource,
+        hunks: [],
+        binary: false,
+        truncated: false,
+      },
+    });
     useWorkbenchStore.setState({
       ...snapshot(folder),
       directoryListings: {
@@ -441,6 +462,11 @@ describe("file rename store transaction", () => {
       expandedDirectories: {
         [resourceKey(folder)]: true,
         [resourceKey(staleDescendant)]: true,
+      },
+      diffs: {
+        [resourceKey(staleSourceDiff)]: readyDiff(staleSourceDiff),
+        [resourceKey(staleTargetDiff)]: readyDiff(staleTargetDiff),
+        [resourceKey(unrelatedDiff)]: readyDiff(unrelatedDiff),
       },
     });
     vi.spyOn(projectPort, "renameProjectFolder").mockResolvedValue({
@@ -473,6 +499,11 @@ describe("file rename store transaction", () => {
     expect(
       state.expandedDirectories[resourceKey(staleDescendant)],
     ).toBeUndefined();
+    expect(state.diffs[resourceKey(staleSourceDiff)]).toBeUndefined();
+    expect(state.diffs[resourceKey(staleTargetDiff)]).toBeUndefined();
+    expect(state.diffs[resourceKey(unrelatedDiff)]).toEqual(
+      readyDiff(unrelatedDiff),
+    );
     expect(state.expandedDirectories[resourceKey(renamed)]).toBe(true);
     expect(state.directoryListings[resourceKey(parent)]).toEqual({
       phase: "ready",

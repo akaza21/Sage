@@ -105,9 +105,10 @@ function renameProjection(
   } else {
     delete directoryListings[parentKey];
   }
-  const diffs = { ...state.diffs };
-  delete diffs[resourceKey(result.source)];
-  delete diffs[resourceKey(result.target)];
+  const diffs = withoutResourceHierarchy(
+    withoutResourceHierarchy(state.diffs, result.source),
+    result.target,
+  );
   const snapshot = result.snapshot;
   return {
     nativeTransitionEpoch: result.transitionEpoch,
