@@ -10,7 +10,7 @@ import type {
   EditorDocument,
   ResourceRef,
 } from "../domain/workbench";
-import { desktop } from "../services/desktop";
+import { bindFileEditorController } from "../features/files/fileEditorController";
 import {
   editorErrorMessage as errorMessage,
   editorReady,
@@ -60,6 +60,8 @@ export const createEditorSlice: StateCreator<
   [],
   EditorSlice
 > = (set, get) => {
+  const editorController = bindFileEditorController();
+
   const persistLatestEditor = async (): Promise<void> => {
     for (let attempt = 0; attempt < MAX_SNAPSHOTS_PER_FLUSH; attempt += 1) {
       const editor = get().activeEditor;
@@ -79,7 +81,7 @@ export const createEditorSlice: StateCreator<
       };
       set({ activeEditor: { ...editor, persisting: true, message: null } });
       try {
-        const ack = await desktop.snapshotEditorBuffer(request);
+        const ack = await editorController.snapshot(request);
         set((state) => {
           const current = state.activeEditor;
           if (
@@ -193,7 +195,7 @@ export const createEditorSlice: StateCreator<
         };
       });
       try {
-        const document = await desktop.openEditorDocument(resource);
+        const document = await editorController.open(resource);
         if (
           !matchesActiveTabIntent(
             get(),
@@ -295,7 +297,7 @@ export const createEditorSlice: StateCreator<
           ) {
             return null;
           }
-          const result = await desktop.saveEditorDocument(editor.resource);
+          const result = await editorController.save(editor.resource);
           if (
             !matchesActiveTabIntent(
               get(),
@@ -367,7 +369,7 @@ export const createEditorSlice: StateCreator<
           if (!editor || editor.phase !== "ready") {
             return false;
           }
-          const document = await desktop.discardEditorBuffer(editor.resource);
+          const document = await editorController.discard(editor.resource);
           if (
             !matchesActiveTabIntent(
               get(),

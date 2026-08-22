@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
 import type { EditorDocument, WorkbenchTab } from "../../domain/workbench";
-import { desktop } from "../../services/desktop";
+import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { FileSurface } from "./FileSurface";
 import { MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
 
@@ -41,6 +41,7 @@ const tab: WorkbenchTab = {
   resource,
 };
 const initialState = useWorkbenchStore.getState();
+const editorPort = getWorkbenchPorts().editor;
 
 function viewForEditor(editor: HTMLElement) {
   const view = EditorView.findFromDOM(editor);
@@ -144,7 +145,7 @@ describe("FileSurface durability cadence", () => {
   it("sends one trailing snapshot after 750 ms", async () => {
     vi.useFakeTimers();
     const snapshot = vi
-      .spyOn(desktop, "snapshotEditorBuffer")
+      .spyOn(editorPort, "snapshotEditorBuffer")
       .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
     useWorkbenchStore.setState({
       tabs: [tab],
