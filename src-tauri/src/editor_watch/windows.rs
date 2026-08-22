@@ -42,14 +42,9 @@ pub(super) fn spawn_editor_watch(
     std::thread::Builder::new()
         .name("sage-editor-watch".into())
         .spawn(move || {
-            let _ = run_directory_watch(
-                &app,
-                &resource,
-                generation,
-                &cancelled,
-                &directory,
-                &watched_file_name,
-            );
+            let _ = run_directory_watch(&cancelled, &directory, &watched_file_name, |kind| {
+                emit_if_active(&app, &resource, generation, &cancelled, kind)
+            });
             super::finish_watch(&resource, generation);
         })
         .map(|_| ())
@@ -57,12 +52,10 @@ pub(super) fn spawn_editor_watch(
 }
 
 fn run_directory_watch(
-    app: &tauri::AppHandle,
-    resource: &ResourceRef,
-    generation: u32,
     cancelled: &AtomicBool,
     directory: &Path,
     watched_file_name: &str,
+    mut deliver: impl FnMut(EditorExternalWatchKind),
 ) -> std::io::Result<()> {
     let directory_handle = OpenOptions::new()
         .access_mode(FILE_LIST_DIRECTORY)
@@ -115,7 +108,7 @@ fn run_directory_watch(
             watched_file_name,
         );
         if let Some(kind) = kind {
-            emit_if_active(app, resource, generation, cancelled, kind);
+            deliver(kind);
         }
     }
     Ok(())
@@ -145,11 +138,7 @@ fn directory_notice_kind(
             .collect::<Vec<_>>();
         let changed_file_name = String::from_utf16_lossy(&name);
         if let Some(kind) = notice_kind_for_path(watched_file_name, &changed_file_name, action) {
-            result = Some(match (result, kind) {
-                (_, EditorExternalWatchKind::Deleted) => EditorExternalWatchKind::Deleted,
-                (Some(existing), _) => existing,
-                (None, kind) => kind,
-            });
+            result = Some(kind);
         }
         if next == 0 {
             return result;
@@ -242,7 +231,12 @@ unsafe extern "system" {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::editor_watch::{FILE_ACTION_MODIFIED, FILE_ACTION_REMOVED};
+    use crate::editor_watch::{FILE_ACTION_ADDED, FILE_ACTION_MODIFIED, FILE_ACTION_REMOVED};
+    use std::{
+        fs,
+        sync::mpsc,
+        time::{Duration, SystemTime, UNIX_EPOCH},
+    };
 
     fn change(action: u32, name: &str) -> Vec<u8> {
         let name = name
@@ -254,6 +248,18 @@ mod tests {
         bytes[8..12].copy_from_slice(&(name.len() as u32).to_le_bytes());
         bytes.extend(name);
         bytes
+    }
+
+    fn batch(changes: &[(u32, &str)]) -> Vec<u8> {
+        let mut batch = Vec::new();
+        for (index, (action, name)) in changes.iter().enumerate() {
+            let mut notice = change(*action, name);
+            if index + 1 < changes.len() {
+                notice[..4].copy_from_slice(&(notice.len() as u32).to_le_bytes());
+            }
+            batch.extend(notice);
+        }
+        batch
     }
 
     #[test]
@@ -273,5 +279,85 @@ mod tests {
             directory_notice_kind(&sibling, sibling.len(), "notes.md"),
             None
         );
+    }
+
+    #[test]
+    fn deletion_followed_by_recreation_reports_changed() {
+        let notices = batch(&[
+            (FILE_ACTION_REMOVED, "notes.md"),
+            (FILE_ACTION_ADDED, "notes.md"),
+        ]);
+
+        assert_eq!(
+            directory_notice_kind(&notices, notices.len(), "notes.md"),
+            Some(EditorExternalWatchKind::Changed)
+        );
+    }
+
+    #[test]
+    fn directory_watch_reports_target_changes_and_deletion_then_cancels() {
+        let directory = std::env::temp_dir().join(format!(
+            "sage-editor-watch-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time is after the Unix epoch")
+                .as_nanos(),
+        ));
+        fs::create_dir(&directory).expect("create test directory");
+        let watched_path = directory.join("notes.md");
+        fs::write(&watched_path, "initial").expect("create watched file");
+
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let worker_cancelled = Arc::clone(&cancelled);
+        let worker_directory = directory.clone();
+        let (notices, receive_notice) = mpsc::sync_channel(1);
+        let (completed, receive_completion) = mpsc::sync_channel(1);
+        let worker = std::thread::spawn(move || {
+            let result =
+                run_directory_watch(&worker_cancelled, &worker_directory, "notes.md", |kind| {
+                    notices.send(kind).expect("test receives watch notice")
+                });
+            completed
+                .send(result)
+                .expect("test receives worker completion");
+        });
+
+        let mut saw_change = false;
+        for index in 0..20 {
+            fs::write(&watched_path, format!("changed-{index}")).expect("modify watched file");
+            if receive_notice
+                .recv_timeout(Duration::from_millis(100))
+                .is_ok_and(|kind| kind == EditorExternalWatchKind::Changed)
+            {
+                saw_change = true;
+                break;
+            }
+        }
+        assert!(saw_change, "watched file change should be reported");
+
+        fs::write(directory.join("sibling.md"), "sibling").expect("modify sibling file");
+        assert!(
+            receive_notice
+                .recv_timeout(Duration::from_millis(200))
+                .is_err(),
+            "sibling changes must not be reported"
+        );
+
+        fs::remove_file(&watched_path).expect("delete watched file");
+        assert_eq!(
+            receive_notice
+                .recv_timeout(Duration::from_secs(2))
+                .expect("watched file deletion should be reported"),
+            EditorExternalWatchKind::Deleted
+        );
+
+        cancelled.store(true, Ordering::Release);
+        receive_completion
+            .recv_timeout(Duration::from_secs(2))
+            .expect("cancelled watch should stop promptly")
+            .expect("cancelled watch should not fail");
+        worker.join().expect("watch worker should not panic");
+        fs::remove_dir_all(directory).expect("remove test directory");
     }
 }

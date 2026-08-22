@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { createElement } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   EDITOR_EXTERNAL_WATCH_EVENT,
@@ -10,9 +12,11 @@ import {
 } from "../../domain/editorWatch";
 import type { EditorDocument } from "../../domain/workbench";
 import type { EditorPort } from "../../ports/workbenchPorts";
+import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import {
   applyEditorExternalWatchNotice,
   bindEditorExternalWatch,
+  useEditorExternalWatch,
 } from "./editorExternalWatch";
 import {
   bindFileEditorController,
@@ -47,7 +51,103 @@ function fakeEditorPort(): EditorPort {
   };
 }
 
+const inactiveBridge: EditorStateBridge = {
+  getActiveEditor: () => null,
+  setActiveEditor: () => undefined,
+};
+
+function ExternalWatchHarness({
+  watchedResource,
+}: {
+  watchedResource: typeof resource;
+}) {
+  useEditorExternalWatch(watchedResource, inactiveBridge);
+  return null;
+}
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
 describe("IDE-2 editor external watch seam", () => {
+  it("watches its active File resource and cancels when the canvas unmounts", async () => {
+    const editor = getWorkbenchPorts().editor;
+    const injected = createInjectedEditorWatchDelivery();
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(editor, "watchEditorDocument").mockResolvedValue({
+      resource,
+      cancel,
+      delivery: injected.delivery,
+    });
+
+    const { unmount } = render(
+      createElement(ExternalWatchHarness, { watchedResource: resource }),
+    );
+
+    await waitFor(() => {
+      expect(editor.watchEditorDocument).toHaveBeenCalledWith(resource);
+    });
+    unmount();
+
+    await waitFor(() => {
+      expect(cancel).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("waits for the prior native cancellation before replacing a File watch", async () => {
+    const editor = getWorkbenchPorts().editor;
+    let finishFirstCancel: () => void = () => undefined;
+    const firstCancellation = new Promise<void>((resolve) => {
+      finishFirstCancel = resolve;
+    });
+    const firstCancel = vi.fn(() => firstCancellation);
+    const secondCancel = vi.fn().mockResolvedValue(undefined);
+    const firstDelivery = createInjectedEditorWatchDelivery();
+    const secondDelivery = createInjectedEditorWatchDelivery();
+    const secondResource = { rootId: "root-notes", relativePath: "next.txt" };
+    const watch = vi
+      .spyOn(editor, "watchEditorDocument")
+      .mockResolvedValueOnce({
+        resource,
+        cancel: firstCancel,
+        delivery: firstDelivery.delivery,
+      })
+      .mockResolvedValueOnce({
+        resource: secondResource,
+        cancel: secondCancel,
+        delivery: secondDelivery.delivery,
+      });
+
+    const { rerender, unmount } = render(
+      createElement(ExternalWatchHarness, { watchedResource: resource }),
+    );
+    await waitFor(() => {
+      expect(watch).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      rerender(
+        createElement(ExternalWatchHarness, {
+          watchedResource: secondResource,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(firstCancel).toHaveBeenCalledOnce();
+    });
+    expect(watch).toHaveBeenCalledTimes(1);
+
+    finishFirstCancel();
+    await waitFor(() => {
+      expect(watch).toHaveBeenCalledWith(secondResource);
+    });
+    unmount();
+    await waitFor(() => {
+      expect(secondCancel).toHaveBeenCalledOnce();
+    });
+  });
+
   it("observes a native watch notice without peekEditorDiskVersion", async () => {
     expect(EDITOR_EXTERNAL_WATCH_EVENT).toBe("editor-external-watch-v1");
     const editor = fakeEditorPort();

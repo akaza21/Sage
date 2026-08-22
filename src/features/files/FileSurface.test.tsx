@@ -4,13 +4,11 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
 } from "@testing-library/react";
 import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
-import { createInjectedEditorWatchDelivery } from "../../domain/editorWatch";
 import type { EditorDocument, WorkbenchTab } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { FileSurface } from "./FileSurface";
@@ -102,102 +100,6 @@ afterEach(() => {
 });
 
 describe("FileSurface durability cadence", () => {
-  it("watches its active File resource and cancels when the canvas unmounts", async () => {
-    const injected = createInjectedEditorWatchDelivery();
-    const cancel = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(editorPort, "watchEditorDocument").mockResolvedValue({
-      resource,
-      cancel,
-      delivery: injected.delivery,
-    });
-    const reopened = {
-      ...document,
-      buffer: {
-        ...document.buffer,
-        fingerprint: "external",
-        content: "external\n",
-      },
-    };
-    vi.spyOn(editorPort, "openEditorDocument").mockResolvedValue(reopened);
-    setReadyEditor();
-
-    const { unmount } = render(<FileSurface tab={tab} />);
-
-    await waitFor(() => {
-      expect(editorPort.watchEditorDocument).toHaveBeenCalledWith(resource);
-    });
-    injected.emit({ resource, generation: 1, kind: "changed" });
-    await waitFor(() => {
-      expect(editorPort.openEditorDocument).toHaveBeenCalledWith(resource);
-      expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
-        phase: "ready",
-        content: "external\n",
-      });
-    });
-    unmount();
-
-    await waitFor(() => {
-      expect(cancel).toHaveBeenCalledOnce();
-    });
-  });
-
-  it("waits for the prior native cancellation before replacing a File watch", async () => {
-    let finishFirstCancel: () => void = () => undefined;
-    const firstCancellation = new Promise<void>((resolve) => {
-      finishFirstCancel = resolve;
-    });
-    const firstCancel = vi.fn(() => firstCancellation);
-    const secondCancel = vi.fn().mockResolvedValue(undefined);
-    const firstDelivery = createInjectedEditorWatchDelivery();
-    const secondDelivery = createInjectedEditorWatchDelivery();
-    const secondResource = { rootId: "root-a", relativePath: "next.txt" };
-    const secondTab = {
-      ...tab,
-      id: "file:next.txt",
-      title: "next.txt",
-      resource: secondResource,
-    };
-    const watch = vi
-      .spyOn(editorPort, "watchEditorDocument")
-      .mockResolvedValueOnce({
-        resource,
-        cancel: firstCancel,
-        delivery: firstDelivery.delivery,
-      })
-      .mockResolvedValueOnce({
-        resource: secondResource,
-        cancel: secondCancel,
-        delivery: secondDelivery.delivery,
-      });
-    setReadyEditor();
-
-    const { rerender, unmount } = render(<FileSurface tab={tab} />);
-    await waitFor(() => {
-      expect(watch).toHaveBeenCalledTimes(1);
-    });
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    act(() => {
-      setReadyEditor(secondTab);
-      rerender(<FileSurface tab={secondTab} />);
-    });
-    await waitFor(() => {
-      expect(firstCancel).toHaveBeenCalledOnce();
-    });
-    expect(watch).toHaveBeenCalledTimes(1);
-
-    finishFirstCancel();
-    await waitFor(() => {
-      expect(watch).toHaveBeenCalledWith(secondResource);
-    });
-    unmount();
-    await waitFor(() => {
-      expect(secondCancel).toHaveBeenCalledOnce();
-    });
-  });
-
   it("keeps edit, save, discard, and conflict behavior at the File surface", async () => {
     const save = vi.fn(async () => true);
     const discard = vi.fn(async () => true);
