@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { useWorkbenchStore } from "../app/store";
 import { sameResource } from "../domain/resourceIdentity";
 import { DirtyTabDialog } from "./DirtyTabDialog";
@@ -8,6 +10,12 @@ import { StatusBar } from "./StatusBar";
 import { TabStrip } from "./TabStrip";
 import { renderRegisteredCanvas } from "./surfaceRegistry";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
+import { TitleBar } from "./TitleBar";
+import {
+  DEFAULT_WORKBENCH_WINDOW_MODE,
+  type WorkbenchWindowMode,
+} from "./workbenchWindowMode";
+import "./workbench-window-mode.css";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 
 registerWorkbenchSurfaces();
@@ -77,23 +85,16 @@ function ActiveCanvas() {
 }
 
 export function Workbench() {
-  const project = useWorkbenchStore((state) => state.project);
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const compact = useCompactWorkbenchLayout();
   const drawerOpen = compact && sidebarOpen;
+  const [windowMode, setWindowMode] = useState<WorkbenchWindowMode>(
+    DEFAULT_WORKBENCH_WINDOW_MODE,
+  );
 
   return (
-    <main className="workbench">
-      <header className="title-bar">
-        <div className="title-bar__brand">
-          <span className="title-bar__logo">S</span>
-          <strong>Sage</strong>
-        </div>
-        <div className="title-bar__project">
-          {project?.name ?? "No project"}
-        </div>
-        <div className="title-bar__spacer" />
-      </header>
+    <main className={`workbench workbench--${windowMode}`}>
+      <TitleBar mode={windowMode} onModeChange={setWindowMode} />
       <div className="workbench__body">
         <LeftSidebar />
         <div
@@ -106,7 +107,7 @@ export function Workbench() {
           </div>
           <ActiveCanvas />
         </div>
-        <RightSidebar compact={compact} />
+        {windowMode === "editor" ? <RightSidebar compact={compact} /> : null}
       </div>
       <StatusBar />
       <DirtyTabDialog />

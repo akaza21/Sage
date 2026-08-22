@@ -1,0 +1,56 @@
+.title-bar__start {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+}
+
+.title-bar__modes {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.title-bar__mode {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 12px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+.title-bar__mode:hover {
+  color: var(--text-soft);
+}
+
+.title-bar__mode--active {
+  color: var(--text);
+  background: var(--surface-active);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.title-bar__mode input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.title-bar__mode:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.workbench--agent .workbench__body {
+  grid-template-columns: var(--project-sidebar-width) minmax(0, 1fr);
+}
