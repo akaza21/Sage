@@ -337,6 +337,8 @@ mod tests {
         }
         assert!(saw_change, "watched file change should be reported");
 
+        while receive_notice.try_recv().is_ok() {}
+
         fs::write(directory.join("sibling.md"), "sibling").expect("modify sibling file");
         assert!(
             receive_notice
