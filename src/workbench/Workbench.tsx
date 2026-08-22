@@ -86,6 +86,27 @@ function ActiveCanvas() {
   );
 }
 
+function AgentCenterKeeper({
+  windowMode,
+}: {
+  windowMode: WorkbenchWindowMode;
+}) {
+  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
+
+  useEffect(() => {
+    if (windowMode !== "agent") return;
+    const state = useWorkbenchStore.getState();
+    const decision = agentCenterChatAction(state.tabs, activeTabId);
+    if (decision.action === "activate") {
+      void state.activateTab(decision.tabId);
+    } else if (decision.action === "create") {
+      void state.createChat();
+    }
+  }, [windowMode, activeTabId]);
+
+  return null;
+}
+
 export function Workbench() {
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const compact = useCompactWorkbenchLayout();
@@ -94,20 +115,10 @@ export function Workbench() {
   );
   const drawerOpen = isCompactDrawerOpen(compact, sidebarOpen, windowMode);
 
-  useEffect(() => {
-    if (windowMode !== "agent") return;
-    const state = useWorkbenchStore.getState();
-    const decision = agentCenterChatAction(state.tabs, state.activeTabId);
-    if (decision.action === "activate") {
-      void state.activateTab(decision.tabId);
-    } else if (decision.action === "create") {
-      void state.createChat();
-    }
-  }, [windowMode]);
-
   return (
     <main className={`workbench workbench--${windowMode}`}>
       <TitleBar mode={windowMode} onModeChange={setWindowMode} />
+      <AgentCenterKeeper windowMode={windowMode} />
       <div className="workbench__body">
         <LeftSidebar />
         <div

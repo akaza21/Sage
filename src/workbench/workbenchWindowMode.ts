@@ -1,8 +1,17 @@
+import type { TabKind } from "../domain/chat";
+
 export const WORKBENCH_WINDOW_MODES = ["agent", "editor"] as const;
 
 export type WorkbenchWindowMode = (typeof WORKBENCH_WINDOW_MODES)[number];
 
 export const DEFAULT_WORKBENCH_WINDOW_MODE: WorkbenchWindowMode = "editor";
+
+export const AGENT_CENTER_CHAT_SCAN_LIMIT = 64;
+
+export interface AgentCenterScanTab {
+  id: string;
+  kind: TabKind;
+}
 
 const workbenchWindowModes = new Set<string>(WORKBENCH_WINDOW_MODES);
 
@@ -18,17 +27,21 @@ export type AgentCenterDecision =
   | { action: "create" };
 
 export function agentCenterChatAction(
-  tabs: ReadonlyArray<{ id: string; kind: string }>,
+  tabs: ReadonlyArray<AgentCenterScanTab>,
   activeTabId: string | null,
 ): AgentCenterDecision {
-  const activeTab = tabs.find((tab) => tab.id === activeTabId);
-  if (activeTab?.kind === "chat") {
-    return { action: "none" };
+  const scanLimit = Math.min(tabs.length, AGENT_CENTER_CHAT_SCAN_LIMIT);
+  let chatTabId: string | null = null;
+  for (let index = 0; index < scanLimit; index += 1) {
+    const tab = tabs[index];
+    if (tab.kind === "chat") {
+      if (tab.id === activeTabId) return { action: "none" };
+      if (chatTabId === null) chatTabId = tab.id;
+    }
   }
-  const chatTab = tabs.find((tab) => tab.kind === "chat");
-  return chatTab
-    ? { action: "activate", tabId: chatTab.id }
-    : { action: "create" };
+  return chatTabId === null
+    ? { action: "create" }
+    : { action: "activate", tabId: chatTabId };
 }
 
 export function isCompactDrawerOpen(
