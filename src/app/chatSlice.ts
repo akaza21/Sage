@@ -2,7 +2,7 @@ import type { StateCreator } from "zustand";
 
 import { canonicalChatName, canonicalChatTitle } from "../domain/chatTitle";
 import type { BootstrapSnapshot, WorkbenchTab } from "../domain/workbench";
-import { desktop } from "../services/desktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import {
   nextProjectGeneration,
   validateTransitionIntent,
@@ -32,6 +32,7 @@ export const createChatSlice: StateCreator<
   [],
   ChatSlice
 > = (set, get) => {
+  const { chat } = getWorkbenchPorts();
   const { applyProjection, loadAuthoritativeProjection, runChatTransition } =
     createChatTransitionContext(set, get);
 
@@ -57,7 +58,7 @@ export const createChatSlice: StateCreator<
       await runChatTransition({
         action: "activation",
         expectedTransitionEpoch,
-        invoke: () => desktop.activateChat(requested, expectedTransitionEpoch),
+        invoke: () => chat.activateChat(requested, expectedTransitionEpoch),
         classify,
       });
     },
@@ -115,7 +116,7 @@ export const createChatSlice: StateCreator<
         action: "rename",
         expectedTransitionEpoch,
         invoke: () =>
-          desktop.renameChat(
+          chat.renameChat(
             {
               projectId: current.projectId,
               chatId,
@@ -165,7 +166,7 @@ export const createChatSlice: StateCreator<
         if (!latest)
           throw new Error("active Project disappeared before Chat creation");
         mutationInvoked = true;
-        const result = await desktop.createChat(
+        const result = await chat.createChat(
           latest,
           expectedTransitionEpoch,
         );
