@@ -60,6 +60,7 @@ describe("S0.3 workbench port seam", () => {
       "persistProjectLayout",
       "persistProjectLayoutAndClose",
       "renameProjectFile",
+      "renameProjectFolder",
       "switchProject",
       "trashProjectResource",
     ]);

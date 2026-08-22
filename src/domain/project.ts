@@ -92,6 +92,9 @@ export interface RenameProjectFileResult {
   warning: string | null;
 }
 
+export type RenameProjectFolderRequest = RenameProjectFileRequest;
+export type RenameProjectFolderResult = RenameProjectFileResult;
+
 export type TrashResourceKind = "file" | "emptyFolder";
 
 export interface TrashProjectResourceRequest {

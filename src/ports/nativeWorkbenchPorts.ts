@@ -33,6 +33,8 @@ import type {
   RenameChatRequest,
   RenameProjectFileRequest,
   RenameProjectFileResult,
+  RenameProjectFolderRequest,
+  RenameProjectFolderResult,
   ResourceRef,
   SimulatorTurnResult,
   TextFile,
@@ -103,6 +105,11 @@ const project: ProjectPort = {
     request: RenameProjectFileRequest,
   ): Promise<RenameProjectFileResult> {
     return invokeNative("rename_project_file", { request });
+  },
+  renameProjectFolder(
+    request: RenameProjectFolderRequest,
+  ): Promise<RenameProjectFolderResult> {
+    return invokeNative("rename_project_folder", { request });
   },
   trashProjectResource(
     request: TrashProjectResourceRequest,

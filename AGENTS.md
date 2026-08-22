@@ -4,8 +4,12 @@
 
 - Chat is a workbench tab.
 - Version 1 has one primary tab strip and no automatic splits.
-- Project and persistent chat navigation live on the left.
-- Explorer, Search, Git, Problems, and Outline live on the right.
+- The title bar owns a two-mode Agent / Editor window toggle (Devin-style
+  D0). Do not reopen this decision.
+- Agent view: project and persistent chat navigation live on the left; the
+  center is Chat.
+- Editor view: Explorer, Search, Git, Problems, and Outline live in the
+  Editor-view tool rail; the center is the File / Diff / Chat tab strip.
 - Agent edits appear inside the originating Chat as a bounded file summary.
 - Selecting a changed file opens a per-file Diff tab; there is no dedicated
   Review tab.

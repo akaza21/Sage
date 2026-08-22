@@ -23,6 +23,8 @@ import type {
   RenameChatRequest,
   RenameProjectFileRequest,
   RenameProjectFileResult,
+  RenameProjectFolderRequest,
+  RenameProjectFolderResult,
   ResourceRef,
   SimulatorTurnResult,
   TextFile,
@@ -69,6 +71,9 @@ export interface ProjectPort {
   renameProjectFile(
     request: RenameProjectFileRequest,
   ): Promise<RenameProjectFileResult>;
+  renameProjectFolder(
+    request: RenameProjectFolderRequest,
+  ): Promise<RenameProjectFolderResult>;
   trashProjectResource(
     request: TrashProjectResourceRequest,
   ): Promise<TrashProjectResourceResult>;
@@ -144,6 +149,7 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "persistProjectLayout",
     "persistProjectLayoutAndClose",
     "renameProjectFile",
+    "renameProjectFolder",
     "switchProject",
     "trashProjectResource",
   ],

@@ -46,6 +46,10 @@ const project: ProjectPort = {
   createProjectFile: (request) => browserDesktop.createProjectFile(request),
   createProjectFolder: (request) => browserDesktop.createProjectFolder(request),
   renameProjectFile: (request) => browserDesktop.renameProjectFile(request),
+  renameProjectFolder: () =>
+    Promise.reject(
+      new Error("Folder rename is not available in the browser adapter"),
+    ),
   trashProjectResource: (request) =>
     browserDesktop.trashProjectResource(request),
 };
