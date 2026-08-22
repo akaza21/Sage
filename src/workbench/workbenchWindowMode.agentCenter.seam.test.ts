@@ -1,5 +1,6 @@
 import { createElement } from "react";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -190,5 +191,93 @@ describe("Agent center workbench window mode seam", () => {
     expect(agentControl).toBeChecked();
     expect(screen.queryByText("Loading src/current.ts…")).toBeNull();
     expect(screen.getByRole("region", { name: "Agent chat" }));
+  });
+
+  it("restores Chat as the Agent center once a project transition completes", async () => {
+    const activateTab = vi.fn(async (tabId: string) => {
+      if (useWorkbenchStore.getState().projectTransitioning) return;
+      useWorkbenchStore.setState({ activeTabId: tabId });
+    });
+    const createChat = vi.fn(async () => undefined);
+    const nextProject = { id: "project-b", name: "B", roots: [] };
+    useWorkbenchStore.setState({
+      project,
+      tabs: [
+        {
+          id: "chat:a",
+          kind: "chat",
+          title: "Chat: A",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat:a",
+      activateTab,
+      createChat,
+    });
+    render(createElement(Workbench));
+
+    fireEvent.click(
+      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
+        "radio",
+        { name: "Agent" },
+      ),
+    );
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("region", { name: "Agent chat" }),
+      ).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      useWorkbenchStore.setState({ projectTransitioning: true });
+    });
+    await act(async () => {
+      useWorkbenchStore.setState({
+        project: nextProject,
+        projectGeneration: initialState.projectGeneration + 1,
+        tabs: [
+          {
+            id: "file:b",
+            kind: "file",
+            title: "after.ts",
+            position: 0,
+            pinned: false,
+            dirty: false,
+            resource: { rootId: "root-b", relativePath: "src/after.ts" },
+          },
+          {
+            id: "chat:b",
+            kind: "chat",
+            title: "Chat: B",
+            position: 1,
+            pinned: false,
+            dirty: false,
+          },
+        ],
+        activeTabId: "file:b",
+      });
+    });
+
+    expect(activateTab).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().activeTabId).toBe("file:b");
+    expect(screen.queryByRole("region", { name: "Agent chat" })).toBeNull();
+
+    await act(async () => {
+      useWorkbenchStore.setState({
+        projectTransitioning: false,
+        projectGeneration: initialState.projectGeneration + 2,
+      });
+    });
+
+    await vi.waitFor(() => {
+      expect(activateTab).toHaveBeenLastCalledWith("chat:b");
+      expect(useWorkbenchStore.getState().activeTabId).toBe("chat:b");
+      expect(
+        screen.getByRole("region", { name: "Agent chat" }),
+      ).toBeInTheDocument();
+    });
+    expect(createChat).not.toHaveBeenCalled();
   });
 });

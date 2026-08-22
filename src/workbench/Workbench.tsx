@@ -92,9 +92,16 @@ function AgentCenterKeeper({
   windowMode: WorkbenchWindowMode;
 }) {
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
+  const projectTransitioning = useWorkbenchStore(
+    (state) => state.projectTransitioning,
+  );
+  const projectGeneration = useWorkbenchStore(
+    (state) => state.projectGeneration,
+  );
 
   useEffect(() => {
     if (windowMode !== "agent") return;
+    if (projectTransitioning) return;
     const state = useWorkbenchStore.getState();
     const decision = agentCenterChatAction(state.tabs, activeTabId);
     if (decision.action === "activate") {
@@ -102,7 +109,7 @@ function AgentCenterKeeper({
     } else if (decision.action === "create") {
       void state.createChat();
     }
-  }, [windowMode, activeTabId]);
+  }, [windowMode, activeTabId, projectTransitioning, projectGeneration]);
 
   return null;
 }
