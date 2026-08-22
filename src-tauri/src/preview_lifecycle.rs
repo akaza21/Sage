@@ -24,5 +24,10 @@ pub(crate) fn stop_preview_children_before_epoch(new_epoch: u64) {
     let _ = new_epoch;
 }
 
+/// Process-exit cleanup. Owner calls this from `lib.rs` on ExitRequested.
+pub(crate) fn cleanup_previews_on_exit() {
+    stop_preview_children_before_epoch(u64::MAX);
+}
+
 #[cfg(test)]
 mod tests;

@@ -1,4 +1,5 @@
 pub mod acp;
+mod app_preview_commands;
 mod chat_archive;
 mod chat_archive_commands;
 mod chat_commands;
@@ -209,13 +210,18 @@ pub fn run() {
             commands::acp::cancel_acp_turn,
             commands::acp::close_acp_session,
             workspace::search::command::search_workspace,
-            workspace::search::command::cancel_workspace_search
+            workspace::search::command::cancel_workspace_search,
+            app_preview_commands::discover_preview_targets,
+            app_preview_commands::get_preview_health,
+            app_preview_commands::start_preview_target,
+            app_preview_commands::stop_preview_target
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Sage")
         .run(|app_handle, event| {
             if let RunEvent::ExitRequested { api, .. } = event {
                 let state = app_handle.state::<AppState>();
+                preview_lifecycle::cleanup_previews_on_exit();
                 if handle_exit_request(|| state.acp.shutdown_blocking(), || api.prevent_exit()) {
                     info!("Sage host exit deferred for bounded ACP recovery retry");
                     return;

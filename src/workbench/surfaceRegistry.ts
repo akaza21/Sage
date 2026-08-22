@@ -3,7 +3,7 @@ import { createElement, type ComponentType, type ReactNode } from "react";
 import type { WorkbenchTab } from "../domain/workbench";
 
 export type CanvasSurfaceKind = "chat" | "diff" | "file";
-export type ToolSurfaceId = "explorer" | "search" | "sourceControl";
+export type ToolSurfaceId = "explorer" | "search" | "sourceControl" | "preview";
 
 type CanvasSurface = ComponentType<{ tab: WorkbenchTab }>;
 type ToolSurface = ComponentType;

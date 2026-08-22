@@ -4,6 +4,7 @@ import { DiffSurface } from "../features/diff/DiffSurface";
 import { ExplorerSurface } from "../features/files/ExplorerSurface";
 import { FileSurface } from "../features/files/FileSurface";
 import { SearchSurface } from "../features/search/SearchSurface";
+import { PreviewPlaceholder } from "./PreviewPlaceholder";
 import { SourceControlView } from "./SourceControlView";
 import { registerCanvasSurface, registerToolSurface } from "./surfaceRegistry";
 
@@ -21,5 +22,6 @@ export function registerWorkbenchSurfaces(): void {
   registerToolSurface("explorer", ExplorerSurface);
   registerToolSurface("search", SearchSurface);
   registerToolSurface("sourceControl", SourceControlView);
+  registerToolSurface("preview", PreviewPlaceholder);
   registered = true;
 }
