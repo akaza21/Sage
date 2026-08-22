@@ -18,6 +18,11 @@ import {
   matchesResourceIntent,
   issueRequestIntent,
 } from "./projectIntent";
+import {
+  boundedExpandedUpdate,
+  boundedResourceStateUpdate,
+  errorMessage,
+} from "./resourceStateHelpers";
 import { resourceTabUpdate } from "./resourceTabs";
 import type { ResourceState, WorkbenchState } from "./store";
 
@@ -38,45 +43,6 @@ export interface ResourceSlice {
 
 const MAX_CACHED_RESOURCES = 32;
 export const MAX_CACHED_DIRECTORIES = 64;
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function boundedUpdate<T>(
-  current: Record<string, ResourceState<T>>,
-  key: string,
-  value: ResourceState<T>,
-  limit: number,
-) {
-  const next = { ...current };
-  delete next[key];
-  next[key] = value;
-  for (const expired of Object.keys(next).slice(
-    0,
-    Math.max(0, Object.keys(next).length - limit),
-  )) {
-    delete next[expired];
-  }
-  return next;
-}
-
-function boundedExpandedUpdate(
-  current: Record<string, boolean>,
-  keys: string[],
-) {
-  const next = { ...current };
-  for (const key of keys) {
-    delete next[key];
-    next[key] = true;
-  }
-  const overflow = Object.keys(next).length - MAX_CACHED_DIRECTORIES;
-  if (overflow > 0) {
-    for (const expired of Object.keys(next).slice(0, overflow)) {
-      delete next[expired];
-    }
-  }
-  return next;
-}
 
 export const createResourceSlice: StateCreator<
   WorkbenchState,
@@ -203,7 +169,7 @@ export const createResourceSlice: StateCreator<
       return {
         requestGenerations: request.intents,
         requestIntentSequence: request.sequence,
-        directoryListings: boundedUpdate(
+        directoryListings: boundedResourceStateUpdate(
           state.directoryListings,
           key,
           { phase: "loading" },
@@ -224,10 +190,11 @@ export const createResourceSlice: StateCreator<
         requestKey,
         requestGeneration,
       );
-      const expanded =
-        resource.relativePath === "" ||
-        current.expandedDirectories[resourceKey(resource)];
-      if (!projectMatches && requestMatches) {
+      const currentRequestKey = `directory:${current.projectGeneration}:${key}`;
+      const newerGenerationIsLoading =
+        currentRequestKey !== requestKey &&
+        current.requestGenerations[currentRequestKey] !== undefined;
+      if (!projectMatches && requestMatches && !newerGenerationIsLoading) {
         set((state) => {
           if (
             state.requestGenerations[requestKey] !== requestGeneration ||
@@ -240,7 +207,11 @@ export const createResourceSlice: StateCreator<
           return { directoryListings };
         });
       }
-      return projectMatches && requestMatches && expanded;
+      return (
+        projectMatches &&
+        requestMatches &&
+        current.directoryListings[key]?.phase === "loading"
+      );
     };
     try {
       const value = await getWorkbenchPorts().project.listDirectory(resource);
@@ -248,7 +219,7 @@ export const createResourceSlice: StateCreator<
         return;
       }
       set((state) => ({
-        directoryListings: boundedUpdate(
+        directoryListings: boundedResourceStateUpdate(
           state.directoryListings,
           key,
           { phase: "ready", value },
@@ -260,7 +231,7 @@ export const createResourceSlice: StateCreator<
         return;
       }
       set((state) => ({
-        directoryListings: boundedUpdate(
+        directoryListings: boundedResourceStateUpdate(
           state.directoryListings,
           key,
           { phase: "error", message: errorMessage(error) },
@@ -282,7 +253,7 @@ export const createResourceSlice: StateCreator<
     set((state) => {
       let next = { ...state.expandedDirectories };
       if (expanded) {
-        next = boundedExpandedUpdate(next, [key]);
+        next = boundedExpandedUpdate(next, [key], MAX_CACHED_DIRECTORIES);
       } else if (state.directoryListings[key]?.phase === "loading") {
         delete next[key];
         const directoryListings = { ...state.directoryListings };
@@ -335,6 +306,7 @@ export const createResourceSlice: StateCreator<
         expandedDirectories: boundedExpandedUpdate(
           state.expandedDirectories,
           parents.map(resourceKey),
+          MAX_CACHED_DIRECTORIES,
         ),
       };
     });
@@ -367,7 +339,7 @@ export const createResourceSlice: StateCreator<
       return {
         requestGenerations: request.intents,
         requestIntentSequence: request.sequence,
-        diffs: boundedUpdate(
+        diffs: boundedResourceStateUpdate(
           state.diffs,
           key,
           { phase: "loading" },
@@ -390,7 +362,7 @@ export const createResourceSlice: StateCreator<
         return;
       }
       set((state) => ({
-        diffs: boundedUpdate(
+        diffs: boundedResourceStateUpdate(
           state.diffs,
           key,
           { phase: "ready", value },
@@ -411,7 +383,7 @@ export const createResourceSlice: StateCreator<
         return;
       }
       set((state) => ({
-        diffs: boundedUpdate(
+        diffs: boundedResourceStateUpdate(
           state.diffs,
           key,
           { phase: "error", message: errorMessage(error) },
