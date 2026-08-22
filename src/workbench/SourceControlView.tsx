@@ -1,13 +1,15 @@
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Minus, Plus, RefreshCw, RotateCcw } from "lucide-react";
 
 import { useWorkbenchStore } from "../app/store";
 import { isConflictedChange, isSafeDiscardChange } from "../domain/gitMutation";
+import { isRootRepository, repositoryKey } from "../domain/repositoryInventory";
 import { resourceKey, sameResource } from "../domain/resourceIdentity";
 import type {
   FileChange,
   GitFileMutationAction,
   GitFileState,
+  RepositoryRef,
   ResourceRef,
 } from "../domain/workbench";
 import { RepositoryCommitControl } from "./RepositoryCommitControl";
@@ -33,6 +35,7 @@ function visibleStatus(change: FileChange): GitFileState {
 
 interface SourceChangeRowProps {
   change: FileChange;
+  repository: RepositoryRef | undefined;
   rootName: string;
   selected: ResourceRef | null;
   controlsDisabled: boolean;
@@ -41,11 +44,15 @@ interface SourceChangeRowProps {
     action: GitFileMutationAction,
     discardConfirmed?: boolean,
   ) => Promise<boolean>;
-  openDiff: (resource: ResourceRef) => Promise<void>;
+  openDiff: (
+    resource: ResourceRef,
+    repository?: RepositoryRef,
+  ) => Promise<void>;
 }
 
 function SourceChangeRow({
   change,
+  repository,
   rootName,
   selected,
   controlsDisabled,
@@ -56,7 +63,9 @@ function SourceChangeRow({
   const discardTriggerRef = useRef<HTMLButtonElement>(null);
   const discardWarningId = useId();
   const conflicted = isConflictedChange(change);
+  const readOnly = repository !== undefined && !isRootRepository(repository);
   const canStage =
+    !readOnly &&
     !conflicted &&
     change.worktreeStatus !== "unchanged" &&
     change.worktreeStatus !== "unknown";
@@ -64,7 +73,7 @@ function SourceChangeRow({
     !conflicted &&
     change.indexStatus !== "unchanged" &&
     change.indexStatus !== "unknown";
-  const canDiscard = isSafeDiscardChange(change);
+  const canDiscard = !readOnly && isSafeDiscardChange(change);
   const path = change.resource.relativePath;
   const cancelDiscard = () => {
     setConfirmingDiscard(false);
@@ -85,7 +94,7 @@ function SourceChangeRow({
         }`}
         type="button"
         aria-label={`Open diff for ${path}`}
-        onClick={() => void openDiff(change.resource)}
+        onClick={() => void openDiff(change.resource, repository)}
       >
         <span className="source-change__status">
           {statusLabels[visibleStatus(change)]}
@@ -191,6 +200,21 @@ function SourceChangeRow({
 export function SourceControlView() {
   const project = useWorkbenchStore((state) => state.project);
   const repositories = useWorkbenchStore((state) => state.repositories);
+  const repositoryRefs = useWorkbenchStore((state) => state.repositoryRefs);
+  const selectedRepository = useWorkbenchStore(
+    (state) => state.selectedRepository,
+  );
+  const selectedRepositoryStatus = useWorkbenchStore(
+    (state) => state.selectedRepositoryStatus,
+  );
+  const inventoryPhase = useWorkbenchStore(
+    (state) => state.repositoryInventoryPhase,
+  );
+  const inventoryError = useWorkbenchStore(
+    (state) => state.repositoryInventoryError,
+  );
+  const statusPhase = useWorkbenchStore((state) => state.repositoryStatusPhase);
+  const statusError = useWorkbenchStore((state) => state.repositoryStatusError);
   const selected = useWorkbenchStore((state) => state.selectedResource);
   const refreshing = useWorkbenchStore((state) => state.repositoryRefreshing);
   const mutation = useWorkbenchStore((state) => state.repositoryMutation);
@@ -199,12 +223,24 @@ export function SourceControlView() {
     (state) => state.projectTransitioning,
   );
   const refresh = useWorkbenchStore((state) => state.refreshRepository);
+  const loadRepositoryInventory = useWorkbenchStore(
+    (state) => state.loadRepositoryInventory,
+  );
+  const selectRepository = useWorkbenchStore((state) => state.selectRepository);
   const mutateRepositoryFile = useWorkbenchStore(
     (state) => state.mutateRepositoryFile,
   );
   const openDiff = useWorkbenchStore((state) => state.openDiff);
   const controlsDisabled =
     refreshing || transitioning || mutation !== null || commit !== null;
+  const selectedRepositories =
+    selectedRepository && selectedRepositoryStatus
+      ? [selectedRepositoryStatus]
+      : repositories.roots;
+
+  useEffect(() => {
+    void loadRepositoryInventory();
+  }, [loadRepositoryInventory, project?.id]);
   const projectRoots = new Map(
     project?.roots.map((root) => [root.id, root]) ?? [],
   );
@@ -221,13 +257,52 @@ export function SourceControlView() {
           type="button"
           aria-label="Refresh Source Control"
           disabled={controlsDisabled}
-          onClick={() => void refresh()}
+          onClick={() => {
+            void refresh();
+            void loadRepositoryInventory();
+          }}
         >
           <RefreshCw size={14} aria-hidden="true" />
         </button>
       </div>
       <div className="source-control-list">
-        {repositories.roots.map((repository) => {
+        {repositoryRefs.length > 0 ? (
+          <label className="source-control-selector">
+            <span>Repository</span>
+            <select
+              aria-label="Select repository"
+              value={
+                selectedRepository ? repositoryKey(selectedRepository) : ""
+              }
+              disabled={controlsDisabled || inventoryPhase === "loading"}
+              onChange={(event) => {
+                const next = repositoryRefs.find(
+                  (ref) => repositoryKey(ref) === event.target.value,
+                );
+                if (next) void selectRepository(next);
+              }}
+            >
+              {repositoryRefs.map((ref) => (
+                <option key={repositoryKey(ref)} value={repositoryKey(ref)}>
+                  {ref.relativePath || "Repository root"}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {inventoryError ? (
+          <p className="sidebar__empty">{inventoryError}</p>
+        ) : null}
+        {statusError ? <p className="sidebar__empty">{statusError}</p> : null}
+        {inventoryPhase === "loading" || statusPhase === "loading" ? (
+          <p className="sidebar__empty">Loading repository status…</p>
+        ) : null}
+        {selectedRepository && !isRootRepository(selectedRepository) ? (
+          <p className="sidebar__empty">
+            Nested repository status is read-only in this beta.
+          </p>
+        ) : null}
+        {selectedRepositories.map((repository) => {
           const projectRoot = projectRoots.get(repository.rootId);
           const rootName = projectRoot?.name ?? "Root";
           const rootLabel =
@@ -248,7 +323,8 @@ export function SourceControlView() {
               {repository.message ? (
                 <p className="sidebar__empty">{repository.message}</p>
               ) : null}
-              {repository.state === "repository" ? (
+              {repository.state === "repository" &&
+              (!selectedRepository || isRootRepository(selectedRepository)) ? (
                 <RepositoryCommitControl
                   repository={repository}
                   rootLabel={rootLabel}
@@ -260,6 +336,7 @@ export function SourceControlView() {
                   <SourceChangeRow
                     key={`${resourceKey(change.resource)}:${change.indexStatus}:${change.worktreeStatus}:${change.originalResource ? resourceKey(change.originalResource) : ""}`}
                     change={change}
+                    repository={selectedRepository ?? undefined}
                     rootName={rootLabel}
                     selected={selected}
                     controlsDisabled={controlsDisabled}

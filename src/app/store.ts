@@ -46,6 +46,10 @@ import {
   type RepositoryMutationSlice,
 } from "./repositoryMutationSlice";
 import {
+  createRepositoryInventorySlice,
+  type RepositoryInventorySlice,
+} from "./repositoryInventorySlice";
+import {
   createSearchNavigationSlice,
   type SearchNavigationSlice,
 } from "./searchNavigationSlice";
@@ -69,6 +73,7 @@ export interface WorkbenchState
     HarnessSlice,
     ProjectSlice,
     RepositoryCommitSlice,
+    RepositoryInventorySlice,
     RepositoryMutationSlice,
     ResourceSlice,
     ResourceTrashSlice,
@@ -143,6 +148,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createChatHandoffSlice(set, get, store),
     ...createChatOwnershipSlice(set, get, store),
     ...createRepositoryCommitSlice(set, get, store),
+    ...createRepositoryInventorySlice(set, get, store),
     ...createRepositoryMutationSlice(set, get, store),
     ...createResourceSlice(set, get, store),
     ...createSearchNavigationSlice(set, get, store),
