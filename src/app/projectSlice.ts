@@ -4,7 +4,7 @@ import type {
   BootstrapSnapshot,
   ProjectTransitionResult,
 } from "../domain/workbench";
-import { desktop } from "../services/desktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import {
   nextProjectGeneration,
   validateTransitionIntent,
@@ -52,7 +52,10 @@ export const createProjectSlice: StateCreator<
     await get().flushActiveEditor();
     const request = layout(get());
     if (request) {
-      await desktop.persistProjectLayout(request, get().nativeTransitionEpoch);
+      await getWorkbenchPorts().project.persistProjectLayout(
+        request,
+        get().nativeTransitionEpoch,
+      );
     }
   };
 
@@ -92,7 +95,8 @@ export const createProjectSlice: StateCreator<
       attempt += 1
     ) {
       try {
-        const snapshot = await desktop.getBootstrapSnapshot();
+        const snapshot =
+          await getWorkbenchPorts().project.getBootstrapSnapshot();
         if (!validate(snapshot)) {
           throw new Error("native project change returned an invalid project");
         }
@@ -161,7 +165,8 @@ export const createProjectSlice: StateCreator<
       attempt += 1
     ) {
       try {
-        const snapshot = await desktop.getBootstrapSnapshot();
+        const snapshot =
+          await getWorkbenchPorts().project.getBootstrapSnapshot();
         const outcome = classify(snapshot);
         if (!outcome) {
           throw new Error(
@@ -196,7 +201,7 @@ export const createProjectSlice: StateCreator<
         await loadProjectProjection(
           set,
           get,
-          await desktop.getBootstrapSnapshot(),
+          await getWorkbenchPorts().project.getBootstrapSnapshot(),
           generation,
           false,
         );
@@ -219,7 +224,7 @@ export const createProjectSlice: StateCreator<
         throw new Error("Project layout mutation is already in progress");
       }
       await get().flushActiveEditor();
-      await desktop.persistProjectLayoutAndClose(
+      await getWorkbenchPorts().project.persistProjectLayoutAndClose(
         layout(get()),
         get().nativeTransitionEpoch,
       );
@@ -235,10 +240,11 @@ export const createProjectSlice: StateCreator<
         await persistCurrentLayout();
         set({ phase: "booting" });
         mutationInvoked = true;
-        const result = await desktop.createProjectFromPicker(
-          previousProjectId,
-          expectedTransitionEpoch,
-        );
+        const result =
+          await getWorkbenchPorts().project.createProjectFromPicker(
+            previousProjectId,
+            expectedTransitionEpoch,
+          );
         validateTransitionIntent(result, expectedTransitionEpoch);
         if (result.committed) {
           committed = true;
@@ -299,10 +305,11 @@ export const createProjectSlice: StateCreator<
         await persistCurrentLayout();
         set({ phase: "booting" });
         mutationInvoked = true;
-        const result = await desktop.addProjectRootFromPicker(
-          project.id,
-          expectedTransitionEpoch,
-        );
+        const result =
+          await getWorkbenchPorts().project.addProjectRootFromPicker(
+            project.id,
+            expectedTransitionEpoch,
+          );
         validateTransitionIntent(result, expectedTransitionEpoch);
         if (result.committed) {
           committed = true;
@@ -367,7 +374,7 @@ export const createProjectSlice: StateCreator<
         const generation = invalidateProjectIntents();
         set({ phase: "booting" });
         mutationInvoked = true;
-        const result = await desktop.switchProject(
+        const result = await getWorkbenchPorts().project.switchProject(
           {
             targetProjectId: projectId,
             currentLayout: layout(get())!,

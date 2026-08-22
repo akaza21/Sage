@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resourceKey } from "../domain/resourceIdentity";
 import type { CreateProjectFolderResult } from "../domain/workbench";
-import { desktop } from "../services/desktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { useWorkbenchStore } from "./store";
 
+const projectPort = getWorkbenchPorts().project;
 const initialState = useWorkbenchStore.getState();
 const parent = { rootId: "root-b", relativePath: "src" };
 const created = { rootId: "root-b", relativePath: "src/nested" };
@@ -76,13 +77,13 @@ describe("folder creation store transaction", () => {
   it("applies the exact root-qualified parent listing and selects the new folder", async () => {
     const loadDirectory = vi.fn(async () => undefined);
     useWorkbenchStore.setState({ loadDirectory });
-    vi.spyOn(desktop, "createProjectFolder").mockResolvedValue(result());
+    vi.spyOn(projectPort, "createProjectFolder").mockResolvedValue(result());
 
     expect(
       await useWorkbenchStore.getState().createProjectFolder(parent, "nested"),
     ).toBe(true);
 
-    expect(desktop.createProjectFolder).toHaveBeenCalledWith({
+    expect(projectPort.createProjectFolder).toHaveBeenCalledWith({
       projectId: "project-a",
       projectGeneration: 3,
       expectedTransitionEpoch: 5,
@@ -107,7 +108,7 @@ describe("folder creation store transaction", () => {
         },
       },
     });
-    vi.spyOn(desktop, "createProjectFolder").mockResolvedValue({
+    vi.spyOn(projectPort, "createProjectFolder").mockResolvedValue({
       ...result(),
       outcome: "effectUnknown",
       resourceConfirmed: false,
@@ -139,7 +140,7 @@ describe("folder creation store transaction", () => {
         },
       },
     });
-    vi.spyOn(desktop, "createProjectFolder").mockRejectedValue(
+    vi.spyOn(projectPort, "createProjectFolder").mockRejectedValue(
       new Error(`disk denied ${"x".repeat(3_000)}`),
     );
 
@@ -156,7 +157,9 @@ describe("folder creation store transaction", () => {
 
   it("drops a completion after a Project generation switch", async () => {
     const pending = deferred<CreateProjectFolderResult>();
-    vi.spyOn(desktop, "createProjectFolder").mockReturnValue(pending.promise);
+    vi.spyOn(projectPort, "createProjectFolder").mockReturnValue(
+      pending.promise,
+    );
     const create = useWorkbenchStore
       .getState()
       .createProjectFolder(parent, "nested");
@@ -178,7 +181,7 @@ describe("folder creation store transaction", () => {
   });
 
   it("does not release an existing creation transaction on reentry", async () => {
-    const create = vi.spyOn(desktop, "createProjectFolder");
+    const create = vi.spyOn(projectPort, "createProjectFolder");
     useWorkbenchStore.setState({ folderCreateInFlight: true });
 
     expect(

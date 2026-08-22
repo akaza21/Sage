@@ -13,7 +13,7 @@ import type {
   TrashResourceKind,
 } from "../domain/workbench";
 import { validateResourceTrashResult } from "../features/files/resourceTrashContract";
-import { desktop } from "../services/desktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { currentProjectLayout } from "./projectProjection";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import type { WorkbenchState } from "./store";
@@ -214,7 +214,10 @@ export const createResourceTrashSlice: StateCreator<
       const currentLayout = currentProjectLayout(get());
       if (!currentLayout)
         throw new Error("No active Project layout is available.");
-      await desktop.persistProjectLayout(currentLayout, transitionEpoch);
+      await getWorkbenchPorts().project.persistProjectLayout(
+        currentLayout,
+        transitionEpoch,
+      );
       if (
         !intentMatches(
           get(),
@@ -227,7 +230,7 @@ export const createResourceTrashSlice: StateCreator<
       ) {
         return false;
       }
-      const result = await desktop.trashProjectResource({
+      const result = await getWorkbenchPorts().project.trashProjectResource({
         projectId: project.id,
         projectGeneration,
         expectedTransitionEpoch: transitionEpoch,

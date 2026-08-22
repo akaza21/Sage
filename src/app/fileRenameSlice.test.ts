@@ -6,8 +6,10 @@ import type {
   RenameProjectFileResult,
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { useWorkbenchStore } from "./store";
 
+const projectPort = getWorkbenchPorts().project;
 const initialState = useWorkbenchStore.getState();
 const source = { rootId: "root-a", relativePath: "src/old.ts" };
 const target = { rootId: "root-a", relativePath: "src/new.ts" };
@@ -84,7 +86,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
-  vi.spyOn(desktop, "persistProjectLayout").mockResolvedValue();
+  vi.spyOn(projectPort, "persistProjectLayout").mockResolvedValue();
   useWorkbenchStore.setState({
     ...snapshot(source),
     phase: "ready",
@@ -118,7 +120,7 @@ afterEach(() => {
 describe("file rename store transaction", () => {
   it("sends the closed-resource layout and adopts snapshot plus exact parent", async () => {
     const rename = vi
-      .spyOn(desktop, "renameProjectFile")
+      .spyOn(projectPort, "renameProjectFile")
       .mockResolvedValue(result());
 
     await expect(
@@ -138,7 +140,7 @@ describe("file rename store transaction", () => {
         }),
       }),
     );
-    expect(desktop.persistProjectLayout).toHaveBeenCalledWith(
+    expect(projectPort.persistProjectLayout).toHaveBeenCalledWith(
       expect.objectContaining({
         tabs: [expect.objectContaining({ id: "chat-a" })],
         selectedResource: source,
@@ -205,7 +207,7 @@ describe("file rename store transaction", () => {
       },
       diffs: { [resourceKey(unrelatedDiff)]: diffState },
     }));
-    vi.spyOn(desktop, "renameProjectFile").mockResolvedValue(result());
+    vi.spyOn(projectPort, "renameProjectFile").mockResolvedValue(result());
 
     await expect(
       useWorkbenchStore.getState().renameProjectFile(source, "new.ts"),
@@ -228,7 +230,7 @@ describe("file rename store transaction", () => {
   });
 
   it("rejects an open source or target File/Diff tab before native mutation", async () => {
-    const rename = vi.spyOn(desktop, "renameProjectFile");
+    const rename = vi.spyOn(projectPort, "renameProjectFile");
     for (const [kind, resource] of [
       ["file", source],
       ["diff", source],
@@ -261,7 +263,7 @@ describe("file rename store transaction", () => {
 
   it("retires a stale response without replacing the newer Project", async () => {
     const pending = deferred<RenameProjectFileResult>();
-    vi.spyOn(desktop, "renameProjectFile").mockReturnValue(pending.promise);
+    vi.spyOn(projectPort, "renameProjectFile").mockReturnValue(pending.promise);
     const rename = useWorkbenchStore
       .getState()
       .renameProjectFile(source, "new.ts");
@@ -284,13 +286,13 @@ describe("file rename store transaction", () => {
 
   it("owns shared Chat and window layout admission while persistence is deferred", async () => {
     const persistence = deferred<void>();
-    vi.mocked(desktop.persistProjectLayout).mockReturnValue(
+    vi.mocked(projectPort.persistProjectLayout).mockReturnValue(
       persistence.promise,
     );
-    vi.spyOn(desktop, "renameProjectFile").mockResolvedValue(result());
+    vi.spyOn(projectPort, "renameProjectFile").mockResolvedValue(result());
     const createChat = vi.spyOn(desktop, "createChat");
     const activateChat = vi.spyOn(desktop, "activateChat");
-    const close = vi.spyOn(desktop, "persistProjectLayoutAndClose");
+    const close = vi.spyOn(projectPort, "persistProjectLayoutAndClose");
 
     const rename = useWorkbenchStore
       .getState()
@@ -319,7 +321,7 @@ describe("file rename store transaction", () => {
   it("keeps an unconfirmed effect typed, visible, and refreshable", async () => {
     const loadDirectory = vi.fn(async () => undefined);
     useWorkbenchStore.setState({ loadDirectory });
-    vi.spyOn(desktop, "renameProjectFile").mockResolvedValue({
+    vi.spyOn(projectPort, "renameProjectFile").mockResolvedValue({
       ...result(),
       outcome: "effectUnknown",
       resourceConfirmed: false,
@@ -357,7 +359,7 @@ describe("file rename store transaction", () => {
         },
       },
     }));
-    vi.spyOn(desktop, "renameProjectFile").mockResolvedValue({
+    vi.spyOn(projectPort, "renameProjectFile").mockResolvedValue({
       ...result(),
       outcome: "effectUnknown",
       snapshot: null,

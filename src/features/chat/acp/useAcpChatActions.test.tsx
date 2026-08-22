@@ -12,7 +12,10 @@ import type {
 } from "../../../domain/acp";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { desktop } from "../../../services/desktop";
+import { getWorkbenchPorts } from "../../../ports/workbenchRuntime";
 import { useAcpChatActions } from "./useAcpChatActions";
+
+const projectPort = getWorkbenchPorts().project;
 
 const bindingId = "binding-a" as CuratedBindingId;
 const initialWorkbench = useWorkbenchStore.getState();
@@ -238,7 +241,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
         message: oversizedError,
       }),
     );
-    vi.spyOn(desktop, "getBootstrapSnapshot").mockResolvedValue({
+    vi.spyOn(projectPort, "getBootstrapSnapshot").mockResolvedValue({
       transitionEpoch: 1,
       projects: [],
       project: { id: "project-a", name: "A", roots: [] },

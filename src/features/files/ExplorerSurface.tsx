@@ -2,6 +2,7 @@ import { ChevronRight, FileCode2, Folder, Link2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
+import { selectOpenProject } from "../../app/workbenchSelectors";
 import {
   childResource,
   resourceKey,
@@ -117,7 +118,7 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
 }
 
 export function ExplorerSurface() {
-  const project = useWorkbenchStore((state) => state.project);
+  const project = useWorkbenchStore(selectOpenProject);
   const fileCreateNotice = useWorkbenchStore((state) => state.fileCreateNotice);
   const folderCreateNotice = useWorkbenchStore(
     (state) => state.folderCreateNotice,

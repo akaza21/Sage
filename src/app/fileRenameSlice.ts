@@ -10,7 +10,8 @@ import {
   renameTargetResource,
   validateFileRenameResult,
 } from "../features/files/fileRenameContract";
-import { desktop } from "../services/desktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import type { ProjectPort } from "../ports/workbenchPorts";
 import { currentProjectLayout } from "./projectProjection";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import type { WorkbenchState } from "./store";
@@ -65,7 +66,7 @@ function intentMatches(
 
 function renameProjection(
   state: WorkbenchState,
-  result: Awaited<ReturnType<typeof desktop.renameProjectFile>>,
+  result: Awaited<ReturnType<ProjectPort["renameProjectFile"]>>,
   parent: ResourceRef,
 ) {
   const parentKey = resourceKey(parent);
@@ -209,7 +210,10 @@ export const createFileRenameSlice: StateCreator<
           "Close File and Diff tabs for the source and target before renaming.",
         );
       }
-      await desktop.persistProjectLayout(currentLayout, transitionEpoch);
+      await getWorkbenchPorts().project.persistProjectLayout(
+        currentLayout,
+        transitionEpoch,
+      );
       if (
         !intentMatches(
           get(),
@@ -222,7 +226,7 @@ export const createFileRenameSlice: StateCreator<
       ) {
         return false;
       }
-      const result = await desktop.renameProjectFile({
+      const result = await getWorkbenchPorts().project.renameProjectFile({
         projectId: project.id,
         projectGeneration,
         expectedTransitionEpoch: transitionEpoch,

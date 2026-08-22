@@ -7,8 +7,10 @@ import type {
   ResourceRef,
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { useWorkbenchStore } from "./store";
 
+const projectPort = getWorkbenchPorts().project;
 const initialState = useWorkbenchStore.getState();
 const oldResource = { rootId: "root-a", relativePath: "src/old.ts" };
 const parent = { rootId: "root-a", relativePath: "src" };
@@ -130,7 +132,7 @@ describe("file creation store transaction", () => {
         dirty: true,
       });
     const create = vi
-      .spyOn(desktop, "createProjectFile")
+      .spyOn(projectPort, "createProjectFile")
       .mockResolvedValue(result());
 
     expect(
@@ -159,7 +161,7 @@ describe("file creation store transaction", () => {
   });
 
   it("applies committed disk truth and opens the exact file when durability or refresh warns", async () => {
-    vi.spyOn(desktop, "createProjectFile").mockResolvedValue({
+    vi.spyOn(projectPort, "createProjectFile").mockResolvedValue({
       ...result(),
       outcome: "effectUnknown",
       warning:
@@ -193,7 +195,7 @@ describe("file creation store transaction", () => {
         },
       },
     });
-    vi.spyOn(desktop, "createProjectFile").mockResolvedValue({
+    vi.spyOn(projectPort, "createProjectFile").mockResolvedValue({
       ...result(),
       outcome: "effectUnknown",
       resourceConfirmed: false,
@@ -236,7 +238,7 @@ describe("file creation store transaction", () => {
       },
     };
     useWorkbenchStore.setState({ activeEditor, directoryListings: listing });
-    vi.spyOn(desktop, "createProjectFile").mockRejectedValue(
+    vi.spyOn(projectPort, "createProjectFile").mockRejectedValue(
       new Error("disk denied"),
     );
 
@@ -253,7 +255,7 @@ describe("file creation store transaction", () => {
 
   it("drops a completion after a Project generation switch", async () => {
     const pending = deferred<CreateProjectFileResult>();
-    vi.spyOn(desktop, "createProjectFile").mockReturnValue(pending.promise);
+    vi.spyOn(projectPort, "createProjectFile").mockReturnValue(pending.promise);
     const create = useWorkbenchStore
       .getState()
       .createProjectFile(parent, "new.ts");

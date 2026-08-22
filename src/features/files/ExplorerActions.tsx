@@ -1,4 +1,5 @@
 import { useWorkbenchStore } from "../../app/store";
+import { selectOpenProject } from "../../app/workbenchSelectors";
 import {
   parentResource,
   resourceKey,
@@ -11,7 +12,7 @@ import { RenameFileControl } from "./RenameFileControl";
 import { TrashResourceControl } from "./TrashResourceControl";
 
 export function ExplorerActions() {
-  const project = useWorkbenchStore((state) => state.project);
+  const project = useWorkbenchStore(selectOpenProject);
   const selectedRootId = useWorkbenchStore((state) => state.selectedRootId);
   const selectedResource = useWorkbenchStore((state) => state.selectedResource);
   const tabs = useWorkbenchStore((state) => state.tabs);
