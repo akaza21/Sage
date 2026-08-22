@@ -15,10 +15,12 @@ test("frozen workbench transport types have an explicit field freeze", () => {
     "relativePath",
     "rootId",
   ]);
-  assert.deepEqual(
-    FROZEN_WORKBENCH_TRANSPORT_FIELDS.ProjectTransitionResult,
-    ["committed", "recoveryError", "snapshot", "transitionEpoch"],
-  );
+  assert.deepEqual(FROZEN_WORKBENCH_TRANSPORT_FIELDS.ProjectTransitionResult, [
+    "committed",
+    "recoveryError",
+    "snapshot",
+    "transitionEpoch",
+  ]);
   assert.ok(
     FROZEN_WORKBENCH_TRANSPORT_FIELDS.BootstrapSnapshot.includes(
       "transitionEpoch",
@@ -27,7 +29,9 @@ test("frozen workbench transport types have an explicit field freeze", () => {
   assert.ok(
     FROZEN_WORKBENCH_TRANSPORT_FIELDS.HarnessDefinition.includes("bindingId"),
   );
-  assert.ok(FROZEN_WORKBENCH_TRANSPORT_FIELDS.ModelOption.includes("isDefault"));
+  assert.ok(
+    FROZEN_WORKBENCH_TRANSPORT_FIELDS.ModelOption.includes("isDefault"),
+  );
 });
 
 test("Rust and TypeScript workbench contracts match the frozen transport fields", async () => {
@@ -54,7 +58,10 @@ test("workbench contracts split into owned modules with compatibility re-exports
     const source = await readFile(path.join(root, relative), "utf8");
     assert.match(source, /\S/u, relative);
   }
-  const barrel = await readFile(path.join(root, "src/domain/workbench.ts"), "utf8");
+  const barrel = await readFile(
+    path.join(root, "src/domain/workbench.ts"),
+    "utf8",
+  );
   for (const moduleName of [
     "resource",
     "project",

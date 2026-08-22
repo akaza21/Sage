@@ -64,9 +64,10 @@ const RUST_IGNORED_FIELDS = Object.freeze({
 
 export async function acpTransportParityErrors(root) {
   const rustSource = [
-    await readFile(path.join(root, "src-tauri/src/acp/intent.rs"), "utf8").catch(
-      () => "",
-    ),
+    await readFile(
+      path.join(root, "src-tauri/src/acp/intent.rs"),
+      "utf8",
+    ).catch(() => ""),
     await readFile(
       path.join(root, "src-tauri/src/acp/projection.rs"),
       "utf8",
@@ -77,12 +78,16 @@ export async function acpTransportParityErrors(root) {
     await readSources(root, "src-tauri/src/domain", [".rs"]),
   ].join("\n");
   const tsSource = [
-    await readFile(path.join(root, "src/domain/acp.ts"), "utf8").catch(() => ""),
+    await readFile(path.join(root, "src/domain/acp.ts"), "utf8").catch(
+      () => "",
+    ),
     await readSources(root, "src/domain", [".ts"]),
   ].join("\n");
 
   const errors = [];
-  for (const [typeName, expected] of Object.entries(FROZEN_ACP_TRANSPORT_FIELDS)) {
+  for (const [typeName, expected] of Object.entries(
+    FROZEN_ACP_TRANSPORT_FIELDS,
+  )) {
     const rustName = RUST_TYPE_ALIASES[typeName] ?? typeName;
     const ignored = new Set(RUST_IGNORED_FIELDS[rustName] ?? []);
     const rustFields = extractRustStructFields(rustSource, rustName)?.filter(

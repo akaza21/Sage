@@ -92,7 +92,7 @@ export function extractTsTypeFields(source, typeName) {
 
 export async function readSources(root, relativeDirectory, extensions) {
   const directory = path.join(root, relativeDirectory);
-  let entries = [];
+  let entries;
   try {
     entries = await readdir(directory, { withFileTypes: true });
   } catch {
@@ -106,7 +106,10 @@ export async function readSources(root, relativeDirectory, extensions) {
     // directory module has no sibling .rs file
   }
   for (const entry of entries) {
-    if (!entry.isFile() || !extensions.some((ext) => entry.name.endsWith(ext))) {
+    if (
+      !entry.isFile() ||
+      !extensions.some((ext) => entry.name.endsWith(ext))
+    ) {
       continue;
     }
     chunks.push(await readFile(path.join(directory, entry.name), "utf8"));

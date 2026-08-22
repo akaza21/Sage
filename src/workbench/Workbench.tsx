@@ -1,6 +1,3 @@
-import { ChatSurface } from "../features/chat/ChatSurface";
-import { DiffSurface } from "../features/diff/DiffSurface";
-import { FileSurface } from "../features/files/FileSurface";
 import { useWorkbenchStore } from "../app/store";
 import { sameResource } from "../domain/resourceIdentity";
 import { DirtyTabDialog } from "./DirtyTabDialog";
@@ -9,7 +6,11 @@ import { PlaceholderSurface } from "./PlaceholderSurface";
 import { RightSidebar } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
 import { TabStrip } from "./TabStrip";
+import { renderRegisteredCanvas } from "./surfaceRegistry";
+import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
+
+registerWorkbenchSurfaces();
 
 function repositoryMutationTitle(
   error: NonNullable<
@@ -26,11 +27,9 @@ function repositoryMutationTitle(
   return `Source Control could not ${error.action} ${path}`;
 }
 
-export function Workbench() {
-  const project = useWorkbenchStore((state) => state.project);
+function ActiveCanvas() {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
-  const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const repositoryMutationError = useWorkbenchStore(
     (state) => state.repositoryMutationError,
   );
@@ -42,6 +41,44 @@ export function Workbench() {
     sameResource(activeTab.resource, repositoryMutationError.resource)
       ? repositoryMutationError
       : null;
+  const canvas =
+    activeTab?.kind === "chat" ||
+    activeTab?.kind === "diff" ||
+    activeTab?.kind === "file"
+      ? renderRegisteredCanvas(activeTab.kind, activeTab)
+      : null;
+
+  return (
+    <div className="active-canvas" role="tabpanel">
+      {contextualMutationError ? (
+        <div className="repository-mutation-alert" role="alert">
+          <strong>{repositoryMutationTitle(contextualMutationError)}</strong>
+          <span>{contextualMutationError.message}</span>
+        </div>
+      ) : null}
+      {canvas}
+      {activeTab &&
+      activeTab.kind !== "chat" &&
+      activeTab.kind !== "diff" &&
+      activeTab.kind !== "file" ? (
+        <PlaceholderSurface tab={activeTab} />
+      ) : null}
+      {!activeTab ? (
+        <section className="placeholder-surface">
+          <h1>No open tabs</h1>
+          <p>
+            Use New chat, or open a file from Explorer, Search, or Source
+            Control.
+          </p>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+export function Workbench() {
+  const project = useWorkbenchStore((state) => state.project);
+  const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const compact = useCompactWorkbenchLayout();
   const drawerOpen = compact && sidebarOpen;
 
@@ -67,38 +104,7 @@ export function Workbench() {
           <div className="workbench__tabs">
             <TabStrip />
           </div>
-          <div className="active-canvas" role="tabpanel">
-            {contextualMutationError ? (
-              <div className="repository-mutation-alert" role="alert">
-                <strong>
-                  {repositoryMutationTitle(contextualMutationError)}
-                </strong>
-                <span>{contextualMutationError.message}</span>
-              </div>
-            ) : null}
-            {activeTab?.kind === "chat" ? <ChatSurface /> : null}
-            {activeTab?.kind === "diff" ? (
-              <DiffSurface tab={activeTab} />
-            ) : null}
-            {activeTab?.kind === "file" ? (
-              <FileSurface tab={activeTab} />
-            ) : null}
-            {activeTab &&
-            activeTab.kind !== "chat" &&
-            activeTab.kind !== "diff" &&
-            activeTab.kind !== "file" ? (
-              <PlaceholderSurface tab={activeTab} />
-            ) : null}
-            {!activeTab ? (
-              <section className="placeholder-surface">
-                <h1>No open tabs</h1>
-                <p>
-                  Use New chat, or open a file from Explorer, Search, or Source
-                  Control.
-                </p>
-              </section>
-            ) : null}
-          </div>
+          <ActiveCanvas />
         </div>
         <RightSidebar compact={compact} />
       </div>
