@@ -5,15 +5,14 @@ import {
   resourceKey,
   sameResource,
 } from "../domain/resourceIdentity";
-import type {
-  BufferSnapshotRequest,
-  EditorDocument,
-  ResourceRef,
-} from "../domain/workbench";
-import { bindFileEditorController } from "../features/files/fileEditorController";
+import type { ResourceRef } from "../domain/workbench";
+import {
+  getFileEditorController,
+  type ActiveEditorState,
+  type EditorStateBridge,
+} from "../features/files/fileEditorController";
 import {
   editorErrorMessage as errorMessage,
-  editorReady,
   enqueueEditorOperation,
 } from "./editorOperations";
 import {
@@ -24,20 +23,7 @@ import {
 } from "./projectIntent";
 import type { WorkbenchState } from "./store";
 
-export type ActiveEditorState =
-  | { phase: "loading"; resource: ResourceRef }
-  | { phase: "error"; resource: ResourceRef; message: string }
-  | {
-      phase: "ready";
-      resource: ResourceRef;
-      document: EditorDocument;
-      content: string;
-      revision: number;
-      persistedRevision: number;
-      persisting: boolean;
-      saving: boolean;
-      message: string | null;
-    };
+export type { ActiveEditorState } from "../features/files/fileEditorController";
 
 export interface EditorSlice {
   activeEditor: ActiveEditorState | null;
@@ -52,91 +38,36 @@ export interface EditorSlice {
   discardActiveEditor: () => Promise<boolean>;
 }
 
-const MAX_SNAPSHOTS_PER_FLUSH = 8;
-
 export const createEditorSlice: StateCreator<
   WorkbenchState,
   [],
   [],
   EditorSlice
 > = (set, get) => {
-  const editorController = bindFileEditorController();
-
-  const persistLatestEditor = async (): Promise<void> => {
-    for (let attempt = 0; attempt < MAX_SNAPSHOTS_PER_FLUSH; attempt += 1) {
-      const editor = get().activeEditor;
-      if (
-        !editor ||
-        editor.phase !== "ready" ||
-        editor.revision <= editor.persistedRevision
-      ) {
-        return;
-      }
-      const request: BufferSnapshotRequest = {
-        resource: editor.resource,
-        base: editor.document.base,
-        lineEnding: editor.document.lineEnding,
-        content: editor.content,
-        revision: editor.revision,
-      };
-      set({ activeEditor: { ...editor, persisting: true, message: null } });
-      try {
-        const ack = await editorController.snapshot(request);
-        set((state) => {
-          const current = state.activeEditor;
-          if (
-            !current ||
-            current.phase !== "ready" ||
-            !sameResource(current.resource, request.resource)
-          ) {
-            return {};
-          }
-          const dirty = current.revision > ack.revision || ack.dirty;
-          return {
-            activeEditor: {
-              ...current,
-              persistedRevision: Math.max(
-                current.persistedRevision,
-                ack.revision,
+  const editorController = getFileEditorController();
+  const editorState: EditorStateBridge = {
+    getActiveEditor: () => get().activeEditor,
+    setActiveEditor: (editor, update) => {
+      set((state) => ({
+        activeEditor: editor,
+        tabs:
+          update?.dirty === undefined && update?.tabStatus === undefined
+            ? state.tabs
+            : state.tabs.map((tab) =>
+                sameResource(tab.resource, editor.resource)
+                  ? {
+                      ...tab,
+                      ...(update?.dirty === undefined
+                        ? {}
+                        : { dirty: update.dirty }),
+                      ...(update?.tabStatus === undefined
+                        ? {}
+                        : { status: update.tabStatus ?? undefined }),
+                    }
+                  : tab,
               ),
-              persisting: false,
-              document: { ...current.document, dirty },
-            },
-            tabs: state.tabs.map((tab) =>
-              sameResource(tab.resource, request.resource)
-                ? { ...tab, dirty }
-                : tab,
-            ),
-          };
-        });
-      } catch (error) {
-        const message = errorMessage(error);
-        set((state) => {
-          const current = state.activeEditor;
-          if (
-            !current ||
-            current.phase !== "ready" ||
-            !sameResource(current.resource, request.resource)
-          ) {
-            return {};
-          }
-          return {
-            activeEditor: {
-              ...current,
-              persisting: false,
-              message:
-                current.revision === request.revision
-                  ? message
-                  : current.message,
-            },
-          };
-        });
-        throw error;
-      }
-    }
-    throw new Error(
-      `editor snapshot flush reached its ${MAX_SNAPSHOTS_PER_FLUSH}-revision limit`,
-    );
+      }));
+    },
   };
 
   const closePending = async (discard: boolean) => {
@@ -189,40 +120,24 @@ export const createEditorSlice: StateCreator<
         );
         requestGeneration = request.token;
         return {
-          activeEditor: { phase: "loading", resource },
+          activeEditor: editorController.loading(resource),
           requestGenerations: request.intents,
           requestIntentSequence: request.sequence,
         };
       });
       try {
-        const document = await editorController.load(resource);
-        if (
-          !matchesActiveTabIntent(
-            get(),
-            generation,
-            projectId,
-            "file",
-            resource,
-          ) ||
-          !matchesRequestIntent(get(), requestKey, requestGeneration)
-        ) {
-          return;
-        }
-        const activeTab = get().tabs.find(
-          (tab) => tab.id === get().activeTabId,
-        )!;
-        set((state) => ({
-          activeEditor: editorReady(document),
-          tabs: state.tabs.map((tab) =>
-            tab.id === activeTab.id
-              ? {
-                  ...tab,
-                  dirty: document.dirty,
-                  status: document.conflict ? "failed" : tab.status,
-                }
-              : tab,
-          ),
-        }));
+        await editorController.load(
+          resource,
+          editorState,
+          (candidate) =>
+            matchesActiveTabIntent(
+              get(),
+              generation,
+              projectId,
+              "file",
+              candidate,
+            ) && matchesRequestIntent(get(), requestKey, requestGeneration),
+        );
       } catch (error) {
         if (
           !matchesActiveTabIntent(
@@ -236,42 +151,26 @@ export const createEditorSlice: StateCreator<
         ) {
           return;
         }
-        set({
-          activeEditor: {
-            phase: "error",
-            resource,
-            message: errorMessage(error),
-          },
-        });
+        editorController.failLoad(resource, error, editorState);
       }
     },
 
     updateEditorContent: (content) => {
-      set((state) => {
-        const editor = state.activeEditor;
-        if (
-          state.projectTransitioning ||
-          !editor ||
-          editor.phase !== "ready" ||
-          editor.saving
-        ) {
-          return {};
-        }
-        return {
-          activeEditor: {
-            ...editor,
-            content,
-            revision: editor.revision + 1,
-            message: null,
-          },
-          tabs: state.tabs.map((tab) =>
-            tab.id === state.activeTabId ? { ...tab, dirty: true } : tab,
-          ),
-        };
-      });
+      const state = get();
+      const editor = state.activeEditor;
+      if (
+        state.projectTransitioning ||
+        !editor ||
+        editor.phase !== "ready" ||
+        editor.saving
+      ) {
+        return;
+      }
+      editorController.updateContent(editorState, content);
     },
 
-    flushActiveEditor: () => enqueueEditorOperation(persistLatestEditor),
+    flushActiveEditor: () =>
+      enqueueEditorOperation(() => editorController.flush(editorState)),
 
     saveActiveEditor: async () => {
       const generation = get().projectGeneration;
@@ -285,45 +184,25 @@ export const createEditorSlice: StateCreator<
           ) {
             return null;
           }
-          const editor = get().activeEditor;
-          if (!editor || editor.phase !== "ready") {
-            return null;
-          }
-          set({ activeEditor: { ...editor, saving: true, message: null } });
           const result = await editorController.save(
-            editor.resource,
-            persistLatestEditor,
-            () =>
+            editorState,
+            (resource) =>
               !get().projectTransitioning &&
-              matchesProjectIntent(get(), generation, projectId),
+              matchesProjectIntent(get(), generation, projectId) &&
+              matchesActiveTabIntent(
+                get(),
+                generation,
+                projectId,
+                "file",
+                resource,
+              ),
           );
           if (!result) {
             return null;
           }
-          if (
-            !matchesActiveTabIntent(
-              get(),
-              generation,
-              projectId,
-              "file",
-              editor.resource,
-            )
-          ) {
-            return null;
-          }
-          set((state) => ({
-            activeEditor: editorReady(result.document),
-            tabs: state.tabs.map((tab) =>
-              sameResource(tab.resource, editor.resource)
-                ? {
-                    ...tab,
-                    dirty: result.document.dirty,
-                    status: result.document.conflict ? "failed" : undefined,
-                  }
-                : tab,
-            ),
-          }));
-          return result.outcome === "conflict" ? null : editor.resource;
+          return result.outcome === "conflict"
+            ? null
+            : result.document.resource;
         });
         if (!savedResource) {
           return false;
@@ -344,13 +223,8 @@ export const createEditorSlice: StateCreator<
       } catch (error) {
         if (!matchesProjectIntent(get(), generation, projectId)) return false;
         const message = errorMessage(error);
-        set((state) => ({
-          error: message,
-          activeEditor:
-            state.activeEditor?.phase === "ready"
-              ? { ...state.activeEditor, saving: false, message }
-              : state.activeEditor,
-        }));
+        editorController.saveError(editorState, error);
+        set({ error: message });
         return false;
       }
     },
@@ -367,31 +241,20 @@ export const createEditorSlice: StateCreator<
           ) {
             return false;
           }
-          const editor = get().activeEditor;
-          if (!editor || editor.phase !== "ready") {
-            return false;
-          }
-          const document = await editorController.discard(editor.resource);
-          if (
-            !matchesActiveTabIntent(
-              get(),
-              generation,
-              projectId,
-              "file",
-              editor.resource,
-            )
-          ) {
-            return false;
-          }
-          set((state) => ({
-            activeEditor: editorReady(document),
-            tabs: state.tabs.map((tab) =>
-              sameResource(tab.resource, editor.resource)
-                ? { ...tab, dirty: false, status: undefined }
-                : tab,
-            ),
-          }));
-          return true;
+          const document = await editorController.discard(
+            editorState,
+            (resource) =>
+              !get().projectTransitioning &&
+              matchesProjectIntent(get(), generation, projectId) &&
+              matchesActiveTabIntent(
+                get(),
+                generation,
+                projectId,
+                "file",
+                resource,
+              ),
+          );
+          return document !== null;
         });
       } catch (error) {
         if (matchesProjectIntent(get(), generation, projectId)) {

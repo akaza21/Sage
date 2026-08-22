@@ -3,12 +3,13 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import type {
-  BufferSnapshotRequest,
-  EditorDocument,
-} from "../../domain/workbench";
+import type { EditorDocument } from "../../domain/workbench";
 import type { EditorPort } from "../../ports/workbenchPorts";
-import { bindFileEditorController } from "./fileEditorController";
+import {
+  bindFileEditorController,
+  type EditorStateBridge,
+  getFileEditorController,
+} from "./fileEditorController";
 
 const savedResource = {
   rootId: "root-notes",
@@ -33,14 +34,6 @@ const document: EditorDocument = {
   dirty: false,
   conflict: null,
 };
-const snapshot: BufferSnapshotRequest = {
-  resource: savedResource,
-  base: version,
-  lineEnding: "lf",
-  content: "edited\n",
-  revision: 1,
-};
-
 function fakeEditorPort(): EditorPort {
   return {
     readTextFile: vi.fn(),
@@ -52,7 +45,7 @@ function fakeEditorPort(): EditorPort {
 }
 
 describe("file editor controller seam", () => {
-  it("coordinates injected EditorPort load, flush, save, and discard", async () => {
+  it("uses one shared controller to coordinate load, flush, save, and discard", async () => {
     vi.useFakeTimers();
     const editor = fakeEditorPort();
     vi.mocked(editor.openEditorDocument).mockResolvedValue(document);
@@ -67,17 +60,39 @@ describe("file editor controller seam", () => {
     });
     vi.mocked(editor.discardEditorBuffer).mockResolvedValue(document);
     const controller = bindFileEditorController(editor);
+    let activeEditor = controller.ready(document);
+    const editorState: EditorStateBridge = {
+      getActiveEditor: () => activeEditor,
+      setActiveEditor: (next) => {
+        activeEditor = next;
+      },
+    };
+
+    expect(getFileEditorController()).toBe(controller);
 
     await expect(controller.load(savedResource)).resolves.toBe(document);
-    controller.scheduleSnapshot(() => controller.snapshot(snapshot));
+    controller.updateContent(editorState, "edited\n");
+    controller.scheduleSnapshot(() => controller.flush(editorState));
+    await controller.save(editorState, () => true);
     await vi.advanceTimersByTimeAsync(750);
-    await controller.save(savedResource, () => controller.snapshot(snapshot));
-    controller.scheduleSnapshot(() => controller.snapshot(snapshot));
-    await controller.discard(discardedResource);
+    expect(editor.snapshotEditorBuffer).toHaveBeenCalledTimes(1);
+
+    controller.scheduleSnapshot(() => controller.flush(editorState));
+    activeEditor = controller.ready({
+      ...document,
+      resource: discardedResource,
+    });
+    await controller.discard(editorState, () => true);
 
     expect(editor.openEditorDocument).toHaveBeenCalledWith(savedResource);
-    expect(editor.snapshotEditorBuffer).toHaveBeenCalledTimes(2);
-    expect(editor.snapshotEditorBuffer).toHaveBeenLastCalledWith(snapshot);
+    expect(editor.snapshotEditorBuffer).toHaveBeenCalledTimes(1);
+    expect(editor.snapshotEditorBuffer).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        resource: savedResource,
+        content: "edited\n",
+        revision: 1,
+      }),
+    );
     expect(editor.saveEditorDocument).toHaveBeenCalledWith({
       rootId: "root-notes",
       relativePath: "journal/today.md",
@@ -87,7 +102,7 @@ describe("file editor controller seam", () => {
       relativePath: "drafts/idea.txt",
     });
     await vi.advanceTimersByTimeAsync(750);
-    expect(editor.snapshotEditorBuffer).toHaveBeenCalledTimes(2);
+    expect(editor.snapshotEditorBuffer).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
 
@@ -100,5 +115,29 @@ describe("file editor controller seam", () => {
     expect(source).not.toMatch(/from ["'][^"']*services\/desktop["']/);
     expect(source).not.toMatch(/from ["'][^"']*ports\/workbenchRuntime["']/);
     expect(source).not.toMatch(/from ["'][^"']*ports\/workbenchPorts["']/);
+    expect(source).not.toContain("bindFileEditorController");
+    expect(source).toContain("getFileEditorController");
+  });
+
+  it("keeps snapshot requests, bounded flushes, revisions, and dirty state in the controller", () => {
+    const controllerSource = readFileSync(
+      path.resolve(import.meta.dirname, "./fileEditorController.ts"),
+      "utf8",
+    );
+    const sliceSource = readFileSync(
+      path.resolve(import.meta.dirname, "../../app/editorSlice.ts"),
+      "utf8",
+    );
+
+    expect(controllerSource).toContain("BufferSnapshotRequest");
+    expect(controllerSource).toContain("MAX_SNAPSHOTS_PER_FLUSH");
+    expect(controllerSource).toContain("persistedRevision");
+    expect(sliceSource).toContain("getFileEditorController");
+    expect(sliceSource).not.toContain("bindFileEditorController");
+    expect(sliceSource).not.toContain("BufferSnapshotRequest");
+    expect(sliceSource).not.toContain("MAX_SNAPSHOTS_PER_FLUSH");
+    expect(sliceSource).not.toContain("snapshotEditorBuffer");
+    expect(sliceSource).not.toContain("persistedRevision");
+    expect(sliceSource).not.toContain("revision:");
   });
 });

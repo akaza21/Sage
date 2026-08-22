@@ -8,7 +8,7 @@ import { FileEditorHeader } from "./FileEditorHeader";
 import { FileEditorNotices } from "./FileEditorNotices";
 import { FileFindBar } from "./FileFindBar";
 import {
-  bindFileEditorController,
+  getFileEditorController,
   useFileEditorLifecycle,
 } from "./fileEditorController";
 import { findLiteralMatches, MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
@@ -28,7 +28,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
     contextKey: "",
     index: 0,
   });
-  const fileEditorController = useMemo(() => bindFileEditorController(), []);
+  const fileEditorController = getFileEditorController();
   const editor = useWorkbenchStore((state) => state.activeEditor);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
