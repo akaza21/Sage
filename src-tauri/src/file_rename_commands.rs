@@ -6,6 +6,7 @@ use crate::{
     domain::{FileRenameOutcome, RenameProjectFileRequest, RenameProjectFileResult, ResourceRef},
     error::{AppError, AppResult},
     persistence::Database,
+    preview_lifecycle::on_committed_project_transition_epoch,
     resource_commands::build_bootstrap_snapshot,
     state::AppState,
     workbench_persistence::validate_layout,
@@ -165,6 +166,7 @@ where
     let filesystem_committed = marker.committed();
     if filesystem_committed {
         *transition_epoch += 1;
+        on_committed_project_transition_epoch(*transition_epoch);
     }
     let response_epoch = *transition_epoch;
     let (mut outcome, mut commit) = match operation {

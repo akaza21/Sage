@@ -22,6 +22,7 @@ mod git_process;
 mod harnesses;
 mod launch_profile;
 mod persistence;
+mod preview_lifecycle;
 mod project_commands;
 mod project_migration;
 mod project_registry;

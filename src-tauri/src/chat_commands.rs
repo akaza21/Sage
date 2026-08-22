@@ -4,6 +4,7 @@ use crate::{
     domain::{ProjectLayoutRequest, ProjectTransitionResult, RenameChatRequest},
     error::{AppError, AppResult},
     persistence::Database,
+    preview_lifecycle::on_committed_project_transition_epoch,
     resource_commands::build_bootstrap_snapshot,
     state::AppState,
 };
@@ -117,6 +118,7 @@ pub(crate) async fn execute_chat_transition(
         return failed_transition(*transition_epoch, error);
     }
     *transition_epoch += 1;
+    on_committed_project_transition_epoch(*transition_epoch);
     match build_bootstrap_snapshot(state, *transition_epoch).await {
         Ok(snapshot) => ProjectTransitionResult {
             committed: true,

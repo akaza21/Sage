@@ -6,6 +6,7 @@ use crate::{
     acp::contract::SageProjectId,
     domain::{ProjectLayoutRequest, ProjectSwitchRequest, ProjectTransitionResult},
     error::AppResult,
+    preview_lifecycle::on_committed_project_transition_epoch,
     resource_commands::build_bootstrap_snapshot,
     state::AppState,
 };
@@ -158,6 +159,7 @@ async fn execute_committed_transition<T: Send + 'static>(
         return failed_transition(*transition_epoch, error);
     }
     *transition_epoch = committed_epoch;
+    on_committed_project_transition_epoch(*transition_epoch);
     let acp_recovery_error = if let Ok(Some(active_project)) = state.database.active_project_id()
         && let Ok(active_project) = SageProjectId::parse(active_project)
     {

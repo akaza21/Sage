@@ -9,6 +9,7 @@ use crate::{
     },
     error::{AppError, AppResult},
     persistence::Database,
+    preview_lifecycle::on_committed_project_transition_epoch,
     project_registry::RootRecord,
     resource_commands::build_bootstrap_snapshot,
     state::AppState,
@@ -131,6 +132,7 @@ where
     let mutation_started = marker.mutation_started();
     if mutation_started {
         *transition_epoch += 1;
+        on_committed_project_transition_epoch(*transition_epoch);
     }
     let response_epoch = *transition_epoch;
     let (mut outcome, mut commit) = match task {
