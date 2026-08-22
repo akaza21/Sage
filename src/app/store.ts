@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
-import { childResource, resourceKey } from "../domain/resourceIdentity";
+import { diffCacheKey } from "../domain/diffIdentity";
+import { childResource } from "../domain/resourceIdentity";
 import type {
   ChatMessage,
   ArchivedChatSummary,
@@ -217,7 +218,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
         await get().loadEditor(tab.resource);
         void get().revealFile(tab.resource);
       } else if (tab.kind === "diff" && tab.resource) {
-        const key = resourceKey(tab.resource);
+        const key = diffCacheKey(tab.repository, tab.resource);
         if (get().diffs[key]?.phase === "loading") {
           set((state) => {
             const diffs = { ...state.diffs };
@@ -225,7 +226,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
             return { diffs };
           });
         }
-        void get().loadDiff(tab.resource);
+        void get().loadDiff(tab.resource, tab.repository);
         void get().revealFile(tab.resource);
       }
     },

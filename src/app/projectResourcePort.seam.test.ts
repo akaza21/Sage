@@ -7,6 +7,7 @@ const srcRoot = path.resolve(import.meta.dirname, "..");
 const SLICE_FILES = [
   "app/projectSlice.ts",
   "app/resourceSlice.ts",
+  "app/diffLoad.ts",
   "app/fileCreateSlice.ts",
   "app/fileRenameSlice.ts",
   "app/resourceTrashSlice.ts",
@@ -37,7 +38,7 @@ describe("S0.1 project/resource port seam", () => {
   });
 
   it("keeps getFileDiff on the carved-out Repository port only", async () => {
-    const source = await readSource("app/resourceSlice.ts");
+    const source = await readSource("app/diffLoad.ts");
     expect(source).not.toMatch(
       /(?:getWorkbenchPorts\(\)\.project|desktop)\.getFileDiff/,
     );

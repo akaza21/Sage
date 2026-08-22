@@ -70,10 +70,14 @@ describe("S0.3 workbench port seam", () => {
       "readTextFile",
       "saveEditorDocument",
       "snapshotEditorBuffer",
+      "watchEditorDocument",
     ]);
     expect(FROZEN_WORKBENCH_PORT_METHODS.repository).toEqual([
       "commitGitRepository",
+      "discoverProjectRepositories",
       "getFileDiff",
+      "getNestedRepositoryFileDiff",
+      "getNestedRepositoryStatus",
       "getRepositoryStatus",
       "mutateGitFile",
     ]);

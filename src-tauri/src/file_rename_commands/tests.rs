@@ -83,6 +83,7 @@ impl Fixture {
                 root_id: self.root_id.clone(),
                 relative_path: relative_path.into(),
             }),
+            repository: None,
         }
     }
 

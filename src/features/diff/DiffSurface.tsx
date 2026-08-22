@@ -2,7 +2,8 @@ import { FileDiff } from "lucide-react";
 import { useEffect } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
-import { resourceKey, sameResource } from "../../domain/resourceIdentity";
+import { diffCacheKey } from "../../domain/diffIdentity";
+import { sameResource } from "../../domain/resourceIdentity";
 import type { DiffLineKind, WorkbenchTab } from "../../domain/workbench";
 
 const linePrefix: Record<DiffLineKind, string> = {
@@ -14,10 +15,13 @@ const linePrefix: Record<DiffLineKind, string> = {
 
 export function DiffSurface({ tab }: { tab: WorkbenchTab }) {
   const tabResource = tab.resource;
+  const tabRepository = tab.repository;
   const path = tabResource?.relativePath ?? tab.title;
   const repositories = useWorkbenchStore((state) => state.repositories);
   const diff = useWorkbenchStore((state) =>
-    tabResource ? state.diffs[resourceKey(tabResource)] : undefined,
+    tabResource
+      ? state.diffs[diffCacheKey(tabRepository, tabResource)]
+      : undefined,
   );
   const loadDiff = useWorkbenchStore((state) => state.loadDiff);
   const change = repositories.roots
@@ -26,9 +30,9 @@ export function DiffSurface({ tab }: { tab: WorkbenchTab }) {
 
   useEffect(() => {
     if (tabResource) {
-      void loadDiff(tabResource);
+      void loadDiff(tabResource, tabRepository);
     }
-  }, [loadDiff, tabResource]);
+  }, [loadDiff, tabResource, tabRepository]);
 
   return (
     <section className="diff-surface" aria-label={`Diff for ${path}`}>

@@ -1,10 +1,13 @@
+import { createInjectedEditorWatchDelivery } from "../domain/editorWatch";
 import { browserDesktop } from "../services/browserDesktop";
 import type {
   ChatLifecycleRequest,
+  EditorWatchSubscription,
   ProjectLayoutRequest,
   ProjectSwitchRequest,
   ProjectTransitionResult,
   RenameChatRequest,
+  ResourceRef,
 } from "../domain/workbench";
 import type {
   AgentPort,
@@ -65,6 +68,18 @@ const editor: EditorPort = {
     Promise.resolve(browserDesktop.saveEditorDocument(resource)),
   discardEditorBuffer: (resource) =>
     Promise.resolve(browserDesktop.discardEditorBuffer(resource)),
+  watchEditorDocument: async (
+    resource: ResourceRef,
+  ): Promise<EditorWatchSubscription> => {
+    const injected = createInjectedEditorWatchDelivery();
+    return {
+      resource,
+      delivery: injected.delivery,
+      cancel: async () => {
+        injected.close();
+      },
+    };
+  },
 };
 
 const repository: RepositoryPort = {
@@ -74,6 +89,16 @@ const repository: RepositoryPort = {
     browserDesktop.mutateGitFile(request, expectedTransitionEpoch),
   commitGitRepository: (request, expectedTransitionEpoch) =>
     browserDesktop.commitGitRepository(request, expectedTransitionEpoch),
+  discoverProjectRepositories: async (request) => ({
+    projectId: request.projectId,
+    transitionEpoch: request.expectedTransitionEpoch,
+    refs: [],
+    truncated: false,
+  }),
+  getNestedRepositoryStatus: () =>
+    Promise.reject(new Error("nested repository status is not implemented")),
+  getNestedRepositoryFileDiff: () =>
+    Promise.reject(new Error("nested repository Diff is not implemented")),
 };
 
 const chat: ChatPort = {

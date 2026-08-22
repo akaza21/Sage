@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::ResourceRef;
+use super::{RepositoryRef, ResourceRef};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +13,8 @@ pub struct WorkbenchTab {
     pub dirty: bool,
     pub status: Option<String>,
     pub resource: Option<ResourceRef>,
+    #[serde(default)]
+    pub repository: Option<RepositoryRef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

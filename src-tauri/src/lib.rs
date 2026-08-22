@@ -14,6 +14,7 @@ mod editor;
 mod editor_content;
 mod editor_coordination;
 mod editor_persistence;
+mod editor_watch;
 mod error;
 mod file_create_commands;
 mod file_rename_commands;
@@ -32,6 +33,7 @@ mod repository_mutation;
 mod repository_mutation_commands;
 mod repository_parse;
 mod repository_public_error;
+mod repository_ref_commands;
 mod repository_workspace;
 mod resource_commands;
 mod resource_trash_commands;
@@ -162,6 +164,11 @@ pub fn run() {
             resource_commands::get_bootstrap_snapshot,
             resource_commands::get_repository_status,
             resource_commands::get_file_diff,
+            repository_ref_commands::discover_project_repositories,
+            repository_ref_commands::get_repository_ref_status,
+            repository_ref_commands::get_repository_ref_file_diff,
+            editor_watch::watch_editor_document,
+            editor_watch::unwatch_editor_document,
             repository_mutation_commands::mutate_git_file,
             repository_commit_commands::commit_git_repository,
             resource_commands::list_directory,

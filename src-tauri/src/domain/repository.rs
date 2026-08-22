@@ -2,6 +2,13 @@ use serde::{Deserialize, Serialize};
 
 use super::ResourceRef;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryRef {
+    pub root_id: String,
+    pub relative_path: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileChange {

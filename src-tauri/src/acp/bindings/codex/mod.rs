@@ -8,6 +8,7 @@ mod auth;
 mod authority;
 mod discovery;
 mod incoming;
+mod installed_role;
 mod managed;
 mod manifest;
 mod physical;
@@ -17,6 +18,7 @@ mod reproduction;
 mod request;
 mod runtime;
 mod state;
+mod trust_root;
 
 pub(crate) use admission::{
     AdmittedCodexBinding, CodexAdmissionUnavailable, CodexBindingRegistration,

@@ -309,6 +309,7 @@ fn restore_rejects_the_plus_one_tab_without_mutation() {
             dirty: false,
             status: Some("idle".into()),
             resource: None,
+            repository: None,
         });
     }
     database.persist_project_layout(&full_layout).unwrap();

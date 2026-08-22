@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand";
 
+import { runLoadDiff } from "./diffLoad";
 import {
   childResource,
   resourceKey,
@@ -8,15 +9,14 @@ import {
 import type {
   DirectoryListing,
   FileDiff,
+  RepositoryRef,
   ResourceRef,
 } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import {
-  hasTabResourceIntent,
-  matchesActiveTabIntent,
+  issueRequestIntent,
   matchesRequestIntent,
   matchesResourceIntent,
-  issueRequestIntent,
 } from "./projectIntent";
 import {
   boundedExpandedUpdate,
@@ -32,16 +32,21 @@ export interface ResourceSlice {
   diffs: Record<string, ResourceState<FileDiff>>;
   requestGenerations: Record<string, number>;
   requestIntentSequence: number;
-  openDiff: (resource: ResourceRef) => Promise<void>;
+  openDiff: (
+    resource: ResourceRef,
+    repository?: RepositoryRef,
+  ) => Promise<void>;
   openFile: (resource: ResourceRef) => Promise<void>;
   loadDirectory: (resource: ResourceRef, refresh?: boolean) => Promise<void>;
   toggleDirectory: (resource: ResourceRef) => void;
   selectDirectory: (resource: ResourceRef) => void;
   revealFile: (resource: ResourceRef) => Promise<void>;
-  loadDiff: (resource: ResourceRef) => Promise<void>;
+  loadDiff: (
+    resource: ResourceRef,
+    repository?: RepositoryRef,
+  ) => Promise<void>;
 }
 
-const MAX_CACHED_RESOURCES = 32;
 export const MAX_CACHED_DIRECTORIES = 64;
 
 export const createResourceSlice: StateCreator<
@@ -56,7 +61,7 @@ export const createResourceSlice: StateCreator<
   requestGenerations: {},
   requestIntentSequence: 0,
 
-  openDiff: async (resource) => {
+  openDiff: async (resource, repository) => {
     const generation = get().projectGeneration;
     const projectId = get().project?.id;
     if (
@@ -82,7 +87,7 @@ export const createResourceSlice: StateCreator<
     ) {
       return;
     }
-    set((state) => resourceTabUpdate(state, "diff", resource));
+    set((state) => resourceTabUpdate(state, "diff", resource, repository));
     const tab = get().tabs.find(
       (candidate) => candidate.id === get().activeTabId,
     );
@@ -90,7 +95,7 @@ export const createResourceSlice: StateCreator<
       return;
     }
     set({ activeEditor: null });
-    void get().loadDiff(resource);
+    void get().loadDiff(resource, tab.repository ?? repository);
     void get().revealFile(resource);
   },
 
@@ -313,83 +318,6 @@ export const createResourceSlice: StateCreator<
     await Promise.all(parents.map((parent) => get().loadDirectory(parent)));
   },
 
-  loadDiff: async (resource) => {
-    const generation = get().projectGeneration;
-    const projectId = get().project?.id;
-    if (
-      !projectId ||
-      !hasTabResourceIntent(get(), generation, projectId, "diff", resource)
-    ) {
-      return;
-    }
-    const key = resourceKey(resource);
-    const requestKey = `diff:${key}`;
-    const existing = get().diffs[key];
-    if (existing?.phase === "loading" || existing?.phase === "ready") {
-      return;
-    }
-    let requestGeneration = 0;
-    set((state) => {
-      const request = issueRequestIntent(
-        state.requestGenerations,
-        requestKey,
-        state.requestIntentSequence,
-      );
-      requestGeneration = request.token;
-      return {
-        requestGenerations: request.intents,
-        requestIntentSequence: request.sequence,
-        diffs: boundedResourceStateUpdate(
-          state.diffs,
-          key,
-          { phase: "loading" },
-          MAX_CACHED_RESOURCES,
-        ),
-      };
-    });
-    try {
-      const value = await getWorkbenchPorts().repository.getFileDiff(resource);
-      if (
-        !matchesActiveTabIntent(
-          get(),
-          generation,
-          projectId,
-          "diff",
-          resource,
-        ) ||
-        !matchesRequestIntent(get(), requestKey, requestGeneration)
-      ) {
-        return;
-      }
-      set((state) => ({
-        diffs: boundedResourceStateUpdate(
-          state.diffs,
-          key,
-          { phase: "ready", value },
-          MAX_CACHED_RESOURCES,
-        ),
-      }));
-    } catch (error) {
-      if (
-        !matchesActiveTabIntent(
-          get(),
-          generation,
-          projectId,
-          "diff",
-          resource,
-        ) ||
-        !matchesRequestIntent(get(), requestKey, requestGeneration)
-      ) {
-        return;
-      }
-      set((state) => ({
-        diffs: boundedResourceStateUpdate(
-          state.diffs,
-          key,
-          { phase: "error", message: errorMessage(error) },
-          MAX_CACHED_RESOURCES,
-        ),
-      }));
-    }
-  },
+  loadDiff: (resource, repository) =>
+    runLoadDiff(get, set, resource, repository),
 });

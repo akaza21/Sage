@@ -1,4 +1,51 @@
+import type { FileDiff } from "./editor";
 import type { ResourceRef } from "./resource";
+
+export interface RepositoryRef {
+  rootId: string;
+  relativePath: string;
+}
+
+export interface DiscoverProjectRepositoriesRequest {
+  projectId: string;
+  projectGeneration: number;
+  expectedTransitionEpoch: number;
+}
+
+export interface DiscoverProjectRepositoriesResult {
+  projectId: string;
+  transitionEpoch: number;
+  refs: RepositoryRef[];
+  truncated: boolean;
+}
+
+export interface NestedRepositoryStatusRequest {
+  projectId: string;
+  projectGeneration: number;
+  expectedTransitionEpoch: number;
+  ref: RepositoryRef;
+}
+
+export interface NestedRepositoryStatusResult {
+  projectId: string;
+  transitionEpoch: number;
+  ref: RepositoryRef;
+  status: RootRepositoryStatus;
+}
+
+export interface NestedRepositoryFileDiffRequest {
+  projectId: string;
+  projectGeneration: number;
+  expectedTransitionEpoch: number;
+  ref: RepositoryRef;
+  resource: ResourceRef;
+}
+
+export interface NestedRepositoryFileDiffResult {
+  projectId: string;
+  transitionEpoch: number;
+  diff: FileDiff;
+}
 
 export type GitFileState =
   | "unchanged"

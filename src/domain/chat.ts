@@ -1,3 +1,4 @@
+import type { RepositoryRef } from "./repository";
 import type { ResourceRef } from "./resource";
 
 export type TabKind =
@@ -22,6 +23,7 @@ export interface WorkbenchTab {
   dirty: boolean;
   status?: SessionStatus;
   resource?: ResourceRef;
+  repository?: RepositoryRef;
 }
 
 export interface RenameChatRequest {

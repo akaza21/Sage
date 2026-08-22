@@ -220,6 +220,7 @@ mod tests {
                 dirty: true,
                 status: None,
                 resource: Some(selected_resource.clone()),
+                repository: None,
             };
             let current_layout = ProjectLayoutRequest {
                 project_id: layout.project_id.clone(),

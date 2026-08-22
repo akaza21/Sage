@@ -22,6 +22,22 @@ const SIGNED_FILES: [&str; 4] = [
 ];
 const UNSIGNED_FILES: [&str; 1] = [r"vendor\x86_64-pc-windows-msvc\codex-path\rg.exe"];
 
+pub(super) fn authenticode_publisher_common_name() -> &'static str {
+    OPENAI_PUBLISHER
+}
+
+pub(super) fn authenticode_certificate_thumbprint_sha1() -> &'static str {
+    OPENAI_THUMBPRINT
+}
+
+pub(super) fn authenticode_signed_relative_paths() -> &'static [&'static str] {
+    &SIGNED_FILES
+}
+
+pub(super) fn authenticode_unsigned_relative_paths() -> &'static [&'static str] {
+    &UNSIGNED_FILES
+}
+
 #[derive(Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct PackageReproductionRequirements {

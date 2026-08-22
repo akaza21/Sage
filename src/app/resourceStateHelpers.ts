@@ -1,3 +1,4 @@
+import { diffCacheResourceKey } from "../domain/diffIdentity";
 import {
   resourceKey,
   resourceKeyIsSameOrDescendant,
@@ -53,7 +54,8 @@ export function withoutResourceHierarchy<T>(
 ) {
   return Object.fromEntries(
     Object.entries(current).filter(
-      ([key]) => !resourceKeyIsSameOrDescendant(key, source),
+      ([key]) =>
+        !resourceKeyIsSameOrDescendant(diffCacheResourceKey(key), source),
     ),
   ) as Record<string, T>;
 }

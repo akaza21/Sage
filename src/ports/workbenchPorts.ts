@@ -3,6 +3,13 @@ import type {
   BufferSnapshotAck,
   BufferSnapshotRequest,
   ChatLifecycleRequest,
+  DiscoverProjectRepositoriesRequest,
+  DiscoverProjectRepositoriesResult,
+  EditorWatchSubscription,
+  NestedRepositoryFileDiffRequest,
+  NestedRepositoryFileDiffResult,
+  NestedRepositoryStatusRequest,
+  NestedRepositoryStatusResult,
   CreateProjectFileRequest,
   CreateProjectFileResult,
   CreateProjectFolderRequest,
@@ -87,6 +94,7 @@ export interface EditorPort {
   ): Promise<BufferSnapshotAck>;
   saveEditorDocument(resource: ResourceRef): Promise<EditorSaveResult>;
   discardEditorBuffer(resource: ResourceRef): Promise<EditorDocument>;
+  watchEditorDocument(resource: ResourceRef): Promise<EditorWatchSubscription>;
 }
 
 export interface RepositoryPort {
@@ -100,6 +108,15 @@ export interface RepositoryPort {
     request: GitRepositoryCommitRequest,
     expectedTransitionEpoch: number,
   ): Promise<GitRepositoryCommitResult>;
+  discoverProjectRepositories(
+    request: DiscoverProjectRepositoriesRequest,
+  ): Promise<DiscoverProjectRepositoriesResult>;
+  getNestedRepositoryStatus(
+    request: NestedRepositoryStatusRequest,
+  ): Promise<NestedRepositoryStatusResult>;
+  getNestedRepositoryFileDiff(
+    request: NestedRepositoryFileDiffRequest,
+  ): Promise<NestedRepositoryFileDiffResult>;
 }
 
 export interface ChatPort {
@@ -159,10 +176,14 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "readTextFile",
     "saveEditorDocument",
     "snapshotEditorBuffer",
+    "watchEditorDocument",
   ],
   repository: [
     "commitGitRepository",
+    "discoverProjectRepositories",
     "getFileDiff",
+    "getNestedRepositoryFileDiff",
+    "getNestedRepositoryStatus",
     "getRepositoryStatus",
     "mutateGitFile",
   ],

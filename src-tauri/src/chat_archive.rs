@@ -131,6 +131,7 @@ impl Database {
             dirty: false,
             status: Some("idle".into()),
             resource: None,
+            repository: None,
         });
         next_layout.active_tab_id = Some(request.chat_id.clone());
         validate_tab_projection(&next_layout.tabs)?;

@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use rusqlite::{OptionalExtension, params};
 
 use crate::{
-    domain::{ResourceRef, WorkbenchTab},
+    domain::{RepositoryRef, ResourceRef, WorkbenchTab},
     error::{AppError, AppResult},
     project_registry::RootRecord,
     workspace::{Workspace, validate_contract_path},
@@ -217,6 +217,16 @@ fn load_tabs(
                     .map(serde_json::from_value::<ResourceRef>)
                     .transpose()
                     .map_err(|error| AppError::InvalidRequest(error.to_string()))?;
+                let repository = object
+                    .get("repository")
+                    .cloned()
+                    .map(serde_json::from_value::<RepositoryRef>)
+                    .transpose()
+                    .map_err(|error| AppError::InvalidRequest(error.to_string()))?
+                    .filter(|repository| !repository.relative_path.is_empty());
+                if let Some(repository) = &repository {
+                    validate_contract_path(&repository.relative_path, false)?;
+                }
                 if kind == "file" || kind == "diff" {
                     let resource = resource.as_ref().ok_or_else(|| {
                         AppError::InvalidRequest(
@@ -243,6 +253,7 @@ fn load_tabs(
                     dirty,
                     status,
                     resource,
+                    repository,
                 })
             },
         )
@@ -292,12 +303,19 @@ pub fn tab_projection_bytes(tab: &WorkbenchTab) -> i64 {
             .len()
             .saturating_add(resource.relative_path.len())
     });
+    let repository_bytes = tab.repository.as_ref().map_or(0, |repository| {
+        repository
+            .root_id
+            .len()
+            .saturating_add(repository.relative_path.len())
+    });
     tab.id
         .len()
         .saturating_add(tab.kind.len())
         .saturating_add(tab.title.len())
         .saturating_add(tab.status.as_deref().map_or(0, str::len))
-        .saturating_add(resource_bytes) as i64
+        .saturating_add(resource_bytes)
+        .saturating_add(repository_bytes) as i64
 }
 
 fn validate_resource_metadata(root: &RootRecord, resource: &ResourceRef) -> AppResult<()> {
@@ -474,6 +492,7 @@ mod tests {
             dirty: false,
             status: None,
             resource: Some(resource.clone()),
+            repository: None,
         });
         assert!(
             fixture
@@ -486,6 +505,57 @@ mod tests {
                     selected_resource: Some(resource),
                 })
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn restored_diff_tabs_retain_nested_repository_identity() {
+        let fixture = Fixture::new();
+        let mut snapshot = fixture.database.bootstrap_snapshot().unwrap();
+        snapshot.tabs.push(WorkbenchTab {
+            id: "diff:nested".into(),
+            kind: "diff".into(),
+            title: "main.rs".into(),
+            position: 1,
+            pinned: false,
+            dirty: false,
+            status: None,
+            resource: Some(ResourceRef {
+                root_id: fixture.root_id.clone(),
+                relative_path: "main.rs".into(),
+            }),
+            repository: Some(RepositoryRef {
+                root_id: fixture.root_id.clone(),
+                relative_path: "vendor/nested".into(),
+            }),
+        });
+        fixture
+            .database
+            .persist_project_layout(&crate::domain::ProjectLayoutRequest {
+                project_id: fixture.project_id.clone(),
+                tabs: snapshot.tabs,
+                active_tab_id: Some("diff:nested".into()),
+                selected_root_id: Some(fixture.root_id.clone()),
+                selected_resource: snapshot.selected_resource,
+            })
+            .unwrap();
+        let restored = fixture.database.bootstrap_snapshot().unwrap();
+        let diff = restored
+            .tabs
+            .iter()
+            .find(|tab| tab.id == "diff:nested")
+            .expect("nested Diff tab");
+        assert_eq!(
+            diff.repository
+                .as_ref()
+                .map(|repository| repository.relative_path.as_str()),
+            Some("vendor/nested")
+        );
+        assert_eq!(
+            diff.resource
+                .as_ref()
+                .map(|resource| resource.relative_path.as_str()),
+            Some("main.rs")
         );
     }
 }

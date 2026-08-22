@@ -130,6 +130,7 @@ fn merge_recovered_file_tabs(snapshot: &mut BootstrapSnapshot) {
             dirty: true,
             status: Some("recovering".into()),
             resource: Some(recovered.resource.clone()),
+            repository: None,
         };
         let tab_bytes = tab_projection_bytes(&tab);
         if projection_bytes.saturating_add(tab_bytes) > MAX_RESTORED_TAB_BYTES {
@@ -357,6 +358,7 @@ mod tests {
                     root_id: root_id.clone(),
                     relative_path: format!("{index}.txt"),
                 }),
+                repository: None,
             });
         }
         snapshot.recovered_buffers = vec![
@@ -398,6 +400,7 @@ mod tests {
                 dirty: false,
                 status: None,
                 resource: None,
+                repository: None,
             });
         }
         snapshot.recovered_buffers = vec![recovered(&root_id, "orphan.txt", 1)];
@@ -435,6 +438,7 @@ mod tests {
                     root_id: root_id.clone(),
                     relative_path: format!("{index}.txt"),
                 }),
+                repository: None,
             });
         }
         database

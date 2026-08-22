@@ -103,6 +103,7 @@ impl Fixture {
                 root_id: self.root_id.clone(),
                 relative_path: "src/empty/ghost.rs".into(),
             }),
+            repository: None,
         }
     }
 }

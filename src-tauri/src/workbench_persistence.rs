@@ -206,10 +206,13 @@ pub(crate) fn persist_layout_in(
         } else {
             tab.title.clone()
         };
-        let metadata = tab
-            .resource
-            .as_ref()
-            .map_or_else(|| json!({}), |resource| json!({ "resource": resource }));
+        let metadata = match (&tab.resource, &tab.repository) {
+            (Some(resource), Some(repository)) => {
+                json!({ "resource": resource, "repository": repository })
+            }
+            (Some(resource), None) => json!({ "resource": resource }),
+            _ => json!({}),
+        };
         transaction.execute(
             "INSERT INTO workbench_tabs
              (id, project_id, kind, title, position, pinned, dirty, status,

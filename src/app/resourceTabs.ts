@@ -1,9 +1,10 @@
+import { isNestedRepository, sameRepository } from "../domain/diffIdentity";
 import {
   resourceKey,
   resourceTitle,
   sameResource,
 } from "../domain/resourceIdentity";
-import type { ResourceRef } from "../domain/workbench";
+import type { RepositoryRef, ResourceRef } from "../domain/workbench";
 import type { WorkbenchState } from "./store";
 
 const MAX_OPEN_RESOURCE_TABS = 32;
@@ -12,10 +13,16 @@ export function resourceTabUpdate(
   state: WorkbenchState,
   kind: "diff" | "file",
   resource: ResourceRef,
+  repository?: RepositoryRef,
 ): Partial<WorkbenchState> {
-  const id = `${kind}:${resourceKey(resource)}`;
+  const id = isNestedRepository(repository)
+    ? `${kind}:${resourceKey(repository)}:${resourceKey(resource)}`
+    : `${kind}:${resourceKey(resource)}`;
   const existing = state.tabs.find(
-    (tab) => tab.kind === kind && sameResource(tab.resource, resource),
+    (tab) =>
+      tab.kind === kind &&
+      sameResource(tab.resource, resource) &&
+      sameRepository(tab.repository, repository),
   );
   if (existing) {
     return {
@@ -62,6 +69,7 @@ export function resourceTabUpdate(
         pinned: false,
         dirty: false,
         resource,
+        ...(isNestedRepository(repository) ? { repository } : {}),
       },
     ],
     activeTabId: id,

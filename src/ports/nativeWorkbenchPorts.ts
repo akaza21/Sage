@@ -7,12 +7,21 @@ import type {
   SendPromptRequest,
   WorkbenchPorts,
 } from "./workbenchPorts";
-import { invokeNative } from "./nativeInvoke";
+import { invokeNative, isTauriRuntime } from "./nativeInvoke";
+import {
+  EDITOR_EXTERNAL_WATCH_EVENT,
+  createInjectedEditorWatchDelivery,
+  noticeMatchesWatch,
+  type EditorExternalWatchNotice,
+  type EditorWatchSubscription,
+} from "../domain/editorWatch";
 import type {
   BootstrapSnapshot,
   BufferSnapshotAck,
   BufferSnapshotRequest,
   ChatLifecycleRequest,
+  DiscoverProjectRepositoriesRequest,
+  DiscoverProjectRepositoriesResult,
   CreateProjectFileRequest,
   CreateProjectFileResult,
   CreateProjectFolderRequest,
@@ -26,6 +35,10 @@ import type {
   GitRepositoryCommitRequest,
   GitRepositoryCommitResult,
   ModelOption,
+  NestedRepositoryFileDiffRequest,
+  NestedRepositoryFileDiffResult,
+  NestedRepositoryStatusRequest,
+  NestedRepositoryStatusResult,
   ProjectLayoutRequest,
   ProjectRepositoryStatus,
   ProjectSwitchRequest,
@@ -136,6 +149,33 @@ const editor: EditorPort = {
   discardEditorBuffer(resource: ResourceRef): Promise<EditorDocument> {
     return invokeNative("discard_editor_buffer", { resource });
   },
+  async watchEditorDocument(
+    resource: ResourceRef,
+  ): Promise<EditorWatchSubscription> {
+    await invokeNative("watch_editor_document", { resource });
+    const injected = createInjectedEditorWatchDelivery();
+    let unlisten: () => void = () => undefined;
+    if (isTauriRuntime()) {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlisten = await listen<EditorExternalWatchNotice>(
+        EDITOR_EXTERNAL_WATCH_EVENT,
+        (event) => {
+          if (noticeMatchesWatch(event.payload, resource)) {
+            injected.emit(event.payload);
+          }
+        },
+      );
+    }
+    return {
+      resource,
+      delivery: injected.delivery,
+      cancel: async () => {
+        injected.close();
+        unlisten();
+        await invokeNative("unwatch_editor_document", { resource });
+      },
+    };
+  },
 };
 
 const repository: RepositoryPort = {
@@ -162,6 +202,21 @@ const repository: RepositoryPort = {
       request,
       expectedTransitionEpoch,
     });
+  },
+  discoverProjectRepositories(
+    request: DiscoverProjectRepositoriesRequest,
+  ): Promise<DiscoverProjectRepositoriesResult> {
+    return invokeNative("discover_project_repositories", { request });
+  },
+  getNestedRepositoryStatus(
+    request: NestedRepositoryStatusRequest,
+  ): Promise<NestedRepositoryStatusResult> {
+    return invokeNative("get_repository_ref_status", { request });
+  },
+  getNestedRepositoryFileDiff(
+    request: NestedRepositoryFileDiffRequest,
+  ): Promise<NestedRepositoryFileDiffResult> {
+    return invokeNative("get_repository_ref_file_diff", { request });
   },
 };
 
