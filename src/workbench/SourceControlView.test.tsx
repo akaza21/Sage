@@ -10,6 +10,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { repositoryKey } from "../domain/repositoryInventory";
 import type { RepositoryRef, RootRepositoryStatus } from "../domain/workbench";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { SourceControlView } from "./SourceControlView";
 
 const initialState = useWorkbenchStore.getState();
@@ -42,7 +43,114 @@ const nestedStatus: RootRepositoryStatus = {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   useWorkbenchStore.setState(initialState, true);
+});
+
+it("retries inventory discovery after a project transition and clears stale selection", async () => {
+  const repository = getWorkbenchPorts().repository;
+  const freshRoot: RepositoryRef = { rootId: "root-b", relativePath: "" };
+  const discover = vi
+    .spyOn(repository, "discoverProjectRepositories")
+    .mockResolvedValue({
+      projectId: "project-b",
+      transitionEpoch: 1,
+      refs: [freshRoot],
+      truncated: false,
+    });
+
+  useWorkbenchStore.setState({
+    phase: "ready",
+    project: {
+      id: "project-b",
+      name: "B",
+      roots: [
+        {
+          id: "root-b",
+          name: "Root B",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    projectGeneration: 1,
+    nativeTransitionEpoch: 1,
+    projectTransitioning: true,
+    repositoryInventoryPhase: "ready",
+    repositoryInventoryProjectScope: "project-a\u00000\u00000",
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: rootStatus,
+    repositoryStatusPhase: "ready",
+  });
+
+  render(<SourceControlView />);
+
+  await waitFor(() => {
+    expect(useWorkbenchStore.getState().selectedRepository).toBeNull();
+    expect(useWorkbenchStore.getState().repositoryRefs).toEqual([]);
+  });
+  expect(discover).not.toHaveBeenCalled();
+
+  useWorkbenchStore.setState({ projectTransitioning: false });
+
+  await waitFor(() =>
+    expect(discover).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "project-b",
+        projectGeneration: 1,
+        expectedTransitionEpoch: 1,
+      }),
+    ),
+  );
+  await waitFor(() => {
+    expect(useWorkbenchStore.getState().selectedRepository).toEqual(freshRoot);
+  });
+});
+
+it("uses disambiguated project-root labels for repository options", () => {
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Workspace",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+        {
+          id: "root-b",
+          name: "Workspace",
+          ordinal: 1,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [], truncated: false, elapsedMs: 1 },
+    repositoryInventoryProjectScope: "project-a\u00000\u00000",
+    repositoryRefs: [
+      { rootId: "root-a", relativePath: "packages/tool" },
+      { rootId: "root-b", relativePath: "packages/tool" },
+    ],
+    selectedRepository: { rootId: "root-a", relativePath: "packages/tool" },
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+
+  render(<SourceControlView />);
+
+  expect(
+    screen.getByRole("option", { name: "Workspace (root 1) — packages/tool" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("option", { name: "Workspace (root 2) — packages/tool" }),
+  ).toBeInTheDocument();
 });
 
 it("selects a nested repository, opens its Diff, and offers no mutations", async () => {

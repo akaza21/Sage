@@ -18,6 +18,7 @@ export interface RepositoryInventorySlice {
   repositoryInventoryError: string | null;
   repositoryRefs: RepositoryRef[];
   repositoryDiscoveryTruncated: boolean;
+  repositoryInventoryProjectScope: string | null;
   repositoryInventoryRequestGeneration: number;
   selectedRepository: RepositoryRef | null;
   selectedRepositoryStatus: RootRepositoryStatus | null;
@@ -40,6 +41,11 @@ function canLoad(state: WorkbenchState): boolean {
   );
 }
 
+function projectScope(state: WorkbenchState): string | null {
+  if (!state.project) return null;
+  return `${state.project.id}\0${state.projectGeneration}\0${state.nativeTransitionEpoch}`;
+}
+
 export const createRepositoryInventorySlice: StateCreator<
   WorkbenchState,
   [],
@@ -50,6 +56,7 @@ export const createRepositoryInventorySlice: StateCreator<
   repositoryInventoryError: null,
   repositoryRefs: [],
   repositoryDiscoveryTruncated: false,
+  repositoryInventoryProjectScope: null,
   repositoryInventoryRequestGeneration: 0,
   selectedRepository: null,
   selectedRepositoryStatus: null,
@@ -58,8 +65,29 @@ export const createRepositoryInventorySlice: StateCreator<
   repositoryStatusRequestGeneration: 0,
 
   loadRepositoryInventory: async () => {
+    const current = get();
+    const projectId = current.project?.id;
+    const scope = projectScope(current);
+    if (current.repositoryInventoryProjectScope !== scope) {
+      set({
+        repositoryInventoryPhase: "idle",
+        repositoryInventoryError: null,
+        repositoryRefs: [],
+        repositoryDiscoveryTruncated: false,
+        repositoryInventoryProjectScope: scope,
+        repositoryInventoryRequestGeneration: nextProjectGeneration(
+          current.repositoryInventoryRequestGeneration,
+        ),
+        selectedRepository: null,
+        selectedRepositoryStatus: null,
+        repositoryStatusPhase: "idle",
+        repositoryStatusError: null,
+        repositoryStatusRequestGeneration: nextProjectGeneration(
+          current.repositoryStatusRequestGeneration,
+        ),
+      });
+    }
     if (!canLoad(get())) return;
-    const projectId = get().project?.id;
     if (!projectId) return;
     const projectGeneration = get().projectGeneration;
     const expectedTransitionEpoch = get().nativeTransitionEpoch;
@@ -96,6 +124,7 @@ export const createRepositoryInventorySlice: StateCreator<
         repositoryInventoryPhase: "ready",
         repositoryRefs: result.refs,
         repositoryDiscoveryTruncated: result.truncated,
+        repositoryInventoryProjectScope: scope,
         selectedRepository: nextSelected,
         selectedRepositoryStatus: null,
         repositoryStatusError: null,
@@ -113,6 +142,7 @@ export const createRepositoryInventorySlice: StateCreator<
           repositoryInventoryError: errorMessage(error),
           repositoryRefs: [],
           repositoryDiscoveryTruncated: false,
+          repositoryInventoryProjectScope: scope,
           selectedRepository: null,
           selectedRepositoryStatus: null,
           repositoryStatusPhase: "idle",

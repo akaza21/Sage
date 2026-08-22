@@ -33,6 +33,16 @@ function visibleStatus(change: FileChange): GitFileState {
     : change.indexStatus;
 }
 
+function disambiguatedRootLabel(
+  rootName: string,
+  ordinal: number,
+  rootNameCounts: ReadonlyMap<string, number>,
+): string {
+  return (rootNameCounts.get(rootName) ?? 0) > 1
+    ? `${rootName} (root ${ordinal + 1})`
+    : rootName;
+}
+
 interface SourceChangeRowProps {
   change: FileChange;
   repository: RepositoryRef | undefined;
@@ -200,6 +210,12 @@ function SourceChangeRow({
 
 export function SourceControlView() {
   const project = useWorkbenchStore((state) => state.project);
+  const projectGeneration = useWorkbenchStore(
+    (state) => state.projectGeneration,
+  );
+  const nativeTransitionEpoch = useWorkbenchStore(
+    (state) => state.nativeTransitionEpoch,
+  );
   const repositories = useWorkbenchStore((state) => state.repositories);
   const repositoryRefs = useWorkbenchStore((state) => state.repositoryRefs);
   const selectedRepository = useWorkbenchStore(
@@ -249,7 +265,13 @@ export function SourceControlView() {
 
   useEffect(() => {
     void loadRepositoryInventory();
-  }, [loadRepositoryInventory, project?.id]);
+  }, [
+    loadRepositoryInventory,
+    nativeTransitionEpoch,
+    project?.id,
+    projectGeneration,
+    transitioning,
+  ]);
   const projectRoots = new Map(
     project?.roots.map((root) => [root.id, root]) ?? [],
   );
@@ -291,11 +313,20 @@ export function SourceControlView() {
                 if (next) void selectRepository(next);
               }}
             >
-              {repositoryRefs.map((ref) => (
-                <option key={repositoryKey(ref)} value={repositoryKey(ref)}>
-                  {ref.relativePath || "Repository root"}
-                </option>
-              ))}
+              {repositoryRefs.map((ref) => {
+                const projectRoot = projectRoots.get(ref.rootId);
+                const rootName = projectRoot?.name ?? "Root";
+                const rootLabel = disambiguatedRootLabel(
+                  rootName,
+                  projectRoot?.ordinal ?? 0,
+                  rootNameCounts,
+                );
+                return (
+                  <option key={repositoryKey(ref)} value={repositoryKey(ref)}>
+                    {`${rootLabel} — ${ref.relativePath || "Repository root"}`}
+                  </option>
+                );
+              })}
             </select>
           </label>
         ) : null}
@@ -314,10 +345,11 @@ export function SourceControlView() {
         {selectedRepositories.map((repository) => {
           const projectRoot = projectRoots.get(repository.rootId);
           const rootName = projectRoot?.name ?? "Root";
-          const rootLabel =
-            (rootNameCounts.get(rootName) ?? 0) > 1
-              ? `${rootName} (root ${(projectRoot?.ordinal ?? 0) + 1})`
-              : rootName;
+          const rootLabel = disambiguatedRootLabel(
+            rootName,
+            projectRoot?.ordinal ?? 0,
+            rootNameCounts,
+          );
           return (
             <section className="source-root" key={repository.rootId}>
               <div className="source-control-list__group">
