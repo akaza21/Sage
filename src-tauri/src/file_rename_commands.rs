@@ -35,16 +35,45 @@ pub async fn rename_project_folder(
     state: State<'_, AppState>,
     request: RenameProjectFileRequest,
 ) -> Result<RenameProjectFileResult, String> {
-    execute(&state, request)
+    execute_folder(&state, request)
         .await
         .map_err(|error| error.to_string())
+}
+
+#[derive(Clone, Copy)]
+enum RenameKind {
+    File,
+    Folder,
 }
 
 async fn execute(
     state: &AppState,
     request: RenameProjectFileRequest,
 ) -> AppResult<RenameProjectFileResult> {
-    execute_with_hooks(state, request, |_| Ok(()), || Ok(()), || Ok(())).await
+    execute_with_kind(
+        state,
+        request,
+        RenameKind::File,
+        |_| Ok(()),
+        || Ok(()),
+        || Ok(()),
+    )
+    .await
+}
+
+async fn execute_folder(
+    state: &AppState,
+    request: RenameProjectFileRequest,
+) -> AppResult<RenameProjectFileResult> {
+    execute_with_kind(
+        state,
+        request,
+        RenameKind::Folder,
+        |_| Ok(()),
+        || Ok(()),
+        || Ok(()),
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -62,6 +91,30 @@ where
 async fn execute_with_hooks<F, R, S>(
     state: &AppState,
     request: RenameProjectFileRequest,
+    after_rename: F,
+    before_recovery: R,
+    before_snapshot: S,
+) -> AppResult<RenameProjectFileResult>
+where
+    F: FnOnce(&rusqlite::Transaction<'_>) -> AppResult<()> + Send + 'static,
+    R: FnOnce() -> AppResult<()>,
+    S: FnOnce() -> AppResult<()>,
+{
+    execute_with_kind(
+        state,
+        request,
+        RenameKind::File,
+        after_rename,
+        before_recovery,
+        before_snapshot,
+    )
+    .await
+}
+
+async fn execute_with_kind<F, R, S>(
+    state: &AppState,
+    request: RenameProjectFileRequest,
+    kind: RenameKind,
     after_rename: F,
     before_recovery: R,
     before_snapshot: S,
@@ -94,8 +147,13 @@ where
     let operation = tauri::async_runtime::spawn_blocking(move || {
         let coordinated_marker = Arc::clone(&operation_marker);
         let coordinated = operations.execute_project_transition(operation_ticket, || {
-            let result =
-                execute_blocking(database, operation_request, operation_marker, after_rename);
+            let result = execute_blocking(
+                database,
+                operation_request,
+                kind,
+                operation_marker,
+                after_rename,
+            );
             if result.is_ok() || coordinated_marker.committed() {
                 Ok(result)
             } else {
@@ -115,7 +173,7 @@ where
         Ok(Ok(commit)) => (FileRenameOutcome::EffectUnknown, commit),
         Ok(Err(_)) | Err(_) if filesystem_committed => {
             let recovered = before_recovery().and_then(|()| {
-                recover_effect_unknown(recovery_database, recovery_request, &marker)
+                recover_effect_unknown(recovery_database, recovery_request, kind, &marker)
             });
             (
                 FileRenameOutcome::EffectUnknown,
@@ -154,6 +212,7 @@ where
 fn execute_blocking<F>(
     database: Database,
     request: RenameProjectFileRequest,
+    kind: RenameKind,
     marker: Arc<FileRenameMarker>,
     after_rename: F,
 ) -> AppResult<FileRenameCommit>
@@ -163,11 +222,27 @@ where
     let mut connection = database.write_connection()?;
     let transaction = connection.transaction()?;
     let workspace = resolve_workspace(&transaction, &request)?;
-    let target = workspace.rename_file_target(&request.source, &request.basename)?;
-    ensure_resources_closed(&transaction, &request.project_id, &request.source, &target)?;
+    let target = match kind {
+        RenameKind::File => workspace.rename_file_target(&request.source, &request.basename)?,
+        RenameKind::Folder => workspace.rename_file_target(&request.source, &request.basename)?,
+    };
+    ensure_resources_closed(
+        &transaction,
+        &request.project_id,
+        &request.source,
+        &target,
+        kind,
+    )?;
     validate_layout(&transaction, &request.current_layout)?;
-    ensure_request_resources_closed(&request, &target)?;
-    let commit = workspace.rename_file_observed(&request.source, &request.basename, marker)?;
+    ensure_request_resources_closed(&request, &target, kind)?;
+    let commit = match kind {
+        RenameKind::File => {
+            workspace.rename_file_observed(&request.source, &request.basename, marker)?
+        }
+        RenameKind::Folder => {
+            workspace.rename_empty_folder_observed(&request.source, &request.basename, marker)?
+        }
+    };
     if commit.resource_confirmed {
         migrate_selection(
             &transaction,
@@ -184,16 +259,35 @@ where
 fn recover_effect_unknown(
     database: Database,
     request: RenameProjectFileRequest,
+    kind: RenameKind,
     marker: &FileRenameMarker,
 ) -> AppResult<FileRenameCommit> {
     let mut connection = database.write_connection()?;
     let transaction = connection.transaction()?;
     let workspace = resolve_workspace(&transaction, &request)?;
-    let target = workspace.rename_file_target(&request.source, &request.basename)?;
-    ensure_resources_closed(&transaction, &request.project_id, &request.source, &target)?;
+    let target = match kind {
+        RenameKind::File => workspace.rename_file_target(&request.source, &request.basename)?,
+        RenameKind::Folder => workspace.rename_file_target(&request.source, &request.basename)?,
+    };
+    ensure_resources_closed(
+        &transaction,
+        &request.project_id,
+        &request.source,
+        &target,
+        kind,
+    )?;
     validate_layout(&transaction, &request.current_layout)?;
-    ensure_request_resources_closed(&request, &target)?;
-    let commit = workspace.confirm_renamed_file(&request.source, &request.basename, marker)?;
+    ensure_request_resources_closed(&request, &target, kind)?;
+    let commit = match kind {
+        RenameKind::File => {
+            workspace.confirm_renamed_file(&request.source, &request.basename, marker)?
+        }
+        RenameKind::Folder => {
+            return Err(AppError::InvalidRequest(
+                "folder rename recovery authority is unavailable".into(),
+            ));
+        }
+    };
     if commit.resource_confirmed {
         migrate_selection(
             &transaction,
@@ -251,19 +345,27 @@ fn ensure_resources_closed(
     project_id: &str,
     source: &ResourceRef,
     target: &ResourceRef,
+    kind: RenameKind,
 ) -> AppResult<()> {
     let tab_reference: bool = transaction.query_row(
         "SELECT EXISTS(
            SELECT 1 FROM workbench_tabs
            WHERE project_id=?1 AND kind IN ('file','diff')
              AND json_extract(metadata_json,'$.resource.rootId')=?2
-             AND json_extract(metadata_json,'$.resource.relativePath') IN (?3,?4)
+             AND (
+               json_extract(metadata_json,'$.resource.relativePath') IN (?3,?4)
+               OR (
+                 ?5=1
+                 AND substr(json_extract(metadata_json,'$.resource.relativePath'),1,length(?3)+1)=?3 || '/'
+               )
+             )
          )",
         params![
             project_id,
             source.root_id,
             source.relative_path,
-            target.relative_path
+            target.relative_path,
+            (kind as u8)
         ],
         |row| row.get(0),
     )?;
@@ -275,13 +377,18 @@ fn ensure_resources_closed(
     let buffer_reference: bool = transaction.query_row(
         "SELECT EXISTS(
            SELECT 1 FROM editor_buffers
-           WHERE project_id=?1 AND root_id=?2 AND relative_path IN (?3,?4)
+           WHERE project_id=?1 AND root_id=?2
+             AND (
+               relative_path IN (?3,?4)
+               OR (?5=1 AND substr(relative_path,1,length(?3)+1)=?3 || '/')
+             )
          )",
         params![
             project_id,
             source.root_id,
             source.relative_path,
-            target.relative_path
+            target.relative_path,
+            (kind as u8)
         ],
         |row| row.get(0),
     )?;
@@ -296,13 +403,20 @@ fn ensure_resources_closed(
 fn ensure_request_resources_closed(
     request: &RenameProjectFileRequest,
     target: &ResourceRef,
+    kind: RenameKind,
 ) -> AppResult<()> {
     let has_reference = request.current_layout.tabs.iter().any(|tab| {
         matches!(tab.kind.as_str(), "file" | "diff")
-            && tab
-                .resource
-                .as_ref()
-                .is_some_and(|resource| resource == &request.source || resource == target)
+            && tab.resource.as_ref().is_some_and(|resource| {
+                resource == &request.source
+                    || resource == target
+                    || (matches!(kind, RenameKind::Folder)
+                        && resource.root_id == request.source.root_id
+                        && resource
+                            .relative_path
+                            .strip_prefix(&request.source.relative_path)
+                            .is_some_and(|suffix| suffix.starts_with('/')))
+            })
     });
     if has_reference {
         return Err(AppError::InvalidRequest(

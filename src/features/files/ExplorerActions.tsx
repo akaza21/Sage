@@ -9,6 +9,7 @@ import type { TrashResourceKind } from "../../domain/workbench";
 import { NewFileControl, NewFolderControl } from "./NewFileControl";
 import { explorerCreateParent } from "./newFileContract";
 import { RenameFileControl } from "./RenameFileControl";
+import { RenameFolderControl } from "./RenameFolderControl";
 import { TrashResourceControl } from "./TrashResourceControl";
 
 export function ExplorerActions() {
@@ -56,6 +57,13 @@ export function ExplorerActions() {
           selectedFolderListing.value.entries.length === 0
         ? "emptyFolder"
         : null;
+  const renameFolderSource =
+    selectedEntry?.kind === "directory" &&
+    selectedFolderListing?.phase === "ready" &&
+    !selectedFolderListing.value.truncated &&
+    selectedFolderListing.value.entries.length === 0
+      ? selectedEntry.resource
+      : null;
   const trashSource = trashKind ? (selectedEntry?.resource ?? null) : null;
   const selectedRootName =
     project?.roots.find((root) => root.id === selectedResource?.rootId)?.name ??
@@ -67,6 +75,10 @@ export function ExplorerActions() {
       <NewFileControl parent={parent} rootName={parentRootName} />
       <NewFolderControl parent={parent} rootName={parentRootName} />
       <RenameFileControl source={renameSource} rootName={selectedRootName} />
+      <RenameFolderControl
+        source={renameFolderSource}
+        rootName={selectedRootName}
+      />
       <TrashResourceControl
         source={trashSource}
         kind={trashKind}

@@ -29,7 +29,7 @@ export interface ResourceSlice {
   requestIntentSequence: number;
   openDiff: (resource: ResourceRef) => Promise<void>;
   openFile: (resource: ResourceRef) => Promise<void>;
-  loadDirectory: (resource: ResourceRef) => Promise<void>;
+  loadDirectory: (resource: ResourceRef, refresh?: boolean) => Promise<void>;
   toggleDirectory: (resource: ResourceRef) => void;
   selectDirectory: (resource: ResourceRef) => void;
   revealFile: (resource: ResourceRef) => Promise<void>;
@@ -173,7 +173,7 @@ export const createResourceSlice: StateCreator<
     void get().revealFile(resource);
   },
 
-  loadDirectory: async (resource) => {
+  loadDirectory: async (resource, refresh = false) => {
     const generation = get().projectGeneration;
     const projectId = get().project?.id;
     if (
@@ -185,7 +185,10 @@ export const createResourceSlice: StateCreator<
     const key = resourceKey(resource);
     const requestKey = `directory:${key}`;
     const existing = get().directoryListings[key];
-    if (existing?.phase === "loading" || existing?.phase === "ready") {
+    if (
+      existing?.phase === "loading" ||
+      (existing?.phase === "ready" && !refresh && !existing.value.truncated)
+    ) {
       return;
     }
     let requestGeneration = 0;
@@ -207,14 +210,35 @@ export const createResourceSlice: StateCreator<
         ),
       };
     });
+    const acceptsDirectoryResult = () => {
+      const current = get();
+      const projectMatches = matchesResourceIntent(
+        current,
+        generation,
+        projectId,
+        resource,
+      );
+      const requestMatches = matchesRequestIntent(
+        current,
+        requestKey,
+        requestGeneration,
+      );
+      const expanded =
+        resource.relativePath === "" ||
+        current.expandedDirectories[resourceKey(resource)];
+      if (!projectMatches && requestMatches) {
+        set((state) => {
+          if (state.directoryListings[key]?.phase !== "loading") return {};
+          const directoryListings = { ...state.directoryListings };
+          delete directoryListings[key];
+          return { directoryListings };
+        });
+      }
+      return projectMatches && requestMatches && expanded;
+    };
     try {
       const value = await getWorkbenchPorts().project.listDirectory(resource);
-      if (
-        !matchesResourceIntent(get(), generation, projectId, resource) ||
-        !matchesRequestIntent(get(), requestKey, requestGeneration) ||
-        (resource.relativePath !== "" &&
-          !get().expandedDirectories[resourceKey(resource)])
-      ) {
+      if (!acceptsDirectoryResult()) {
         return;
       }
       set((state) => ({
@@ -226,12 +250,7 @@ export const createResourceSlice: StateCreator<
         ),
       }));
     } catch (error) {
-      if (
-        !matchesResourceIntent(get(), generation, projectId, resource) ||
-        !matchesRequestIntent(get(), requestKey, requestGeneration) ||
-        (resource.relativePath !== "" &&
-          !get().expandedDirectories[resourceKey(resource)])
-      ) {
+      if (!acceptsDirectoryResult()) {
         return;
       }
       set((state) => ({

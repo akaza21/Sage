@@ -1,5 +1,8 @@
 use std::sync::{Arc, Mutex};
 
+#[cfg(windows)]
+use std::fs;
+
 use crate::{
     domain::{DirectoryListing, ResourceRef},
     error::{AppError, AppResult},
@@ -35,6 +38,7 @@ impl FileRenameCommit {
 #[derive(Default)]
 pub(crate) struct FileRenameMarker {
     authority: Mutex<Option<Arc<platform::FileRenameAuthority>>>,
+    committed: Mutex<bool>,
 }
 
 impl FileRenameMarker {
@@ -43,13 +47,24 @@ impl FileRenameMarker {
             .authority
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(authority);
+        *self
+            .committed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
+    }
+
+    pub(crate) fn mark_committed(&self) {
+        *self
+            .committed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
     }
 
     pub(crate) fn committed(&self) -> bool {
-        self.authority
+        *self
+            .committed
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_some()
     }
 
     fn authority(&self) -> Option<Arc<platform::FileRenameAuthority>> {
@@ -86,6 +101,118 @@ impl Workspace {
             root_id: self.root_id().into(),
             relative_path: target_path,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn rename_empty_folder(
+        &self,
+        source: &ResourceRef,
+        basename: &str,
+    ) -> AppResult<FileRenameCommit> {
+        self.rename_empty_folder_with(
+            source,
+            basename,
+            Arc::new(FileRenameMarker::default()),
+            |parent| self.list_directory(parent),
+        )
+    }
+
+    pub(crate) fn rename_empty_folder_observed(
+        &self,
+        source: &ResourceRef,
+        basename: &str,
+        marker: Arc<FileRenameMarker>,
+    ) -> AppResult<FileRenameCommit> {
+        self.rename_empty_folder_with(source, basename, marker, |parent| {
+            self.list_directory(parent)
+        })
+    }
+
+    fn rename_empty_folder_with<L>(
+        &self,
+        source: &ResourceRef,
+        basename: &str,
+        marker: Arc<FileRenameMarker>,
+        list_after: L,
+    ) -> AppResult<FileRenameCommit>
+    where
+        L: FnOnce(&ResourceRef) -> AppResult<DirectoryListing>,
+    {
+        #[cfg(not(windows))]
+        {
+            let _ = (source, basename, marker, list_after);
+            return Err(AppError::Unsupported(
+                "empty-folder rename is currently supported only on Windows".into(),
+            ));
+        }
+        #[cfg(windows)]
+        {
+            let source_path = self.validate_resource(source, false)?;
+            if source_path.is_empty() {
+                return Err(AppError::InvalidRequest(
+                    "folder rename source must not be the Project root".into(),
+                ));
+            }
+            let (parent_path, source_name) = source_path
+                .rsplit_once('/')
+                .map_or(("", source_path.as_str()), |(parent, name)| (parent, name));
+            let target = self.rename_file_target(source, basename)?;
+            let parent = ResourceRef {
+                root_id: self.root_id().into(),
+                relative_path: parent_path.into(),
+            };
+            let before = self.list_directory(&parent)?;
+            if before.truncated {
+                return Err(AppError::ResourceLimit(
+                    "folder rename requires a complete parent listing".into(),
+                ));
+            }
+            if !before.entries.iter().any(|entry| {
+                entry.name == source_name && entry.resource == *source && entry.kind == "directory"
+            }) {
+                return Err(AppError::InvalidRequest(
+                    "folder rename source must be one exact non-reparse directory".into(),
+                ));
+            }
+            let source_listing = self.list_directory(source)?;
+            if source_listing.truncated || !source_listing.entries.is_empty() {
+                return Err(AppError::InvalidRequest(
+                    "folder rename source must be an empty directory".into(),
+                ));
+            }
+            let source_path = self.root().join(&source_path);
+            let target_path = self.root().join(&target.relative_path);
+            if target_path.try_exists()? {
+                return Err(AppError::InvalidRequest(
+                    "folder rename target already exists".into(),
+                ));
+            }
+            fs::rename(source_path, target_path)?;
+            marker.mark_committed();
+            let parent_listing = list_after(&parent).ok().filter(|listing| {
+                !listing.truncated
+                    && listing.entries.iter().any(|entry| {
+                        entry.resource == target
+                            && entry.kind == "directory"
+                            && entry.byte_len.is_none()
+                    })
+                    && !listing
+                        .entries
+                        .iter()
+                        .any(|entry| entry.resource == *source)
+            });
+            let resource_confirmed = parent_listing.is_some();
+            Ok(FileRenameCommit {
+                source: source.clone(),
+                target,
+                resource_confirmed,
+                parent_listing,
+                warning: (!resource_confirmed).then(|| {
+                    "Folder rename completed, but Explorer could not confirm the exact directory identity; Explorer is refreshing."
+                        .into()
+                }),
+            })
+        }
     }
 
     #[cfg(test)]
