@@ -30,6 +30,16 @@ pub async fn rename_project_file(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub async fn rename_project_folder(
+    state: State<'_, AppState>,
+    request: RenameProjectFileRequest,
+) -> Result<RenameProjectFileResult, String> {
+    execute(&state, request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 async fn execute(
     state: &AppState,
     request: RenameProjectFileRequest,
