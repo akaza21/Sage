@@ -124,7 +124,10 @@ pub fn authenticode_win_verify_trust(
     }
     #[cfg(not(windows))]
     {
-        let _ = (path, policy);
+        // Keep absent or unreadable artifacts distinct from the lack of a
+        // platform WinVerifyTrust implementation.
+        File::open(path).map_err(|_| VerifyError::Artifact)?;
+        let _ = policy;
         Err(VerifyError::Authenticode)
     }
 }
