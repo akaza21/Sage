@@ -6,12 +6,12 @@ import type {
   EditorDocument,
   ResourceRef,
 } from "../domain/workbench";
-import { desktop } from "../services/desktop";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { useWorkbenchStore } from "./store";
 
 const projectPort = getWorkbenchPorts().project;
 const initialState = useWorkbenchStore.getState();
+const editorPort = getWorkbenchPorts().editor;
 const oldResource = { rootId: "root-a", relativePath: "src/old.ts" };
 const parent = { rootId: "root-a", relativePath: "src" };
 const created = { rootId: "root-a", relativePath: "src/new.ts" };
@@ -100,7 +100,9 @@ beforeEach(() => {
     fileCreateError: null,
     fileCreateRequestGeneration: 0,
   });
-  vi.spyOn(desktop, "openEditorDocument").mockResolvedValue(document(created));
+  vi.spyOn(editorPort, "openEditorDocument").mockResolvedValue(
+    document(created),
+  );
 });
 
 afterEach(() => {
@@ -125,7 +127,7 @@ describe("file creation store transaction", () => {
       },
     });
     const snapshot = vi
-      .spyOn(desktop, "snapshotEditorBuffer")
+      .spyOn(editorPort, "snapshotEditorBuffer")
       .mockResolvedValue({
         revision: 2,
         persistedAt: 1,
@@ -181,7 +183,7 @@ describe("file creation store transaction", () => {
     expect(
       useWorkbenchStore.getState().directoryListings[resourceKey(parent)],
     ).toEqual({ phase: "ready", value: result().parentListing });
-    expect(desktop.openEditorDocument).toHaveBeenCalledWith(created);
+    expect(editorPort.openEditorDocument).toHaveBeenCalledWith(created);
   });
 
   it("refreshes and warns without opening an unconfirmed effect", async () => {
@@ -208,7 +210,7 @@ describe("file creation store transaction", () => {
     ).toBe(true);
 
     expect(loadDirectory).toHaveBeenCalledWith(parent);
-    expect(desktop.openEditorDocument).not.toHaveBeenCalled();
+    expect(editorPort.openEditorDocument).not.toHaveBeenCalled();
     expect(
       useWorkbenchStore.getState().directoryListings[resourceKey(parent)],
     ).toBeUndefined();

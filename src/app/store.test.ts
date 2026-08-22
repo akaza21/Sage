@@ -36,6 +36,7 @@ const resource = (relativePath: string, rootId = "root-a"): ResourceRef => ({
   rootId,
   relativePath,
 });
+const editorPort = getWorkbenchPorts().editor;
 const chatTab: WorkbenchTab = {
   id: "chat:a",
   kind: "chat",
@@ -435,7 +436,7 @@ describe("workbench resource and project navigation", () => {
 
   it("keeps source state isolated when handoff editor flush or navigation fails", async () => {
     const selectedResource = resource("src/dirty.ts");
-    vi.spyOn(desktop, "snapshotEditorBuffer").mockRejectedValueOnce(
+    vi.spyOn(editorPort, "snapshotEditorBuffer").mockRejectedValueOnce(
       new Error("snapshot unavailable"),
     );
     const activate = vi.spyOn(getWorkbenchPorts().chat, "activateChat");
@@ -565,7 +566,7 @@ describe("workbench resource and project navigation", () => {
       resource: selectedResource,
     };
     const snapshot = vi
-      .spyOn(desktop, "snapshotEditorBuffer")
+      .spyOn(editorPort, "snapshotEditorBuffer")
       .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
     const pendingRename = deferred<RenameChatResult>();
     const rename = vi
@@ -667,7 +668,7 @@ describe("workbench resource and project navigation", () => {
       dirty: true,
       resource: selectedResource,
     };
-    vi.spyOn(desktop, "snapshotEditorBuffer").mockRejectedValue(
+    vi.spyOn(editorPort, "snapshotEditorBuffer").mockRejectedValue(
       new Error("snapshot unavailable"),
     );
     const rename = vi.spyOn(getWorkbenchPorts().chat, "renameChat");
@@ -763,7 +764,7 @@ describe("workbench resource and project navigation", () => {
       resource: selectedResource,
     };
     const snapshot = vi
-      .spyOn(desktop, "snapshotEditorBuffer")
+      .spyOn(editorPort, "snapshotEditorBuffer")
       .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
     const pendingArchive = deferred<ArchiveChatResult>();
     const archive = vi
@@ -989,7 +990,7 @@ describe("workbench resource and project navigation", () => {
       status: "idle",
       resource: selectedResource,
     };
-    vi.spyOn(desktop, "snapshotEditorBuffer").mockRejectedValue(
+    vi.spyOn(editorPort, "snapshotEditorBuffer").mockRejectedValue(
       new Error("snapshot unavailable"),
     );
     const restore = vi.spyOn(getWorkbenchPorts().chat, "restoreChat");
@@ -1548,9 +1549,9 @@ describe("workbench resource and project navigation", () => {
       resource: right,
     };
     const snapshot = vi
-      .spyOn(desktop, "snapshotEditorBuffer")
+      .spyOn(editorPort, "snapshotEditorBuffer")
       .mockResolvedValue({ revision: 2, persistedAt: 1, dirty: true });
-    vi.spyOn(desktop, "openEditorDocument").mockResolvedValue(
+    vi.spyOn(editorPort, "openEditorDocument").mockResolvedValue(
       document(right, "fn needle() {}\n", 0, false),
     );
     useWorkbenchStore.setState({
@@ -1608,7 +1609,7 @@ describe("workbench resource and project navigation", () => {
   it("retires Search navigation when its Project intent becomes stale", async () => {
     const target = resource("src/stale.ts");
     const pending = deferred<EditorDocument>();
-    vi.spyOn(desktop, "openEditorDocument").mockReturnValue(pending.promise);
+    vi.spyOn(editorPort, "openEditorDocument").mockReturnValue(pending.promise);
 
     const navigation = useWorkbenchStore.getState().openSearchMatch({
       projectId: "project-a",
@@ -1700,7 +1701,7 @@ describe("workbench resource and project navigation", () => {
     };
     const first = deferred<BufferSnapshotAck>();
     const requests: string[] = [];
-    vi.spyOn(desktop, "snapshotEditorBuffer").mockImplementation(
+    vi.spyOn(editorPort, "snapshotEditorBuffer").mockImplementation(
       async (request) => {
         requests.push(request.content);
         return requests.length === 1
@@ -1712,7 +1713,7 @@ describe("workbench resource and project navigation", () => {
             };
       },
     );
-    vi.spyOn(desktop, "saveEditorDocument").mockResolvedValue({
+    vi.spyOn(editorPort, "saveEditorDocument").mockResolvedValue({
       outcome: "saved",
       document: document(target, "latest\n", 2, false),
     });
@@ -1749,7 +1750,7 @@ describe("workbench resource and project navigation", () => {
 
   it("blocks project switching when the newest snapshot fails", async () => {
     const target = resource("dirty.txt");
-    vi.spyOn(desktop, "snapshotEditorBuffer").mockRejectedValue(
+    vi.spyOn(editorPort, "snapshotEditorBuffer").mockRejectedValue(
       new Error("disk unavailable"),
     );
     const switchNative = vi.spyOn(projectPort, "switchProject");
@@ -1871,7 +1872,7 @@ describe("workbench resource and project navigation", () => {
     };
     const pending = deferred<BufferSnapshotAck>();
     const snapshot = vi
-      .spyOn(desktop, "snapshotEditorBuffer")
+      .spyOn(editorPort, "snapshotEditorBuffer")
       .mockReturnValue(pending.promise);
     useWorkbenchStore.setState({
       tabs: [chatTab, fileTab],
@@ -1908,12 +1909,12 @@ describe("workbench resource and project navigation", () => {
       dirty: true,
       resource: target,
     };
-    vi.spyOn(desktop, "snapshotEditorBuffer").mockResolvedValue({
+    vi.spyOn(editorPort, "snapshotEditorBuffer").mockResolvedValue({
       revision: 1,
       persistedAt: 1,
       dirty: true,
     });
-    vi.spyOn(desktop, "saveEditorDocument").mockResolvedValue({
+    vi.spyOn(editorPort, "saveEditorDocument").mockResolvedValue({
       outcome: "saved",
       document: document(target, "saved", 1, false),
     });
@@ -2065,7 +2066,9 @@ describe("workbench resource and project navigation", () => {
         resource: target,
       };
       const pending = deferred<EditorDocument>();
-      vi.spyOn(desktop, "openEditorDocument").mockReturnValue(pending.promise);
+      vi.spyOn(editorPort, "openEditorDocument").mockReturnValue(
+        pending.promise,
+      );
       vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
         resource: resource("", "root-b"),
         entries: [],
@@ -3235,7 +3238,7 @@ describe("workbench resource and project navigation", () => {
         },
       });
       const snapshot = vi
-        .spyOn(desktop, "snapshotEditorBuffer")
+        .spyOn(editorPort, "snapshotEditorBuffer")
         .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
       const persist = vi
         .spyOn(projectPort, "persistProjectLayout")
@@ -3374,8 +3377,10 @@ describe("workbench resource and project navigation", () => {
   it("rejects old project-scoped actions while a transition flush is pending", async () => {
     const target = resource("old-action.txt");
     const pending = deferred<BufferSnapshotAck>();
-    vi.spyOn(desktop, "snapshotEditorBuffer").mockReturnValue(pending.promise);
-    const open = vi.spyOn(desktop, "openEditorDocument");
+    vi.spyOn(editorPort, "snapshotEditorBuffer").mockReturnValue(
+      pending.promise,
+    );
+    const open = vi.spyOn(editorPort, "openEditorDocument");
     vi.spyOn(projectPort, "switchProject").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
@@ -3497,7 +3502,7 @@ describe("workbench resource and project navigation", () => {
       if (kind === "editor") {
         const old = deferred<EditorDocument>();
         let calls = 0;
-        vi.spyOn(desktop, "openEditorDocument").mockImplementation(() => {
+        vi.spyOn(editorPort, "openEditorDocument").mockImplementation(() => {
           calls += 1;
           return calls === 1
             ? old.promise
