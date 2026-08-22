@@ -5,7 +5,7 @@ import type {
   BootstrapSnapshot,
   ProjectLayoutRequest,
 } from "../domain/workbench";
-import { desktop } from "../services/desktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import {
   createChatTransitionContext,
   errorMessage,
@@ -26,6 +26,7 @@ export const createChatArchiveSlice: StateCreator<
   [],
   ChatArchiveSlice
 > = (set, get) => {
+  const { chat } = getWorkbenchPorts();
   const { runChatTransition } = createChatTransitionContext(set, get);
 
   return {
@@ -85,7 +86,7 @@ export const createChatArchiveSlice: StateCreator<
         action: "archive",
         expectedTransitionEpoch,
         invoke: () =>
-          desktop.archiveChat(
+          chat.archiveChat(
             { projectId: current.projectId, chatId, currentLayout: current },
             expectedTransitionEpoch,
           ),
@@ -143,7 +144,7 @@ export const createChatArchiveSlice: StateCreator<
         action: "restore",
         expectedTransitionEpoch,
         invoke: () =>
-          desktop.restoreChat(
+          chat.restoreChat(
             { projectId: current.projectId, chatId, currentLayout: current },
             expectedTransitionEpoch,
           ),

@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 
-import { desktop } from "../services/desktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import {
   boundedChatError,
   validateChatComposerText,
@@ -263,7 +263,7 @@ export const createChatOwnershipSlice: StateCreator<
       sendRequestGeneration: requestGeneration,
     });
     try {
-      const result = await desktop.sendPrompt({
+      const result = await getWorkbenchPorts().agent.sendPrompt({
         chatId,
         harnessId: state.selectedHarnessId,
         modelId: state.selectedModelId,

@@ -8,6 +8,7 @@ import {
   MAX_CHAT_ERROR_BYTES,
   MAX_CHAT_OWNERSHIP_ENTRIES,
 } from "../domain/chatOwnership";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { desktop } from "../services/desktop";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { useWorkbenchStore } from "./store";
@@ -34,6 +35,9 @@ const chatB: WorkbenchTab = {
 };
 
 const initialState = useWorkbenchStore.getState();
+type AgentSendResult = Awaited<
+  ReturnType<ReturnType<typeof getWorkbenchPorts>["agent"]["sendPrompt"]>
+>;
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -95,7 +99,7 @@ beforeEach(() => {
     nativeTransitionEpoch: 0,
     projectTransitioning: false,
   });
-  vi.spyOn(desktop, "activateChat").mockImplementation(
+  vi.spyOn(getWorkbenchPorts().chat, "activateChat").mockImplementation(
     async (layout, expectedTransitionEpoch) => ({
       committed: true,
       transitionEpoch: expectedTransitionEpoch + 1,
@@ -203,7 +207,7 @@ describe("per-Chat disposable ownership", () => {
     useWorkbenchStore.getState().setComposerText("Draft B");
     await useWorkbenchStore.getState().activateChat(chatA.id);
 
-    vi.spyOn(desktop, "archiveChat").mockImplementation(
+    vi.spyOn(getWorkbenchPorts().chat, "archiveChat").mockImplementation(
       async (_request, expectedTransitionEpoch) => ({
         committed: true,
         transitionEpoch: expectedTransitionEpoch + 1,
@@ -216,7 +220,7 @@ describe("per-Chat disposable ownership", () => {
     expect(await useWorkbenchStore.getState().archiveChat(chatB.id)).toBe(true);
     expect(useWorkbenchStore.getState().composerText).toBe("Draft A");
 
-    vi.spyOn(desktop, "restoreChat").mockImplementation(
+    vi.spyOn(getWorkbenchPorts().chat, "restoreChat").mockImplementation(
       async (_request, expectedTransitionEpoch) => ({
         committed: true,
         transitionEpoch: expectedTransitionEpoch + 1,
@@ -259,8 +263,10 @@ describe("per-Chat disposable ownership", () => {
   });
 
   it("keeps a background send and its failure on the captured Chat only", async () => {
-    const pending = deferred<Awaited<ReturnType<typeof desktop.sendPrompt>>>();
-    vi.spyOn(desktop, "sendPrompt").mockReturnValue(pending.promise);
+    const pending = deferred<AgentSendResult>();
+    vi.spyOn(getWorkbenchPorts().agent, "sendPrompt").mockReturnValue(
+      pending.promise,
+    );
     useWorkbenchStore.setState({
       selectedHarnessId: "sage-simulator",
       selectedModelId: "sim-fast",

@@ -10,6 +10,7 @@ import type {
   SageChatId,
   SageProjectId,
 } from "../../../domain/acp";
+import { getWorkbenchPorts } from "../../../ports/workbenchRuntime";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { desktop } from "../../../services/desktop";
 import { getWorkbenchPorts } from "../../../ports/workbenchRuntime";
@@ -102,7 +103,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
     const send = vi
       .spyOn(acpDesktop, "sendTurn")
       .mockReturnValue(pending.promise);
-    vi.spyOn(desktop, "activateChat").mockImplementation(
+    vi.spyOn(getWorkbenchPorts().chat, "activateChat").mockImplementation(
       async (layout, expectedTransitionEpoch) => ({
         committed: true,
         transitionEpoch: expectedTransitionEpoch + 1,
@@ -172,7 +173,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
     const send = vi
       .spyOn(acpDesktop, "sendTurn")
       .mockReturnValue(pending.promise);
-    vi.spyOn(desktop, "activateChat").mockImplementation(
+    vi.spyOn(getWorkbenchPorts().chat, "activateChat").mockImplementation(
       async (layout, expectedTransitionEpoch) => ({
         committed: true,
         transitionEpoch: expectedTransitionEpoch + 1,

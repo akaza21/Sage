@@ -4,8 +4,9 @@ import { childResource } from "../domain/resourceIdentity";
 import type {
   BootstrapSnapshot,
   ProjectLayoutRequest,
+  ProjectTransitionResult,
 } from "../domain/workbench";
-import { desktop } from "../services/desktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import {
   matchesProjectIntent,
   nextProjectGeneration,
@@ -106,6 +107,7 @@ export function createChatTransitionContext(
   set: StoreApi<WorkbenchState>["setState"],
   get: StoreApi<WorkbenchState>["getState"],
 ) {
+  const { project } = getWorkbenchPorts();
   const applyProjection = async (
     snapshot: BootstrapSnapshot,
     generation: number,
@@ -152,7 +154,7 @@ export function createChatTransitionContext(
     );
     for (let attempt = 0; attempt < MAX_PROJECTION_ATTEMPTS; attempt += 1) {
       try {
-        const snapshot = await desktop.getBootstrapSnapshot();
+        const snapshot = await project.getBootstrapSnapshot();
         const outcome = classify(snapshot);
         if (!outcome) {
           throw new Error(
@@ -171,7 +173,7 @@ export function createChatTransitionContext(
   const runChatTransition = async (options: {
     action: "activation" | "rename" | "archive" | "restore";
     expectedTransitionEpoch: number;
-    invoke: () => ReturnType<typeof desktop.activateChat>;
+    invoke: () => Promise<ProjectTransitionResult>;
     classify: (snapshot: BootstrapSnapshot) => ProjectionOutcome;
   }): Promise<ProjectionOutcome | null> => {
     set({ projectTransitioning: true, error: null });
