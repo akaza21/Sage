@@ -183,10 +183,11 @@ export const createResourceSlice: StateCreator<
       return;
     }
     const key = resourceKey(resource);
-    const requestKey = `directory:${key}`;
+    const requestKey = `directory:${generation}:${key}`;
     const existing = get().directoryListings[key];
     if (
-      existing?.phase === "loading" ||
+      (existing?.phase === "loading" &&
+        get().requestGenerations[requestKey] !== undefined) ||
       (existing?.phase === "ready" && !refresh && !existing.value.truncated)
     ) {
       return;
@@ -228,7 +229,12 @@ export const createResourceSlice: StateCreator<
         current.expandedDirectories[resourceKey(resource)];
       if (!projectMatches && requestMatches) {
         set((state) => {
-          if (state.directoryListings[key]?.phase !== "loading") return {};
+          if (
+            state.requestGenerations[requestKey] !== requestGeneration ||
+            state.directoryListings[key]?.phase !== "loading"
+          ) {
+            return {};
+          }
           const directoryListings = { ...state.directoryListings };
           delete directoryListings[key];
           return { directoryListings };

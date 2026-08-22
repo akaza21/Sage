@@ -163,6 +163,48 @@ fn non_empty_and_non_directory_folder_sources_fail_closed() {
 
 #[cfg(windows)]
 #[test]
+fn dot_git_only_folder_sources_fail_closed() {
+    let fixture = Fixture::new();
+    fs::create_dir(fixture.root.join("src/repository")).unwrap();
+    fs::create_dir(fixture.root.join("src/repository/.git")).unwrap();
+    let source = fixture.workspace.resource("src/repository").unwrap();
+
+    assert!(
+        fixture
+            .workspace
+            .rename_empty_folder(&source, "renamed")
+            .is_err()
+    );
+    assert!(fixture.root.join("src/repository/.git").is_dir());
+    assert!(!fixture.root.join("src/renamed").exists());
+}
+
+#[cfg(windows)]
+#[test]
+fn held_empty_folder_closes_child_creation_and_source_replacement_before_rename() {
+    let fixture = Fixture::new();
+    fs::create_dir(fixture.root.join("src/empty")).unwrap();
+    let source = fixture.workspace.resource("src/empty").unwrap();
+    let source_path = fixture.root.join("src/empty");
+    let replacement_path = fixture.root.join("src/replacement");
+
+    let result = fixture
+        .workspace
+        .rename_empty_folder_with_hook(&source, "renamed", || {
+            assert!(fs::create_dir(source_path.join("child")).is_err());
+            assert!(fs::rename(&source_path, &replacement_path).is_err());
+            Ok(())
+        })
+        .unwrap();
+
+    assert_eq!(result.target.relative_path, "src/renamed");
+    assert!(fixture.root.join("src/renamed").is_dir());
+    assert!(!source_path.exists());
+    assert!(!replacement_path.exists());
+}
+
+#[cfg(windows)]
+#[test]
 fn held_empty_folder_fails_closed() {
     let fixture = Fixture::new();
     fs::create_dir(fixture.root.join("src/held")).unwrap();

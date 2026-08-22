@@ -147,4 +147,46 @@ describe("folder lifecycle public seam", () => {
       /getWorkbenchPorts\(\)\.project\.listDirectory/,
     );
   });
+
+  it("lets the current generation retry while an old directory listing is still hung", async () => {
+    let resolveOldListing: (() => void) | undefined;
+    const oldListing = new Promise<void>((resolve) => {
+      resolveOldListing = resolve;
+    });
+    const listDirectory = vi
+      .spyOn(fakeProjectPort, "listDirectory")
+      .mockReturnValueOnce(
+        oldListing.then(() => ({
+          resource: parent,
+          truncated: false,
+          entries: [],
+        })),
+      )
+      .mockResolvedValueOnce({
+        resource: parent,
+        truncated: false,
+        entries: [],
+      });
+
+    const oldLoad = useWorkbenchStore.getState().loadDirectory(parent, true);
+    await vi.waitFor(() =>
+      expect(
+        useWorkbenchStore.getState().directoryListings[resourceKey(parent)],
+      ).toEqual({ phase: "loading" }),
+    );
+
+    useWorkbenchStore.setState({ projectGeneration: 4 });
+    await useWorkbenchStore.getState().loadDirectory(parent, true);
+
+    expect(listDirectory).toHaveBeenCalledTimes(2);
+    expect(
+      useWorkbenchStore.getState().directoryListings[resourceKey(parent)],
+    ).toEqual({
+      phase: "ready",
+      value: { resource: parent, truncated: false, entries: [] },
+    });
+
+    resolveOldListing?.();
+    await oldLoad;
+  });
 });
