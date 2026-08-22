@@ -16,14 +16,18 @@ pub fn validate_layout_tab_repository(
 ) -> AppResult<()> {
     validate_tab_repository(kind, resource, repository)?;
     if let Some(repository) = repository {
-        validate_resource_for_project(
-            connection,
-            project_id,
-            &ResourceRef {
-                root_id: repository.root_id.clone(),
-                relative_path: repository.relative_path.clone(),
-            },
-        )?;
+        if repository.relative_path.is_empty() {
+            validate_root_membership(connection, project_id, &repository.root_id)?;
+        } else {
+            validate_resource_for_project(
+                connection,
+                project_id,
+                &ResourceRef {
+                    root_id: repository.root_id.clone(),
+                    relative_path: repository.relative_path.clone(),
+                },
+            )?;
+        }
     }
     Ok(())
 }

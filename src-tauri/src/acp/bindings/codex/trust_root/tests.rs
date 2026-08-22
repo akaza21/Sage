@@ -44,6 +44,17 @@ fn ephemeral_public_key_cannot_mint_a_verified_signature() {
     );
     assert!(source.contains("win_verify_trust_file"));
     assert!(source.contains("WINTRUST_ACTION_GENERIC_VERIFY_V2"));
+    let digest_fn = source
+        .find("fn verify_installed_authenticode_for_observed_digest")
+        .expect("test-only digest hook");
+    assert!(
+        source[..digest_fn].contains("#[cfg(test)]"),
+        "caller-chosen digest must not compile into production"
+    );
+    assert!(
+        !source.contains("std::fs::read("),
+        "PE digest must stream bounded reads"
+    );
     let err = authenticode_win_verify_trust(Path::new("codex.exe"), INSTALLED_AUTHENTICODE_POLICY);
     assert_eq!(err, Err(VerifyError::Authenticode));
     let production = WinVerifyTrustCatalog

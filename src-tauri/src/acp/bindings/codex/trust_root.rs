@@ -1,3 +1,4 @@
+use std::io::Read;
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
@@ -131,9 +132,14 @@ pub fn verify_installed_authenticode(
 ) -> Result<VerifiedSignature, VerifyError> {
     let binding = bind_packet_artifact(packet, artifact_relative_path)?;
     let observed = sha256_hex_file(pe_path)?;
-    finish_verified_signature(catalog, binding, pe_path, &observed)
+    if !sha256_eq(binding.artifact_sha256(), &observed) {
+        return Err(VerifyError::Artifact);
+    }
+    catalog.win_verify_trust_file(pe_path, INSTALLED_AUTHENTICODE_POLICY)?;
+    Ok(VerifiedSignature { binding })
 }
 
+#[cfg(test)]
 pub(crate) fn verify_installed_authenticode_for_observed_digest(
     catalog: &impl AuthenticodeCatalog,
     packet: &MetadataValidatedPacket,
@@ -142,15 +148,6 @@ pub(crate) fn verify_installed_authenticode_for_observed_digest(
     observed_sha256: &str,
 ) -> Result<VerifiedSignature, VerifyError> {
     let binding = bind_packet_artifact(packet, artifact_relative_path)?;
-    finish_verified_signature(catalog, binding, pe_path, observed_sha256)
-}
-
-fn finish_verified_signature(
-    catalog: &impl AuthenticodeCatalog,
-    binding: PacketArtifactBinding,
-    pe_path: &Path,
-    observed_sha256: &str,
-) -> Result<VerifiedSignature, VerifyError> {
     if !sha256_eq(binding.artifact_sha256(), observed_sha256) {
         return Err(VerifyError::Artifact);
     }
@@ -159,8 +156,17 @@ fn finish_verified_signature(
 }
 
 fn sha256_hex_file(path: &Path) -> Result<String, VerifyError> {
-    let bytes = std::fs::read(path).map_err(|_| VerifyError::Artifact)?;
-    Ok(hex(&Sha256::digest(bytes)))
+    let mut file = std::fs::File::open(path).map_err(|_| VerifyError::Artifact)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer).map_err(|_| VerifyError::Artifact)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hex(&hasher.finalize()))
 }
 
 fn sha256_eq(claimed: &str, observed: &str) -> bool {

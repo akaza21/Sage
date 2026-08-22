@@ -228,24 +228,23 @@ fn load_tabs(
                     .cloned()
                     .map(serde_json::from_value::<RepositoryRef>)
                     .transpose()
-                    .map_err(|error| AppError::InvalidRequest(error.to_string()))?
-                    .filter(|repository| !repository.relative_path.is_empty());
+                    .map_err(|error| AppError::InvalidRequest(error.to_string()))?;
                 validate_tab_repository(&kind, resource.as_ref(), repository.as_ref())?;
                 if let Some(repository) = &repository {
-                    let repository_resource = ResourceRef {
-                        root_id: repository.root_id.clone(),
-                        relative_path: repository.relative_path.clone(),
-                    };
-                    let root =
-                        roots
-                            .get(repository_resource.root_id.as_str())
-                            .ok_or_else(|| {
-                                AppError::InvalidRequest(
-                                    "persisted tab repository root is foreign to its project"
-                                        .into(),
-                                )
-                            })?;
-                    validate_resource_metadata(root, &repository_resource)?;
+                    let root = roots.get(repository.root_id.as_str()).ok_or_else(|| {
+                        AppError::InvalidRequest(
+                            "persisted tab repository root is foreign to its project".into(),
+                        )
+                    })?;
+                    if !repository.relative_path.is_empty() {
+                        validate_resource_metadata(
+                            root,
+                            &ResourceRef {
+                                root_id: repository.root_id.clone(),
+                                relative_path: repository.relative_path.clone(),
+                            },
+                        )?;
+                    }
                 }
                 if kind == "file" || kind == "diff" {
                     let resource = resource.as_ref().ok_or_else(|| {
@@ -695,5 +694,156 @@ mod tests {
             ),
         );
         assert!(fixture.database.bootstrap_snapshot().is_err());
+    }
+
+    #[test]
+    fn empty_path_repository_ref_is_rejected_not_dropped() {
+        let foreign = Fixture::new();
+        let fixture = Fixture::new();
+
+        assert!(
+            persist_extra_tab(
+                &fixture,
+                WorkbenchTab {
+                    repository: Some(RepositoryRef {
+                        root_id: fixture.root_id.clone(),
+                        relative_path: String::new(),
+                    }),
+                    ..nested_diff_tab(
+                        "file-empty-repo",
+                        &fixture.root_id,
+                        &fixture.root_id,
+                        "file",
+                    )
+                },
+            )
+            .is_err()
+        );
+        assert!(
+            persist_extra_tab(
+                &fixture,
+                WorkbenchTab {
+                    repository: Some(RepositoryRef {
+                        root_id: "not-the-resource-root".into(),
+                        relative_path: String::new(),
+                    }),
+                    ..nested_diff_tab(
+                        "diff-empty-mismatch",
+                        &fixture.root_id,
+                        "not-the-resource-root",
+                        "diff",
+                    )
+                },
+            )
+            .is_err()
+        );
+        assert!(
+            persist_extra_tab(
+                &fixture,
+                WorkbenchTab {
+                    repository: Some(RepositoryRef {
+                        root_id: foreign.root_id.clone(),
+                        relative_path: String::new(),
+                    }),
+                    ..nested_diff_tab(
+                        "diff-empty-foreign",
+                        &fixture.root_id,
+                        &foreign.root_id,
+                        "diff",
+                    )
+                },
+            )
+            .is_err()
+        );
+
+        fixture.insert_tab(
+            "restored-empty-file-repo",
+            "file",
+            &format!(
+                r#"{{"resource":{{"rootId":"{}","relativePath":"main.rs"}},"repository":{{"rootId":"{}","relativePath":""}}}}"#,
+                fixture.root_id, fixture.root_id
+            ),
+        );
+        assert!(fixture.database.bootstrap_snapshot().is_err());
+        fixture
+            .database
+            .connection()
+            .execute(
+                "DELETE FROM workbench_tabs WHERE id = 'restored-empty-file-repo'",
+                [],
+            )
+            .unwrap();
+
+        fixture.insert_tab(
+            "restored-empty-mismatch",
+            "diff",
+            &format!(
+                r#"{{"resource":{{"rootId":"{}","relativePath":"main.rs"}},"repository":{{"rootId":"not-the-resource-root","relativePath":""}}}}"#,
+                fixture.root_id
+            ),
+        );
+        assert!(fixture.database.bootstrap_snapshot().is_err());
+        fixture
+            .database
+            .connection()
+            .execute(
+                "DELETE FROM workbench_tabs WHERE id = 'restored-empty-mismatch'",
+                [],
+            )
+            .unwrap();
+
+        fixture.insert_tab(
+            "restored-empty-foreign",
+            "diff",
+            &format!(
+                r#"{{"resource":{{"rootId":"{}","relativePath":"main.rs"}},"repository":{{"rootId":"{}","relativePath":""}}}}"#,
+                fixture.root_id, foreign.root_id
+            ),
+        );
+        assert!(fixture.database.bootstrap_snapshot().is_err());
+        fixture
+            .database
+            .connection()
+            .execute(
+                "DELETE FROM workbench_tabs WHERE id = 'restored-empty-foreign'",
+                [],
+            )
+            .unwrap();
+
+        let mut snapshot = fixture.database.bootstrap_snapshot().unwrap();
+        snapshot.tabs.push(WorkbenchTab {
+            repository: Some(RepositoryRef {
+                root_id: fixture.root_id.clone(),
+                relative_path: String::new(),
+            }),
+            ..nested_diff_tab(
+                "diff-empty-root",
+                &fixture.root_id,
+                &fixture.root_id,
+                "diff",
+            )
+        });
+        fixture
+            .database
+            .persist_project_layout(&crate::domain::ProjectLayoutRequest {
+                project_id: fixture.project_id.clone(),
+                tabs: snapshot.tabs,
+                active_tab_id: snapshot.active_tab_id,
+                selected_root_id: Some(fixture.root_id.clone()),
+                selected_resource: snapshot.selected_resource,
+            })
+            .unwrap();
+        let restored = fixture.database.bootstrap_snapshot().unwrap();
+        let diff = restored
+            .tabs
+            .iter()
+            .find(|tab| tab.id == "diff-empty-root")
+            .expect("root-repo Diff tab");
+        assert_eq!(
+            diff.repository
+                .as_ref()
+                .map(|repository| repository.relative_path.as_str()),
+            Some("")
+        );
     }
 }

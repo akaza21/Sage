@@ -362,6 +362,6 @@ fn lower_even_hex(value: &str, minimum: usize, maximum: usize) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-#[cfg(all(test, windows))]
+#[cfg(all(test, windows, feature = "codex-provisioning-helper"))]
 #[path = "helper/tests.rs"]
 mod tests;
