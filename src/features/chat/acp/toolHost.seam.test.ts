@@ -18,7 +18,10 @@ describe("curated read tool-host seam", () => {
   });
 
   it("keeps tool admission harness-neutral", async () => {
-    const source = await readFile(path.join(acpDirectory, "toolHost.ts"), "utf8");
+    const source = await readFile(
+      path.join(acpDirectory, "toolHost.ts"),
+      "utf8",
+    );
 
     expect(source).not.toMatch(/codex|claude|pi/i);
   });
