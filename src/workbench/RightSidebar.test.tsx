@@ -12,9 +12,10 @@ import { useWorkbenchStore } from "../app/store";
 import { resourceKey } from "../domain/resourceIdentity";
 import type { ResourceRef, RootRepositoryStatus } from "../domain/workbench";
 import { workspaceSearchDesktop } from "../features/search";
-import { desktop } from "../services/desktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { RightSidebar } from "./RightSidebar";
 
+const projectPort = getWorkbenchPorts().project;
 const initialState = useWorkbenchStore.getState();
 
 afterEach(() => {
@@ -1046,8 +1047,8 @@ describe("RightSidebar Explorer Rename File", () => {
     const pendingRename = new Promise<never>((_resolve, reject) => {
       rejectRename = reject;
     });
-    vi.spyOn(desktop, "persistProjectLayout").mockResolvedValue();
-    vi.spyOn(desktop, "renameProjectFile").mockReturnValue(pendingRename);
+    vi.spyOn(projectPort, "persistProjectLayout").mockResolvedValue();
+    vi.spyOn(projectPort, "renameProjectFile").mockReturnValue(pendingRename);
     renameState(initialState.renameProjectFile);
 
     render(<RightSidebar compact={false} />);
@@ -1281,8 +1282,8 @@ describe("RightSidebar Explorer recoverable trash", () => {
       loadDirectory: vi.fn(async () => undefined),
       refreshRepository: vi.fn(async () => undefined),
     }));
-    vi.spyOn(desktop, "persistProjectLayout").mockResolvedValue();
-    vi.spyOn(desktop, "trashProjectResource").mockResolvedValue({
+    vi.spyOn(projectPort, "persistProjectLayout").mockResolvedValue();
+    vi.spyOn(projectPort, "trashProjectResource").mockResolvedValue({
       outcome: "effectUnknown",
       resourceConfirmed: true,
       projectId: "project-a",

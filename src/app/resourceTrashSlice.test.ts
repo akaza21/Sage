@@ -5,9 +5,10 @@ import type {
   BootstrapSnapshot,
   TrashProjectResourceResult,
 } from "../domain/workbench";
-import { desktop } from "../services/desktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { useWorkbenchStore } from "./store";
 
+const projectPort = getWorkbenchPorts().project;
 const initialState = useWorkbenchStore.getState();
 const source = { rootId: "root-b", relativePath: "src/old" };
 const child = { rootId: "root-b", relativePath: "src/old/child.ts" };
@@ -72,7 +73,7 @@ function result(): TrashProjectResourceResult {
 }
 
 beforeEach(() => {
-  vi.spyOn(desktop, "persistProjectLayout").mockResolvedValue();
+  vi.spyOn(projectPort, "persistProjectLayout").mockResolvedValue();
   useWorkbenchStore.setState({
     ...snapshot(source),
     phase: "ready",
@@ -130,7 +131,7 @@ afterEach(() => {
 describe("resource trash store transaction", () => {
   it("sends exact multi-root intent and purges only the deleted hierarchy", async () => {
     const trash = vi
-      .spyOn(desktop, "trashProjectResource")
+      .spyOn(projectPort, "trashProjectResource")
       .mockResolvedValue(result());
 
     await expect(
@@ -162,7 +163,7 @@ describe("resource trash store transaction", () => {
   });
 
   it("leaves the projection untouched for typed unsupported", async () => {
-    vi.spyOn(desktop, "trashProjectResource").mockResolvedValue({
+    vi.spyOn(projectPort, "trashProjectResource").mockResolvedValue({
       ...result(),
       outcome: "unsupported",
       resourceConfirmed: false,
@@ -191,7 +192,7 @@ describe("resource trash store transaction", () => {
     const loadDirectory = vi.fn(async () => undefined);
     const refreshRepository = vi.fn(async () => undefined);
     useWorkbenchStore.setState({ loadDirectory, refreshRepository });
-    vi.spyOn(desktop, "trashProjectResource").mockResolvedValue({
+    vi.spyOn(projectPort, "trashProjectResource").mockResolvedValue({
       ...result(),
       outcome: "effectUnknown",
       resourceConfirmed: false,
@@ -212,7 +213,7 @@ describe("resource trash store transaction", () => {
   });
 
   it("blocks an open descendant Diff before native mutation", async () => {
-    const trash = vi.spyOn(desktop, "trashProjectResource");
+    const trash = vi.spyOn(projectPort, "trashProjectResource");
     useWorkbenchStore.setState({
       tabs: [
         {

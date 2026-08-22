@@ -10,7 +10,7 @@ import type {
   FileDiff,
   ResourceRef,
 } from "../domain/workbench";
-import { desktop } from "../services/desktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import {
   hasTabResourceIntent,
   matchesActiveTabIntent,
@@ -208,7 +208,7 @@ export const createResourceSlice: StateCreator<
       };
     });
     try {
-      const value = await desktop.listDirectory(resource);
+      const value = await getWorkbenchPorts().project.listDirectory(resource);
       if (
         !matchesResourceIntent(get(), generation, projectId, resource) ||
         !matchesRequestIntent(get(), requestKey, requestGeneration) ||
@@ -351,7 +351,7 @@ export const createResourceSlice: StateCreator<
       };
     });
     try {
-      const value = await desktop.getFileDiff(resource);
+      const value = await getWorkbenchPorts().repository.getFileDiff(resource);
       if (
         !matchesActiveTabIntent(
           get(),

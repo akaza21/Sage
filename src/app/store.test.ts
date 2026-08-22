@@ -16,7 +16,11 @@ import type {
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
 import { acpDesktop } from "../services/acpDesktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { useWorkbenchStore } from "./store";
+
+const projectPort = getWorkbenchPorts().project;
+const repositoryPort = getWorkbenchPorts().repository;
 
 const resource = (relativePath: string, rootId = "root-a"): ResourceRef => ({
   rootId,
@@ -359,14 +363,16 @@ describe("workbench resource and project navigation", () => {
       [chatTabB.id]: { composerText: "Edited handoff prompt" },
     });
 
-    vi.spyOn(desktop, "getBootstrapSnapshot").mockResolvedValue(
+    vi.spyOn(projectPort, "getBootstrapSnapshot").mockResolvedValue(
       targetProjection,
     );
-    vi.spyOn(desktop, "listDirectory").mockImplementation(async (target) => ({
-      resource: target,
-      entries: [],
-      truncated: false,
-    }));
+    vi.spyOn(projectPort, "listDirectory").mockImplementation(
+      async (target) => ({
+        resource: target,
+        entries: [],
+        truncated: false,
+      }),
+    );
     await useWorkbenchStore.getState().initialize();
     expect(useWorkbenchStore.getState()).toMatchObject({
       activeTabId: chatTabB.id,
@@ -501,11 +507,13 @@ describe("workbench resource and project navigation", () => {
       snapshot: createdSnapshot,
       recoveryError: null,
     });
-    vi.spyOn(desktop, "listDirectory").mockImplementation(async (target) => ({
-      resource: target,
-      entries: [],
-      truncated: false,
-    }));
+    vi.spyOn(projectPort, "listDirectory").mockImplementation(
+      async (target) => ({
+        resource: target,
+        entries: [],
+        truncated: false,
+      }),
+    );
 
     await useWorkbenchStore.getState().createChat();
 
@@ -1253,11 +1261,13 @@ describe("workbench resource and project navigation", () => {
         snapshot: projection(chatTab, 2, chatAMessages, "session-a2"),
         recoveryError: null,
       });
-    vi.spyOn(desktop, "listDirectory").mockImplementation(async (target) => ({
-      resource: target,
-      entries: [],
-      truncated: false,
-    }));
+    vi.spyOn(projectPort, "listDirectory").mockImplementation(
+      async (target) => ({
+        resource: target,
+        entries: [],
+        truncated: false,
+      }),
+    );
     useWorkbenchStore.setState({
       tabs: [chatTab, chatB],
       selectedHarnessId: "sage-simulator",
@@ -1711,7 +1721,7 @@ describe("workbench resource and project navigation", () => {
     vi.spyOn(desktop, "snapshotEditorBuffer").mockRejectedValue(
       new Error("disk unavailable"),
     );
-    const switchNative = vi.spyOn(desktop, "switchProject");
+    const switchNative = vi.spyOn(projectPort, "switchProject");
     useWorkbenchStore.setState({
       tabs: [
         chatTab,
@@ -1754,18 +1764,22 @@ describe("workbench resource and project navigation", () => {
         },
       },
     });
-    vi.spyOn(desktop, "switchProject").mockResolvedValue({
+    vi.spyOn(projectPort, "switchProject").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
       snapshot: null,
       recoveryError: null,
     });
-    vi.spyOn(desktop, "getBootstrapSnapshot").mockResolvedValue(snapshotB());
-    vi.spyOn(desktop, "listDirectory").mockImplementation(async (target) => ({
-      resource: target,
-      entries: [],
-      truncated: false,
-    }));
+    vi.spyOn(projectPort, "getBootstrapSnapshot").mockResolvedValue(
+      snapshotB(),
+    );
+    vi.spyOn(projectPort, "listDirectory").mockImplementation(
+      async (target) => ({
+        resource: target,
+        entries: [],
+        truncated: false,
+      }),
+    );
 
     await useWorkbenchStore.getState().switchProject("project-b");
 
@@ -1875,7 +1889,7 @@ describe("workbench resource and project navigation", () => {
     const repository = vi
       .spyOn(desktop, "getRepositoryStatus")
       .mockResolvedValue({ roots: [], truncated: false, elapsedMs: 1 });
-    const directory = vi.spyOn(desktop, "listDirectory").mockResolvedValue({
+    const directory = vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
       resource: resource(""),
       entries: [],
       truncated: false,
@@ -1906,7 +1920,7 @@ describe("workbench resource and project navigation", () => {
     async (outcome) => {
       const target = resource("src");
       const pending = deferred<DirectoryListing>();
-      vi.spyOn(desktop, "listDirectory").mockImplementation((requested) =>
+      vi.spyOn(projectPort, "listDirectory").mockImplementation((requested) =>
         requested.rootId === "root-a"
           ? pending.promise
           : Promise.resolve({
@@ -1915,13 +1929,15 @@ describe("workbench resource and project navigation", () => {
               truncated: false,
             }),
       );
-      vi.spyOn(desktop, "switchProject").mockResolvedValue({
+      vi.spyOn(projectPort, "switchProject").mockResolvedValue({
         committed: true,
         transitionEpoch: 1,
         snapshot: null,
         recoveryError: null,
       });
-      vi.spyOn(desktop, "getBootstrapSnapshot").mockResolvedValue(snapshotB());
+      vi.spyOn(projectPort, "getBootstrapSnapshot").mockResolvedValue(
+        snapshotB(),
+      );
 
       const oldLoad = useWorkbenchStore.getState().loadDirectory(target);
       await vi.waitFor(() =>
@@ -1958,19 +1974,21 @@ describe("workbench resource and project navigation", () => {
         resource: target,
       };
       const pending = deferred<FileDiff>();
-      vi.spyOn(desktop, "getFileDiff").mockReturnValue(pending.promise);
-      vi.spyOn(desktop, "listDirectory").mockResolvedValue({
+      vi.spyOn(repositoryPort, "getFileDiff").mockReturnValue(pending.promise);
+      vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
         resource: resource("", "root-b"),
         entries: [],
         truncated: false,
       });
-      vi.spyOn(desktop, "switchProject").mockResolvedValue({
+      vi.spyOn(projectPort, "switchProject").mockResolvedValue({
         committed: true,
         transitionEpoch: 1,
         snapshot: null,
         recoveryError: null,
       });
-      vi.spyOn(desktop, "getBootstrapSnapshot").mockResolvedValue(snapshotB());
+      vi.spyOn(projectPort, "getBootstrapSnapshot").mockResolvedValue(
+        snapshotB(),
+      );
       useWorkbenchStore.setState({
         tabs: [chatTab, diffTab],
         activeTabId: diffTab.id,
@@ -2017,18 +2035,20 @@ describe("workbench resource and project navigation", () => {
       };
       const pending = deferred<EditorDocument>();
       vi.spyOn(desktop, "openEditorDocument").mockReturnValue(pending.promise);
-      vi.spyOn(desktop, "listDirectory").mockResolvedValue({
+      vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
         resource: resource("", "root-b"),
         entries: [],
         truncated: false,
       });
-      vi.spyOn(desktop, "switchProject").mockResolvedValue({
+      vi.spyOn(projectPort, "switchProject").mockResolvedValue({
         committed: true,
         transitionEpoch: 1,
         snapshot: null,
         recoveryError: null,
       });
-      vi.spyOn(desktop, "getBootstrapSnapshot").mockResolvedValue(snapshotB());
+      vi.spyOn(projectPort, "getBootstrapSnapshot").mockResolvedValue(
+        snapshotB(),
+      );
       useWorkbenchStore.setState({
         tabs: [chatTab, fileTab],
         activeTabId: fileTab.id,
@@ -2061,18 +2081,20 @@ describe("workbench resource and project navigation", () => {
     async (outcome) => {
       const pending = deferred<ProjectRepositoryStatus>();
       vi.spyOn(desktop, "getRepositoryStatus").mockReturnValue(pending.promise);
-      vi.spyOn(desktop, "listDirectory").mockResolvedValue({
+      vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
         resource: resource("", "root-b"),
         entries: [],
         truncated: false,
       });
-      vi.spyOn(desktop, "switchProject").mockResolvedValue({
+      vi.spyOn(projectPort, "switchProject").mockResolvedValue({
         committed: true,
         transitionEpoch: 1,
         snapshot: null,
         recoveryError: null,
       });
-      vi.spyOn(desktop, "getBootstrapSnapshot").mockResolvedValue(snapshotB());
+      vi.spyOn(projectPort, "getBootstrapSnapshot").mockResolvedValue(
+        snapshotB(),
+      );
 
       const oldRefresh = useWorkbenchStore.getState().refreshRepository();
       await vi.waitFor(() =>
@@ -2948,13 +2970,13 @@ describe("workbench resource and project navigation", () => {
     async (outcome) => {
       const pending = deferred<ModelOption[]>();
       vi.spyOn(desktop, "listHarnessModels").mockReturnValue(pending.promise);
-      vi.spyOn(desktop, "switchProject").mockResolvedValue({
+      vi.spyOn(projectPort, "switchProject").mockResolvedValue({
         committed: true,
         transitionEpoch: 1,
         snapshot: snapshotB(),
         recoveryError: null,
       });
-      vi.spyOn(desktop, "listDirectory").mockResolvedValue({
+      vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
         resource: resource("", "root-b"),
         entries: [],
         truncated: false,
@@ -3000,12 +3022,14 @@ describe("workbench resource and project navigation", () => {
     const restored = snapshotB();
     restored.selectedHarnessId = "saved-harness";
     restored.selectedModelId = "saved-model";
-    vi.spyOn(desktop, "getBootstrapSnapshot").mockResolvedValue(restored);
-    vi.spyOn(desktop, "listDirectory").mockImplementation(async (target) => ({
-      resource: target,
-      entries: [],
-      truncated: false,
-    }));
+    vi.spyOn(projectPort, "getBootstrapSnapshot").mockResolvedValue(restored);
+    vi.spyOn(projectPort, "listDirectory").mockImplementation(
+      async (target) => ({
+        resource: target,
+        entries: [],
+        truncated: false,
+      }),
+    );
     const models = vi.spyOn(desktop, "listHarnessModels").mockResolvedValue([
       { id: "fallback-model", name: "Fallback" },
       { id: "saved-model", name: "Saved" },
@@ -3027,17 +3051,19 @@ describe("workbench resource and project navigation", () => {
     const restored = snapshotB();
     restored.selectedHarnessId = "saved-harness";
     restored.selectedModelId = "saved-model";
-    vi.spyOn(desktop, "switchProject").mockResolvedValue({
+    vi.spyOn(projectPort, "switchProject").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
       snapshot: restored,
       recoveryError: null,
     });
-    vi.spyOn(desktop, "listDirectory").mockImplementation(async (target) => ({
-      resource: target,
-      entries: [],
-      truncated: false,
-    }));
+    vi.spyOn(projectPort, "listDirectory").mockImplementation(
+      async (target) => ({
+        resource: target,
+        entries: [],
+        truncated: false,
+      }),
+    );
     const pending = deferred<ModelOption[]>();
     vi.spyOn(desktop, "listHarnessModels").mockReturnValue(pending.promise);
 
@@ -3064,14 +3090,14 @@ describe("workbench resource and project navigation", () => {
   });
 
   it("blocks the workbench if projection recovery fails after a committed switch", async () => {
-    vi.spyOn(desktop, "switchProject").mockResolvedValue({
+    vi.spyOn(projectPort, "switchProject").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
       snapshot: null,
       recoveryError: null,
     });
     const bootstrap = vi
-      .spyOn(desktop, "getBootstrapSnapshot")
+      .spyOn(projectPort, "getBootstrapSnapshot")
       .mockRejectedValue(new Error("bootstrap unavailable"));
 
     await useWorkbenchStore.getState().switchProject("project-b");
@@ -3084,14 +3110,14 @@ describe("workbench resource and project navigation", () => {
   });
 
   it("applies a committed Project snapshot but blocks when native cleanup is unsafe", async () => {
-    vi.spyOn(desktop, "switchProject").mockResolvedValue({
+    vi.spyOn(projectPort, "switchProject").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
       snapshot: snapshotB(),
       recoveryError:
         "Codex discovery cleanup did not converge; restart Sage before retrying.",
     });
-    vi.spyOn(desktop, "listDirectory").mockResolvedValue({
+    vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
       resource: resource("", "root-b"),
       entries: [],
       truncated: false,
@@ -3112,14 +3138,14 @@ describe("workbench resource and project navigation", () => {
   });
 
   it("blocks the workbench if projection recovery fails after project creation", async () => {
-    vi.spyOn(desktop, "createProjectFromPicker").mockResolvedValue({
+    vi.spyOn(projectPort, "createProjectFromPicker").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
       snapshot: null,
       recoveryError: null,
     });
     const bootstrap = vi
-      .spyOn(desktop, "getBootstrapSnapshot")
+      .spyOn(projectPort, "getBootstrapSnapshot")
       .mockRejectedValue(new Error("bootstrap unavailable"));
 
     await useWorkbenchStore.getState().createProject();
@@ -3131,14 +3157,14 @@ describe("workbench resource and project navigation", () => {
   });
 
   it("blocks the workbench if projection recovery fails after adding a root", async () => {
-    vi.spyOn(desktop, "addProjectRootFromPicker").mockResolvedValue({
+    vi.spyOn(projectPort, "addProjectRootFromPicker").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
       snapshot: null,
       recoveryError: null,
     });
     const bootstrap = vi
-      .spyOn(desktop, "getBootstrapSnapshot")
+      .spyOn(projectPort, "getBootstrapSnapshot")
       .mockRejectedValue(new Error("bootstrap unavailable"));
 
     await useWorkbenchStore.getState().addProjectRoot();
@@ -3181,10 +3207,10 @@ describe("workbench resource and project navigation", () => {
         .spyOn(desktop, "snapshotEditorBuffer")
         .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
       const persist = vi
-        .spyOn(desktop, "persistProjectLayout")
+        .spyOn(projectPort, "persistProjectLayout")
         .mockResolvedValue();
       const create = vi
-        .spyOn(desktop, "createProjectFromPicker")
+        .spyOn(projectPort, "createProjectFromPicker")
         .mockResolvedValue({
           committed: false,
           transitionEpoch: 0,
@@ -3192,7 +3218,7 @@ describe("workbench resource and project navigation", () => {
           recoveryError: null,
         });
       const addRoot = vi
-        .spyOn(desktop, "addProjectRootFromPicker")
+        .spyOn(projectPort, "addProjectRootFromPicker")
         .mockResolvedValue({
           committed: false,
           transitionEpoch: 0,
@@ -3234,14 +3260,14 @@ describe("workbench resource and project navigation", () => {
   );
 
   it("uses an authoritative snapshot returned by the switch command without a second bootstrap", async () => {
-    vi.spyOn(desktop, "switchProject").mockResolvedValue({
+    vi.spyOn(projectPort, "switchProject").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
       snapshot: snapshotB(),
       recoveryError: null,
     });
-    const bootstrap = vi.spyOn(desktop, "getBootstrapSnapshot");
-    vi.spyOn(desktop, "listDirectory").mockResolvedValue({
+    const bootstrap = vi.spyOn(projectPort, "getBootstrapSnapshot");
+    vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
       resource: resource("", "root-b"),
       entries: [],
       truncated: false,
@@ -3277,24 +3303,28 @@ describe("workbench resource and project navigation", () => {
         recovered.selectedRootId = "root-a";
         recovered.sessionId = "session-a";
       }
-      vi.spyOn(desktop, "getBootstrapSnapshot").mockResolvedValue(recovered);
-      vi.spyOn(desktop, "listDirectory").mockImplementation(async (target) => ({
-        resource: target,
-        entries: [],
-        truncated: false,
-      }));
+      vi.spyOn(projectPort, "getBootstrapSnapshot").mockResolvedValue(
+        recovered,
+      );
+      vi.spyOn(projectPort, "listDirectory").mockImplementation(
+        async (target) => ({
+          resource: target,
+          entries: [],
+          truncated: false,
+        }),
+      );
       if (operation === "switch") {
-        vi.spyOn(desktop, "switchProject").mockRejectedValue(
+        vi.spyOn(projectPort, "switchProject").mockRejectedValue(
           new Error("response lost"),
         );
         await useWorkbenchStore.getState().switchProject("project-b");
       } else if (operation === "create") {
-        vi.spyOn(desktop, "createProjectFromPicker").mockRejectedValue(
+        vi.spyOn(projectPort, "createProjectFromPicker").mockRejectedValue(
           new Error("response lost"),
         );
         await useWorkbenchStore.getState().createProject();
       } else {
-        vi.spyOn(desktop, "addProjectRootFromPicker").mockRejectedValue(
+        vi.spyOn(projectPort, "addProjectRootFromPicker").mockRejectedValue(
           new Error("response lost"),
         );
         await useWorkbenchStore.getState().addProjectRoot();
@@ -3315,13 +3345,13 @@ describe("workbench resource and project navigation", () => {
     const pending = deferred<BufferSnapshotAck>();
     vi.spyOn(desktop, "snapshotEditorBuffer").mockReturnValue(pending.promise);
     const open = vi.spyOn(desktop, "openEditorDocument");
-    vi.spyOn(desktop, "switchProject").mockResolvedValue({
+    vi.spyOn(projectPort, "switchProject").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
       snapshot: snapshotB(),
       recoveryError: null,
     });
-    vi.spyOn(desktop, "listDirectory").mockResolvedValue({
+    vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
       resource: resource("", "root-b"),
       entries: [],
       truncated: false,
@@ -3368,22 +3398,24 @@ describe("workbench resource and project navigation", () => {
     const target = resource("");
     const old = deferred<DirectoryListing>();
     let calls = 0;
-    vi.spyOn(desktop, "listDirectory").mockImplementation(async (requested) => {
-      calls += 1;
-      if (calls === 1) return old.promise;
-      return {
-        resource: requested,
-        entries: [
-          {
-            name: "new.txt",
-            resource: resource("new.txt"),
-            kind: "file",
-            byteLen: 1,
-          },
-        ],
-        truncated: false,
-      };
-    });
+    vi.spyOn(projectPort, "listDirectory").mockImplementation(
+      async (requested) => {
+        calls += 1;
+        if (calls === 1) return old.promise;
+        return {
+          resource: requested,
+          entries: [
+            {
+              name: "new.txt",
+              resource: resource("new.txt"),
+              kind: "file",
+              byteLen: 1,
+            },
+          ],
+          truncated: false,
+        };
+      },
+    );
     const first = useWorkbenchStore.getState().loadDirectory(target);
     await vi.waitFor(() => expect(calls).toBe(1));
     useWorkbenchStore.setState({ directoryListings: {} });
@@ -3403,11 +3435,13 @@ describe("workbench resource and project navigation", () => {
   });
 
   it("bounds every ancestor inserted by Explorer reveal", async () => {
-    vi.spyOn(desktop, "listDirectory").mockImplementation(async (target) => ({
-      resource: target,
-      entries: [],
-      truncated: false,
-    }));
+    vi.spyOn(projectPort, "listDirectory").mockImplementation(
+      async (target) => ({
+        resource: target,
+        entries: [],
+        truncated: false,
+      }),
+    );
     const path = `${Array.from({ length: 80 }, (_, index) => `d${index}`).join("/")}/file.txt`;
     await useWorkbenchStore.getState().revealFile(resource(path));
     expect(
@@ -3450,7 +3484,7 @@ describe("workbench resource and project navigation", () => {
       } else {
         const old = deferred<FileDiff>();
         let calls = 0;
-        vi.spyOn(desktop, "getFileDiff").mockImplementation(() => {
+        vi.spyOn(repositoryPort, "getFileDiff").mockImplementation(() => {
           calls += 1;
           return calls === 1
             ? old.promise
@@ -3507,13 +3541,13 @@ describe("workbench resource and project navigation", () => {
     ]);
 
     useWorkbenchStore.setState({ sending: true, composerText: "old draft" });
-    vi.spyOn(desktop, "switchProject").mockResolvedValue({
+    vi.spyOn(projectPort, "switchProject").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
       snapshot: snapshotB(),
       recoveryError: null,
     });
-    vi.spyOn(desktop, "listDirectory").mockResolvedValue({
+    vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
       resource: resource("", "root-b"),
       entries: [],
       truncated: false,

@@ -12,7 +12,7 @@ import {
   validateCreateProjectFolderResult,
   validateNewFilePath,
 } from "../features/files/newFileContract";
-import { desktop } from "../services/desktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import { resourceTabUpdate } from "./resourceTabs";
 import type { ResourceState, WorkbenchState } from "./store";
@@ -262,8 +262,8 @@ export const createFileCreateSlice: StateCreator<
       };
       const result =
         kind === "file"
-          ? await desktop.createProjectFile(request)
-          : await desktop.createProjectFolder(request);
+          ? await getWorkbenchPorts().project.createProjectFile(request)
+          : await getWorkbenchPorts().project.createProjectFolder(request);
       const expected = {
         projectId: project.id,
         projectGeneration,

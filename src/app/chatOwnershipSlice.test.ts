@@ -9,7 +9,10 @@ import {
   MAX_CHAT_OWNERSHIP_ENTRIES,
 } from "../domain/chatOwnership";
 import { desktop } from "../services/desktop";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { useWorkbenchStore } from "./store";
+
+const projectPort = getWorkbenchPorts().project;
 
 const chatA: WorkbenchTab = {
   id: "chat-a",
@@ -143,7 +146,7 @@ describe("per-Chat disposable ownership", () => {
   it("clears all disposable Chat ownership on authoritative initialization", async () => {
     useWorkbenchStore.getState().setComposerText("Do not survive restart");
     const priorEpoch = useWorkbenchStore.getState().chatOwnershipEpoch;
-    vi.spyOn(desktop, "getBootstrapSnapshot").mockResolvedValue(
+    vi.spyOn(projectPort, "getBootstrapSnapshot").mockResolvedValue(
       projection([chatA, chatB], chatA.id, 2),
     );
 
@@ -162,8 +165,8 @@ describe("per-Chat disposable ownership", () => {
 
   it("preserves Chat ownership through a same-Project root projection", async () => {
     useWorkbenchStore.getState().setComposerText("Keep through root change");
-    vi.spyOn(desktop, "persistProjectLayout").mockResolvedValue();
-    vi.spyOn(desktop, "addProjectRootFromPicker").mockResolvedValue({
+    vi.spyOn(projectPort, "persistProjectLayout").mockResolvedValue();
+    vi.spyOn(projectPort, "addProjectRootFromPicker").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
       snapshot: {
@@ -345,7 +348,7 @@ describe("per-Chat disposable ownership", () => {
       chatError: "ACP A failed in background",
     });
 
-    vi.spyOn(desktop, "getBootstrapSnapshot").mockResolvedValue(
+    vi.spyOn(projectPort, "getBootstrapSnapshot").mockResolvedValue(
       projection([chatA, chatB], chatA.id, 9),
     );
     await useWorkbenchStore.getState().initialize();
@@ -375,7 +378,7 @@ describe("per-Chat disposable ownership", () => {
       { length: MAX_ARCHIVED_CHAT_OWNERSHIP_ENTRIES },
       (_, index) => ({ id: `archived-${index}`, title: `Archived ${index}` }),
     );
-    const bootstrap = vi.spyOn(desktop, "getBootstrapSnapshot");
+    const bootstrap = vi.spyOn(projectPort, "getBootstrapSnapshot");
     bootstrap.mockResolvedValueOnce(
       projection(attached, attached[0].id, 10, archived),
     );
