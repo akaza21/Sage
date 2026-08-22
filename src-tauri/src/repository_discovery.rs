@@ -16,6 +16,7 @@ pub const MAX_REPOSITORIES_PER_ROOT: usize = 8;
 pub const MAX_REPOSITORIES_PER_PROJECT: usize = 32;
 pub const MAX_DISCOVERY_DEPTH: usize = 6;
 pub const MAX_VISITED_DIRECTORIES_PER_ROOT: usize = 4_096;
+pub const MAX_ENTRIES_PER_ROOT: usize = 16_384;
 pub const MAX_DISCOVERY_DURATION_PER_ROOT: Duration = Duration::from_millis(750);
 
 const SKIP_DIRECTORY_NAMES: &[&str] = &[
@@ -54,11 +55,13 @@ pub fn discover_root(root_id: &str, root: &Path, project_remaining: usize) -> Ro
     let mut refs = Vec::new();
     let mut truncated = false;
     let mut visited = 0_usize;
+    let mut entries_seen = 0_usize;
     let mut queue = VecDeque::from([(root.to_path_buf(), String::new(), 0_usize)]);
 
-    while let Some((directory, relative, depth)) = queue.pop_front() {
+    'scan: while let Some((directory, relative, depth)) = queue.pop_front() {
         if started.elapsed() >= MAX_DISCOVERY_DURATION_PER_ROOT
             || visited >= MAX_VISITED_DIRECTORIES_PER_ROOT
+            || entries_seen >= MAX_ENTRIES_PER_ROOT
         {
             truncated = true;
             break;
@@ -82,6 +85,11 @@ pub fn discover_root(root_id: &str, root: &Path, project_remaining: usize) -> Ro
             continue;
         };
         for entry in entries.flatten() {
+            entries_seen += 1;
+            if entries_seen >= MAX_ENTRIES_PER_ROOT {
+                truncated = true;
+                break 'scan;
+            }
             let name = entry.file_name();
             let Some(name) = name.to_str() else {
                 continue;
@@ -132,7 +140,19 @@ fn is_symlink_or_reparse(path: &Path) -> bool {
     let Ok(metadata) = fs::symlink_metadata(path) else {
         return false;
     };
-    metadata.file_type().is_symlink()
+    if metadata.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
+        return metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0;
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
 }
 
 #[cfg(test)]
