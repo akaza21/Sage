@@ -12,8 +12,6 @@ import type {
 } from "../../../domain/acp";
 import { getWorkbenchPorts } from "../../../ports/workbenchRuntime";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
-import { desktop } from "../../../services/desktop";
-import { getWorkbenchPorts } from "../../../ports/workbenchRuntime";
 import { useAcpChatActions } from "./useAcpChatActions";
 
 const projectPort = getWorkbenchPorts().project;

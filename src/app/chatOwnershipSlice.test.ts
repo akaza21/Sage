@@ -9,8 +9,6 @@ import {
   MAX_CHAT_OWNERSHIP_ENTRIES,
 } from "../domain/chatOwnership";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
-import { desktop } from "../services/desktop";
-import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { useWorkbenchStore } from "./store";
 
 const projectPort = getWorkbenchPorts().project;
