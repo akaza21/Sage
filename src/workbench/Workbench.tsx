@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../app/store";
 import { sameResource } from "../domain/resourceIdentity";
@@ -12,6 +12,7 @@ import { renderRegisteredCanvas } from "./surfaceRegistry";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { TitleBar } from "./TitleBar";
 import {
+  type AgentCenterDecision,
   agentCenterChatAction,
   DEFAULT_WORKBENCH_WINDOW_MODE,
   isCompactDrawerOpen,
@@ -86,6 +87,18 @@ function ActiveCanvas() {
   );
 }
 
+function agentCenterAttemptKey(
+  decision: AgentCenterDecision,
+  projectId: string | null,
+): string | null {
+  const scope = projectId ?? "";
+  if (decision.action === "create") return `create:${scope}`;
+  if (decision.action === "activate") {
+    return `activate:${scope}:${decision.tabId}`;
+  }
+  return null;
+}
+
 function AgentCenterKeeper({
   windowMode,
 }: {
@@ -98,12 +111,23 @@ function AgentCenterKeeper({
   const projectGeneration = useWorkbenchStore(
     (state) => state.projectGeneration,
   );
+  const attemptedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (windowMode !== "agent") return;
+    if (windowMode !== "agent") {
+      attemptedRef.current = null;
+      return;
+    }
     if (projectTransitioning) return;
     const state = useWorkbenchStore.getState();
     const decision = agentCenterChatAction(state.tabs, activeTabId);
+    if (decision.action === "none") {
+      attemptedRef.current = null;
+      return;
+    }
+    const attemptKey = agentCenterAttemptKey(decision, state.project?.id ?? null);
+    if (attemptKey === null || attemptedRef.current === attemptKey) return;
+    attemptedRef.current = attemptKey;
     if (decision.action === "activate") {
       void state.activateTab(decision.tabId);
     } else if (decision.action === "create") {

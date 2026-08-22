@@ -26,6 +26,26 @@ vi.mock("./useCompactWorkbenchLayout", () => ({
 const initialState = useWorkbenchStore.getState();
 const project = { id: "project-a", name: "A", roots: [] };
 
+async function failProjectTransition(label: string) {
+  useWorkbenchStore.setState({ projectTransitioning: true });
+  useWorkbenchStore.setState({
+    projectTransitioning: false,
+    error: `${label} failed`,
+    projectGeneration: useWorkbenchStore.getState().projectGeneration + 1,
+  });
+}
+
+async function pumpTransitionResets(times: number) {
+  for (let index = 0; index < times; index += 1) {
+    await act(async () => {
+      useWorkbenchStore.setState({ projectTransitioning: true, error: null });
+    });
+    await act(async () => {
+      useWorkbenchStore.setState({ projectTransitioning: false });
+    });
+  }
+}
+
 afterEach(() => {
   cleanup();
   compactViewport = false;
@@ -279,5 +299,90 @@ describe("Agent center workbench window mode seam", () => {
       ).toBeInTheDocument();
     });
     expect(createChat).not.toHaveBeenCalled();
+  });
+
+  it("does not re-create a Chat when a failed creation only resets the transition flag", async () => {
+    const createChat = vi.fn(() => failProjectTransition("Chat creation"));
+    useWorkbenchStore.setState({
+      project,
+      tabs: [
+        {
+          id: "diff:a",
+          kind: "diff",
+          title: "changed.ts",
+          position: 0,
+          pinned: false,
+          dirty: false,
+          resource: { rootId: "root-a", relativePath: "src/changed.ts" },
+        },
+      ],
+      activeTabId: "diff:a",
+      loadDiff: vi.fn(async () => undefined),
+      createChat,
+    });
+    render(createElement(Workbench));
+
+    fireEvent.click(
+      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
+        "radio",
+        { name: "Agent" },
+      ),
+    );
+
+    await vi.waitFor(() => {
+      expect(createChat).toHaveBeenCalledTimes(1);
+      expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+    });
+    await pumpTransitionResets(3);
+    expect(createChat).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not re-activate a failed Chat when the transition flag resets", async () => {
+    const activateTab = vi.fn((tabId: string) => {
+      if (tabId !== "chat:b") {
+        return Promise.resolve();
+      }
+      return failProjectTransition("Chat activation");
+    });
+    useWorkbenchStore.setState({
+      project,
+      tabs: [
+        {
+          id: "file:a",
+          kind: "file",
+          title: "current.ts",
+          position: 0,
+          pinned: false,
+          dirty: false,
+          resource: { rootId: "root-a", relativePath: "src/current.ts" },
+        },
+        {
+          id: "chat:b",
+          kind: "chat",
+          title: "Chat: B",
+          position: 1,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "file:a",
+      loadEditor: vi.fn(async () => undefined),
+      activateTab,
+    });
+    render(createElement(Workbench));
+
+    fireEvent.click(
+      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
+        "radio",
+        { name: "Agent" },
+      ),
+    );
+
+    await vi.waitFor(() => {
+      expect(activateTab).toHaveBeenCalledTimes(1);
+      expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+    });
+    await pumpTransitionResets(3);
+    expect(activateTab).toHaveBeenCalledTimes(1);
   });
 });
