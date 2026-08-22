@@ -255,7 +255,8 @@ mod tests {
         for (index, (action, name)) in changes.iter().enumerate() {
             let mut notice = change(*action, name);
             if index + 1 < changes.len() {
-                notice[..4].copy_from_slice(&(notice.len() as u32).to_le_bytes());
+                let notice_len = notice.len() as u32;
+                notice[..4].copy_from_slice(&notice_len.to_le_bytes());
             }
             batch.extend(notice);
         }
