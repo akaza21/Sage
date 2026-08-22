@@ -234,11 +234,17 @@ export function SourceControlView() {
   const openDiff = useWorkbenchStore((state) => state.openDiff);
   const controlsDisabled =
     refreshing || transitioning || mutation !== null || commit !== null;
+  const selectedRootStatus =
+    selectedRepository && isRootRepository(selectedRepository)
+      ? (repositories.roots.find(
+          (repository) => repository.rootId === selectedRepository.rootId,
+        ) ?? null)
+      : selectedRepositoryStatus;
   const selectedRepositories =
     selectedRepository === null
       ? repositories.roots
-      : selectedRepositoryStatus
-        ? [selectedRepositoryStatus]
+      : selectedRootStatus
+        ? [selectedRootStatus]
         : [];
 
   useEffect(() => {

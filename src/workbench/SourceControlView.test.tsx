@@ -167,3 +167,93 @@ it("does not show root changes while nested status is loading", () => {
     screen.queryByRole("button", { name: "Open diff for root-only.ts" }),
   ).toBeNull();
 });
+
+it("uses the live selected root status after staging a selected root file", async () => {
+  const unstagedStatus: RootRepositoryStatus = {
+    ...rootStatus,
+    changes: [
+      {
+        resource: { rootId: "root-a", relativePath: "src/app.ts" },
+        indexStatus: "unchanged",
+        worktreeStatus: "modified",
+        additions: 1,
+        deletions: 0,
+      },
+    ],
+  };
+  const stagedStatus: RootRepositoryStatus = {
+    ...unstagedStatus,
+    changes: [
+      {
+        ...unstagedStatus.changes[0],
+        indexStatus: "modified",
+        worktreeStatus: "unchanged",
+      },
+    ],
+  };
+  const mutateRepositoryFile = vi.fn(async () => {
+    useWorkbenchStore.setState({
+      repositories: { roots: [stagedStatus], truncated: false, elapsedMs: 1 },
+    });
+    return true;
+  });
+
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [unstagedStatus], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: unstagedStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    mutateRepositoryFile,
+  });
+
+  render(<SourceControlView />);
+
+  expect(
+    screen.getByRole("button", { name: "Stage src/app.ts in Root A" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Commit staged changes in Root A" }),
+  ).toBeDisabled();
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Stage src/app.ts in Root A" }),
+  );
+
+  await waitFor(() =>
+    expect(mutateRepositoryFile).toHaveBeenCalledWith(
+      unstagedStatus.changes[0].resource,
+      "stage",
+    ),
+  );
+
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("button", { name: "Stage src/app.ts in Root A" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Unstage src/app.ts in Root A" }),
+    ).toBeInTheDocument();
+  });
+  fireEvent.change(screen.getByLabelText("Commit message for Root A"), {
+    target: { value: "Stage selected root" },
+  });
+  expect(
+    screen.getByRole("button", { name: "Commit staged changes in Root A" }),
+  ).toBeEnabled();
+});
