@@ -7,10 +7,12 @@ import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
 import { FileEditorHeader } from "./FileEditorHeader";
 import { FileEditorNotices } from "./FileEditorNotices";
 import { FileFindBar } from "./FileFindBar";
+import {
+  bindFileEditorController,
+  useFileEditorLifecycle,
+} from "./fileEditorController";
 import { findLiteralMatches, MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
 import { fileNavigationSelection } from "./fileNavigation";
-
-const SNAPSHOT_DELAY_MS = 750;
 
 export function FileSurface({ tab }: { tab: WorkbenchTab }) {
   const resource = tab.resource;
@@ -26,6 +28,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
     contextKey: "",
     index: 0,
   });
+  const fileEditorController = useMemo(() => bindFileEditorController(), []);
   const editor = useWorkbenchStore((state) => state.activeEditor);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
@@ -54,8 +57,6 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
     (state) => state.consumeFileNavigationTarget,
   );
   const revision = editor?.phase === "ready" ? editor.revision : 0;
-  const persistedRevision =
-    editor?.phase === "ready" ? editor.persistedRevision : 0;
   const findContextKey = `${activeResourceKey}\0${revision}`;
   const findContent =
     editor?.phase === "ready" && sameResource(editor.resource, resource)
@@ -75,33 +76,12 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
         ? Math.min(matchCursor.index, findMatches.offsets.length - 1)
         : 0;
 
-  useEffect(() => {
-    if (resource) {
-      void loadEditor(resource);
-    }
-  }, [loadEditor, resource]);
-
-  useEffect(() => {
-    if (
-      editor?.phase !== "ready" ||
-      !sameResource(editor.resource, resource) ||
-      revision <= persistedRevision
-    ) {
-      return;
-    }
-    const timeout = window.setTimeout(() => {
-      void flushActiveEditor().catch(() => undefined);
-    }, SNAPSHOT_DELAY_MS);
-    return () => window.clearTimeout(timeout);
-  }, [
-    editor?.resource,
-    editor?.phase,
-    flushActiveEditor,
-    path,
-    persistedRevision,
+  useFileEditorLifecycle(fileEditorController, {
     resource,
-    revision,
-  ]);
+    editor,
+    loadEditor,
+    flushActiveEditor,
+  });
 
   useEffect(() => {
     if (findOpen) {

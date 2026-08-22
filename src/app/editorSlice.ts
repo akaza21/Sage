@@ -195,7 +195,7 @@ export const createEditorSlice: StateCreator<
         };
       });
       try {
-        const document = await editorController.open(resource);
+        const document = await editorController.load(resource);
         if (
           !matchesActiveTabIntent(
             get(),
@@ -290,14 +290,16 @@ export const createEditorSlice: StateCreator<
             return null;
           }
           set({ activeEditor: { ...editor, saving: true, message: null } });
-          await persistLatestEditor();
-          if (
-            get().projectTransitioning ||
-            !matchesProjectIntent(get(), generation, projectId)
-          ) {
+          const result = await editorController.save(
+            editor.resource,
+            persistLatestEditor,
+            () =>
+              !get().projectTransitioning &&
+              matchesProjectIntent(get(), generation, projectId),
+          );
+          if (!result) {
             return null;
           }
-          const result = await editorController.save(editor.resource);
           if (
             !matchesActiveTabIntent(
               get(),
