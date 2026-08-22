@@ -70,6 +70,7 @@ function SourceChangeRow({
     change.worktreeStatus !== "unchanged" &&
     change.worktreeStatus !== "unknown";
   const canUnstage =
+    !readOnly &&
     !conflicted &&
     change.indexStatus !== "unchanged" &&
     change.indexStatus !== "unknown";
@@ -234,9 +235,11 @@ export function SourceControlView() {
   const controlsDisabled =
     refreshing || transitioning || mutation !== null || commit !== null;
   const selectedRepositories =
-    selectedRepository && selectedRepositoryStatus
-      ? [selectedRepositoryStatus]
-      : repositories.roots;
+    selectedRepository === null
+      ? repositories.roots
+      : selectedRepositoryStatus
+        ? [selectedRepositoryStatus]
+        : [];
 
   useEffect(() => {
     void loadRepositoryInventory();
