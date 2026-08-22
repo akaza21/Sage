@@ -166,10 +166,7 @@ export const createChatSlice: StateCreator<
         if (!latest)
           throw new Error("active Project disappeared before Chat creation");
         mutationInvoked = true;
-        const result = await chat.createChat(
-          latest,
-          expectedTransitionEpoch,
-        );
+        const result = await chat.createChat(latest, expectedTransitionEpoch);
         validateTransitionIntent(result, expectedTransitionEpoch);
         if (!result.committed) {
           set({

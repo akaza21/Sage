@@ -61,12 +61,12 @@ describe("S0.3 ChatPort projection seam", () => {
       streamingItem.id,
     ]).toEqual(["project-1", "chat-1", "session-1", "turn-1", "item-1"]);
     expect(streamingItem.ordinal).toBe(1);
-    expect(
-      (streamingItem as unknown as { revision: number }).revision,
-    ).toBe(1);
+    expect((streamingItem as unknown as { revision: number }).revision).toBe(1);
     expect(streamingItem.createdAt).toBe(10);
     expect(streamingItem.updatedAt).toBe(10);
-    expect(streamingItem.createdAt).toBeLessThanOrEqual(streamingItem.updatedAt);
+    expect(streamingItem.createdAt).toBeLessThanOrEqual(
+      streamingItem.updatedAt,
+    );
     expect(streamingItem.lifecycle).toBe("streaming");
     expect(streamingItem.terminalAt).toBeNull();
   });

@@ -561,8 +561,7 @@ describe("workbench resource and project navigation", () => {
     const snapshot = vi
       .spyOn(desktop, "snapshotEditorBuffer")
       .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
-    const pendingRename =
-      deferred<RenameChatResult>();
+    const pendingRename = deferred<RenameChatResult>();
     const rename = vi
       .spyOn(getWorkbenchPorts().chat, "renameChat")
       .mockReturnValue(pendingRename.promise);
@@ -760,8 +759,7 @@ describe("workbench resource and project navigation", () => {
     const snapshot = vi
       .spyOn(desktop, "snapshotEditorBuffer")
       .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
-    const pendingArchive =
-      deferred<ArchiveChatResult>();
+    const pendingArchive = deferred<ArchiveChatResult>();
     const archive = vi
       .spyOn(getWorkbenchPorts().chat, "archiveChat")
       .mockReturnValue(pendingArchive.promise);
