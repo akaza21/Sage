@@ -1,5 +1,5 @@
-use std::io::Read;
 use std::path::Path;
+use std::{fs::File, io::Read};
 
 use sha2::{Digest, Sha256};
 
@@ -32,6 +32,7 @@ pub struct PacketArtifactBinding {
     binding_id: String,
     artifact_relative_path: String,
     artifact_sha256: String,
+    artifact_byte_len: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -85,6 +86,7 @@ pub fn bind_packet_artifact(
         binding_id: packet.metadata().binding_id.clone(),
         artifact_relative_path: artifact_relative_path.to_owned(),
         artifact_sha256: claim.0.sha256.clone(),
+        artifact_byte_len: claim.0.byte_len,
     })
 }
 
@@ -116,14 +118,22 @@ pub fn authenticode_win_verify_trust(
     path: &Path,
     policy: InstalledAuthenticodePolicy,
 ) -> Result<(), VerifyError> {
-    let _ = (
-        path,
-        policy.publisher_common_name(),
-        policy.certificate_thumbprint_sha1(),
-    );
-    Err(VerifyError::Authenticode)
+    #[cfg(windows)]
+    {
+        win32::verify_file(path, policy)
+    }
+    #[cfg(not(windows))]
+    {
+        // Keep absent or unreadable artifacts distinct from the lack of a
+        // platform WinVerifyTrust implementation.
+        File::open(path).map_err(|_| VerifyError::Artifact)?;
+        let _ = policy;
+        Err(VerifyError::Authenticode)
+    }
 }
 
+#[cfg(windows)]
+mod win32;
 pub fn verify_installed_authenticode(
     catalog: &impl AuthenticodeCatalog,
     packet: &MetadataValidatedPacket,
@@ -131,7 +141,10 @@ pub fn verify_installed_authenticode(
     pe_path: &Path,
 ) -> Result<VerifiedSignature, VerifyError> {
     let binding = bind_packet_artifact(packet, artifact_relative_path)?;
-    let observed = sha256_hex_file(pe_path)?;
+    // Keep this handle open through WinTrust. On Windows its share mode denies
+    // replacement or mutation after the digest has bound the artifact bytes.
+    let mut artifact = open_artifact_for_verification(pe_path)?;
+    let observed = sha256_hex_file(&mut artifact, binding.artifact_byte_len)?;
     if !sha256_eq(binding.artifact_sha256(), &observed) {
         return Err(VerifyError::Artifact);
     }
@@ -155,16 +168,46 @@ pub(crate) fn verify_installed_authenticode_for_observed_digest(
     Ok(VerifiedSignature { binding })
 }
 
-fn sha256_hex_file(path: &Path) -> Result<String, VerifyError> {
-    let mut file = std::fs::File::open(path).map_err(|_| VerifyError::Artifact)?;
+fn open_artifact_for_verification(path: &Path) -> Result<File, VerifyError> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+
+        std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(path)
+            .map_err(|_| VerifyError::Artifact)
+    }
+    #[cfg(not(windows))]
+    {
+        File::open(path).map_err(|_| VerifyError::Artifact)
+    }
+}
+
+fn sha256_hex_file(file: &mut File, expected_byte_len: u64) -> Result<String, VerifyError> {
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let read = file.read(&mut buffer).map_err(|_| VerifyError::Artifact)?;
+    let mut remaining = expected_byte_len;
+    while remaining != 0 {
+        let chunk_len = remaining.min(buffer.len() as u64) as usize;
+        let read = file
+            .read(&mut buffer[..chunk_len])
+            .map_err(|_| VerifyError::Artifact)?;
         if read == 0 {
-            break;
+            return Err(VerifyError::Artifact);
         }
         hasher.update(&buffer[..read]);
+        remaining -= read as u64;
+    }
+    let mut trailing = [0_u8; 1];
+    if file
+        .read(&mut trailing)
+        .map_err(|_| VerifyError::Artifact)?
+        != 0
+    {
+        return Err(VerifyError::Artifact);
     }
     Ok(hex(&hasher.finalize()))
 }

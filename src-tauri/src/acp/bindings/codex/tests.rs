@@ -129,8 +129,19 @@ fn lexically_validates_only_the_exact_windows_packet_and_keeps_launch_fail_close
         "7b0ab1679be705644a1b6c3f486f15e2f90e5f900486d90073b1dc5f0cf4c62c"
     );
     assert_eq!(packet.metadata().supporting_artifacts.len(), 7);
+    let manifest_source = include_str!("manifest.rs");
+    assert!(manifest_source.contains("verify_installed_authenticode"));
+    assert!(manifest_source.contains("admit_installed_role"));
+    assert!(manifest_source.contains("WinVerifyTrustCatalog"));
+    let mut missing_artifact = packet_value();
+    relocate_package_root(
+        &mut missing_artifact,
+        r"C:\SageHarnesses\Codex\missing-artifact-package",
+    );
+    let missing_artifact = parse_packet_metadata(&serde_json::to_vec(&missing_artifact).unwrap())
+        .expect("a packet may name an absent package before physical admission");
     assert_eq!(
-        packet.require_physical_admission(),
+        missing_artifact.require_physical_admission(),
         Err(PhysicalAdmissionUnavailable::ArtifactNotAdmitted)
     );
 

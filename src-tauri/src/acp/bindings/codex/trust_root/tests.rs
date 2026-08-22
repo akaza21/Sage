@@ -1,5 +1,8 @@
 use std::path::Path;
 
+#[cfg(windows)]
+use std::path::PathBuf;
+
 use super::super::reproduction::authenticode_unsigned_relative_paths;
 use super::{
     AuthenticodeCatalog, INSTALLED_AUTHENTICODE_POLICY, InstalledAuthenticodePolicy, VerifyError,
@@ -34,6 +37,7 @@ fn packet() -> crate::acp::bindings::codex::manifest::MetadataValidatedPacket {
 #[test]
 fn ephemeral_public_key_cannot_mint_a_verified_signature() {
     let source = include_str!("../trust_root.rs");
+    let win32_source = include_str!("win32.rs");
     assert!(
         !source.contains("TrustRootPublicKey"),
         "caller-chosen SPKI types must not exist on this seam"
@@ -43,7 +47,12 @@ fn ephemeral_public_key_cannot_mint_a_verified_signature() {
         "caller-chosen public key bytes must not be an input"
     );
     assert!(source.contains("win_verify_trust_file"));
-    assert!(source.contains("WINTRUST_ACTION_GENERIC_VERIFY_V2"));
+    assert!(win32_source.contains("WINTRUST_ACTION_GENERIC_VERIFY_V2"));
+    assert!(win32_source.contains("unsafe extern \"system\""));
+    assert!(win32_source.contains("WinVerifyTrust("));
+    assert!(win32_source.contains("WTHelperGetProvSignerFromChain("));
+    assert!(win32_source.contains("CERT_NAME_ATTR_TYPE"));
+    assert!(source.contains("share_mode(FILE_SHARE_READ)"));
     let digest_fn = source
         .find("fn verify_installed_authenticode_for_observed_digest")
         .expect("test-only digest hook");
@@ -56,10 +65,25 @@ fn ephemeral_public_key_cannot_mint_a_verified_signature() {
         "PE digest must stream bounded reads"
     );
     let err = authenticode_win_verify_trust(Path::new("codex.exe"), INSTALLED_AUTHENTICODE_POLICY);
-    assert_eq!(err, Err(VerifyError::Authenticode));
+    assert_eq!(err, Err(VerifyError::Artifact));
     let production = WinVerifyTrustCatalog
         .win_verify_trust_file(Path::new("codex.exe"), INSTALLED_AUTHENTICODE_POLICY);
-    assert_eq!(production, Err(VerifyError::Authenticode));
+    assert_eq!(production, Err(VerifyError::Artifact));
+}
+
+#[cfg(windows)]
+#[test]
+fn live_win_verify_trust_rejects_a_signed_non_codex_publisher() {
+    let windows = std::env::var_os("WINDIR").expect("Windows defines WINDIR");
+    let notepad = PathBuf::from(windows).join("System32").join("notepad.exe");
+    assert!(
+        notepad.is_file(),
+        "Windows ships a signed Notepad executable"
+    );
+
+    let result = authenticode_win_verify_trust(&notepad, INSTALLED_AUTHENTICODE_POLICY);
+
+    assert_eq!(result, Err(VerifyError::Authenticode));
 }
 
 #[test]
