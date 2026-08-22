@@ -125,7 +125,10 @@ function AgentCenterKeeper({
       attemptedRef.current = null;
       return;
     }
-    const attemptKey = agentCenterAttemptKey(decision, state.project?.id ?? null);
+    const attemptKey = agentCenterAttemptKey(
+      decision,
+      state.project?.id ?? null,
+    );
     if (attemptKey === null || attemptedRef.current === attemptKey) return;
     attemptedRef.current = attemptKey;
     if (decision.action === "activate") {
