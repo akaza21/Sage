@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 import { useWorkbenchStore } from "../app/store";
 import { sameResource } from "../domain/resourceIdentity";
 import { DirtyTabDialog } from "./DirtyTabDialog";
@@ -8,6 +10,15 @@ import { StatusBar } from "./StatusBar";
 import { TabStrip } from "./TabStrip";
 import { renderRegisteredCanvas } from "./surfaceRegistry";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
+import { TitleBar } from "./TitleBar";
+import {
+  type AgentCenterDecision,
+  agentCenterChatAction,
+  DEFAULT_WORKBENCH_WINDOW_MODE,
+  isCompactDrawerOpen,
+  type WorkbenchWindowMode,
+} from "./workbenchWindowMode";
+import "./workbench-window-mode.css";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 
 registerWorkbenchSurfaces();
@@ -76,24 +87,69 @@ function ActiveCanvas() {
   );
 }
 
+function agentCenterAttemptKey(
+  decision: AgentCenterDecision,
+  projectId: string | null,
+): string | null {
+  const scope = projectId ?? "";
+  if (decision.action === "create") return `create:${scope}`;
+  if (decision.action === "activate") {
+    return `activate:${scope}:${decision.tabId}`;
+  }
+  return null;
+}
+
+function AgentCenterKeeper({
+  windowMode,
+}: {
+  windowMode: WorkbenchWindowMode;
+}) {
+  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
+  const projectTransitioning = useWorkbenchStore(
+    (state) => state.projectTransitioning,
+  );
+  const projectGeneration = useWorkbenchStore(
+    (state) => state.projectGeneration,
+  );
+  const attemptedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (windowMode !== "agent") {
+      attemptedRef.current = null;
+      return;
+    }
+    if (projectTransitioning) return;
+    const state = useWorkbenchStore.getState();
+    const decision = agentCenterChatAction(state.tabs, activeTabId);
+    if (decision.action === "none") {
+      attemptedRef.current = null;
+      return;
+    }
+    const attemptKey = agentCenterAttemptKey(decision, state.project?.id ?? null);
+    if (attemptKey === null || attemptedRef.current === attemptKey) return;
+    attemptedRef.current = attemptKey;
+    if (decision.action === "activate") {
+      void state.activateTab(decision.tabId);
+    } else if (decision.action === "create") {
+      void state.createChat();
+    }
+  }, [windowMode, activeTabId, projectTransitioning, projectGeneration]);
+
+  return null;
+}
+
 export function Workbench() {
-  const project = useWorkbenchStore((state) => state.project);
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const compact = useCompactWorkbenchLayout();
-  const drawerOpen = compact && sidebarOpen;
+  const [windowMode, setWindowMode] = useState<WorkbenchWindowMode>(
+    DEFAULT_WORKBENCH_WINDOW_MODE,
+  );
+  const drawerOpen = isCompactDrawerOpen(compact, sidebarOpen, windowMode);
 
   return (
-    <main className="workbench">
-      <header className="title-bar">
-        <div className="title-bar__brand">
-          <span className="title-bar__logo">S</span>
-          <strong>Sage</strong>
-        </div>
-        <div className="title-bar__project">
-          {project?.name ?? "No project"}
-        </div>
-        <div className="title-bar__spacer" />
-      </header>
+    <main className={`workbench workbench--${windowMode}`}>
+      <TitleBar mode={windowMode} onModeChange={setWindowMode} />
+      <AgentCenterKeeper windowMode={windowMode} />
       <div className="workbench__body">
         <LeftSidebar />
         <div
@@ -106,7 +162,7 @@ export function Workbench() {
           </div>
           <ActiveCanvas />
         </div>
-        <RightSidebar compact={compact} />
+        {windowMode === "editor" ? <RightSidebar compact={compact} /> : null}
       </div>
       <StatusBar />
       <DirtyTabDialog />
