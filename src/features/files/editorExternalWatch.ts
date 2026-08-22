@@ -1,3 +1,5 @@
+import { useEffect, useMemo, useRef } from "react";
+
 import {
   EDITOR_EXTERNAL_WATCH_EVENT,
   noticeMatchesWatch,
@@ -10,6 +12,7 @@ import type {
   ActiveEditorState,
   EditorStateBridge,
 } from "./fileEditorController";
+import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 
 export { EDITOR_EXTERNAL_WATCH_EVENT };
 
@@ -37,6 +40,78 @@ export async function bindEditorExternalWatch(
       await subscription.cancel();
     },
   };
+}
+
+export function useEditorExternalWatch(
+  resource: ResourceRef | undefined,
+  bridge: EditorStateBridge,
+): void {
+  const rootId = resource?.rootId;
+  const relativePath = resource?.relativePath;
+  const cancellation = useRef<Promise<void>>(Promise.resolve());
+  const watchResource = useMemo(
+    () => (rootId && relativePath ? { rootId, relativePath } : undefined),
+    [relativePath, rootId],
+  );
+
+  useEffect(() => {
+    if (!watchResource) {
+      return;
+    }
+    let cancelled = false;
+    let subscription: EditorWatchSubscription | undefined;
+    let applying = false;
+    let pendingNotice: EditorExternalWatchNotice | undefined;
+    const editor = getWorkbenchPorts().editor;
+
+    const applyNotice = (notice: EditorExternalWatchNotice) => {
+      if (cancelled) {
+        return;
+      }
+      if (applying) {
+        pendingNotice = notice;
+        return;
+      }
+      applying = true;
+      void applyEditorExternalWatchNotice(notice, bridge, editor).finally(
+        () => {
+          applying = false;
+          const next = pendingNotice;
+          pendingNotice = undefined;
+          if (next && !cancelled) {
+            applyNotice(next);
+          }
+        },
+      );
+    };
+
+    const start = cancellation.current.then(async () => {
+      const nextSubscription = await bindEditorExternalWatch(
+        editor,
+        watchResource,
+        { onNotice: applyNotice },
+      );
+      if (cancelled) {
+        await nextSubscription.cancel();
+        return;
+      }
+      subscription = nextSubscription;
+    });
+    void start.catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+      pendingNotice = undefined;
+      cancellation.current = start
+        .catch(() => undefined)
+        .then(async () => {
+          if (subscription) {
+            await subscription.cancel();
+          }
+        })
+        .catch(() => undefined);
+    };
+  }, [bridge, watchResource]);
 }
 
 export async function applyEditorExternalWatchNotice(

@@ -10,7 +10,9 @@ import { FileFindBar } from "./FileFindBar";
 import {
   getFileEditorController,
   useFileEditorLifecycle,
+  type EditorStateBridge,
 } from "./fileEditorController";
+import { useEditorExternalWatch } from "./editorExternalWatch";
 import { findLiteralMatches, MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
 import { fileNavigationSelection } from "./fileNavigation";
 
@@ -57,6 +59,37 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
     (state) => state.consumeFileNavigationTarget,
   );
   const revision = editor?.phase === "ready" ? editor.revision : 0;
+  const editorWatchBridge = useMemo<EditorStateBridge>(
+    () => ({
+      getActiveEditor: () => useWorkbenchStore.getState().activeEditor,
+      setActiveEditor: (next, update) => {
+        useWorkbenchStore.setState((state) => ({
+          activeEditor: next,
+          tabs:
+            update?.dirty === undefined && update?.tabStatus === undefined
+              ? state.tabs
+              : state.tabs.map((candidate) =>
+                  sameResource(candidate.resource, next.resource)
+                    ? {
+                        ...candidate,
+                        ...(update?.dirty === undefined
+                          ? {}
+                          : { dirty: update.dirty }),
+                        ...(update?.tabStatus === undefined
+                          ? {}
+                          : { status: update.tabStatus ?? undefined }),
+                      }
+                    : candidate,
+                ),
+        }));
+      },
+    }),
+    [],
+  );
+  const watchedResource =
+    editor?.phase === "ready" && sameResource(editor.resource, resource)
+      ? resource
+      : undefined;
   const findContextKey = `${activeResourceKey}\0${revision}`;
   const findContent =
     editor?.phase === "ready" && sameResource(editor.resource, resource)
@@ -82,6 +115,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
     loadEditor,
     flushActiveEditor,
   });
+  useEditorExternalWatch(watchedResource, editorWatchBridge);
 
   useEffect(() => {
     if (findOpen) {

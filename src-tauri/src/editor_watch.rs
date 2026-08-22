@@ -1,7 +1,13 @@
-use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::{
     domain::ResourceRef,
@@ -9,8 +15,13 @@ use crate::{
     state::AppState,
 };
 
-#[allow(dead_code)]
 pub const EDITOR_EXTERNAL_WATCH_EVENT: &str = "editor-external-watch-v1";
+
+const FILE_ACTION_ADDED: u32 = 1;
+const FILE_ACTION_REMOVED: u32 = 2;
+const FILE_ACTION_MODIFIED: u32 = 3;
+const FILE_ACTION_RENAMED_OLD_NAME: u32 = 4;
+const FILE_ACTION_RENAMED_NEW_NAME: u32 = 5;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct WatchKey {
@@ -27,7 +38,12 @@ impl WatchKey {
     }
 }
 
-#[allow(dead_code)]
+#[derive(Debug)]
+struct WatchEntry {
+    generation: u32,
+    cancelled: Arc<AtomicBool>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum EditorExternalWatchKind {
@@ -35,7 +51,6 @@ pub enum EditorExternalWatchKind {
     Deleted,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditorExternalWatchNotice {
@@ -44,10 +59,10 @@ pub struct EditorExternalWatchNotice {
     pub kind: EditorExternalWatchKind,
 }
 
-static WATCHES: OnceLock<Mutex<HashMap<WatchKey, u32>>> = OnceLock::new();
+static WATCHES: OnceLock<Mutex<HashMap<WatchKey, WatchEntry>>> = OnceLock::new();
 static GENERATIONS: OnceLock<Mutex<HashMap<WatchKey, u32>>> = OnceLock::new();
 
-fn watches() -> std::sync::MutexGuard<'static, HashMap<WatchKey, u32>> {
+fn watches() -> std::sync::MutexGuard<'static, HashMap<WatchKey, WatchEntry>> {
     WATCHES
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
@@ -61,12 +76,10 @@ fn generations() -> std::sync::MutexGuard<'static, HashMap<WatchKey, u32>> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-#[allow(dead_code)]
 pub fn watch_event_name() -> &'static str {
     EDITOR_EXTERNAL_WATCH_EVENT
 }
 
-#[allow(dead_code)]
 pub fn watch_notice(
     resource: ResourceRef,
     generation: u32,
@@ -80,35 +93,141 @@ pub fn watch_notice(
 }
 
 pub fn start_watch(resource: &ResourceRef) -> AppResult<u32> {
-    let mut watches = watches();
     let key = WatchKey::from_resource(resource);
+    let mut watches = watches();
     if watches.contains_key(&key) {
         return Err(AppError::InvalidRequest(
             "a watch is already active for this resource".into(),
         ));
     }
     let mut generations = generations();
-    let next = generations
+    let generation = generations
         .get(&key)
         .copied()
         .unwrap_or(0)
         .saturating_add(1);
-    generations.insert(key.clone(), next);
-    watches.insert(key, next);
-    Ok(next)
+    generations.insert(key.clone(), generation);
+    watches.insert(
+        key,
+        WatchEntry {
+            generation,
+            cancelled: Arc::new(AtomicBool::new(false)),
+        },
+    );
+    Ok(generation)
 }
 
 pub fn stop_watch(resource: &ResourceRef) -> AppResult<()> {
-    watches().remove(&WatchKey::from_resource(resource));
+    if let Some(entry) = watches().remove(&WatchKey::from_resource(resource)) {
+        entry.cancelled.store(true, Ordering::Release);
+    }
     Ok(())
+}
+
+fn watch_control(resource: &ResourceRef, generation: u32) -> Option<Arc<AtomicBool>> {
+    watches()
+        .get(&WatchKey::from_resource(resource))
+        .filter(|entry| entry.generation == generation)
+        .map(|entry| Arc::clone(&entry.cancelled))
+}
+
+fn finish_watch(resource: &ResourceRef, generation: u32) {
+    let key = WatchKey::from_resource(resource);
+    let mut watches = watches();
+    if watches
+        .get(&key)
+        .is_some_and(|entry| entry.generation == generation)
+    {
+        watches.remove(&key);
+    }
+}
+
+fn emit_if_active(
+    app: &tauri::AppHandle,
+    resource: &ResourceRef,
+    generation: u32,
+    cancelled: &AtomicBool,
+    kind: EditorExternalWatchKind,
+) {
+    deliver_if_active(resource, generation, cancelled, kind, |notice| {
+        let _ = app.emit(EDITOR_EXTERNAL_WATCH_EVENT, notice);
+    });
+}
+
+fn deliver_if_active(
+    resource: &ResourceRef,
+    generation: u32,
+    cancelled: &AtomicBool,
+    kind: EditorExternalWatchKind,
+    deliver: impl FnOnce(EditorExternalWatchNotice),
+) {
+    if cancelled.load(Ordering::Acquire) {
+        return;
+    }
+    let watches = watches();
+    if watches
+        .get(&WatchKey::from_resource(resource))
+        .is_some_and(|entry| {
+            entry.generation == generation && !entry.cancelled.load(Ordering::Acquire)
+        })
+    {
+        deliver(watch_notice(resource.clone(), generation, kind));
+    }
+}
+
+#[cfg(test)]
+fn can_emit(resource: &ResourceRef, generation: u32, cancelled: &AtomicBool) -> bool {
+    !cancelled.load(Ordering::Acquire)
+        && watches()
+            .get(&WatchKey::from_resource(resource))
+            .is_some_and(|entry| {
+                entry.generation == generation && !entry.cancelled.load(Ordering::Acquire)
+            })
+}
+
+fn notice_kind_for_path(
+    watched_file_name: &str,
+    changed_file_name: &str,
+    action: u32,
+) -> Option<EditorExternalWatchKind> {
+    if !watched_file_name.eq_ignore_ascii_case(changed_file_name) {
+        return None;
+    }
+    match action {
+        FILE_ACTION_REMOVED | FILE_ACTION_RENAMED_OLD_NAME => {
+            Some(EditorExternalWatchKind::Deleted)
+        }
+        FILE_ACTION_ADDED | FILE_ACTION_MODIFIED | FILE_ACTION_RENAMED_NEW_NAME => {
+            Some(EditorExternalWatchKind::Changed)
+        }
+        _ => None,
+    }
 }
 
 #[tauri::command]
 pub fn watch_editor_document(
-    _state: State<'_, AppState>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
     resource: ResourceRef,
 ) -> Result<u32, String> {
-    start_watch(&resource).map_err(|error| error.to_string())
+    let path = state
+        .database
+        .resolve_active_resource(&resource)
+        .and_then(|workspace| {
+            let relative_path = workspace.validate_resource(&resource, false)?;
+            workspace.resolve_existing_file(&relative_path)
+        })
+        .and_then(checked_file_path)
+        .map_err(|error| error.to_string())?;
+    let generation = start_watch(&resource).map_err(|error| error.to_string())?;
+    let Some(cancelled) = watch_control(&resource, generation) else {
+        return Err("editor watch was cancelled before it could start".into());
+    };
+    if let Err(error) = spawn_editor_watch(app, resource.clone(), path, generation, cancelled) {
+        let _ = stop_watch(&resource);
+        return Err(error.to_string());
+    }
+    Ok(generation)
 }
 
 #[tauri::command]
@@ -119,55 +238,34 @@ pub fn unwatch_editor_document(
     stop_watch(&resource).map_err(|error| error.to_string())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn resource(relative_path: &str) -> ResourceRef {
-        ResourceRef {
-            root_id: "root-a".into(),
-            relative_path: relative_path.into(),
-        }
-    }
-
-    #[test]
-    fn watch_is_resource_scoped_and_cancelable() {
-        let file = resource("notes.md");
-        let sibling = resource("other.md");
-        watches().clear();
-        generations().clear();
-        assert_eq!(start_watch(&file).unwrap(), 1);
-        assert!(start_watch(&file).is_err());
-        assert_eq!(start_watch(&sibling).unwrap(), 1);
-        stop_watch(&file).unwrap();
-        assert_eq!(start_watch(&file).unwrap(), 2);
-        stop_watch(&file).unwrap();
-        stop_watch(&sibling).unwrap();
-        assert_eq!(EDITOR_EXTERNAL_WATCH_EVENT, "editor-external-watch-v1");
-        let notice = EditorExternalWatchNotice {
-            resource: file,
-            generation: 1,
-            kind: EditorExternalWatchKind::Changed,
-        };
-        assert_eq!(notice.kind, EditorExternalWatchKind::Changed);
-        assert!(
-            serde_json::from_str::<EditorExternalWatchNotice>(
-                r#"{"resource":{"rootId":"root-a","relativePath":"notes.md"},"generation":1,"kind":"renamed"}"#
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn watch_generation_is_monotonic_across_rewatch() {
-        let file = resource("journal.md");
-        watches().clear();
-        generations().clear();
-        assert_eq!(start_watch(&file).unwrap(), 1);
-        stop_watch(&file).unwrap();
-        assert_eq!(start_watch(&file).unwrap(), 2);
-        stop_watch(&file).unwrap();
-        assert_eq!(start_watch(&file).unwrap(), 3);
-        stop_watch(&file).unwrap();
+fn checked_file_path(path: PathBuf) -> AppResult<PathBuf> {
+    if path.metadata()?.is_file() {
+        Ok(path)
+    } else {
+        Err(AppError::InvalidRequest(
+            "editor watches require an existing file".into(),
+        ))
     }
 }
+
+#[cfg(windows)]
+mod windows;
+
+#[cfg(windows)]
+use windows::spawn_editor_watch;
+
+#[cfg(not(windows))]
+fn spawn_editor_watch(
+    _app: tauri::AppHandle,
+    _resource: ResourceRef,
+    _path: PathBuf,
+    _generation: u32,
+    _cancelled: Arc<AtomicBool>,
+) -> AppResult<()> {
+    Err(AppError::Unsupported(
+        "editor filesystem watches are only available on Windows".into(),
+    ))
+}
+
+#[cfg(test)]
+mod tests;
