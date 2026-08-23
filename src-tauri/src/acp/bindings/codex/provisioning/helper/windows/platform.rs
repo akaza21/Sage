@@ -164,17 +164,14 @@ impl HelperTransactionPlatform for WindowsPlatform {
     fn remove_completed_stage(&mut self) -> Result<(), ElevatedHelperError> {
         let held_package = self.stage_root.join(HELD_PACKAGE_NAME);
         let held_state = self.stage_root.join(HELD_STATE_NAME);
-        if exact_directory_presence(&held_package)? || exact_directory_presence(&held_state)? {
-            if !exact_directory_presence(&held_package)? || !exact_directory_presence(&held_state)?
-            {
-                return Err(ElevatedHelperError::Cleanup);
+        for held in [&held_package, &held_state] {
+            if exact_directory_presence(held)? {
+                remove_exact_directory_tree(held)?;
             }
-            self.held_package.take();
-            self.held_state.take();
-            self.held_state_identity.take();
-            remove_exact_directory_tree(&held_package)?;
-            remove_exact_directory_tree(&held_state)?;
         }
+        self.held_package.take();
+        self.held_state.take();
+        self.held_state_identity.take();
         cleanup_completed_stage(&self.stage_root, &mut self.stage_root_handle)
     }
 
@@ -349,7 +346,7 @@ impl HelperTransactionPlatform for WindowsPlatform {
         Ok(())
     }
 
-    fn retire_published_pair(&mut self) -> Result<(), ElevatedHelperError> {
+    fn retire_published_package(&mut self) -> Result<(), ElevatedHelperError> {
         let package_root = ConfiguredManagedPackageRoot::new(self.package_target.clone())
             .map_err(|_| ElevatedHelperError::Drift)?;
         let package = inspect_managed_package(&self.packet, &package_root)
@@ -361,7 +358,16 @@ impl HelperTransactionPlatform for WindowsPlatform {
             return Err(ElevatedHelperError::Drift);
         }
         drop(package);
-        remove_exact_directory_tree(&self.package_target)?;
+        remove_exact_directory_tree(&self.package_target)
+    }
+
+    fn retire_published_state(&mut self) -> Result<(), ElevatedHelperError> {
+        self.require_bound_state_at(&self.state_target)?;
+        validate_provisioned_state_root(&self.state_target)
+            .map_err(|_| ElevatedHelperError::Drift)?;
+        if !bounded_names(&self.state_target, 0, ElevatedHelperError::Drift)?.is_empty() {
+            return Err(ElevatedHelperError::Drift);
+        }
         remove_exact_directory_tree(&self.state_target)
     }
 }

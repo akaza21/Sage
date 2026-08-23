@@ -14,6 +14,15 @@ enum JournalPhase {
     Prepared,
     StatePublished,
     PackagePublished,
+    PackageRetired,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+enum JournalOperation {
+    #[default]
+    Publish,
+    Remove,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -26,6 +35,8 @@ struct JournalPayload {
     package_target: PathBuf,
     state_target: PathBuf,
     state_identity: NodeIdentity,
+    #[serde(default)]
+    operation: JournalOperation,
     phase: JournalPhase,
 }
 
@@ -79,7 +90,8 @@ pub(super) trait HelperTransactionPlatform {
     fn hold_published_pair(&mut self) -> Result<(), ElevatedHelperError>;
     fn discard_held_pair(&mut self) -> Result<(), ElevatedHelperError>;
     fn restore_held_pair(&mut self) -> Result<(), ElevatedHelperError>;
-    fn retire_published_pair(&mut self) -> Result<(), ElevatedHelperError>;
+    fn retire_published_package(&mut self) -> Result<(), ElevatedHelperError>;
+    fn retire_published_state(&mut self) -> Result<(), ElevatedHelperError>;
 }
 
 pub(super) fn execute_boundary_recover<P: HelperTransactionPlatform>(
@@ -87,7 +99,10 @@ pub(super) fn execute_boundary_recover<P: HelperTransactionPlatform>(
     platform: &mut P,
 ) -> Result<P::Proof, ElevatedHelperError> {
     let path = journal_path(request)?;
-    if platform.read_journal(&path, JOURNAL_BYTES_MAX)?.is_none() {
+    let Some(bytes) = platform.read_journal(&path, JOURNAL_BYTES_MAX)? else {
+        return Err(ElevatedHelperError::Drift);
+    };
+    if decode_journal(&bytes, request)?.payload.operation == JournalOperation::Remove {
         return Err(ElevatedHelperError::Drift);
     }
     finalize(request, platform)
@@ -104,6 +119,7 @@ pub(super) fn execute_boundary_update<P: HelperTransactionPlatform>(
     platform.hold_published_pair()?;
     match finalize(request, platform) {
         Ok(proof) => platform.discard_held_pair().map(|()| proof),
+        Err(ElevatedHelperError::Cleanup) => Err(ElevatedHelperError::Cleanup),
         Err(error) => platform.restore_held_pair().and(Err(error)),
     }
 }
@@ -113,19 +129,21 @@ pub(super) fn execute_boundary_remove<P: HelperTransactionPlatform>(
     platform: &mut P,
 ) -> Result<(), ElevatedHelperError> {
     let path = journal_path(request)?;
-    if platform.read_journal(&path, JOURNAL_BYTES_MAX)?.is_some() {
-        return Err(ElevatedHelperError::Cleanup);
+    if let Some(bytes) = platform.read_journal(&path, JOURNAL_BYTES_MAX)? {
+        let journal = decode_journal(&bytes, request)?;
+        if journal.payload.operation != JournalOperation::Remove {
+            return Err(ElevatedHelperError::Cleanup);
+        }
+        return finish_removal(request, platform, &path, journal);
     }
     let observed = platform.observe()?;
     if observed.stage_package || !observed.final_package || !observed.final_state {
         return Err(ElevatedHelperError::Drift);
     }
-    platform.retire_published_pair()?;
-    let converged = platform.observe()?;
-    if converged.stage_package || converged.final_package || converged.final_state {
-        return Err(ElevatedHelperError::Cleanup);
-    }
-    Ok(())
+    let state_identity = platform.bind_state_identity(None)?;
+    let journal = initial_removal_journal(request, state_identity)?;
+    platform.create_journal(&path, &encode_journal(&journal)?)?;
+    finish_removal(request, platform, &path, journal)
 }
 
 pub(super) fn finalize<P: HelperTransactionPlatform>(
@@ -212,6 +230,7 @@ fn advance<P: HelperTransactionPlatform>(
                     .map_err(|_| ElevatedHelperError::Cleanup)?;
                 return Ok(proof);
             }
+            JournalPhase::PackageRetired => return Err(ElevatedHelperError::Drift),
         }
     }
     Err(ElevatedHelperError::Journal)
@@ -251,6 +270,7 @@ fn require_namespace(
         JournalPhase::PackagePublished => {
             !observed.stage_package && observed.final_package && observed.final_state
         }
+        JournalPhase::PackageRetired => false,
     };
     if valid {
         Ok(())
@@ -289,7 +309,41 @@ fn initial_journal(
     request: &AuthenticatedHelperRequest,
     state_identity: NodeIdentity,
 ) -> Result<SealedJournal, ElevatedHelperError> {
-    let payload = JournalPayload {
+    let payload = journal_payload(
+        request,
+        state_identity,
+        JournalOperation::Publish,
+        JournalPhase::Prepared,
+    )?;
+    Ok(SealedJournal {
+        authenticator_sha256: seal_payload(request, &payload)?,
+        payload,
+    })
+}
+
+fn initial_removal_journal(
+    request: &AuthenticatedHelperRequest,
+    state_identity: NodeIdentity,
+) -> Result<SealedJournal, ElevatedHelperError> {
+    let payload = journal_payload(
+        request,
+        state_identity,
+        JournalOperation::Remove,
+        JournalPhase::Prepared,
+    )?;
+    Ok(SealedJournal {
+        authenticator_sha256: seal_payload(request, &payload)?,
+        payload,
+    })
+}
+
+fn journal_payload(
+    request: &AuthenticatedHelperRequest,
+    state_identity: NodeIdentity,
+    operation: JournalOperation,
+    phase: JournalPhase,
+) -> Result<JournalPayload, ElevatedHelperError> {
+    Ok(JournalPayload {
         schema_version: JOURNAL_SCHEMA_VERSION,
         creation_nonce: request.creation_nonce().to_owned(),
         request_binding_sha256: request.binding_sha256()?,
@@ -297,11 +351,8 @@ fn initial_journal(
         package_target: request.package_target().to_owned(),
         state_target: request.state_target().to_owned(),
         state_identity,
-        phase: JournalPhase::Prepared,
-    };
-    Ok(SealedJournal {
-        authenticator_sha256: seal_payload(request, &payload)?,
-        payload,
+        operation,
+        phase,
     })
 }
 
@@ -329,12 +380,64 @@ fn decode_journal(
     ) {
         return Err(ElevatedHelperError::Journal);
     }
-    let mut expected_payload = initial_journal(request, journal.payload.state_identity)?.payload;
-    expected_payload.phase = journal.payload.phase;
+    let expected_payload = journal_payload(
+        request,
+        journal.payload.state_identity,
+        journal.payload.operation,
+        journal.payload.phase,
+    )?;
     if journal.payload != expected_payload {
         return Err(ElevatedHelperError::Collision);
     }
     Ok(journal)
+}
+
+fn finish_removal<P: HelperTransactionPlatform>(
+    request: &AuthenticatedHelperRequest,
+    platform: &mut P,
+    journal_path: &Path,
+    mut journal: SealedJournal,
+) -> Result<(), ElevatedHelperError> {
+    for _ in 0..2 {
+        let observed = platform.observe()?;
+        match journal.payload.phase {
+            JournalPhase::Prepared => {
+                if observed.stage_package || !observed.final_state {
+                    return Err(ElevatedHelperError::Drift);
+                }
+                if observed.final_package {
+                    platform.retire_published_package()?;
+                }
+                persist_phase(
+                    request,
+                    platform,
+                    journal_path,
+                    &mut journal,
+                    JournalPhase::PackageRetired,
+                )?;
+            }
+            JournalPhase::PackageRetired => {
+                if observed.stage_package || observed.final_package {
+                    return Err(ElevatedHelperError::Drift);
+                }
+                if observed.final_state {
+                    platform.bind_state_identity(Some(journal.payload.state_identity))?;
+                    platform.retire_published_state()?;
+                }
+                let converged = platform.observe()?;
+                if converged.stage_package || converged.final_package || converged.final_state {
+                    return Err(ElevatedHelperError::Cleanup);
+                }
+                return platform
+                    .remove_journal(journal_path)
+                    .map_err(|_| ElevatedHelperError::Cleanup);
+            }
+            JournalPhase::StatePublished | JournalPhase::PackagePublished => {
+                return Err(ElevatedHelperError::Drift);
+            }
+        }
+    }
+    Err(ElevatedHelperError::Journal)
 }
 
 fn encode_journal(journal: &SealedJournal) -> Result<Vec<u8>, ElevatedHelperError> {

@@ -25,6 +25,7 @@ struct FakePlatform {
     fail_publish: bool,
     fail_proof: bool,
     fail_cleanup: bool,
+    fail_retire_state: bool,
     state_identity: NodeIdentity,
     bound_state_identity: Option<NodeIdentity>,
     state_effect_published: bool,
@@ -50,6 +51,7 @@ impl Default for FakePlatform {
             fail_publish: false,
             fail_proof: false,
             fail_cleanup: false,
+            fail_retire_state: false,
             state_identity: NodeIdentity {
                 volume_serial: 7,
                 file_id: 11,
@@ -193,6 +195,7 @@ impl HelperTransactionPlatform for FakePlatform {
             self.stage_root_present = false;
             self.crash_if(CrashPoint::StageRootRemoved);
         }
+        self.held_published_pair = false;
         Ok(())
     }
 
@@ -225,11 +228,9 @@ impl HelperTransactionPlatform for FakePlatform {
     }
 
     fn discard_held_pair(&mut self) -> Result<(), ElevatedHelperError> {
-        self.held_published_pair
+        (!self.held_published_pair)
             .then_some(())
-            .ok_or(ElevatedHelperError::Drift)?;
-        self.held_published_pair = false;
-        Ok(())
+            .ok_or(ElevatedHelperError::Cleanup)
     }
 
     fn restore_held_pair(&mut self) -> Result<(), ElevatedHelperError> {
@@ -242,8 +243,15 @@ impl HelperTransactionPlatform for FakePlatform {
         Ok(())
     }
 
-    fn retire_published_pair(&mut self) -> Result<(), ElevatedHelperError> {
+    fn retire_published_package(&mut self) -> Result<(), ElevatedHelperError> {
         self.observation.final_package = false;
+        Ok(())
+    }
+
+    fn retire_published_state(&mut self) -> Result<(), ElevatedHelperError> {
+        if self.fail_retire_state {
+            return Err(ElevatedHelperError::Cleanup);
+        }
         self.observation.final_state = false;
         Ok(())
     }
@@ -603,6 +611,37 @@ fn rollback_converges_after_failed_update() {
 }
 
 #[test]
+fn update_cleanup_retains_the_new_pair_and_journal_for_recovery() {
+    let request = request("00");
+    let mut platform = FakePlatform {
+        observation: NamespaceObservation {
+            stage_package: true,
+            final_package: true,
+            final_state: true,
+        },
+        fail_cleanup: true,
+        ..FakePlatform::default()
+    };
+
+    assert_eq!(
+        execute_boundary_update(&request, &mut platform),
+        Err(ElevatedHelperError::Cleanup)
+    );
+    assert!(platform.journal.is_some());
+    assert!(platform.observation.final_package);
+    assert!(platform.observation.final_state);
+    assert!(platform.held_published_pair);
+
+    platform.fail_cleanup = false;
+    assert_eq!(
+        execute_boundary_recover(&request, &mut platform),
+        Ok("managed-proof")
+    );
+    assert_eq!(platform.journal, None);
+    assert!(!platform.held_published_pair);
+}
+
+#[test]
 fn remove_retires_published_package_and_state() {
     let mut platform = FakePlatform {
         observation: NamespaceObservation {
@@ -626,4 +665,32 @@ fn remove_retires_published_package_and_state() {
             final_state: false,
         }
     );
+}
+
+#[test]
+fn remove_keeps_a_journal_when_state_retirement_fails_after_package_retirement() {
+    let request = request("00");
+    let mut platform = FakePlatform {
+        observation: NamespaceObservation {
+            stage_package: false,
+            final_package: true,
+            final_state: true,
+        },
+        fail_retire_state: true,
+        ..FakePlatform::default()
+    };
+
+    assert_eq!(
+        execute_boundary_remove(&request, &mut platform),
+        Err(ElevatedHelperError::Cleanup)
+    );
+    assert!(platform.journal.is_some());
+    assert!(!platform.observation.final_package);
+    assert!(platform.observation.final_state);
+
+    platform.fail_retire_state = false;
+    assert_eq!(execute_boundary_remove(&request, &mut platform), Ok(()));
+    assert_eq!(platform.journal, None);
+    assert!(!platform.observation.final_package);
+    assert!(!platform.observation.final_state);
 }

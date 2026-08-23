@@ -191,3 +191,33 @@ fn bounded_cleanup_scan_accepts_exact_limit_and_rejects_hostile_plus_one() {
         Err(ElevatedHelperError::Cleanup)
     );
 }
+
+#[test]
+fn cleanup_directory_cap_stops_iteration_before_collecting_the_remainder() {
+    struct MoreEntriesThanAllowed {
+        next: usize,
+    }
+
+    impl Iterator for MoreEntriesThanAllowed {
+        type Item = Result<usize, ()>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            assert!(
+                self.next <= 3,
+                "directory iteration exceeded the cap boundary"
+            );
+            let entry = self.next;
+            self.next += 1;
+            Some(Ok(entry))
+        }
+    }
+
+    assert_eq!(
+        bounded_directory_entries(
+            MoreEntriesThanAllowed { next: 0 },
+            3,
+            ElevatedHelperError::Cleanup,
+        ),
+        Err(ElevatedHelperError::Cleanup)
+    );
+}

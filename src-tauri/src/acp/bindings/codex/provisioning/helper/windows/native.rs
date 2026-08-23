@@ -271,13 +271,16 @@ fn remove_directory_contents(
     if depth > DELETE_DEPTH_MAX {
         return Err(ElevatedHelperError::Cleanup);
     }
-    let children = fs::read_dir(path)
-        .map_err(|_| ElevatedHelperError::Cleanup)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| ElevatedHelperError::Cleanup)?;
+    let available = DELETE_ENTRIES_MAX
+        .checked_sub(*entries)
+        .ok_or(ElevatedHelperError::Cleanup)?;
+    let children = bounded_directory_entries(
+        fs::read_dir(path).map_err(|_| ElevatedHelperError::Cleanup)?,
+        available,
+        ElevatedHelperError::Cleanup,
+    )?;
     *entries = entries
         .checked_add(children.len())
-        .filter(|count| *count <= DELETE_ENTRIES_MAX)
         .ok_or(ElevatedHelperError::Cleanup)?;
     for entry in children {
         let path = entry.path();
@@ -297,6 +300,21 @@ fn remove_directory_contents(
     Ok(())
 }
 
+fn bounded_directory_entries<T, E>(
+    entries: impl IntoIterator<Item = Result<T, E>>,
+    maximum: usize,
+    failure: ElevatedHelperError,
+) -> Result<Vec<T>, ElevatedHelperError> {
+    let mut bounded = Vec::with_capacity(maximum);
+    for entry in entries {
+        if bounded.len() == maximum {
+            return Err(failure);
+        }
+        bounded.push(entry.map_err(|_| failure)?);
+    }
+    Ok(bounded)
+}
+
 #[cfg(test)]
 mod platform_tests {
     use super::super::WindowsPlatform;
@@ -309,7 +327,8 @@ mod platform_tests {
         requires_concrete_lifecycle_platform::<WindowsPlatform>();
         let _ = <WindowsPlatform as HelperTransactionPlatform>::hold_published_pair;
         let _ = <WindowsPlatform as HelperTransactionPlatform>::restore_held_pair;
-        let _ = <WindowsPlatform as HelperTransactionPlatform>::retire_published_pair;
+        let _ = <WindowsPlatform as HelperTransactionPlatform>::retire_published_package;
+        let _ = <WindowsPlatform as HelperTransactionPlatform>::retire_published_state;
     }
 }
 
