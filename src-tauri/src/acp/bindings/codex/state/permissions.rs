@@ -134,10 +134,23 @@ impl CodexAdapter {
             PermissionDecision::AllowOnce => {
                 entry.state = ServerRequestState::AllowPending;
                 entry.state = ServerRequestState::AllowCommitted;
+                let mut value: serde_json::Value = serde_json::from_slice(&entry.response)
+                    .map_err(|_| AdapterError::PermissionTeardownRequired)?;
+                let result = if entry.method == "item/permissions/requestApproval" {
+                    serde_json::json!({"permissions": {}})
+                } else {
+                    serde_json::json!({"decision": "accept"})
+                };
+                value
+                    .as_object_mut()
+                    .ok_or(AdapterError::PermissionTeardownRequired)?
+                    .insert("result".into(), result);
+                let bytes = serde_json::to_vec(&value)
+                    .map_err(|_| AdapterError::PermissionTeardownRequired)?;
                 // An empty retained response marks the shared queued state as
                 // the allow path, so a duplicate cannot replay decline bytes.
                 entry.response.clear();
-                Ok(Some((entry.id.clone(), Vec::new(), entry.method.clone())))
+                Ok(Some((entry.id.clone(), bytes, entry.method.clone())))
             }
             PermissionDecision::Deny => {
                 entry.state = ServerRequestState::DeclinePending;

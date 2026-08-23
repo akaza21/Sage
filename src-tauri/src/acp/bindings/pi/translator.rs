@@ -82,9 +82,25 @@ pub struct PiTranslator {
     completed_order: VecDeque<String>,
     active: Option<ActiveTurn>,
     initialization: Option<InitializationIntent>,
+    pending_ui: Option<PendingUiRequest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PendingUiRequest {
+    pub id: String,
+    pub method: String,
+    pub options: Vec<String>,
 }
 
 impl PiTranslator {
+    pub(crate) fn take_pending_ui(&mut self) -> Option<PendingUiRequest> {
+        self.pending_ui.take()
+    }
+
+    pub(crate) fn remember_pending_ui(&mut self, request: PendingUiRequest) {
+        self.pending_ui = Some(request);
+    }
+
     fn admitted(epoch: u64, admission: LaunchAdmission) -> Self {
         debug_assert!(admission.capabilities().prompt());
         debug_assert!(!admission.capabilities().write_tools());
@@ -111,6 +127,7 @@ impl PiTranslator {
             completed_order: VecDeque::new(),
             active: None,
             initialization: None,
+            pending_ui: None,
         }
     }
 

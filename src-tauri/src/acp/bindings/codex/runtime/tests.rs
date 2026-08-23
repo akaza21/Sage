@@ -907,6 +907,32 @@ fn durable_permission_id_correlates_to_codex_jsonrpc_request_id() {
 }
 
 #[test]
+fn allow_once_preserves_numeric_codex_jsonrpc_request_id() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    runtime
+        .ingest(
+            &frame(json!({
+                "id":17,"method":"item/commandExecution/requestApproval","params":{
+                    "threadId":"thread-1","turnId":"turn-1","itemId":"tool-numeric"
+                }
+            })),
+            &Mapper,
+        )
+        .expect("numeric permission");
+    let allow = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: crate::acp::contract::SageServerRequestId::parse("17").unwrap(),
+            decision: PermissionDecision::AllowOnce,
+        })
+        .expect("numeric allow");
+    let body: Value = serde_json::from_slice(allow.frame().payload()).expect("json");
+    assert_eq!(body["id"], json!(17));
+    assert!(body["id"].is_number());
+}
+
+#[test]
 fn permissions_approval_allow_once_uses_the_permissions_response_shape() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);

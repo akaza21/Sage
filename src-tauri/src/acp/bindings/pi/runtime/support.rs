@@ -40,13 +40,49 @@ impl PiRuntime {
                 return Err(AdapterRuntimeError::Operation);
             }
             crate::acp::runtime::permissions::PermissionDecision::AllowOnce => {
+                let pending = self.translator.take_pending_ui();
                 self.translator.release_permission_wait();
-                let bytes = serde_json::to_vec(&serde_json::json!({
-                    "type": "permission_response",
-                    "requestId": request_id.as_str(),
-                    "decision": "allow_once",
-                }))
-                .map_err(|_| AdapterRuntimeError::Frame)?;
+                let id = pending
+                    .as_ref()
+                    .map(|value| value.id.as_str())
+                    .unwrap_or(request_id.as_str());
+                let body = match pending.as_ref().map(|value| value.method.as_str()) {
+                    Some("select") => {
+                        let value = pending
+                            .as_ref()
+                            .and_then(|pending| {
+                                pending.options.iter().find(|option| {
+                                    let lower = option.to_ascii_lowercase();
+                                    lower.contains("allow") && !lower.contains("always")
+                                })
+                            })
+                            .or_else(|| pending.as_ref().and_then(|pending| pending.options.first()))
+                            .map(String::as_str)
+                            .unwrap_or("Allow");
+                        serde_json::json!({
+                            "type": "extension_ui_response",
+                            "id": id,
+                            "value": value,
+                        })
+                    }
+                    Some("confirm") => serde_json::json!({
+                        "type": "extension_ui_response",
+                        "id": id,
+                        "confirmed": true,
+                    }),
+                    Some("input") | Some("editor") => serde_json::json!({
+                        "type": "extension_ui_response",
+                        "id": id,
+                        "value": "",
+                    }),
+                    _ => serde_json::json!({
+                        "type": "extension_ui_response",
+                        "id": id,
+                        "confirmed": true,
+                    }),
+                };
+                let bytes =
+                    serde_json::to_vec(&body).map_err(|_| AdapterRuntimeError::Frame)?;
                 let frame = crate::acp::transport::OutboundFrame::new(bytes)
                     .map_err(|_| AdapterRuntimeError::Frame)?;
                 AdapterEgress::new(frame, EgressToken::protocol_notification())

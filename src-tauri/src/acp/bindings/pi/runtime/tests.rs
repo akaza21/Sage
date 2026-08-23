@@ -406,8 +406,8 @@ fn allow_once_on_pi_does_not_emit_denial_and_records_resolved_allowed() {
     let batch = runtime
         .ingest(
             &frame(json!({
-                "type":"tool_execution_start","toolCallId":"write-1","toolName":"search",
-                "args":{"path":"C:\\Users\\private"}
+                "type":"extension_ui_request","id":"write-1","method":"select",
+                "title":"Allow tool?","options":["Allow","Block"]
             })),
             &Mapper,
         )
@@ -439,7 +439,10 @@ fn allow_once_on_pi_does_not_emit_denial_and_records_resolved_allowed() {
         .expect("allow once");
     assert!(!allow.token().is_mandatory());
     assert_eq!(allow.token().allow_request(), Some("write-1"));
-    assert_ne!(request(&allow)["type"], "abort");
+    let body = request(&allow);
+    assert_eq!(body["type"], "extension_ui_response");
+    assert_eq!(body["id"], "write-1");
+    assert_eq!(body["value"], "Allow");
     runtime
         .resolve_egress(allow.token().clone(), EgressResolution::Queued)
         .expect("queued");

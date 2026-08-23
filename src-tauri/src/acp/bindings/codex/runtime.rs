@@ -257,17 +257,7 @@ impl HarnessAdapter for CodexRuntime {
                     .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
                 match (decision, pending) {
                     (PermissionDecision::Ask, None) => Err(AdapterRuntimeError::Operation),
-                    (PermissionDecision::AllowOnce, Some((_, _, method))) => {
-                        let result = if method == "item/permissions/requestApproval" {
-                            serde_json::json!({"permissions": {}})
-                        } else {
-                            serde_json::json!({"decision": "accept"})
-                        };
-                        let bytes = serde_json::to_vec(&serde_json::json!({
-                            "id": request_id.as_str(),
-                            "result": result
-                        }))
-                        .map_err(|_| AdapterRuntimeError::Frame)?;
+                    (PermissionDecision::AllowOnce, Some((_, bytes, _))) => {
                         let frame =
                             OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
                         resolve_later_permission(

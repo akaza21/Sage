@@ -95,13 +95,37 @@ impl PiTranslator {
             }
             "extension_ui_request" | "permission_request" => {
                 self.latch_denial()?;
+                let id = external_id(
+                    value
+                        .get("id")
+                        .or_else(|| value.get("requestId"))
+                        .or_else(|| value.get("request_id")),
+                )?;
+                let method = value
+                    .get("method")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned();
+                let options = value
+                    .get("options")
+                    .and_then(Value::as_array)
+                    .map(|options| {
+                        options
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if let Some(id) = id.clone() {
+                    self.remember_pending_ui(super::PendingUiRequest {
+                        id,
+                        method,
+                        options,
+                    });
+                }
                 Ok(vec![AdapterOutput::PermissionDeclined {
-                    external_id: external_id(
-                        value
-                            .get("requestId")
-                            .or_else(|| value.get("request_id"))
-                            .or_else(|| value.get("id")),
-                    )?,
+                    external_id: id,
                     tool: "extension request".into(),
                 }])
             }
@@ -160,14 +184,19 @@ impl PiTranslator {
             128,
         )?
         .ok_or(AdapterError::Malformed)?;
-        let turn = self.live_turn()?;
         if name != "read" {
-            turn.denial_latched = true;
+            self.live_turn()?.denial_latched = true;
+            self.remember_pending_ui(super::PendingUiRequest {
+                id: id.clone(),
+                method: String::new(),
+                options: Vec::new(),
+            });
             return Ok(vec![AdapterOutput::PermissionDeclined {
                 external_id: Some(id),
                 tool: name,
             }]);
         }
+        let turn = self.live_turn()?;
         if turn.tools.contains_key(&id) {
             return Ok(vec![AdapterOutput::DuplicateIgnored]);
         }
@@ -230,6 +259,7 @@ impl PiTranslator {
         if let Some(turn) = self.active.as_mut() {
             turn.denial_latched = false;
         }
+        self.pending_ui = None;
     }
 }
 
