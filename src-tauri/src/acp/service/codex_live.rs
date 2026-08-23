@@ -48,6 +48,10 @@ mod live_recovery;
 mod projection_recovery;
 mod recovery;
 
+#[cfg(test)]
+#[path = "codex_live/journey_tests.rs"]
+mod journey_tests;
+
 pub(super) use recovery::PendingCodexRecovery;
 
 impl ActivationAbortIntent {
