@@ -516,6 +516,39 @@ fn permission_ingress_journals_a_request_and_waits_for_a_later_decision() {
 }
 
 #[test]
+fn permission_request_ignores_an_unpaired_mandatory_deny_egress() {
+    runtime().block_on(async {
+        let event = AdapterEvent::PermissionRequest {
+            turn_id: identity("turn-envelope"),
+            item_id: identity("permission-item"),
+            external_request_id: ExternalId::new("permissionRequest", "request-external").unwrap(),
+            payload: permission(),
+            request_payload_digest: [1; 32],
+        };
+        let stale_deny = AdapterEgress::new(
+            OutboundFrame::new(br#"{\"result\":{\"decision\":\"decline\"}}"#.to_vec()).unwrap(),
+            EgressToken::mandatory_deny(
+                ExternalId::new("permissionRequest", "leftover-deny").unwrap(),
+                false,
+            ),
+        );
+        let (mut pump, shared) = build_pump(vec![owned(vec![event], vec![stale_deny])]);
+
+        pump.push_stdout_chunk(b"{}\n", 20).await.unwrap();
+
+        let state = shared.0.lock().unwrap();
+        assert!(matches!(
+            state.durable_batches[0].as_slice(),
+            [DurableAdapterEvent::PermissionRequest { .. }]
+        ));
+        assert_eq!(state.log, ["journal", "mandatory", "publish"]);
+        assert_eq!(state.resolutions, [EgressResolution::Queued]);
+        drop(state);
+        assert!(!pump.teardown_required());
+    });
+}
+
+#[test]
 fn ask_does_not_invoke_the_adapter_or_write_a_harness_byte() {
     runtime().block_on(async {
         let (mut pump, shared) = permission_pump();

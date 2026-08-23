@@ -241,23 +241,5 @@ pub(super) fn validate_deny_pairs(
             return Err(AdapterPumpError::TeardownRequired);
         }
     }
-    for value in egress {
-        let Some((request, false)) = value.token().deny_request() else {
-            continue;
-        };
-        let matches = durable
-            .iter()
-            .filter(|fact| {
-                matches!(
-                    &fact.event,
-                    DurableAdapterEvent::PermissionDeny { intent, .. }
-                        if intent.external_request_id.as_str() == request
-                )
-            })
-            .count();
-        if matches != 1 {
-            return Err(AdapterPumpError::TeardownRequired);
-        }
-    }
     Ok(())
 }
