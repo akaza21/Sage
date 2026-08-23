@@ -289,12 +289,17 @@ function useLanguageProjection<
   const [report, setReport] = useState<T | null>(null);
   const rootId = resource?.rootId;
   const relativePath = resource?.relativePath;
+  const resourceIdentity = `${rootId ?? ""}:${relativePath ?? ""}`;
+  const [seenIdentity, setSeenIdentity] = useState(resourceIdentity);
+  if (seenIdentity !== resourceIdentity) {
+    setSeenIdentity(resourceIdentity);
+    setReport(null);
+  }
 
   useEffect(() => {
     let sleeping = false;
     let unsubscribe: (() => void) | undefined;
     let latestGeneration = 0;
-    setReport(null);
     if (!rootId || !relativePath) {
       return;
     }
