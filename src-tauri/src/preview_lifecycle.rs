@@ -21,7 +21,7 @@ pub(crate) fn on_committed_project_transition_epoch(new_epoch: u64) {
 /// No-op on this owner stub. IDE-3 replaces the body (or routes it into
 /// `app_preview`) without adding a second call site from command files.
 pub(crate) fn stop_preview_children_before_epoch(new_epoch: u64) {
-    let _ = new_epoch;
+    crate::app_preview_commands::stop_preview_children_before_epoch(new_epoch);
 }
 
 /// Process-exit cleanup. Owner calls this from `lib.rs` on ExitRequested.
