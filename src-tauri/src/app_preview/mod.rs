@@ -2,6 +2,8 @@ pub(crate) mod discovery;
 mod error;
 mod health;
 pub(crate) mod lifecycle;
+#[cfg(windows)]
+mod lifecycle_windows;
 mod origin;
 mod url;
 

@@ -308,14 +308,14 @@ fn stop_starting(target: &PreviewTargetRef) {
 struct ManagedChild {
     child: Child,
     #[cfg(windows)]
-    job: PreviewJob,
+    job: super::lifecycle_windows::PreviewJob,
 }
 
 impl ManagedChild {
     fn reserve(child: Child) -> Result<Self, Child> {
         #[cfg(windows)]
         {
-            match PreviewJob::new(&child) {
+            match super::lifecycle_windows::PreviewJob::new(&child) {
                 Ok(job) => Ok(Self { child, job }),
                 Err(()) => Err(child),
             }
@@ -333,71 +333,6 @@ fn stop_child(child: &mut ManagedChild) {
     #[cfg(not(windows))]
     let _ = child.child.kill();
     let _ = child.child.wait();
-}
-
-#[cfg(windows)]
-struct PreviewJob(windows_sys::Win32::Foundation::HANDLE);
-
-// SAFETY: The HANDLE is an owned Windows job object used only while the registry mutex is held.
-// The OS handle may be signaled from any thread, and we never share the raw pointer without
-// that lock.
-#[cfg(windows)]
-unsafe impl Send for PreviewJob {}
-
-#[cfg(windows)]
-impl PreviewJob {
-    fn new(child: &Child) -> Result<Self, ()> {
-        use std::os::windows::io::AsRawHandle;
-        use windows_sys::Win32::{
-            Foundation::CloseHandle,
-            System::JobObjects::{
-                AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-                JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
-                SetInformationJobObject, TerminateJobObject,
-            },
-        };
-
-        let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
-        if job == std::ptr::null_mut() {
-            return Err(());
-        }
-        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        let configured = unsafe {
-            SetInformationJobObject(
-                job,
-                JobObjectExtendedLimitInformation,
-                std::ptr::addr_of!(limits).cast(),
-                std::mem::size_of_val(&limits) as u32,
-            ) != 0
-        };
-        let assigned =
-            configured && unsafe { AssignProcessToJobObject(job, child.as_raw_handle() as _) != 0 };
-        if assigned {
-            Ok(Self(job))
-        } else {
-            unsafe {
-                TerminateJobObject(job, 1);
-                CloseHandle(job);
-            }
-            Err(())
-        }
-    }
-
-    fn terminate(&self) {
-        use windows_sys::Win32::System::JobObjects::TerminateJobObject;
-
-        unsafe { TerminateJobObject(self.0, 1) };
-    }
-}
-
-#[cfg(windows)]
-impl Drop for PreviewJob {
-    fn drop(&mut self) {
-        use windows_sys::Win32::Foundation::CloseHandle;
-
-        unsafe { CloseHandle(self.0) };
-    }
 }
 
 fn npm_executable() -> &'static str {
