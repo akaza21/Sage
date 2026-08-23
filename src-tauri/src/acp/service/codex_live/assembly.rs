@@ -14,15 +14,24 @@ impl AcpService {
         let abort = ActivationAbortIntent::from_prepared(&prepared);
         let resources = NativeResourceMapper::new([root]).map_err(|_| CodexSessionError::Intent)?;
         let (operation_deadline, cleanup_deadline) = deadlines()?;
-        let mut spec = prepared
-            .runtime
-            .launch_spec()
-            .map_err(|_| CodexSessionError::Intent)?;
-        spec.absolute_cleanup_deadline = Some(cleanup_deadline);
-        let gate_prepared = self.codex_gate.prepare_live().map_err(map_gate_error)?;
         self.runtime
             .reserve_start(prepared.owner.clone())
             .map_err(map_slot_error)?;
+        let mut spec = match prepared.runtime.launch_spec() {
+            Ok(spec) => spec,
+            Err(_) => {
+                let _ = self.runtime.abandon_start(&prepared.owner);
+                return Err(CodexSessionError::Intent);
+            }
+        };
+        spec.absolute_cleanup_deadline = Some(cleanup_deadline);
+        let gate_prepared = match self.codex_gate.prepare_live() {
+            Ok(gate) => gate,
+            Err(error) => {
+                let _ = self.runtime.abandon_start(&prepared.owner);
+                return Err(map_gate_error(error));
+            }
+        };
         let process_lease = TreeCapacityPool::global()
             .try_acquire(spec.limits.descendants)
             .map_err(|_| {

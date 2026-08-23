@@ -29,6 +29,18 @@ pub(super) fn apply(
     if state == next {
         return duplicate(transaction, owner, state, delivery, revision);
     }
+    if state == TurnState::Cancelling
+        && matches!(
+            next,
+            TurnState::Running
+                | TurnState::WaitingModel
+                | TurnState::WaitingTool
+                | TurnState::WaitingApproval
+                | TurnState::WaitingUser
+        )
+    {
+        return duplicate(transaction, owner, state, delivery, revision);
+    }
     let next_delivery = match next {
         TurnState::Running if state == TurnState::Sending => match delivery {
             DeliveryState::Writing
