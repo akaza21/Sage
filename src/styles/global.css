@@ -1184,15 +1184,28 @@ textarea:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+.acp-file-changes__totals,
+.acp-file-changes__counts {
+  display: flex;
+  gap: 7px;
+  margin-top: 4px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
 .edit-summary__totals span:first-child,
 .edit-file__counts span:first-child,
-.diff-header__counts span:first-child {
+.diff-header__counts span:first-child,
+.acp-file-changes__totals span:first-child,
+.acp-file-changes__counts span:first-child {
   color: #68d983;
 }
 
 .edit-summary__totals span:last-child,
 .edit-file__counts span:last-child,
-.diff-header__counts span:last-child {
+.diff-header__counts span:last-child,
+.acp-file-changes__totals span:last-child,
+.acp-file-changes__counts span:last-child {
   color: #ef6d67;
 }
 

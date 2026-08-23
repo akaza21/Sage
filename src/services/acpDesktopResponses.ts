@@ -1,4 +1,8 @@
-import type { CodexDiscoveryResponse } from "../domain/acp";
+import type {
+  AcpChatPage,
+  AcpMutationResult,
+  CodexDiscoveryResponse,
+} from "../domain/acp";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -31,6 +35,30 @@ export function isOneOf<const Value extends string>(
   allowed: readonly Value[],
 ): value is Value {
   return typeof value === "string" && allowed.includes(value as Value);
+}
+
+export function safeAcpMutationResponse(
+  value: unknown,
+): AcpMutationResult | null {
+  if (!isRecord(value) || !isRecord(value.projection)) return null;
+  const projection = value.projection;
+  const currentSessionId =
+    projection.currentSessionId === null
+      ? null
+      : safeIdentifier(projection.currentSessionId);
+  if (
+    !safeIdentifier(projection.projectId) ||
+    !safeIdentifier(projection.chatId) ||
+    typeof projection.title !== "string" ||
+    !safeCounter(projection.projectionRevision, false) ||
+    (projection.currentSessionId !== null && !currentSessionId) ||
+    !Array.isArray(projection.sessions) ||
+    !Array.isArray(projection.turns) ||
+    (projection.nextCursor !== null && !safeIdentifier(projection.nextCursor))
+  ) {
+    return null;
+  }
+  return { projection: projection as AcpChatPage };
 }
 
 export function safeCodexDiscovery(

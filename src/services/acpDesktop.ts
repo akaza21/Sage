@@ -20,6 +20,7 @@ import type {
 import {
   isOneOf,
   isRecord,
+  safeAcpMutationResponse,
   safeCodexDiscovery,
   safeCounter,
   safeIdentifier,
@@ -74,10 +75,6 @@ function safePermissionDecision(
     decision: value.decision,
     state: value.state,
   } as ResolvePermissionDecisionResponse;
-}
-
-function safeAgentEditDispositionResponse(value: unknown): { ok: true } | null {
-  return isRecord(value) && value.ok === true ? { ok: true } : null;
 }
 
 function safeCodexAuth(value: unknown): CodexAuthResponse | null {
@@ -314,16 +311,16 @@ export const acpDesktop = {
 
   async recordAgentEditDisposition(
     request: AgentEditDisposition,
-  ): Promise<{ ok: true }> {
+  ): Promise<AcpMutationResult> {
     const response = await invokeAcp<unknown, AgentEditDisposition>(
       "record_agent_edit_disposition",
       request,
     );
-    const safe = safeAgentEditDispositionResponse(response);
+    const safe = safeAcpMutationResponse(response);
     if (!safe) {
       throw new AcpDesktopError({
         kind: "internal",
-        message: "Agent edit disposition returned an invalid response.",
+        message: "Agent edit disposition returned an invalid projection.",
       });
     }
     return safe;

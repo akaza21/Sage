@@ -1,11 +1,13 @@
 //! Owner-landed fail-closed disposition command. AGENT-1 implements the store write.
 
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::{
     acp::{
         contract::{EntityRevision, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId},
-        intent::AcpIpcError,
+        intent::{
+            ACP_PROJECTION_CHANGED_EVENT, AcpIpcError, AcpMutationResponse, ProjectionChangedV1,
+        },
         store::edit_disposition::{
             AgentEditDisposition, AgentEditDispositionState, record_agent_edit_disposition_in,
         },
@@ -13,7 +15,10 @@ use crate::{
     state::AppState,
 };
 
-use super::errors::store_error;
+use super::{
+    errors::{internal_error, store_error},
+    mutation_response,
+};
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -28,9 +33,13 @@ pub struct RecordAgentEditDispositionRequest {
 
 #[tauri::command]
 pub async fn record_agent_edit_disposition(
+    app: AppHandle,
     state: State<'_, AppState>,
     request: RecordAgentEditDispositionRequest,
-) -> Result<serde_json::Value, AcpIpcError> {
+) -> Result<AcpMutationResponse, AcpIpcError> {
+    let project_id = request.project_id.clone();
+    let chat_id = request.chat_id.clone();
+    let session_id = request.session_id.clone();
     let mut connection = state.database.connection();
     record_agent_edit_disposition_in(
         &mut connection,
@@ -45,5 +54,16 @@ pub async fn record_agent_edit_disposition(
         crate::persistence::now_millis(),
     )
     .map_err(store_error)?;
-    Ok(serde_json::json!({ "ok": true }))
+    let response = mutation_response(&state, project_id.clone(), chat_id.clone())?;
+    app.emit(
+        ACP_PROJECTION_CHANGED_EVENT,
+        ProjectionChangedV1 {
+            project_id,
+            chat_id,
+            session_id,
+            projection_revision: response.projection.projection_revision,
+        },
+    )
+    .map_err(|_| internal_error())?;
+    Ok(response)
 }
