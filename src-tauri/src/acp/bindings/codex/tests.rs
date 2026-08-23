@@ -1326,6 +1326,41 @@ fn item_terminal_identity_is_turn_scoped_and_retains_one_previous_tombstone() {
 }
 
 #[test]
+fn turn_completed_keeps_the_active_turn_correlation() {
+    let mut adapter = adapter();
+    ready(&mut adapter);
+    arm_turn(&mut adapter, 2, "client-completed-scope");
+    adapter
+        .ingest(
+            &serde_json::to_vec(&json!({"method":"turn/started","params":{
+                "threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}
+            }})).unwrap(),
+            &Mapper,
+        )
+        .unwrap();
+    let completed = adapter
+        .ingest(
+            &serde_json::to_vec(&json!({"method":"turn/completed","params":{
+                "threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}
+            }})).unwrap(),
+            &Mapper,
+        )
+        .unwrap();
+    let IngressDisposition::Events(events) = completed else {
+        panic!("completed turn must emit events")
+    };
+    let IncomingEvent::Turn { id, state } = &events[0] else {
+        panic!("completed turn must emit a Turn event")
+    };
+    assert_eq!(*state, TurnState::Completed);
+    assert_eq!(id.turn_id.as_ref().unwrap().as_str(), "turn-1");
+    assert_eq!(
+        id.turn_client_message_id.as_ref().unwrap().as_str(),
+        "client-completed-scope"
+    );
+}
+
+#[test]
 fn conflicting_terminal_and_foreign_scope_fail_closed() {
     let mut adapter = adapter();
     ready(&mut adapter);

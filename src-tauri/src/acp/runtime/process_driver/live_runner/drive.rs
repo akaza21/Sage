@@ -49,6 +49,17 @@ where
                     Err(_) => return failed(FirstTurnWorkerState::Active(active)),
                 }
             }
+            FirstTurnWorkerState::Active(active) if active.ready_for_write() => {
+                match context
+                    .mailbox
+                    .wait_next_until(None, context.clock.as_ref())
+                {
+                    Ok(Some(ControlMessage::Worker(envelope))) => {
+                        handle_worker(FirstTurnWorkerState::Active(active), context, envelope).await
+                    }
+                    _ => return failed(FirstTurnWorkerState::Active(active)),
+                }
+            }
             FirstTurnWorkerState::Active(active) => {
                 match context
                     .mailbox

@@ -78,9 +78,22 @@ impl AcpService {
         database: Database,
         codex: CodexBindingRegistration,
     ) -> Result<Self, StoreError> {
+        Self::new_with_codex_publisher_for_test(
+            database,
+            codex,
+            Arc::new(crate::acp::runtime::ProjectionMailbox::default()),
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_with_codex_publisher_for_test(
+        database: Database,
+        codex: CodexBindingRegistration,
+        publisher: Arc<dyn crate::acp::runtime::ProjectionPublisher>,
+    ) -> Result<Self, StoreError> {
         Self::build(
             database,
-            Arc::new(crate::acp::runtime::ProjectionMailbox::default()),
+            publisher,
             None,
             ServiceConfiguration {
                 codex,

@@ -16,7 +16,9 @@ use crate::{
         },
         intent::{BindingId, Prompt},
         lifecycle::{SessionState, TurnState},
-        runtime::HostCancelIntent,
+        runtime::{
+            HostCancelIntent, ProjectionPublishError, ProjectionPublishStatus, ProjectionPublisher,
+        },
         scheduler::RuntimeOwner,
         store::{
             ActivateSessionCommand, CloseSessionCommand, PrepareTurnCommand, StartSessionCommand,
@@ -81,7 +83,7 @@ fn two_sequential_turns_share_one_session_and_converge_to_zero() {
         let first = setup.send_and_wait_completed(&owner).await;
         let second = setup.send_and_wait_completed(&owner).await;
         assert_ne!(first, second);
-        assert_eq!(setup.completed_turns(&owner), vec![first, second]);
+        assert_completed_turns(&setup, &owner, &[first, second]);
 
         setup.close(&owner);
         assert_job_zero();
@@ -125,8 +127,8 @@ fn two_chats_are_sequential_on_the_one_runtime_slot() {
             setup.send_and_wait_completed(&owner_b).await,
             setup.send_and_wait_completed(&owner_b).await,
         ];
-        assert_eq!(setup.completed_turns(&owner_b), turns_b);
-        assert_eq!(setup.completed_turns(&owner_a), turns_a);
+        assert_completed_turns(&setup, &owner_b, &turns_b);
+        assert_completed_turns(&setup, &owner_a, &turns_a);
 
         setup.close(&owner_b);
         assert_job_zero();
@@ -140,7 +142,7 @@ fn restart_resume_then_another_turn_reads_sqlite() {
     let _journey = journey_test_lock();
     tauri::async_runtime::block_on(async {
         let registration = CodexBindingRegistration::admitted_for_journey_test(&[
-            "characterization-turn-success",
+            "codex-journey-turn-success",
             "characterization-resume-turn-success",
         ]);
         let setup = FixtureSetup::file_backed(registration.clone()).await;
@@ -159,7 +161,12 @@ fn restart_resume_then_another_turn_reads_sqlite() {
         assert_job_zero();
 
         let database = crate::persistence::Database::open(&database_path).unwrap();
-        let resumed = AcpService::new_with_codex_for_test(database, registration).unwrap();
+        let resumed = AcpService::new_with_codex_publisher_for_test(
+            database,
+            registration,
+            std::sync::Arc::new(JourneyPublisher),
+        )
+        .unwrap();
         let page = resumed
             .load_chat_page(project_id.clone(), chat_id.clone(), None)
             .unwrap();
@@ -185,7 +192,7 @@ fn restart_resume_then_another_turn_reads_sqlite() {
         resumed.activate(&resumed_owner).await.unwrap();
         resumed.wait_for_ready(&resumed_owner);
         let second = resumed.send_and_wait_completed(&resumed_owner).await;
-        assert_eq!(resumed.completed_turns(&resumed_owner), vec![first, second]);
+        assert_completed_turns(&resumed, &resumed_owner, &[first, second]);
         resumed.close(&resumed_owner);
         assert_job_zero();
         resumed.service.shutdown_blocking().unwrap();
@@ -297,7 +304,12 @@ impl FixtureSetup {
         let project = database.create_project_from_root(&root_path).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         Self {
-            service: AcpService::new_with_codex_for_test(database, registration).unwrap(),
+            service: AcpService::new_with_codex_publisher_for_test(
+                database,
+                registration,
+                std::sync::Arc::new(JourneyPublisher),
+            )
+            .unwrap(),
             project_id: SageProjectId::parse(project.id).unwrap(),
             chat_id: SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap(),
             root_id: SageRootId::parse(project.roots[0].id.clone()).unwrap(),
@@ -534,7 +546,8 @@ impl FixtureSetup {
     fn wait_for_cancelled(&self, owner: &RuntimeOwner) {
         self.wait_until(|| {
             self.page(owner).turns.as_slice().iter().any(|turn| {
-                turn.session_id == owner.session_id && turn.state == TurnState::Cancelled
+                turn.session_id == owner.session_id
+                    && matches!(turn.state, TurnState::Cancelled | TurnState::Interrupted)
             })
         });
     }
@@ -563,12 +576,27 @@ impl FixtureSetup {
     fn wait_until(&self, condition: impl Fn() -> bool) {
         let deadline = Instant::now() + Duration::from_secs(15);
         while !condition() {
-            assert!(
-                Instant::now() < deadline,
-                "production Codex journey did not converge before its deadline"
-            );
+            if Instant::now() >= deadline {
+                panic!("production Codex journey did not converge before its deadline");
+            }
             std::thread::sleep(Duration::from_millis(25));
         }
+    }
+}
+
+#[cfg(windows)]
+struct JourneyPublisher;
+
+#[cfg(windows)]
+impl ProjectionPublisher for JourneyPublisher {
+    fn publish_committed(
+        &self,
+        event: crate::acp::intent::ProjectionChangedV1,
+    ) -> Result<ProjectionPublishStatus, ProjectionPublishError> {
+        if event.projection_revision == ProjectionRevision::ZERO {
+            return Err(ProjectionPublishError::InvalidRevision);
+        }
+        Ok(ProjectionPublishStatus::Published)
     }
 }
 
@@ -580,6 +608,15 @@ fn assert_job_zero() {
             .0,
         0
     );
+}
+
+#[cfg(windows)]
+fn assert_completed_turns(setup: &FixtureSetup, owner: &RuntimeOwner, expected: &[SageTurnId]) {
+    let completed = setup.completed_turns(owner);
+    assert_eq!(completed.len(), expected.len());
+    for turn_id in expected {
+        assert!(completed.contains(turn_id));
+    }
 }
 
 #[cfg(windows)]

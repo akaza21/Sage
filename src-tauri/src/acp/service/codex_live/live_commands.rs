@@ -93,7 +93,11 @@ impl AcpService {
                 page.turns.as_slice().iter().any(|turn| {
                     turn.id == *turn_id
                         && turn.session_id == owner.session_id
-                        && turn.state == crate::acp::lifecycle::TurnState::Cancelled
+                        && matches!(
+                            turn.state,
+                            crate::acp::lifecycle::TurnState::Cancelled
+                                | crate::acp::lifecycle::TurnState::Interrupted
+                        )
                 })
             })
     }

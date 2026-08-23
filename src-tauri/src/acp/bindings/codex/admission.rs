@@ -308,149 +308,6 @@ impl CodexBindingRegistration {
             unavailable
         }
     }
-
-    #[cfg(all(test, windows))]
-    pub(crate) fn unavailable_for_test() -> Self {
-        Self {
-            authority: Arc::new(CodexRegistrationAuthority {
-                state: Mutex::new(CodexRegistrationState::Unavailable(
-                    CodexAdmissionUnavailable::IndependentAdmission,
-                )),
-            }),
-        }
-    }
-
-    #[cfg(all(test, windows))]
-    pub(crate) fn unsigned_for_test() -> Self {
-        Self {
-            authority: Arc::new(CodexRegistrationAuthority {
-                state: Mutex::new(CodexRegistrationState::Unavailable(
-                    CodexAdmissionUnavailable::IndependentAdmission,
-                )),
-            }),
-        }
-    }
-
-    #[cfg(all(test, windows))]
-    pub(crate) fn observation_only_for_test() -> Self {
-        let registration = Self::unavailable_for_test();
-        assert_eq!(
-            registration.refuse_independent_launch_after_workstation_authenticode_observation(),
-            CodexAdmissionUnavailable::ObservationOnly
-        );
-        registration
-    }
-
-    #[cfg(all(test, windows))]
-    pub(crate) fn admitted_for_test() -> Self {
-        Self {
-            authority: Arc::new(CodexRegistrationAuthority {
-                state: Mutex::new(CodexRegistrationState::Admitted(Arc::new(
-                    authenticate_tests::admitted_binding_fixture(),
-                ))),
-            }),
-        }
-    }
-
-    #[cfg(all(test, windows))]
-    pub(crate) fn admitted_for_journey_test(case_ids: &'static [&'static str]) -> Self {
-        Self {
-            authority: Arc::new(CodexRegistrationAuthority {
-                state: Mutex::new(CodexRegistrationState::Admitted(Arc::new(
-                    authenticate_tests::admitted_journey_binding_fixture(case_ids),
-                ))),
-            }),
-        }
-    }
-
-    #[cfg(all(test, windows))]
-    pub(crate) fn induce_drift_for_test(&self) {
-        let binding = match &*self.lock_state() {
-            CodexRegistrationState::Admitted(binding) => Arc::clone(binding),
-            CodexRegistrationState::Unavailable(_) => panic!("registration already unavailable"),
-        };
-        std::fs::write(
-            binding
-                .packet()
-                .codex_home()
-                .join("sessions")
-                .join("registration-drift"),
-            b"drift",
-        )
-        .unwrap();
-    }
-
-    #[cfg(test)]
-    pub(crate) fn same_authority(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.authority, &other.authority)
-    }
-}
-
-pub(crate) fn startup_codex_binding_registration() -> CodexBindingRegistration {
-    let unavailable = if cfg!(windows) {
-        CodexAdmissionUnavailable::IndependentAdmission
-    } else {
-        CodexAdmissionUnavailable::Platform
-    };
-    let registration = CodexBindingRegistration {
-        authority: Arc::new(CodexRegistrationAuthority {
-            state: Mutex::new(CodexRegistrationState::Unavailable(unavailable)),
-        }),
-    };
-    #[cfg(windows)]
-    {
-        let _ = authenticate_startup_signed_installed_role(&registration);
-    }
-    registration
-}
-
-#[cfg(windows)]
-fn authenticate_startup_signed_installed_role(
-    registration: &CodexBindingRegistration,
-) -> Result<Arc<AdmittedCodexBinding>, CodexAdmissionUnavailable> {
-    let packet = super::parse_packet_metadata(include_bytes!(
-        "../../../../testdata/acp/codex/candidate-windows.json"
-    ))
-    .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let requirements = super::parse_reproduction_requirements(
-        include_bytes!("../../../../testdata/acp/codex/package-reproduction-v1.json"),
-        &packet,
-    )
-    .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let role = packet.require_physical_admission().map_err(|_| {
-        registration.refuse_independent_launch_after_workstation_authenticode_observation()
-    })?;
-    let root = super::ConfiguredManagedPackageRoot::new(packet.managed_package_root())
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let inspection = super::inspect_managed_package(&packet, &root)
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let reproduced = super::bind_reproduced_package(requirements, &packet, inspection)
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let managed = super::inspect_managed_staging(&packet, &reproduced)
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let policy = super::parse_security_policy(
-        include_bytes!("../../../../testdata/acp/codex/security-policy-v1.json"),
-        &packet,
-    )
-    .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let config = super::verify_codex_config(
-        include_bytes!("../../../../testdata/acp/codex/config-v1.toml"),
-        &policy,
-    )
-    .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let environment =
-        super::authority::build_system_codex_launch_environment(&packet, &policy, &config)
-            .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let authority = super::inspect_codex_authority(&packet, policy, config, &reproduced, managed)
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-
-    registration.authenticate_signed_installed_role(
-        &packet,
-        role,
-        reproduced,
-        authority,
-        environment,
-    )
 }
 
 fn entrypoint_identity(
@@ -482,6 +339,14 @@ fn hex_nibble(value: u8) -> Result<u8, CodexAdmissionUnavailable> {
         _ => Err(CodexAdmissionUnavailable::Drift),
     }
 }
+
+#[path = "admission/startup.rs"]
+mod startup;
+pub(crate) use startup::startup_codex_binding_registration;
+
+#[cfg(test)]
+#[path = "admission/test_registration.rs"]
+mod test_registration;
 
 #[cfg(all(test, windows))]
 #[path = "admission/authenticate_tests.rs"]
