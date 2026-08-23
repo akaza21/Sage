@@ -15,6 +15,7 @@ import {
 import { useEditorExternalWatch } from "./editorExternalWatch";
 import { findLiteralMatches, MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
 import { fileNavigationSelection } from "./fileNavigation";
+import { useLanguageSession } from "../language/languageClient";
 
 export function FileSurface({ tab }: { tab: WorkbenchTab }) {
   const resource = tab.resource;
@@ -116,6 +117,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
     flushActiveEditor,
   });
   useEditorExternalWatch(watchedResource, editorWatchBridge);
+  useLanguageSession(watchedResource, findContent);
 
   useEffect(() => {
     if (findOpen) {

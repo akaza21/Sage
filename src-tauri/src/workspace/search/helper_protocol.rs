@@ -13,6 +13,7 @@ use crate::{
 
 use super::{
     engine::SearchEngine,
+    language_fixture,
     types::{
         MAX_PROJECT_ID_BYTES, MAX_PROJECT_ROOTS, SearchLimits, SearchRoot, SearchRootSource,
         WorkspaceSearchRequest, WorkspaceSearchResponse, validate_search_request,
@@ -118,6 +119,12 @@ fn validate_helper_request(helper: &HelperRequest) -> AppResult<()> {
 
 pub fn run_stdio_helper_if_requested() {
     let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
+    if arguments.len() == 1 && arguments[0] == language_fixture::LANGUAGE_FIXTURE_ARGUMENT {
+        if language_fixture::run_stdio_fixture_if_requested() {
+            std::process::exit(0);
+        }
+        return;
+    }
     if arguments.len() != 1 || arguments[0] != HELPER_ARGUMENT {
         return;
     }

@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
 import type { EditorDocument, WorkbenchTab } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
+import { languageDesktop } from "../../services/languageDesktop";
 import { FileSurface } from "./FileSurface";
 import { MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
 
@@ -100,6 +102,31 @@ afterEach(() => {
 });
 
 describe("FileSurface durability cadence", () => {
+  it("starts a language session for the File and cancels it on unmount", async () => {
+    const unsubscribe = vi.fn();
+    vi.spyOn(languageDesktop, "subscribeDiagnostics").mockResolvedValue(
+      unsubscribe,
+    );
+    const start = vi
+      .spyOn(languageDesktop, "startLanguageSession")
+      .mockResolvedValue(1);
+    const cancel = vi
+      .spyOn(languageDesktop, "cancelLanguageSession")
+      .mockResolvedValue();
+    setReadyEditor();
+
+    const { unmount } = render(<FileSurface tab={tab} />);
+
+    await waitFor(() => {
+      expect(start).toHaveBeenCalledWith(resource, document.buffer.content);
+    });
+    unmount();
+    await waitFor(() => {
+      expect(cancel).toHaveBeenCalledWith(resource);
+    });
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
   it("keeps edit, save, discard, and conflict behavior at the File surface", async () => {
     const save = vi.fn(async () => true);
     const discard = vi.fn(async () => true);
