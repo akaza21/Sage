@@ -61,10 +61,10 @@ fn unavailable_binding_cannot_start_a_live_codex_session() {
 
 #[test]
 #[cfg(windows)]
-#[ignore = "requires the separately installed, admitted Codex candidate"]
 fn two_sequential_turns_share_one_session_and_converge_to_zero() {
     tauri::async_runtime::block_on(async {
-        let setup = FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_test()).await;
+        let setup =
+            FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test()).await;
         let owner = setup
             .start_and_activate(RuntimeEpoch::new(1).unwrap())
             .await;
@@ -82,10 +82,10 @@ fn two_sequential_turns_share_one_session_and_converge_to_zero() {
 
 #[test]
 #[cfg(windows)]
-#[ignore = "requires the separately installed, admitted Codex candidate"]
 fn two_chats_are_sequential_on_the_one_runtime_slot() {
     tauri::async_runtime::block_on(async {
-        let setup = FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_test()).await;
+        let setup =
+            FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test()).await;
         let owner_a = setup
             .start_and_activate(RuntimeEpoch::new(1).unwrap())
             .await;
@@ -115,10 +115,9 @@ fn two_chats_are_sequential_on_the_one_runtime_slot() {
 
 #[test]
 #[cfg(windows)]
-#[ignore = "requires the separately installed, admitted Codex candidate"]
 fn restart_resume_then_another_turn_reads_sqlite() {
     tauri::async_runtime::block_on(async {
-        let registration = CodexBindingRegistration::admitted_for_test();
+        let registration = CodexBindingRegistration::admitted_for_journey_test();
         let setup = FixtureSetup::file_backed(registration.clone()).await;
         let owner = setup
             .start_and_activate(RuntimeEpoch::new(1).unwrap())
@@ -174,10 +173,10 @@ fn restart_resume_then_another_turn_reads_sqlite() {
 
 #[test]
 #[cfg(windows)]
-#[ignore = "requires the separately installed, admitted Codex candidate"]
 fn cancel_then_reuse_session_converges_to_zero_orphans() {
     tauri::async_runtime::block_on(async {
-        let setup = FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_test()).await;
+        let setup =
+            FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test()).await;
         let owner = setup
             .start_and_activate(RuntimeEpoch::new(1).unwrap())
             .await;
@@ -221,7 +220,7 @@ fn unsigned_or_observation_only_cannot_launch() {
             ),
             (
                 CodexBindingRegistration::observation_only_for_test(),
-                CodexAdmissionUnavailable::Platform,
+                CodexAdmissionUnavailable::ObservationOnly,
             ),
         ] {
             let setup = FixtureSetup::in_memory(registration).await;

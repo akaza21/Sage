@@ -1,4 +1,6 @@
 use super::*;
+use sha2::{Digest, Sha256};
+use std::io::Read;
 
 impl AdmittedCodexBinding {
     fn admit_for_test(
@@ -15,6 +17,7 @@ impl AdmittedCodexBinding {
             authority,
             environment,
             entrypoint,
+            journey_test_entrypoint: None,
             _cleanup: Some(cleanup),
         };
         binding.revalidate()?;
@@ -35,6 +38,40 @@ pub(super) fn admitted_binding_fixture() -> AdmittedCodexBinding {
     let (packet, _, reproduced, authority, environment, cleanup) = signed_role_admission_fixture();
     AdmittedCodexBinding::admit_for_test(packet, reproduced, authority, environment, cleanup)
         .unwrap()
+}
+
+pub(super) fn admitted_journey_binding_fixture() -> AdmittedCodexBinding {
+    let mut binding = admitted_binding_fixture();
+    binding.journey_test_entrypoint = Some(journey_fixture_entrypoint());
+    binding
+}
+
+fn journey_fixture_entrypoint() -> EntrypointIdentity {
+    let path = std::env::current_exe()
+        .expect("journey test executable")
+        .parent()
+        .expect("journey test executable directory")
+        .parent()
+        .expect("journey target directory")
+        .join("acp-adversarial-fixture.exe")
+        .canonicalize()
+        .expect("already-built ACP fixture");
+    let mut file = std::fs::File::open(&path).expect("fixture artifact");
+    let byte_len = file.metadata().expect("fixture metadata").len();
+    let mut digest = Sha256::new();
+    let mut chunk = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut chunk).expect("fixture read");
+        if read == 0 {
+            break;
+        }
+        digest.update(&chunk[..read]);
+    }
+    EntrypointIdentity {
+        path,
+        sha256: digest.finalize().into(),
+        byte_len,
+    }
 }
 
 fn signed_role_admission_fixture() -> (

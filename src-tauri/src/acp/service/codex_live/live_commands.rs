@@ -29,9 +29,10 @@ impl AcpService {
         intent: crate::acp::runtime::HostCancelIntent,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
         let owner = intent.owner.clone();
+        let turn_id = intent.turn_id.clone();
         let host = self.runtime.for_owner(&owner).map_err(map_slot_error)?;
         match host.cancel(intent) {
-            Ok(outcome) => Ok(outcome),
+            Ok(outcome) => self.finish_cancelled_shutdown(owner, turn_id, host, outcome),
             Err(error) => Err(self.retain_live_host_error(
                 owner,
                 host,
@@ -39,6 +40,62 @@ impl AcpService {
                 error,
             )),
         }
+    }
+
+    fn finish_cancelled_shutdown(
+        &self,
+        owner: RuntimeOwner,
+        turn_id: crate::acp::contract::SageTurnId,
+        host: Arc<RuntimeHost>,
+        outcome: crate::acp::runtime::HostOutcome,
+    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
+        let deadline = Instant::now()
+            + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+        while !self.cancel_is_durable(&owner, &turn_id) {
+            if Instant::now() >= deadline {
+                let _ = self.runtime.mark_recovery(&owner);
+                self.retain_live_recovery(LiveHostRecovery {
+                    owner,
+                    host,
+                    phase: LiveHostRecoveryPhase::CancelEffect,
+                });
+                return Err(CodexSessionError::Recovery);
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        match self.converge_closed_shutdown(
+            &owner,
+            &host,
+            ClosedShutdownAuthority::Host,
+            false,
+            deadline,
+        ) {
+            Ok(()) => Ok(outcome),
+            Err(_) => {
+                let _ = self.runtime.mark_recovery(&owner);
+                self.retain_live_recovery(LiveHostRecovery {
+                    owner,
+                    host,
+                    phase: LiveHostRecoveryPhase::CancelEffect,
+                });
+                Err(CodexSessionError::Recovery)
+            }
+        }
+    }
+
+    fn cancel_is_durable(
+        &self,
+        owner: &RuntimeOwner,
+        turn_id: &crate::acp::contract::SageTurnId,
+    ) -> bool {
+        self.load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
+            .is_ok_and(|page| {
+                page.turns.as_slice().iter().any(|turn| {
+                    turn.id == *turn_id
+                        && turn.session_id == owner.session_id
+                        && turn.state == crate::acp::lifecycle::TurnState::Cancelled
+                })
+            })
     }
 
     pub(crate) fn close_codex_session(

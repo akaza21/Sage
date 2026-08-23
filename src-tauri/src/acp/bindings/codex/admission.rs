@@ -35,6 +35,8 @@ pub(crate) struct AdmittedCodexBinding {
     environment: CodexLaunchEnvironment,
     entrypoint: EntrypointIdentity,
     #[cfg(all(test, windows))]
+    journey_test_entrypoint: Option<EntrypointIdentity>,
+    #[cfg(all(test, windows))]
     _cleanup: Option<authenticate_tests::TestCleanup>,
 }
 
@@ -63,6 +65,8 @@ impl AdmittedCodexBinding {
             authority,
             environment,
             entrypoint,
+            #[cfg(all(test, windows))]
+            journey_test_entrypoint: None,
             #[cfg(all(test, windows))]
             _cleanup: None,
         };
@@ -116,6 +120,14 @@ impl AdmittedCodexBinding {
         &self.entrypoint
     }
 
+    /// The Windows journey uses the already-built ACP fixture only after this
+    /// binding has passed normal admission revalidation. This deliberately
+    /// does not alter the admitted packet, its digest, or the signed role.
+    #[cfg(all(test, windows))]
+    pub(crate) fn journey_test_entrypoint(&self) -> Option<&EntrypointIdentity> {
+        self.journey_test_entrypoint.as_ref()
+    }
+
     pub(crate) fn packet(&self) -> &MetadataValidatedPacket {
         &self.packet
     }
@@ -159,6 +171,8 @@ impl AdmittedCodexBinding {
 pub(crate) enum CodexAdmissionUnavailable {
     #[error("Codex Harness Admission is unavailable on this platform")]
     Platform,
+    #[error("the workstation can only observe the Codex Authenticode role")]
+    ObservationOnly,
     #[error("the exact Codex Binding has not completed independent Harness Admission")]
     IndependentAdmission,
     #[error("the admitted Codex Binding changed after admission")]
@@ -287,7 +301,7 @@ impl CodexBindingRegistration {
         Self {
             authority: Arc::new(CodexRegistrationAuthority {
                 state: Mutex::new(CodexRegistrationState::Unavailable(
-                    CodexAdmissionUnavailable::Platform,
+                    CodexAdmissionUnavailable::ObservationOnly,
                 )),
             }),
         }
@@ -299,6 +313,17 @@ impl CodexBindingRegistration {
             authority: Arc::new(CodexRegistrationAuthority {
                 state: Mutex::new(CodexRegistrationState::Admitted(Arc::new(
                     authenticate_tests::admitted_binding_fixture(),
+                ))),
+            }),
+        }
+    }
+
+    #[cfg(all(test, windows))]
+    pub(crate) fn admitted_for_journey_test() -> Self {
+        Self {
+            authority: Arc::new(CodexRegistrationAuthority {
+                state: Mutex::new(CodexRegistrationState::Admitted(Arc::new(
+                    authenticate_tests::admitted_journey_binding_fixture(),
                 ))),
             }),
         }
