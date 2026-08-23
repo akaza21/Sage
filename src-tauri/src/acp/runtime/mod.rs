@@ -5,6 +5,7 @@ mod adapter_pump;
 mod adapter_store_journal;
 mod bounded_thread;
 mod coordinator;
+pub(crate) mod file_ops;
 mod journal;
 mod journal_support;
 mod live_capacity;

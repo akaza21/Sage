@@ -7,4 +7,6 @@ export {
 } from "./useAcpChatProjection";
 export { terminalTurnStates } from "./statusSemantics";
 export { useRendererRecreationFocus } from "./useRendererRecreationFocus";
+export { applyAgentFileIntent } from "./agentFileOps";
+export type { AgentFileIntent, AgentFileOperation } from "./agentFileOps";
 export type { OpenResourceTarget } from "./ToolItem";
