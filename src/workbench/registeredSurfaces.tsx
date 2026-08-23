@@ -3,8 +3,10 @@ import { ChatSurface } from "../features/chat/ChatSurface";
 import { DiffSurface } from "../features/diff/DiffSurface";
 import { ExplorerSurface } from "../features/files/ExplorerSurface";
 import { FileSurface } from "../features/files/FileSurface";
-import { SearchSurface } from "../features/search/SearchSurface";
+import { OutlineSurface } from "../features/outline/OutlineSurface";
 import { PreviewSurface } from "../features/preview/PreviewSurface";
+import { ProblemsSurface } from "../features/problems/ProblemsSurface";
+import { SearchSurface } from "../features/search/SearchSurface";
 import { SourceControlView } from "./SourceControlView";
 import { registerCanvasSurface, registerToolSurface } from "./surfaceRegistry";
 
@@ -23,5 +25,7 @@ export function registerWorkbenchSurfaces(): void {
   registerToolSurface("search", SearchSurface);
   registerToolSurface("sourceControl", SourceControlView);
   registerToolSurface("preview", PreviewSurface);
+  registerToolSurface("problems", ProblemsSurface);
+  registerToolSurface("outline", OutlineSurface);
   registered = true;
 }

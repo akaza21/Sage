@@ -5,6 +5,7 @@ mod activity_ingress;
 mod adapter_batch;
 mod cancel;
 mod commands;
+pub(crate) mod edit_disposition;
 mod facts;
 mod history;
 mod history_activities;

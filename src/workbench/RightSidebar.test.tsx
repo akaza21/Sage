@@ -38,8 +38,11 @@ describe("RightSidebar beta tool rail", () => {
     expect(
       screen.getByRole("button", { name: "Source Control" }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Problems" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Outline" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Preview" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Problems" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Outline" })).toBeInTheDocument();
   });
 });
 

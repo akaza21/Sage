@@ -212,6 +212,7 @@ pub fn run() {
             commands::acp::cancel_acp_turn,
             commands::acp::close_acp_session,
             commands::acp::permission::resolve_permission_decision,
+            commands::acp::edit_disposition::record_agent_edit_disposition,
             workspace::search::command::search_workspace,
             workspace::search::command::cancel_workspace_search,
             app_preview_commands::discover_preview_targets,

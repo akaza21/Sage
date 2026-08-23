@@ -1,4 +1,11 @@
-import { Eye, FileSearch, Files, GitBranch } from "lucide-react";
+import {
+  CircleAlert,
+  Eye,
+  FileSearch,
+  Files,
+  GitBranch,
+  ListTree,
+} from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from "react";
 
 import type { SidebarView } from "../app/store";
@@ -17,6 +24,8 @@ const views: Array<{
   { id: "search", label: "Search", icon: FileSearch },
   { id: "sourceControl", label: "Source Control", icon: GitBranch },
   { id: "preview", label: "Preview", icon: Eye },
+  { id: "problems", label: "Problems", icon: CircleAlert },
+  { id: "outline", label: "Outline", icon: ListTree },
 ];
 
 const sidebarPanelId = "project-tools-panel";

@@ -21,6 +21,23 @@ export interface LanguageDiagnosticReport {
   diagnostics: readonly LanguageDiagnostic[];
 }
 
+export const LANGUAGE_OUTLINE_EVENT = "language-outline-v1";
+
+export type LanguageOutlineKind = "file" | "function" | "type" | "unknown";
+
+export interface LanguageOutlineSymbol {
+  resource: ResourceRef;
+  name: string;
+  kind: LanguageOutlineKind;
+  startLine: number;
+}
+
+export interface LanguageOutlineReport {
+  resource: ResourceRef;
+  generation: number;
+  symbols: readonly LanguageOutlineSymbol[];
+}
+
 export interface LanguageSession {
   language: "typescript";
   cancel(): Promise<void>;
