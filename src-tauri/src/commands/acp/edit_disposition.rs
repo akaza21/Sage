@@ -151,11 +151,12 @@ mod tests {
                     "INSERT INTO session_runtime_epochs (
                        project_id, chat_id, session_id, runtime_epoch, state,
                        artifact_digest, started_at, terminal_at, exit_kind
-                     ) VALUES (?1, ?2, ?3, 1, 'running', 'a', 1, NULL, NULL)",
+                     ) VALUES (?1, ?2, ?3, 1, 'running', ?4, 1, NULL, NULL)",
                     params![
                         project_id.as_str(),
                         chat_id.as_str(),
                         session.session_id.as_str(),
+                        "a".repeat(64),
                     ],
                 )
                 .unwrap();
