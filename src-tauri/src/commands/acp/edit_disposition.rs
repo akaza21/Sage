@@ -119,6 +119,11 @@ mod tests {
         let state = AppState::new(database);
         let project_id = SageProjectId::parse(&project.id).unwrap();
         let chat_id = SageChatId::parse(&chat_id).unwrap();
+        let expected_projection_revision = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
         let session = {
             let mut connection = state.database.connection();
             start_session(
@@ -126,7 +131,7 @@ mod tests {
                 StartSessionCommand {
                     project_id: project_id.clone(),
                     chat_id: chat_id.clone(),
-                    expected_projection_revision: ProjectionRevision::ZERO,
+                    expected_projection_revision,
                     client_intent_id: ClientIntentId::parse("edit-disposition-start").unwrap(),
                     binding_id: BindingId::new("binding", "edit-disposition").unwrap(),
                     binding_digest: "a".repeat(64),
