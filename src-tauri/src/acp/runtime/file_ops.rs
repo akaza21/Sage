@@ -1,11 +1,11 @@
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{Arc, atomic::AtomicBool};
 
 use crate::{
     domain::{BufferSnapshotRequest, ResourceRef, TrashResourceKind},
     editor,
     error::{AppError, AppResult},
     persistence::Database,
-    workspace::{file_rename::FileRenameMarker, resource_trash::ResourceTrashMarker, Workspace},
+    workspace::{Workspace, file_rename::FileRenameMarker, resource_trash::ResourceTrashMarker},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,12 +49,29 @@ pub(crate) fn apply_agent_file_intent(
 fn create_file(workspace: &Workspace, intent: &AgentFileIntent) -> AppResult<()> {
     let basename = required_text(intent.basename.as_deref(), "basename")?;
     let parent = parent_resource(&intent.resource)?;
+    let target = ResourceRef {
+        root_id: parent.root_id.clone(),
+        relative_path: join_resource_path(&parent.relative_path, basename),
+    };
+    if target != intent.resource {
+        return Err(AppError::InvalidRequest(
+            "agent file create target does not match its typed resource".into(),
+        ));
+    }
     let _ = workspace.create_empty_file_observed(
         &parent,
         basename,
         Arc::new(AtomicBool::new(false)),
     )?;
     Ok(())
+}
+
+fn join_resource_path(parent: &str, basename: &str) -> String {
+    if parent.is_empty() {
+        basename.into()
+    } else {
+        format!("{parent}/{basename}")
+    }
 }
 
 fn update_file(

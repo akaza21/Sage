@@ -57,15 +57,30 @@ export async function applyAgentFileIntent(
 ): Promise<void> {
   const { project, editor } = getWorkbenchPorts();
   switch (intent.operation) {
-    case "created":
+    case "created": {
+      const basename = requiredIntentText(intent.basename, "basename");
+      const parent = parentResource(intent.resource);
+      const target: ResourceRef = {
+        rootId: parent.rootId,
+        relativePath: `${parent.relativePath}${parent.relativePath ? "/" : ""}${basename}`,
+      };
+      if (
+        target.rootId !== intent.resource.rootId ||
+        target.relativePath !== intent.resource.relativePath
+      ) {
+        throw new Error(
+          "Agent file create target does not match its typed resource",
+        );
+      }
       await project.createProjectFile({
         projectId: intent.projectId,
         projectGeneration: intent.projectGeneration,
         expectedTransitionEpoch: intent.expectedTransitionEpoch,
-        parent: parentResource(intent.resource),
-        basename: requiredIntentText(intent.basename, "basename"),
+        parent,
+        basename,
       });
       return;
+    }
     case "updated": {
       const document = await editor.openEditorDocument(intent.resource);
       await editor.snapshotEditorBuffer({

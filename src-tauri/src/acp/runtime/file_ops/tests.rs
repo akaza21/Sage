@@ -69,6 +69,45 @@ fn apply_created_file_uses_workspace_create_not_raw_fs() {
 }
 
 #[test]
+fn apply_created_file_accepts_matching_recomposed_target() {
+    let fixture = Fixture::new();
+    fs::create_dir(&fixture.root.join("notes")).unwrap();
+    let resource = ResourceRef {
+        root_id: fixture.workspace.root_id().into(),
+        relative_path: "notes/agent.txt".into(),
+    };
+    let mut intent = fixture.intent(AgentFileOperation::Created, resource);
+    intent.basename = Some("agent.txt".into());
+
+    apply_agent_file_intent(fixture.database(), &fixture.workspace, intent).unwrap();
+
+    assert_eq!(fs::read(fixture.root.join("notes/agent.txt")).unwrap(), b"");
+}
+
+#[test]
+fn apply_created_file_rejects_mismatched_basename() {
+    let fixture = Fixture::new();
+    fs::create_dir(&fixture.root.join("notes")).unwrap();
+    let resource = ResourceRef {
+        root_id: fixture.workspace.root_id().into(),
+        relative_path: "notes/agent.txt".into(),
+    };
+    let mut intent = fixture.intent(AgentFileOperation::Created, resource);
+    intent.basename = Some("other.txt".into());
+
+    let error = apply_agent_file_intent(fixture.database(), &fixture.workspace, intent)
+        .expect_err("mismatched basename must be rejected");
+
+    assert!(
+        error
+            .to_string()
+            .contains("does not match its typed resource")
+    );
+    assert!(!fixture.root.join("notes/agent.txt").exists());
+    assert!(!fixture.root.join("notes/other.txt").exists());
+}
+
+#[test]
 fn apply_updated_file_uses_editor_snapshot_and_save() {
     let fixture = Fixture::new();
     fs::write(fixture.root.join("updated.txt"), "before\n").unwrap();

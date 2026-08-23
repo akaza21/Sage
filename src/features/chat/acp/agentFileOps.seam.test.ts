@@ -94,6 +94,34 @@ describe("AGENT-1 typed file-operation seam", () => {
     });
   });
 
+  it("apply_created_file_accepts_a_matching_recomposed_target", async () => {
+    await applyAgentFileIntent({
+      operation: "created",
+      resource,
+      basename: "agent.txt",
+      projectId: "project-a",
+      projectGeneration: 3,
+      expectedTransitionEpoch: 11,
+    });
+
+    expect(project.createProjectFile).toHaveBeenCalledOnce();
+  });
+
+  it("apply_created_file_rejects_a_mismatched_basename", async () => {
+    await expect(
+      applyAgentFileIntent({
+        operation: "created",
+        resource,
+        basename: "other.txt",
+        projectId: "project-a",
+        projectGeneration: 3,
+        expectedTransitionEpoch: 11,
+      }),
+    ).rejects.toThrow("does not match its typed resource");
+
+    expect(project.createProjectFile).not.toHaveBeenCalled();
+  });
+
   it("apply_updated_file_uses_editor_snapshot_and_save", async () => {
     await applyAgentFileIntent({
       operation: "updated",
