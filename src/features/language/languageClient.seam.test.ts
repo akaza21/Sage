@@ -1,14 +1,27 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { Fragment, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   LANGUAGE_DIAGNOSTIC_EVENT,
   type LanguageDiagnosticReport,
+  type LanguageOutlineReport,
 } from "../../domain/languageService";
+import { useWorkbenchStore } from "../../app/store";
 import { languageDesktop } from "../../services/languageDesktop";
+import { OutlineSurface } from "../outline/OutlineSurface";
+import { ProblemsSurface } from "../problems/ProblemsSurface";
 import { startLanguageClient, useLanguageSession } from "./languageClient";
 
 const resource = { rootId: "root-a", relativePath: "src/example.ts" };
+const initialState = useWorkbenchStore.getState();
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -19,10 +32,149 @@ function deferred<T>() {
 }
 
 afterEach(() => {
+  cleanup();
+  useWorkbenchStore.setState(initialState, true);
   vi.restoreAllMocks();
 });
 
 describe("language client seam", () => {
+  it("problems_and_outline_cancel_with_the_language_session", async () => {
+    const diagnosticSubscriptions: Array<
+      (report: LanguageDiagnosticReport) => void
+    > = [];
+    const outlineSubscriptions: Array<(report: LanguageOutlineReport) => void> =
+      [];
+    const unsubscribeDiagnostics = [vi.fn(), vi.fn(), vi.fn()];
+    const unsubscribeOutline = [vi.fn(), vi.fn(), vi.fn()];
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: "file:example",
+          kind: "file",
+          title: "example.ts",
+          position: 1,
+          pinned: false,
+          dirty: false,
+          resource,
+        },
+      ],
+      activeTabId: "file:example",
+    });
+    vi.spyOn(languageDesktop, "startLanguageSession").mockResolvedValue(1);
+    vi.spyOn(languageDesktop, "cancelLanguageSession").mockResolvedValue();
+    vi.spyOn(languageDesktop, "subscribeDiagnostics").mockImplementation(
+      async (onReport) => {
+        diagnosticSubscriptions.push(onReport);
+        return unsubscribeDiagnostics[diagnosticSubscriptions.length - 1]!;
+      },
+    );
+    vi.spyOn(languageDesktop, "subscribeOutline").mockImplementation(
+      async (onReport) => {
+        outlineSubscriptions.push(onReport);
+        return unsubscribeOutline[outlineSubscriptions.length - 1]!;
+      },
+    );
+    render(
+      createElement(
+        Fragment,
+        undefined,
+        createElement(ProblemsSurface),
+        createElement(OutlineSurface),
+      ),
+    );
+    await waitFor(() => {
+      expect(diagnosticSubscriptions).toHaveLength(1);
+      expect(outlineSubscriptions).toHaveLength(1);
+    });
+    const session = await startLanguageClient(resource, "");
+
+    act(() =>
+      diagnosticSubscriptions[0]!({
+        resource,
+        generation: 1,
+        diagnostics: [
+          {
+            resource,
+            message: "first problem",
+            severity: "error",
+            startLine: 1,
+            startColumn: 1,
+            endLine: 1,
+            endColumn: 2,
+          },
+        ],
+      }),
+    );
+    act(() =>
+      outlineSubscriptions[0]!({
+        resource,
+        generation: 1,
+        symbols: [{ resource, name: "example", kind: "file", startLine: 1 }],
+      }),
+    );
+    expect(screen.getByText("first problem")).toBeInTheDocument();
+    expect(screen.getByText("example")).toBeInTheDocument();
+    await act(async () => {
+      await session.cancel();
+    });
+
+    expect(screen.queryByText("first problem")).not.toBeInTheDocument();
+    expect(screen.queryByText("example")).not.toBeInTheDocument();
+
+    const replacement = await startLanguageClient(resource, "replacement");
+    act(() =>
+      diagnosticSubscriptions[0]!({
+        resource,
+        generation: 2,
+        diagnostics: [
+          {
+            resource,
+            message: "replacement problem",
+            severity: "warning",
+            startLine: 2,
+            startColumn: 1,
+            endLine: 2,
+            endColumn: 2,
+          },
+        ],
+      }),
+    );
+    act(() =>
+      outlineSubscriptions[0]!({
+        resource,
+        generation: 2,
+        symbols: [
+          { resource, name: "replacement", kind: "file", startLine: 2 },
+        ],
+      }),
+    );
+
+    expect(unsubscribeDiagnostics[1]).toHaveBeenCalledOnce();
+    expect(unsubscribeOutline[1]).toHaveBeenCalledOnce();
+    expect(unsubscribeDiagnostics[0]).not.toHaveBeenCalled();
+    expect(unsubscribeOutline[0]).not.toHaveBeenCalled();
+    expect(screen.getByText("replacement problem")).toBeInTheDocument();
+    expect(screen.getByText("replacement")).toBeInTheDocument();
+
+    await replacement.cancel();
+  });
+
+  it("unsubscribes diagnostics when the outline subscription rejects", async () => {
+    const unsubscribeDiagnostics = vi.fn();
+    vi.spyOn(languageDesktop, "subscribeDiagnostics").mockResolvedValue(
+      unsubscribeDiagnostics,
+    );
+    vi.spyOn(languageDesktop, "subscribeOutline").mockRejectedValue(
+      new Error("outline unavailable"),
+    );
+
+    await expect(startLanguageClient(resource, "")).rejects.toThrow(
+      "outline unavailable",
+    );
+
+    expect(unsubscribeDiagnostics).toHaveBeenCalledOnce();
+  });
+
   it("starts through languageDesktop, bounds reports, and stops delivery after cancel", async () => {
     let deliver!: (report: LanguageDiagnosticReport) => void;
     const unsubscribe = vi.fn();
