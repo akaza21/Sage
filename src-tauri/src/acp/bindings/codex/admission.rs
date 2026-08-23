@@ -346,7 +346,7 @@ fn authenticate_startup_signed_installed_role(
         &policy,
     )
     .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let environment = super::build_system_codex_launch_environment(&packet, &policy, &config)
+    let environment = super::authority::build_system_codex_launch_environment(&packet, &policy, &config)
         .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
     let authority = super::inspect_codex_authority(&packet, policy, config, &reproduced, managed)
         .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
