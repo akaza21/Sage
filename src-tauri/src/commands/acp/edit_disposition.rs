@@ -100,7 +100,10 @@ mod tests {
         acp::{
             contract::{ClientIntentId, ProjectGeneration, RuntimeEpoch},
             intent::{BindingId, Prompt},
-            store::{PrepareTurnCommand, StartSessionCommand, start_session},
+            store::{
+                ActivateSessionCommand, PrepareTurnCommand, StartSessionCommand, activate_session,
+                start_session,
+            },
         },
         persistence::Database,
     };
@@ -144,22 +147,27 @@ mod tests {
         };
         let revision = EntityRevision::new(9_007_199_254_740_993).unwrap();
         let epoch = RuntimeEpoch::new(1).unwrap();
+        let page_revision = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
         {
-            let connection = state.database.connection();
-            connection
-                .execute(
-                    "INSERT INTO session_runtime_epochs (
-                       project_id, chat_id, session_id, runtime_epoch, state,
-                       artifact_digest, started_at, terminal_at, exit_kind
-                     ) VALUES (?1, ?2, ?3, 1, 'running', ?4, 1, NULL, NULL)",
-                    params![
-                        project_id.as_str(),
-                        chat_id.as_str(),
-                        session.session_id.as_str(),
-                        "a".repeat(64),
-                    ],
-                )
-                .unwrap();
+            let mut connection = state.database.connection();
+            activate_session(
+                &mut connection,
+                ActivateSessionCommand {
+                    project_id: project_id.clone(),
+                    chat_id: chat_id.clone(),
+                    expected_projection_revision: page_revision,
+                    client_intent_id: ClientIntentId::parse("edit-disposition-activate").unwrap(),
+                    session_id: session.session_id.clone(),
+                    runtime_epoch: epoch,
+                    artifact_digest: "a".repeat(64),
+                    now_millis: 2,
+                },
+            )
+            .unwrap();
         }
         let page_revision = state
             .acp
@@ -177,7 +185,7 @@ mod tests {
                 expected_projection_revision: page_revision,
                 client_intent_id: ClientIntentId::parse("edit-disposition-turn").unwrap(),
                 prompt: Prompt::new("prompt", "disposition refresh").unwrap(),
-                now_millis: 2,
+                now_millis: 3,
             })
             .unwrap();
         {
