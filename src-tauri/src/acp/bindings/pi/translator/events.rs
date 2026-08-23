@@ -113,6 +113,8 @@ impl PiTranslator {
                         options
                             .iter()
                             .filter_map(Value::as_str)
+                            .filter(|option| option.len() <= 64)
+                            .take(8)
                             .map(str::to_owned)
                             .collect()
                     })

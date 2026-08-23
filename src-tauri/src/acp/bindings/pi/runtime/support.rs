@@ -47,8 +47,10 @@ impl PiRuntime {
                 let body = match pending.method.as_str() {
                     "select" => {
                         let Some(value) = pending.options.iter().find(|option| {
-                            let lower = option.to_ascii_lowercase();
-                            lower.contains("allow") && !lower.contains("always")
+                            matches!(
+                                option.to_ascii_lowercase().as_str(),
+                                "allow" | "allow once"
+                            )
                         }) else {
                             self.translator.remember_pending_ui(pending);
                             return Err(AdapterRuntimeError::LaterPermissionMiss);

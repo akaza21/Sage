@@ -364,8 +364,12 @@ fn permission_allow_once_option(value: &Value) -> Result<String, AdapterRuntimeE
         .ok_or(AdapterRuntimeError::Frame)?;
     options
         .iter()
+        .take(8)
         .find_map(|option| {
             let option_id = option.get("optionId")?.as_str().map(str::to_owned)?;
+            if option_id.len() > 64 {
+                return None;
+            }
             let kind = option
                 .get("kind")
                 .and_then(Value::as_str)
@@ -379,7 +383,7 @@ fn permission_allow_once_option(value: &Value) -> Result<String, AdapterRuntimeE
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_ascii_lowercase();
-            (kind.is_empty() && name.contains("allow") && !name.contains("always"))
+            (kind.is_empty() && matches!(name.as_str(), "allow" | "allow once"))
                 .then_some(option_id)
         })
         .ok_or(AdapterRuntimeError::Frame)
