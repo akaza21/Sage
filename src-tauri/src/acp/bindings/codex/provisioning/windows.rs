@@ -11,7 +11,7 @@ use windows_sys::Win32::Storage::FileSystem::{FILE_FLAG_OPEN_REPARSE_POINT, FILE
 
 use super::{
     AclPlan, HandoffFile, HandoffPayload, ProvisioningError, RECEIPT_BYTES_MAX, SealedHandoff,
-    SourceFile, VerifiedCodexSource, hex,
+    SourceFile, StagingOperation, VerifiedCodexSource, hex,
 };
 use crate::acp::bindings::codex::{
     managed::current_process_user_sid,
@@ -48,12 +48,21 @@ pub(super) struct WindowsPreparedStaging {
     receipt_handle: Option<File>,
     state_handle: Option<File>,
     stage_handle: Option<File>,
+    operation: StagingOperation,
 }
 
 impl WindowsPreparedStaging {
     pub(super) fn revalidate(&self) -> Result<(), ProvisioningError> {
-        require_absent(&self.package_target)?;
-        require_absent(&self.state_target)?;
+        match self.operation {
+            StagingOperation::Publish => {
+                require_absent(&self.package_target)?;
+                require_absent(&self.state_target)?;
+            }
+            StagingOperation::Update => {
+                require_present(&self.package_target)?;
+                require_present(&self.state_target)?;
+            }
+        }
         validate_root_closure(&self.stage_root)?;
         if fs::read_dir(&self.state_root)
             .map_err(|_| ProvisioningError::StageDrift)?
@@ -110,8 +119,35 @@ impl Drop for WindowsPreparedStaging {
 pub(super) fn prepare(
     source: &VerifiedCodexSource,
 ) -> Result<WindowsPreparedStaging, ProvisioningError> {
-    require_absent(&source.package_target)?;
-    require_absent(&source.state_target)?;
+    prepare_for_operation(source, StagingOperation::Publish)
+}
+
+pub(super) fn target_operation(
+    source: &VerifiedCodexSource,
+) -> Result<StagingOperation, ProvisioningError> {
+    let package_exists = target_exists(&source.package_target)?;
+    let state_exists = target_exists(&source.state_target)?;
+    match (package_exists, state_exists) {
+        (false, false) => Ok(StagingOperation::Publish),
+        (true, true) => Ok(StagingOperation::Update),
+        _ => Err(ProvisioningError::StageDrift),
+    }
+}
+
+pub(super) fn prepare_for_operation(
+    source: &VerifiedCodexSource,
+    operation: StagingOperation,
+) -> Result<WindowsPreparedStaging, ProvisioningError> {
+    match operation {
+        StagingOperation::Publish => {
+            require_absent(&source.package_target)?;
+            require_absent(&source.state_target)?;
+        }
+        StagingOperation::Update => {
+            require_present(&source.package_target)?;
+            require_present(&source.state_target)?;
+        }
+    }
     let parent = source
         .package_target
         .parent()
@@ -124,7 +160,7 @@ pub(super) fn prepare(
         }
         Err(_) => return Err(ProvisioningError::Io),
     }
-    match prepare_created(source, stage_root.clone()) {
+    match prepare_created(source, stage_root.clone(), operation) {
         Ok(prepared) => Ok(prepared),
         Err(error) => match fs::remove_dir_all(&stage_root) {
             Ok(()) => Err(error),
@@ -137,6 +173,7 @@ pub(super) fn prepare(
 fn prepare_created(
     source: &VerifiedCodexSource,
     stage_root: PathBuf,
+    operation: StagingOperation,
 ) -> Result<WindowsPreparedStaging, ProvisioningError> {
     let (_, stage_handle) =
         open_exact_state_root(&stage_root).map_err(|_| ProvisioningError::StageDrift)?;
@@ -202,6 +239,7 @@ fn prepare_created(
         receipt_handle: Some(receipt_handle),
         state_handle: Some(state_handle),
         stage_handle: Some(stage_handle),
+        operation,
     };
     prepared.revalidate()?;
     Ok(prepared)
@@ -386,9 +424,25 @@ fn expected_files(
 }
 
 fn require_absent(path: &Path) -> Result<(), ProvisioningError> {
+    if target_exists(path)? {
+        Err(ProvisioningError::TargetExists)
+    } else {
+        Ok(())
+    }
+}
+
+fn require_present(path: &Path) -> Result<(), ProvisioningError> {
+    if target_exists(path)? {
+        Ok(())
+    } else {
+        Err(ProvisioningError::StageDrift)
+    }
+}
+
+fn target_exists(path: &Path) -> Result<bool, ProvisioningError> {
     match fs::symlink_metadata(path) {
-        Ok(_) => Err(ProvisioningError::TargetExists),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(_) => Err(ProvisioningError::Io),
     }
 }

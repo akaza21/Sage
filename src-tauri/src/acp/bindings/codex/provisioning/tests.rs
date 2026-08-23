@@ -140,6 +140,20 @@ fn an_existing_canonical_target_blocks_staging_without_mutation() {
 }
 
 #[test]
+fn an_existing_canonical_pair_selects_the_typed_update_gate() {
+    let fixture = TestProvisioning::new();
+    let source = fixture.verified();
+    fs::create_dir(&fixture.package_target).unwrap();
+    fs::create_dir(&fixture.state_target).unwrap();
+
+    assert_eq!(
+        windows::target_operation(&source),
+        Ok(StagingOperation::Update)
+    );
+    assert!(!fixture.stage_root().exists());
+}
+
+#[test]
 fn one_live_stage_blocks_a_second_transaction() {
     let fixture = TestProvisioning::new();
     let source = fixture.verified();

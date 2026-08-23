@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::{
+    installed_role::SignedInstalledRole,
     managed::ManagedStagingPrerequisite,
     manifest::{MetadataValidatedPacket, Platform},
     physical::{
@@ -24,7 +25,10 @@ mod windows;
 mod helper;
 
 #[cfg(all(windows, feature = "codex-provisioning-helper"))]
-pub(crate) use helper::execute_boundary_publication;
+pub(crate) use helper::{
+    HelperOperation, execute_boundary_publication, execute_boundary_recover,
+    execute_boundary_remove, execute_boundary_update, helper_operation,
+};
 
 const SOURCE_FILE_COUNT: usize = 8;
 const SOURCE_BYTES_MAX: u64 = 1024 * 1024 * 1024;
@@ -65,6 +69,12 @@ pub(crate) enum ProvisioningError {
     AtomicPublishUnavailable,
     #[error("Codex staging I/O failed")]
     Io,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StagingOperation {
+    Publish,
+    Update,
 }
 
 #[derive(Debug, Clone)]
@@ -149,6 +159,20 @@ impl VerifiedCodexSource {
                 byte_len: file.byte_len,
             })
             .collect()
+    }
+
+    fn admits_signed_update(&self, role: &SignedInstalledRole) -> bool {
+        match &self.identity {
+            SourceIdentity::Production(packet) => packet
+                .physical_artifact_claims()
+                .next()
+                .is_some_and(|(_, artifact)| {
+                    role.binding_id == packet.metadata().binding_id
+                        && role.artifact_relative_path == artifact
+                }),
+            #[cfg(test)]
+            SourceIdentity::Fixture => false,
+        }
     }
 
     #[cfg(test)]
@@ -303,6 +327,32 @@ pub(crate) fn prepare_codex_staging(
     #[cfg(windows)]
     {
         windows::prepare(source).map(|inner| PreparedCodexStaging { inner })
+    }
+    #[cfg(not(windows))]
+    {
+        Err(ProvisioningError::PlatformUnavailable)
+    }
+}
+
+/// Stages a replacement only when the caller presents the installed role that
+/// was authenticated against this exact source packet. Existing canonical
+/// targets therefore select the typed Update helper path instead of becoming a
+/// host-side overwrite or an unauthenticated retry.
+pub(crate) fn prepare_codex_staging_after_signed_role(
+    source: &VerifiedCodexSource,
+    authorization: &ExplicitStagingAuthorization,
+    role: &SignedInstalledRole,
+) -> Result<(PreparedCodexStaging, StagingOperation), ProvisioningError> {
+    let _ = authorization;
+    source.revalidate()?;
+    if !source.admits_signed_update(role) {
+        return Err(ProvisioningError::AuthorizationRequired);
+    }
+    #[cfg(windows)]
+    {
+        let operation = windows::target_operation(source)?;
+        windows::prepare_for_operation(source, operation)
+            .map(|inner| (PreparedCodexStaging { inner }, operation))
     }
     #[cfg(not(windows))]
     {

@@ -1,7 +1,15 @@
 use std::path::{Path, PathBuf};
 
-use super::{AuthenticatedHelperRequest, ElevatedHelperError, constant_time_equal};
+use super::{constant_time_equal, AuthenticatedHelperRequest, ElevatedHelperError};
 use serde::{Deserialize, Serialize};
+
+#[path = "transaction/remove.rs"]
+mod remove;
+#[path = "transaction/update.rs"]
+mod update;
+
+pub(super) use remove::execute_boundary_remove;
+pub(super) use update::execute_boundary_update;
 
 const JOURNAL_SCHEMA_VERSION: u8 = 2;
 const JOURNAL_BYTES_MAX: usize = 64 * 1024;
@@ -14,6 +22,15 @@ enum JournalPhase {
     Prepared,
     StatePublished,
     PackagePublished,
+    PackageRetired,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+enum JournalOperation {
+    #[default]
+    Publish,
+    Remove,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -26,6 +43,8 @@ struct JournalPayload {
     package_target: PathBuf,
     state_target: PathBuf,
     state_identity: NodeIdentity,
+    #[serde(default)]
+    operation: JournalOperation,
     phase: JournalPhase,
 }
 
@@ -76,6 +95,25 @@ pub(super) trait HelperTransactionPlatform {
     fn remove_completed_stage(&mut self) -> Result<(), ElevatedHelperError>;
     fn rollback_package(&mut self) -> Result<(), ElevatedHelperError>;
     fn rollback_state(&mut self) -> Result<(), ElevatedHelperError>;
+    fn hold_published_pair(&mut self) -> Result<(), ElevatedHelperError>;
+    fn discard_held_pair(&mut self) -> Result<(), ElevatedHelperError>;
+    fn restore_held_pair(&mut self) -> Result<(), ElevatedHelperError>;
+    fn retire_published_package(&mut self) -> Result<(), ElevatedHelperError>;
+    fn retire_published_state(&mut self) -> Result<(), ElevatedHelperError>;
+}
+
+pub(super) fn execute_boundary_recover<P: HelperTransactionPlatform>(
+    request: &AuthenticatedHelperRequest,
+    platform: &mut P,
+) -> Result<P::Proof, ElevatedHelperError> {
+    let path = journal_path(request)?;
+    let Some(bytes) = platform.read_journal(&path, JOURNAL_BYTES_MAX)? else {
+        return Err(ElevatedHelperError::Drift);
+    };
+    if decode_journal(&bytes, request)?.payload.operation == JournalOperation::Remove {
+        return Err(ElevatedHelperError::Drift);
+    }
+    finalize(request, platform)
 }
 
 pub(super) fn finalize<P: HelperTransactionPlatform>(
@@ -162,6 +200,7 @@ fn advance<P: HelperTransactionPlatform>(
                     .map_err(|_| ElevatedHelperError::Cleanup)?;
                 return Ok(proof);
             }
+            JournalPhase::PackageRetired => return Err(ElevatedHelperError::Drift),
         }
     }
     Err(ElevatedHelperError::Journal)
@@ -201,6 +240,7 @@ fn require_namespace(
         JournalPhase::PackagePublished => {
             !observed.stage_package && observed.final_package && observed.final_state
         }
+        JournalPhase::PackageRetired => false,
     };
     if valid {
         Ok(())
@@ -239,7 +279,25 @@ fn initial_journal(
     request: &AuthenticatedHelperRequest,
     state_identity: NodeIdentity,
 ) -> Result<SealedJournal, ElevatedHelperError> {
-    let payload = JournalPayload {
+    let payload = journal_payload(
+        request,
+        state_identity,
+        JournalOperation::Publish,
+        JournalPhase::Prepared,
+    )?;
+    Ok(SealedJournal {
+        authenticator_sha256: seal_payload(request, &payload)?,
+        payload,
+    })
+}
+
+fn journal_payload(
+    request: &AuthenticatedHelperRequest,
+    state_identity: NodeIdentity,
+    operation: JournalOperation,
+    phase: JournalPhase,
+) -> Result<JournalPayload, ElevatedHelperError> {
+    Ok(JournalPayload {
         schema_version: JOURNAL_SCHEMA_VERSION,
         creation_nonce: request.creation_nonce().to_owned(),
         request_binding_sha256: request.binding_sha256()?,
@@ -247,11 +305,8 @@ fn initial_journal(
         package_target: request.package_target().to_owned(),
         state_target: request.state_target().to_owned(),
         state_identity,
-        phase: JournalPhase::Prepared,
-    };
-    Ok(SealedJournal {
-        authenticator_sha256: seal_payload(request, &payload)?,
-        payload,
+        operation,
+        phase,
     })
 }
 
@@ -279,8 +334,12 @@ fn decode_journal(
     ) {
         return Err(ElevatedHelperError::Journal);
     }
-    let mut expected_payload = initial_journal(request, journal.payload.state_identity)?.payload;
-    expected_payload.phase = journal.payload.phase;
+    let expected_payload = journal_payload(
+        request,
+        journal.payload.state_identity,
+        journal.payload.operation,
+        journal.payload.phase,
+    )?;
     if journal.payload != expected_payload {
         return Err(ElevatedHelperError::Collision);
     }

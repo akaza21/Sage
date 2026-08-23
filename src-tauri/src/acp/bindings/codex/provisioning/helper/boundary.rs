@@ -6,7 +6,8 @@ use crate::codex_helper_boundary::{
 
 use super::{
     AuthenticatedHelperRequest, ElevatedHelperError, HELPER_PRODUCT, HELPER_PROTOCOL_VERSION,
-    HelperExecutableIdentity, VerifiedHelperExecutable, authenticate_helper_request_with_secret,
+    HelperExecutableIdentity, HelperOperation, VerifiedHelperExecutable,
+    authenticate_helper_request_with_secret, seal_helper_request_operation_with_secret,
     seal_helper_request_with_secret, windows,
 };
 use crate::acp::bindings::codex::managed::ManagedStagingPrerequisite;
@@ -31,6 +32,18 @@ impl AuthenticatedBoundaryPublication {
     fn publish(self) -> Result<ManagedStagingPrerequisite, ElevatedHelperError> {
         windows::execute_authenticated_request(&self.process, &self.request, &self.packet)
     }
+
+    fn recover(self) -> Result<ManagedStagingPrerequisite, ElevatedHelperError> {
+        windows::execute_authenticated_recover(&self.process, &self.request, &self.packet)
+    }
+
+    fn update(self) -> Result<ManagedStagingPrerequisite, ElevatedHelperError> {
+        windows::execute_authenticated_update(&self.process, &self.request, &self.packet)
+    }
+
+    fn remove(self) -> Result<(), ElevatedHelperError> {
+        windows::execute_authenticated_remove(&self.process, &self.request, &self.packet)
+    }
 }
 
 pub(super) fn seal_boundary_helper_request(
@@ -41,6 +54,23 @@ pub(super) fn seal_boundary_helper_request(
 ) -> Result<Vec<u8>, ElevatedHelperError> {
     let helper = observed_helper(helper);
     seal_helper_request_with_secret(handoff, stage_root, &helper, secret.bytes())
+}
+
+pub(super) fn seal_boundary_helper_request_operation(
+    handoff: &SealedHandoff,
+    stage_root: PathBuf,
+    helper: HelperIdentity,
+    secret: &OneShotSecret,
+    operation: HelperOperation,
+) -> Result<Vec<u8>, ElevatedHelperError> {
+    let helper = observed_helper(helper);
+    seal_helper_request_operation_with_secret(
+        handoff,
+        stage_root,
+        &helper,
+        secret.bytes(),
+        operation,
+    )
 }
 
 pub(super) fn authenticate_boundary_publication(
@@ -66,10 +96,54 @@ pub(crate) fn execute_boundary_publication(
     secret: &OneShotSecret,
     helper: HelperIdentity,
 ) -> Result<ManagedStagingPrerequisite, PublicationFailure> {
-    authenticate_boundary_publication(authority, bytes, secret, helper)
-        .map_err(classify_publication_error)?
-        .publish()
-        .map_err(classify_publication_error)
+    let publication = authenticate_boundary_publication(authority, bytes, secret, helper)
+        .map_err(classify_publication_error)?;
+    if publication.request.operation() != super::HelperOperation::Publish {
+        return Err(PublicationFailure::Rejected);
+    }
+    publication.publish().map_err(classify_publication_error)
+}
+
+pub(crate) fn execute_boundary_recover(
+    authority: &ElevatedBoundaryAuthority,
+    bytes: &[u8],
+    secret: &OneShotSecret,
+    helper: HelperIdentity,
+) -> Result<ManagedStagingPrerequisite, PublicationFailure> {
+    let publication = authenticate_boundary_publication(authority, bytes, secret, helper)
+        .map_err(classify_publication_error)?;
+    if publication.request.operation() != super::HelperOperation::Recover {
+        return Err(PublicationFailure::Rejected);
+    }
+    publication.recover().map_err(classify_publication_error)
+}
+
+pub(crate) fn execute_boundary_update(
+    authority: &ElevatedBoundaryAuthority,
+    bytes: &[u8],
+    secret: &OneShotSecret,
+    helper: HelperIdentity,
+) -> Result<ManagedStagingPrerequisite, PublicationFailure> {
+    let publication = authenticate_boundary_publication(authority, bytes, secret, helper)
+        .map_err(classify_publication_error)?;
+    if publication.request.operation() != super::HelperOperation::Update {
+        return Err(PublicationFailure::Rejected);
+    }
+    publication.update().map_err(classify_publication_error)
+}
+
+pub(crate) fn execute_boundary_remove(
+    authority: &ElevatedBoundaryAuthority,
+    bytes: &[u8],
+    secret: &OneShotSecret,
+    helper: HelperIdentity,
+) -> Result<(), PublicationFailure> {
+    let publication = authenticate_boundary_publication(authority, bytes, secret, helper)
+        .map_err(classify_publication_error)?;
+    if publication.request.operation() != super::HelperOperation::Remove {
+        return Err(PublicationFailure::Rejected);
+    }
+    publication.remove().map_err(classify_publication_error)
 }
 
 fn classify_publication_error(error: ElevatedHelperError) -> PublicationFailure {
