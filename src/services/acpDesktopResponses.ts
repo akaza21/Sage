@@ -1,18 +1,15 @@
 import type {
   AcpChatPage,
-  AcpItem,
   AcpMutationResult,
   AgentSessionProjection,
   CodexDiscoveryResponse,
-  HarnessActivityProjection,
-  TurnProjection,
 } from "../domain/acp";
+import { safeTurn } from "./acpDesktopResponseItems";
 
 const ACP_PAGE_LIMITS = {
   sessions: 32,
   turns: 20,
   items: 256,
-  itemsPerTurn: 512,
   activities: 128,
 } as const;
 
@@ -26,19 +23,15 @@ export function safeIdentifier(value: unknown): string | null {
     value.length === 0 ||
     value.length > 512 ||
     value.includes("\0")
-  ) {
+  )
     return null;
-  }
   return new TextEncoder().encode(value).byteLength <= 512 ? value : null;
 }
 
 export function safeCounter(value: unknown, allowZero: boolean): string | null {
-  if (typeof value !== "string" || !/^(0|[1-9][0-9]{0,18})$/.test(value)) {
+  if (typeof value !== "string" || !/^(0|[1-9][0-9]{0,18})$/.test(value))
     return null;
-  }
-  if (value.length === 19 && value > "9223372036854775807") {
-    return null;
-  }
+  if (value.length === 19 && value > "9223372036854775807") return null;
   return allowZero || value !== "0" ? value : null;
 }
 
@@ -49,26 +42,35 @@ export function isOneOf<const Value extends string>(
   return typeof value === "string" && allowed.includes(value as Value);
 }
 
-function safeText(value: unknown, maximumBytes: number): string | null {
-  if (typeof value !== "string") return null;
-  return new TextEncoder().encode(value).byteLength <= maximumBytes
+export function safeText(value: unknown, maximumBytes: number): string | null {
+  return typeof value === "string" &&
+    new TextEncoder().encode(value).byteLength <= maximumBytes
     ? value
     : null;
 }
 
-function safeOrdinal(value: unknown): number | null {
+export function safeOrdinal(value: unknown): number | null {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
-function safeTimestamp(value: unknown): number | null {
+export function safeTimestamp(value: unknown): number | null {
   return Number.isSafeInteger(value) ? value : null;
 }
 
-function safeNullableIdentifier(value: unknown): string | null | undefined {
+export function safeNullableIdentifier(
+  value: unknown,
+): string | null | undefined {
   return value === null ? null : (safeIdentifier(value) ?? undefined);
 }
 
-function safeNullableText(
+export function safeNullableCounter(
+  value: unknown,
+  allowZero: boolean,
+): string | null | undefined {
+  return value === null ? null : (safeCounter(value, allowZero) ?? undefined);
+}
+
+export function safeNullableText(
   value: unknown,
   maximumBytes: number,
 ): string | null | undefined {
@@ -107,9 +109,8 @@ function safeCapabilities(
     !Number.isSafeInteger(value.configCount) ||
     value.configCount < 0 ||
     value.configCount > 128
-  ) {
+  )
     return null;
-  }
   return {
     schemaVersion: 1,
     protocolVersion,
@@ -137,12 +138,13 @@ function safeSession(value: unknown): AgentSessionProjection | null {
   const modelId = safeNullableIdentifier(value.modelId);
   const runtimeEpoch = safeNullableCounter(value.runtimeEpoch, false);
   const nextRuntimeEpoch = safeNullableCounter(value.nextRuntimeEpoch, false);
+  const ordinal = safeOrdinal(value.ordinal);
   const revision = safeCounter(value.revision, false);
   const projectionRevision = safeCounter(value.projectionRevision, false);
   const capabilities = safeCapabilities(value.capabilities);
   if (
     !id ||
-    safeOrdinal(value.ordinal) === null ||
+    ordinal === null ||
     !bindingId ||
     modelId === undefined ||
     !isOneOf(value.state, [
@@ -163,234 +165,24 @@ function safeSession(value: unknown): AgentSessionProjection | null {
     !revision ||
     !projectionRevision ||
     typeof value.legacy !== "boolean"
-  ) {
+  )
     return null;
-  }
   return {
-    id,
-    ordinal: value.ordinal,
-    bindingId,
-    modelId,
+    id: id as AgentSessionProjection["id"],
+    ordinal,
+    bindingId: bindingId as AgentSessionProjection["bindingId"],
+    modelId: modelId as AgentSessionProjection["modelId"],
     state: value.state,
     residency: value.residency,
-    runtimeEpoch,
-    nextRuntimeEpoch,
+    runtimeEpoch: runtimeEpoch as AgentSessionProjection["runtimeEpoch"],
+    nextRuntimeEpoch:
+      nextRuntimeEpoch as AgentSessionProjection["nextRuntimeEpoch"],
     capabilities,
-    revision,
-    projectionRevision,
+    revision: revision as AgentSessionProjection["revision"],
+    projectionRevision:
+      projectionRevision as AgentSessionProjection["projectionRevision"],
     legacy: value.legacy,
-  } as AgentSessionProjection;
-}
-
-function safeNullableCounter(
-  value: unknown,
-  allowZero: boolean,
-): string | null | undefined {
-  return value === null ? null : (safeCounter(value, allowZero) ?? undefined);
-}
-
-function safeItem(value: unknown): AcpItem | null {
-  if (!isRecord(value) || !isRecord(value.payload)) return null;
-  const ids = [
-    value.id,
-    value.projectId,
-    value.chatId,
-    value.sessionId,
-    value.turnId,
-  ].map(safeIdentifier);
-  const activityId = safeNullableIdentifier(value.activityId);
-  const runtimeEpoch = safeCounter(value.runtimeEpoch, false);
-  const revision = safeCounter(value.revision, false);
-  if (
-    ids.some((id) => !id) ||
-    !runtimeEpoch ||
-    safeOrdinal(value.ordinal) === null ||
-    activityId === undefined ||
-    !isOneOf(value.origin, ["primary", "harnessActivity"] as const) ||
-    !isOneOf(value.lifecycle, [
-      "started",
-      "streaming",
-      "completed",
-      "failed",
-      "cancelled",
-      "unsupported",
-    ] as const) ||
-    !revision ||
-    safeTimestamp(value.createdAt) === null ||
-    safeTimestamp(value.updatedAt) === null ||
-    (value.terminalAt !== null && safeTimestamp(value.terminalAt) === null) ||
-    !isOneOf(value.kind, [
-      "text",
-      "thoughtSummary",
-      "plan",
-      "toolCall",
-      "toolUpdateResult",
-      "fileChangeDiff",
-      "usage",
-      "permissionRequest",
-      "error",
-      "unsupported",
-      "collaboration",
-    ] as const) ||
-    (value.toolState !== null &&
-      !isOneOf(value.toolState, [
-        "pending",
-        "inProgress",
-        "waitingForApproval",
-        "completed",
-        "failed",
-        "declined",
-        "cancelled",
-      ] as const))
-  ) {
-    return null;
-  }
-  return {
-    id: ids[0],
-    projectId: ids[1],
-    chatId: ids[2],
-    sessionId: ids[3],
-    turnId: ids[4],
-    runtimeEpoch,
-    ordinal: value.ordinal,
-    origin: value.origin,
-    activityId,
-    lifecycle: value.lifecycle,
-    revision,
-    createdAt: value.createdAt,
-    updatedAt: value.updatedAt,
-    terminalAt: value.terminalAt,
-    toolState: value.toolState,
-    kind: value.kind,
-    payload: value.payload,
-  } as unknown as AcpItem;
-}
-
-function safeActivity(value: unknown): HarnessActivityProjection | null {
-  if (!isRecord(value) || !isRecord(value.provenance)) return null;
-  const id = safeIdentifier(value.id);
-  const turnId = safeIdentifier(value.turnId);
-  const parentActivityId = safeNullableIdentifier(value.parentActivityId);
-  const parentItemId = safeIdentifier(value.parentItemId);
-  const revision = safeCounter(value.revision, false);
-  const externalKind = safeText(value.provenance.externalKind, 128);
-  const extensionSchemaId = safeNullableIdentifier(
-    value.provenance.extensionSchemaId,
-  );
-  const safeLabel = safeNullableText(value.provenance.safeLabel, 512);
-  if (
-    !id ||
-    !turnId ||
-    parentActivityId === undefined ||
-    !parentItemId ||
-    !isOneOf(value.role, ["root", "fork", "child", "unknown"] as const) ||
-    !isOneOf(value.lifecycle, [
-      "observed",
-      "active",
-      "completed",
-      "failed",
-      "cancelled",
-      "unsupported",
-    ] as const) ||
-    !Number.isSafeInteger(value.depth) ||
-    value.depth < 0 ||
-    value.depth > 255 ||
-    value.provenance.schemaVersion !== 1 ||
-    !isOneOf(value.provenance.sourceKind, [
-      "tool",
-      "extension",
-      "collaboration",
-      "unknown",
-    ] as const) ||
-    !externalKind ||
-    extensionSchemaId === undefined ||
-    safeLabel === undefined ||
-    !revision
-  ) {
-    return null;
-  }
-  return {
-    id,
-    turnId,
-    parentActivityId,
-    parentItemId,
-    role: value.role,
-    lifecycle: value.lifecycle,
-    depth: value.depth,
-    provenance: {
-      schemaVersion: 1,
-      sourceKind: value.provenance.sourceKind,
-      externalKind,
-      extensionSchemaId,
-      safeLabel,
-    },
-    revision,
-  } as HarnessActivityProjection;
-}
-
-function safeTurn(value: unknown): TurnProjection | null {
-  if (
-    !isRecord(value) ||
-    !Array.isArray(value.items) ||
-    !Array.isArray(value.activities)
-  ) {
-    return null;
-  }
-  if (
-    value.items.length > ACP_PAGE_LIMITS.itemsPerTurn ||
-    value.activities.length > ACP_PAGE_LIMITS.activities
-  ) {
-    return null;
-  }
-  const id = safeIdentifier(value.id);
-  const sessionId = safeIdentifier(value.sessionId);
-  const runtimeEpoch = safeCounter(value.runtimeEpoch, false);
-  const revision = safeCounter(value.revision, false);
-  if (
-    !id ||
-    !sessionId ||
-    !runtimeEpoch ||
-    safeOrdinal(value.ordinal) === null ||
-    !isOneOf(value.state, [
-      "queued",
-      "sending",
-      "running",
-      "waitingModel",
-      "waitingTool",
-      "waitingApproval",
-      "waitingUser",
-      "cancelling",
-      "completed",
-      "interrupted",
-      "cancelled",
-      "failed",
-      "deliveryUnknown",
-    ] as const) ||
-    !revision ||
-    safeTimestamp(value.createdAt) === null ||
-    safeTimestamp(value.updatedAt) === null ||
-    (value.terminalAt !== null && safeTimestamp(value.terminalAt) === null)
-  ) {
-    return null;
-  }
-  const items = value.items.map(safeItem);
-  const activities = value.activities.map(safeActivity);
-  if (items.some((item) => !item) || activities.some((activity) => !activity)) {
-    return null;
-  }
-  return {
-    id,
-    sessionId,
-    runtimeEpoch,
-    ordinal: value.ordinal,
-    state: value.state,
-    revision,
-    createdAt: value.createdAt,
-    updatedAt: value.updatedAt,
-    terminalAt: value.terminalAt,
-    items: items as AcpItem[],
-    activities: activities as HarnessActivityProjection[],
-  } as TurnProjection;
+  };
 }
 
 export function safeAcpMutationResponse(
@@ -398,32 +190,39 @@ export function safeAcpMutationResponse(
 ): AcpMutationResult | null {
   if (!isRecord(value) || !isRecord(value.projection)) return null;
   const projection = value.projection;
+  const projectId = safeIdentifier(projection.projectId);
+  const chatId = safeIdentifier(projection.chatId);
+  const title = safeText(projection.title, 8192);
+  const projectionRevision = safeCounter(projection.projectionRevision, false);
   const currentSessionId =
     projection.currentSessionId === null
       ? null
       : safeIdentifier(projection.currentSessionId);
-  const title = safeText(projection.title, 8192);
+  const nextCursor =
+    projection.nextCursor === null
+      ? null
+      : safeIdentifier(projection.nextCursor);
   if (
-    !safeIdentifier(projection.projectId) ||
-    !safeIdentifier(projection.chatId) ||
+    !projectId ||
+    !chatId ||
     title === null ||
-    !safeCounter(projection.projectionRevision, false) ||
+    !projectionRevision ||
     (projection.currentSessionId !== null && !currentSessionId) ||
     !Array.isArray(projection.sessions) ||
     !Array.isArray(projection.turns) ||
     projection.sessions.length > ACP_PAGE_LIMITS.sessions ||
     projection.turns.length > ACP_PAGE_LIMITS.turns ||
-    (projection.nextCursor !== null && !safeIdentifier(projection.nextCursor))
-  ) {
+    (projection.nextCursor !== null && !nextCursor)
+  )
     return null;
-  }
   const sessions = projection.sessions.map(safeSession);
   const turns = projection.turns.map(safeTurn);
-  if (sessions.some((session) => !session) || turns.some((turn) => !turn)) {
+  if (sessions.some((session) => !session) || turns.some((turn) => !turn))
     return null;
-  }
   const safeSessions = sessions as AgentSessionProjection[];
-  const safeTurns = turns as TurnProjection[];
+  const safeTurns = turns.filter(
+    (turn): turn is NonNullable<typeof turn> => turn !== null,
+  );
   const itemCount = safeTurns.reduce(
     (count, turn) => count + turn.items.length,
     0,
@@ -442,31 +241,26 @@ export function safeAcpMutationResponse(
         !sessionIds.has(turn.sessionId) ||
         turn.items.some(
           (item) =>
-            item.projectId !== projection.projectId ||
-            item.chatId !== projection.chatId ||
+            item.projectId !== projectId ||
+            item.chatId !== chatId ||
             item.sessionId !== turn.sessionId ||
             item.turnId !== turn.id,
         ) ||
         turn.activities.some((activity) => activity.turnId !== turn.id),
     )
-  ) {
+  )
     return null;
-  }
   return {
     projection: {
-      projectId: safeIdentifier(
-        projection.projectId,
-      ) as AcpChatPage["projectId"],
-      chatId: safeIdentifier(projection.chatId) as AcpChatPage["chatId"],
+      projectId: projectId as AcpChatPage["projectId"],
+      chatId: chatId as AcpChatPage["chatId"],
       title,
-      projectionRevision: safeCounter(
-        projection.projectionRevision,
-        false,
-      ) as AcpChatPage["projectionRevision"],
+      projectionRevision:
+        projectionRevision as AcpChatPage["projectionRevision"],
       currentSessionId: currentSessionId as AcpChatPage["currentSessionId"],
       sessions: safeSessions,
       turns: safeTurns,
-      nextCursor: projection.nextCursor as AcpChatPage["nextCursor"],
+      nextCursor: nextCursor as AcpChatPage["nextCursor"],
     },
   };
 }
@@ -488,9 +282,8 @@ export function safeCodexDiscovery(
     !runtimeEpoch ||
     !isOneOf(value.account, ["managedChatgpt", "signedOut"] as const) ||
     value.models.length > 128
-  ) {
+  )
     return null;
-  }
   const ids = new Set<string>();
   let defaults = 0;
   const models = [];
@@ -498,14 +291,8 @@ export function safeCodexDiscovery(
     if (!isRecord(candidate)) return null;
     const id = safeIdentifier(candidate.id);
     const name = safeIdentifier(candidate.name);
-    if (
-      !id ||
-      !name ||
-      typeof candidate.isDefault !== "boolean" ||
-      ids.has(id)
-    ) {
+    if (!id || !name || typeof candidate.isDefault !== "boolean" || ids.has(id))
       return null;
-    }
     ids.add(id);
     defaults += Number(candidate.isDefault);
     models.push({ id, name, isDefault: candidate.isDefault });
@@ -522,17 +309,17 @@ export function safeCodexDiscovery(
     (defaults === 0 && defaultModelId !== null) ||
     (defaults === 1 &&
       !models.some((model) => model.id === defaultModelId && model.isDefault))
-  ) {
+  )
     return null;
-  }
   return {
-    projectId,
-    projectGeneration,
+    projectId: projectId as CodexDiscoveryResponse["projectId"],
+    projectGeneration:
+      projectGeneration as CodexDiscoveryResponse["projectGeneration"],
     rootId,
-    bindingId,
-    runtimeEpoch,
+    bindingId: bindingId as CodexDiscoveryResponse["bindingId"],
+    runtimeEpoch: runtimeEpoch as CodexDiscoveryResponse["runtimeEpoch"],
     account: value.account,
-    models,
-    defaultModelId,
-  } as unknown as CodexDiscoveryResponse;
+    models: models as CodexDiscoveryResponse["models"],
+    defaultModelId: defaultModelId as CodexDiscoveryResponse["defaultModelId"],
+  };
 }

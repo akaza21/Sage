@@ -36,7 +36,7 @@ function session(index = 0): object {
   };
 }
 
-function item(index = 0): object {
+function item(index = 0, overrides: Record<string, unknown> = {}): object {
   return {
     id: `item-${index}`,
     projectId: "project-a",
@@ -55,6 +55,7 @@ function item(index = 0): object {
     toolState: null,
     kind: "text",
     payload: { role: "assistant", text: "done" },
+    ...overrides,
   };
 }
 
@@ -166,6 +167,135 @@ describe("safeAcpMutationResponse", () => {
     expect(safeAcpMutationResponse(mutation({ turns: [null] }))).toBeNull();
     expect(
       safeAcpMutationResponse(mutation({ turns: [turn({ items: [null] })] })),
+    ).toBeNull();
+  });
+
+  it("fails closed when a plan payload exceeds its entry limit", () => {
+    expect(
+      safeAcpMutationResponse(
+        mutation({
+          turns: [
+            turn({
+              items: [
+                item(0, {
+                  kind: "plan",
+                  payload: {
+                    entries: Array.from({ length: 513 }, () => ({
+                      label: "Plan step",
+                      state: "pending",
+                    })),
+                  },
+                }),
+              ],
+            }),
+          ],
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("fails closed when a file-change payload exceeds its change limit", () => {
+    expect(
+      safeAcpMutationResponse(
+        mutation({
+          turns: [
+            turn({
+              items: [
+                item(0, {
+                  kind: "fileChangeDiff",
+                  payload: {
+                    changes: Array.from({ length: 65 }, () => ({
+                      resource: { rootId: "root-a", relativePath: "a.ts" },
+                      operation: "updated",
+                      originalResource: null,
+                      summary: "Changed a.ts",
+                      additions: 1,
+                      deletions: 0,
+                    })),
+                    truncated: true,
+                  },
+                }),
+              ],
+            }),
+          ],
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("fails closed when a tool presentation exceeds its resource limit", () => {
+    expect(
+      safeAcpMutationResponse(
+        mutation({
+          turns: [
+            turn({
+              items: [
+                item(0, {
+                  kind: "toolCall",
+                  toolState: "completed",
+                  payload: {
+                    presentation: {
+                      kind: "file",
+                      label: "Read files",
+                      resources: Array.from({ length: 65 }, () => ({
+                        kind: "resource",
+                        resource: {
+                          rootId: "root-a",
+                          relativePath: "a.ts",
+                        },
+                      })),
+                    },
+                    inputSummary: null,
+                  },
+                }),
+              ],
+            }),
+          ],
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("fails closed when collaboration labels exceed their limit", () => {
+    expect(
+      safeAcpMutationResponse(
+        mutation({
+          turns: [
+            turn({
+              items: [
+                item(0, {
+                  kind: "collaboration",
+                  payload: {
+                    activityId: "activity-0",
+                    label: "Delegated work",
+                    summary: "A subagent completed work.",
+                    receiverLabels: Array.from({ length: 33 }, () => "agent"),
+                  },
+                }),
+              ],
+            }),
+          ],
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("fails closed when an item payload discriminant mismatches its kind", () => {
+    expect(
+      safeAcpMutationResponse(
+        mutation({
+          turns: [
+            turn({
+              items: [
+                item(0, {
+                  kind: "text",
+                  payload: { summary: "This is not text." },
+                }),
+              ],
+            }),
+          ],
+        }),
+      ),
     ).toBeNull();
   });
 });
