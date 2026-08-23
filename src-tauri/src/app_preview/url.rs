@@ -17,7 +17,10 @@ pub(crate) fn parse_allowed_preview_url(raw: &str) -> Result<Url, PreviewError> 
         || !parsed.username().is_empty()
         || parsed.password().is_some()
         || parsed.port().is_none()
-        || !matches!(parsed.host_str(), Some("127.0.0.1") | Some("::1"))
+        || !matches!(
+            parsed.host_str(),
+            Some("127.0.0.1") | Some("::1") | Some("[::1]")
+        )
     {
         return Err(PreviewError::invalid(
             "Preview origins must be loopback HTTP(S) URLs.",
@@ -27,7 +30,7 @@ pub(crate) fn parse_allowed_preview_url(raw: &str) -> Result<Url, PreviewError> 
 }
 
 pub(crate) fn normalized_origin(url: &Url) -> String {
-    let host = if url.host_str() == Some("::1") {
+    let host = if matches!(url.host_str(), Some("::1") | Some("[::1]")) {
         "[::1]"
     } else {
         "127.0.0.1"
