@@ -3,6 +3,7 @@ import { ChevronRight, Files } from "lucide-react";
 
 import type {
   AcpChatPage,
+  AcpMutationResult,
   AgentEditDisposition,
   AgentEditDispositionState,
   TurnProjection,
@@ -17,7 +18,9 @@ interface TurnEditSummaryProps {
   rootLabels: Readonly<Record<string, string>>;
   countIncomplete: boolean;
   onOpenDiff?: (resource: ResourceRef) => void;
-  onRecordDisposition?: (disposition: AgentEditDisposition) => Promise<void>;
+  onRecordDisposition?: (
+    disposition: AgentEditDisposition,
+  ) => Promise<AcpMutationResult>;
 }
 
 const MAX_FILE_CHANGE_LINES = 1_000_000;
