@@ -26,10 +26,58 @@ impl PublicationExecutor for CorePublicationExecutor {
         secret: &OneShotSecret,
         helper: HelperIdentity,
     ) -> Result<(), PublicationFailure> {
-        crate::acp::bindings::codex::execute_boundary_publication(
-            authority, payload, secret, helper,
-        )
-        .map(drop)
+        match crate::acp::bindings::codex::helper_operation(payload)
+            .map_err(|_| PublicationFailure::Rejected)?
+        {
+            crate::acp::bindings::codex::HelperOperation::Publish => {
+                crate::acp::bindings::codex::execute_boundary_publication(
+                    authority, payload, secret, helper,
+                )
+                .map(drop)
+            }
+            crate::acp::bindings::codex::HelperOperation::Recover => {
+                self.recover(authority, payload, secret, helper)
+            }
+            crate::acp::bindings::codex::HelperOperation::Update => {
+                self.update(authority, payload, secret, helper)
+            }
+            crate::acp::bindings::codex::HelperOperation::Remove => {
+                self.remove(authority, payload, secret, helper)
+            }
+        }
+    }
+
+    fn recover(
+        &mut self,
+        authority: &ElevatedBoundaryAuthority,
+        payload: &[u8],
+        secret: &OneShotSecret,
+        helper: HelperIdentity,
+    ) -> Result<(), PublicationFailure> {
+        crate::acp::bindings::codex::execute_boundary_recover(authority, payload, secret, helper)
+            .map(drop)
+    }
+
+    fn update(
+        &mut self,
+        authority: &ElevatedBoundaryAuthority,
+        payload: &[u8],
+        secret: &OneShotSecret,
+        helper: HelperIdentity,
+    ) -> Result<(), PublicationFailure> {
+        crate::acp::bindings::codex::execute_boundary_update(authority, payload, secret, helper)
+            .map(drop)
+    }
+
+    fn remove(
+        &mut self,
+        authority: &ElevatedBoundaryAuthority,
+        payload: &[u8],
+        secret: &OneShotSecret,
+        helper: HelperIdentity,
+    ) -> Result<(), PublicationFailure> {
+        crate::acp::bindings::codex::execute_boundary_remove(authority, payload, secret, helper)
+            .map(drop)
     }
 }
 

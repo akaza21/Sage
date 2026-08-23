@@ -76,6 +76,64 @@ pub(super) trait HelperTransactionPlatform {
     fn remove_completed_stage(&mut self) -> Result<(), ElevatedHelperError>;
     fn rollback_package(&mut self) -> Result<(), ElevatedHelperError>;
     fn rollback_state(&mut self) -> Result<(), ElevatedHelperError>;
+    fn hold_published_pair(&mut self) -> Result<(), ElevatedHelperError> {
+        Err(ElevatedHelperError::Publication)
+    }
+    fn discard_held_pair(&mut self) -> Result<(), ElevatedHelperError> {
+        Err(ElevatedHelperError::Cleanup)
+    }
+    fn restore_held_pair(&mut self) -> Result<(), ElevatedHelperError> {
+        Err(ElevatedHelperError::Rollback)
+    }
+    fn retire_published_pair(&mut self) -> Result<(), ElevatedHelperError> {
+        Err(ElevatedHelperError::Publication)
+    }
+}
+
+pub(super) fn execute_boundary_recover<P: HelperTransactionPlatform>(
+    request: &AuthenticatedHelperRequest,
+    platform: &mut P,
+) -> Result<P::Proof, ElevatedHelperError> {
+    let path = journal_path(request)?;
+    if platform.read_journal(&path, JOURNAL_BYTES_MAX)?.is_none() {
+        return Err(ElevatedHelperError::Drift);
+    }
+    finalize(request, platform)
+}
+
+pub(super) fn execute_boundary_update<P: HelperTransactionPlatform>(
+    request: &AuthenticatedHelperRequest,
+    platform: &mut P,
+) -> Result<P::Proof, ElevatedHelperError> {
+    let observed = platform.observe()?;
+    if !observed.stage_package || !observed.final_package || !observed.final_state {
+        return Err(ElevatedHelperError::Drift);
+    }
+    platform.hold_published_pair()?;
+    match finalize(request, platform) {
+        Ok(proof) => platform.discard_held_pair().map(|()| proof),
+        Err(error) => platform.restore_held_pair().and(Err(error)),
+    }
+}
+
+pub(super) fn execute_boundary_remove<P: HelperTransactionPlatform>(
+    request: &AuthenticatedHelperRequest,
+    platform: &mut P,
+) -> Result<(), ElevatedHelperError> {
+    let path = journal_path(request)?;
+    if platform.read_journal(&path, JOURNAL_BYTES_MAX)?.is_some() {
+        return Err(ElevatedHelperError::Cleanup);
+    }
+    let observed = platform.observe()?;
+    if observed.stage_package || !observed.final_package || !observed.final_state {
+        return Err(ElevatedHelperError::Drift);
+    }
+    platform.retire_published_pair()?;
+    let converged = platform.observe()?;
+    if converged.stage_package || converged.final_package || converged.final_state {
+        return Err(ElevatedHelperError::Cleanup);
+    }
+    Ok(())
 }
 
 pub(super) fn finalize<P: HelperTransactionPlatform>(

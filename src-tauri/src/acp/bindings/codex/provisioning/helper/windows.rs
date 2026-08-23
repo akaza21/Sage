@@ -9,7 +9,10 @@ use windows_sys::Win32::Storage::FileSystem::{
     FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT,
 };
 
-use super::transaction::{HelperTransactionPlatform, NamespaceObservation, NodeIdentity, finalize};
+use super::transaction::{
+    HelperTransactionPlatform, NamespaceObservation, NodeIdentity, execute_boundary_recover,
+    execute_boundary_remove, execute_boundary_update, finalize,
+};
 use super::{AuthenticatedHelperRequest, ElevatedHelperError};
 #[path = "windows/native.rs"]
 mod native;
@@ -68,6 +71,33 @@ pub(crate) fn execute_authenticated_request(
 ) -> Result<ManagedStagingPrerequisite, ElevatedHelperError> {
     let mut platform = WindowsPlatform::new(request, packet)?;
     finalize(request, &mut platform)
+}
+
+pub(crate) fn execute_authenticated_recover(
+    _process: &ElevatedHelperProcess,
+    request: &AuthenticatedHelperRequest,
+    packet: &MetadataValidatedPacket,
+) -> Result<ManagedStagingPrerequisite, ElevatedHelperError> {
+    let mut platform = WindowsPlatform::new(request, packet)?;
+    execute_boundary_recover(request, &mut platform)
+}
+
+pub(crate) fn execute_authenticated_update(
+    _process: &ElevatedHelperProcess,
+    request: &AuthenticatedHelperRequest,
+    packet: &MetadataValidatedPacket,
+) -> Result<ManagedStagingPrerequisite, ElevatedHelperError> {
+    let mut platform = WindowsPlatform::new(request, packet)?;
+    execute_boundary_update(request, &mut platform)
+}
+
+pub(crate) fn execute_authenticated_remove(
+    _process: &ElevatedHelperProcess,
+    request: &AuthenticatedHelperRequest,
+    packet: &MetadataValidatedPacket,
+) -> Result<(), ElevatedHelperError> {
+    let mut platform = WindowsPlatform::new(request, packet)?;
+    execute_boundary_remove(request, &mut platform)
 }
 
 struct WindowsPlatform {

@@ -54,11 +54,14 @@ pub(crate) use physical::{
     inspect_managed_package,
 };
 pub(crate) use policy::{SecurityPolicyError, parse_security_policy};
-#[cfg(all(windows, feature = "codex-provisioning-helper"))]
-pub(crate) use provisioning::execute_boundary_publication;
 pub(crate) use provisioning::{
     ExplicitStagingAuthorization, PreparedCodexStaging, ProvisioningError, VerifiedCodexSource,
     authorize_offline_staging_from_environment, prepare_codex_staging, verify_codex_source,
+};
+#[cfg(all(windows, feature = "codex-provisioning-helper"))]
+pub(crate) use provisioning::{
+    HelperOperation, execute_boundary_publication, execute_boundary_recover,
+    execute_boundary_remove, execute_boundary_update, helper_operation,
 };
 pub(crate) use reproduction::{
     ReproductionError, bind_reproduced_package, parse_reproduction_requirements,

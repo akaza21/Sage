@@ -269,3 +269,52 @@ fn exact_manifest_source_target_nonce_and_acl_bindings_reject_drift() {
         );
     }
 }
+
+#[test]
+fn unsigned_or_observation_only_cannot_update_or_remove() {
+    let packet = packet();
+    let helper = VerifiedHelperExecutable::fixture("0.1.0", [0x22; 32], 1_048_576);
+    let secret = OneTimeHelperSecret::fixture([0x33; 32]);
+    for operation in [HelperOperation::Update, HelperOperation::Remove] {
+        let request = seal_helper_request_operation_with_secret(
+            &handoff(),
+            packet
+                .managed_package_root()
+                .parent()
+                .unwrap()
+                .join(".sage-codex-0.145.0-stage"),
+            &helper,
+            &secret.0,
+            operation,
+        )
+        .unwrap();
+        let authenticated =
+            authenticate_helper_request(&request, &secret, &helper, &packet).unwrap();
+        assert_eq!(authenticated.operation(), operation);
+        assert_eq!(
+            request_production_elevation(authenticated).unwrap_err(),
+            ElevatedHelperError::ElevationBoundaryUnavailable
+        );
+    }
+}
+
+#[test]
+fn journal_authentication_survives_a_fresh_one_shot_secret() {
+    let packet = packet();
+    let helper = VerifiedHelperExecutable::fixture("0.1.0", [0x22; 32], 1_048_576);
+    let first_secret = OneTimeHelperSecret::fixture([0x33; 32]);
+    let first_bytes = exact_request(&helper, &first_secret);
+    let first = authenticate_helper_request(&first_bytes, &first_secret, &helper, &packet).unwrap();
+    let first_authenticator = first.journal_authenticator(b"leftover journal payload");
+    drop(first_secret);
+
+    let recovered_secret = OneTimeHelperSecret::fixture([0x44; 32]);
+    let recovered_bytes = exact_request(&helper, &recovered_secret);
+    let recovered =
+        authenticate_helper_request(&recovered_bytes, &recovered_secret, &helper, &packet).unwrap();
+
+    assert_eq!(
+        recovered.journal_authenticator(b"leftover journal payload"),
+        first_authenticator
+    );
+}

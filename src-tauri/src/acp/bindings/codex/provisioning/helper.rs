@@ -20,7 +20,10 @@ mod windows;
 mod boundary;
 
 #[cfg(all(windows, feature = "codex-provisioning-helper"))]
-pub(crate) use boundary::execute_boundary_publication;
+pub(crate) use boundary::{
+    execute_boundary_publication, execute_boundary_recover, execute_boundary_remove,
+    execute_boundary_update,
+};
 
 const REQUEST_BYTES_MAX: usize = 128 * 1024;
 const HELPER_EXECUTABLE_BYTES_MAX: u64 = 32 * 1024 * 1024;
@@ -106,9 +109,21 @@ impl OneTimeHelperSecret {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct HelperRequestPayload {
     schema_version: u8,
+    #[serde(default)]
+    operation: HelperOperation,
     stage_root: PathBuf,
     helper: HelperExecutableIdentity,
     handoff: SealedHandoff,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum HelperOperation {
+    #[default]
+    Publish,
+    Recover,
+    Update,
+    Remove,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -120,7 +135,7 @@ struct HelperRequestEnvelope {
 
 pub(crate) struct AuthenticatedHelperRequest {
     payload: HelperRequestPayload,
-    journal_key: [u8; 32],
+    journal_key: Vec<u8>,
 }
 
 impl std::fmt::Debug for AuthenticatedHelperRequest {
@@ -147,13 +162,31 @@ impl AuthenticatedHelperRequest {
     }
 
     fn binding_sha256(&self) -> Result<String, ElevatedHelperError> {
-        let bytes =
-            serde_json::to_vec(&self.payload).map_err(|_| ElevatedHelperError::Malformed)?;
+        let bytes = self.journal_binding()?;
         Ok(hex(&Sha256::digest(bytes)))
     }
 
     fn journal_authenticator(&self, bytes: &[u8]) -> String {
-        hex(&hmac_sha256(&self.journal_key, bytes))
+        let mut authenticated = Vec::with_capacity(30 + bytes.len());
+        authenticated.extend_from_slice(b"sage-codex-helper-journal-v1\0");
+        authenticated.extend_from_slice(bytes);
+        hex(&hmac_sha256(&self.journal_key, &authenticated))
+    }
+
+    fn journal_binding(&self) -> Result<Vec<u8>, ElevatedHelperError> {
+        let helper =
+            serde_json::to_vec(&self.payload.helper).map_err(|_| ElevatedHelperError::Malformed)?;
+        let handoff = serde_json::to_vec(&self.payload.handoff)
+            .map_err(|_| ElevatedHelperError::Malformed)?;
+        let mut binding = Vec::with_capacity(helper.len() + handoff.len() + 1);
+        binding.extend_from_slice(&helper);
+        binding.push(0);
+        binding.extend_from_slice(&handoff);
+        Ok(binding)
+    }
+
+    fn operation(&self) -> HelperOperation {
+        self.payload.operation
     }
 }
 
@@ -172,8 +205,25 @@ fn seal_helper_request_with_secret(
     helper: &VerifiedHelperExecutable,
     secret: &[u8; 32],
 ) -> Result<Vec<u8>, ElevatedHelperError> {
+    seal_helper_request_operation_with_secret(
+        handoff,
+        stage_root,
+        helper,
+        secret,
+        HelperOperation::Publish,
+    )
+}
+
+fn seal_helper_request_operation_with_secret(
+    handoff: &SealedHandoff,
+    stage_root: PathBuf,
+    helper: &VerifiedHelperExecutable,
+    secret: &[u8; 32],
+    operation: HelperOperation,
+) -> Result<Vec<u8>, ElevatedHelperError> {
     let payload = HelperRequestPayload {
         schema_version: REQUEST_SCHEMA_VERSION,
+        operation,
         stage_root,
         helper: helper.0.clone(),
         handoff: handoff.clone(),
@@ -188,6 +238,15 @@ fn seal_helper_request_with_secret(
         return Err(ElevatedHelperError::RequestBytes);
     }
     Ok(bytes)
+}
+
+pub(crate) fn helper_operation(bytes: &[u8]) -> Result<HelperOperation, ElevatedHelperError> {
+    if bytes.is_empty() || bytes.len() > REQUEST_BYTES_MAX {
+        return Err(ElevatedHelperError::RequestBytes);
+    }
+    serde_json::from_slice::<HelperRequestEnvelope>(bytes)
+        .map(|envelope| envelope.payload.operation)
+        .map_err(|_| ElevatedHelperError::Malformed)
 }
 
 pub(crate) fn authenticate_helper_request(
@@ -221,12 +280,14 @@ fn authenticate_helper_request_with_secret(
     }
     validate_helper_identity(&envelope.payload.helper, observed_helper)?;
     validate_handoff(&envelope.payload, packet)?;
-    let mut journal_binding = Vec::with_capacity(payload_bytes.len() + 30);
-    journal_binding.extend_from_slice(b"sage-codex-helper-journal-v1\0");
-    journal_binding.extend_from_slice(&payload_bytes);
-    Ok(AuthenticatedHelperRequest {
+    let request = AuthenticatedHelperRequest {
         payload: envelope.payload,
-        journal_key: hmac_sha256(secret, &journal_binding),
+        journal_key: Vec::new(),
+    };
+    let journal_key = request.journal_binding()?;
+    Ok(AuthenticatedHelperRequest {
+        payload: request.payload,
+        journal_key,
     })
 }
 
@@ -319,10 +380,17 @@ fn validate_acl_plan(plan: &AclPlan, package: bool) -> Result<(), ElevatedHelper
     Ok(())
 }
 
-fn hmac_sha256(key: &[u8; 32], message: &[u8]) -> [u8; 32] {
+fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
     const BLOCK_BYTES: usize = 64;
     let mut inner_key = [0x36_u8; BLOCK_BYTES];
     let mut outer_key = [0x5c_u8; BLOCK_BYTES];
+    let hashed_key;
+    let key = if key.len() > BLOCK_BYTES {
+        hashed_key = Sha256::digest(key);
+        hashed_key.as_slice()
+    } else {
+        key
+    };
     for (index, byte) in key.iter().enumerate() {
         inner_key[index] ^= byte;
         outer_key[index] ^= byte;

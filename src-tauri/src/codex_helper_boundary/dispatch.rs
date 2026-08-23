@@ -20,6 +20,36 @@ pub(crate) trait PublicationExecutor {
         secret: &OneShotSecret,
         helper: HelperIdentity,
     ) -> Result<(), PublicationFailure>;
+
+    fn recover(
+        &mut self,
+        authority: &ElevatedBoundaryAuthority,
+        payload: &[u8],
+        secret: &OneShotSecret,
+        helper: HelperIdentity,
+    ) -> Result<(), PublicationFailure> {
+        self.publish(authority, payload, secret, helper)
+    }
+
+    fn update(
+        &mut self,
+        authority: &ElevatedBoundaryAuthority,
+        payload: &[u8],
+        secret: &OneShotSecret,
+        helper: HelperIdentity,
+    ) -> Result<(), PublicationFailure> {
+        self.publish(authority, payload, secret, helper)
+    }
+
+    fn remove(
+        &mut self,
+        authority: &ElevatedBoundaryAuthority,
+        payload: &[u8],
+        secret: &OneShotSecret,
+        helper: HelperIdentity,
+    ) -> Result<(), PublicationFailure> {
+        self.publish(authority, payload, secret, helper)
+    }
 }
 
 pub(crate) fn authenticated_response(

@@ -31,6 +31,7 @@ struct FakePlatform {
     stage_root_present: bool,
     handoff_present: bool,
     displace_state_during_failed_proof: bool,
+    held_published_pair: bool,
 }
 
 impl Default for FakePlatform {
@@ -58,6 +59,7 @@ impl Default for FakePlatform {
             stage_root_present: true,
             handoff_present: true,
             displace_state_during_failed_proof: false,
+            held_published_pair: false,
         }
     }
 }
@@ -210,6 +212,41 @@ impl HelperTransactionPlatform for FakePlatform {
         }
         Ok(())
     }
+
+    fn hold_published_pair(&mut self) -> Result<(), ElevatedHelperError> {
+        if !self.observation.final_package || !self.observation.final_state {
+            return Err(ElevatedHelperError::Drift);
+        }
+        self.observation.final_package = false;
+        self.observation.final_state = false;
+        self.state_effect_published = false;
+        self.held_published_pair = true;
+        Ok(())
+    }
+
+    fn discard_held_pair(&mut self) -> Result<(), ElevatedHelperError> {
+        self.held_published_pair
+            .then_some(())
+            .ok_or(ElevatedHelperError::Drift)?;
+        self.held_published_pair = false;
+        Ok(())
+    }
+
+    fn restore_held_pair(&mut self) -> Result<(), ElevatedHelperError> {
+        self.held_published_pair
+            .then_some(())
+            .ok_or(ElevatedHelperError::Rollback)?;
+        self.observation.final_package = true;
+        self.observation.final_state = true;
+        self.held_published_pair = false;
+        Ok(())
+    }
+
+    fn retire_published_pair(&mut self) -> Result<(), ElevatedHelperError> {
+        self.observation.final_package = false;
+        self.observation.final_state = false;
+        Ok(())
+    }
 }
 
 fn request(nonce: &str) -> AuthenticatedHelperRequest {
@@ -235,6 +272,7 @@ fn request(nonce: &str) -> AuthenticatedHelperRequest {
     AuthenticatedHelperRequest {
         payload: super::super::HelperRequestPayload {
             schema_version: 1,
+            operation: super::super::HelperOperation::Publish,
             stage_root: package_target
                 .parent()
                 .unwrap()
@@ -251,7 +289,7 @@ fn request(nonce: &str) -> AuthenticatedHelperRequest {
                 payload_sha256: "33".repeat(32),
             },
         },
-        journal_key: [nonce.as_bytes().first().copied().unwrap_or(0); 32],
+        journal_key: vec![nonce.as_bytes().first().copied().unwrap_or(0); 32],
     }
 }
 
@@ -474,4 +512,118 @@ fn post_commit_cleanup_failure_retains_journal_and_never_rolls_back() {
 
     platform.fail_cleanup = false;
     assert_eq!(finalize(&request, &mut platform), Ok("managed-proof"));
+}
+
+#[test]
+fn interrupted_publish_resumes_from_the_journal() {
+    let original = request("00");
+    let mut platform = FakePlatform {
+        crash: Some(CrashPoint::StatePhaseWritten),
+        ..FakePlatform::default()
+    };
+
+    let _ = catch_unwind(AssertUnwindSafe(|| finalize(&original, &mut platform)));
+    drop(original);
+
+    assert_eq!(
+        execute_boundary_recover(&request("00"), &mut platform),
+        Ok("managed-proof")
+    );
+    assert_eq!(platform.journal, None);
+}
+
+#[test]
+fn recovery_required_retries_cleanup_without_republishing() {
+    let original = request("00");
+    let mut platform = FakePlatform {
+        fail_cleanup: true,
+        ..FakePlatform::default()
+    };
+    assert_eq!(
+        finalize(&original, &mut platform),
+        Err(ElevatedHelperError::Cleanup)
+    );
+    drop(original);
+
+    platform.fail_cleanup = false;
+    assert_eq!(
+        execute_boundary_recover(&request("00"), &mut platform),
+        Ok("managed-proof")
+    );
+    assert_eq!(platform.acl_applications, 1);
+    assert_eq!(platform.journal, None);
+}
+
+#[test]
+fn update_replaces_an_existing_canonical_target() {
+    let mut platform = FakePlatform {
+        observation: NamespaceObservation {
+            stage_package: true,
+            final_package: true,
+            final_state: true,
+        },
+        ..FakePlatform::default()
+    };
+
+    assert_eq!(
+        execute_boundary_update(&request("00"), &mut platform),
+        Ok("managed-proof")
+    );
+    assert_eq!(platform.journal, None);
+    assert_eq!(
+        platform.observation,
+        NamespaceObservation {
+            stage_package: false,
+            final_package: true,
+            final_state: true,
+        }
+    );
+}
+
+#[test]
+fn rollback_converges_after_failed_update() {
+    let mut platform = FakePlatform {
+        observation: NamespaceObservation {
+            stage_package: true,
+            final_package: true,
+            final_state: true,
+        },
+        fail_publish: true,
+        ..FakePlatform::default()
+    };
+
+    assert_eq!(
+        execute_boundary_update(&request("00"), &mut platform),
+        Err(ElevatedHelperError::Publication)
+    );
+    assert!(platform.observation.final_package);
+    assert!(platform.observation.final_state);
+    assert!(platform.observation.stage_package);
+    assert_eq!(platform.journal, None);
+}
+
+#[test]
+fn remove_retires_published_package_and_state() {
+    let mut platform = FakePlatform {
+        observation: NamespaceObservation {
+            stage_package: false,
+            final_package: true,
+            final_state: true,
+        },
+        ..FakePlatform::default()
+    };
+
+    assert_eq!(
+        execute_boundary_remove(&request("00"), &mut platform),
+        Ok(())
+    );
+    assert_eq!(platform.journal, None);
+    assert_eq!(
+        platform.observation,
+        NamespaceObservation {
+            stage_package: false,
+            final_package: false,
+            final_state: false,
+        }
+    );
 }

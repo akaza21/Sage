@@ -24,7 +24,10 @@ mod windows;
 mod helper;
 
 #[cfg(all(windows, feature = "codex-provisioning-helper"))]
-pub(crate) use helper::execute_boundary_publication;
+pub(crate) use helper::{
+    HelperOperation, execute_boundary_publication, execute_boundary_recover,
+    execute_boundary_remove, execute_boundary_update, helper_operation,
+};
 
 const SOURCE_FILE_COUNT: usize = 8;
 const SOURCE_BYTES_MAX: u64 = 1024 * 1024 * 1024;
