@@ -18,6 +18,58 @@ export function PreviewSurface() {
   const transitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
+
+  return (
+    <PreviewSession
+      key={`${project?.id ?? "no-project"}:${projectGeneration}:${epoch}`}
+      project={project}
+      projectGeneration={projectGeneration}
+      epoch={epoch}
+      transitioning={transitioning}
+    />
+  );
+}
+
+type PreviewSessionProps = {
+  project: { id: string } | null;
+  projectGeneration: number;
+  epoch: number;
+  transitioning: boolean;
+};
+
+function matchesPreviewTarget(
+  left: PreviewTargetRef | null,
+  right: PreviewTargetRef,
+): boolean {
+  return (
+    left?.projectId === right.projectId &&
+    left.projectGeneration === right.projectGeneration &&
+    left.expectedTransitionEpoch === right.expectedTransitionEpoch &&
+    left.rootId === right.rootId &&
+    left.scriptName === right.scriptName
+  );
+}
+
+function matchesPreviewSession(
+  target: PreviewTargetRef,
+  project: { id: string } | null,
+  projectGeneration: number,
+  epoch: number,
+): boolean {
+  return (
+    project !== null &&
+    target.projectId === project.id &&
+    target.projectGeneration === projectGeneration &&
+    target.expectedTransitionEpoch === epoch
+  );
+}
+
+function PreviewSession({
+  project,
+  projectGeneration,
+  epoch,
+  transitioning,
+}: PreviewSessionProps) {
   const [targets, setTargets] = useState<PreviewTargetRef[]>([]);
   const [active, setActive] = useState<PreviewTargetRef | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -37,15 +89,24 @@ export function PreviewSurface() {
         projectGeneration,
         expectedTransitionEpoch: epoch,
       });
+      if (!mountedRef.current) return;
+      if (
+        !response.targets.every((target) =>
+          matchesPreviewSession(target, project, projectGeneration, epoch),
+        )
+      ) {
+        throw new Error("Preview discovery returned a stale target.");
+      }
       setTargets(response.targets);
     } catch (error) {
+      if (!mountedRef.current) return;
       setMessage(
         error instanceof Error
           ? error.message
           : "Preview discovery failed safely.",
       );
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [epoch, project, projectGeneration, transitioning]);
 
@@ -84,8 +145,7 @@ export function PreviewSurface() {
       {targets.map((target) => (
         <div key={`${target.rootId}:${target.scriptName}`}>
           <span>{target.scriptName}</span>
-          {active?.rootId === target.rootId &&
-          active.scriptName === target.scriptName ? (
+          {matchesPreviewTarget(active, target) ? (
             <button
               type="button"
               onClick={() =>

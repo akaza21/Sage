@@ -1,8 +1,8 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     io::Read,
     process::{Child, ChildStderr, ChildStdout, Command, Stdio},
-    sync::{Mutex, OnceLock, mpsc},
+    sync::mpsc,
     thread,
     time::{Duration, Instant},
 };
@@ -12,7 +12,7 @@ use serde::Serialize;
 use super::{
     discovery::{PreviewDiscoveryRequest, PreviewTargetRef},
     error::PreviewError,
-    health,
+    health, lifecycle_registry,
     url::{normalized_origin, parse_allowed_preview_url},
 };
 
@@ -31,9 +31,8 @@ struct StartingPreview {
 }
 
 #[derive(Default)]
-struct Registry {
+pub(super) struct Registry {
     discovered: BTreeMap<PreviewTargetRef, std::path::PathBuf>,
-    cancelled_starts: BTreeSet<PreviewTargetRef>,
     starting: Option<StartingPreview>,
     active: Option<ActivePreview>,
 }
@@ -59,78 +58,61 @@ pub(crate) struct PreviewStartReservation {
     stderr: ChildStderr,
 }
 
-fn registry() -> &'static Mutex<Registry> {
-    static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
-    REGISTRY.get_or_init(|| Mutex::new(Registry::default()))
-}
-
 pub(crate) fn replace_discovered(
-    request: &PreviewDiscoveryRequest,
+    _request: &PreviewDiscoveryRequest,
     targets: Vec<(PreviewTargetRef, std::path::PathBuf)>,
 ) {
-    let mut registry = registry().lock().expect("preview lifecycle registry");
-    registry.discovered.retain(|target, _| {
-        target.project_id == request.project_id
-            && target.expected_transition_epoch == request.expected_transition_epoch
+    lifecycle_registry::with_registry(|registry| {
+        registry.discovered.clear();
+        registry.discovered.extend(targets);
     });
-    registry.discovered.clear();
-    registry.discovered.extend(targets);
-    let known: BTreeSet<PreviewTargetRef> = registry.discovered.keys().cloned().collect();
-    registry
-        .cancelled_starts
-        .retain(|target| known.contains(target));
 }
 
 pub(crate) fn reserve_start(
     target: PreviewTargetRef,
 ) -> Result<PreviewStartReservation, PreviewError> {
     let (stdout, stderr) = {
-        let mut registry = registry().lock().expect("preview lifecycle registry");
-        if registry.cancelled_starts.remove(&target) {
-            return Err(PreviewError::conflict(
-                "previewTarget",
-                "Preview start was cancelled before its process could be reserved.",
-            ));
-        }
-        if registry.active.is_some() || registry.starting.is_some() {
-            return Err(PreviewError::conflict(
-                "activePreview",
-                "A Preview target is already active.",
-            ));
-        }
-        let package_root = registry.discovered.get(&target).cloned().ok_or_else(|| {
-            PreviewError::conflict(
-                "previewTarget",
-                "Preview target must be discovered before it can start.",
-            )
-        })?;
-        let mut child = Command::new(npm_executable())
-            .args(["run", target.script_name.as_str()])
-            .current_dir(package_root)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|_| PreviewError::Unavailable {
-                message: "Preview could not start its curated package script.".into(),
-            })?;
-        let stdout = child.stdout.take().expect("preview stdout was piped");
-        let stderr = child.stderr.take().expect("preview stderr was piped");
-        let child = match ManagedChild::reserve(child) {
-            Ok(child) => child,
-            Err(mut child) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(PreviewError::Unavailable {
-                    message: "Preview could not reserve its process tree.".into(),
-                });
+        lifecycle_registry::with_registry(|registry| {
+            if registry.active.is_some() || registry.starting.is_some() {
+                return Err(PreviewError::conflict(
+                    "activePreview",
+                    "A Preview target is already active.",
+                ));
             }
-        };
-        registry.starting = Some(StartingPreview {
-            target: target.clone(),
-            child,
-        });
-        (stdout, stderr)
+            let package_root = registry.discovered.get(&target).cloned().ok_or_else(|| {
+                PreviewError::conflict(
+                    "previewTarget",
+                    "Preview target must be discovered before it can start.",
+                )
+            })?;
+            let mut child = Command::new(npm_executable())
+                .args(["run", target.script_name.as_str()])
+                .current_dir(package_root)
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|_| PreviewError::Unavailable {
+                    message: "Preview could not start its curated package script.".into(),
+                })?;
+            let stdout = child.stdout.take().expect("preview stdout was piped");
+            let stderr = child.stderr.take().expect("preview stderr was piped");
+            let child = match ManagedChild::reserve(child) {
+                Ok(child) => child,
+                Err(mut child) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(PreviewError::Unavailable {
+                        message: "Preview could not reserve its process tree.".into(),
+                    });
+                }
+            };
+            registry.starting = Some(StartingPreview {
+                target: target.clone(),
+                child,
+            });
+            Ok((stdout, stderr))
+        })?
     };
     Ok(PreviewStartReservation {
         target,
@@ -154,35 +136,37 @@ pub(crate) fn finish_start(
         });
     };
     let (promoted, child_to_stop) = {
-        let mut registry = registry().lock().expect("preview lifecycle registry");
-        let still_current = registry
-            .starting
-            .as_ref()
-            .is_some_and(|starting| starting.target == target)
-            && registry.discovered.contains_key(&target)
-            && registry.active.is_none();
-        if still_current {
-            let StartingPreview { child, .. } = registry.starting.take().expect("starting preview");
-            registry.active = Some(ActivePreview {
-                target: target.clone(),
-                origin: origin.clone(),
-                child,
-            });
-            (true, None)
-        } else if registry
-            .starting
-            .as_ref()
-            .is_some_and(|starting| starting.target == target)
-        {
-            let child = registry
+        lifecycle_registry::with_registry(|registry| {
+            let still_current = registry
                 .starting
-                .take()
-                .expect("matching starting preview")
-                .child;
-            (false, Some(child))
-        } else {
-            (false, None)
-        }
+                .as_ref()
+                .is_some_and(|starting| matches_target(&starting.target, &target))
+                && registry.discovered.contains_key(&target)
+                && registry.active.is_none();
+            if still_current {
+                let StartingPreview { child, .. } =
+                    registry.starting.take().expect("starting preview");
+                registry.active = Some(ActivePreview {
+                    target: target.clone(),
+                    origin: origin.clone(),
+                    child,
+                });
+                (true, None)
+            } else if registry
+                .starting
+                .as_ref()
+                .is_some_and(|starting| matches_target(&starting.target, &target))
+            {
+                let child = registry
+                    .starting
+                    .take()
+                    .expect("matching starting preview")
+                    .child;
+                (false, Some(child))
+            } else {
+                (false, None)
+            }
+        })
     };
     if let Some(mut child) = child_to_stop {
         stop_child(&mut child);
@@ -200,63 +184,57 @@ pub(crate) fn finish_start(
 }
 
 pub(crate) fn health(target: &PreviewTargetRef) -> Option<String> {
-    let mut registry = registry().lock().expect("preview lifecycle registry");
-    let active = registry.active.as_mut()?;
-    if active.target != *target {
-        return None;
-    }
-    if active.child.child.try_wait().ok().flatten().is_some() {
-        registry.active = None;
-        return None;
-    }
-    if health::get(Some(&active.origin)) {
-        Some(active.origin.clone())
-    } else {
-        None
-    }
+    lifecycle_registry::with_registry(|registry| {
+        let active = registry.active.as_mut()?;
+        if !matches_target(&active.target, target) {
+            return None;
+        }
+        if active.child.child.try_wait().ok().flatten().is_some() {
+            registry.active = None;
+            return None;
+        }
+        if health::get(Some(&active.origin)) {
+            Some(active.origin.clone())
+        } else {
+            None
+        }
+    })
 }
 
 pub(crate) fn stop(target: &PreviewTargetRef) -> Result<PreviewStopResponse, PreviewError> {
-    let mut child = {
-        let mut registry = registry().lock().expect("preview lifecycle registry");
+    let mut child = lifecycle_registry::with_registry(|registry| {
         if registry
             .active
             .as_ref()
-            .is_some_and(|active| active.target == *target)
+            .is_some_and(|active| matches_target(&active.target, target))
         {
-            registry
+            Ok(registry
                 .active
                 .take()
                 .expect("matching active preview")
-                .child
+                .child)
         } else if registry
             .starting
             .as_ref()
-            .is_some_and(|starting| starting.target == *target)
+            .is_some_and(|starting| matches_target(&starting.target, target))
         {
-            registry
+            Ok(registry
                 .starting
                 .take()
                 .expect("matching starting preview")
-                .child
+                .child)
         } else if registry.active.is_some() || registry.starting.is_some() {
-            return Err(PreviewError::conflict(
+            Err(PreviewError::conflict(
                 "previewTarget",
                 "Preview target is not active.",
-            ));
+            ))
         } else {
-            if registry.discovered.contains_key(target) {
-                registry.cancelled_starts.insert(target.clone());
-                return Ok(PreviewStopResponse {
-                    ref_: target.clone(),
-                });
-            }
-            return Err(PreviewError::conflict(
+            Err(PreviewError::conflict(
                 "activePreview",
                 "No Preview target is active.",
-            ));
+            ))
         }
-    };
+    })?;
     stop_child(&mut child);
     Ok(PreviewStopResponse {
         ref_: target.clone(),
@@ -265,27 +243,28 @@ pub(crate) fn stop(target: &PreviewTargetRef) -> Result<PreviewStopResponse, Pre
 
 pub(crate) fn stop_before_epoch(new_epoch: u64) {
     let active = {
-        let mut registry = registry().lock().expect("preview lifecycle registry");
-        registry
-            .discovered
-            .retain(|target, _| target.expected_transition_epoch >= new_epoch);
-        let should_stop_starting = registry
-            .starting
-            .as_ref()
-            .is_some_and(|starting| starting.target.expected_transition_epoch < new_epoch);
-        if should_stop_starting {
-            let starting = registry.starting.as_mut().expect("starting preview");
-            stop_child(&mut starting.child);
-            registry.starting = None;
-        }
-        match registry.active.take() {
-            Some(active) if active.target.expected_transition_epoch < new_epoch => Some(active),
-            Some(active) => {
-                registry.active = Some(active);
-                None
+        lifecycle_registry::with_registry(|registry| {
+            registry
+                .discovered
+                .retain(|target, _| target.expected_transition_epoch >= new_epoch);
+            let should_stop_starting = registry
+                .starting
+                .as_ref()
+                .is_some_and(|starting| starting.target.expected_transition_epoch < new_epoch);
+            if should_stop_starting {
+                let starting = registry.starting.as_mut().expect("starting preview");
+                stop_child(&mut starting.child);
+                registry.starting = None;
             }
-            None => None,
-        }
+            match registry.active.take() {
+                Some(active) if active.target.expected_transition_epoch < new_epoch => Some(active),
+                Some(active) => {
+                    registry.active = Some(active);
+                    None
+                }
+                None => None,
+            }
+        })
     };
     if let Some(mut active) = active {
         stop_child(&mut active.child);
@@ -293,16 +272,25 @@ pub(crate) fn stop_before_epoch(new_epoch: u64) {
 }
 
 fn stop_starting(target: &PreviewTargetRef) {
-    let mut registry = registry().lock().expect("preview lifecycle registry");
-    if registry
-        .starting
-        .as_ref()
-        .is_some_and(|starting| starting.target == *target)
-    {
-        let starting = registry.starting.as_mut().expect("starting preview");
-        stop_child(&mut starting.child);
-        registry.starting = None;
-    }
+    lifecycle_registry::with_registry(|registry| {
+        if registry
+            .starting
+            .as_ref()
+            .is_some_and(|starting| matches_target(&starting.target, target))
+        {
+            let starting = registry.starting.as_mut().expect("starting preview");
+            stop_child(&mut starting.child);
+            registry.starting = None;
+        }
+    });
+}
+
+fn matches_target(left: &PreviewTargetRef, right: &PreviewTargetRef) -> bool {
+    left.project_id == right.project_id
+        && left.project_generation == right.project_generation
+        && left.expected_transition_epoch == right.expected_transition_epoch
+        && left.root_id == right.root_id
+        && left.script_name == right.script_name
 }
 
 struct ManagedChild {

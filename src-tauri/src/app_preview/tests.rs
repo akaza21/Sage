@@ -163,7 +163,7 @@ fn discovery_truncates_a_directory_at_the_entry_cap() {
 }
 
 #[test]
-fn stops_before_reserve_cancel_each_matching_start() {
+fn stopping_an_unstarted_target_does_not_cancel_the_next_epoch_start() {
     let target = PreviewTargetRef {
         project_id: format!("project-preview-{}", uuid::Uuid::new_v4()),
         project_generation: 2,
@@ -171,9 +171,8 @@ fn stops_before_reserve_cancel_each_matching_start() {
         root_id: "root-preview".into(),
         script_name: PreviewScriptName::Dev,
     };
-    let second_target = PreviewTargetRef {
-        root_id: "second-root-preview".into(),
-        script_name: PreviewScriptName::Start,
+    let next_target = PreviewTargetRef {
+        expected_transition_epoch: target.expected_transition_epoch + 1,
         ..target.clone()
     };
 
@@ -182,31 +181,23 @@ fn stops_before_reserve_cancel_each_matching_start() {
         project_generation: target.project_generation,
         expected_transition_epoch: target.expected_transition_epoch,
     };
+    lifecycle::replace_discovered(&request, vec![(target.clone(), std::env::temp_dir())]);
+    assert!(
+        lifecycle::stop(&target).is_err(),
+        "a target with no reserved child cannot record a future cancellation"
+    );
+    let next_request = PreviewDiscoveryRequest {
+        expected_transition_epoch: next_target.expected_transition_epoch,
+        ..request
+    };
     lifecycle::replace_discovered(
-        &request,
-        vec![
-            (target.clone(), std::env::temp_dir()),
-            (second_target.clone(), std::env::temp_dir()),
-        ],
+        &next_request,
+        vec![(next_target.clone(), std::env::temp_dir())],
     );
-    assert_eq!(
-        lifecycle::stop(&target).unwrap().ref_,
-        target,
-        "an early stop must be accepted so it can cancel the in-flight command"
-    );
-    assert_eq!(
-        lifecycle::stop(&second_target).unwrap().ref_,
-        second_target,
-        "one target's cancellation must not overwrite another's"
-    );
-    assert!(
-        lifecycle::reserve_start(target).is_err(),
-        "the first later start must fail closed before it can spawn a child"
-    );
-    assert!(
-        lifecycle::reserve_start(second_target).is_err(),
-        "the second later start must fail closed before it can spawn a child"
-    );
+    let reservation = lifecycle::reserve_start(next_target.clone())
+        .expect("a stale Stop must not reject the next epoch's Start");
+    lifecycle::stop(&next_target).unwrap();
+    drop(reservation);
 }
 
 #[test]
