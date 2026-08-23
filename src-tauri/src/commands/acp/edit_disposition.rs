@@ -98,9 +98,9 @@ mod tests {
     use super::*;
     use crate::{
         acp::{
-            contract::ClientIntentId,
-            intent::BindingId,
-            store::{StartSessionCommand, start_session},
+            contract::{ClientIntentId, ProjectGeneration, RuntimeEpoch},
+            intent::{BindingId, Prompt},
+            store::{PrepareTurnCommand, StartSessionCommand, start_session},
         },
         persistence::Database,
     };
@@ -143,7 +143,7 @@ mod tests {
             .unwrap()
         };
         let revision = EntityRevision::new(9_007_199_254_740_993).unwrap();
-        let turn_id = SageTurnId::parse("turn-edit-disposition").unwrap();
+        let epoch = RuntimeEpoch::new(1).unwrap();
         {
             let connection = state.database.connection();
             connection
@@ -160,16 +160,32 @@ mod tests {
                     ],
                 )
                 .unwrap();
+        }
+        let page_revision = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
+        let prepared = state
+            .database
+            .acp_prepare_turn(PrepareTurnCommand {
+                project_id: project_id.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat_id.clone(),
+                session_id: session.session_id.clone(),
+                runtime_epoch: epoch,
+                expected_projection_revision: page_revision,
+                client_intent_id: ClientIntentId::parse("edit-disposition-turn").unwrap(),
+                prompt: Prompt::new("prompt", "disposition refresh").unwrap(),
+                now_millis: 2,
+            })
+            .unwrap();
+        {
+            let connection = state.database.connection();
             connection
                 .execute(
-                    "INSERT INTO turns VALUES(?1,?2,?3,?4,1,0,'turn-intent','completed','correlated',?5,1,1,1)",
-                    params![
-                        turn_id.as_str(),
-                        project_id.as_str(),
-                        chat_id.as_str(),
-                        session.session_id.as_str(),
-                        revision.get() as i64,
-                    ],
+                    "UPDATE turns SET revision=?1 WHERE id=?2",
+                    params![revision.get() as i64, prepared.turn_id.as_str()],
                 )
                 .unwrap();
         }
@@ -185,7 +201,7 @@ mod tests {
                 project_id: project_id.clone(),
                 chat_id: chat_id.clone(),
                 session_id: session.session_id.clone(),
-                turn_id,
+                turn_id: prepared.turn_id,
                 expected_revision: revision,
                 state: AgentEditDispositionState::Accepted,
             },
