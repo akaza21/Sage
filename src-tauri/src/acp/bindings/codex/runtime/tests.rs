@@ -788,6 +788,7 @@ fn permission_request_waits_for_a_later_deny_and_never_emits_ingress_egress() {
         AdapterEvent::PermissionRequest {
             item_id,
             external_request_id,
+            payload: NormalizedPayload::PermissionRequest { summary, .. },
             ..
         },
     ] = batch.events()
@@ -795,13 +796,18 @@ fn permission_request_waits_for_a_later_deny_and_never_emits_ingress_egress() {
         panic!("permission request");
     };
     assert_eq!(item_id.external_id.as_str(), "tool-1");
-    assert_eq!(external_request_id.as_str(), "approval-1");
+    assert_eq!(external_request_id.as_str(), "string:approval-1");
+    assert_eq!(
+        summary.as_str(),
+        "Codex requested additional authority; awaiting your decision"
+    );
     assert!(batch.egress().is_empty());
     assert!(batch.actual_bytes() <= 262_144);
 
     let egress = runtime
         .command(AdapterCommand::ResolvePermission {
-            request_id: crate::acp::contract::SageServerRequestId::parse("approval-1").unwrap(),
+            request_id: crate::acp::contract::SageServerRequestId::parse("string:approval-1")
+                .unwrap(),
             decision: PermissionDecision::Deny,
         })
         .expect("later deny");
@@ -836,7 +842,8 @@ fn permission_request_waits_for_a_later_deny_and_never_emits_ingress_egress() {
     let _batch = rejected.ingest(&request, &Mapper).expect("permission");
     let egress = rejected
         .command(AdapterCommand::ResolvePermission {
-            request_id: crate::acp::contract::SageServerRequestId::parse("approval-1").unwrap(),
+            request_id: crate::acp::contract::SageServerRequestId::parse("string:approval-1")
+                .unwrap(),
             decision: PermissionDecision::Deny,
         })
         .expect("later deny");
@@ -861,7 +868,8 @@ fn allow_once_on_codex_does_not_emit_denial_and_records_resolved_allowed() {
 
     let allow = runtime
         .command(AdapterCommand::ResolvePermission {
-            request_id: crate::acp::contract::SageServerRequestId::parse("approval-allow").unwrap(),
+            request_id: crate::acp::contract::SageServerRequestId::parse("string:approval-allow")
+                .unwrap(),
             decision: PermissionDecision::AllowOnce,
         })
         .expect("later allow");
@@ -903,7 +911,7 @@ fn durable_permission_id_correlates_to_codex_jsonrpc_request_id() {
     else {
         panic!("permission request")
     };
-    assert_eq!(external_request_id.as_str(), "approval-correlation");
+    assert_eq!(external_request_id.as_str(), "string:approval-correlation");
 }
 
 #[test]
@@ -923,13 +931,72 @@ fn allow_once_preserves_numeric_codex_jsonrpc_request_id() {
         .expect("numeric permission");
     let allow = runtime
         .command(AdapterCommand::ResolvePermission {
-            request_id: crate::acp::contract::SageServerRequestId::parse("17").unwrap(),
+            request_id: crate::acp::contract::SageServerRequestId::parse("number:17").unwrap(),
             decision: PermissionDecision::AllowOnce,
         })
         .expect("numeric allow");
     let body: Value = serde_json::from_slice(allow.frame().payload()).expect("json");
     assert_eq!(body["id"], json!(17));
     assert!(body["id"].is_number());
+}
+
+#[test]
+fn numeric_and_string_codex_jsonrpc_request_ids_do_not_alias() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    let numeric = frame(json!({
+        "id":17,"method":"item/commandExecution/requestApproval","params":{
+            "threadId":"thread-1","turnId":"turn-1","itemId":"tool-numeric"
+        }
+    }));
+    let string = frame(json!({
+        "id":"17","method":"item/commandExecution/requestApproval","params":{
+            "threadId":"thread-1","turnId":"turn-1","itemId":"tool-string"
+        }
+    }));
+    let numeric_batch = runtime
+        .ingest(&numeric, &Mapper)
+        .expect("numeric permission");
+    let string_batch = runtime.ingest(&string, &Mapper).expect("string permission");
+    let AdapterEvent::PermissionRequest {
+        external_request_id: numeric_id,
+        ..
+    } = &numeric_batch.events()[0]
+    else {
+        panic!("numeric permission request")
+    };
+    let AdapterEvent::PermissionRequest {
+        external_request_id: string_id,
+        ..
+    } = &string_batch.events()[0]
+    else {
+        panic!("string permission request")
+    };
+    assert_eq!(numeric_id.as_str(), "number:17");
+    assert_eq!(string_id.as_str(), "string:17");
+    assert_ne!(numeric_id, string_id);
+
+    let string_allow = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: crate::acp::contract::SageServerRequestId::parse("string:17").unwrap(),
+            decision: PermissionDecision::AllowOnce,
+        })
+        .expect("string allow");
+    assert_eq!(
+        serde_json::from_slice::<Value>(string_allow.frame().payload()).expect("string json")["id"],
+        json!("17")
+    );
+    let numeric_allow = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: crate::acp::contract::SageServerRequestId::parse("number:17").unwrap(),
+            decision: PermissionDecision::AllowOnce,
+        })
+        .expect("numeric remains pending");
+    assert_eq!(
+        serde_json::from_slice::<Value>(numeric_allow.frame().payload()).expect("numeric json")["id"],
+        json!(17)
+    );
 }
 
 #[test]
@@ -946,8 +1013,10 @@ fn permissions_approval_allow_once_uses_the_permissions_response_shape() {
 
     let allow = runtime
         .command(AdapterCommand::ResolvePermission {
-            request_id: crate::acp::contract::SageServerRequestId::parse("approval-permissions")
-                .unwrap(),
+            request_id: crate::acp::contract::SageServerRequestId::parse(
+                "string:approval-permissions",
+            )
+            .unwrap(),
             decision: PermissionDecision::AllowOnce,
         })
         .expect("later allow");

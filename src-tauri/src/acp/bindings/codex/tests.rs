@@ -1412,7 +1412,7 @@ fn permission_request_produces_only_a_decline_and_no_raw_authority() {
         ServerRequestState::ResolvedDeclined,
     ] {
         adapter
-            .advance_permission_decline("approval-1", state)
+            .advance_permission_decline("string:approval-1", state)
             .unwrap();
     }
     let duplicate = adapter
