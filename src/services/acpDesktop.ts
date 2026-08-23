@@ -11,6 +11,8 @@ import type {
   CodexAuthScope,
   GetAcpChatPageRequest,
   GetCodexDiscoveryRequest,
+  ResolvePermissionDecisionRequest,
+  ResolvePermissionDecisionResponse,
   SendAcpTurnRequest,
   StartAcpSessionRequest,
 } from "../domain/acp";
@@ -116,6 +118,44 @@ function safeCodexDiscovery(value: unknown): CodexDiscoveryResponse | null {
     models,
     defaultModelId,
   } as unknown as CodexDiscoveryResponse;
+}
+
+function safePermissionDecision(
+  value: unknown,
+): ResolvePermissionDecisionResponse | null {
+  if (!isRecord(value)) return null;
+  const projectId = safeIdentifier(value.projectId);
+  const chatId = safeIdentifier(value.chatId);
+  const sessionId = safeIdentifier(value.sessionId);
+  const requestId = safeIdentifier(value.requestId);
+  if (
+    !projectId ||
+    !chatId ||
+    !sessionId ||
+    !requestId ||
+    !isOneOf(value.decision, ["ask", "allowOnce", "deny"] as const) ||
+    !isOneOf(value.state, [
+      "received",
+      "asked",
+      "allowPending",
+      "allowCommitted",
+      "declinePending",
+      "declineCommitted",
+      "responseQueued",
+      "resolvedAllowed",
+      "resolvedDeclined",
+    ] as const)
+  ) {
+    return null;
+  }
+  return {
+    projectId,
+    chatId,
+    sessionId,
+    requestId,
+    decision: value.decision,
+    state: value.state,
+  } as ResolvePermissionDecisionResponse;
 }
 
 function safeCodexAuth(value: unknown): CodexAuthResponse | null {
@@ -338,6 +378,23 @@ export const acpDesktop = {
 
   closeSession(request: CloseAcpSessionRequest): Promise<AcpMutationResult> {
     return invokeAcp("close_acp_session", request);
+  },
+
+  async resolvePermissionDecision(
+    request: ResolvePermissionDecisionRequest,
+  ): Promise<ResolvePermissionDecisionResponse> {
+    const response = await invokeAcp<unknown, ResolvePermissionDecisionRequest>(
+      "resolve_permission_decision",
+      request,
+    );
+    const safe = safePermissionDecision(response);
+    if (!safe) {
+      throw new AcpDesktopError({
+        kind: "internal",
+        message: "Permission decision returned an invalid bounded response.",
+      });
+    }
+    return safe;
   },
 
   async subscribeProjectionChanges(

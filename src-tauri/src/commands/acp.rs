@@ -2,6 +2,7 @@
 mod characterization;
 pub(crate) mod codex_auth;
 mod errors;
+pub(crate) mod permission;
 mod session_routes;
 
 pub(crate) use session_routes::{activate_acp_session_inner, start_acp_session_inner};
