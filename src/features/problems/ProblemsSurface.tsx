@@ -2,8 +2,8 @@ import { useWorkbenchStore } from "../../app/store";
 import { useDiagnosticProjection } from "../language/languageClient";
 
 export function ProblemsSurface() {
-  const resource = useWorkbenchStore((state) =>
-    state.tabs.find((tab) => tab.id === state.activeTabId)?.resource,
+  const resource = useWorkbenchStore(
+    (state) => state.tabs.find((tab) => tab.id === state.activeTabId)?.resource,
   );
   const report = useDiagnosticProjection(resource);
 
@@ -16,11 +16,15 @@ export function ProblemsSurface() {
       {report?.diagnostics.length ? (
         <ul className="problems-surface__list">
           {report.diagnostics.map((diagnostic, index) => (
-            <li key={`${diagnostic.startLine}:${diagnostic.startColumn}:${index}`}>
+            <li
+              key={`${diagnostic.startLine}:${diagnostic.startColumn}:${index}`}
+            >
               <button
                 type="button"
                 onClick={() =>
-                  void useWorkbenchStore.getState().openFile(diagnostic.resource)
+                  void useWorkbenchStore
+                    .getState()
+                    .openFile(diagnostic.resource)
                 }
               >
                 <span>{diagnostic.message}</span>
@@ -32,7 +36,9 @@ export function ProblemsSurface() {
           ))}
         </ul>
       ) : (
-        <p className="problems-surface__empty">No problems for the active File.</p>
+        <p className="problems-surface__empty">
+          No problems for the active File.
+        </p>
       )}
     </section>
   );

@@ -2,8 +2,8 @@ import { useWorkbenchStore } from "../../app/store";
 import { useOutlineProjection } from "../language/languageClient";
 
 export function OutlineSurface() {
-  const resource = useWorkbenchStore((state) =>
-    state.tabs.find((tab) => tab.id === state.activeTabId)?.resource,
+  const resource = useWorkbenchStore(
+    (state) => state.tabs.find((tab) => tab.id === state.activeTabId)?.resource,
   );
   const report = useOutlineProjection(resource);
 
@@ -19,18 +19,22 @@ export function OutlineSurface() {
             <li key={`${symbol.startLine}:${symbol.name}:${index}`}>
               <button
                 type="button"
-                onClick={() => void useWorkbenchStore.getState().openFile(symbol.resource)}
+                onClick={() =>
+                  void useWorkbenchStore.getState().openFile(symbol.resource)
+                }
               >
                 <span>{symbol.name}</span>
                 <small>
-                  {symbol.kind} Â· line {symbol.startLine}
+                  {symbol.kind} · line {symbol.startLine}
                 </small>
               </button>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="outline-surface__empty">No symbols for the active File.</p>
+        <p className="outline-surface__empty">
+          No symbols for the active File.
+        </p>
       )}
     </section>
   );

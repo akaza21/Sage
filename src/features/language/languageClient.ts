@@ -34,6 +34,13 @@ interface LanguageSessionLifecycle {
   runner?: Promise<void>;
 }
 
+interface LanguageProjectionDelivery {
+  resource: ResourceRef;
+  stop(): void;
+}
+
+const projectionDeliveries = new Set<LanguageProjectionDelivery>();
+
 export async function startLanguageClient(
   resource: ResourceRef,
   document: string,
@@ -42,16 +49,24 @@ export async function startLanguageClient(
   onOutline: (report: LanguageOutlineReport) => void = () => undefined,
 ): Promise<LanguageSession> {
   let cancelled = false;
-  const unsubscribeDiagnostics = await languageDesktop.subscribeDiagnostics((report) => {
-    if (!cancelled && acceptsReport(report, resource)) {
-      onReport(report);
-    }
-  });
-  const unsubscribeOutline = await languageDesktop.subscribeOutline((report) => {
-    if (!cancelled && acceptsOutlineReport(report, resource)) {
-      onOutline(report);
-    }
-  });
+  const unsubscribeDiagnostics = await languageDesktop.subscribeDiagnostics(
+    (report) => {
+      if (!cancelled && acceptsReport(report, resource)) {
+        onReport(report);
+      }
+    },
+  );
+  let unsubscribeOutline: () => void;
+  try {
+    unsubscribeOutline = await languageDesktop.subscribeOutline((report) => {
+      if (!cancelled && acceptsOutlineReport(report, resource)) {
+        onOutline(report);
+      }
+    });
+  } catch (error) {
+    unsubscribeDiagnostics();
+    throw error;
+  }
   if (signal?.aborted) {
     unsubscribeDiagnostics();
     unsubscribeOutline();
@@ -73,6 +88,7 @@ export async function startLanguageClient(
       cancelled = true;
       unsubscribeDiagnostics();
       unsubscribeOutline();
+      stopProjectionDelivery(resource);
       await languageDesktop.cancelLanguageSession(resource);
     },
   };
@@ -242,18 +258,31 @@ export function useOutlineProjection(
 function boundDiagnosticReport(
   report: LanguageDiagnosticReport,
 ): LanguageDiagnosticReport {
-  return { ...report, diagnostics: report.diagnostics.slice(0, MAX_DIAGNOSTICS) };
+  return {
+    ...report,
+    diagnostics: report.diagnostics.slice(0, MAX_DIAGNOSTICS),
+  };
 }
 
-function boundOutlineReport(report: LanguageOutlineReport): LanguageOutlineReport {
+function boundOutlineReport(
+  report: LanguageOutlineReport,
+): LanguageOutlineReport {
   return { ...report, symbols: report.symbols.slice(0, MAX_DIAGNOSTICS) };
 }
 
-function useLanguageProjection<T extends LanguageDiagnosticReport | LanguageOutlineReport>(
+function stopProjectionDelivery(resource: ResourceRef): void {
+  for (const delivery of [...projectionDeliveries]) {
+    if (sameResource(delivery.resource, resource)) {
+      delivery.stop();
+    }
+  }
+}
+
+function useLanguageProjection<
+  T extends LanguageDiagnosticReport | LanguageOutlineReport,
+>(
   resource: ResourceRef | undefined,
-  subscribe: (
-    onReport: (report: T) => void,
-  ) => Promise<() => void>,
+  subscribe: (onReport: (report: T) => void) => Promise<() => void>,
   bound: (report: T) => T,
 ): T | null {
   const [report, setReport] = useState<T | null>(null);
@@ -269,6 +298,20 @@ function useLanguageProjection<T extends LanguageDiagnosticReport | LanguageOutl
       return;
     }
     const activeResource = { rootId, relativePath };
+    const delivery: LanguageProjectionDelivery = {
+      resource: activeResource,
+      stop() {
+        if (sleeping) {
+          return;
+        }
+        sleeping = true;
+        projectionDeliveries.delete(delivery);
+        unsubscribe?.();
+        unsubscribe = undefined;
+        setReport(null);
+      },
+    };
+    projectionDeliveries.add(delivery);
     void subscribe((incoming) => {
       if (
         sleeping ||
@@ -279,17 +322,18 @@ function useLanguageProjection<T extends LanguageDiagnosticReport | LanguageOutl
       }
       latestGeneration = incoming.generation;
       setReport(bound(incoming));
-    }).then((nextUnsubscribe) => {
-      if (sleeping) {
-        nextUnsubscribe();
-      } else {
-        unsubscribe = nextUnsubscribe;
-      }
-    });
+    }).then(
+      (nextUnsubscribe) => {
+        if (sleeping) {
+          nextUnsubscribe();
+        } else {
+          unsubscribe = nextUnsubscribe;
+        }
+      },
+      () => undefined,
+    );
     return () => {
-      sleeping = true;
-      unsubscribe?.();
-      setReport(null);
+      delivery.stop();
     };
   }, [bound, relativePath, rootId, subscribe]);
 
