@@ -261,6 +261,17 @@ impl CodexBindingRegistration {
     }
 
     #[cfg(all(test, windows))]
+    pub(crate) fn unavailable_for_test() -> Self {
+        Self {
+            authority: Arc::new(CodexRegistrationAuthority {
+                state: Mutex::new(CodexRegistrationState::Unavailable(
+                    CodexAdmissionUnavailable::IndependentAdmission,
+                )),
+            }),
+        }
+    }
+
+    #[cfg(all(test, windows))]
     pub(crate) fn admitted_for_test() -> Self {
         Self {
             authority: Arc::new(CodexRegistrationAuthority {

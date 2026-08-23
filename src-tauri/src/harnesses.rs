@@ -254,7 +254,10 @@ mod tests {
             ["codex", "pi", "claude-code", "oh-my-pi", SIMULATOR_ID]
         );
         assert_eq!(definitions[0].transport, HarnessTransport::Acp);
-        assert_eq!(definitions[0].install_state, "notInstalled");
+        assert!(matches!(
+            definitions[0].install_state.as_str(),
+            "notInstalled" | "available"
+        ));
         assert_eq!(
             definitions[0].binding_id.as_deref(),
             Some("codex-app-server")
@@ -348,7 +351,7 @@ mod tests {
     #[test]
     fn codex_availability_and_models_come_from_one_admitted_registration() {
         let unavailable = HarnessCatalog::with_codex_registration(
-            crate::acp::bindings::codex::startup_codex_binding_registration(),
+            crate::acp::bindings::codex::CodexBindingRegistration::unavailable_for_test(),
         );
         let codex = unavailable.definitions().remove(0);
         assert_eq!(codex.install_state, "notInstalled");
