@@ -98,7 +98,7 @@ mod tests {
     use super::*;
     use crate::{
         acp::{
-            contract::{ClientIntentId, ProjectionRevision},
+            contract::ClientIntentId,
             intent::BindingId,
             store::{StartSessionCommand, start_session},
         },
@@ -146,6 +146,19 @@ mod tests {
         let turn_id = SageTurnId::parse("turn-edit-disposition").unwrap();
         {
             let connection = state.database.connection();
+            connection
+                .execute(
+                    "INSERT INTO session_runtime_epochs (
+                       project_id, chat_id, session_id, runtime_epoch, state,
+                       artifact_digest, started_at, terminal_at, exit_kind
+                     ) VALUES (?1, ?2, ?3, 1, 'running', 'a', 1, NULL, NULL)",
+                    params![
+                        project_id.as_str(),
+                        chat_id.as_str(),
+                        session.session_id.as_str(),
+                    ],
+                )
+                .unwrap();
             connection
                 .execute(
                     "INSERT INTO turns VALUES(?1,?2,?3,?4,1,0,'turn-intent','completed','correlated',?5,1,1,1)",
