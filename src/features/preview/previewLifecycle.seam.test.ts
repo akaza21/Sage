@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -122,7 +122,7 @@ describe("Preview lifecycle public seam", () => {
 
   it("keeps Preview isolated from generic desktop and process authority", async () => {
     const source = await readFile(
-      fileURLToPath(new URL("./previewDesktop.ts", import.meta.url)),
+      path.join(import.meta.dirname, "previewDesktop.ts"),
       "utf8",
     );
 

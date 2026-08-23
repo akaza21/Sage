@@ -27,29 +27,36 @@ const target: PreviewTargetRef = {
   scriptName: "dev",
 };
 
-const discoverPreviewTargets = vi.fn(
-  async (
-    _request: Pick<
-      PreviewTargetRef,
-      "projectId" | "projectGeneration" | "expectedTransitionEpoch"
-    >,
-  ) => ({
-    projectId: target.projectId,
-    transitionEpoch: target.expectedTransitionEpoch,
-    targets: [target],
-    truncated: false,
-  }),
-);
-const getPreviewHealth = vi.fn(async (ref: PreviewTargetRef) => ({
-  ref,
-  origin: "http://127.0.0.1:5173",
-  healthy: true,
+const {
+  discoverPreviewTargets,
+  getPreviewHealth,
+  startPreviewTarget,
+  stopPreviewTarget,
+} = vi.hoisted(() => ({
+  discoverPreviewTargets: vi.fn(
+    async (
+      _request: Pick<
+        PreviewTargetRef,
+        "projectId" | "projectGeneration" | "expectedTransitionEpoch"
+      >,
+    ) => ({
+      projectId: target.projectId,
+      transitionEpoch: target.expectedTransitionEpoch,
+      targets: [target],
+      truncated: false,
+    }),
+  ),
+  getPreviewHealth: vi.fn(async (ref: PreviewTargetRef) => ({
+    ref,
+    origin: "http://127.0.0.1:5173",
+    healthy: true,
+  })),
+  startPreviewTarget: vi.fn(async (ref: PreviewTargetRef) => ({
+    ref,
+    origin: "http://127.0.0.1:5173",
+  })),
+  stopPreviewTarget: vi.fn(async (ref: PreviewTargetRef) => ({ ref })),
 }));
-const startPreviewTarget = vi.fn(async (ref: PreviewTargetRef) => ({
-  ref,
-  origin: "http://127.0.0.1:5173",
-}));
-const stopPreviewTarget = vi.fn(async (ref: PreviewTargetRef) => ({ ref }));
 
 vi.mock("./previewDesktop", () => ({
   discoverPreviewTargets,
