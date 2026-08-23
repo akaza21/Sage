@@ -645,6 +645,7 @@ impl RuntimeEngine for FixtureRuntime {
             },
         )
         .map_err(|_| HostError::Intent)?;
+        drop(mutation);
         self.update(&intent.turn_id, cancelled.revision);
         Ok(())
     }
