@@ -37,9 +37,12 @@ impl CodexRuntime {
         .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         #[cfg(all(test, windows))]
         let fixed_args = if binding.journey_test_entrypoint().is_some() {
+            let case_id = binding
+                .next_journey_test_case()
+                .ok_or(AdapterRuntimeError::LaunchUnavailable)?;
             vec![
                 OsString::from("--case"),
-                OsString::from("characterization-turn-success"),
+                OsString::from(case_id),
                 OsString::from("--seed"),
                 OsString::from("0"),
             ]

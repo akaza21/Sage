@@ -1,5 +1,6 @@
 use std::{
     path::{Path, PathBuf},
+    sync::{Mutex, MutexGuard},
     time::{Duration, Instant},
 };
 
@@ -25,9 +26,13 @@ use crate::{
     project_registry::ProjectRootAuthority,
 };
 
+#[cfg(windows)]
+static JOURNEY_TEST_LOCK: Mutex<()> = Mutex::new(());
+
 #[test]
 #[cfg(windows)]
 fn unavailable_binding_cannot_start_a_live_codex_session() {
+    let _journey = journey_test_lock();
     tauri::async_runtime::block_on(async {
         let setup = FixtureSetup::in_memory(CodexBindingRegistration::unavailable_for_test()).await;
 
@@ -62,9 +67,13 @@ fn unavailable_binding_cannot_start_a_live_codex_session() {
 #[test]
 #[cfg(windows)]
 fn two_sequential_turns_share_one_session_and_converge_to_zero() {
+    let _journey = journey_test_lock();
     tauri::async_runtime::block_on(async {
         let setup =
-            FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test()).await;
+            FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test(&[
+                "characterization-two-turn-success",
+            ]))
+            .await;
         let owner = setup
             .start_and_activate(RuntimeEpoch::new(1).unwrap())
             .await;
@@ -83,9 +92,14 @@ fn two_sequential_turns_share_one_session_and_converge_to_zero() {
 #[test]
 #[cfg(windows)]
 fn two_chats_are_sequential_on_the_one_runtime_slot() {
+    let _journey = journey_test_lock();
     tauri::async_runtime::block_on(async {
         let setup =
-            FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test()).await;
+            FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test(&[
+                "characterization-two-turn-success",
+                "characterization-two-turn-success",
+            ]))
+            .await;
         let owner_a = setup
             .start_and_activate(RuntimeEpoch::new(1).unwrap())
             .await;
@@ -98,14 +112,21 @@ fn two_chats_are_sequential_on_the_one_runtime_slot() {
             setup.activate(&owner_b).await,
             Err(CodexSessionError::Capacity)
         ));
+        let turns_a = [
+            setup.send_and_wait_completed(&owner_a).await,
+            setup.send_and_wait_completed(&owner_a).await,
+        ];
         setup.close(&owner_a);
         assert_job_zero();
 
         setup.activate(&owner_b).await.unwrap();
         setup.wait_for_ready(&owner_b);
-        let turn_b = setup.send_and_wait_completed(&owner_b).await;
-        assert_eq!(setup.completed_turns(&owner_b), vec![turn_b]);
-        assert!(setup.completed_turns(&owner_a).is_empty());
+        let turns_b = [
+            setup.send_and_wait_completed(&owner_b).await,
+            setup.send_and_wait_completed(&owner_b).await,
+        ];
+        assert_eq!(setup.completed_turns(&owner_b), turns_b);
+        assert_eq!(setup.completed_turns(&owner_a), turns_a);
 
         setup.close(&owner_b);
         assert_job_zero();
@@ -116,8 +137,12 @@ fn two_chats_are_sequential_on_the_one_runtime_slot() {
 #[test]
 #[cfg(windows)]
 fn restart_resume_then_another_turn_reads_sqlite() {
+    let _journey = journey_test_lock();
     tauri::async_runtime::block_on(async {
-        let registration = CodexBindingRegistration::admitted_for_journey_test();
+        let registration = CodexBindingRegistration::admitted_for_journey_test(&[
+            "characterization-turn-success",
+            "characterization-resume-turn-success",
+        ]);
         let setup = FixtureSetup::file_backed(registration.clone()).await;
         let owner = setup
             .start_and_activate(RuntimeEpoch::new(1).unwrap())
@@ -165,18 +190,21 @@ fn restart_resume_then_another_turn_reads_sqlite() {
         assert_job_zero();
         resumed.service.shutdown_blocking().unwrap();
         drop(resumed);
-        let _ = std::fs::remove_file(&database_path);
-        let _ = std::fs::remove_file(database_path.with_extension("db-shm"));
-        let _ = std::fs::remove_file(database_path.with_extension("db-wal"));
+        let _ = std::fs::remove_dir_all(database_path.parent().unwrap());
     });
 }
 
 #[test]
 #[cfg(windows)]
 fn cancel_then_reuse_session_converges_to_zero_orphans() {
+    let _journey = journey_test_lock();
     tauri::async_runtime::block_on(async {
         let setup =
-            FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test()).await;
+            FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test(&[
+                "characterization-cancel-reuse",
+                "characterization-resume-turn-success",
+            ]))
+            .await;
         let owner = setup
             .start_and_activate(RuntimeEpoch::new(1).unwrap())
             .await;
@@ -212,6 +240,7 @@ fn cancel_then_reuse_session_converges_to_zero_orphans() {
 #[test]
 #[cfg(windows)]
 fn unsigned_or_observation_only_cannot_launch() {
+    let _journey = journey_test_lock();
     tauri::async_runtime::block_on(async {
         for (registration, unavailable) in [
             (
@@ -251,8 +280,10 @@ impl FixtureSetup {
     }
 
     async fn file_backed(registration: CodexBindingRegistration) -> Self {
-        let path =
-            std::env::temp_dir().join(format!("sage-codex-journey-{}.db", uuid::Uuid::new_v4()));
+        let directory =
+            std::env::temp_dir().join(format!("sage-codex-journey-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("sage.db");
         Self::open(&path, Some(path.clone()), registration).await
     }
 
@@ -549,4 +580,11 @@ fn assert_job_zero() {
             .0,
         0
     );
+}
+
+#[cfg(windows)]
+fn journey_test_lock() -> MutexGuard<'static, ()> {
+    JOURNEY_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }

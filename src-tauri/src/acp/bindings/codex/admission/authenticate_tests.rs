@@ -18,6 +18,7 @@ impl AdmittedCodexBinding {
             environment,
             entrypoint,
             journey_test_entrypoint: None,
+            journey_test_cases: None,
             _cleanup: Some(cleanup),
         };
         binding.revalidate()?;
@@ -40,9 +41,12 @@ pub(super) fn admitted_binding_fixture() -> AdmittedCodexBinding {
         .unwrap()
 }
 
-pub(super) fn admitted_journey_binding_fixture() -> AdmittedCodexBinding {
+pub(super) fn admitted_journey_binding_fixture(
+    case_ids: &'static [&'static str],
+) -> AdmittedCodexBinding {
     let mut binding = admitted_binding_fixture();
     binding.journey_test_entrypoint = Some(journey_fixture_entrypoint());
+    binding.journey_test_cases = Some(Mutex::new(case_ids.iter().copied().collect()));
     binding
 }
 
@@ -182,7 +186,7 @@ fn authenticate_signed_installed_role_is_the_only_production_admission() {
         "notInstalled"
     );
 
-    let registration = startup_codex_binding_registration();
+    let registration = CodexBindingRegistration::unavailable_for_test();
     let (packet, role, reproduced, authority, environment, _cleanup) =
         signed_role_admission_fixture();
     let admitted = registration
@@ -200,4 +204,18 @@ fn authenticate_signed_installed_role_is_the_only_production_admission() {
     );
     assert!(registration.same_authority(&registration.clone()));
     assert!(!registration.same_authority(&startup_codex_binding_registration()));
+}
+
+#[test]
+fn workstation_authenticode_observation_refuses_independent_launch() {
+    let registration = CodexBindingRegistration::unavailable_for_test();
+
+    assert_eq!(
+        registration.refuse_independent_launch_after_workstation_authenticode_observation(),
+        CodexAdmissionUnavailable::ObservationOnly
+    );
+    assert_eq!(
+        registration.refresh().unwrap_err(),
+        CodexAdmissionUnavailable::ObservationOnly
+    );
 }
