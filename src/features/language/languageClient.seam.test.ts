@@ -44,8 +44,8 @@ describe("language client seam", () => {
     > = [];
     const outlineSubscriptions: Array<(report: LanguageOutlineReport) => void> =
       [];
-    const unsubscribeDiagnostics = [vi.fn(), vi.fn()];
-    const unsubscribeOutline = [vi.fn(), vi.fn()];
+    const unsubscribeDiagnostics = [vi.fn(), vi.fn(), vi.fn()];
+    const unsubscribeOutline = [vi.fn(), vi.fn(), vi.fn()];
     useWorkbenchStore.setState({
       tabs: [
         {
@@ -89,7 +89,21 @@ describe("language client seam", () => {
     const session = await startLanguageClient(resource, "");
 
     act(() =>
-      diagnosticSubscriptions[0]!({ resource, generation: 1, diagnostics: [] }),
+      diagnosticSubscriptions[0]!({
+        resource,
+        generation: 1,
+        diagnostics: [
+          {
+            resource,
+            message: "first problem",
+            severity: "error",
+            startLine: 1,
+            startColumn: 1,
+            endLine: 1,
+            endColumn: 2,
+          },
+        ],
+      }),
     );
     act(() =>
       outlineSubscriptions[0]!({
@@ -98,23 +112,51 @@ describe("language client seam", () => {
         symbols: [{ resource, name: "example", kind: "file", startLine: 1 }],
       }),
     );
+    expect(screen.getByText("first problem")).toBeInTheDocument();
     expect(screen.getByText("example")).toBeInTheDocument();
     await act(async () => {
       await session.cancel();
     });
+
+    expect(screen.queryByText("first problem")).not.toBeInTheDocument();
+    expect(screen.queryByText("example")).not.toBeInTheDocument();
+
+    const replacement = await startLanguageClient(resource, "replacement");
+    act(() =>
+      diagnosticSubscriptions[0]!({
+        resource,
+        generation: 2,
+        diagnostics: [
+          {
+            resource,
+            message: "replacement problem",
+            severity: "warning",
+            startLine: 2,
+            startColumn: 1,
+            endLine: 2,
+            endColumn: 2,
+          },
+        ],
+      }),
+    );
     act(() =>
       outlineSubscriptions[0]!({
         resource,
         generation: 2,
-        symbols: [{ resource, name: "retained", kind: "file", startLine: 1 }],
+        symbols: [
+          { resource, name: "replacement", kind: "file", startLine: 2 },
+        ],
       }),
     );
 
-    expect(unsubscribeDiagnostics[0]).toHaveBeenCalledOnce();
     expect(unsubscribeDiagnostics[1]).toHaveBeenCalledOnce();
-    expect(unsubscribeOutline[0]).toHaveBeenCalledOnce();
     expect(unsubscribeOutline[1]).toHaveBeenCalledOnce();
-    expect(screen.queryByText("retained")).not.toBeInTheDocument();
+    expect(unsubscribeDiagnostics[0]).not.toHaveBeenCalled();
+    expect(unsubscribeOutline[0]).not.toHaveBeenCalled();
+    expect(screen.getByText("replacement problem")).toBeInTheDocument();
+    expect(screen.getByText("replacement")).toBeInTheDocument();
+
+    await replacement.cancel();
   });
 
   it("unsubscribes diagnostics when the outline subscription rejects", async () => {

@@ -36,6 +36,7 @@ interface LanguageSessionLifecycle {
 
 interface LanguageProjectionDelivery {
   resource: ResourceRef;
+  clear(): void;
   stop(): void;
 }
 
@@ -88,7 +89,7 @@ export async function startLanguageClient(
       cancelled = true;
       unsubscribeDiagnostics();
       unsubscribeOutline();
-      stopProjectionDelivery(resource);
+      clearProjectionReports(resource);
       await languageDesktop.cancelLanguageSession(resource);
     },
   };
@@ -270,10 +271,10 @@ function boundOutlineReport(
   return { ...report, symbols: report.symbols.slice(0, MAX_DIAGNOSTICS) };
 }
 
-function stopProjectionDelivery(resource: ResourceRef): void {
+function clearProjectionReports(resource: ResourceRef): void {
   for (const delivery of [...projectionDeliveries]) {
     if (sameResource(delivery.resource, resource)) {
-      delivery.stop();
+      delivery.clear();
     }
   }
 }
@@ -300,15 +301,20 @@ function useLanguageProjection<
     const activeResource = { rootId, relativePath };
     const delivery: LanguageProjectionDelivery = {
       resource: activeResource,
+      clear() {
+        if (!sleeping) {
+          setReport(null);
+        }
+      },
       stop() {
         if (sleeping) {
           return;
         }
+        delivery.clear();
         sleeping = true;
         projectionDeliveries.delete(delivery);
         unsubscribe?.();
         unsubscribe = undefined;
-        setReport(null);
       },
     };
     projectionDeliveries.add(delivery);
