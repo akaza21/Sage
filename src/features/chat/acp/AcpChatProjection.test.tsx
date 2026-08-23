@@ -109,6 +109,8 @@ function editItem(
   rootId: string,
   summary: string,
   overrides: Partial<AcpItem> = {},
+  additions: number | null = null,
+  deletions: number | null = null,
 ): AcpItem {
   return {
     id,
@@ -137,6 +139,8 @@ function editItem(
           operation: "updated",
           originalResource: null,
           summary,
+          additions,
+          deletions,
         },
       ],
       truncated: false,
@@ -221,7 +225,9 @@ describe("AcpChatProjection", () => {
     const summary = screen.getByRole("region", {
       name: "Files edited in turn 1",
     });
-    expect(within(summary).getAllByRole("button")).toHaveLength(2);
+    expect(
+      within(summary).getAllByRole("button", { name: /open diff/i }),
+    ).toHaveLength(2);
     expect(within(summary).queryByText("old left event")).toBeNull();
     const server = within(summary).getByRole("button", {
       name: "Open diff Server / src/main.ts",
@@ -231,6 +237,58 @@ describe("AcpChatProjection", () => {
       { rootId: "root-right", relativePath: "src/main.ts" },
       "diff",
     );
+  });
+
+  it("turn_edit_summary_shows_bounded_addition_deletion_chips", () => {
+    const edited = page("completed");
+    edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
+    edited.turns[0].items = [
+      editItem("counted", 1, "root-one", "counted", {}, 2, 1),
+      editItem("unknown", 2, "root-two", "unknown"),
+    ];
+
+    render(
+      <AcpChatProjection
+        page={edited}
+        active
+        projectRoots={[
+          { id: "root-one", name: "One", ordinal: 0 },
+          { id: "root-two", name: "Two", ordinal: 1 },
+        ]}
+      />,
+    );
+
+    const summary = screen.getByRole("region", {
+      name: "Files edited in turn 1",
+    });
+    expect(within(summary).getAllByText("+2")).toHaveLength(2);
+    expect(within(summary).getAllByText("-1")).toHaveLength(2);
+    expect(within(summary).getAllByText("—")).toHaveLength(2);
+  });
+
+  it("selecting_a_changed_file_opens_the_existing_per_file_diff", () => {
+    const edited = page("completed");
+    edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
+    edited.turns[0].items = [editItem("change", 1, "root-one", "updated")];
+    const openResource = vi.fn();
+
+    render(
+      <AcpChatProjection
+        page={edited}
+        active
+        projectRoots={[{ id: "root-one", name: "One", ordinal: 0 }]}
+        onOpenResource={openResource}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open diff One / src/main.ts" }),
+    );
+    expect(openResource).toHaveBeenCalledWith(
+      { rootId: "root-one", relativePath: "src/main.ts" },
+      "diff",
+    );
+    expect(openResource).not.toHaveBeenCalledWith(expect.anything(), "review");
   });
 
   it("disambiguates duplicate root names in visible and accessible Diff labels", () => {
@@ -412,6 +470,8 @@ describe("AcpChatProjection", () => {
             operation: "unknown",
             originalResource: null,
             summary: "No safe Project resource",
+            additions: null,
+            deletions: null,
           },
         ],
         truncated: false,

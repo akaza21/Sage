@@ -13,6 +13,7 @@ const MAX_ID_BYTES = 512;
 const MAX_PATH_BYTES = 16 * 1024;
 const MAX_SUMMARY_BYTES = 64 * 1024;
 const MAX_UNAVAILABLE_LABEL_BYTES = 512;
+const MAX_FILE_CHANGE_LINES = 1_000_000;
 const MAX_COUNTER_BYTES = 19;
 const MAX_COUNTER_VALUE = 9_223_372_036_854_775_807n;
 
@@ -89,6 +90,15 @@ function safeLocation(location: FileChangeProjection["resource"]): boolean {
   );
 }
 
+function safeLineCount(value: unknown): value is number | null {
+  return (
+    value === null ||
+    (Number.isSafeInteger(value) &&
+      (value as number) >= 0 &&
+      (value as number) <= MAX_FILE_CHANGE_LINES)
+  );
+}
+
 function safeChange(change: FileChangeProjection): boolean {
   return (
     safeLocation(change.resource) &&
@@ -97,7 +107,9 @@ function safeChange(change: FileChangeProjection): boolean {
     ["created", "updated", "deleted", "renamed", "unknown"].includes(
       change.operation,
     ) &&
-    boundedText(change.summary, MAX_SUMMARY_BYTES)
+    boundedText(change.summary, MAX_SUMMARY_BYTES) &&
+    safeLineCount(change.additions) &&
+    safeLineCount(change.deletions)
   );
 }
 

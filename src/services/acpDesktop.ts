@@ -1,6 +1,7 @@
 import type {
   AcpChatPage,
   AcpCommandFailure,
+  AgentEditDisposition,
   AcpMutationResult,
   AcpProjectionChangedEvent,
   ActivateAcpSessionRequest,
@@ -156,6 +157,10 @@ function safePermissionDecision(
     decision: value.decision,
     state: value.state,
   } as ResolvePermissionDecisionResponse;
+}
+
+function safeAgentEditDispositionResponse(value: unknown): { ok: true } | null {
+  return isRecord(value) && value.ok === true ? { ok: true } : null;
 }
 
 function safeCodexAuth(value: unknown): CodexAuthResponse | null {
@@ -392,6 +397,23 @@ export const acpDesktop = {
       throw new AcpDesktopError({
         kind: "internal",
         message: "Permission decision returned an invalid bounded response.",
+      });
+    }
+    return safe;
+  },
+
+  async recordAgentEditDisposition(
+    request: AgentEditDisposition,
+  ): Promise<{ ok: true }> {
+    const response = await invokeAcp<unknown, AgentEditDisposition>(
+      "record_agent_edit_disposition",
+      request,
+    );
+    const safe = safeAgentEditDispositionResponse(response);
+    if (!safe) {
+      throw new AcpDesktopError({
+        kind: "internal",
+        message: "Agent edit disposition returned an invalid response.",
       });
     }
     return safe;
