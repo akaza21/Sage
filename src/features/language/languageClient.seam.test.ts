@@ -1,3 +1,4 @@
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -5,9 +6,17 @@ import {
   type LanguageDiagnosticReport,
 } from "../../domain/languageService";
 import { languageDesktop } from "../../services/languageDesktop";
-import { startLanguageClient } from "./languageClient";
+import { startLanguageClient, useLanguageSession } from "./languageClient";
 
 const resource = { rootId: "root-a", relativePath: "src/example.ts" };
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -62,5 +71,64 @@ describe("language client seam", () => {
     expect(cancel).toHaveBeenCalledWith(resource);
     expect(unsubscribe).toHaveBeenCalledOnce();
     expect(reports).toHaveLength(1);
+  });
+
+  it("starts only the latest rapid revision after superseded revisions cancel", async () => {
+    const first = deferred<number>();
+    const start = vi
+      .spyOn(languageDesktop, "startLanguageSession")
+      .mockImplementationOnce(() => first.promise)
+      .mockResolvedValue(2);
+    const cancel = vi
+      .spyOn(languageDesktop, "cancelLanguageSession")
+      .mockResolvedValue();
+    vi.spyOn(languageDesktop, "subscribeDiagnostics").mockResolvedValue(
+      vi.fn(),
+    );
+    const { rerender, unmount } = renderHook(
+      ({ document }) => useLanguageSession(resource, document),
+      { initialProps: { document: "first" } },
+    );
+
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      rerender({ document: "superseded" });
+      rerender({ document: "latest" });
+    });
+
+    expect(start).toHaveBeenCalledOnce();
+    await act(async () => {
+      first.resolve(1);
+    });
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(2));
+    expect(start).toHaveBeenNthCalledWith(1, resource, "first");
+    expect(start).toHaveBeenNthCalledWith(2, resource, "latest");
+    unmount();
+    await waitFor(() => expect(cancel).toHaveBeenCalledTimes(2));
+  });
+
+  it("does not spawn after a pending client start is cancelled", async () => {
+    const subscription = deferred<() => void>();
+    const unsubscribe = vi.fn();
+    const start = vi
+      .spyOn(languageDesktop, "startLanguageSession")
+      .mockResolvedValue(1);
+    vi.spyOn(languageDesktop, "subscribeDiagnostics").mockReturnValue(
+      subscription.promise,
+    );
+    const cancellation = new AbortController();
+    const session = startLanguageClient(
+      resource,
+      "cancelled document",
+      undefined,
+      cancellation.signal,
+    );
+
+    cancellation.abort();
+    subscription.resolve(unsubscribe);
+    await session;
+
+    expect(start).not.toHaveBeenCalled();
+    expect(unsubscribe).toHaveBeenCalledOnce();
   });
 });

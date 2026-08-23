@@ -69,6 +69,21 @@ fn language_fixture_overrun_or_crash_fails_closed() {
 }
 
 #[test]
+fn language_session_generations_remain_unique_across_resource_switches() {
+    let first = register_session(request("").resource).unwrap().0;
+    let second = register_session(ResourceRef {
+        root_id: "root-a".into(),
+        relative_path: "src/other.ts".into(),
+    })
+    .unwrap()
+    .0;
+    let third = register_session(request("").resource).unwrap().0;
+
+    assert!(first < second && second < third);
+    clear_session(&request("").resource, third);
+}
+
+#[test]
 fn language_session_is_at_most_one_process() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let (cancel, receiver) = oneshot::channel();

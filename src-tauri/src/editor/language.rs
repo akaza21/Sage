@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     future::poll_fn,
     sync::{Arc, Mutex, OnceLock},
     task::Poll,
@@ -22,7 +21,7 @@ static TEST_ACTIVE_PROCESSES: std::sync::atomic::AtomicUsize =
 
 struct LanguageSessions {
     active: Option<LanguageSessionEntry>,
-    generations: HashMap<ResourceRef, u32>,
+    next_generation: u32,
 }
 
 struct LanguageSessionEntry {
@@ -36,7 +35,7 @@ impl Default for LanguageSessions {
     fn default() -> Self {
         Self {
             active: None,
-            generations: HashMap::new(),
+            next_generation: 0,
         }
     }
 }
@@ -104,11 +103,8 @@ fn register_session(
     let mut sessions = language_sessions()
         .lock()
         .map_err(|_| "language sessions unavailable")?;
-    let generation = *sessions
-        .generations
-        .entry(resource.clone())
-        .and_modify(|generation| *generation = generation.saturating_add(1))
-        .or_insert(1);
+    let generation = sessions.next_generation.saturating_add(1);
+    sessions.next_generation = generation;
     let (sender, receiver) = oneshot::channel();
     let (completion, completed) = oneshot::channel();
     let previous = sessions.active.replace(LanguageSessionEntry {
