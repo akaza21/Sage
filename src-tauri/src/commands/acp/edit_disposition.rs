@@ -98,11 +98,13 @@ mod tests {
     use super::*;
     use crate::{
         acp::{
-            contract::{ClientIntentId, ProjectGeneration, RuntimeEpoch},
-            intent::{BindingId, Prompt},
+            contract::{
+                ClientIntentId, ProjectGeneration, RequiredText, RuntimeEpoch, SchemaVersionV1,
+            },
+            intent::{BindingId, CapabilitySnapshotV1, ExternalId, Prompt},
             store::{
-                ActivateSessionCommand, PrepareTurnCommand, StartSessionCommand, activate_session,
-                start_session,
+                ActivateSessionCommand, CompleteActivationCommand, PrepareTurnCommand,
+                StartSessionCommand, activate_session, complete_activation, start_session,
             },
         },
         persistence::Database,
@@ -168,6 +170,39 @@ mod tests {
                 },
             )
             .unwrap();
+            complete_activation(
+                &mut connection,
+                CompleteActivationCommand {
+                    project_id: project_id.clone(),
+                    chat_id: chat_id.clone(),
+                    session_id: session.session_id.clone(),
+                    runtime_epoch: epoch,
+                    binding_digest: "a".repeat(64),
+                    artifact_digest: "a".repeat(64),
+                    external_session_id: ExternalId::new("session", "disposition-refresh").unwrap(),
+                    capabilities_json: serde_json::to_string(&CapabilitySnapshotV1 {
+                        schema_version: SchemaVersionV1,
+                        protocol_version: RequiredText::new("protocol", "fixture-v1").unwrap(),
+                        new_session: true,
+                        resume_session: false,
+                        load_session: false,
+                        close_session: true,
+                        prompt: true,
+                        cancel: true,
+                        native_session_fork: false,
+                        active_turn_steer: false,
+                        child_conversation_projection: false,
+                        child_transcript_read: false,
+                        collaboration_event_projection: false,
+                        multi_root_extension_schema_id: None,
+                        model_count: 1,
+                        config_count: 0,
+                    })
+                    .unwrap(),
+                    now_millis: 3,
+                },
+            )
+            .unwrap();
         }
         let page_revision = state
             .acp
@@ -185,7 +220,7 @@ mod tests {
                 expected_projection_revision: page_revision,
                 client_intent_id: ClientIntentId::parse("edit-disposition-turn").unwrap(),
                 prompt: Prompt::new("prompt", "disposition refresh").unwrap(),
-                now_millis: 3,
+                now_millis: 4,
             })
             .unwrap();
         {
