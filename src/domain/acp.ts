@@ -8,7 +8,6 @@ export type {
   ResolvePermissionDecisionResponse,
 } from "./acpPermission";
 
-
 type Brand<Value, Name extends string> = Value & {
   readonly __sageBrand: Name;
 };
