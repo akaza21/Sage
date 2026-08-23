@@ -17,6 +17,7 @@ const V2: &str = include_str!("../../../migrations/002_diff_tabs.sql");
 const V3: &str = include_str!("../../../migrations/003_editor_buffers.sql");
 const V6: &str = include_str!("../../../migrations/006_resource_trash_intents.sql");
 const V7: &str = include_str!("../../../migrations/007_acp_activation_abort.sql");
+const V8: &str = include_str!("../../../migrations/008_permission_decisions.sql");
 const MAX_SCHEMA_OBJECTS: usize = 128;
 const MAX_SCHEMA_BYTES: usize = 1_048_576;
 const MAX_COLUMNS: usize = 128;
@@ -33,6 +34,7 @@ pub(super) enum SchemaClass {
     CurrentV5,
     CurrentV6,
     CurrentV7,
+    CurrentV8,
 }
 
 impl SchemaClass {
@@ -52,6 +54,7 @@ impl SchemaClass {
                 | Self::LegacyV4
                 | Self::CurrentV5
                 | Self::CurrentV6
+                | Self::CurrentV7
         )
     }
 }
@@ -97,11 +100,11 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
         return invalid("nonempty database has no exact Sage migration schema");
     }
     let versions = connection
-        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 8")?
+        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 9")?
         .query_map([], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     if versions.is_empty()
-        || versions.len() > 7
+        || versions.len() > 8
         || versions
             .iter()
             .enumerate()
@@ -257,6 +260,15 @@ fn expected_schema_fingerprint(version: u32) -> AppResult<String> {
         )?;
         expected.pragma_update(None, "user_version", 7)?;
     }
+    if version >= 8 {
+        expected.pragma_update(None, "foreign_keys", "OFF")?;
+        expected.execute_batch(V8)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (8, 0)",
+            [],
+        )?;
+        expected.pragma_update(None, "user_version", 8)?;
+    }
     schema_fingerprint(&expected)
 }
 
@@ -269,6 +281,7 @@ fn class_for_version(version: u32) -> AppResult<SchemaClass> {
         5 => SchemaClass::CurrentV5,
         6 => SchemaClass::CurrentV6,
         7 => SchemaClass::CurrentV7,
+        8 => SchemaClass::CurrentV8,
         _ => return invalid("Sage schema version is above the supported maximum"),
     })
 }

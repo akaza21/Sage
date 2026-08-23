@@ -86,7 +86,10 @@ pub(super) fn preflight_original_schema(
 ) -> AppResult<()> {
     if schema.is_legacy() {
         preflight(connection, live)?;
-    } else if matches!(schema, SchemaClass::CurrentV5 | SchemaClass::CurrentV6) {
+    } else if matches!(
+        schema,
+        SchemaClass::CurrentV5 | SchemaClass::CurrentV6 | SchemaClass::CurrentV7
+    ) {
         verify_file_envelope(live)?;
     } else {
         return Err(AppError::InvalidRequest(

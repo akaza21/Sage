@@ -1,6 +1,5 @@
 -- Owner-landed schema expansion for durable Ask / Allow-once / Deny.
--- 006 is resource trash; this is version 8. Fingerprint/open-path wiring
--- is a leftover owner hole until the ACP migrator admits CurrentV8.
+-- 006 is resource trash. This file is schema version 8 (CurrentV8).
 
 DROP TRIGGER deny_server_request_invalid_transition;
 DROP TRIGGER deny_terminal_server_request_mutation;

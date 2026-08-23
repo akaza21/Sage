@@ -162,7 +162,31 @@ fn in_memory_creation_reaches_exact_v7() {
     let connection = open_or_migrate(Path::new(":memory:")).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV7
+        SchemaClass::CurrentV8
+    );
+}
+
+#[test]
+fn fresh_open_applies_permission_decision_schema_as_version_8() {
+    let connection = open_or_migrate(Path::new(":memory:")).unwrap();
+    let version: i64 = connection
+        .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(version, 8);
+    let allow_sql: String = connection
+        .query_row(
+            "SELECT sql FROM sqlite_schema WHERE type='table' AND name='server_requests'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        allow_sql.contains("asked")
+            && allow_sql.contains("allowPending")
+            && allow_sql.contains("resolvedAllowed"),
+        "server_requests CHECK must admit the allow path: {allow_sql}"
     );
 }
 
@@ -185,7 +209,7 @@ fn exact_v1_v2_v3_sources_migrate_through_v7() {
         let migrated = open_or_migrate(&directory.database()).unwrap();
         assert_eq!(
             fingerprint::classify_connection(&migrated).unwrap(),
-            SchemaClass::CurrentV7,
+            SchemaClass::CurrentV8,
             "source version {version}"
         );
     }
@@ -210,7 +234,7 @@ fn exact_v5_source_migrates_to_bounded_resource_trash_intents() {
 
     assert_eq!(
         fingerprint::classify_connection(&migrated).unwrap(),
-        SchemaClass::CurrentV7
+        SchemaClass::CurrentV8
     );
     let columns: i64 = migrated
         .query_row(
@@ -295,7 +319,7 @@ fn exact_v6_source_upgrades_to_v7_without_losing_epoch_children() {
 
     assert_eq!(
         fingerprint::classify_connection(&migrated).unwrap(),
-        SchemaClass::CurrentV7
+        SchemaClass::CurrentV8
     );
     assert_eq!(
         migrated
@@ -311,7 +335,7 @@ fn exact_v6_source_upgrades_to_v7_without_losing_epoch_children() {
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row
                 .get::<_, i64>(0))
             .unwrap(),
-        7
+        8
     );
     assert!(
         migrated
@@ -392,7 +416,7 @@ fn v5_to_v7_failure_after_v6_work_rolls_back_and_retry_preserves_original_backup
 
     assert_eq!(
         fingerprint::classify_connection(&migrated).unwrap(),
-        SchemaClass::CurrentV7
+        SchemaClass::CurrentV8
     );
     let item: (String, i64) = migrated
         .query_row("SELECT id, ordinal FROM items", [], |row| {
@@ -500,7 +524,7 @@ fn wal_v5_retry_reuses_original_backup_after_physical_checkpoint() {
 
     assert_eq!(
         fingerprint::classify_connection(&migrated).unwrap(),
-        SchemaClass::CurrentV7
+        SchemaClass::CurrentV8
     );
     assert_eq!(
         migrated
@@ -665,9 +689,10 @@ fn fresh_v7_schema_equals_a_v6_schema_upgraded_in_place() {
     apply_v5(&mut upgraded).unwrap();
     apply_v6(&mut upgraded).unwrap();
     apply_v7(&mut upgraded).unwrap();
+    apply_v8(&mut upgraded).unwrap();
     let upgraded_fingerprint = database_fingerprint(&upgraded).unwrap();
 
-    assert_eq!(fresh_fingerprint.schema, SchemaClass::CurrentV7);
+    assert_eq!(fresh_fingerprint.schema, SchemaClass::CurrentV8);
     assert_eq!(
         fresh_fingerprint.schema_sha256,
         upgraded_fingerprint.schema_sha256
@@ -987,7 +1012,7 @@ fn committed_wal_data_is_included_in_migration() {
     let migrated = Connection::open(&paths.live).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&migrated).unwrap(),
-        SchemaClass::CurrentV7
+        SchemaClass::CurrentV8
     );
     let name: String = migrated
         .query_row(
@@ -1056,7 +1081,7 @@ fn replacement_build_intent_crash_prefixes_converge() {
         let migrated = open_or_migrate(&directory.database()).unwrap();
         assert_eq!(
             fingerprint::classify_connection(&migrated).unwrap(),
-            SchemaClass::CurrentV7,
+            SchemaClass::CurrentV8,
             "prefix {prefix}"
         );
         drop(migrated);
@@ -1137,7 +1162,7 @@ fn v4_history_converts_and_retains_the_verified_backup_pair() {
     let connection = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV7
+        SchemaClass::CurrentV8
     );
     let item: (String, i64) = connection
         .query_row("SELECT id, ordinal FROM items", [], |row| {
@@ -1405,7 +1430,7 @@ fn restart_adopts_the_complete_retirement_prefix() {
     let connection = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV7
+        SchemaClass::CurrentV8
     );
     drop(connection);
     assert!(!paths.retired_live.exists());
@@ -1424,7 +1449,7 @@ fn restart_cleans_a_published_v5_prefix_idempotently() {
     let connection = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV7
+        SchemaClass::CurrentV8
     );
     drop(connection);
     assert!(!paths.retired_live.exists());
@@ -1472,7 +1497,7 @@ fn replacement_restore_prefixes_converge_sidecars_before_main() {
         let connection = open_or_migrate(&directory.database()).unwrap();
         assert_eq!(
             fingerprint::classify_connection(&connection).unwrap(),
-            SchemaClass::CurrentV7,
+            SchemaClass::CurrentV8,
             "restore prefix {prefix}"
         );
         assert!(!paths.retired_live.exists());
@@ -1594,7 +1619,7 @@ fn real_partial_sqlite_backup_copy_converges_after_restart() {
     let connection = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV7
+        SchemaClass::CurrentV8
     );
     assert!(!paths.replacement_stage_owner.exists());
     assert!(!paths.replacement_journal.exists());
@@ -1618,7 +1643,7 @@ fn injected_replacement_write_failure_preserves_legacy_and_retry_converges() {
     let connection = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV7
+        SchemaClass::CurrentV8
     );
     assert!(!paths.replacement_build_intent.exists());
     assert!(!paths.replacement_stage_owner.exists());
@@ -1653,7 +1678,7 @@ pub(crate) fn fixture_backup_failpoint_observation() -> FixtureBackupFailpointOb
     let verified_retained_backup = backup::verify_retained_pair(&paths).is_ok();
     let connection = open_or_migrate(&directory.database()).unwrap();
     let new_schema_visible =
-        fingerprint::classify_connection(&connection).unwrap() == SchemaClass::CurrentV7;
+        fingerprint::classify_connection(&connection).unwrap() == SchemaClass::CurrentV8;
     FixtureBackupFailpointObservation {
         old_schema_readable,
         new_schema_visible,
@@ -1779,7 +1804,7 @@ pub(crate) fn fixture_retirement_observation() -> FixtureRetirementObservation {
         let connection = open_or_migrate(&directory.database()).unwrap();
         assert_eq!(
             fingerprint::classify_connection(&connection).unwrap(),
-            SchemaClass::CurrentV7,
+            SchemaClass::CurrentV8,
             "restart did not converge after {failpoint}"
         );
         verify_current(&connection).unwrap();
@@ -1979,7 +2004,7 @@ fn owned_partial_backup_stage_is_removed_and_rebuilt_after_restart() {
     let connection = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV7
+        SchemaClass::CurrentV8
     );
     assert!(!paths.backup_build_intent.exists());
     assert!(!paths.backup_stage_owner.exists());
@@ -2175,7 +2200,7 @@ fn replacement_retirement_prefixes_converge() {
         let connection = open_or_migrate(&directory.database()).unwrap();
         assert_eq!(
             fingerprint::classify_connection(&connection).unwrap(),
-            SchemaClass::CurrentV7,
+            SchemaClass::CurrentV8,
             "retirement prefix {prefix}"
         );
     }
@@ -2202,7 +2227,7 @@ fn replacement_cleanup_prefixes_converge() {
         let connection = open_or_migrate(&directory.database()).unwrap();
         assert_eq!(
             fingerprint::classify_connection(&connection).unwrap(),
-            SchemaClass::CurrentV7,
+            SchemaClass::CurrentV8,
             "cleanup prefix {prefix}"
         );
         assert!(!paths.replacement_manifest.exists());
