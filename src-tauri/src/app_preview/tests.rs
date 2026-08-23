@@ -121,7 +121,10 @@ fn discovery_stops_at_the_package_cap() {
         }],
     )
     .unwrap();
-    assert_eq!(response.targets.len(), 8);
+    // Target identity is root-scoped, so the nine manifests collapse to the
+    // single curated `dev` target while the package traversal cap still
+    // fail-closes through `truncated`.
+    assert_eq!(response.targets.len(), 1);
     assert!(response.truncated);
     fs::remove_dir_all(root).unwrap();
 }

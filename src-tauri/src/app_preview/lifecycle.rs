@@ -271,6 +271,12 @@ fn stop_child(child: &mut ManagedChild) {
 #[cfg(windows)]
 struct PreviewJob(windows_sys::Win32::Foundation::HANDLE);
 
+// SAFETY: The HANDLE is an owned Windows job object used only while the registry mutex is held.
+// The OS handle may be signaled from any thread, and we never share the raw pointer without
+// that lock.
+#[cfg(windows)]
+unsafe impl Send for PreviewJob {}
+
 #[cfg(windows)]
 impl PreviewJob {
     fn new(child: &Child) -> Result<Self, ()> {
@@ -285,7 +291,7 @@ impl PreviewJob {
         };
 
         let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
-        if job == 0 {
+        if job == std::ptr::null_mut() {
             return Err(());
         }
         let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
