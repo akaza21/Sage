@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 
 use super::{
     authority::{CodexAuthorityPrerequisite, CodexLaunchEnvironment},
+    installed_role::SignedInstalledRole,
     manifest::MetadataValidatedPacket,
     reproduction::ReproducedPackagePrerequisite,
 };
@@ -34,18 +35,27 @@ pub(crate) struct AdmittedCodexBinding {
     environment: CodexLaunchEnvironment,
     entrypoint: EntrypointIdentity,
     #[cfg(all(test, windows))]
-    _cleanup: TestCleanup,
+    _cleanup: Option<authenticate_tests::TestCleanup>,
 }
 
 impl AdmittedCodexBinding {
-    #[cfg(all(test, windows))]
-    fn admit_for_test(
+    fn admit_signed_installed_role(
         packet: MetadataValidatedPacket,
+        role: SignedInstalledRole,
         reproduced: ReproducedPackagePrerequisite,
         authority: CodexAuthorityPrerequisite,
         environment: CodexLaunchEnvironment,
-        cleanup: TestCleanup,
     ) -> Result<Self, CodexAdmissionUnavailable> {
+        let expected_artifact = packet
+            .physical_artifact_claims()
+            .next()
+            .map(|(_, relative_path)| relative_path)
+            .ok_or(CodexAdmissionUnavailable::IndependentAdmission)?;
+        if role.binding_id != packet.metadata().binding_id
+            || role.artifact_relative_path != expected_artifact
+        {
+            return Err(CodexAdmissionUnavailable::IndependentAdmission);
+        }
         let entrypoint = entrypoint_identity(&packet)?;
         let binding = Self {
             packet,
@@ -53,7 +63,8 @@ impl AdmittedCodexBinding {
             authority,
             environment,
             entrypoint,
-            _cleanup: cleanup,
+            #[cfg(all(test, windows))]
+            _cleanup: None,
         };
         binding.revalidate()?;
         Ok(binding)
@@ -171,6 +182,37 @@ pub(crate) struct CodexBindingRegistration {
 }
 
 impl CodexBindingRegistration {
+    pub(crate) fn authenticate_signed_installed_role(
+        &self,
+        packet: &MetadataValidatedPacket,
+        role: SignedInstalledRole,
+        reproduced: ReproducedPackagePrerequisite,
+        authority: CodexAuthorityPrerequisite,
+        environment: CodexLaunchEnvironment,
+    ) -> Result<Arc<AdmittedCodexBinding>, CodexAdmissionUnavailable> {
+        let candidate = Arc::new(
+            AdmittedCodexBinding::admit_signed_installed_role(
+                packet.clone(),
+                role,
+                reproduced,
+                authority,
+                environment,
+            )
+            .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?,
+        );
+        let mut state = self.lock_state();
+        match &*state {
+            CodexRegistrationState::Unavailable(
+                CodexAdmissionUnavailable::IndependentAdmission,
+            ) => {
+                *state = CodexRegistrationState::Admitted(Arc::clone(&candidate));
+                Ok(candidate)
+            }
+            CodexRegistrationState::Unavailable(reason) => Err(*reason),
+            CodexRegistrationState::Admitted(binding) => Ok(Arc::clone(binding)),
+        }
+    }
+
     pub(crate) fn is_available(&self) -> bool {
         matches!(*self.lock_state(), CodexRegistrationState::Admitted(_))
     }
@@ -223,7 +265,7 @@ impl CodexBindingRegistration {
         Self {
             authority: Arc::new(CodexRegistrationAuthority {
                 state: Mutex::new(CodexRegistrationState::Admitted(Arc::new(
-                    admitted_binding_fixture(),
+                    authenticate_tests::admitted_binding_fixture(),
                 ))),
             }),
         }
@@ -258,11 +300,64 @@ pub(crate) fn startup_codex_binding_registration() -> CodexBindingRegistration {
     } else {
         CodexAdmissionUnavailable::Platform
     };
-    CodexBindingRegistration {
+    let registration = CodexBindingRegistration {
         authority: Arc::new(CodexRegistrationAuthority {
             state: Mutex::new(CodexRegistrationState::Unavailable(unavailable)),
         }),
+    };
+    #[cfg(windows)]
+    {
+        let _ = authenticate_startup_signed_installed_role(&registration);
     }
+    registration
+}
+
+#[cfg(windows)]
+fn authenticate_startup_signed_installed_role(
+    registration: &CodexBindingRegistration,
+) -> Result<Arc<AdmittedCodexBinding>, CodexAdmissionUnavailable> {
+    let packet = super::parse_packet_metadata(include_bytes!(
+        "../../../../testdata/acp/codex/candidate-windows.json"
+    ))
+    .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+    let role = packet
+        .require_physical_admission()
+        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+    let requirements = super::parse_reproduction_requirements(
+        include_bytes!("../../../../testdata/acp/codex/package-reproduction-v1.json"),
+        &packet,
+    )
+    .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+    let root = super::ConfiguredManagedPackageRoot::new(packet.managed_package_root())
+        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+    let inspection = super::inspect_managed_package(&packet, &root)
+        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+    let reproduced = super::bind_reproduced_package(requirements, &packet, inspection)
+        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+    let managed = super::inspect_managed_staging(&packet, &reproduced)
+        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+    let policy = super::parse_security_policy(
+        include_bytes!("../../../../testdata/acp/codex/security-policy-v1.json"),
+        &packet,
+    )
+    .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+    let config = super::verify_codex_config(
+        include_bytes!("../../../../testdata/acp/codex/config-v1.toml"),
+        &policy,
+    )
+    .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+    let environment = super::build_system_codex_launch_environment(&packet, &policy, &config)
+        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+    let authority = super::inspect_codex_authority(&packet, policy, config, &reproduced, managed)
+        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+
+    registration.authenticate_signed_installed_role(
+        &packet,
+        role,
+        reproduced,
+        authority,
+        environment,
+    )
 }
 
 fn entrypoint_identity(
@@ -296,55 +391,8 @@ fn hex_nibble(value: u8) -> Result<u8, CodexAdmissionUnavailable> {
 }
 
 #[cfg(all(test, windows))]
-#[derive(Debug)]
-struct TestCleanup(PathBuf);
-
-#[cfg(all(test, windows))]
-impl Drop for TestCleanup {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-#[cfg(all(test, windows))]
-fn admitted_binding_fixture() -> AdmittedCodexBinding {
-    use serde_json::{Value, json};
-
-    const PACKET: &[u8] = include_bytes!("../../../../testdata/acp/codex/candidate-windows.json");
-    const POLICY: &[u8] = include_bytes!("../../../../testdata/acp/codex/security-policy-v1.json");
-    const CONFIG: &[u8] = include_bytes!("../../../../testdata/acp/codex/config-v1.toml");
-
-    let parent =
-        std::env::temp_dir().join(format!("sage-codex-admission-{}", uuid::Uuid::new_v4()));
-    let home = parent
-        .join("CodexState")
-        .join("codex-app-server-0.145.0-7b0ab167");
-    std::fs::create_dir_all(home.join("sessions")).unwrap();
-    std::fs::write(home.join("config.toml"), CONFIG).unwrap();
-
-    let mut packet_value: Value = serde_json::from_slice(PACKET).unwrap();
-    packet_value["codexHome"] = json!(home.to_str().unwrap());
-    let packet = super::parse_packet_metadata(&serde_json::to_vec(&packet_value).unwrap()).unwrap();
-    let mut policy_value: Value = serde_json::from_slice(POLICY).unwrap();
-    policy_value["codexHome"] = json!(home.to_str().unwrap());
-    let policy =
-        super::parse_security_policy(&serde_json::to_vec(&policy_value).unwrap(), &packet).unwrap();
-    let config = super::verify_codex_config(CONFIG, &policy).unwrap();
-    let reproduced = super::reproduction::ReproducedPackagePrerequisite::fixture(&packet);
-    let managed = super::managed::ManagedStagingPrerequisite::fixture(&packet, &reproduced);
-    let environment =
-        super::authority::build_system_codex_launch_environment(&packet, &policy, &config).unwrap();
-    let authority =
-        super::inspect_codex_authority(&packet, policy, config, &reproduced, managed).unwrap();
-    AdmittedCodexBinding::admit_for_test(
-        packet,
-        reproduced,
-        authority,
-        environment,
-        TestCleanup(parent),
-    )
-    .unwrap()
-}
+#[path = "admission/authenticate_tests.rs"]
+mod authenticate_tests;
 
 #[cfg(test)]
 mod tests {
@@ -368,7 +416,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn admitted_binding_owns_and_revalidates_every_launch_prerequisite() {
-        let binding = admitted_binding_fixture();
+        let binding = authenticate_tests::admitted_binding_fixture();
 
         binding.revalidate().unwrap();
         assert_eq!(binding.binding_id(), "codex-app-server");
