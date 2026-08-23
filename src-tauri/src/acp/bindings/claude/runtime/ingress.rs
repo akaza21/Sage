@@ -378,11 +378,11 @@ fn permission_allow_once_option(value: &Value) -> Result<String, AdapterRuntimeE
             if kind == "allow_once" {
                 return Some(option_id);
             }
-            let name = option
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_ascii_lowercase();
+            let name = option.get("name").and_then(Value::as_str).unwrap_or_default();
+            if name.len() > 64 {
+                return None;
+            }
+            let name = name.to_ascii_lowercase();
             (kind.is_empty() && matches!(name.as_str(), "allow" | "allow once"))
                 .then_some(option_id)
         })

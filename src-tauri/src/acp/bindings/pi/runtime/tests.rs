@@ -452,6 +452,29 @@ fn allow_once_on_pi_does_not_emit_denial_and_records_resolved_allowed() {
 }
 
 #[test]
+fn allow_once_on_pi_rejects_an_ambiguous_select_option() {
+    let mut runtime = fixture_runtime(13);
+    ready(&mut runtime);
+    running(&mut runtime);
+    runtime
+        .ingest(
+            &frame(json!({
+                "type":"extension_ui_request","id":"disallow-1","method":"select",
+                "options":["Disallow","Block"]
+            })),
+            &Mapper,
+        )
+        .expect("permission");
+    assert!(matches!(
+        runtime.command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse("disallow-1").expect("request"),
+            decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+        }),
+        Err(AdapterRuntimeError::LaterPermissionMiss)
+    ));
+}
+
+#[test]
 fn durable_permission_id_correlates_to_pi_request_id() {
     let mut runtime = fixture_runtime(12);
     ready(&mut runtime);
