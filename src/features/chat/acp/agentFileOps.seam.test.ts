@@ -75,6 +75,25 @@ describe("AGENT-1 typed file-operation seam", () => {
     });
   });
 
+  it("apply_created_file_at_root_uses_an_empty_parent_path", async () => {
+    await applyAgentFileIntent({
+      operation: "created",
+      resource: { rootId: "root-a", relativePath: "agent.txt" },
+      basename: "agent.txt",
+      projectId: "project-a",
+      projectGeneration: 3,
+      expectedTransitionEpoch: 11,
+    });
+
+    expect(project.createProjectFile).toHaveBeenCalledWith({
+      projectId: "project-a",
+      projectGeneration: 3,
+      expectedTransitionEpoch: 11,
+      parent: { rootId: "root-a", relativePath: "" },
+      basename: "agent.txt",
+    });
+  });
+
   it("apply_updated_file_uses_editor_snapshot_and_save", async () => {
     await applyAgentFileIntent({
       operation: "updated",
@@ -91,6 +110,26 @@ describe("AGENT-1 typed file-operation seam", () => {
       base: version,
       lineEnding: "lf",
       content: "after",
+      revision: 8,
+    });
+    expect(editor.saveEditorDocument).toHaveBeenCalledWith(resource);
+  });
+
+  it("apply_updated_file_allows_empty_content_to_truncate", async () => {
+    await applyAgentFileIntent({
+      operation: "updated",
+      resource,
+      content: "",
+      projectId: "project-a",
+      projectGeneration: 3,
+      expectedTransitionEpoch: 11,
+    });
+
+    expect(editor.snapshotEditorBuffer).toHaveBeenCalledWith({
+      resource,
+      base: version,
+      lineEnding: "lf",
+      content: "",
       revision: 8,
     });
     expect(editor.saveEditorDocument).toHaveBeenCalledWith(resource);

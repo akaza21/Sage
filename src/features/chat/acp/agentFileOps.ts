@@ -22,10 +22,17 @@ function requiredIntentText(value: string | undefined, label: string): string {
   return value;
 }
 
+function requiredIntentContent(value: string | undefined): string {
+  if (value === undefined) throw new Error("Agent file content is required");
+  return value;
+}
+
 function parentResource(resource: ResourceRef): ResourceRef {
+  const separator = resource.relativePath.lastIndexOf("/");
   return {
     rootId: resource.rootId,
-    relativePath: resource.relativePath.rsplit("/", 1)[0] ?? "",
+    relativePath:
+      separator === -1 ? "" : resource.relativePath.slice(0, separator),
   };
 }
 
@@ -65,7 +72,7 @@ export async function applyAgentFileIntent(
         resource: intent.resource,
         base: document.base,
         lineEnding: document.lineEnding,
-        content: requiredIntentText(intent.content, "content"),
+        content: requiredIntentContent(intent.content),
         revision: document.buffer.revision + 1,
       });
       await editor.saveEditorDocument(intent.resource);

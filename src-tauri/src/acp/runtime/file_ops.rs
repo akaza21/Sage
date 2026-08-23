@@ -1,11 +1,11 @@
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::{atomic::AtomicBool, Arc};
 
 use crate::{
     domain::{BufferSnapshotRequest, ResourceRef, TrashResourceKind},
     editor,
     error::{AppError, AppResult},
     persistence::Database,
-    workspace::{Workspace, file_rename::FileRenameMarker, resource_trash::ResourceTrashMarker},
+    workspace::{file_rename::FileRenameMarker, resource_trash::ResourceTrashMarker, Workspace},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,7 +73,7 @@ fn update_file(
             resource: intent.resource.clone(),
             base: document.base,
             line_ending: document.line_ending,
-            content: required_text(intent.content.as_deref(), "content")?.into(),
+            content: required_content(intent.content.as_deref())?.into(),
             revision,
         },
     )?;
@@ -124,6 +124,10 @@ fn required_text<'a>(value: Option<&'a str>, label: &str) -> AppResult<&'a str> 
     value
         .filter(|value| !value.is_empty())
         .ok_or_else(|| AppError::InvalidRequest(format!("agent file intent {label} is required")))
+}
+
+fn required_content(value: Option<&str>) -> AppResult<&str> {
+    value.ok_or_else(|| AppError::InvalidRequest("agent file intent content is required".into()))
 }
 
 fn required_resource<'a>(

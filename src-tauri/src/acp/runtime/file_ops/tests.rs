@@ -84,6 +84,21 @@ fn apply_updated_file_uses_editor_snapshot_and_save() {
 }
 
 #[test]
+fn apply_updated_file_allows_empty_content_to_truncate() {
+    let fixture = Fixture::new();
+    fs::write(fixture.root.join("updated.txt"), "before\n").unwrap();
+    let mut intent = fixture.intent(AgentFileOperation::Updated, fixture.resource("updated.txt"));
+    intent.content = Some(String::new());
+
+    apply_agent_file_intent(fixture.database(), &fixture.workspace, intent).unwrap();
+
+    assert_eq!(
+        fs::read_to_string(fixture.root.join("updated.txt")).unwrap(),
+        ""
+    );
+}
+
+#[test]
 fn apply_renamed_file_uses_workspace_rename() {
     let fixture = Fixture::new();
     fs::write(fixture.root.join("before.txt"), "before\n").unwrap();
