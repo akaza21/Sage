@@ -100,7 +100,7 @@ pub(crate) fn discover(
     let mut targets = Vec::new();
     let mut mappings = Vec::new();
     let mut truncated = false;
-    for root in roots {
+    'roots: for root in roots {
         if targets.len() == MAX_TARGETS_PER_PROJECT {
             truncated = true;
             break;
@@ -109,13 +109,17 @@ pub(crate) fn discover(
         truncated |= root_truncated;
         let mut scripts = BTreeSet::new();
         for package in packages {
+            if targets.len() == MAX_TARGETS_PER_PROJECT {
+                truncated = true;
+                break 'roots;
+            }
             for script_name in package_scripts(&package)? {
                 if !scripts.insert(script_name) {
                     continue;
                 }
                 if targets.len() == MAX_TARGETS_PER_PROJECT {
                     truncated = true;
-                    break;
+                    break 'roots;
                 }
                 let target = PreviewTargetRef {
                     project_id: request.project_id.clone(),
@@ -132,6 +136,10 @@ pub(crate) fn discover(
                         .to_owned(),
                 ));
                 targets.push(target);
+                if targets.len() == MAX_TARGETS_PER_PROJECT {
+                    truncated = true;
+                    break 'roots;
+                }
             }
         }
     }
@@ -150,6 +158,10 @@ fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
     let mut visited = 0_usize;
     let mut truncated = false;
     while let Some((directory, depth)) = pending.pop() {
+        if packages.len() == MAX_PACKAGES_PER_ROOT {
+            truncated = true;
+            break;
+        }
         if visited == MAX_DIRECTORIES_PER_ROOT {
             truncated = true;
             break;
@@ -163,6 +175,10 @@ fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
             }
         };
         for entry in entries.flatten() {
+            if packages.len() == MAX_PACKAGES_PER_ROOT {
+                truncated = true;
+                break;
+            }
             let name = entry.file_name();
             let Some(name) = name.to_str() else {
                 continue;
@@ -175,11 +191,11 @@ fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
                 continue;
             }
             if file_type.is_file() && name == "package.json" {
+                packages.push(entry.path());
                 if packages.len() == MAX_PACKAGES_PER_ROOT {
                     truncated = true;
-                    continue;
+                    break;
                 }
-                packages.push(entry.path());
             } else if file_type.is_dir() && depth < MAX_DEPTH && !skipped_directory(name) {
                 pending.push((entry.path(), depth + 1));
             }

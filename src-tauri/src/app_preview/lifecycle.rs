@@ -22,13 +22,18 @@ const MAX_STARTUP_OUTPUT_BYTES: usize = 4096;
 struct ActivePreview {
     target: PreviewTargetRef,
     origin: String,
-    child: Child,
+    child: ManagedChild,
+}
+
+struct StartingPreview {
+    target: PreviewTargetRef,
+    child: ManagedChild,
 }
 
 #[derive(Default)]
 struct Registry {
     discovered: BTreeMap<PreviewTargetRef, std::path::PathBuf>,
-    starting: Option<PreviewTargetRef>,
+    starting: Option<StartingPreview>,
     active: Option<ActivePreview>,
 }
 
@@ -66,7 +71,7 @@ pub(crate) fn replace_discovered(
 }
 
 pub(crate) fn start(target: PreviewTargetRef) -> Result<PreviewStartResponse, PreviewError> {
-    let package_root = {
+    let (stdout, stderr) = {
         let mut registry = registry().lock().expect("preview lifecycle registry");
         if registry.active.is_some() || registry.starting.is_some() {
             return Err(PreviewError::conflict(
@@ -80,56 +85,67 @@ pub(crate) fn start(target: PreviewTargetRef) -> Result<PreviewStartResponse, Pr
                 "Preview target must be discovered before it can start.",
             )
         })?;
-        registry.starting = Some(target.clone());
-        package_root
-    };
-    let mut child = match Command::new(npm_executable())
-        .args(["run", target.script_name.as_str()])
-        .current_dir(package_root)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
-        Ok(child) => child,
-        Err(_) => {
-            clear_starting(&target);
-            return Err(PreviewError::Unavailable {
+        let mut child = Command::new(npm_executable())
+            .args(["run", target.script_name.as_str()])
+            .current_dir(package_root)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|_| PreviewError::Unavailable {
                 message: "Preview could not start its curated package script.".into(),
-            });
-        }
+            })?;
+        let stdout = child.stdout.take().expect("preview stdout was piped");
+        let stderr = child.stderr.take().expect("preview stderr was piped");
+        let child = match ManagedChild::reserve(child) {
+            Ok(child) => child,
+            Err(mut child) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(PreviewError::Unavailable {
+                    message: "Preview could not reserve its process tree.".into(),
+                });
+            }
+        };
+        registry.starting = Some(StartingPreview {
+            target: target.clone(),
+            child,
+        });
+        (stdout, stderr)
     };
-    let origin = wait_for_loopback_server(
-        child.stdout.take().expect("preview stdout was piped"),
-        child.stderr.take().expect("preview stderr was piped"),
-    );
+    let origin = wait_for_loopback_server(stdout, stderr);
     let Some(origin) = origin else {
-        clear_starting(&target);
-        let mut child = child;
-        let _ = child.kill();
-        let _ = child.wait();
+        stop_starting(&target);
         return Err(PreviewError::Unavailable {
             message: "Preview script did not expose a healthy loopback server in time.".into(),
         });
     };
-    let mut registry = registry().lock().expect("preview lifecycle registry");
-    let still_current =
-        registry.starting.as_ref() == Some(&target) && registry.discovered.contains_key(&target);
-    registry.starting = None;
-    if !still_current || registry.active.is_some() {
-        let mut child = child;
-        let _ = child.kill();
-        let _ = child.wait();
+    let promoted = {
+        let mut registry = registry().lock().expect("preview lifecycle registry");
+        let still_current = registry
+            .starting
+            .as_ref()
+            .is_some_and(|starting| starting.target == target)
+            && registry.discovered.contains_key(&target)
+            && registry.active.is_none();
+        if !still_current {
+            false
+        } else {
+            let StartingPreview { child, .. } = registry.starting.take().expect("starting preview");
+            registry.active = Some(ActivePreview {
+                target: target.clone(),
+                origin: origin.clone(),
+                child,
+            });
+            true
+        }
+    };
+    if !promoted {
         return Err(PreviewError::conflict(
             "activePreview",
             "A Preview target is already active.",
         ));
     }
-    registry.active = Some(ActivePreview {
-        target: target.clone(),
-        origin: origin.clone(),
-        child,
-    });
     Ok(PreviewStartResponse {
         ref_: target,
         origin,
@@ -142,7 +158,7 @@ pub(crate) fn health(target: &PreviewTargetRef) -> Option<String> {
     if active.target != *target {
         return None;
     }
-    if active.child.try_wait().ok().flatten().is_some() {
+    if active.child.child.try_wait().ok().flatten().is_some() {
         registry.active = None;
         return None;
     }
@@ -173,7 +189,8 @@ pub(crate) fn stop(target: &PreviewTargetRef) -> Result<PreviewStopResponse, Pre
             }
         }
     };
-    stop_child(active.child);
+    let mut active = active;
+    stop_child(&mut active.child);
     Ok(PreviewStopResponse {
         ref_: target.clone(),
     })
@@ -185,11 +202,13 @@ pub(crate) fn stop_before_epoch(new_epoch: u64) {
         registry
             .discovered
             .retain(|target, _| target.expected_transition_epoch >= new_epoch);
-        if registry
+        let should_stop_starting = registry
             .starting
             .as_ref()
-            .is_some_and(|target| target.expected_transition_epoch < new_epoch)
-        {
+            .is_some_and(|starting| starting.target.expected_transition_epoch < new_epoch);
+        if should_stop_starting {
+            let starting = registry.starting.as_mut().expect("starting preview");
+            stop_child(&mut starting.child);
             registry.starting = None;
         }
         match registry.active.take() {
@@ -201,21 +220,111 @@ pub(crate) fn stop_before_epoch(new_epoch: u64) {
             None => None,
         }
     };
-    if let Some(active) = active {
-        stop_child(active.child);
+    if let Some(mut active) = active {
+        stop_child(&mut active.child);
     }
 }
 
-fn clear_starting(target: &PreviewTargetRef) {
+fn stop_starting(target: &PreviewTargetRef) {
     let mut registry = registry().lock().expect("preview lifecycle registry");
-    if registry.starting.as_ref() == Some(target) {
+    if registry
+        .starting
+        .as_ref()
+        .is_some_and(|starting| starting.target == *target)
+    {
+        let starting = registry.starting.as_mut().expect("starting preview");
+        stop_child(&mut starting.child);
         registry.starting = None;
     }
 }
 
-fn stop_child(mut child: Child) {
-    let _ = child.kill();
-    let _ = child.wait();
+struct ManagedChild {
+    child: Child,
+    #[cfg(windows)]
+    job: PreviewJob,
+}
+
+impl ManagedChild {
+    fn reserve(child: Child) -> Result<Self, Child> {
+        #[cfg(windows)]
+        {
+            match PreviewJob::new(&child) {
+                Ok(job) => Ok(Self { child, job }),
+                Err(()) => Err(child),
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            Ok(Self { child })
+        }
+    }
+}
+
+fn stop_child(child: &mut ManagedChild) {
+    #[cfg(windows)]
+    child.job.terminate();
+    #[cfg(not(windows))]
+    let _ = child.child.kill();
+    let _ = child.child.wait();
+}
+
+#[cfg(windows)]
+struct PreviewJob(windows_sys::Win32::Foundation::HANDLE);
+
+#[cfg(windows)]
+impl PreviewJob {
+    fn new(child: &Child) -> Result<Self, ()> {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::{
+            Foundation::CloseHandle,
+            System::JobObjects::{
+                AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+                JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+                SetInformationJobObject, TerminateJobObject,
+            },
+        };
+
+        let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+        if job == 0 {
+            return Err(());
+        }
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let configured = unsafe {
+            SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                std::ptr::addr_of!(limits).cast(),
+                std::mem::size_of_val(&limits) as u32,
+            ) != 0
+        };
+        let assigned =
+            configured && unsafe { AssignProcessToJobObject(job, child.as_raw_handle() as _) != 0 };
+        if assigned {
+            Ok(Self(job))
+        } else {
+            unsafe {
+                TerminateJobObject(job, 1);
+                CloseHandle(job);
+            }
+            Err(())
+        }
+    }
+
+    fn terminate(&self) {
+        use windows_sys::Win32::System::JobObjects::TerminateJobObject;
+
+        unsafe { TerminateJobObject(self.0, 1) };
+    }
+}
+
+#[cfg(windows)]
+impl Drop for PreviewJob {
+    fn drop(&mut self) {
+        use windows_sys::Win32::Foundation::CloseHandle;
+
+        unsafe { CloseHandle(self.0) };
+    }
 }
 
 fn npm_executable() -> &'static str {

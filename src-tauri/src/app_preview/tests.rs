@@ -2,6 +2,7 @@ use std::fs;
 
 use super::{
     discovery::{PreviewDiscoveryRequest, discover},
+    health,
     origin::loopback_origin,
 };
 use crate::project_registry::RootRecord;
@@ -91,4 +92,41 @@ fn discovery_returns_only_curated_scripts_without_package_paths() {
             .contains(&*root.to_string_lossy())
     );
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovery_stops_at_the_package_cap() {
+    let root = std::env::temp_dir().join(format!("sage-preview-cap-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    for index in 0..9 {
+        fs::create_dir_all(root.join(format!("package-{index}"))).unwrap();
+        fs::write(
+            root.join(format!("package-{index}")).join("package.json"),
+            r#"{"scripts":{"dev":"vite"}}"#,
+        )
+        .unwrap();
+    }
+    let request = PreviewDiscoveryRequest {
+        project_id: "project-preview".into(),
+        project_generation: 2,
+        expected_transition_epoch: 4,
+    };
+    let response = discover(
+        &request,
+        vec![RootRecord {
+            id: "root-preview".into(),
+            project_id: request.project_id.clone(),
+            absolute_path: root.clone(),
+            ordinal: 0,
+        }],
+    )
+    .unwrap();
+    assert_eq!(response.targets.len(), 8);
+    assert!(response.truncated);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn https_health_is_fail_closed() {
+    assert!(!health::get(Some("https://127.0.0.1:443")));
 }
