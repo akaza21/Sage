@@ -63,7 +63,7 @@ describe("ProblemsSurface", () => {
     vi.spyOn(languageDesktop, "subscribeDiagnostics").mockImplementation(
       async (onReport) => {
         deliver = onReport;
-        return vi.fn();
+        return () => {};
       },
     );
     render(<ProblemsSurface />);
@@ -113,7 +113,7 @@ describe("ProblemsSurface", () => {
     vi.spyOn(languageDesktop, "subscribeDiagnostics").mockImplementation(
       async (onReport) => {
         deliver = onReport;
-        return vi.fn();
+        return () => {};
       },
     );
     render(<ProblemsSurface />);

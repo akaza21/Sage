@@ -60,7 +60,7 @@ describe("OutlineSurface", () => {
     vi.spyOn(languageDesktop, "subscribeOutline").mockImplementation(
       async (onReport) => {
         deliver = onReport;
-        return vi.fn();
+        return () => {};
       },
     );
     render(<OutlineSurface />);
@@ -80,7 +80,7 @@ describe("OutlineSurface", () => {
     vi.spyOn(languageDesktop, "subscribeOutline").mockImplementation(
       async (onReport) => {
         deliver = onReport;
-        return vi.fn();
+        return () => {};
       },
     );
     render(<OutlineSurface />);
