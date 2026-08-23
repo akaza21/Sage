@@ -25,7 +25,7 @@ pub async fn get_preview_health(
     state: State<'_, AppState>,
     request: PreviewTargetRef,
 ) -> Result<PreviewHealthResponse, PreviewError> {
-    validate_current_target(&state, &request).await?;
+    let _epoch = validate_current_target(&state, &request).await?;
     let origin = lifecycle::health(&request);
     let healthy = origin.is_some();
     Ok(PreviewHealthResponse {
@@ -40,8 +40,10 @@ pub async fn start_preview_target(
     state: State<'_, AppState>,
     request: PreviewTargetRef,
 ) -> Result<PreviewStartResponse, PreviewError> {
-    validate_current_target(&state, &request).await?;
-    lifecycle::start(request)
+    let epoch = validate_current_target(&state, &request).await?;
+    let start = lifecycle::reserve_start(request)?;
+    drop(epoch);
+    lifecycle::finish_start(start)
 }
 
 #[tauri::command]
@@ -49,7 +51,7 @@ pub async fn stop_preview_target(
     state: State<'_, AppState>,
     request: PreviewTargetRef,
 ) -> Result<PreviewStopResponse, PreviewError> {
-    validate_current_target(&state, &request).await?;
+    let _epoch = validate_current_target(&state, &request).await?;
     lifecycle::stop(&request)
 }
 
@@ -85,14 +87,13 @@ async fn discover_preview_targets_inner(
         .database
         .root_records(&request.project_id)
         .map_err(|_| PreviewError::internal("Preview could not resolve Project roots."))?;
-    drop(epoch);
     discover(&request, roots)
 }
 
-async fn validate_current_target(
-    state: &AppState,
+async fn validate_current_target<'state>(
+    state: &'state AppState,
     target: &PreviewTargetRef,
-) -> Result<(), PreviewError> {
+) -> Result<tokio::sync::MutexGuard<'state, u64>, PreviewError> {
     validate_target(target)?;
     let epoch = state.project_transitions.lock().await;
     if *epoch != target.expected_transition_epoch {
@@ -113,5 +114,5 @@ async fn validate_current_target(
             "Preview request does not belong to the active Project.",
         ));
     }
-    Ok(())
+    Ok(epoch)
 }

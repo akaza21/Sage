@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import {
@@ -22,6 +22,9 @@ export function PreviewSurface() {
   const [active, setActive] = useState<PreviewTargetRef | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const activeTargetRef = useRef<PreviewTargetRef | null>(null);
+  const startingTargetRef = useRef<PreviewTargetRef | null>(null);
 
   const discover = useCallback(async () => {
     if (!project || transitioning) return;
@@ -52,9 +55,10 @@ export function PreviewSurface() {
 
   useEffect(() => {
     return () => {
-      if (active) void stopPreviewTarget(active).catch(() => undefined);
+      const target = activeTargetRef.current ?? startingTargetRef.current;
+      if (target) void stopPreviewTarget(target).catch(() => undefined);
     };
-  }, [active]);
+  }, []);
 
   return (
     <section className="placeholder-surface" aria-label="Preview">
@@ -81,7 +85,10 @@ export function PreviewSurface() {
               type="button"
               onClick={() =>
                 void stopPreviewTarget(target)
-                  .then(() => setActive(null))
+                  .then(() => {
+                    activeTargetRef.current = null;
+                    setActive(null);
+                  })
                   .catch((error) =>
                     setMessage(
                       error instanceof Error
@@ -96,21 +103,35 @@ export function PreviewSurface() {
           ) : (
             <button
               type="button"
-              disabled={loading || transitioning}
-              onClick={() =>
+              disabled={loading || starting || transitioning}
+              onClick={() => {
+                if (startingTargetRef.current) return;
+                startingTargetRef.current = target;
+                setStarting(true);
                 void startPreviewTarget(target)
                   .then(async (started) => {
                     await getPreviewHealth(target);
+                    activeTargetRef.current = started.ref;
+                    startingTargetRef.current = null;
+                    setStarting(false);
                     setActive(started.ref);
                   })
-                  .catch((error) =>
+                  .catch((error) => {
+                    const failedTarget = startingTargetRef.current;
+                    startingTargetRef.current = null;
+                    setStarting(false);
+                    if (failedTarget) {
+                      void stopPreviewTarget(failedTarget).catch(
+                        () => undefined,
+                      );
+                    }
                     setMessage(
                       error instanceof Error
                         ? error.message
                         : "Preview start failed safely.",
-                    ),
-                  )
-              }
+                    );
+                  });
+              }}
             >
               Start
             </button>

@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     io::Read,
-    process::{Child, Command, Stdio},
+    process::{Child, ChildStderr, ChildStdout, Command, Stdio},
     sync::{Mutex, OnceLock, mpsc},
     thread,
     time::{Duration, Instant},
@@ -52,6 +52,12 @@ pub(crate) struct PreviewStopResponse {
     pub ref_: PreviewTargetRef,
 }
 
+pub(crate) struct PreviewStartReservation {
+    target: PreviewTargetRef,
+    stdout: ChildStdout,
+    stderr: ChildStderr,
+}
+
 fn registry() -> &'static Mutex<Registry> {
     static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
     REGISTRY.get_or_init(|| Mutex::new(Registry::default()))
@@ -70,7 +76,9 @@ pub(crate) fn replace_discovered(
     registry.discovered.extend(targets);
 }
 
-pub(crate) fn start(target: PreviewTargetRef) -> Result<PreviewStartResponse, PreviewError> {
+pub(crate) fn reserve_start(
+    target: PreviewTargetRef,
+) -> Result<PreviewStartReservation, PreviewError> {
     let (stdout, stderr) = {
         let mut registry = registry().lock().expect("preview lifecycle registry");
         if registry.active.is_some() || registry.starting.is_some() {
@@ -113,6 +121,20 @@ pub(crate) fn start(target: PreviewTargetRef) -> Result<PreviewStartResponse, Pr
         });
         (stdout, stderr)
     };
+    Ok(PreviewStartReservation {
+        target,
+        stdout,
+        stderr,
+    })
+}
+
+pub(crate) fn finish_start(
+    PreviewStartReservation {
+        target,
+        stdout,
+        stderr,
+    }: PreviewStartReservation,
+) -> Result<PreviewStartResponse, PreviewError> {
     let origin = wait_for_loopback_server(stdout, stderr);
     let Some(origin) = origin else {
         stop_starting(&target);
@@ -170,27 +192,41 @@ pub(crate) fn health(target: &PreviewTargetRef) -> Option<String> {
 }
 
 pub(crate) fn stop(target: &PreviewTargetRef) -> Result<PreviewStopResponse, PreviewError> {
-    let active = {
+    let mut child = {
         let mut registry = registry().lock().expect("preview lifecycle registry");
-        match registry.active.take() {
-            Some(active) if active.target == *target => active,
-            Some(active) => {
-                registry.active = Some(active);
-                return Err(PreviewError::conflict(
-                    "previewTarget",
-                    "Preview target is not active.",
-                ));
-            }
-            None => {
-                return Err(PreviewError::conflict(
-                    "activePreview",
-                    "No Preview target is active.",
-                ));
-            }
+        if registry
+            .active
+            .as_ref()
+            .is_some_and(|active| active.target == *target)
+        {
+            registry
+                .active
+                .take()
+                .expect("matching active preview")
+                .child
+        } else if registry
+            .starting
+            .as_ref()
+            .is_some_and(|starting| starting.target == *target)
+        {
+            registry
+                .starting
+                .take()
+                .expect("matching starting preview")
+                .child
+        } else if registry.active.is_some() || registry.starting.is_some() {
+            return Err(PreviewError::conflict(
+                "previewTarget",
+                "Preview target is not active.",
+            ));
+        } else {
+            return Err(PreviewError::conflict(
+                "activePreview",
+                "No Preview target is active.",
+            ));
         }
     };
-    let mut active = active;
-    stop_child(&mut active.child);
+    stop_child(&mut child);
     Ok(PreviewStopResponse {
         ref_: target.clone(),
     })
