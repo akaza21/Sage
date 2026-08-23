@@ -9,10 +9,11 @@ use tokio::sync::{Semaphore, oneshot};
 
 use crate::{
     domain::ResourceRef,
-    workspace::search::language_fixture::{LanguageDiagnosticReport, LanguageFixtureRequest},
+    workspace::search::language_fixture::{LanguageFixtureReports, LanguageFixtureRequest},
 };
 
 const LANGUAGE_DIAGNOSTIC_EVENT: &str = "language-diagnostic-v1";
+const LANGUAGE_OUTLINE_EVENT: &str = "language-outline-v1";
 static LANGUAGE_LIFECYCLE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 static LANGUAGE_SESSIONS: OnceLock<Mutex<LanguageSessions>> = OnceLock::new();
 #[cfg(test)]
@@ -60,10 +61,11 @@ pub async fn start_language_session(
             cancellation,
         )
         .await;
-        if let Ok(report) = result
+        if let Ok(reports) = result
             && active_session_matches(&resource, generation)
         {
-            let _ = app.emit(LANGUAGE_DIAGNOSTIC_EVENT, report);
+            let _ = app.emit(LANGUAGE_DIAGNOSTIC_EVENT, reports.diagnostics);
+            let _ = app.emit(LANGUAGE_OUTLINE_EVENT, reports.outline);
         }
         clear_session(&resource, generation);
         let _ = completion.send(());
@@ -148,7 +150,7 @@ fn clear_session(resource: &ResourceRef, generation: u32) {
 async fn run_language_fixture(
     request: LanguageFixtureRequest,
     cancellation: oneshot::Receiver<()>,
-) -> Result<LanguageDiagnosticReport, String> {
+) -> Result<LanguageFixtureReports, String> {
     let lifecycle = language_lifecycle();
     let mut acquire = Box::pin(lifecycle.acquire_owned());
     let mut cancellation = Box::pin(cancellation);

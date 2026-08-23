@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   LANGUAGE_DIAGNOSTIC_EVENT,
   type LanguageDiagnosticReport,
+  type LanguageOutlineReport,
 } from "../../domain/languageService";
 import { languageDesktop } from "../../services/languageDesktop";
 import { startLanguageClient, useLanguageSession } from "./languageClient";
@@ -23,6 +24,47 @@ afterEach(() => {
 });
 
 describe("language client seam", () => {
+  it("problems_and_outline_cancel_with_the_language_session", async () => {
+    let deliverDiagnostic!: (report: LanguageDiagnosticReport) => void;
+    let deliverOutline!: (report: LanguageOutlineReport) => void;
+    const unsubscribeDiagnostics = vi.fn();
+    const unsubscribeOutline = vi.fn();
+    vi.spyOn(languageDesktop, "startLanguageSession").mockResolvedValue(1);
+    vi.spyOn(languageDesktop, "cancelLanguageSession").mockResolvedValue();
+    vi.spyOn(languageDesktop, "subscribeDiagnostics").mockImplementation(
+      async (onReport) => {
+        deliverDiagnostic = onReport;
+        return unsubscribeDiagnostics;
+      },
+    );
+    vi.spyOn(languageDesktop, "subscribeOutline").mockImplementation(
+      async (onReport) => {
+        deliverOutline = onReport;
+        return unsubscribeOutline;
+      },
+    );
+    const outlines: LanguageOutlineReport[] = [];
+    const session = await startLanguageClient(
+      resource,
+      "",
+      undefined,
+      undefined,
+      (report) => outlines.push(report),
+    );
+
+    deliverDiagnostic({ resource, generation: 1, diagnostics: [] });
+    deliverOutline({
+      resource,
+      generation: 1,
+      symbols: [{ resource, name: "example", kind: "file", startLine: 1 }],
+    });
+    await session.cancel();
+
+    expect(outlines).toHaveLength(1);
+    expect(unsubscribeDiagnostics).toHaveBeenCalledOnce();
+    expect(unsubscribeOutline).toHaveBeenCalledOnce();
+  });
+
   it("starts through languageDesktop, bounds reports, and stops delivery after cancel", async () => {
     let deliver!: (report: LanguageDiagnosticReport) => void;
     const unsubscribe = vi.fn();

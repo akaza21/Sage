@@ -23,6 +23,8 @@ const MAX_LANGUAGE_OUTPUT_BYTES: usize = 64 * 1024;
 const MAX_DOCUMENT_BYTES: usize = 48 * 1024;
 const MAX_DIAGNOSTICS: usize = 64;
 const MAX_MESSAGE_BYTES: usize = 4 * 1024;
+const MAX_OUTLINE_SYMBOLS: usize = 64;
+const MAX_SYMBOL_NAME_BYTES: usize = 256;
 const RUN_DEADLINE: Duration = Duration::from_millis(2_200);
 const REAP_DEADLINE: Duration = Duration::from_millis(250);
 const TEST_REPLY_START: &[u8] = b"SAGE_LANGUAGE_TEST_REPLY_START\n";
@@ -56,10 +58,34 @@ pub(crate) struct LanguageDiagnosticReport {
     pub(crate) diagnostics: Vec<LanguageDiagnostic>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LanguageOutlineSymbol {
+    pub(crate) resource: ResourceRef,
+    pub(crate) name: String,
+    pub(crate) kind: String,
+    pub(crate) start_line: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LanguageOutlineReport {
+    pub(crate) resource: ResourceRef,
+    pub(crate) generation: u32,
+    pub(crate) symbols: Vec<LanguageOutlineSymbol>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct LanguageFixtureReports {
+    pub(crate) diagnostics: LanguageDiagnosticReport,
+    pub(crate) outline: LanguageOutlineReport,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct LanguageFixtureReply {
-    report: Option<LanguageDiagnosticReport>,
+    diagnostics: Option<LanguageDiagnosticReport>,
+    outline: Option<LanguageOutlineReport>,
     error: Option<String>,
 }
 
@@ -82,7 +108,7 @@ impl ProcessSpec {
 pub(crate) async fn run(
     request: LanguageFixtureRequest,
     cancellation: oneshot::Receiver<()>,
-) -> Result<LanguageDiagnosticReport, String> {
+) -> Result<LanguageFixtureReports, String> {
     run_with_spec(request, cancellation, ProcessSpec::production()?, false).await
 }
 
@@ -91,7 +117,7 @@ async fn run_with_spec(
     cancellation: oneshot::Receiver<()>,
     spec: ProcessSpec,
     test_framing: bool,
-) -> Result<LanguageDiagnosticReport, String> {
+) -> Result<LanguageFixtureReports, String> {
     validate_request(&request)?;
     let input = serde_json::to_vec(&request).map_err(|_| "language request encoding failed")?;
     if input.len() as u64 > MAX_LANGUAGE_INPUT_BYTES {
@@ -248,11 +274,13 @@ fn write_stdio_reply() {
     }
     let reply = match result {
         Ok(report) => LanguageFixtureReply {
-            report: Some(report),
+            diagnostics: Some(report.diagnostics),
+            outline: Some(report.outline),
             error: None,
         },
         Err(error) => LanguageFixtureReply {
-            report: None,
+            diagnostics: None,
+            outline: None,
             error: Some(error.into()),
         },
     };
@@ -270,7 +298,7 @@ fn write_stdio_reply() {
     }
 }
 
-fn execute(request: LanguageFixtureRequest) -> Result<LanguageDiagnosticReport, &'static str> {
+fn execute(request: LanguageFixtureRequest) -> Result<LanguageFixtureReports, &'static str> {
     validate_request(&request).map_err(|_| "language fixture input is invalid")?;
     if request.document.contains("SAGE_TS_FIXTURE_SLEEP") {
         std::thread::sleep(Duration::from_secs(30));
@@ -303,11 +331,44 @@ fn execute(request: LanguageFixtureRequest) -> Result<LanguageDiagnosticReport, 
         })
         .into_iter()
         .collect();
-    Ok(LanguageDiagnosticReport {
-        resource: request.resource,
-        generation: request.generation,
-        diagnostics,
+    let outline = outline_report(&request);
+    Ok(LanguageFixtureReports {
+        diagnostics: LanguageDiagnosticReport {
+            resource: request.resource,
+            generation: request.generation,
+            diagnostics,
+        },
+        outline,
     })
+}
+
+fn outline_report(request: &LanguageFixtureRequest) -> LanguageOutlineReport {
+    let symbols = request
+        .document
+        .find("function ")
+        .and_then(|offset| {
+            let name = request.document[offset + "function ".len()..]
+                .bytes()
+                .take_while(|byte| byte.is_ascii_alphanumeric() || *byte == b'_' || *byte == b'$')
+                .collect::<Vec<_>>();
+            (!name.is_empty()).then(|| LanguageOutlineSymbol {
+                resource: request.resource.clone(),
+                name: String::from_utf8(name).unwrap_or_default(),
+                kind: "function".into(),
+                start_line: request.document[..offset]
+                    .bytes()
+                    .filter(|byte| *byte == b'\n')
+                    .count() as u32
+                    + 1,
+            })
+        })
+        .into_iter()
+        .collect();
+    LanguageOutlineReport {
+        resource: request.resource.clone(),
+        generation: request.generation,
+        symbols,
+    }
 }
 
 fn validate_request(request: &LanguageFixtureRequest) -> Result<(), String> {
@@ -325,20 +386,42 @@ fn validate_request(request: &LanguageFixtureRequest) -> Result<(), String> {
 fn decode_reply(
     bytes: &[u8],
     request: &LanguageFixtureRequest,
-) -> Result<LanguageDiagnosticReport, String> {
+) -> Result<LanguageFixtureReports, String> {
     let reply: LanguageFixtureReply =
         serde_json::from_slice(bytes).map_err(|_| "language fixture returned invalid output")?;
-    match (reply.report, reply.error) {
-        (Some(report), None)
-            if report.resource == request.resource
-                && report.generation == request.generation
-                && valid_report(&report) =>
+    match (reply.diagnostics, reply.outline, reply.error) {
+        (Some(diagnostics), Some(outline), None)
+            if diagnostics.resource == request.resource
+                && diagnostics.generation == request.generation
+                && valid_report(&diagnostics)
+                && outline.resource == request.resource
+                && outline.generation == request.generation
+                && valid_outline_report(&outline) =>
         {
-            Ok(report)
+            Ok(LanguageFixtureReports {
+                diagnostics,
+                outline,
+            })
         }
-        (None, Some(error)) if !error.is_empty() && error.len() <= MAX_MESSAGE_BYTES => Err(error),
+        (None, None, Some(error)) if !error.is_empty() && error.len() <= MAX_MESSAGE_BYTES => {
+            Err(error)
+        }
         _ => Err("language fixture returned a contradictory result".into()),
     }
+}
+
+fn valid_outline_report(report: &LanguageOutlineReport) -> bool {
+    report.symbols.len() <= MAX_OUTLINE_SYMBOLS
+        && report.symbols.iter().all(|symbol| {
+            symbol.resource == report.resource
+                && !symbol.name.is_empty()
+                && symbol.name.len() <= MAX_SYMBOL_NAME_BYTES
+                && matches!(
+                    symbol.kind.as_str(),
+                    "file" | "function" | "type" | "unknown"
+                )
+                && symbol.start_line > 0
+        })
 }
 
 fn test_reply(bytes: &[u8]) -> Result<&[u8], String> {
@@ -386,6 +469,6 @@ fn test_process_spec() -> ProcessSpec {
 pub(crate) async fn run_test_fixture(
     request: LanguageFixtureRequest,
     cancellation: oneshot::Receiver<()>,
-) -> Result<LanguageDiagnosticReport, String> {
+) -> Result<LanguageFixtureReports, String> {
     run_with_spec(request, cancellation, test_process_spec(), true).await
 }

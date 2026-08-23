@@ -29,9 +29,23 @@ fn language_fixture_process_surfaces_one_typescript_diagnostic() {
             .unwrap()
     });
 
-    assert_eq!(report.resource.root_id, "root-a");
-    assert_eq!(report.diagnostics.len(), 1);
-    assert_eq!(report.diagnostics[0].severity, "error");
+    assert_eq!(report.diagnostics.resource.root_id, "root-a");
+    assert_eq!(report.diagnostics.diagnostics.len(), 1);
+    assert_eq!(report.diagnostics.diagnostics[0].severity, "error");
+}
+
+#[test]
+fn language_fixture_emits_one_outline_symbol_for_the_active_resource() {
+    let reports = tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (_keep_alive, receiver) = oneshot::channel();
+        run_language_fixture(request("export function example() {}"), receiver)
+            .await
+            .unwrap()
+    });
+
+    assert_eq!(reports.outline.resource.root_id, "root-a");
+    assert_eq!(reports.outline.symbols.len(), 1);
+    assert_eq!(reports.outline.symbols[0].name, "example");
 }
 
 #[test]

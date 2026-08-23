@@ -1,6 +1,8 @@
 import {
   LANGUAGE_DIAGNOSTIC_EVENT,
+  LANGUAGE_OUTLINE_EVENT,
   type LanguageDiagnosticReport,
+  type LanguageOutlineReport,
 } from "../domain/languageService";
 import type { ResourceRef } from "../domain/resource";
 
@@ -48,6 +50,19 @@ export const languageDesktop = {
       }
     });
   },
+  async subscribeOutline(
+    onReport: (report: LanguageOutlineReport) => void,
+  ): Promise<() => void> {
+    if (!isTauriRuntime()) {
+      return () => undefined;
+    }
+    const { listen } = await import("@tauri-apps/api/event");
+    return listen<unknown>(LANGUAGE_OUTLINE_EVENT, (event) => {
+      if (isLanguageOutlineReport(event.payload)) {
+        onReport(event.payload);
+      }
+    });
+  },
 };
 
 function isLanguageDiagnosticReport(
@@ -80,6 +95,30 @@ function isLanguageDiagnosticReport(
   );
 }
 
+function isLanguageOutlineReport(
+  value: unknown,
+): value is LanguageOutlineReport {
+  return (
+    isRecord(value) &&
+    isResource(value.resource) &&
+    isGeneration(value.generation) &&
+    Array.isArray(value.symbols) &&
+    value.symbols.length <= 64 &&
+    value.symbols.every(
+      (symbol) =>
+        isRecord(symbol) &&
+        isResource(symbol.resource) &&
+        typeof symbol.name === "string" &&
+        utf8ByteLength(symbol.name) <= 256 &&
+        (symbol.kind === "file" ||
+          symbol.kind === "function" ||
+          symbol.kind === "type" ||
+          symbol.kind === "unknown") &&
+        isPosition(symbol.startLine),
+    )
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -108,4 +147,8 @@ function isPosition(value: unknown): value is number {
     value > 0 &&
     value <= 0xffff_ffff
   );
+}
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
 }

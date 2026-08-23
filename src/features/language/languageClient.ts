@@ -1,7 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type {
   LanguageDiagnosticReport,
+  LanguageOutlineReport,
   LanguageSession,
 } from "../../domain/languageService";
 import type { ResourceRef } from "../../domain/resource";
@@ -38,21 +39,29 @@ export async function startLanguageClient(
   document: string,
   onReport: (report: LanguageDiagnosticReport) => void = () => undefined,
   signal?: AbortSignal,
+  onOutline: (report: LanguageOutlineReport) => void = () => undefined,
 ): Promise<LanguageSession> {
   let cancelled = false;
-  const unsubscribe = await languageDesktop.subscribeDiagnostics((report) => {
+  const unsubscribeDiagnostics = await languageDesktop.subscribeDiagnostics((report) => {
     if (!cancelled && acceptsReport(report, resource)) {
       onReport(report);
     }
   });
+  const unsubscribeOutline = await languageDesktop.subscribeOutline((report) => {
+    if (!cancelled && acceptsOutlineReport(report, resource)) {
+      onOutline(report);
+    }
+  });
   if (signal?.aborted) {
-    unsubscribe();
+    unsubscribeDiagnostics();
+    unsubscribeOutline();
     return CANCELLED_LANGUAGE_SESSION;
   }
   try {
     await languageDesktop.startLanguageSession(resource, document);
   } catch (error) {
-    unsubscribe();
+    unsubscribeDiagnostics();
+    unsubscribeOutline();
     throw error;
   }
   return {
@@ -62,7 +71,8 @@ export async function startLanguageClient(
         return;
       }
       cancelled = true;
-      unsubscribe();
+      unsubscribeDiagnostics();
+      unsubscribeOutline();
       await languageDesktop.cancelLanguageSession(resource);
     },
   };
@@ -196,4 +206,92 @@ function acceptsReport(
     report.generation > 0 &&
     report.diagnostics.length <= MAX_DIAGNOSTICS
   );
+}
+
+function acceptsOutlineReport(
+  report: LanguageOutlineReport,
+  resource: ResourceRef,
+): boolean {
+  return (
+    sameResource(report.resource, resource) &&
+    report.generation > 0 &&
+    report.symbols.length <= MAX_DIAGNOSTICS
+  );
+}
+
+export function useDiagnosticProjection(
+  resource: ResourceRef | undefined,
+): LanguageDiagnosticReport | null {
+  return useLanguageProjection(
+    resource,
+    languageDesktop.subscribeDiagnostics,
+    boundDiagnosticReport,
+  );
+}
+
+export function useOutlineProjection(
+  resource: ResourceRef | undefined,
+): LanguageOutlineReport | null {
+  return useLanguageProjection(
+    resource,
+    languageDesktop.subscribeOutline,
+    boundOutlineReport,
+  );
+}
+
+function boundDiagnosticReport(
+  report: LanguageDiagnosticReport,
+): LanguageDiagnosticReport {
+  return { ...report, diagnostics: report.diagnostics.slice(0, MAX_DIAGNOSTICS) };
+}
+
+function boundOutlineReport(report: LanguageOutlineReport): LanguageOutlineReport {
+  return { ...report, symbols: report.symbols.slice(0, MAX_DIAGNOSTICS) };
+}
+
+function useLanguageProjection<T extends LanguageDiagnosticReport | LanguageOutlineReport>(
+  resource: ResourceRef | undefined,
+  subscribe: (
+    onReport: (report: T) => void,
+  ) => Promise<() => void>,
+  bound: (report: T) => T,
+): T | null {
+  const [report, setReport] = useState<T | null>(null);
+  const rootId = resource?.rootId;
+  const relativePath = resource?.relativePath;
+
+  useEffect(() => {
+    let sleeping = false;
+    let unsubscribe: (() => void) | undefined;
+    let latestGeneration = 0;
+    setReport(null);
+    if (!rootId || !relativePath) {
+      return;
+    }
+    const activeResource = { rootId, relativePath };
+    void subscribe((incoming) => {
+      if (
+        sleeping ||
+        !sameResource(incoming.resource, activeResource) ||
+        incoming.generation <= latestGeneration
+      ) {
+        return;
+      }
+      latestGeneration = incoming.generation;
+      setReport(bound(incoming));
+    }).then((nextUnsubscribe) => {
+      if (sleeping) {
+        nextUnsubscribe();
+      } else {
+        unsubscribe = nextUnsubscribe;
+      }
+    });
+    return () => {
+      sleeping = true;
+      unsubscribe?.();
+      setReport(null);
+    };
+  }, [bound, relativePath, rootId, subscribe]);
+
+  return report;
 }
