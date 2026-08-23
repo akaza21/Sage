@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::windows::fs::OpenOptionsExt;
@@ -6,7 +5,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
-use uuid::Uuid;
 use windows_sys::Win32::Storage::FileSystem::{FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ};
 
 use super::{
@@ -19,6 +17,11 @@ use crate::acp::bindings::codex::{
         InspectionClaims, PhysicallyInspectedPackage, inspect_claims, open_exact_state_root,
     },
 };
+
+#[path = "windows/targets.rs"]
+mod targets;
+
+use targets::{require_absent, require_present, target_exists, validate_root_closure};
 
 #[cfg(test)]
 #[path = "windows/test_failpoint.rs"]
@@ -310,7 +313,7 @@ fn create_new_file(path: &Path) -> Result<File, ProvisioningError> {
 }
 
 fn expected_directories(files: &[SourceFile]) -> Result<Vec<PathBuf>, ProvisioningError> {
-    let mut directories = BTreeSet::new();
+    let mut directories = std::collections::BTreeSet::new();
     for file in files {
         if file.relative_path.components().count() > 8 {
             return Err(ProvisioningError::Bound);
@@ -330,7 +333,7 @@ fn build_receipt(source: &VerifiedCodexSource) -> Result<SealedHandoff, Provisio
         schema_version: 1,
         binding_id: "codex-app-server".into(),
         runtime_version: "0.145.0".into(),
-        creation_nonce: Uuid::new_v4().simple().to_string(),
+        creation_nonce: uuid::Uuid::new_v4().simple().to_string(),
         source_proof_sha256: source.source_proof_sha256.clone(),
         aggregate_byte_len: source.inspection.byte_len(),
         files: source
@@ -389,25 +392,6 @@ fn read_receipt(path: &Path) -> Result<SealedHandoff, ProvisioningError> {
     Ok(receipt)
 }
 
-fn validate_root_closure(root: &Path) -> Result<(), ProvisioningError> {
-    let names = fs::read_dir(root)
-        .map_err(|_| ProvisioningError::StageDrift)?
-        .map(|entry| {
-            entry
-                .map(|entry| entry.file_name())
-                .map_err(|_| ProvisioningError::StageDrift)
-        })
-        .collect::<Result<BTreeSet<_>, _>>()?;
-    let expected = [HANDOFF_NAME, PACKAGE_NAME, STATE_NAME]
-        .into_iter()
-        .map(Into::into)
-        .collect::<BTreeSet<_>>();
-    if names != expected {
-        return Err(ProvisioningError::StageDrift);
-    }
-    Ok(())
-}
-
 fn expected_files(
     files: &[SourceFile],
 ) -> Vec<crate::acp::bindings::codex::physical::ExpectedPhysicalFile> {
@@ -421,30 +405,6 @@ fn expected_files(
             },
         )
         .collect()
-}
-
-fn require_absent(path: &Path) -> Result<(), ProvisioningError> {
-    if target_exists(path)? {
-        Err(ProvisioningError::TargetExists)
-    } else {
-        Ok(())
-    }
-}
-
-fn require_present(path: &Path) -> Result<(), ProvisioningError> {
-    if target_exists(path)? {
-        Ok(())
-    } else {
-        Err(ProvisioningError::StageDrift)
-    }
-}
-
-fn target_exists(path: &Path) -> Result<bool, ProvisioningError> {
-    match fs::symlink_metadata(path) {
-        Ok(_) => Ok(true),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(_) => Err(ProvisioningError::Io),
-    }
 }
 
 fn sync_directory(directory: &File) -> Result<(), ProvisioningError> {
