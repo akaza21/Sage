@@ -54,10 +54,7 @@ describe("PermissionItem", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("status", { name: "Waiting for approval" }),
-    ).toHaveAttribute(
-      "aria-live",
-      "off",
-    );
+    ).toHaveAttribute("aria-live", "off");
     expect(screen.getByText("Details")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ask" })).toBeInTheDocument();
     expect(

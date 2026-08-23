@@ -47,7 +47,11 @@ function waitingPermission(): PermissionProjectionItem {
 
 describe("permission decision seam", () => {
   it("exposes exactly Ask, Allow once, and Deny through the desktop decision seam", async () => {
-    const decisions = ["ask", "allowOnce", "deny"] as const satisfies readonly PermissionDecision[];
+    const decisions = [
+      "ask",
+      "allowOnce",
+      "deny",
+    ] as const satisfies readonly PermissionDecision[];
     expect(decisions).toEqual(["ask", "allowOnce", "deny"]);
 
     const resolve = vi
@@ -84,13 +88,33 @@ describe("permission decision seam", () => {
     const sources = await Promise.all(
       [
         "PermissionItem.tsx",
-        path.join("..", "..", "..", "..", "src-tauri", "src", "acp", "runtime", "permissions.rs"),
-        path.join("..", "..", "..", "..", "src-tauri", "src", "acp", "store", "requests.rs"),
+        path.join(
+          "..",
+          "..",
+          "..",
+          "..",
+          "src-tauri",
+          "src",
+          "acp",
+          "runtime",
+          "permissions.rs",
+        ),
+        path.join(
+          "..",
+          "..",
+          "..",
+          "..",
+          "src-tauri",
+          "src",
+          "acp",
+          "store",
+          "requests.rs",
+        ),
       ].map((file) => readFile(path.join(acpDirectory, file), "utf8")),
     );
 
     for (const source of sources) {
-      expect(source).not.toMatch(/codex|claude|pi|oh-my-pi/i);
+      expect(source).not.toMatch(/\b(?:codex|claude|pi|oh-my-pi)\b/i);
     }
   });
 });

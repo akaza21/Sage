@@ -59,23 +59,23 @@ export function getPermissionStatus(item: PermissionItem) {
       : allowing
         ? "Allowing once"
         : declined || item.payload.state === "declineCommitted"
-      ? "Declined"
-      : asking
-        ? "Asking again"
-        : item.payload.state === "responseQueued"
-          ? "Responding"
-          : item.payload.state === "declinePending"
-            ? "Declining"
-            : "Waiting for approval";
+          ? "Declined"
+          : asking
+            ? "Asking again"
+            : item.payload.state === "responseQueued"
+              ? "Responding"
+              : item.payload.state === "declinePending"
+                ? "Declining"
+                : "Waiting for approval";
   return {
     visual,
     accessible: failedClosed
       ? "Permission failed closed"
       : allowed
         ? "Permission allowed once"
-      : declined
-        ? "Permission declined"
-        : visual,
+        : declined
+          ? "Permission declined"
+          : visual,
     terminal: failedClosed || declined || allowed,
   };
 }

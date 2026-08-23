@@ -58,7 +58,11 @@ export function PermissionItem({ item }: { item: PermissionProjectionItem }) {
       </details>
       {actionable ? (
         <div className="acp-permission__actions">
-          <button type="button" disabled={submitting} onClick={() => decide("ask")}>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => decide("ask")}
+          >
             Ask
           </button>
           <button
@@ -68,7 +72,11 @@ export function PermissionItem({ item }: { item: PermissionProjectionItem }) {
           >
             {allowOnceLabel}
           </button>
-          <button type="button" disabled={submitting} onClick={() => decide("deny")}>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => decide("deny")}
+          >
             Deny
           </button>
         </div>
