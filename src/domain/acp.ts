@@ -1,4 +1,13 @@
 import type { ResourceRef } from "./workbench";
+import type { PermissionState } from "./acpPermission";
+
+export type {
+  PermissionDecision,
+  PermissionState,
+  ResolvePermissionDecisionRequest,
+  ResolvePermissionDecisionResponse,
+} from "./acpPermission";
+
 
 type Brand<Value, Name extends string> = Value & {
   readonly __sageBrand: Name;
@@ -64,36 +73,6 @@ export type ToolState =
   | "failed"
   | "declined"
   | "cancelled";
-
-export type PermissionDecision = "ask" | "allowOnce" | "deny";
-
-export type PermissionState =
-  | "received"
-  | "asked"
-  | "allowPending"
-  | "allowCommitted"
-  | "declinePending"
-  | "declineCommitted"
-  | "responseQueued"
-  | "resolvedAllowed"
-  | "resolvedDeclined";
-
-export interface ResolvePermissionDecisionRequest {
-  projectId: string;
-  chatId: string;
-  sessionId: string;
-  requestId: string;
-  decision: PermissionDecision;
-}
-
-export interface ResolvePermissionDecisionResponse {
-  projectId: string;
-  chatId: string;
-  sessionId: string;
-  requestId: string;
-  decision: PermissionDecision;
-  state: PermissionState;
-}
 
 export type ActivityState =
   "observed" | "active" | "completed" | "failed" | "cancelled" | "unsupported";
