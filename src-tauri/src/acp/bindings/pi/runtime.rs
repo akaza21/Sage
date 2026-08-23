@@ -291,7 +291,16 @@ impl HarnessAdapter for PiRuntime {
                 self.begin_one(Operation::Abort, RequestKind::Cancel)
             }
             AdapterCommand::Cancel => Err(AdapterRuntimeError::Operation),
-            AdapterCommand::ResolvePermission { .. } => Err(AdapterRuntimeError::PermissionIntent),
+            AdapterCommand::ResolvePermission { request_id, .. } => {
+                let pending = self
+                    .deny
+                    .as_ref()
+                    .is_some_and(|intent| intent.request_id.as_str() == request_id.as_str());
+                if !pending {
+                    return Err(AdapterRuntimeError::PermissionIntent);
+                }
+                self.resolve_later_permission()
+            }
         }
     }
 

@@ -97,10 +97,12 @@ impl PermissionFixtureAdapter {
         self.decline_stage = Some(DeclineStage::Prepared);
         let turn_id = self.identity("permission-turn-envelope")?;
         let item_id = self.identity("permission-a")?;
+        let external_request_id = item_id.external_id.clone();
         AdapterBatch::new(
             vec![AdapterEvent::PermissionRequest {
                 turn_id,
                 item_id,
+                external_request_id,
                 payload: NormalizedPayload::PermissionRequest {
                     category: ToolCategory::Other,
                     summary: SafeText::new(

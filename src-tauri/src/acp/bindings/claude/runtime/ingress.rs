@@ -191,6 +191,7 @@ impl ClaudeRuntime {
                 request_event = Some(SharedEvent::PermissionRequest {
                     turn_id: self.turn_identity(active)?,
                     item_id: self.item_identity(active, request_id.clone())?,
+                    external_request_id: request_id.clone(),
                     payload,
                     request_payload_digest: request_digest,
                 });

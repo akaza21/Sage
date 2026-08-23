@@ -182,11 +182,12 @@ impl CodexRuntime {
                 turn_id,
                 item_id,
                 payload,
-                denial: _,
+                denial,
             } => (
                 AdapterEvent::PermissionRequest {
                     turn_id: identity(turn_id),
                     item_id: identity(item_id),
+                    external_request_id: denial.external_request.external_id,
                     payload,
                     request_payload_digest: request_digest,
                 },
@@ -268,12 +269,17 @@ impl HarnessAdapter for CodexRuntime {
                             EgressToken::protocol_notification(),
                         ))
                     }
-                    (PermissionDecision::AllowOnce, Some((request_id, _))) => {
+                    (PermissionDecision::AllowOnce, Some((request_id, _, method))) => {
                         let request_id = ExternalId::new("externalRequestId", request_id)
                             .map_err(|_| AdapterRuntimeError::Frame)?;
+                        let result = if method == "item/permissions/requestApproval" {
+                            serde_json::json!({"permissions": {}})
+                        } else {
+                            serde_json::json!({"decision": "accept"})
+                        };
                         let bytes = serde_json::to_vec(&serde_json::json!({
                             "id": request_id.as_str(),
-                            "result": { "decision": "accept" }
+                            "result": result
                         }))
                         .map_err(|_| AdapterRuntimeError::Frame)?;
                         let frame =
@@ -283,7 +289,7 @@ impl HarnessAdapter for CodexRuntime {
                             EgressToken::permission_allow(request_id),
                         ))
                     }
-                    (PermissionDecision::Deny, Some((request_id, bytes))) => {
+                    (PermissionDecision::Deny, Some((request_id, bytes, _))) => {
                         let request_id = ExternalId::new("externalRequestId", request_id)
                             .map_err(|_| AdapterRuntimeError::Frame)?;
                         let frame =

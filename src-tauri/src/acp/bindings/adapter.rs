@@ -120,6 +120,7 @@ pub(crate) enum AdapterEvent {
     PermissionRequest {
         turn_id: AdapterIdentity,
         item_id: AdapterIdentity,
+        external_request_id: ExternalId,
         payload: NormalizedPayload,
         request_payload_digest: [u8; 32],
     },

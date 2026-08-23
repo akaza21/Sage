@@ -485,7 +485,8 @@ fn permission_ingress_journals_a_request_and_waits_for_a_later_decision() {
     runtime().block_on(async {
         let event = AdapterEvent::PermissionRequest {
             turn_id: identity("turn-envelope"),
-            item_id: identity("external-request"),
+            item_id: identity("permission-item"),
+            external_request_id: ExternalId::new("permissionRequest", "request-external").unwrap(),
             payload: permission(),
             request_payload_digest: [1; 32],
         };
@@ -499,7 +500,8 @@ fn permission_ingress_journals_a_request_and_waits_for_a_later_decision() {
                     && intent.session_id == session("one")
                     && intent.turn_id == turn("one")
                     && intent.runtime_epoch == RuntimeEpoch::new(1).unwrap()
-                    && intent.external_request_id.as_str() == "external-request"
+                    && intent.request_id.as_str() == "request-external"
+                    && intent.external_request_id.as_str() == "request-external"
         ));
         assert!(state.request_states.is_empty());
         assert!(state.commands.is_empty());
@@ -514,7 +516,7 @@ fn permission_ingress_journals_a_request_and_waits_for_a_later_decision() {
 }
 
 #[test]
-fn ask_drops_the_adapter_egress_without_writing_a_harness_byte() {
+fn ask_does_not_invoke_the_adapter_or_write_a_harness_byte() {
     runtime().block_on(async {
         let (mut pump, shared) = permission_pump();
         pump.push_stdout_chunk(b"{}\n", 20).await.unwrap();
@@ -534,7 +536,7 @@ fn ask_drops_the_adapter_egress_without_writing_a_harness_byte() {
             FlushDisposition::Idle
         );
         assert_eq!(transport.0, 0);
-        assert_eq!(shared.0.lock().unwrap().commands, ["permission"]);
+        assert!(shared.0.lock().unwrap().commands.is_empty());
     });
 }
 
@@ -648,6 +650,7 @@ fn permission_ingress_does_not_require_a_paired_deny_egress() {
         let permission_event = AdapterEvent::PermissionRequest {
             turn_id: identity("turn-envelope"),
             item_id: identity("external-request"),
+            external_request_id: ExternalId::new("permissionRequest", "external-request").unwrap(),
             payload: permission(),
             request_payload_digest: [1; 32],
         };
@@ -1028,6 +1031,7 @@ fn permission_pump() -> (AdapterPump<FakeAdapter, FakeJournal, Mapper>, Shared) 
     let event = AdapterEvent::PermissionRequest {
         turn_id: identity("turn-envelope"),
         item_id: identity("external-request"),
+        external_request_id: ExternalId::new("permissionRequest", "external-request").unwrap(),
         payload: permission(),
         request_payload_digest: [1; 32],
     };

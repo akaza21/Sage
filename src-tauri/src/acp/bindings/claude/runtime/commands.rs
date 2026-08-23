@@ -84,7 +84,18 @@ impl ClaudeRuntime {
                     json!({"sessionId":active.external_id.as_str()}),
                 )
             }
-            AdapterCommand::ResolvePermission { .. } => Err(AdapterRuntimeError::PermissionIntent),
+            AdapterCommand::ResolvePermission { request_id, .. } => {
+                let record = self
+                    .denials
+                    .get(request_id.as_str())
+                    .ok_or(AdapterRuntimeError::PermissionIntent)?;
+                let request_id = crate::acp::intent::ExternalId::new(
+                    "permissionRequest",
+                    request_id.as_str(),
+                )
+                .map_err(|_| AdapterRuntimeError::PermissionIntent)?;
+                super::denial(&request_id, &record.wire_id, false)
+            }
         }
     }
 }

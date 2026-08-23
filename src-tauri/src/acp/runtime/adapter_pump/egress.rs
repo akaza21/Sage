@@ -30,16 +30,13 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         if &pending.intent.request_id != request_id || pending.decision.is_some() {
             return Err(AdapterPumpError::Intent);
         }
+        if decision == crate::acp::runtime::permissions::PermissionDecision::Ask {
+            return Ok(());
+        }
         let egress = self.adapter.command(AdapterCommand::ResolvePermission {
             request_id: request_id.clone(),
             decision,
         })?;
-        if decision == crate::acp::runtime::permissions::PermissionDecision::Ask {
-            // AdapterCommand has a uniform egress return type. This frame is
-            // intentionally discarded: Ask must never write a harness byte.
-            drop(egress);
-            return Ok(());
-        }
         let intent = pending.intent.clone();
         if egress.token().is_mandatory()
             && self

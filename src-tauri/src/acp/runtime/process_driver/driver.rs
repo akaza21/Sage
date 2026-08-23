@@ -197,7 +197,12 @@ where
             .await
             .map_err(|error| self.pump_error(error))?;
         let mut progress = DriverProgress::default();
-        self.flush_all(DispatchSource::Ingress, &mut progress)?;
+        self.flush_all_ingress(
+            DispatchSource::Ingress,
+            self.clock.now_millis(),
+            &mut progress,
+        )
+        .await?;
         if progress.zero_byte_failures != 0 {
             return Err(self.latch(TeardownCause::MandatoryDenyFailure));
         }

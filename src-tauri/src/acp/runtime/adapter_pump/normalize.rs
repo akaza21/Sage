@@ -102,11 +102,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             AdapterEvent::PermissionRequest {
                 turn_id,
                 item_id,
+                external_request_id,
                 payload,
                 request_payload_digest,
             } if self.exact_turn(&turn_id) && self.exact_turn(&item_id) && terminal.is_none() => {
-                let external = item_id.external_id;
-                let request_id = self.request_id(&external)?;
+                let request_id = SageServerRequestId::parse(external_request_id.as_str())
+                    .map_err(|_| AdapterPumpError::Intent)?;
                 let (normalized_payload_json, measured) = payload_json(&payload)?;
                 Ok(Some(NormalizedFact::new(
                     DurableAdapterEvent::PermissionRequest {
@@ -118,7 +119,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                             turn_id: self.intent.active_turn.turn_id.clone(),
                             runtime_epoch: self.intent.runtime_epoch,
                             binding_digest: hex(&self.intent.binding_digest),
-                            external_request_id: external,
+                            external_request_id,
                             kind: RequiredText::new("requestKind", "permission")
                                 .map_err(|_| AdapterPumpError::Intent)?,
                             payload_digest: hex(&request_payload_digest),

@@ -17,6 +17,15 @@ mod delivery;
 mod identity;
 use identity::{external, model_event, model_key, text_payload, tool_payload, unsupported};
 
+impl PiRuntime {
+    pub(super) fn resolve_later_permission(
+        &mut self,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.mandatory_abort()?
+            .ok_or(AdapterRuntimeError::Operation)
+    }
+}
+
 pub(super) fn capabilities(model_count: u16) -> CapabilitySnapshotV1 {
     CapabilitySnapshotV1 {
         schema_version: SchemaVersionV1,
@@ -272,7 +281,7 @@ impl PiRuntime {
                     turn_id.turn_client_message_id.clone(),
                 );
                 self.deny = Some(DenyIntent {
-                    request_id: id,
+                    request_id: id.clone(),
                     command_id: String::new(),
                     stage: DenyStage::Prepared,
                 });
@@ -280,6 +289,7 @@ impl PiRuntime {
                     Some(AdapterEvent::PermissionRequest {
                         turn_id,
                         item_id,
+                        external_request_id: id,
                         payload: NormalizedPayload::PermissionRequest {
                             category: ToolCategory::Other,
                             summary: SafeText::new(

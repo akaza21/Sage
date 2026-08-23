@@ -4,7 +4,7 @@ use crate::acp::{
         AdapterRuntimeError, ResourceMapper,
     },
     contract::{RequiredText, SchemaVersionV1},
-    intent::{CapabilitySnapshotV1, NormalizedPayload},
+    intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload},
     lifecycle::TurnState,
     transport::OutboundFrame,
 };
@@ -20,6 +20,19 @@ mod delivery;
 mod identity;
 
 pub(super) struct MapperBridge<'a>(pub(super) &'a dyn ResourceMapper);
+
+impl OmpRuntime {
+    pub(super) fn resolve_later_permission(
+        &mut self,
+        request_id: ExternalId,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        if self.translator.pending_count() == 0 && !self.denials.contains_key(request_id.as_str()) {
+            return Err(AdapterRuntimeError::PermissionIntent);
+        }
+        self.prepare_deny(request_id)?
+            .ok_or(AdapterRuntimeError::Operation)
+    }
+}
 
 pub(super) fn outbound_frame(line: &str) -> Result<OutboundFrame, AdapterRuntimeError> {
     let payload = line.strip_suffix('\n').ok_or(AdapterRuntimeError::Frame)?;
@@ -180,7 +193,8 @@ impl OmpRuntime {
                     NormalizedPayload::PermissionRequest { .. } => {
                         RuntimeEvent::PermissionRequest {
                             turn_id: self.turn_identity()?,
-                            item_id: self.item_identity(external_key)?,
+                            item_id: self.item_identity(external_key.clone())?,
+                            external_request_id: external_key,
                             payload,
                             request_payload_digest: request_digest,
                         }

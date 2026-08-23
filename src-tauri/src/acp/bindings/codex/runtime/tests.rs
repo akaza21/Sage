@@ -784,6 +784,18 @@ fn permission_request_waits_for_a_later_deny_and_never_emits_ingress_egress() {
         batch.events(),
         [AdapterEvent::PermissionRequest { .. }]
     ));
+    let [
+        AdapterEvent::PermissionRequest {
+            item_id,
+            external_request_id,
+            ..
+        },
+    ] = batch.events()
+    else {
+        panic!("permission request");
+    };
+    assert_eq!(item_id.external_id.as_str(), "tool-1");
+    assert_eq!(external_request_id.as_str(), "approval-1");
     assert!(batch.egress().is_empty());
     assert!(batch.actual_bytes() <= 262_144);
 
@@ -867,6 +879,31 @@ fn allow_once_duplicates_never_replay_the_retained_decline_response() {
         .ingest(&request, &Mapper)
         .expect("resolved duplicate");
     assert!(resolved_duplicate.egress().is_empty());
+}
+
+#[test]
+fn permissions_approval_allow_once_uses_the_permissions_response_shape() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    let request = frame(json!({
+        "id":"approval-permissions","method":"item/permissions/requestApproval","params":{
+            "threadId":"thread-1","turnId":"turn-1","itemId":"tool-permissions"
+        }
+    }));
+    runtime.ingest(&request, &Mapper).expect("permission");
+
+    let allow = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: crate::acp::contract::SageServerRequestId::parse("approval-permissions")
+                .unwrap(),
+            decision: PermissionDecision::AllowOnce,
+        })
+        .expect("later allow");
+    assert_eq!(
+        serde_json::from_slice::<Value>(allow.frame().payload()).expect("allow json")["result"],
+        json!({"permissions": {}})
+    );
 }
 
 #[test]

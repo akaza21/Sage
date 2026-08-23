@@ -311,7 +311,10 @@ impl HarnessAdapter for OmpRuntime {
                 self.begin_one(Operation::Cancel, RequestKind::Cancel)
             }
             AdapterCommand::Cancel => Err(AdapterRuntimeError::Operation),
-            AdapterCommand::ResolvePermission { .. } => Err(AdapterRuntimeError::PermissionIntent),
+            AdapterCommand::ResolvePermission { request_id, .. } => self.resolve_later_permission(
+                ExternalId::new("permissionRequest", request_id.as_str())
+                    .map_err(|_| AdapterRuntimeError::PermissionIntent)?,
+            ),
         }
     }
 

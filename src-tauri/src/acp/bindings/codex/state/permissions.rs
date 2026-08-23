@@ -112,7 +112,7 @@ impl CodexAdapter {
         &mut self,
         request_id: &str,
         decision: PermissionDecision,
-    ) -> Result<Option<(String, Vec<u8>)>, AdapterError> {
+    ) -> Result<Option<(String, Vec<u8>, String)>, AdapterError> {
         let Some(entry) = self
             .permission_requests
             .iter_mut()
@@ -137,11 +137,15 @@ impl CodexAdapter {
                 // An empty retained response marks the shared queued state as
                 // the allow path, so a duplicate cannot replay decline bytes.
                 entry.response.clear();
-                Ok(Some((entry.id.clone(), Vec::new())))
+                Ok(Some((entry.id.clone(), Vec::new(), entry.method.clone())))
             }
             PermissionDecision::Deny => {
                 entry.state = ServerRequestState::DeclinePending;
-                Ok(Some((entry.id.clone(), entry.response.clone())))
+                Ok(Some((
+                    entry.id.clone(),
+                    entry.response.clone(),
+                    entry.method.clone(),
+                )))
             }
         }
     }
