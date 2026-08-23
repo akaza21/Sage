@@ -689,7 +689,7 @@ fn abort_resume_restores_ready_cold_and_retains_external_identity() {
 }
 
 #[cfg(windows)]
-fn seed_codex_discovery(
+pub(super) fn seed_codex_discovery(
     service: &AcpService,
     project_root: &CodexProjectRootAuthority,
     model: Option<crate::acp::intent::ModelId>,
