@@ -25,12 +25,6 @@ pub(crate) enum AgentEditDispositionState {
     Rejected,
 }
 
-pub(crate) fn record_agent_edit_disposition(
-    _disposition: &AgentEditDisposition,
-) -> Result<(), String> {
-    Err("agent edit disposition requires the durable store connection".into())
-}
-
 pub(crate) fn record_agent_edit_disposition_in(
     connection: &mut rusqlite::Connection,
     disposition: &AgentEditDisposition,
@@ -128,12 +122,13 @@ mod tests {
         )
         .unwrap();
         let revision = EntityRevision::new(9_007_199_254_740_993).unwrap();
-        connection.execute(
-            "INSERT INTO turns VALUES('turn-disposition','project-one','chat-one',?1,1,0,
+        connection
+            .execute(
+                "INSERT INTO turns VALUES('turn-disposition','project-one','chat-one',?1,1,0,
              'turn-intent','completed','correlated',?2,1,1,1)",
-            params![session.session_id.as_str(), revision.get() as i64],
-        )
-        .unwrap();
+                params![session.session_id.as_str(), revision.get() as i64],
+            )
+            .unwrap();
         let disposition = AgentEditDisposition {
             project_id: SageProjectId::parse("project-one").unwrap(),
             chat_id: SageChatId::parse("chat-one").unwrap(),
@@ -155,7 +150,7 @@ mod tests {
         ));
         record_agent_edit_disposition_in(&mut connection, &disposition, 2).unwrap();
 
-        let fact: (String, String, String) = connection
+        let fact: (String, String, i64) = connection
             .query_row(
                 "SELECT kind,payload_json,projection_revision FROM session_facts
                  WHERE session_id=?1 AND turn_id=?2",
@@ -165,7 +160,7 @@ mod tests {
             .unwrap();
         assert_eq!(fact.0, "agentEditDisposition");
         assert!(fact.1.contains("9007199254740993"));
-        assert_eq!(fact.2, "2");
+        assert_eq!(fact.2, 2);
         assert_eq!(
             connection
                 .query_row(

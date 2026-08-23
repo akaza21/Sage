@@ -1,15 +1,19 @@
 //! Owner-landed fail-closed disposition command. AGENT-1 implements the store write.
 
-use crate::acp::{
-    contract::{EntityRevision, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId},
-    intent::{AcpIpcError, AcpUnavailableReason},
-    store::edit_disposition::{
-        AgentEditDisposition, AgentEditDispositionState,
-        record_agent_edit_disposition as persist_agent_edit_disposition,
+use tauri::State;
+
+use crate::{
+    acp::{
+        contract::{EntityRevision, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId},
+        intent::AcpIpcError,
+        store::edit_disposition::{
+            AgentEditDisposition, AgentEditDispositionState, record_agent_edit_disposition_in,
+        },
     },
+    state::AppState,
 };
 
-use super::errors::safe_message;
+use super::errors::store_error;
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -24,19 +28,22 @@ pub struct RecordAgentEditDispositionRequest {
 
 #[tauri::command]
 pub async fn record_agent_edit_disposition(
+    state: State<'_, AppState>,
     request: RecordAgentEditDispositionRequest,
 ) -> Result<serde_json::Value, AcpIpcError> {
-    persist_agent_edit_disposition(&AgentEditDisposition {
-        project_id: request.project_id,
-        chat_id: request.chat_id,
-        session_id: request.session_id,
-        turn_id: request.turn_id,
-        expected_revision: request.expected_revision,
-        state: request.state,
-    })
-    .map_err(|_| AcpIpcError::Unavailable {
-        reason: AcpUnavailableReason::CapabilityUnavailable,
-        message: safe_message("Agent edit disposition is not implemented."),
-    })?;
+    let mut connection = state.database.connection();
+    record_agent_edit_disposition_in(
+        &mut connection,
+        &AgentEditDisposition {
+            project_id: request.project_id,
+            chat_id: request.chat_id,
+            session_id: request.session_id,
+            turn_id: request.turn_id,
+            expected_revision: request.expected_revision,
+            state: request.state,
+        },
+        crate::persistence::now_millis(),
+    )
+    .map_err(store_error)?;
     Ok(serde_json::json!({ "ok": true }))
 }

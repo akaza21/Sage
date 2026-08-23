@@ -122,8 +122,12 @@ export function TurnEditSummary({
                     {change.operation}
                   </span>
                   <span className="acp-file-changes__counts">
-                    <span>{change.additions === null ? "—" : `+${change.additions}`}</span>
-                    <span>{change.deletions === null ? "—" : `-${change.deletions}`}</span>
+                    <span>
+                      {change.additions === null ? "—" : `+${change.additions}`}
+                    </span>
+                    <span>
+                      {change.deletions === null ? "—" : `-${change.deletions}`}
+                    </span>
                   </span>
                   <span>{change.summary}</span>
                 </li>
@@ -150,8 +154,12 @@ export function TurnEditSummary({
                 )}
                 <span className="acp-change-operation">{change.operation}</span>
                 <span className="acp-file-changes__counts">
-                  <span>{change.additions === null ? "—" : `+${change.additions}`}</span>
-                  <span>{change.deletions === null ? "—" : `-${change.deletions}`}</span>
+                  <span>
+                    {change.additions === null ? "—" : `+${change.additions}`}
+                  </span>
+                  <span>
+                    {change.deletions === null ? "—" : `-${change.deletions}`}
+                  </span>
                 </span>
                 <span>{change.summary}</span>
               </li>
@@ -179,7 +187,8 @@ export function TurnEditSummary({
       ) : null}
       {dispositionError ? (
         <p className="acp-file-changes__disclosure" role="alert">
-          The edit disposition was not recorded. No workspace files were changed.
+          The edit disposition was not recorded. No workspace files were
+          changed.
         </p>
       ) : null}
       {summary.omittedCount > 0 ? (
