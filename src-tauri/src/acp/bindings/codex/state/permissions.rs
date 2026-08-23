@@ -1,4 +1,6 @@
-use crate::acp::{lifecycle::ServerRequestState, limits::LIMITS};
+use crate::acp::{
+    lifecycle::ServerRequestState, limits::LIMITS, runtime::permissions::PermissionDecision,
+};
 
 use super::{
     AdapterError, CodexAdapter, ExternalKind, PermissionRegistration, PermissionRequestEntry,
@@ -29,11 +31,14 @@ impl CodexAdapter {
                 return Err(AdapterError::PermissionTeardownRequired);
             }
             return Ok(match existing.state {
-                ServerRequestState::Received | ServerRequestState::DeclinePending => {
-                    PermissionRegistration::DuplicatePending
-                }
-                ServerRequestState::DeclineCommitted
+                ServerRequestState::Received
+                | ServerRequestState::Asked
+                | ServerRequestState::AllowPending
+                | ServerRequestState::DeclinePending => PermissionRegistration::DuplicatePending,
+                ServerRequestState::AllowCommitted
+                | ServerRequestState::DeclineCommitted
                 | ServerRequestState::ResponseQueued
+                | ServerRequestState::ResolvedAllowed
                 | ServerRequestState::ResolvedDeclined => {
                     PermissionRegistration::DuplicateCommitted(existing.response.clone())
                 }
@@ -62,7 +67,7 @@ impl CodexAdapter {
         Ok(PermissionRegistration::New(external))
     }
 
-    pub(crate) fn advance_permission_decline(
+    pub(crate) fn advance_permission(
         &mut self,
         request_id: &str,
         next: ServerRequestState,
@@ -80,5 +85,42 @@ impl CodexAdapter {
         }
         entry.state = next;
         Ok(())
+    }
+
+    pub(crate) fn advance_permission_decline(
+        &mut self,
+        request_id: &str,
+        next: ServerRequestState,
+    ) -> Result<(), AdapterError> {
+        self.advance_permission(request_id, next)
+    }
+
+    pub(crate) fn resolve_pending_permission(
+        &mut self,
+        decision: PermissionDecision,
+    ) -> Result<Option<(String, Vec<u8>)>, AdapterError> {
+        let Some(entry) = self.permission_requests.iter_mut().find(|entry| {
+            matches!(
+                entry.state,
+                ServerRequestState::Received | ServerRequestState::Asked
+            )
+        }) else {
+            return Err(AdapterError::PermissionTeardownRequired);
+        };
+        match decision {
+            PermissionDecision::Ask => {
+                entry.state = ServerRequestState::Asked;
+                Ok(None)
+            }
+            PermissionDecision::AllowOnce => {
+                entry.state = ServerRequestState::AllowPending;
+                entry.state = ServerRequestState::AllowCommitted;
+                Ok(Some((entry.id.clone(), Vec::new())))
+            }
+            PermissionDecision::Deny => {
+                entry.state = ServerRequestState::DeclinePending;
+                Ok(Some((entry.id.clone(), entry.response.clone())))
+            }
+        }
     }
 }

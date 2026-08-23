@@ -4,7 +4,9 @@ use crate::acp::{
         AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
     contract::{RuntimeEpoch, SageAgentSessionId},
+    intent::ExternalId,
     lifecycle::ServerRequestState,
+    runtime::permissions::PermissionDecision,
     transport::{Frame, OutboundFrame, request_payload_digest},
 };
 
@@ -247,30 +249,16 @@ impl CodexRuntime {
                 turn_id,
                 item_id,
                 payload,
-                denial,
-            } => {
-                let request_id = denial.external_request.external_id.clone();
-                let frame = OutboundFrame::new(denial.bytes)
-                    .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
-                self.inner
-                    .advance_permission_decline(
-                        request_id.as_str(),
-                        ServerRequestState::DeclinePending,
-                    )
-                    .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
-                (
-                    AdapterEvent::PermissionRequest {
-                        turn_id: identity(turn_id),
-                        item_id: identity(item_id),
-                        payload,
-                        request_payload_digest: request_digest,
-                    },
-                    Some(AdapterEgress::new(
-                        frame,
-                        EgressToken::mandatory_deny(request_id, false),
-                    )),
-                )
-            }
+                denial: _,
+            } => (
+                AdapterEvent::PermissionRequest {
+                    turn_id: identity(turn_id),
+                    item_id: identity(item_id),
+                    payload,
+                    request_payload_digest: request_digest,
+                },
+                None,
+            ),
             IncomingEvent::Usage { turn_id, payload } => (
                 AdapterEvent::Usage {
                     turn_id: identity(turn_id),
@@ -326,6 +314,52 @@ impl HarnessAdapter for CodexRuntime {
                 client_message_id,
             } => self.request(|adapter, id| adapter.prompt(id, &prompt, &client_message_id)),
             AdapterCommand::Cancel => self.request_with_control(CodexAdapter::cancel, true),
+            AdapterCommand::ResolvePermission { decision, .. } => {
+                match (
+                    decision,
+                    self.inner
+                        .resolve_pending_permission(decision)
+                        .map_err(map_adapter)?,
+                ) {
+                    (PermissionDecision::Ask, None) => {
+                        let frame = OutboundFrame::new(
+                            br#"{\"jsonrpc\":\"2.0\",\"method\":\"sage/permissionAsked\"}"#
+                                .to_vec(),
+                        )
+                        .map_err(|_| AdapterRuntimeError::Frame)?;
+                        Ok(AdapterEgress::new(
+                            frame,
+                            EgressToken::protocol_notification(),
+                        ))
+                    }
+                    (PermissionDecision::AllowOnce, Some((request_id, _))) => {
+                        let request_id = ExternalId::new("externalRequestId", request_id)
+                            .map_err(|_| AdapterRuntimeError::Frame)?;
+                        let bytes = serde_json::to_vec(&serde_json::json!({
+                            "id": request_id.as_str(),
+                            "result": { "decision": "accept" }
+                        }))
+                        .map_err(|_| AdapterRuntimeError::Frame)?;
+                        let frame =
+                            OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
+                        Ok(AdapterEgress::new(
+                            frame,
+                            EgressToken::permission_allow(request_id),
+                        ))
+                    }
+                    (PermissionDecision::Deny, Some((request_id, bytes))) => {
+                        let request_id = ExternalId::new("externalRequestId", request_id)
+                            .map_err(|_| AdapterRuntimeError::Frame)?;
+                        let frame =
+                            OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
+                        Ok(AdapterEgress::new(
+                            frame,
+                            EgressToken::mandatory_deny(request_id, false),
+                        ))
+                    }
+                    _ => Err(AdapterRuntimeError::Operation),
+                }
+            }
         }
     }
 
@@ -355,7 +389,7 @@ impl HarnessAdapter for CodexRuntime {
             return Ok(());
         }
         self.inner
-            .advance_permission_decline(request_id, ServerRequestState::DeclineCommitted)
+            .advance_permission(request_id, ServerRequestState::DeclineCommitted)
             .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)
     }
 
@@ -387,6 +421,21 @@ impl HarnessAdapter for CodexRuntime {
                 EgressResolution::Queued | EgressResolution::Written => Ok(()),
             };
         }
+        if let Some(request_id) = token.allow_request() {
+            let next = match resolution {
+                EgressResolution::Queued => ServerRequestState::ResponseQueued,
+                EgressResolution::Written => ServerRequestState::ResolvedAllowed,
+                EgressResolution::QueueRejected
+                | EgressResolution::WriteZeroBytes
+                | EgressResolution::DeliveryUnknown => {
+                    return Err(AdapterRuntimeError::MandatoryDenyTeardown);
+                }
+            };
+            return self
+                .inner
+                .advance_permission(request_id, next)
+                .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown);
+        }
         let Some((request_id, replay)) = token.deny_request() else {
             return Err(AdapterRuntimeError::EgressIntent);
         };
@@ -409,7 +458,7 @@ impl HarnessAdapter for CodexRuntime {
             | EgressResolution::DeliveryUnknown => unreachable!(),
         };
         self.inner
-            .advance_permission_decline(request_id, next)
+            .advance_permission(request_id, next)
             .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)
     }
 }

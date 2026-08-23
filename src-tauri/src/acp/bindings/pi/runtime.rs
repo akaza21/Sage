@@ -291,6 +291,7 @@ impl HarnessAdapter for PiRuntime {
                 self.begin_one(Operation::Abort, RequestKind::Cancel)
             }
             AdapterCommand::Cancel => Err(AdapterRuntimeError::Operation),
+            AdapterCommand::ResolvePermission { .. } => Err(AdapterRuntimeError::PermissionIntent),
         }
     }
 

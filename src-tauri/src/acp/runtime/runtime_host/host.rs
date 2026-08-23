@@ -146,6 +146,19 @@ impl RuntimeHost {
         self.outcome(HostCommand::Activate(owner))
     }
 
+    pub(crate) fn resolve_permission(
+        &self,
+        owner: RuntimeOwner,
+        request_id: crate::acp::contract::SageServerRequestId,
+        decision: crate::acp::runtime::permissions::PermissionDecision,
+    ) -> Result<HostOutcome, HostError> {
+        self.outcome(HostCommand::ResolvePermission {
+            owner,
+            request_id,
+            decision,
+        })
+    }
+
     pub(crate) fn prepare_prompt(
         &self,
         intent: HostPromptIntent,

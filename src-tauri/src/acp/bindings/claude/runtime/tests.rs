@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use super::*;
 use crate::acp::{
     bindings::adapter::{AdapterCommand, AdapterRuntimeError, EgressResolution, HarnessAdapter},
-    contract::{RequiredText, SageRootId},
+    contract::{RequiredText, SageRootId, SageServerRequestId},
     intent::{ExternalId, Prompt, SafeResourceRef},
     lifecycle::{ToolState, TurnState},
     transport::FrameReader,
@@ -373,6 +373,18 @@ fn permission_denial_requires_commit_then_queue_then_write_and_replays_boundedly
         [SharedEvent::IgnoredDuplicate]
     ));
     assert!(duplicate.egress()[0].token().is_mandatory());
+}
+
+#[test]
+fn unresolved_permission_decision_reports_missing_intent() {
+    let mut runtime = ClaudeRuntime::fixture();
+    assert!(matches!(
+        runtime.command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse("request-claude-missing").expect("request"),
+            decision: crate::acp::runtime::permissions::PermissionDecision::Deny,
+        }),
+        Err(AdapterRuntimeError::PermissionIntent)
+    ));
 }
 
 #[test]

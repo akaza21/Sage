@@ -4,6 +4,17 @@ use crate::acp::{
     limits::LIMITS,
 };
 
+/// A user choice for one exact, durably identified permission request.
+/// This remains a runtime-level value so host and adapter routing never need
+/// to know which harness originated the request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum PermissionDecision {
+    Ask,
+    AllowOnce,
+    Deny,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PermissionIntent {
     pub request_id: SageServerRequestId,
@@ -49,12 +60,34 @@ pub(crate) enum PermissionError {
 }
 
 pub(crate) trait PermissionJournal {
+    fn commit_ask(&mut self, _intent: &PermissionIntent) -> Result<(), PermissionError> {
+        Err(PermissionError::Durable)
+    }
+    fn commit_allow(&mut self, _intent: &PermissionIntent) -> Result<(), PermissionError> {
+        Err(PermissionError::Durable)
+    }
     fn commit_decline(
         &mut self,
         intent: &PermissionIntent,
     ) -> Result<DeclineCommit, PermissionError>;
     fn response_queued(&mut self, intent: &PermissionIntent) -> Result<(), PermissionError>;
     fn resolved_declined(&mut self, intent: &PermissionIntent) -> Result<(), PermissionError>;
+}
+
+pub(crate) fn ask_permission<J: PermissionJournal>(
+    journal: &mut J,
+    intent: &PermissionIntent,
+) -> Result<(), PermissionError> {
+    validate_intent(intent)?;
+    journal.commit_ask(intent)
+}
+
+pub(crate) fn allow_once_permission<J: PermissionJournal>(
+    journal: &mut J,
+    intent: &PermissionIntent,
+) -> Result<(), PermissionError> {
+    validate_intent(intent)?;
+    journal.commit_allow(intent)
 }
 
 pub(crate) trait DeclineTransport {

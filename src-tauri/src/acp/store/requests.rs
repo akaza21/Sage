@@ -11,12 +11,12 @@ use super::{
     facts::{append_fact_payload, next_projection_revision, publish_projection},
 };
 
-pub(crate) struct DenyOnlyPermissionJournal<'a> {
+pub(crate) struct PermissionDecisionJournal<'a> {
     connection: &'a mut rusqlite::Connection,
     now_millis: i64,
 }
 
-impl<'a> DenyOnlyPermissionJournal<'a> {
+impl<'a> PermissionDecisionJournal<'a> {
     pub(crate) fn new(connection: &'a mut rusqlite::Connection, now_millis: i64) -> Self {
         Self {
             connection,
@@ -46,10 +46,10 @@ pub(super) fn receive_permission_request_in(
     super::request_identity::validate_payload(intent)?;
     if let Some(existing) = super::request_identity::find(transaction, intent)? {
         super::request_identity::verify(&existing, intent)?;
-        let (lifecycle, tool_state) = if existing.state == "resolvedDeclined" {
-            ("completed", "declined")
-        } else {
-            ("started", "waitingForApproval")
+        let (lifecycle, tool_state) = match existing.state.as_str() {
+            "resolvedDeclined" => ("completed", "declined"),
+            "resolvedAllowed" => ("completed", "completed"),
+            _ => ("started", "waitingForApproval"),
         };
         super::permission_item::verify_pair(transaction, intent, lifecycle, tool_state)?;
         return duplicate(transaction, intent, existing.revision);
@@ -134,7 +134,36 @@ pub(super) fn receive_permission_request_in(
     })
 }
 
-impl PermissionJournal for DenyOnlyPermissionJournal<'_> {
+impl PermissionJournal for PermissionDecisionJournal<'_> {
+    fn commit_ask(&mut self, intent: &PermissionIntent) -> Result<(), PermissionError> {
+        advance(
+            self.connection,
+            intent,
+            ServerRequestState::Asked,
+            self.now_millis,
+        )
+        .map(|_| ())
+        .map_err(|_| PermissionError::Durable)
+    }
+
+    fn commit_allow(&mut self, intent: &PermissionIntent) -> Result<(), PermissionError> {
+        advance(
+            self.connection,
+            intent,
+            ServerRequestState::AllowPending,
+            self.now_millis,
+        )
+        .and_then(|_| {
+            advance(
+                self.connection,
+                intent,
+                ServerRequestState::AllowCommitted,
+                self.now_millis,
+            )
+        })
+        .map(|_| ())
+        .map_err(|_| PermissionError::Durable)
+    }
     fn commit_decline(
         &mut self,
         intent: &PermissionIntent,
@@ -166,6 +195,8 @@ impl PermissionJournal for DenyOnlyPermissionJournal<'_> {
     }
 }
 
+pub(crate) type DenyOnlyPermissionJournal<'a> = PermissionDecisionJournal<'a>;
+
 fn commit_decline(
     connection: &mut rusqlite::Connection,
     intent: &PermissionIntent,
@@ -196,12 +227,15 @@ pub(super) fn commit_decline_in(
     ) {
         return Ok(DeclineCommit::IdenticalDuplicate);
     }
-    if existing.state != "received" && existing.state != "declinePending" {
+    if !matches!(
+        existing.state.as_str(),
+        "received" | "asked" | "declinePending"
+    ) {
         return Err(StoreError::InvalidTransition {
             resource: "request",
         });
     }
-    if existing.state == "received" {
+    if matches!(existing.state.as_str(), "received" | "asked") {
         ensure_one(
             transaction.execute(
                 "UPDATE server_requests SET state='declinePending',revision=revision+1,

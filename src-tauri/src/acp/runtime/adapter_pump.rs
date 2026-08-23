@@ -126,6 +126,12 @@ pub(crate) enum DurableAdapterEvent {
         now_millis: i64,
     },
     ActivityItem(Box<DurableActivityItem>),
+    PermissionRequest {
+        intent: PermissionIntent,
+        now_millis: i64,
+    },
+    /// Legacy paired-denial input retained for recovery characterization.
+    /// New ingress normalizes to PermissionRequest and waits for a decision.
     PermissionDeny {
         intent: PermissionIntent,
         now_millis: i64,
@@ -203,6 +209,7 @@ pub(crate) struct AdapterPump<A, J, R> {
 struct PendingPermission {
     intent: PermissionIntent,
     written: bool,
+    decision: Option<crate::acp::runtime::permissions::PermissionDecision>,
 }
 
 pub(crate) struct AdapterPumpAdmission {

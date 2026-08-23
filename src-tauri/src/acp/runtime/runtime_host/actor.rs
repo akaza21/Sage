@@ -87,6 +87,11 @@ impl<E: RuntimeEngine> Actor<E> {
         deadline: Instant,
     ) -> Result<HostReply, HostError> {
         match command {
+            HostCommand::ResolvePermission {
+                owner,
+                request_id,
+                decision,
+            } => self.resolve_permission(owner, request_id, decision),
             HostCommand::Activate(owner) => self.activate(owner),
             HostCommand::PreparePrompt(intent) => self.prepare_prompt(intent),
             HostCommand::DispatchPrompt { owner, turn_id } => self.dispatch_prompt(owner, turn_id),
@@ -132,6 +137,22 @@ impl<E: RuntimeEngine> Actor<E> {
                 Err(error)
             }
         }
+    }
+
+    fn resolve_permission(
+        &mut self,
+        owner: RuntimeOwner,
+        request_id: crate::acp::contract::SageServerRequestId,
+        decision: crate::acp::runtime::permissions::PermissionDecision,
+    ) -> Result<HostReply, HostError> {
+        if !matches!(self.state, HostState::Idle | HostState::Running)
+            || !self.matches_owner(&owner)
+        {
+            return Err(HostError::Intent);
+        }
+        self.engine
+            .resolve_permission(&owner, &request_id, decision)?;
+        Ok(HostReply::Outcome(HostOutcome::PermissionResolved))
     }
 
     fn prepare_prompt(&mut self, intent: HostPromptIntent) -> Result<HostReply, HostError> {

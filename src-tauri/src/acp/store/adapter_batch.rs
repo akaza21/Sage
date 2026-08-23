@@ -51,6 +51,10 @@ pub(crate) enum AdapterInboundEvent {
     },
     Item(ItemIngressCommand),
     ActivityItem(Box<AdapterActivityItemCommand>),
+    PermissionRequest {
+        intent: PermissionIntent,
+        now_millis: i64,
+    },
     PermissionDeny {
         intent: PermissionIntent,
         now_millis: i64,
@@ -225,6 +229,12 @@ fn apply_event(
         }
         event @ AdapterInboundEvent::ActivityItem(_) => {
             activity_item::apply(transaction, owner, event)
+        }
+        AdapterInboundEvent::PermissionRequest { intent, now_millis } => {
+            verify_permission_scope(owner, intent)?;
+            let received =
+                super::requests::receive_permission_request_in(transaction, intent, *now_millis)?;
+            Ok(received.disposition == MutationDisposition::Applied)
         }
         AdapterInboundEvent::PermissionDeny { intent, now_millis } => {
             verify_permission_scope(owner, intent)?;

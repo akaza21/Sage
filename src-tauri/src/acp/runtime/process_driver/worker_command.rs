@@ -4,8 +4,9 @@ use std::{
 };
 
 use crate::acp::{
-    contract::SageTurnId,
+    contract::{SageServerRequestId, SageTurnId},
     process::TreeExit,
+    runtime::permissions::PermissionDecision,
     runtime::{HostCancelIntent, HostError, HostPromptIntent, LiveRuntimePort, LiveWrite},
     scheduler::RuntimeOwner,
     store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
@@ -17,6 +18,11 @@ mod support;
 use support::{close_bytes, map_mailbox, owner_bytes};
 
 pub(crate) enum WorkerCommand {
+    ResolvePermission {
+        owner: RuntimeOwner,
+        request_id: SageServerRequestId,
+        decision: PermissionDecision,
+    },
     PreparePrompt(HostPromptIntent),
     DispatchPrompt {
         owner: RuntimeOwner,
@@ -63,6 +69,7 @@ impl WorkerCommand {
     fn deadline_millis(&self) -> u64 {
         use crate::acp::limits::LIMITS;
         match self {
+            Self::ResolvePermission { .. } => LIMITS.deadlines_ms.ordinary_rpc,
             Self::DispatchCancel(_) => LIMITS.deadlines_ms.cancel_dispatch,
             Self::BeginCancel(_)
             | Self::AcceptTerminal { .. }
@@ -79,7 +86,8 @@ impl WorkerCommand {
     fn is_control(&self) -> bool {
         matches!(
             self,
-            Self::ObserveSend { .. }
+            Self::ResolvePermission { .. }
+                | Self::ObserveSend { .. }
                 | Self::BeginCancel(_)
                 | Self::DispatchCancel(_)
                 | Self::AcceptTerminal { .. }
@@ -92,6 +100,11 @@ impl WorkerCommand {
 
     fn actual_bytes(&self) -> Option<usize> {
         match self {
+            Self::ResolvePermission {
+                owner, request_id, ..
+            } => owner_bytes(owner)
+                .checked_add(request_id.as_str().len())?
+                .checked_add(1),
             Self::PreparePrompt(intent) => owner_bytes(&intent.owner())
                 .checked_add(intent.command.client_intent_id.as_str().len())?
                 .checked_add(intent.command.prompt.as_str().len())?
@@ -289,6 +302,24 @@ impl LiveRuntimePort for ProcessLivePort {
 
     fn owner(&self) -> &RuntimeOwner {
         &self.owner
+    }
+
+    fn resolve_permission(
+        &mut self,
+        owner: &RuntimeOwner,
+        request_id: &SageServerRequestId,
+        decision: PermissionDecision,
+    ) -> Result<(), HostError> {
+        match self.call(WorkerCommand::ResolvePermission {
+            owner: owner.clone(),
+            request_id: request_id.clone(),
+            decision,
+        })? {
+            WorkerReply::Unit => Ok(()),
+            WorkerReply::Prepared(_) | WorkerReply::Write(_) | WorkerReply::Zero(_) => {
+                Err(HostError::State)
+            }
+        }
     }
 
     fn prepare_prompt(&mut self, intent: &HostPromptIntent) -> Result<SageTurnId, HostError> {

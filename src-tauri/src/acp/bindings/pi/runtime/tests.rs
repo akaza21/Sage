@@ -3,13 +3,15 @@ use serde_json::{Value, json};
 use super::*;
 use crate::acp::{
     bindings::{
-        adapter::{AdapterEvent, AdapterRuntimeError, EgressResolution, HarnessAdapter},
+        adapter::{
+            AdapterCommand, AdapterEvent, AdapterRuntimeError, EgressResolution, HarnessAdapter,
+        },
         pi::{
             ArtifactCandidate, ArtifactIdentity, CuratedPiBinding, PI_LICENSE, PI_NODE_MINIMUM,
             PI_PACKAGE, PI_RPC_ARGS, PI_SOURCE_COMMIT, PI_VERSION, PiPlatform,
         },
     },
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
     intent::{ExternalId, NormalizedPayload, Prompt},
     transport::IncrementalFrameDecoder,
 };
@@ -449,6 +451,18 @@ fn permission_abort_is_mandatory_and_fail_closed() {
         failed.resolve_egress(token, EgressResolution::WriteZeroBytes),
         Err(AdapterRuntimeError::MandatoryDenyTeardown)
     );
+}
+
+#[test]
+fn unresolved_permission_decision_reports_missing_intent() {
+    let mut runtime = fixture_runtime(11);
+    assert!(matches!(
+        runtime.command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse("request-pi-missing").expect("request"),
+            decision: crate::acp::runtime::permissions::PermissionDecision::Deny,
+        }),
+        Err(AdapterRuntimeError::PermissionIntent)
+    ));
 }
 
 #[test]

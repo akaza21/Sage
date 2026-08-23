@@ -99,14 +99,15 @@ pub(super) fn ensure_request_capacity(
     let live_session: i64 = transaction.query_row(
         "SELECT COUNT(*) FROM (
            SELECT 1 FROM server_requests
-           WHERE session_id=?1 AND state<>'resolvedDeclined' LIMIT 9
+           WHERE session_id=?1 AND state NOT IN ('resolvedAllowed','resolvedDeclined') LIMIT 9
          )",
         [intent.session_id.as_str()],
         |row| row.get(0),
     )?;
     let live_global: i64 = transaction.query_row(
         "SELECT COUNT(*) FROM (
-           SELECT 1 FROM server_requests WHERE state<>'resolvedDeclined' LIMIT 17
+           SELECT 1 FROM server_requests
+           WHERE state NOT IN ('resolvedAllowed','resolvedDeclined') LIMIT 17
          )",
         [],
         |row| row.get(0),

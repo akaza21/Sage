@@ -105,9 +105,18 @@ fn terminalize_permission_item(
     external_id: &str,
     normalized_payload_json: &str,
 ) -> Result<(), StoreError> {
+    let tool_state = match command.state {
+        crate::acp::lifecycle::ServerRequestState::ResolvedAllowed => "completed",
+        crate::acp::lifecycle::ServerRequestState::ResolvedDeclined => "declined",
+        _ => {
+            return Err(StoreError::InvalidTransition {
+                resource: "request",
+            });
+        }
+    };
     ensure_one(
         transaction.execute(
-            "UPDATE items SET lifecycle='completed',tool_state='declined',revision=revision+1,
+            "UPDATE items SET lifecycle='completed',tool_state=?9,revision=revision+1,
              updated_at=?7,terminal_at=?7 WHERE project_id=?1 AND chat_id=?2 AND session_id=?3
              AND turn_id=?4 AND runtime_epoch=?5 AND kind='permissionRequest'
              AND external_item_id=?6 AND payload_json=?8 AND lifecycle IN ('started','streaming')
@@ -120,7 +129,8 @@ fn terminalize_permission_item(
                 command.runtime_epoch.get() as i64,
                 external_id,
                 command.now_millis,
-                normalized_payload_json
+                normalized_payload_json,
+                tool_state
             ],
         )?,
         "permission item",
@@ -133,11 +143,20 @@ fn verify_terminal_item(
     external_id: &str,
     normalized_payload_json: &str,
 ) -> Result<(), StoreError> {
+    let tool_state = match command.state {
+        crate::acp::lifecycle::ServerRequestState::ResolvedAllowed => "completed",
+        crate::acp::lifecycle::ServerRequestState::ResolvedDeclined => "declined",
+        _ => {
+            return Err(StoreError::InvalidTransition {
+                resource: "request",
+            });
+        }
+    };
     let count: i64 = transaction.query_row(
         "SELECT COUNT(*) FROM items WHERE project_id=?1 AND chat_id=?2 AND session_id=?3
          AND turn_id=?4 AND runtime_epoch=?5 AND kind='permissionRequest'
          AND external_item_id=?6 AND payload_json=?7 AND lifecycle='completed'
-         AND tool_state='declined'",
+         AND tool_state=?8",
         params![
             command.project_id.as_str(),
             command.chat_id.as_str(),
@@ -145,7 +164,8 @@ fn verify_terminal_item(
             command.turn_id.as_str(),
             command.runtime_epoch.get() as i64,
             external_id,
-            normalized_payload_json
+            normalized_payload_json,
+            tool_state
         ],
         |row| row.get(0),
     )?;

@@ -109,7 +109,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 let request_id = self.request_id(&external)?;
                 let (normalized_payload_json, measured) = payload_json(&payload)?;
                 Ok(Some(NormalizedFact::new(
-                    DurableAdapterEvent::PermissionDeny {
+                    DurableAdapterEvent::PermissionRequest {
                         intent: PermissionIntent {
                             request_id,
                             project_id: self.intent.project_id.clone(),
@@ -182,6 +182,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
 
 pub(super) fn control_critical(fact: &NormalizedFact) -> bool {
     match &fact.event {
+        DurableAdapterEvent::PermissionRequest { .. } => true,
         DurableAdapterEvent::PermissionDeny { .. } => true,
         DurableAdapterEvent::Turn { state, .. } => state.is_terminal(),
         DurableAdapterEvent::RuntimePayload { payload, .. } => matches!(

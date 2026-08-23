@@ -1,5 +1,6 @@
 use crate::acp::{
-    contract::SageTurnId,
+    contract::{SageServerRequestId, SageTurnId},
+    runtime::permissions::PermissionDecision,
     scheduler::RuntimeOwner,
     store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
 };
@@ -24,6 +25,14 @@ pub(crate) trait LiveRuntimePort: Send + 'static {
     type ZeroProof: Send + 'static;
 
     fn owner(&self) -> &RuntimeOwner;
+    fn resolve_permission(
+        &mut self,
+        _owner: &RuntimeOwner,
+        _request_id: &SageServerRequestId,
+        _decision: PermissionDecision,
+    ) -> Result<(), HostError> {
+        Err(HostError::State)
+    }
     /// Commits the Turn and binds its exact `ActiveTurnIntent` to the idle
     /// adapter before returning. No stdin bytes may be written in this phase.
     fn prepare_prompt(&mut self, intent: &HostPromptIntent) -> Result<SageTurnId, HostError>;
@@ -91,6 +100,17 @@ impl<P: LiveRuntimePort> LiveRuntimeEngine<P> {
 }
 
 impl<P: LiveRuntimePort> RuntimeEngine for LiveRuntimeEngine<P> {
+    fn resolve_permission(
+        &mut self,
+        owner: &RuntimeOwner,
+        request_id: &SageServerRequestId,
+        decision: PermissionDecision,
+    ) -> Result<(), HostError> {
+        if self.port.owner() != owner || self.zero_proof.is_some() {
+            return Err(HostError::Intent);
+        }
+        self.port.resolve_permission(owner, request_id, decision)
+    }
     fn activate(&mut self, owner: &RuntimeOwner) -> Result<(), HostError> {
         if self.port.owner() == owner {
             Ok(())

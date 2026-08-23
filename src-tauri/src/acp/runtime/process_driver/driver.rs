@@ -151,6 +151,24 @@ where
         self.cancel(intent, DispatchSource::Cancel)
     }
 
+    pub(crate) async fn resolve_permission(
+        &mut self,
+        request_id: &crate::acp::contract::SageServerRequestId,
+        decision: crate::acp::runtime::permissions::PermissionDecision,
+    ) -> Result<(), DriverError> {
+        self.ensure_running()?;
+        self.pump
+            .resolve_permission(request_id, decision, self.clock.now_millis())
+            .await
+            .map_err(|error| self.pump_error(error))?;
+        let mut progress = DriverProgress::default();
+        self.flush_all(DispatchSource::Ingress, &mut progress)?;
+        if progress.zero_byte_failures != 0 {
+            return Err(self.latch(TeardownCause::MandatoryDenyFailure));
+        }
+        Ok(())
+    }
+
     pub(crate) fn request_host_termination(&mut self) -> Result<(), DriverError> {
         match self.state {
             DriverState::Running => {

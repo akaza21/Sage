@@ -47,20 +47,33 @@ export function getPermissionStatus(item: PermissionItem) {
   const failedClosed =
     item.lifecycle === "failed" && item.toolState === "failed";
   const declined = item.payload.state === "resolvedDeclined";
+  const allowed = item.payload.state === "resolvedAllowed";
+  const allowing =
+    item.payload.state === "allowPending" ||
+    item.payload.state === "allowCommitted";
+  const asking = item.payload.state === "asked";
   const visual = failedClosed
     ? "Failed closed"
-    : declined ||
-        item.payload.state === "declineCommitted" ||
-        item.payload.state === "responseQueued"
+    : allowed
+      ? "Allowed once"
+      : allowing
+        ? "Allowing once"
+        : declined || item.payload.state === "declineCommitted"
       ? "Declined"
-      : "Declining";
+      : asking
+        ? "Asking again"
+        : item.payload.state === "responseQueued"
+          ? "Responding"
+          : "Declining";
   return {
     visual,
     accessible: failedClosed
       ? "Permission failed closed"
+      : allowed
+        ? "Permission allowed once"
       : declined
         ? "Permission declined"
         : visual,
-    terminal: failedClosed || declined,
+    terminal: failedClosed || declined || allowed,
   };
 }

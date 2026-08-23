@@ -1,5 +1,6 @@
 use crate::acp::{
-    contract::{ClientIntentId, SageProjectId, SageTurnId},
+    contract::{ClientIntentId, SageProjectId, SageServerRequestId, SageTurnId},
+    runtime::permissions::PermissionDecision,
     scheduler::RuntimeOwner,
     store::{AdapterTurnCursor, CloseSessionCommand, PrepareTurnCommand},
 };
@@ -30,6 +31,7 @@ pub(crate) enum HostOutcome {
     PromptPrepared,
     PromptAccepted,
     CancelQueued,
+    PermissionResolved,
     TurnTerminal,
     BackgroundTurnContinues,
     ProjectSwitchObserved,
@@ -101,6 +103,14 @@ impl HostCloseIntent {
 }
 
 pub(crate) trait RuntimeEngine: Send + 'static {
+    fn resolve_permission(
+        &mut self,
+        _owner: &RuntimeOwner,
+        _request_id: &SageServerRequestId,
+        _decision: PermissionDecision,
+    ) -> Result<(), HostError> {
+        Err(HostError::State)
+    }
     fn activate(&mut self, owner: &RuntimeOwner) -> Result<(), HostError>;
     fn prepare_prompt(&mut self, intent: &HostPromptIntent) -> Result<SageTurnId, HostError>;
     fn dispatch_prompt(
@@ -142,6 +152,11 @@ pub(crate) trait RuntimeShutdownRecovery: Send + Sync {
 }
 
 pub(super) enum HostCommand {
+    ResolvePermission {
+        owner: RuntimeOwner,
+        request_id: SageServerRequestId,
+        decision: PermissionDecision,
+    },
     Activate(RuntimeOwner),
     PreparePrompt(HostPromptIntent),
     DispatchPrompt {
@@ -171,6 +186,7 @@ impl HostCommand {
     pub(super) fn deadline_millis(&self) -> u64 {
         use crate::acp::limits::LIMITS;
         match self {
+            Self::ResolvePermission { .. } => LIMITS.deadlines_ms.ordinary_rpc,
             Self::Activate(_) => LIMITS.deadlines_ms.initialize,
             Self::Cancel(_) => LIMITS.deadlines_ms.tree_termination,
             Self::Terminal { .. }
@@ -188,7 +204,8 @@ impl HostCommand {
     pub(super) fn is_control(&self) -> bool {
         matches!(
             self,
-            Self::Cancel(_)
+            Self::ResolvePermission { .. }
+                | Self::Cancel(_)
                 | Self::Terminal { .. }
                 | Self::State
                 | Self::BeginClose(_)
@@ -206,6 +223,9 @@ impl HostCommand {
                 + std::mem::size_of::<u64>()
         }
         match self {
+            Self::ResolvePermission {
+                owner, request_id, ..
+            } => owner_bytes(owner) + request_id.as_str().len() + 1,
             Self::Activate(owner) => owner_bytes(owner),
             Self::PreparePrompt(intent) => {
                 owner_bytes(&intent.owner())

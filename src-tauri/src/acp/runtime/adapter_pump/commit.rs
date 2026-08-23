@@ -9,12 +9,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     ) -> Result<(), AdapterPumpError> {
         let mut new_permission = None;
         for event in &durable {
-            if let DurableAdapterEvent::PermissionDeny { intent, now_millis } = event {
+            if let DurableAdapterEvent::PermissionRequest { intent, .. } = event {
                 if new_permission.is_some() || self.pending_permission.is_some() {
                     self.teardown = true;
                     return Err(AdapterPumpError::TeardownRequired);
                 }
-                new_permission = Some((intent.clone(), *now_millis));
+                new_permission = Some(intent.clone());
             }
         }
         let terminal = durable.iter().rev().find_map(|event| match event {
@@ -41,18 +41,15 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             return Err(AdapterPumpError::TeardownRequired);
         }
 
+        if let Some(intent) = new_permission.take() {
+            self.pending_permission = Some(PendingPermission {
+                intent,
+                written: false,
+                decision: None,
+            });
+        }
         let mut egress_error = None;
-        let mut queued_permission_revision = None;
         for value in egress {
-            let new_deny_request = value
-                .token()
-                .deny_request()
-                .and_then(|(request, replay)| (!replay).then_some(request.to_owned()));
-            if new_deny_request.is_some() && committed.is_none() {
-                self.teardown = true;
-                egress_error = Some(AdapterPumpError::TeardownRequired);
-                break;
-            }
             if value.token().is_mandatory()
                 && self.adapter.commit_mandatory_egress(value.token()).is_err()
             {
@@ -64,46 +61,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 egress_error = Some(error);
                 break;
             }
-            if let Some(request) = new_deny_request {
-                let Some((intent, now_millis)) = new_permission.take() else {
-                    self.teardown = true;
-                    egress_error = Some(AdapterPumpError::TeardownRequired);
-                    break;
-                };
-                if intent.external_request_id.as_str() != request {
-                    self.teardown = true;
-                    egress_error = Some(AdapterPumpError::TeardownRequired);
-                    break;
-                }
-                let revision = match self
-                    .journal
-                    .transition_permission(&intent, ServerRequestState::ResponseQueued, now_millis)
-                    .await
-                {
-                    Ok(revision) => revision,
-                    Err(PumpJournalError::CommitUnknown | PumpJournalError::Rejected) => {
-                        self.teardown = true;
-                        egress_error = Some(AdapterPumpError::TeardownRequired);
-                        break;
-                    }
-                };
-                self.pending_permission = Some(PendingPermission {
-                    intent,
-                    written: false,
-                });
-                queued_permission_revision = Some(revision);
-            }
-        }
-
-        if new_permission.is_some() {
-            self.teardown = true;
-            egress_error = Some(AdapterPumpError::TeardownRequired);
         }
         if let Some(receipt) = committed {
             self.publish(receipt)?;
-        }
-        if let Some(revision) = queued_permission_revision {
-            self.publish_revision(revision)?;
         }
         if let Some(error) = egress_error {
             return Err(error);

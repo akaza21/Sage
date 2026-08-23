@@ -1,5 +1,5 @@
 use crate::acp::{
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
     intent::{
         ActivityProvenanceV1, CapabilitySnapshotV1, ExternalId, ModelId, NormalizedPayload,
         PageCursor, Prompt, SafeResourceRef, UnavailableResourceReason,
@@ -36,6 +36,10 @@ pub(crate) enum AdapterCommand {
         client_message_id: RequiredText<512>,
     },
     Cancel,
+    ResolvePermission {
+        request_id: SageServerRequestId,
+        decision: crate::acp::runtime::permissions::PermissionDecision,
+    },
 }
 
 pub(crate) trait ResourceMapper {
@@ -139,6 +143,9 @@ enum EgressIntent {
         request_id: ExternalId,
         replay: bool,
     },
+    PermissionAllow {
+        request_id: ExternalId,
+    },
 }
 
 impl EgressToken {
@@ -162,6 +169,10 @@ impl EgressToken {
         Self(EgressIntent::MandatoryDeny { request_id, replay })
     }
 
+    pub(crate) fn permission_allow(request_id: ExternalId) -> Self {
+        Self(EgressIntent::PermissionAllow { request_id })
+    }
+
     pub(crate) fn is_mandatory(&self) -> bool {
         matches!(self.0, EgressIntent::MandatoryDeny { .. })
     }
@@ -172,6 +183,7 @@ impl EgressToken {
             EgressIntent::CancelRequest(_)
                 | EgressIntent::CancelNotification
                 | EgressIntent::MandatoryDeny { .. }
+                | EgressIntent::PermissionAllow { .. }
         )
     }
 
@@ -187,6 +199,13 @@ impl EgressToken {
             EgressIntent::MandatoryDeny { request_id, replay } => {
                 Some((request_id.as_str(), *replay))
             }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn allow_request(&self) -> Option<&str> {
+        match &self.0 {
+            EgressIntent::PermissionAllow { request_id } => Some(request_id.as_str()),
             _ => None,
         }
     }
@@ -362,6 +381,8 @@ pub(crate) enum AdapterRuntimeError {
     Operation,
     #[error("the adapter does not advertise this command")]
     UnsupportedCommand,
+    #[error("there is no exact pending permission intent for this decision")]
+    PermissionIntent,
     #[error("adapter launch artifact is not admitted")]
     LaunchUnavailable,
     #[error("adapter frame is invalid")]

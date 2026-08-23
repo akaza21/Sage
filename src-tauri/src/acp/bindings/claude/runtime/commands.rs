@@ -84,6 +84,7 @@ impl ClaudeRuntime {
                     json!({"sessionId":active.external_id.as_str()}),
                 )
             }
+            AdapterCommand::ResolvePermission { .. } => Err(AdapterRuntimeError::PermissionIntent),
         }
     }
 }

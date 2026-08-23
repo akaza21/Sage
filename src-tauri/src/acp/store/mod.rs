@@ -81,7 +81,9 @@ pub(crate) use mutations::{StoreMutation, StoreMutationResult};
 pub(crate) use paging::{RecoveryCandidate, load_recovery_candidates};
 pub(crate) use request_terminal::apply_request_state;
 #[allow(unused_imports)]
-pub(crate) use requests::{DenyOnlyPermissionJournal, receive_permission_request};
+pub(crate) use requests::{
+    DenyOnlyPermissionJournal, PermissionDecisionJournal, receive_permission_request,
+};
 #[allow(unused_imports)]
 pub(crate) use residency::{ParkSessionCommand, park_session_after_zero_process};
 #[allow(unused_imports)]

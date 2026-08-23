@@ -232,9 +232,13 @@ pub enum ItemKind {
 #[serde(rename_all = "camelCase")]
 pub enum ServerRequestState {
     Received,
+    Asked,
+    AllowPending,
+    AllowCommitted,
     DeclinePending,
     DeclineCommitted,
     ResponseQueued,
+    ResolvedAllowed,
     ResolvedDeclined,
 }
 
@@ -242,14 +246,22 @@ impl ServerRequestState {
     pub fn can_transition_to(self, next: Self) -> bool {
         matches!(
             (self, next),
-            (Self::Received, Self::DeclinePending)
+            (
+                Self::Received,
+                Self::Asked | Self::AllowPending | Self::DeclinePending
+            ) | (Self::Asked, Self::AllowPending | Self::DeclinePending)
+                | (Self::AllowPending, Self::AllowCommitted)
+                | (Self::AllowCommitted, Self::ResponseQueued)
                 | (Self::DeclinePending, Self::DeclineCommitted)
                 | (Self::DeclineCommitted, Self::ResponseQueued)
-                | (Self::ResponseQueued, Self::ResolvedDeclined)
+                | (
+                    Self::ResponseQueued,
+                    Self::ResolvedAllowed | Self::ResolvedDeclined
+                )
         )
     }
     pub fn is_terminal(self) -> bool {
-        self == Self::ResolvedDeclined
+        matches!(self, Self::ResolvedAllowed | Self::ResolvedDeclined)
     }
 }
 
