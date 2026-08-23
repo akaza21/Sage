@@ -33,7 +33,7 @@ pub(crate) fn get(origin: Option<&str>) -> bool {
         return false;
     }
     let Some(address) = url
-        .socket_addrs(|_| None)
+        .socket_addrs(|| None)
         .ok()
         .and_then(|mut values| values.pop())
     else {

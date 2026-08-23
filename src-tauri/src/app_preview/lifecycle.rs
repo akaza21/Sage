@@ -13,7 +13,7 @@ use super::{
     discovery::{PreviewDiscoveryRequest, PreviewTargetRef},
     error::PreviewError,
     health,
-    url::loopback_origin,
+    url::{normalized_origin, parse_allowed_preview_url},
 };
 
 const STARTUP_WAIT: Duration = Duration::from_secs(5);
@@ -269,8 +269,8 @@ fn parse_loopback_origin_from_output(output: &str) -> Option<String> {
     }) {
         let start = token.find("http").unwrap_or(token.len());
         let candidate = token.get(start..)?;
-        if let Ok(origin) = loopback_origin(candidate.trim_end_matches(['/', '.', ':'])) {
-            return Some(origin);
+        if let Ok(url) = parse_allowed_preview_url(candidate.trim_end_matches(['/', '.', ':'])) {
+            return Some(normalized_origin(&url));
         }
     }
     None

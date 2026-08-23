@@ -88,7 +88,7 @@ fn discovery_returns_only_curated_scripts_without_package_paths() {
     assert!(
         !serde_json::to_string(&response)
             .unwrap()
-            .contains(&root.to_string_lossy())
+            .contains(&*root.to_string_lossy())
     );
     fs::remove_dir_all(root).unwrap();
 }
