@@ -183,16 +183,18 @@ fn unsigned_or_observation_only_cannot_launch() {
             .unwrap();
             let project_root = codex_root(&project_id, &project.roots[0].id, &root);
 
-            assert!(matches!(
-                service
-                    .start_codex_session(
-                        &project_root,
-                        start_command(&project_id, &chat_id, ProjectionRevision::ZERO)
-                    )
-                    .await,
-                Err(CodexSessionError::Binding(_)),
+            assert!(
+                matches!(
+                    service
+                        .start_codex_session(
+                            &project_root,
+                            start_command(&project_id, &chat_id, ProjectionRevision::ZERO)
+                        )
+                        .await,
+                    Err(CodexSessionError::Binding(_))
+                ),
                 "{label} registration must fail before launch"
-            ));
+            );
             assert_eq!(service.runtime.active(), None);
             assert_eq!(
                 crate::acp::process::TreeCapacityPool::global()
