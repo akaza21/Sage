@@ -174,11 +174,17 @@ fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
                 continue;
             }
         };
-        for entry in entries.flatten() {
+        let mut entry_count = 0_usize;
+        for entry in entries.take(MAX_DIRECTORIES_PER_ROOT) {
+            entry_count += 1;
             if packages.len() == MAX_PACKAGES_PER_ROOT {
                 truncated = true;
                 break;
             }
+            let Ok(entry) = entry else {
+                truncated = true;
+                continue;
+            };
             let name = entry.file_name();
             let Some(name) = name.to_str() else {
                 continue;
@@ -199,6 +205,9 @@ fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
             } else if file_type.is_dir() && depth < MAX_DEPTH && !skipped_directory(name) {
                 pending.push((entry.path(), depth + 1));
             }
+        }
+        if entry_count == MAX_DIRECTORIES_PER_ROOT {
+            truncated = true;
         }
     }
     Ok((packages, truncated))

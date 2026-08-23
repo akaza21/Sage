@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     io::Read,
     process::{Child, ChildStderr, ChildStdout, Command, Stdio},
     sync::{Mutex, OnceLock, mpsc},
@@ -33,6 +33,7 @@ struct StartingPreview {
 #[derive(Default)]
 struct Registry {
     discovered: BTreeMap<PreviewTargetRef, std::path::PathBuf>,
+    cancelled_starts: BTreeSet<PreviewTargetRef>,
     starting: Option<StartingPreview>,
     active: Option<ActivePreview>,
 }
@@ -74,6 +75,10 @@ pub(crate) fn replace_discovered(
     });
     registry.discovered.clear();
     registry.discovered.extend(targets);
+    let known: BTreeSet<PreviewTargetRef> = registry.discovered.keys().cloned().collect();
+    registry
+        .cancelled_starts
+        .retain(|target| known.contains(target));
 }
 
 pub(crate) fn reserve_start(
@@ -81,6 +86,12 @@ pub(crate) fn reserve_start(
 ) -> Result<PreviewStartReservation, PreviewError> {
     let (stdout, stderr) = {
         let mut registry = registry().lock().expect("preview lifecycle registry");
+        if registry.cancelled_starts.remove(&target) {
+            return Err(PreviewError::conflict(
+                "previewTarget",
+                "Preview start was cancelled before its process could be reserved.",
+            ));
+        }
         if registry.active.is_some() || registry.starting.is_some() {
             return Err(PreviewError::conflict(
                 "activePreview",
@@ -142,7 +153,7 @@ pub(crate) fn finish_start(
             message: "Preview script did not expose a healthy loopback server in time.".into(),
         });
     };
-    let promoted = {
+    let (promoted, child_to_stop) = {
         let mut registry = registry().lock().expect("preview lifecycle registry");
         let still_current = registry
             .starting
@@ -150,18 +161,32 @@ pub(crate) fn finish_start(
             .is_some_and(|starting| starting.target == target)
             && registry.discovered.contains_key(&target)
             && registry.active.is_none();
-        if !still_current {
-            false
-        } else {
+        if still_current {
             let StartingPreview { child, .. } = registry.starting.take().expect("starting preview");
             registry.active = Some(ActivePreview {
                 target: target.clone(),
                 origin: origin.clone(),
                 child,
             });
-            true
+            (true, None)
+        } else if registry
+            .starting
+            .as_ref()
+            .is_some_and(|starting| starting.target == target)
+        {
+            let child = registry
+                .starting
+                .take()
+                .expect("matching starting preview")
+                .child;
+            (false, Some(child))
+        } else {
+            (false, None)
         }
     };
+    if let Some(mut child) = child_to_stop {
+        stop_child(&mut child);
+    }
     if !promoted {
         return Err(PreviewError::conflict(
             "activePreview",
@@ -220,6 +245,12 @@ pub(crate) fn stop(target: &PreviewTargetRef) -> Result<PreviewStopResponse, Pre
                 "Preview target is not active.",
             ));
         } else {
+            if registry.discovered.contains_key(target) {
+                registry.cancelled_starts.insert(target.clone());
+                return Ok(PreviewStopResponse {
+                    ref_: target.clone(),
+                });
+            }
             return Err(PreviewError::conflict(
                 "activePreview",
                 "No Preview target is active.",

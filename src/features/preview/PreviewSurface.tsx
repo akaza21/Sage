@@ -25,6 +25,7 @@ export function PreviewSurface() {
   const [starting, setStarting] = useState(false);
   const activeTargetRef = useRef<PreviewTargetRef | null>(null);
   const startingTargetRef = useRef<PreviewTargetRef | null>(null);
+  const mountedRef = useRef(false);
 
   const discover = useCallback(async () => {
     if (!project || transitioning) return;
@@ -54,8 +55,12 @@ export function PreviewSurface() {
   }, [discover]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       const target = activeTargetRef.current ?? startingTargetRef.current;
+      activeTargetRef.current = null;
+      startingTargetRef.current = null;
       if (target) void stopPreviewTarget(target).catch(() => undefined);
     };
   }, []);
@@ -108,20 +113,24 @@ export function PreviewSurface() {
                 if (startingTargetRef.current) return;
                 startingTargetRef.current = target;
                 setStarting(true);
+                let startedTarget: PreviewTargetRef | null = null;
                 void startPreviewTarget(target)
                   .then(async (started) => {
+                    startedTarget = started.ref;
+                    if (!mountedRef.current) return;
                     await getPreviewHealth(target);
+                    if (!mountedRef.current) return;
                     activeTargetRef.current = started.ref;
                     startingTargetRef.current = null;
                     setStarting(false);
                     setActive(started.ref);
                   })
                   .catch((error) => {
-                    const failedTarget = startingTargetRef.current;
+                    if (!mountedRef.current) return;
                     startingTargetRef.current = null;
                     setStarting(false);
-                    if (failedTarget) {
-                      void stopPreviewTarget(failedTarget).catch(
+                    if (startedTarget) {
+                      void stopPreviewTarget(startedTarget).catch(
                         () => undefined,
                       );
                     }

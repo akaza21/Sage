@@ -1,8 +1,8 @@
 use std::fs;
 
 use super::{
-    discovery::{PreviewDiscoveryRequest, discover},
-    health,
+    discovery::{PreviewDiscoveryRequest, PreviewScriptName, PreviewTargetRef, discover},
+    health, lifecycle,
     origin::loopback_origin,
 };
 use crate::project_registry::RootRecord;
@@ -127,6 +127,81 @@ fn discovery_stops_at_the_package_cap() {
     assert_eq!(response.targets.len(), 1);
     assert!(response.truncated);
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovery_truncates_a_directory_at_the_entry_cap() {
+    let root =
+        std::env::temp_dir().join(format!("sage-preview-entry-cap-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    for index in 0..256 {
+        fs::write(root.join(format!("file-{index}")), "").unwrap();
+    }
+    let request = PreviewDiscoveryRequest {
+        project_id: "project-preview".into(),
+        project_generation: 2,
+        expected_transition_epoch: 4,
+    };
+    let response = discover(
+        &request,
+        vec![RootRecord {
+            id: "root-preview".into(),
+            project_id: request.project_id.clone(),
+            absolute_path: root.clone(),
+            ordinal: 0,
+        }],
+    )
+    .unwrap();
+    assert!(response.targets.is_empty());
+    assert!(response.truncated);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn stops_before_reserve_cancel_each_matching_start() {
+    let target = PreviewTargetRef {
+        project_id: format!("project-preview-{}", uuid::Uuid::new_v4()),
+        project_generation: 2,
+        expected_transition_epoch: 4,
+        root_id: "root-preview".into(),
+        script_name: PreviewScriptName::Dev,
+    };
+    let second_target = PreviewTargetRef {
+        root_id: "second-root-preview".into(),
+        script_name: PreviewScriptName::Start,
+        ..target.clone()
+    };
+
+    let request = PreviewDiscoveryRequest {
+        project_id: target.project_id.clone(),
+        project_generation: target.project_generation,
+        expected_transition_epoch: target.expected_transition_epoch,
+    };
+    lifecycle::replace_discovered(
+        &request,
+        vec![
+            (target.clone(), std::env::temp_dir()),
+            (second_target.clone(), std::env::temp_dir()),
+        ],
+    );
+    assert_eq!(
+        lifecycle::stop(&target).unwrap().ref_,
+        target,
+        "an early stop must be accepted so it can cancel the in-flight command"
+    );
+    assert_eq!(
+        lifecycle::stop(&second_target).unwrap().ref_,
+        second_target,
+        "one target's cancellation must not overwrite another's"
+    );
+    assert!(
+        lifecycle::reserve_start(target).is_err(),
+        "the first later start must fail closed before it can spawn a child"
+    );
+    assert!(
+        lifecycle::reserve_start(second_target).is_err(),
+        "the second later start must fail closed before it can spawn a child"
+    );
 }
 
 #[test]

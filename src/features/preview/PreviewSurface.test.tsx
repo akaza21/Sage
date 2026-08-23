@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
@@ -99,5 +105,10 @@ describe("PreviewSurface", () => {
     rendered.rerender(<Harness active={false} />);
 
     await waitFor(() => expect(stopPreviewTarget).toHaveBeenCalledWith(target));
+    await act(async () =>
+      starting.resolve({ ref: target, origin: "http://127.0.0.1:5173" }),
+    );
+    expect(stopPreviewTarget).toHaveBeenCalledTimes(1);
+    expect(getPreviewHealth).not.toHaveBeenCalled();
   });
 });
