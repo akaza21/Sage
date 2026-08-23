@@ -64,7 +64,9 @@ export function getPermissionStatus(item: PermissionItem) {
         ? "Asking again"
         : item.payload.state === "responseQueued"
           ? "Responding"
-          : "Declining";
+          : item.payload.state === "declinePending"
+            ? "Declining"
+            : "Waiting for approval";
   return {
     visual,
     accessible: failedClosed

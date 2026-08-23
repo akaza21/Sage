@@ -52,7 +52,9 @@ describe("PermissionItem", () => {
         description: "Choose how Sage should handle this permission request",
       }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "Declining" })).toHaveAttribute(
+    expect(
+      screen.getByRole("status", { name: "Waiting for approval" }),
+    ).toHaveAttribute(
       "aria-live",
       "off",
     );
