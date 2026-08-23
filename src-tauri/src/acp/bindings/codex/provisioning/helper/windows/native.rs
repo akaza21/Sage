@@ -249,6 +249,70 @@ pub(super) fn cleanup_completed_stage(
     Ok(())
 }
 
+pub(super) fn remove_exact_directory_tree(path: &Path) -> Result<(), ElevatedHelperError> {
+    let metadata = fs::symlink_metadata(path).map_err(|_| ElevatedHelperError::Cleanup)?;
+    if !metadata.file_type().is_dir()
+        || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    {
+        return Err(ElevatedHelperError::Cleanup);
+    }
+    let mut entries = 0;
+    remove_directory_contents(path, 0, &mut entries)?;
+    fs::remove_dir(path).map_err(|_| ElevatedHelperError::Cleanup)
+}
+
+fn remove_directory_contents(
+    path: &Path,
+    depth: usize,
+    entries: &mut usize,
+) -> Result<(), ElevatedHelperError> {
+    const DELETE_DEPTH_MAX: usize = 8;
+    const DELETE_ENTRIES_MAX: usize = 32;
+    if depth > DELETE_DEPTH_MAX {
+        return Err(ElevatedHelperError::Cleanup);
+    }
+    let children = fs::read_dir(path)
+        .map_err(|_| ElevatedHelperError::Cleanup)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| ElevatedHelperError::Cleanup)?;
+    *entries = entries
+        .checked_add(children.len())
+        .filter(|count| *count <= DELETE_ENTRIES_MAX)
+        .ok_or(ElevatedHelperError::Cleanup)?;
+    for entry in children {
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path).map_err(|_| ElevatedHelperError::Cleanup)?;
+        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return Err(ElevatedHelperError::Cleanup);
+        }
+        if metadata.file_type().is_dir() {
+            remove_directory_contents(&path, depth + 1, entries)?;
+            fs::remove_dir(path).map_err(|_| ElevatedHelperError::Cleanup)?;
+        } else if metadata.file_type().is_file() {
+            fs::remove_file(path).map_err(|_| ElevatedHelperError::Cleanup)?;
+        } else {
+            return Err(ElevatedHelperError::Cleanup);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod platform_tests {
+    use super::super::WindowsPlatform;
+    use crate::acp::bindings::codex::provisioning::helper::transaction::HelperTransactionPlatform;
+
+    #[test]
+    fn windows_platform_owns_update_and_remove_transaction_primitives() {
+        fn requires_concrete_lifecycle_platform<P: HelperTransactionPlatform>() {}
+
+        requires_concrete_lifecycle_platform::<WindowsPlatform>();
+        let _ = <WindowsPlatform as HelperTransactionPlatform>::hold_published_pair;
+        let _ = <WindowsPlatform as HelperTransactionPlatform>::restore_held_pair;
+        let _ = <WindowsPlatform as HelperTransactionPlatform>::retire_published_pair;
+    }
+}
+
 pub(super) fn replace_journal(
     path: &Path,
     bytes: &[u8],

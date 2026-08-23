@@ -55,8 +55,9 @@ pub(crate) use physical::{
 };
 pub(crate) use policy::{SecurityPolicyError, parse_security_policy};
 pub(crate) use provisioning::{
-    ExplicitStagingAuthorization, PreparedCodexStaging, ProvisioningError, VerifiedCodexSource,
-    authorize_offline_staging_from_environment, prepare_codex_staging, verify_codex_source,
+    ExplicitStagingAuthorization, PreparedCodexStaging, ProvisioningError, StagingOperation,
+    VerifiedCodexSource, authorize_offline_staging_from_environment, prepare_codex_staging,
+    prepare_codex_staging_after_signed_role, verify_codex_source,
 };
 #[cfg(all(windows, feature = "codex-provisioning-helper"))]
 pub(crate) use provisioning::{

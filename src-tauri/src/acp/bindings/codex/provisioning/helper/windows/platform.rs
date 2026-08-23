@@ -55,12 +55,19 @@ impl HelperTransactionPlatform for WindowsPlatform {
         self.require_stage_root_at_path()?;
         let package_present = exact_directory_presence(&self.stage_package)?;
         let state_published = exact_directory_presence(&self.state_target)?;
+        let held_package_present =
+            exact_directory_presence(&self.stage_root.join(HELD_PACKAGE_NAME))?;
+        let held_state_present = exact_directory_presence(&self.stage_root.join(HELD_STATE_NAME))?;
+        if held_package_present != held_state_present {
+            return Err(ElevatedHelperError::Drift);
+        }
         validate_stage_closure(
             &self.stage_root,
             &self.stage_state,
             &self.receipt,
             package_present,
             state_published,
+            held_package_present,
         )?;
         self.stage_proof = Some(self.inspect_at(self.stage_package.clone())?);
         Ok(())
@@ -155,6 +162,19 @@ impl HelperTransactionPlatform for WindowsPlatform {
     }
 
     fn remove_completed_stage(&mut self) -> Result<(), ElevatedHelperError> {
+        let held_package = self.stage_root.join(HELD_PACKAGE_NAME);
+        let held_state = self.stage_root.join(HELD_STATE_NAME);
+        if exact_directory_presence(&held_package)? || exact_directory_presence(&held_state)? {
+            if !exact_directory_presence(&held_package)? || !exact_directory_presence(&held_state)?
+            {
+                return Err(ElevatedHelperError::Cleanup);
+            }
+            self.held_package.take();
+            self.held_state.take();
+            self.held_state_identity.take();
+            remove_exact_directory_tree(&held_package)?;
+            remove_exact_directory_tree(&held_state)?;
+        }
         cleanup_completed_stage(&self.stage_root, &mut self.stage_root_handle)
     }
 
@@ -218,6 +238,131 @@ impl HelperTransactionPlatform for WindowsPlatform {
         .map_err(|_| ElevatedHelperError::Rollback)?;
         self.require_bound_state_at(&self.stage_state)
             .map_err(|_| ElevatedHelperError::Rollback)
+    }
+
+    fn hold_published_pair(&mut self) -> Result<(), ElevatedHelperError> {
+        let package_root = ConfiguredManagedPackageRoot::new(self.package_target.clone())
+            .map_err(|_| ElevatedHelperError::Drift)?;
+        let package = inspect_managed_package(&self.packet, &package_root)
+            .map_err(|_| ElevatedHelperError::Drift)?;
+        validate_provisioned_package_acl(&package).map_err(|_| ElevatedHelperError::Drift)?;
+        let package_node = package.root_node().ok_or(ElevatedHelperError::Drift)?;
+        let package_source =
+            open_rename_directory(&package_node.path, node_identity(&package_node.handle)?)?;
+        let (state, state_identity) = open_mutation_directory(&self.state_target, None)?;
+        validate_provisioned_state_root(&self.state_target)
+            .map_err(|_| ElevatedHelperError::Drift)?;
+        if !bounded_names(&self.state_target, 0, ElevatedHelperError::Drift)?.is_empty()
+            || self.held_package.is_some()
+            || self.held_state.is_some()
+            || exact_directory_presence(&self.stage_root.join(HELD_PACKAGE_NAME))?
+            || exact_directory_presence(&self.stage_root.join(HELD_STATE_NAME))?
+        {
+            return Err(ElevatedHelperError::Drift);
+        }
+        rename_exact(
+            &package_source,
+            self.stage_root_handle
+                .as_ref()
+                .ok_or(ElevatedHelperError::Drift)?,
+            std::ffi::OsStr::new(HELD_PACKAGE_NAME),
+            false,
+        )?;
+        if let Err(error) = rename_exact(
+            &state,
+            self.stage_root_handle
+                .as_ref()
+                .ok_or(ElevatedHelperError::Drift)?,
+            std::ffi::OsStr::new(HELD_STATE_NAME),
+            false,
+        ) {
+            let restored = rename_exact(
+                &package_source,
+                &self.package_parent_handle,
+                self.package_target
+                    .file_name()
+                    .ok_or(ElevatedHelperError::Drift)?,
+                false,
+            );
+            return restored.and(Err(error));
+        }
+        self.held_package = Some(package);
+        self.held_state = Some(state);
+        self.held_state_identity = Some(state_identity);
+        Ok(())
+    }
+
+    fn discard_held_pair(&mut self) -> Result<(), ElevatedHelperError> {
+        if self.held_package.is_some()
+            || self.held_state.is_some()
+            || exact_directory_presence(&self.stage_root.join(HELD_PACKAGE_NAME))?
+            || exact_directory_presence(&self.stage_root.join(HELD_STATE_NAME))?
+        {
+            return Err(ElevatedHelperError::Cleanup);
+        }
+        Ok(())
+    }
+
+    fn restore_held_pair(&mut self) -> Result<(), ElevatedHelperError> {
+        let package = self
+            .held_package
+            .as_ref()
+            .ok_or(ElevatedHelperError::Rollback)?;
+        let package_node = package.root_node().ok_or(ElevatedHelperError::Rollback)?;
+        let package_source = open_rename_directory(
+            &self.stage_root.join(HELD_PACKAGE_NAME),
+            node_identity(&package_node.handle).map_err(|_| ElevatedHelperError::Rollback)?,
+        )
+        .map_err(|_| ElevatedHelperError::Rollback)?;
+        let state = self
+            .held_state
+            .as_ref()
+            .ok_or(ElevatedHelperError::Rollback)?;
+        if node_identity(state).map_err(|_| ElevatedHelperError::Rollback)?
+            != self
+                .held_state_identity
+                .ok_or(ElevatedHelperError::Rollback)?
+        {
+            return Err(ElevatedHelperError::Rollback);
+        }
+        rename_exact(
+            &package_source,
+            &self.package_parent_handle,
+            self.package_target
+                .file_name()
+                .ok_or(ElevatedHelperError::Rollback)?,
+            false,
+        )
+        .map_err(|_| ElevatedHelperError::Rollback)?;
+        rename_exact(
+            state,
+            &self.state_parent_handle,
+            self.state_target
+                .file_name()
+                .ok_or(ElevatedHelperError::Rollback)?,
+            false,
+        )
+        .map_err(|_| ElevatedHelperError::Rollback)?;
+        self.held_package.take();
+        self.held_state.take();
+        self.held_state_identity.take();
+        Ok(())
+    }
+
+    fn retire_published_pair(&mut self) -> Result<(), ElevatedHelperError> {
+        let package_root = ConfiguredManagedPackageRoot::new(self.package_target.clone())
+            .map_err(|_| ElevatedHelperError::Drift)?;
+        let package = inspect_managed_package(&self.packet, &package_root)
+            .map_err(|_| ElevatedHelperError::Drift)?;
+        validate_provisioned_package_acl(&package).map_err(|_| ElevatedHelperError::Drift)?;
+        validate_provisioned_state_root(&self.state_target)
+            .map_err(|_| ElevatedHelperError::Drift)?;
+        if !bounded_names(&self.state_target, 0, ElevatedHelperError::Drift)?.is_empty() {
+            return Err(ElevatedHelperError::Drift);
+        }
+        drop(package);
+        remove_exact_directory_tree(&self.package_target)?;
+        remove_exact_directory_tree(&self.state_target)
     }
 }
 

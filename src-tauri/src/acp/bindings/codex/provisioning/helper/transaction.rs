@@ -76,18 +76,10 @@ pub(super) trait HelperTransactionPlatform {
     fn remove_completed_stage(&mut self) -> Result<(), ElevatedHelperError>;
     fn rollback_package(&mut self) -> Result<(), ElevatedHelperError>;
     fn rollback_state(&mut self) -> Result<(), ElevatedHelperError>;
-    fn hold_published_pair(&mut self) -> Result<(), ElevatedHelperError> {
-        Err(ElevatedHelperError::Publication)
-    }
-    fn discard_held_pair(&mut self) -> Result<(), ElevatedHelperError> {
-        Err(ElevatedHelperError::Cleanup)
-    }
-    fn restore_held_pair(&mut self) -> Result<(), ElevatedHelperError> {
-        Err(ElevatedHelperError::Rollback)
-    }
-    fn retire_published_pair(&mut self) -> Result<(), ElevatedHelperError> {
-        Err(ElevatedHelperError::Publication)
-    }
+    fn hold_published_pair(&mut self) -> Result<(), ElevatedHelperError>;
+    fn discard_held_pair(&mut self) -> Result<(), ElevatedHelperError>;
+    fn restore_held_pair(&mut self) -> Result<(), ElevatedHelperError>;
+    fn retire_published_pair(&mut self) -> Result<(), ElevatedHelperError>;
 }
 
 pub(super) fn execute_boundary_recover<P: HelperTransactionPlatform>(

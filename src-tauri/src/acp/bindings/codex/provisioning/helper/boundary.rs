@@ -6,7 +6,8 @@ use crate::codex_helper_boundary::{
 
 use super::{
     AuthenticatedHelperRequest, ElevatedHelperError, HELPER_PRODUCT, HELPER_PROTOCOL_VERSION,
-    HelperExecutableIdentity, VerifiedHelperExecutable, authenticate_helper_request_with_secret,
+    HelperExecutableIdentity, HelperOperation, VerifiedHelperExecutable,
+    authenticate_helper_request_with_secret, seal_helper_request_operation_with_secret,
     seal_helper_request_with_secret, windows,
 };
 use crate::acp::bindings::codex::managed::ManagedStagingPrerequisite;
@@ -53,6 +54,23 @@ pub(super) fn seal_boundary_helper_request(
 ) -> Result<Vec<u8>, ElevatedHelperError> {
     let helper = observed_helper(helper);
     seal_helper_request_with_secret(handoff, stage_root, &helper, secret.bytes())
+}
+
+pub(super) fn seal_boundary_helper_request_operation(
+    handoff: &SealedHandoff,
+    stage_root: PathBuf,
+    helper: HelperIdentity,
+    secret: &OneShotSecret,
+    operation: HelperOperation,
+) -> Result<Vec<u8>, ElevatedHelperError> {
+    let helper = observed_helper(helper);
+    seal_helper_request_operation_with_secret(
+        handoff,
+        stage_root,
+        &helper,
+        secret.bytes(),
+        operation,
+    )
 }
 
 pub(super) fn authenticate_boundary_publication(

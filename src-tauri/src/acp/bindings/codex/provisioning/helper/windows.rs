@@ -35,13 +35,15 @@ use crate::acp::bindings::codex::physical::{
 use crate::acp::bindings::codex::provisioning::{AclPlan, SealedHandoff, hex};
 use native::{
     bounded_names, cleanup_completed_stage, create_initial_journal, handle_path, node_identity,
-    open_destination_root, open_mutation_directory, open_rename_directory, rename_exact,
-    replace_journal,
+    open_destination_root, open_mutation_directory, open_rename_directory,
+    remove_exact_directory_tree, rename_exact, replace_journal,
 };
 use security::{Principals, apply_acl, apply_acl_to_exact_node, well_known_sid};
 use transaction_lock::TransactionLock;
 
 const RECEIPT_BYTES_MAX: usize = 64 * 1024;
+const HELD_PACKAGE_NAME: &str = ".sage-codex-0.145.0-previous-package";
+const HELD_STATE_NAME: &str = ".sage-codex-0.145.0-previous-state";
 
 /// Capability reserved for the separately built and verified elevated helper
 /// process. Production construction requires the boundary's unforgeable
@@ -120,6 +122,9 @@ struct WindowsPlatform {
     state_parent_handle: File,
     state_handle: Option<File>,
     state_identity: Option<NodeIdentity>,
+    held_package: Option<PhysicallyInspectedPackage>,
+    held_state: Option<File>,
+    held_state_identity: Option<NodeIdentity>,
     creation_nonce: String,
 }
 
@@ -191,6 +196,9 @@ impl WindowsPlatform {
             state_parent_handle,
             state_handle: None,
             state_identity: None,
+            held_package: None,
+            held_state: None,
+            held_state_identity: None,
             creation_nonce: request.creation_nonce().to_owned(),
         })
     }
@@ -212,6 +220,7 @@ fn validate_stage_closure(
     receipt: &SealedHandoff,
     package_present: bool,
     state_published: bool,
+    holding_published_pair: bool,
 ) -> Result<(), ElevatedHelperError> {
     let mut expected = ["handoff.json"]
         .into_iter()
@@ -222,6 +231,10 @@ fn validate_stage_closure(
     }
     if !state_published {
         expected.insert("state".into());
+    }
+    if holding_published_pair {
+        expected.insert(HELD_PACKAGE_NAME.into());
+        expected.insert(HELD_STATE_NAME.into());
     }
     let names = bounded_names(stage, expected.len(), ElevatedHelperError::Drift)?;
     if names != expected

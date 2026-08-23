@@ -137,6 +137,39 @@ fn boundary_secret_and_observed_image_authenticate_the_core_request() {
     );
 }
 
+#[test]
+fn boundary_sealer_emits_the_requested_lifecycle_operation() {
+    use crate::codex_helper_boundary::{HelperIdentity, OneShotSecret};
+
+    let packet = packet();
+    let helper = HelperIdentity {
+        sha256: [0x22; 32],
+        byte_len: 1_048_576,
+    };
+    let secret = OneShotSecret::from_bytes([0x33; 32]);
+
+    for operation in [
+        HelperOperation::Recover,
+        HelperOperation::Update,
+        HelperOperation::Remove,
+    ] {
+        let request = super::boundary::seal_boundary_helper_request_operation(
+            &handoff(),
+            packet
+                .managed_package_root()
+                .parent()
+                .unwrap()
+                .join(".sage-codex-0.145.0-stage"),
+            helper,
+            &secret,
+            operation,
+        )
+        .unwrap();
+
+        assert_eq!(helper_operation(&request), Ok(operation));
+    }
+}
+
 fn exact_request(helper: &VerifiedHelperExecutable, secret: &OneTimeHelperSecret) -> Vec<u8> {
     let packet = packet();
     seal_helper_request(
