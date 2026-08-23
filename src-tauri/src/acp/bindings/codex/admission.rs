@@ -346,8 +346,9 @@ fn authenticate_startup_signed_installed_role(
         &policy,
     )
     .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let environment = super::authority::build_system_codex_launch_environment(&packet, &policy, &config)
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+    let environment =
+        super::authority::build_system_codex_launch_environment(&packet, &policy, &config)
+            .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
     let authority = super::inspect_codex_authority(&packet, policy, config, &reproduced, managed)
         .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
 
@@ -399,18 +400,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn startup_registration_is_typed_unavailable_without_independent_admission() {
+    fn startup_registration_is_typed_unavailable_or_refreshable_after_admission() {
         let registration = startup_codex_binding_registration();
+        let separately_started = startup_codex_binding_registration();
 
-        assert!(!registration.is_available());
+        assert!(!registration.same_authority(&separately_started));
+        #[cfg(not(windows))]
         assert_eq!(
             registration.unavailable(),
-            Some(if cfg!(windows) {
-                CodexAdmissionUnavailable::IndependentAdmission
-            } else {
-                CodexAdmissionUnavailable::Platform
-            })
+            Some(CodexAdmissionUnavailable::Platform)
         );
+        #[cfg(windows)]
+        match registration.unavailable() {
+            Some(unavailable) => {
+                assert_eq!(unavailable, CodexAdmissionUnavailable::IndependentAdmission)
+            }
+            None => {
+                assert!(registration.is_available());
+                registration.refresh().unwrap();
+            }
+        }
     }
 
     #[cfg(windows)]
