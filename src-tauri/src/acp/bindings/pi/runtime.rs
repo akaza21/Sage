@@ -291,6 +291,10 @@ impl HarnessAdapter for PiRuntime {
                 self.begin_one(Operation::Abort, RequestKind::Cancel)
             }
             AdapterCommand::Cancel => Err(AdapterRuntimeError::Operation),
+            AdapterCommand::ResolvePermission {
+                request_id,
+                decision,
+            } => self.resolve_later_permission(&request_id, decision),
         }
     }
 
@@ -355,6 +359,18 @@ impl HarnessAdapter for PiRuntime {
     ) -> Result<(), AdapterRuntimeError> {
         if token.deny_request().is_some() {
             return self.resolve_deny(token, resolution);
+        }
+        if token.allow_request().is_some() {
+            return match resolution {
+                EgressResolution::Queued => Ok(()),
+                EgressResolution::Written => {
+                    self.deny = None;
+                    Ok(())
+                }
+                EgressResolution::QueueRejected
+                | EgressResolution::WriteZeroBytes
+                | EgressResolution::DeliveryUnknown => Err(AdapterRuntimeError::EgressIntent),
+            };
         }
         let id = token
             .request_id()

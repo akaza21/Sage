@@ -1,4 +1,6 @@
-use crate::acp::{lifecycle::ServerRequestState, limits::LIMITS};
+use crate::acp::{
+    lifecycle::ServerRequestState, limits::LIMITS, runtime::permissions::PermissionDecision,
+};
 
 use super::{
     AdapterError, CodexAdapter, ExternalKind, PermissionRegistration, PermissionRequestEntry,
@@ -20,18 +22,33 @@ impl CodexAdapter {
             .iter()
             .find(|entry| entry.id == request_id)
         {
+            let allow_response_queued = existing.state == ServerRequestState::ResponseQueued
+                && existing.response.is_empty();
             if existing.fingerprint != fingerprint
                 || existing.method != method
                 || existing.turn_id != turn_id
                 || existing.item_id != item_id
-                || existing.response != response
+                || (!allow_response_queued
+                    && !matches!(
+                        existing.state,
+                        ServerRequestState::AllowPending
+                            | ServerRequestState::AllowCommitted
+                            | ServerRequestState::ResolvedAllowed
+                    )
+                    && existing.response != response)
             {
                 return Err(AdapterError::PermissionTeardownRequired);
             }
             return Ok(match existing.state {
-                ServerRequestState::Received | ServerRequestState::DeclinePending => {
+                ServerRequestState::Received
+                | ServerRequestState::Asked
+                | ServerRequestState::AllowPending
+                | ServerRequestState::AllowCommitted
+                | ServerRequestState::ResolvedAllowed => PermissionRegistration::DuplicatePending,
+                ServerRequestState::ResponseQueued if allow_response_queued => {
                     PermissionRegistration::DuplicatePending
                 }
+                ServerRequestState::DeclinePending => PermissionRegistration::DuplicatePending,
                 ServerRequestState::DeclineCommitted
                 | ServerRequestState::ResponseQueued
                 | ServerRequestState::ResolvedDeclined => {
@@ -40,11 +57,12 @@ impl CodexAdapter {
             });
         }
         if self.permission_requests.len() >= LIMITS.queues.server_requests_per_session as usize {
-            let Some(index) = self
-                .permission_requests
-                .iter()
-                .position(|entry| entry.state == ServerRequestState::ResolvedDeclined)
-            else {
+            let Some(index) = self.permission_requests.iter().position(|entry| {
+                matches!(
+                    entry.state,
+                    ServerRequestState::ResolvedAllowed | ServerRequestState::ResolvedDeclined
+                )
+            }) else {
                 return Err(AdapterError::PermissionTeardownRequired);
             };
             self.permission_requests.swap_remove(index);
@@ -62,7 +80,7 @@ impl CodexAdapter {
         Ok(PermissionRegistration::New(external))
     }
 
-    pub(crate) fn advance_permission_decline(
+    pub(crate) fn advance_permission(
         &mut self,
         request_id: &str,
         next: ServerRequestState,
@@ -80,5 +98,68 @@ impl CodexAdapter {
         }
         entry.state = next;
         Ok(())
+    }
+
+    pub(crate) fn advance_permission_decline(
+        &mut self,
+        request_id: &str,
+        next: ServerRequestState,
+    ) -> Result<(), AdapterError> {
+        self.advance_permission(request_id, next)
+    }
+
+    pub(crate) fn resolve_pending_permission(
+        &mut self,
+        request_id: &str,
+        decision: PermissionDecision,
+    ) -> Result<Option<(String, Vec<u8>, String)>, AdapterError> {
+        let Some(entry) = self
+            .permission_requests
+            .iter_mut()
+            .find(|entry| entry.id == request_id)
+        else {
+            return Err(AdapterError::PermissionTeardownRequired);
+        };
+        if !matches!(
+            entry.state,
+            ServerRequestState::Received | ServerRequestState::Asked
+        ) {
+            return Err(AdapterError::PermissionTeardownRequired);
+        }
+        match decision {
+            PermissionDecision::Ask => {
+                entry.state = ServerRequestState::Asked;
+                Ok(None)
+            }
+            PermissionDecision::AllowOnce => {
+                entry.state = ServerRequestState::AllowPending;
+                entry.state = ServerRequestState::AllowCommitted;
+                let mut value: serde_json::Value = serde_json::from_slice(&entry.response)
+                    .map_err(|_| AdapterError::PermissionTeardownRequired)?;
+                let result = if entry.method == "item/permissions/requestApproval" {
+                    serde_json::json!({"permissions": {}})
+                } else {
+                    serde_json::json!({"decision": "accept"})
+                };
+                value
+                    .as_object_mut()
+                    .ok_or(AdapterError::PermissionTeardownRequired)?
+                    .insert("result".into(), result);
+                let bytes = serde_json::to_vec(&value)
+                    .map_err(|_| AdapterError::PermissionTeardownRequired)?;
+                // An empty retained response marks the shared queued state as
+                // the allow path, so a duplicate cannot replay decline bytes.
+                entry.response.clear();
+                Ok(Some((entry.id.clone(), bytes, entry.method.clone())))
+            }
+            PermissionDecision::Deny => {
+                entry.state = ServerRequestState::DeclinePending;
+                Ok(Some((
+                    entry.id.clone(),
+                    entry.response.clone(),
+                    entry.method.clone(),
+                )))
+            }
+        }
     }
 }

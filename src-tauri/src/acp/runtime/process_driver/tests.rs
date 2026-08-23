@@ -17,16 +17,16 @@ use crate::acp::{
     },
     contract::{
         ProjectionRevision, RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId, SageChatId,
-        SageProjectId, SageTurnId,
+        SageProjectId, SageServerRequestId, SageTurnId,
     },
     intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload, SafeResourceRef},
-    lifecycle::{DeliveryState, ItemLifecycle, TurnState},
+    lifecycle::{DeliveryState, ItemLifecycle, ServerRequestState, TurnState},
     limits::LIMITS,
     process::{LaunchError, TreeExit},
     runtime::{
         ActiveTurnIntent, AdapterBatchJournal, AdapterPump, DurableAdapterEvent, EgressTransport,
         JournalReceipt, ProjectionPublishError, ProjectionPublishStatus, ProjectionPublisher,
-        PumpIntent, PumpJournalError, SessionPumpIntent,
+        PumpIntent, PumpJournalError, SessionPumpIntent, permissions::PermissionDecision,
     },
     scheduler::RuntimeOwner,
     store::SendObservation,
@@ -40,6 +40,7 @@ struct SharedState {
     batches: VecDeque<AdapterBatch>,
     commands: Vec<&'static str>,
     resolutions: Vec<EgressResolution>,
+    permission_states: Vec<ServerRequestState>,
     durable: Vec<Vec<DurableAdapterEvent>>,
     rebound_turns: Vec<SageTurnId>,
     ingest_error: Option<AdapterRuntimeError>,
@@ -61,6 +62,30 @@ impl HarnessAdapter for FakeAdapter {
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
+        if let AdapterCommand::ResolvePermission {
+            request_id,
+            decision,
+        } = command
+        {
+            self.shared
+                .0
+                .lock()
+                .expect("shared")
+                .commands
+                .push("permission");
+            let external = ExternalId::new("permissionRequest", request_id.as_str())
+                .map_err(|_| AdapterRuntimeError::Frame)?;
+            let token = match decision {
+                PermissionDecision::Ask => EgressToken::protocol_notification(),
+                PermissionDecision::AllowOnce => EgressToken::permission_allow(external),
+                PermissionDecision::Deny => EgressToken::mandatory_deny(external, false),
+            };
+            return Ok(AdapterEgress::new(
+                OutboundFrame::new(br#"{"permission":true}"#.to_vec())
+                    .map_err(|_| AdapterRuntimeError::Frame)?,
+                token,
+            ));
+        }
         let cancel = matches!(command, AdapterCommand::Cancel);
         let prompt = matches!(command, AdapterCommand::Prompt { .. });
         self.shared
@@ -181,6 +206,24 @@ impl AdapterBatchJournal for FakeJournal {
         self.turn_state = TurnState::Sending;
         self.turn_revision = 1;
         Ok(self)
+    }
+
+    fn transition_permission<'a>(
+        &'a mut self,
+        _: &'a crate::acp::runtime::permissions::PermissionIntent,
+        state: ServerRequestState,
+        _: i64,
+    ) -> Pin<Box<dyn Future<Output = Result<ProjectionRevision, PumpJournalError>> + Send + 'a>>
+    {
+        self.next_revision += 1;
+        self.shared
+            .0
+            .lock()
+            .expect("shared")
+            .permission_states
+            .push(state);
+        let revision = ProjectionRevision::new(self.next_revision).expect("revision");
+        Box::pin(async move { Ok(revision) })
     }
 }
 
@@ -537,6 +580,54 @@ fn prompt_crosses_the_bounded_driver_mailbox_and_returns_exact_write_evidence() 
 
         assert_eq!(progress.written_frames, 1);
         assert_eq!(shared.0.lock().expect("shared").commands, ["prompt"]);
+    });
+}
+
+#[test]
+fn permission_write_settles_the_durable_decision() {
+    runtime().block_on(async {
+        let permission = AdapterEvent::PermissionRequest {
+            turn_id: identity_one("turn-envelope"),
+            item_id: identity_one("permission-item"),
+            external_request_id: ExternalId::new("permissionRequest", "request-allow")
+                .expect("request"),
+            payload: NormalizedPayload::PermissionRequest {
+                category: crate::acp::intent::ToolCategory::Other,
+                summary: SafeText::new("summary", "permission").expect("summary"),
+            },
+            request_payload_digest: [3; 32],
+        };
+        let (mut driver, shared, _, _) = build_driver(
+            vec![owned(vec![permission])],
+            VecDeque::from([FrameWriteOutcome::Complete]),
+        );
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .try_push_chunk(b"{}\n".to_vec())
+            .expect("permission ingress");
+        driver
+            .run_next(&mailbox)
+            .await
+            .expect("permission journaled");
+
+        driver
+            .resolve_permission(
+                &SageServerRequestId::parse("request-allow").expect("request"),
+                PermissionDecision::AllowOnce,
+            )
+            .await
+            .expect("allow written");
+
+        let state = shared.0.lock().expect("shared");
+        assert_eq!(
+            state.permission_states,
+            [
+                ServerRequestState::AllowCommitted,
+                ServerRequestState::ResponseQueued,
+                ServerRequestState::ResolvedAllowed,
+            ]
+        );
+        assert!(state.commands.contains(&"permission"));
     });
 }
 

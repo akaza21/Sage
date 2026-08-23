@@ -126,6 +126,12 @@ pub(crate) enum DurableAdapterEvent {
         now_millis: i64,
     },
     ActivityItem(Box<DurableActivityItem>),
+    PermissionRequest {
+        intent: PermissionIntent,
+        now_millis: i64,
+    },
+    /// Legacy paired-denial input retained for recovery characterization.
+    /// New ingress normalizes to PermissionRequest and waits for a decision.
     PermissionDeny {
         intent: PermissionIntent,
         now_millis: i64,
@@ -190,7 +196,6 @@ pub(crate) struct AdapterPump<A, J, R> {
     decoder_frame_aligned: bool,
     egress: ReservedQueue<AdapterEgress>,
     pending: PendingIngress,
-    requests: Vec<(ExternalId, SageServerRequestId)>,
     next_synthetic_item: u64,
     terminal: Option<TurnState>,
     durable_turn_cursor: Option<AdapterTurnCursor>,
@@ -203,6 +208,7 @@ pub(crate) struct AdapterPump<A, J, R> {
 struct PendingPermission {
     intent: PermissionIntent,
     written: bool,
+    decision: Option<crate::acp::runtime::permissions::PermissionDecision>,
 }
 
 pub(crate) struct AdapterPumpAdmission {
@@ -248,7 +254,6 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             decoder_frame_aligned: true,
             egress: admission.egress,
             pending: PendingIngress::new(),
-            requests: Vec::new(),
             next_synthetic_item: 0,
             terminal: None,
             durable_turn_cursor: None,
@@ -296,27 +301,6 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
 
     pub(crate) fn next_deferred_flush_deadline_millis(&self) -> Option<i64> {
         self.pending.deadline_millis()
-    }
-
-    fn request_id(
-        &mut self,
-        external: &ExternalId,
-    ) -> Result<SageServerRequestId, AdapterPumpError> {
-        if let Some((_, id)) = self.requests.iter().find(|(value, _)| value == external) {
-            return Ok(id.clone());
-        }
-        // This identity map preserves duplicate correlation for durable history;
-        // the SQLite authority separately enforces the smaller unresolved-live cap.
-        if self.requests.len() >= LIMITS.durable.requests_per_session as usize {
-            self.teardown = true;
-            return Err(AdapterPumpError::BatchCapacity);
-        }
-        self.requests
-            .try_reserve_exact(1)
-            .map_err(|_| AdapterPumpError::BatchCapacity)?;
-        let id = SageServerRequestId::new();
-        self.requests.push((external.clone(), id.clone()));
-        Ok(id)
     }
 
     fn synthetic_item_id(&mut self) -> Result<ExternalId, AdapterPumpError> {

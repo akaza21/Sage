@@ -3,13 +3,15 @@ use serde_json::{Value, json};
 use super::*;
 use crate::acp::{
     bindings::{
-        adapter::{AdapterEvent, AdapterRuntimeError, EgressResolution, HarnessAdapter},
+        adapter::{
+            AdapterCommand, AdapterEvent, AdapterRuntimeError, EgressResolution, HarnessAdapter,
+        },
         omp::{
             ArtifactIdentity, CandidateManifest, CuratedOmpBinding, OMP_BUN_MINIMUM, OMP_LICENSE,
             OMP_PACKAGE, OMP_SOURCE_COMMIT, OMP_VERSION, OmpPlatform,
         },
     },
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageRootId},
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageRootId, SageServerRequestId},
     intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef},
     transport::IncrementalFrameDecoder,
 };
@@ -331,6 +333,18 @@ fn delivery_resolution_rolls_back_zero_and_poison_unknown_without_replay() {
     assert!(matches!(
         unknown.command(AdapterCommand::Initialize),
         Err(AdapterRuntimeError::Operation)
+    ));
+}
+
+#[test]
+fn unresolved_permission_decision_reports_missing_intent() {
+    let mut runtime = fixture_runtime(7);
+    assert!(matches!(
+        runtime.command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse("request-omp-missing").expect("request"),
+            decision: crate::acp::runtime::permissions::PermissionDecision::Deny,
+        }),
+        Err(AdapterRuntimeError::PermissionIntent)
     ));
 }
 

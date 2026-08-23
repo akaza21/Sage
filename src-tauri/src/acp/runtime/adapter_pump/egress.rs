@@ -13,6 +13,78 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         self.enqueue(egress)
     }
 
+    /// The service has already committed the user's decision before it reaches
+    /// the worker. Ask changes only durable state, while Allow and Deny retain
+    /// the returned response in the bounded control lane for this exact
+    /// previously-journaled request.
+    pub(crate) async fn resolve_permission(
+        &mut self,
+        request_id: &SageServerRequestId,
+        decision: crate::acp::runtime::permissions::PermissionDecision,
+        now_millis: i64,
+    ) -> Result<(), AdapterPumpError> {
+        self.ensure_live()?;
+        let Some(pending) = self.pending_permission.as_ref() else {
+            return Err(AdapterPumpError::Intent);
+        };
+        if &pending.intent.request_id != request_id || pending.decision.is_some() {
+            return Err(AdapterPumpError::Intent);
+        }
+        if decision == crate::acp::runtime::permissions::PermissionDecision::Ask {
+            let None = crate::acp::runtime::later_permission::resolve_later_permission(
+                request_id,
+                crate::acp::runtime::permissions::PermissionDecision::Ask,
+                None,
+            )
+            .map_err(|_| AdapterPumpError::Intent)?
+            else {
+                return Err(AdapterPumpError::Intent);
+            };
+            return Ok(());
+        }
+        let egress = self.adapter.command(AdapterCommand::ResolvePermission {
+            request_id: request_id.clone(),
+            decision,
+        })?;
+        let intent = pending.intent.clone();
+        if egress.token().is_mandatory()
+            && self
+                .adapter
+                .commit_mandatory_egress(egress.token())
+                .is_err()
+        {
+            self.teardown = true;
+            return Err(AdapterPumpError::TeardownRequired);
+        }
+        let committed = match decision {
+            crate::acp::runtime::permissions::PermissionDecision::AllowOnce => {
+                ServerRequestState::AllowCommitted
+            }
+            crate::acp::runtime::permissions::PermissionDecision::Deny => {
+                ServerRequestState::DeclineCommitted
+            }
+            crate::acp::runtime::permissions::PermissionDecision::Ask => unreachable!(),
+        };
+        let revision = self
+            .journal
+            .transition_permission(&intent, committed, now_millis)
+            .await
+            .map_err(|_| AdapterPumpError::TeardownRequired)?;
+        self.publish_revision(revision)?;
+        self.enqueue(egress)?;
+        let revision = self
+            .journal
+            .transition_permission(&intent, ServerRequestState::ResponseQueued, now_millis)
+            .await
+            .map_err(|_| AdapterPumpError::TeardownRequired)?;
+        let pending = self
+            .pending_permission
+            .as_mut()
+            .ok_or(AdapterPumpError::TeardownRequired)?;
+        pending.decision = Some(decision);
+        self.publish_revision(revision)
+    }
+
     pub(crate) fn queue_cancel(
         &mut self,
         session_id: &SageAgentSessionId,
@@ -63,7 +135,8 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         let written_permission = egress
             .token()
             .deny_request()
-            .and_then(|(request, replay)| (!replay).then_some(request.to_owned()));
+            .and_then(|(request, replay)| (!replay).then_some(request.to_owned()))
+            .or_else(|| egress.token().allow_request().map(str::to_owned));
         let outcome = transport.write(egress.frame());
         let (resolution, disposition) = match outcome {
             FrameWriteOutcome::Complete => (EgressResolution::Written, FlushDisposition::Written),
@@ -87,15 +160,17 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         }
         if disposition == FlushDisposition::Written
             && let Some(request) = written_permission
+            && let Some(pending) = self.pending_permission.as_mut()
+            && matches!(
+                pending.decision,
+                Some(
+                    crate::acp::runtime::permissions::PermissionDecision::AllowOnce
+                        | crate::acp::runtime::permissions::PermissionDecision::Deny
+                )
+            )
+            && pending.intent.external_request_id.as_str() == request
+            && !pending.written
         {
-            let Some(pending) = self.pending_permission.as_mut() else {
-                self.teardown = true;
-                return Err(AdapterPumpError::TeardownRequired);
-            };
-            if pending.intent.external_request_id.as_str() != request || pending.written {
-                self.teardown = true;
-                return Err(AdapterPumpError::TeardownRequired);
-            }
             pending.written = true;
         }
         if delivery_unknown {
@@ -118,9 +193,24 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             return Ok(false);
         }
         let intent = pending.intent.clone();
+        let decision = pending.decision.ok_or(AdapterPumpError::TeardownRequired)?;
         let revision = match self
             .journal
-            .transition_permission(&intent, ServerRequestState::ResolvedDeclined, now_millis)
+            .transition_permission(
+                &intent,
+                match decision {
+                    crate::acp::runtime::permissions::PermissionDecision::AllowOnce => {
+                        ServerRequestState::ResolvedAllowed
+                    }
+                    crate::acp::runtime::permissions::PermissionDecision::Deny => {
+                        ServerRequestState::ResolvedDeclined
+                    }
+                    crate::acp::runtime::permissions::PermissionDecision::Ask => {
+                        return Err(AdapterPumpError::TeardownRequired);
+                    }
+                },
+                now_millis,
+            )
             .await
         {
             Ok(revision) => revision,

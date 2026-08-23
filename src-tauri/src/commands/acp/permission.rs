@@ -3,6 +3,7 @@
 use tauri::State;
 
 use crate::{
+    acp::runtime::permissions::PermissionDecision,
     acp::{
         contract::{SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId},
         intent::{AcpIpcError, AcpUnavailableReason},
@@ -11,14 +12,6 @@ use crate::{
 };
 
 use super::errors::safe_message;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum PermissionDecision {
-    Ask,
-    AllowOnce,
-    Deny,
-}
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -32,11 +25,23 @@ pub struct ResolvePermissionDecisionRequest {
 
 #[tauri::command]
 pub async fn resolve_permission_decision(
-    _state: State<'_, AppState>,
-    _request: ResolvePermissionDecisionRequest,
+    state: State<'_, AppState>,
+    request: ResolvePermissionDecisionRequest,
 ) -> Result<serde_json::Value, AcpIpcError> {
-    Err(AcpIpcError::Unavailable {
-        reason: AcpUnavailableReason::CapabilityUnavailable,
-        message: safe_message("Durable permission decisions are not implemented."),
+    let response = state
+        .acp
+        .resolve_permission_decision(
+            request.project_id,
+            request.chat_id,
+            request.session_id,
+            request.request_id,
+            request.decision,
+        )
+        .map_err(|_| AcpIpcError::Unavailable {
+            reason: AcpUnavailableReason::CapabilityUnavailable,
+            message: safe_message("The permission runtime is unavailable."),
+        })?;
+    serde_json::to_value(response).map_err(|_| AcpIpcError::Internal {
+        message: safe_message("The permission response could not be encoded."),
     })
 }

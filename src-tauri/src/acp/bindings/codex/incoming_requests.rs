@@ -80,7 +80,7 @@ pub(super) fn server_request(
             category,
             summary: SafeText::new(
                 "permissionSummary",
-                "Codex requested additional authority; Sage will decline",
+                "Codex requested additional authority; awaiting your decision",
             )
             .map_err(content)?,
         },

@@ -437,7 +437,7 @@ fn permission_requests_only_produce_durable_decline_work() {
     let events = translator
         .translate_permission_request(fixture_bytes("permission"))
         .unwrap();
-    assert_eq!(events.len(), 2);
+    assert_eq!(events.len(), 1);
     assert!(matches!(
         &events[0],
         AdapterEvent::Item {
@@ -446,7 +446,7 @@ fn permission_requests_only_produce_durable_decline_work() {
             ..
         }
     ));
-    assert!(matches!(&events[1], AdapterEvent::PermissionDecline { .. }));
+    assert_eq!(events.len(), 1);
     assert!(matches!(
         translator
             .permission_decline_committed("permission-1")

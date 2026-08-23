@@ -239,12 +239,16 @@ pub(super) fn unsupported(kind: &str, summary: &str) -> Result<NormalizedPayload
 }
 
 pub(super) fn request_id_text(value: &Value) -> Result<String, IngressError> {
-    let value = match value {
-        Value::String(value) => value.clone(),
-        Value::Number(value) => value.to_string(),
+    let (kind, value) = match value {
+        Value::String(value) => ("string", value.clone()),
+        Value::Number(value) => ("number", value.to_string()),
         _ => return Err(IngressError::Malformed),
     };
-    if value.is_empty() || value.len() > 512 {
+    if value.is_empty() {
+        return Err(IngressError::Malformed);
+    }
+    let value = format!("{kind}:{value}");
+    if value.len() > 512 {
         Err(IngressError::Malformed)
     } else {
         Ok(value)

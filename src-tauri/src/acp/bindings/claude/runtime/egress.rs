@@ -81,6 +81,31 @@ impl ClaudeRuntime {
             }
             return Ok(());
         }
+        if let Some(request_id) = token.allow_request() {
+            if matches!(
+                resolution,
+                EgressResolution::QueueRejected
+                    | EgressResolution::WriteZeroBytes
+                    | EgressResolution::DeliveryUnknown
+            ) {
+                return Err(AdapterRuntimeError::EgressIntent);
+            }
+            let record = self
+                .denials
+                .get_mut(request_id)
+                .filter(|record| record.reply == PermissionReply::AllowOnce)
+                .ok_or(AdapterRuntimeError::EgressIntent)?;
+            record.state = match (resolution, record.state) {
+                (EgressResolution::Queued, DenialState::Pending | DenialState::Queued) => {
+                    DenialState::Queued
+                }
+                (EgressResolution::Written, DenialState::Queued | DenialState::Written) => {
+                    DenialState::Written
+                }
+                _ => return Err(AdapterRuntimeError::EgressIntent),
+            };
+            return Ok(());
+        }
         let Some((request_id, replay)) = token.deny_request() else {
             return Err(AdapterRuntimeError::EgressIntent);
         };

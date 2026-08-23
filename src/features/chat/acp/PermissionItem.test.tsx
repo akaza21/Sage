@@ -44,23 +44,26 @@ function permission(
 }
 
 describe("PermissionItem", () => {
-  it("exposes only fail-closed permission semantics and details", () => {
+  it("offers Ask, Allow once, and Deny while approval is waiting", () => {
     render(<PermissionItem item={permission("received")} />);
     expect(
       screen.getByRole("group", {
         name: "Permission request",
-        description:
-          "Sage declines permission requests in this read-only foundation",
+        description: "Choose how Sage should handle this permission request",
       }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "Declining" })).toHaveAttribute(
+    expect(
+      screen.getByRole("status", { name: "Waiting for approval" }),
+    ).toHaveAttribute(
       "aria-live",
       "off",
     );
     expect(screen.getByText("Details")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ask" })).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /allow|approve|deny/i }),
-    ).toBeNull();
+      screen.getByRole("button", { name: "Allow once" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Deny" })).toBeInTheDocument();
   });
 
   it("retains a durable decline with the terminal name but live-off", () => {

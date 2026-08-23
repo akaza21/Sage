@@ -5,10 +5,11 @@ mod ingress;
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
     contract::RuntimeEpoch,
-    runtime::{AdapterBatchJournal, AdapterPump, AdapterPumpError, FlushDisposition},
+    runtime::{AdapterBatchJournal, AdapterPump, AdapterPumpError, FlushDisposition, HostError},
     scheduler::RuntimeOwner,
 };
 
+use super::worker_command::{WorkerCommand, WorkerReply, WorkerResponder};
 use super::{
     CancelIntent, DispatchSource, DriverClock, DriverError, DriverProgress, FirstDeliveryUnknown,
     ProcessTreeControl, StdinTransport, TeardownCause, TreeLeaseOwner, WorkerEnvelope,
@@ -41,6 +42,40 @@ where
 }
 
 pub(crate) struct DriverAdmission;
+
+pub(super) fn monotonic_deadline_millis(after: std::time::Duration) -> u64 {
+    static ORIGIN: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    ORIGIN
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_millis()
+        .saturating_add(after.as_millis())
+        .min(u128::from(u64::MAX)) as u64
+}
+
+impl WorkerEnvelope {
+    pub(crate) fn respond(self, reply: Result<WorkerReply, HostError>) {
+        let _ = self.reply.send(reply);
+    }
+
+    pub(crate) fn reject(self, error: HostError) {
+        self.respond(Err(error));
+    }
+
+    pub(crate) fn into_parts(self) -> (WorkerCommand, WorkerResponder) {
+        (self.command, WorkerResponder(self.reply))
+    }
+
+    pub(crate) fn deadline(&self) -> std::time::Instant {
+        self.deadline
+    }
+}
+
+impl WorkerResponder {
+    pub(crate) fn respond(self, reply: Result<WorkerReply, HostError>) {
+        let _ = self.0.send(reply);
+    }
+}
 
 // Worker envelopes are bounded by the single reserved mailbox; keeping them
 // inline avoids a heap allocation on every control-lane handoff.
@@ -149,6 +184,29 @@ where
     ) -> Result<DriverProgress, DriverError> {
         self.ensure_running()?;
         self.cancel(intent, DispatchSource::Cancel)
+    }
+
+    pub(crate) async fn resolve_permission(
+        &mut self,
+        request_id: &crate::acp::contract::SageServerRequestId,
+        decision: crate::acp::runtime::permissions::PermissionDecision,
+    ) -> Result<(), DriverError> {
+        self.ensure_running()?;
+        self.pump
+            .resolve_permission(request_id, decision, self.clock.now_millis())
+            .await
+            .map_err(|error| self.pump_error(error))?;
+        let mut progress = DriverProgress::default();
+        self.flush_all_ingress(
+            DispatchSource::Ingress,
+            self.clock.now_millis(),
+            &mut progress,
+        )
+        .await?;
+        if progress.zero_byte_failures != 0 {
+            return Err(self.latch(TeardownCause::MandatoryDenyFailure));
+        }
+        Ok(())
     }
 
     pub(crate) fn request_host_termination(&mut self) -> Result<(), DriverError> {

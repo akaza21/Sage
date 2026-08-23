@@ -102,14 +102,15 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             AdapterEvent::PermissionRequest {
                 turn_id,
                 item_id,
+                external_request_id,
                 payload,
                 request_payload_digest,
             } if self.exact_turn(&turn_id) && self.exact_turn(&item_id) && terminal.is_none() => {
-                let external = item_id.external_id;
-                let request_id = self.request_id(&external)?;
+                let request_id = SageServerRequestId::parse(external_request_id.as_str())
+                    .map_err(|_| AdapterPumpError::Intent)?;
                 let (normalized_payload_json, measured) = payload_json(&payload)?;
                 Ok(Some(NormalizedFact::new(
-                    DurableAdapterEvent::PermissionDeny {
+                    DurableAdapterEvent::PermissionRequest {
                         intent: PermissionIntent {
                             request_id,
                             project_id: self.intent.project_id.clone(),
@@ -118,7 +119,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                             turn_id: self.intent.active_turn.turn_id.clone(),
                             runtime_epoch: self.intent.runtime_epoch,
                             binding_digest: hex(&self.intent.binding_digest),
-                            external_request_id: external,
+                            external_request_id,
                             kind: RequiredText::new("requestKind", "permission")
                                 .map_err(|_| AdapterPumpError::Intent)?,
                             payload_digest: hex(&request_payload_digest),
@@ -182,6 +183,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
 
 pub(super) fn control_critical(fact: &NormalizedFact) -> bool {
     match &fact.event {
+        DurableAdapterEvent::PermissionRequest { .. } => true,
         DurableAdapterEvent::PermissionDeny { .. } => true,
         DurableAdapterEvent::Turn { state, .. } => state.is_terminal(),
         DurableAdapterEvent::RuntimePayload { payload, .. } => matches!(
@@ -233,24 +235,6 @@ pub(super) fn validate_deny_pairs(
             .iter()
             .filter(|value| {
                 value.token().deny_request() == Some((intent.external_request_id.as_str(), false))
-            })
-            .count();
-        if matches != 1 {
-            return Err(AdapterPumpError::TeardownRequired);
-        }
-    }
-    for value in egress {
-        let Some((request, false)) = value.token().deny_request() else {
-            continue;
-        };
-        let matches = durable
-            .iter()
-            .filter(|fact| {
-                matches!(
-                    &fact.event,
-                    DurableAdapterEvent::PermissionDeny { intent, .. }
-                        if intent.external_request_id.as_str() == request
-                )
             })
             .count();
         if matches != 1 {

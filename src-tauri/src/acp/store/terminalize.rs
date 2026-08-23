@@ -68,7 +68,7 @@ pub(crate) fn terminalize_epoch(
     let requests = count(
         transaction,
         "server_requests",
-        "state <> 'resolvedDeclined'",
+        "state NOT IN ('resolvedAllowed','resolvedDeclined')",
         session,
         epoch,
     )?;
@@ -206,7 +206,7 @@ fn precheck_descendants(
     let requests = count(
         transaction,
         "server_requests",
-        "state <> 'resolvedDeclined'",
+        "state NOT IN ('resolvedAllowed','resolvedDeclined')",
         session,
         epoch,
     )?;
@@ -239,6 +239,9 @@ fn terminalize_descendants(
     transaction.execute("UPDATE session_activities SET lifecycle='cancelled',revision=revision+1,updated_at=?3,terminal_at=?3 WHERE session_id=?1 AND runtime_epoch=?2 AND lifecycle IN ('observed','active')",params![session.as_str(),epoch.get() as i64,now])?;
     for (old, next) in [
         ("received", "declinePending"),
+        ("asked", "declinePending"),
+        ("allowPending", "declinePending"),
+        ("allowCommitted", "declinePending"),
         ("declinePending", "declineCommitted"),
         ("declineCommitted", "responseQueued"),
         ("responseQueued", "resolvedDeclined"),

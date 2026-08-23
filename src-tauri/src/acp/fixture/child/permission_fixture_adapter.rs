@@ -5,6 +5,7 @@ use crate::acp::{
     },
     contract::{RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId},
     intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload, ToolCategory},
+    runtime::permissions::PermissionDecision,
     semantic_ingress::{SemanticIngressError, validate_permission_payload},
     transport::{Frame, OutboundFrame, request_payload_digest},
 };
@@ -96,10 +97,12 @@ impl PermissionFixtureAdapter {
         self.decline_stage = Some(DeclineStage::Prepared);
         let turn_id = self.identity("permission-turn-envelope")?;
         let item_id = self.identity("permission-a")?;
+        let external_request_id = item_id.external_id.clone();
         AdapterBatch::new(
             vec![AdapterEvent::PermissionRequest {
                 turn_id,
                 item_id,
+                external_request_id,
                 payload: NormalizedPayload::PermissionRequest {
                     category: ToolCategory::Other,
                     summary: SafeText::new(
@@ -110,7 +113,7 @@ impl PermissionFixtureAdapter {
                 },
                 request_payload_digest: request_digest,
             }],
-            vec![decline_egress(false)?],
+            Vec::new(),
         )
     }
 }
@@ -120,8 +123,35 @@ impl HarnessAdapter for PermissionFixtureAdapter {
         None
     }
 
-    fn command(&mut self, _command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
-        Err(AdapterRuntimeError::UnsupportedCommand)
+    fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let AdapterCommand::ResolvePermission { decision, .. } = command else {
+            return Err(AdapterRuntimeError::UnsupportedCommand);
+        };
+        if self.decline_stage != Some(DeclineStage::Prepared) {
+            return Err(AdapterRuntimeError::PermissionIntent);
+        }
+        match decision {
+            PermissionDecision::Ask => Ok(AdapterEgress::new(
+                OutboundFrame::new(
+                    br#"{"jsonrpc":"2.0","method":"sage/permissionAsked"}"#.to_vec(),
+                )
+                .map_err(|_| AdapterRuntimeError::Frame)?,
+                EgressToken::protocol_notification(),
+            )),
+            PermissionDecision::AllowOnce => {
+                let request_id = ExternalId::new("fixturePermissionId", "permission-a")
+                    .map_err(|_| AdapterRuntimeError::Frame)?;
+                Ok(AdapterEgress::new(
+                    OutboundFrame::new(
+                        br#"{"jsonrpc":"2.0","method":"fixture/permissionAllow","params":{"requestId":"permission-a"}}"#
+                            .to_vec(),
+                    )
+                    .map_err(|_| AdapterRuntimeError::Frame)?,
+                    EgressToken::permission_allow(request_id),
+                ))
+            }
+            PermissionDecision::Deny => decline_egress(false),
+        }
     }
 
     fn ingest(
@@ -148,6 +178,19 @@ impl HarnessAdapter for PermissionFixtureAdapter {
         token: EgressToken,
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
+        if token.allow_request().is_some() {
+            return match (resolution, self.decline_stage) {
+                (EgressResolution::Queued, Some(DeclineStage::Prepared)) => {
+                    self.decline_stage = Some(DeclineStage::Queued);
+                    Ok(())
+                }
+                (EgressResolution::Written, Some(DeclineStage::Queued)) => {
+                    self.decline_stage = Some(DeclineStage::Written);
+                    Ok(())
+                }
+                _ => Err(AdapterRuntimeError::PermissionIntent),
+            };
+        }
         match (token.deny_request(), resolution, self.decline_stage) {
             (
                 Some(("permission-a", false)),

@@ -41,6 +41,27 @@ impl HarnessAdapter for FakeAdapter {
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
+        if let AdapterCommand::ResolvePermission { decision, .. } = command {
+            let request_id = ExternalId::new("request", "external-request")
+                .map_err(|_| AdapterRuntimeError::Frame)?;
+            let token = match decision {
+                crate::acp::runtime::permissions::PermissionDecision::Ask => {
+                    EgressToken::protocol_notification()
+                }
+                crate::acp::runtime::permissions::PermissionDecision::AllowOnce => {
+                    EgressToken::permission_allow(request_id)
+                }
+                crate::acp::runtime::permissions::PermissionDecision::Deny => {
+                    EgressToken::mandatory_deny(request_id, false)
+                }
+            };
+            self.shared.0.lock().unwrap().commands.push("permission");
+            return Ok(AdapterEgress::new(
+                OutboundFrame::new(br#"{\"permission\":true}"#.to_vec())
+                    .map_err(|_| AdapterRuntimeError::Frame)?,
+                token,
+            ));
+        }
         let cancel = matches!(command, AdapterCommand::Cancel);
         let name = if cancel { "cancel" } else { "command" };
         self.shared.0.lock().unwrap().commands.push(name);
@@ -460,108 +481,144 @@ fn delivery_unknown_reports_once_then_rejects_every_later_operation() {
 }
 
 #[test]
-fn mandatory_deny_persists_real_queue_before_publish_and_unknown_write_does_not_resolve() {
+fn permission_ingress_journals_a_request_and_waits_for_a_later_decision() {
     runtime().block_on(async {
-        let mandatory = AdapterEgress::new(
-            OutboundFrame::new(br#"{"deny":true}"#.to_vec()).unwrap(),
-            EgressToken::mandatory_deny(
-                ExternalId::new("request", "external-request").unwrap(),
-                false,
-            ),
-        );
         let event = AdapterEvent::PermissionRequest {
             turn_id: identity("turn-envelope"),
-            item_id: identity("external-request"),
+            item_id: identity("permission-item"),
+            external_request_id: ExternalId::new("permissionRequest", "request-external").unwrap(),
             payload: permission(),
             request_payload_digest: [1; 32],
         };
-        let (mut pump, shared) = build_pump(vec![owned(vec![event], vec![mandatory])]);
+        let (mut pump, shared) = build_pump(vec![owned(vec![event], Vec::new())]);
         pump.push_stdout_chunk(b"{}\n", 20).await.unwrap();
-        assert_eq!(
-            shared.0.lock().unwrap().log,
-            [
-                "journal",
-                "mandatory",
-                "responseQueued",
-                "publish",
-                "publish"
-            ]
-        );
         let state = shared.0.lock().unwrap();
         assert!(matches!(
             state.durable_batches[0].as_slice(),
-            [DurableAdapterEvent::PermissionDeny { intent, now_millis: 20 }]
+            [DurableAdapterEvent::PermissionRequest { intent, now_millis: 20 }]
                 if intent.binding_digest == "07".repeat(32)
                     && intent.session_id == session("one")
                     && intent.turn_id == turn("one")
                     && intent.runtime_epoch == RuntimeEpoch::new(1).unwrap()
-                    && intent.external_request_id.as_str() == "external-request"
+                    && intent.request_id.as_str() == "request-external"
+                    && intent.external_request_id.as_str() == "request-external"
         ));
+        assert!(state.request_states.is_empty());
+        assert!(state.commands.is_empty());
         drop(state);
-        let mut transport = ScriptTransport(VecDeque::from([FrameWriteOutcome::DeliveryUnknown {
-            bytes_written: 4,
-        }]));
+        let mut transport = CountingTransport::default();
         assert_eq!(
             pump.flush_one(&mut transport).unwrap(),
-            FlushDisposition::DeliveryUnknown
+            FlushDisposition::Idle
         );
-        assert!(pump.teardown_required());
-        assert_eq!(
-            shared.0.lock().unwrap().request_states,
-            [ServerRequestState::ResponseQueued]
-        );
+        assert_eq!(transport.0, 0);
     });
 }
 
 #[test]
-fn mandatory_deny_resolves_only_after_complete_write() {
+fn permission_request_ignores_an_unpaired_mandatory_deny_egress() {
     runtime().block_on(async {
-        let mandatory = AdapterEgress::new(
-            OutboundFrame::new(br#"{"deny":true}"#.to_vec()).unwrap(),
-            EgressToken::mandatory_deny(
-                ExternalId::new("request", "external-request").unwrap(),
-                false,
-            ),
-        );
         let event = AdapterEvent::PermissionRequest {
             turn_id: identity("turn-envelope"),
-            item_id: identity("external-request"),
+            item_id: identity("permission-item"),
+            external_request_id: ExternalId::new("permissionRequest", "request-external").unwrap(),
             payload: permission(),
             request_payload_digest: [1; 32],
         };
-        let (mut pump, shared) = build_pump(vec![owned(vec![event], vec![mandatory])]);
+        let stale_deny = AdapterEgress::new(
+            OutboundFrame::new(br#"{\"result\":{\"decision\":\"decline\"}}"#.to_vec()).unwrap(),
+            EgressToken::mandatory_deny(
+                ExternalId::new("permissionRequest", "leftover-deny").unwrap(),
+                false,
+            ),
+        );
+        let (mut pump, shared) = build_pump(vec![owned(vec![event], vec![stale_deny])]);
 
         pump.push_stdout_chunk(b"{}\n", 20).await.unwrap();
+
+        let state = shared.0.lock().unwrap();
+        assert!(matches!(
+            state.durable_batches[0].as_slice(),
+            [DurableAdapterEvent::PermissionRequest { .. }]
+        ));
+        assert_eq!(state.log, ["journal", "publish"]);
+        assert!(state.resolutions.is_empty());
+        drop(state);
+        pump.enqueue(AdapterEgress::new(
+            OutboundFrame::new(br#"{\"result\":{\"decision\":\"decline\"}}"#.to_vec()).unwrap(),
+            EgressToken::mandatory_deny(
+                ExternalId::new("permissionRequest", "leftover-deny").unwrap(),
+                false,
+            ),
+        ))
+        .unwrap();
+        let mut transport = CountingTransport::default();
         assert_eq!(
-            shared.0.lock().unwrap().request_states,
-            [ServerRequestState::ResponseQueued]
+            pump.flush_one(&mut transport).unwrap(),
+            FlushDisposition::Written
         );
+        assert_eq!(transport.0, 1);
+        assert!(!pump.teardown_required());
+    });
+}
+
+#[test]
+fn ask_does_not_invoke_the_adapter_or_write_a_harness_byte() {
+    runtime().block_on(async {
+        let (mut pump, shared) = permission_pump();
+        pump.push_stdout_chunk(b"{}\n", 20).await.unwrap();
+        let request_id = permission_request_id(&shared);
+
+        pump.resolve_permission(
+            &request_id,
+            crate::acp::runtime::permissions::PermissionDecision::Ask,
+            21,
+        )
+        .await
+        .unwrap();
+
+        let mut transport = CountingTransport::default();
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            FlushDisposition::Idle
+        );
+        assert_eq!(transport.0, 0);
+        assert!(shared.0.lock().unwrap().commands.is_empty());
+    });
+}
+
+#[test]
+fn later_deny_resolves_only_after_complete_write() {
+    runtime().block_on(async {
+        let (mut pump, shared) = permission_pump();
+        pump.push_stdout_chunk(b"{}\n", 20).await.unwrap();
+        let request_id = match &shared.0.lock().unwrap().durable_batches[0][0] {
+            DurableAdapterEvent::PermissionRequest { intent, .. } => intent.request_id.clone(),
+            _ => panic!("permission request must be durable before resolution"),
+        };
+        pump.resolve_permission(
+            &request_id,
+            crate::acp::runtime::permissions::PermissionDecision::Deny,
+            21,
+        )
+        .await
+        .unwrap();
         let mut transport = ScriptTransport(VecDeque::from([FrameWriteOutcome::Complete]));
         assert_eq!(
             pump.flush_one(&mut transport).unwrap(),
             FlushDisposition::Written
         );
-        assert!(pump.settle_written_permission(21).await.unwrap());
+        assert!(pump.settle_written_permission(22).await.unwrap());
         let state = shared.0.lock().unwrap();
         assert_eq!(
             state.request_states,
             [
+                ServerRequestState::DeclineCommitted,
                 ServerRequestState::ResponseQueued,
                 ServerRequestState::ResolvedDeclined
             ]
         );
-        assert_eq!(
-            state.log,
-            [
-                "journal",
-                "mandatory",
-                "responseQueued",
-                "publish",
-                "publish",
-                "resolvedDeclined",
-                "publish"
-            ]
-        );
+        assert_eq!(state.commands, ["permission"]);
     });
 }
 
@@ -569,25 +626,45 @@ fn mandatory_deny_resolves_only_after_complete_write() {
 fn mandatory_deny_state_failures_block_or_tear_down_at_the_exact_boundary() {
     runtime().block_on(async {
         let (mut queue_failure, shared) = permission_pump();
+        queue_failure.push_stdout_chunk(b"{}\n", 20).await.unwrap();
+        let request_id = permission_request_id(&shared);
         shared.0.lock().unwrap().permission_failure = Some((
             ServerRequestState::ResponseQueued,
             PumpJournalError::Rejected,
         ));
         assert!(matches!(
-            queue_failure.push_stdout_chunk(b"{}\n", 20).await,
+            queue_failure
+                .resolve_permission(
+                    &request_id,
+                    crate::acp::runtime::permissions::PermissionDecision::Deny,
+                    21,
+                )
+                .await,
             Err(AdapterPumpError::TeardownRequired)
         ));
-        let mut blocked = CountingTransport::default();
-        assert!(matches!(
-            queue_failure.flush_one(&mut blocked),
-            Err(AdapterPumpError::TeardownRequired)
-        ));
-        assert_eq!(blocked.0, 0);
-        assert!(shared.0.lock().unwrap().request_states.is_empty());
+        let mut queued = CountingTransport::default();
+        assert_eq!(
+            queue_failure.flush_one(&mut queued).unwrap(),
+            FlushDisposition::Written
+        );
+        assert_eq!(queued.0, 1);
+        assert_eq!(
+            shared.0.lock().unwrap().request_states,
+            [ServerRequestState::DeclineCommitted]
+        );
 
         let (mut resolution_failure, shared) = permission_pump();
         resolution_failure
             .push_stdout_chunk(b"{}\n", 20)
+            .await
+            .unwrap();
+        let request_id = permission_request_id(&shared);
+        resolution_failure
+            .resolve_permission(
+                &request_id,
+                crate::acp::runtime::permissions::PermissionDecision::Deny,
+                21,
+            )
             .await
             .unwrap();
         let mut written = CountingTransport::default();
@@ -606,44 +683,57 @@ fn mandatory_deny_state_failures_block_or_tear_down_at_the_exact_boundary() {
         assert_eq!(written.0, 1);
         assert_eq!(
             shared.0.lock().unwrap().request_states,
-            [ServerRequestState::ResponseQueued]
+            [
+                ServerRequestState::DeclineCommitted,
+                ServerRequestState::ResponseQueued
+            ]
         );
     });
 }
 
 #[test]
-fn mandatory_deny_pairing_is_exact_and_duplicate_replay_is_not_rejournaled() {
+fn paired_deny_ingress_does_not_tear_down_the_common_pump() {
     runtime().block_on(async {
         let permission_event = AdapterEvent::PermissionRequest {
             turn_id: identity("turn-envelope"),
             item_id: identity("external-request"),
+            external_request_id: ExternalId::new("permissionRequest", "external-request").unwrap(),
             payload: permission(),
             request_payload_digest: [1; 32],
         };
-        let (mut pump, shared) = build_pump(vec![owned(vec![permission_event], Vec::new())]);
-        assert!(matches!(
-            pump.push_stdout_chunk(b"{}\n", 1).await,
-            Err(AdapterPumpError::TeardownRequired)
-        ));
-        assert!(pump.teardown_required());
-        assert!(shared.0.lock().unwrap().log.is_empty());
-
-        let replay = AdapterEgress::new(
-            OutboundFrame::new(br#"{"deny":true}"#.to_vec()).unwrap(),
+        let paired_deny = AdapterEgress::new(
+            OutboundFrame::new(br#"{\"result\":{\"decision\":\"decline\"}}"#.to_vec()).unwrap(),
             EgressToken::mandatory_deny(
-                ExternalId::new("request", "external-request").unwrap(),
-                true,
+                ExternalId::new("permissionRequest", "external-request").unwrap(),
+                false,
             ),
         );
-        let (mut pump, shared) = build_pump(vec![owned(
-            vec![AdapterEvent::IgnoredDuplicate],
-            vec![replay],
-        )]);
+        let (mut pump, shared) = build_pump(vec![owned(vec![permission_event], vec![paired_deny])]);
         pump.push_stdout_chunk(b"{}\n", 1).await.unwrap();
         let state = shared.0.lock().unwrap();
-        assert!(state.durable_batches.is_empty());
-        assert_eq!(state.log, ["mandatory"]);
-        assert_eq!(state.resolutions, [EgressResolution::Queued]);
+        assert!(matches!(
+            state.durable_batches[0].as_slice(),
+            [DurableAdapterEvent::PermissionRequest { .. }]
+        ));
+        assert_eq!(state.log, ["journal", "publish"]);
+        assert!(state.resolutions.is_empty());
+        drop(state);
+        pump.enqueue(AdapterEgress::new(
+            OutboundFrame::new(br#"{\"result\":{\"decision\":\"decline\"}}"#.to_vec()).unwrap(),
+            EgressToken::mandatory_deny(
+                ExternalId::new("permissionRequest", "external-request").unwrap(),
+                false,
+            ),
+        ))
+        .unwrap();
+        let mut transport = CountingTransport::default();
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            FlushDisposition::Written
+        );
+        assert_eq!(transport.0, 1);
+        assert!(!pump.teardown_required());
+        assert!(!pump.settle_written_permission(2).await.unwrap());
     });
 }
 
@@ -1012,20 +1102,21 @@ fn build_pump(
 }
 
 fn permission_pump() -> (AdapterPump<FakeAdapter, FakeJournal, Mapper>, Shared) {
-    let mandatory = AdapterEgress::new(
-        OutboundFrame::new(br#"{"deny":true}"#.to_vec()).unwrap(),
-        EgressToken::mandatory_deny(
-            ExternalId::new("request", "external-request").unwrap(),
-            false,
-        ),
-    );
     let event = AdapterEvent::PermissionRequest {
         turn_id: identity("turn-envelope"),
         item_id: identity("external-request"),
+        external_request_id: ExternalId::new("permissionRequest", "external-request").unwrap(),
         payload: permission(),
         request_payload_digest: [1; 32],
     };
-    build_pump(vec![owned(vec![event], vec![mandatory])])
+    build_pump(vec![owned(vec![event], Vec::new())])
+}
+
+fn permission_request_id(shared: &Shared) -> SageServerRequestId {
+    match &shared.0.lock().unwrap().durable_batches[0][0] {
+        DurableAdapterEvent::PermissionRequest { intent, .. } => intent.request_id.clone(),
+        _ => panic!("permission request must be durable before resolution"),
+    }
 }
 
 fn pump_with_queue(

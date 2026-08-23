@@ -21,7 +21,7 @@ impl PiTranslator {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
         if kind != "agent_end" && self.active.as_ref().is_some_and(|turn| turn.denial_latched) {
-            return Ok(vec![AdapterOutput::AbortRequired]);
+            return Ok(vec![AdapterOutput::LateIgnored]);
         }
         match kind {
             "agent_start" => {
@@ -95,18 +95,41 @@ impl PiTranslator {
             }
             "extension_ui_request" | "permission_request" => {
                 self.latch_denial()?;
-                Ok(vec![
-                    AdapterOutput::PermissionDeclined {
-                        external_id: external_id(
-                            value
-                                .get("requestId")
-                                .or_else(|| value.get("request_id"))
-                                .or_else(|| value.get("id")),
-                        )?,
-                        tool: "extension request".into(),
-                    },
-                    AdapterOutput::AbortRequired,
-                ])
+                let id = external_id(
+                    value
+                        .get("id")
+                        .or_else(|| value.get("requestId"))
+                        .or_else(|| value.get("request_id")),
+                )?;
+                let method = value
+                    .get("method")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned();
+                let options = value
+                    .get("options")
+                    .and_then(Value::as_array)
+                    .map(|options| {
+                        options
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .filter(|option| option.len() <= 64)
+                            .take(8)
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if let Some(id) = id.clone() {
+                    self.remember_pending_ui(super::PendingUiRequest {
+                        id,
+                        method,
+                        options,
+                    });
+                }
+                Ok(vec![AdapterOutput::PermissionDeclined {
+                    external_id: id,
+                    tool: "extension request".into(),
+                }])
             }
             _ => {
                 self.live_turn()?;
@@ -163,17 +186,19 @@ impl PiTranslator {
             128,
         )?
         .ok_or(AdapterError::Malformed)?;
-        let turn = self.live_turn()?;
         if name != "read" {
-            turn.denial_latched = true;
-            return Ok(vec![
-                AdapterOutput::PermissionDeclined {
-                    external_id: Some(id),
-                    tool: name,
-                },
-                AdapterOutput::AbortRequired,
-            ]);
+            self.live_turn()?.denial_latched = true;
+            self.remember_pending_ui(super::PendingUiRequest {
+                id: id.clone(),
+                method: String::new(),
+                options: Vec::new(),
+            });
+            return Ok(vec![AdapterOutput::PermissionDeclined {
+                external_id: Some(id),
+                tool: name,
+            }]);
         }
+        let turn = self.live_turn()?;
         if turn.tools.contains_key(&id) {
             return Ok(vec![AdapterOutput::DuplicateIgnored]);
         }
@@ -228,6 +253,15 @@ impl PiTranslator {
                 }])
             }
         }
+    }
+}
+
+impl PiTranslator {
+    pub(crate) fn release_permission_wait(&mut self) {
+        if let Some(turn) = self.active.as_mut() {
+            turn.denial_latched = false;
+        }
+        self.pending_ui = None;
     }
 }
 

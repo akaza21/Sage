@@ -1,9 +1,10 @@
 use crate::acp::{
-    contract::{ClientIntentId, SageProjectId, SageTurnId},
+    contract::{ClientIntentId, SageProjectId, SageServerRequestId, SageTurnId},
+    runtime::permissions::PermissionDecision,
     scheduler::RuntimeOwner,
     store::{AdapterTurnCursor, CloseSessionCommand, PrepareTurnCommand},
 };
-use std::time::Instant;
+use std::{sync::mpsc, time::Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HostState {
@@ -30,6 +31,7 @@ pub(crate) enum HostOutcome {
     PromptPrepared,
     PromptAccepted,
     CancelQueued,
+    PermissionResolved,
     TurnTerminal,
     BackgroundTurnContinues,
     ProjectSwitchObserved,
@@ -100,7 +102,42 @@ impl HostCloseIntent {
     }
 }
 
+pub(super) struct PendingTerminal {
+    pub(super) owner: RuntimeOwner,
+    pub(super) cursor: AdapterTurnCursor,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum CancelPhase {
+    Begin,
+    Dispatch,
+}
+
+pub(super) struct PendingCancel {
+    pub(super) intent: HostCancelIntent,
+    pub(super) phase: CancelPhase,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ClosePhase {
+    Begin,
+    Finish,
+}
+
+pub(super) struct PendingClose {
+    pub(super) intent: HostCloseIntent,
+    pub(super) phase: ClosePhase,
+}
+
 pub(crate) trait RuntimeEngine: Send + 'static {
+    fn resolve_permission(
+        &mut self,
+        _owner: &RuntimeOwner,
+        _request_id: &SageServerRequestId,
+        _decision: PermissionDecision,
+    ) -> Result<(), HostError> {
+        Err(HostError::State)
+    }
     fn activate(&mut self, owner: &RuntimeOwner) -> Result<(), HostError>;
     fn prepare_prompt(&mut self, intent: &HostPromptIntent) -> Result<SageTurnId, HostError>;
     fn dispatch_prompt(
@@ -142,6 +179,11 @@ pub(crate) trait RuntimeShutdownRecovery: Send + Sync {
 }
 
 pub(super) enum HostCommand {
+    ResolvePermission {
+        owner: RuntimeOwner,
+        request_id: SageServerRequestId,
+        decision: PermissionDecision,
+    },
     Activate(RuntimeOwner),
     PreparePrompt(HostPromptIntent),
     DispatchPrompt {
@@ -167,10 +209,31 @@ pub(super) enum HostReply {
     State(HostState),
 }
 
+pub(crate) struct TerminalNotification {
+    pub(super) response: mpsc::Receiver<Result<HostReply, HostError>>,
+    pub(super) deadline: Instant,
+}
+
+impl TerminalNotification {
+    pub(crate) fn wait(self) -> Result<(), HostError> {
+        let remaining = self.deadline.saturating_duration_since(Instant::now());
+        match self.response.recv_timeout(remaining) {
+            Ok(Ok(HostReply::Outcome(HostOutcome::TurnTerminal))) => Ok(()),
+            Ok(Ok(HostReply::Outcome(_) | HostReply::Prepared(_) | HostReply::State(_))) => {
+                Err(HostError::State)
+            }
+            Ok(Err(error)) => Err(error),
+            Err(mpsc::RecvTimeoutError::Timeout) => Err(HostError::Deadline),
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(HostError::Closed),
+        }
+    }
+}
+
 impl HostCommand {
     pub(super) fn deadline_millis(&self) -> u64 {
         use crate::acp::limits::LIMITS;
         match self {
+            Self::ResolvePermission { .. } => LIMITS.deadlines_ms.ordinary_rpc,
             Self::Activate(_) => LIMITS.deadlines_ms.initialize,
             Self::Cancel(_) => LIMITS.deadlines_ms.tree_termination,
             Self::Terminal { .. }
@@ -188,7 +251,8 @@ impl HostCommand {
     pub(super) fn is_control(&self) -> bool {
         matches!(
             self,
-            Self::Cancel(_)
+            Self::ResolvePermission { .. }
+                | Self::Cancel(_)
                 | Self::Terminal { .. }
                 | Self::State
                 | Self::BeginClose(_)
@@ -206,6 +270,9 @@ impl HostCommand {
                 + std::mem::size_of::<u64>()
         }
         match self {
+            Self::ResolvePermission {
+                owner, request_id, ..
+            } => owner_bytes(owner) + request_id.as_str().len() + 1,
             Self::Activate(owner) => owner_bytes(owner),
             Self::PreparePrompt(intent) => {
                 owner_bytes(&intent.owner())

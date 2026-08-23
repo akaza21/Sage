@@ -175,7 +175,7 @@ where
 }
 
 pub(super) async fn handle_active<A, R, T, C, Auth>(
-    active: PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
+    mut active: PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
     context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>
@@ -187,6 +187,29 @@ where
     C::ZeroProof: CoordinatorZeroToken,
 {
     match &envelope.command {
+        WorkerCommand::ResolvePermission {
+            owner,
+            request_id,
+            decision,
+        } if owner == &context.owner => {
+            let request_id = request_id.clone();
+            let decision = *decision;
+            match active
+                .turn
+                .driver
+                .resolve_permission(&request_id, decision)
+                .await
+            {
+                Ok(()) => {
+                    envelope.respond(Ok(WorkerReply::Unit));
+                    FirstTurnWorkerState::Active(active)
+                }
+                Err(_) => {
+                    envelope.respond(Err(HostError::RecoveryRequired));
+                    FirstTurnWorkerState::Active(active)
+                }
+            }
+        }
         WorkerCommand::DispatchPrompt { owner, turn_id }
             if owner == &context.owner
                 && turn_id == active.turn.dispatch.turn_id()

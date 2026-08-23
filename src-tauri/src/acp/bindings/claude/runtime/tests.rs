@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use super::*;
 use crate::acp::{
     bindings::adapter::{AdapterCommand, AdapterRuntimeError, EgressResolution, HarnessAdapter},
-    contract::{RequiredText, SageRootId},
+    contract::{RequiredText, SageRootId, SageServerRequestId},
     intent::{ExternalId, Prompt, SafeResourceRef},
     lifecycle::{ToolState, TurnState},
     transport::FrameReader,
@@ -301,7 +301,7 @@ fn initialize_delivery_unknown_blocks_reissue_until_exact_response_correlates() 
 }
 
 #[test]
-fn permission_denial_requires_commit_then_queue_then_write_and_replays_boundedly() {
+fn allow_once_on_claude_does_not_emit_denial_and_records_resolved_allowed() {
     let mut runtime = ClaudeRuntime::fixture();
     ready(&mut runtime);
     let (_prompt_id, token) = prompt(&mut runtime);
@@ -332,38 +332,36 @@ fn permission_denial_requires_commit_then_queue_then_write_and_replays_boundedly
         batch.events(),
         [SharedEvent::PermissionRequest { .. }]
     ));
-    assert_eq!(batch.egress().len(), 1);
+    assert!(batch.egress().is_empty());
     assert!(batch.actual_bytes() <= LIMITS.queues.journal_bytes_per_transaction as usize);
-    let token = batch.egress()[0].token().clone();
-    assert!(token.is_mandatory());
-    let SharedEvent::PermissionRequest { item_id, .. } = &batch.events()[0] else {
+    let SharedEvent::PermissionRequest {
+        external_request_id,
+        ..
+    } = &batch.events()[0]
+    else {
         panic!("permission request")
     };
+    assert_eq!(external_request_id.as_str(), "string:permission-1");
+    let allow = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse(external_request_id.as_str()).expect("request"),
+            decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+        })
+        .expect("allow once");
+    assert!(!allow.token().is_mandatory());
     assert_eq!(
-        item_id.external_id.as_str(),
-        token.deny_request().expect("deny identity").0
+        allow.token().allow_request(),
+        Some(external_request_id.as_str())
     );
-    assert_eq!(
-        runtime.resolve_egress(token.clone(), EgressResolution::Queued),
-        Err(AdapterRuntimeError::MandatoryDenyTeardown)
-    );
-    assert_eq!(
-        runtime.resolve_egress(token.clone(), EgressResolution::QueueRejected),
-        Err(AdapterRuntimeError::MandatoryDenyTeardown)
-    );
-    assert_eq!(
-        runtime.resolve_egress(token.clone(), EgressResolution::DeliveryUnknown),
-        Err(AdapterRuntimeError::MandatoryDenyTeardown)
-    );
+    let response: Value = serde_json::from_slice(allow.frame().payload()).expect("response");
+    assert_eq!(response["id"], json!("permission-1"));
+    assert_eq!(response["result"]["outcome"]["optionId"], json!("allow"));
     runtime
-        .commit_mandatory_egress(&token)
-        .expect("durable commit");
+        .resolve_egress(allow.token().clone(), EgressResolution::Queued)
+        .expect("queued");
     runtime
-        .resolve_egress(token.clone(), EgressResolution::Queued)
-        .expect("queued after commit");
-    runtime
-        .resolve_egress(token, EgressResolution::Written)
-        .expect("written after queue");
+        .resolve_egress(allow.into_token(), EgressResolution::Written)
+        .expect("written");
 
     let duplicate = runtime
         .ingest(&frame(permission), &Mapper)
@@ -372,11 +370,23 @@ fn permission_denial_requires_commit_then_queue_then_write_and_replays_boundedly
         duplicate.events(),
         [SharedEvent::IgnoredDuplicate]
     ));
-    assert!(duplicate.egress()[0].token().is_mandatory());
+    assert!(duplicate.egress().is_empty());
 }
 
 #[test]
-fn numeric_and_string_permission_ids_cannot_alias_and_preserve_wire_type() {
+fn later_decision_uses_the_shared_helper_not_permission_intent_reject() {
+    let mut runtime = ClaudeRuntime::fixture();
+    assert!(matches!(
+        runtime.command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse("request-claude-missing").expect("request"),
+            decision: crate::acp::runtime::permissions::PermissionDecision::Deny,
+        }),
+        Err(AdapterRuntimeError::LaterPermissionMiss)
+    ));
+}
+
+#[test]
+fn durable_permission_id_correlates_to_claude_jsonrpc_request_id() {
     let (string_token, string_translator, string_wire) =
         permission_identity(Some(&Value::String("1".into()))).expect("string id");
     let (number_token, number_translator, number_wire) =
@@ -412,7 +422,7 @@ fn denial_ledger_is_exactly_bounded_and_prunes_only_oldest_written_tombstone() {
     for index in 0..limit {
         let id = format!("pending-{index}");
         blocked
-            .reserve_denial(&id, id.clone(), Value::String(id.clone()))
+            .reserve_denial(&id, id.clone(), Value::String(id.clone()), "allow".into())
             .expect("within bound");
     }
     assert_eq!(blocked.denials.len(), limit);
@@ -420,7 +430,8 @@ fn denial_ledger_is_exactly_bounded_and_prunes_only_oldest_written_tombstone() {
         blocked.reserve_denial(
             "limit-plus-one",
             "limit-plus-one".into(),
-            Value::String("limit-plus-one".into())
+            Value::String("limit-plus-one".into()),
+            "allow".into(),
         ),
         Err(AdapterRuntimeError::MandatoryDenyTeardown)
     );
@@ -429,7 +440,7 @@ fn denial_ledger_is_exactly_bounded_and_prunes_only_oldest_written_tombstone() {
     for index in 0..limit {
         let id = format!("written-{index}");
         pruned
-            .reserve_denial(&id, id.clone(), Value::String(id.clone()))
+            .reserve_denial(&id, id.clone(), Value::String(id.clone()), "allow".into())
             .expect("within bound");
         pruned.denials.get_mut(&id).expect("record").state = DenialState::Written;
     }
@@ -438,6 +449,7 @@ fn denial_ledger_is_exactly_bounded_and_prunes_only_oldest_written_tombstone() {
             "replacement",
             "replacement".into(),
             Value::String("replacement".into()),
+            "allow".into(),
         )
         .expect("written tombstone pruned");
     assert_eq!(pruned.denials.len(), limit);

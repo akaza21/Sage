@@ -40,6 +40,7 @@ mod codex_operation;
 mod codex_session;
 mod configuration;
 mod intent_snapshot;
+mod permission;
 #[cfg(any(test, feature = "acp-fixture"))]
 #[allow(dead_code)] // The packaged reload orchestrator consumes this next.
 mod renderer_recreation;

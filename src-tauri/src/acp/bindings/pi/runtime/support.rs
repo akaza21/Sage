@@ -1,6 +1,7 @@
 use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterBatchBuilder, AdapterEgress, AdapterEvent, AdapterRuntimeError,
+        EgressToken,
     },
     contract::{RequiredText, SafeText, SchemaVersionV1},
     intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload, ToolCategory},
@@ -16,6 +17,81 @@ mod delivery;
 #[path = "support/identity.rs"]
 mod identity;
 use identity::{external, model_event, model_key, text_payload, tool_payload, unsupported};
+
+impl PiRuntime {
+    pub(super) fn resolve_later_permission(
+        &mut self,
+        request_id: &crate::acp::contract::SageServerRequestId,
+        decision: crate::acp::runtime::permissions::PermissionDecision,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let pending = self
+            .deny
+            .as_ref()
+            .is_some_and(|intent| intent.request_id.as_str() == request_id.as_str());
+        if !pending {
+            return Err(AdapterRuntimeError::LaterPermissionMiss);
+        }
+        let reply = match decision {
+            crate::acp::runtime::permissions::PermissionDecision::Ask => {
+                let _ = crate::acp::runtime::later_permission::resolve_later_permission(
+                    request_id, decision, None,
+                )
+                .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
+                return Err(AdapterRuntimeError::Operation);
+            }
+            crate::acp::runtime::permissions::PermissionDecision::AllowOnce => {
+                let pending = self
+                    .translator
+                    .take_pending_ui()
+                    .ok_or(AdapterRuntimeError::LaterPermissionMiss)?;
+                let body = match pending.method.as_str() {
+                    "select" => {
+                        let Some(value) = pending.options.iter().find(|option| {
+                            matches!(
+                                option.to_ascii_lowercase().as_str(),
+                                "allow" | "allow once"
+                            )
+                        }) else {
+                            self.translator.remember_pending_ui(pending);
+                            return Err(AdapterRuntimeError::LaterPermissionMiss);
+                        };
+                        serde_json::json!({
+                            "type": "extension_ui_response",
+                            "id": pending.id,
+                            "value": value,
+                        })
+                    }
+                    "confirm" => serde_json::json!({
+                        "type": "extension_ui_response",
+                        "id": pending.id,
+                        "confirmed": true,
+                    }),
+                    _ => {
+                        self.translator.remember_pending_ui(pending);
+                        return Err(AdapterRuntimeError::LaterPermissionMiss);
+                    }
+                };
+                self.translator.release_permission_wait();
+                let bytes =
+                    serde_json::to_vec(&body).map_err(|_| AdapterRuntimeError::Frame)?;
+                let frame = crate::acp::transport::OutboundFrame::new(bytes)
+                    .map_err(|_| AdapterRuntimeError::Frame)?;
+                AdapterEgress::new(frame, EgressToken::protocol_notification())
+            }
+            crate::acp::runtime::permissions::PermissionDecision::Deny => {
+                self.mandatory_abort()?
+                    .ok_or(AdapterRuntimeError::Operation)?
+            }
+        };
+        crate::acp::runtime::later_permission::resolve_later_permission(
+            request_id,
+            decision,
+            Some(reply),
+        )
+        .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?
+        .ok_or(AdapterRuntimeError::LaterPermissionMiss)
+    }
+}
 
 pub(super) fn capabilities(model_count: u16) -> CapabilitySnapshotV1 {
     CapabilitySnapshotV1 {
@@ -272,7 +348,7 @@ impl PiRuntime {
                     turn_id.turn_client_message_id.clone(),
                 );
                 self.deny = Some(DenyIntent {
-                    request_id: id,
+                    request_id: id.clone(),
                     command_id: String::new(),
                     stage: DenyStage::Prepared,
                 });
@@ -280,12 +356,13 @@ impl PiRuntime {
                     Some(AdapterEvent::PermissionRequest {
                         turn_id,
                         item_id,
+                        external_request_id: id,
                         payload: NormalizedPayload::PermissionRequest {
                             category: ToolCategory::Other,
                             summary: SafeText::new(
                                 "permissionSummary",
                                 format!(
-                                    "Pi requested disallowed authority for {tool}; Sage declined"
+                                    "Pi requested authority for {tool}; awaiting your decision"
                                 ),
                             )
                             .map_err(|_| AdapterRuntimeError::Frame)?,

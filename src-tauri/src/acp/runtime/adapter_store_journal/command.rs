@@ -114,6 +114,30 @@ fn event_bytes(
         DurableAdapterEvent::ActivityItem(activity) => {
             super::activity::event_bytes(intent, activity)
         }
+        DurableAdapterEvent::PermissionRequest { intent: deny, .. } => {
+            if deny.project_id != intent.project_id
+                || deny.chat_id != intent.chat_id
+                || deny.session_id != intent.session_id
+                || deny.turn_id != intent.active_turn.turn_id
+                || deny.runtime_epoch != intent.runtime_epoch
+                || deny.binding_digest != hex(&intent.binding_digest)
+                || deny.normalized_payload_json.len()
+                    > LIMITS.wire.permission_payload_bytes as usize
+                || digest(deny.normalized_payload_json.as_bytes()) != deny.normalized_payload_digest
+            {
+                return Err(PumpJournalError::Rejected);
+            }
+            Ok(deny.request_id.as_str().len()
+                + deny.project_id.as_str().len()
+                + deny.chat_id.as_str().len()
+                + deny.session_id.as_str().len()
+                + deny.turn_id.as_str().len()
+                + deny.external_request_id.as_str().len()
+                + deny.binding_digest.len()
+                + deny.normalized_payload_json.len()
+                + deny.payload_digest.len()
+                + deny.normalized_payload_digest.len())
+        }
         DurableAdapterEvent::PermissionDeny { intent: deny, .. } => {
             if deny.project_id != intent.project_id
                 || deny.chat_id != intent.chat_id
@@ -169,6 +193,9 @@ fn convert(event: DurableAdapterEvent) -> Result<AdapterInboundEvent, PumpJourna
             now_millis,
         }),
         DurableAdapterEvent::ActivityItem(activity) => super::activity::convert(*activity)?,
+        DurableAdapterEvent::PermissionRequest { intent, now_millis } => {
+            AdapterInboundEvent::PermissionRequest { intent, now_millis }
+        }
         DurableAdapterEvent::PermissionDeny { intent, now_millis } => {
             AdapterInboundEvent::PermissionDeny { intent, now_millis }
         }
