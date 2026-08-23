@@ -31,6 +31,15 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             return Err(AdapterPumpError::Intent);
         }
         if decision == crate::acp::runtime::permissions::PermissionDecision::Ask {
+            let None = crate::acp::runtime::later_permission::resolve_later_permission(
+                request_id,
+                crate::acp::runtime::permissions::PermissionDecision::Ask,
+                None,
+            )
+            .map_err(|_| AdapterPumpError::Intent)?
+            else {
+                return Err(AdapterPumpError::Intent);
+            };
             return Ok(());
         }
         let egress = self.adapter.command(AdapterCommand::ResolvePermission {
@@ -151,15 +160,17 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         }
         if disposition == FlushDisposition::Written
             && let Some(request) = written_permission
+            && let Some(pending) = self.pending_permission.as_mut()
+            && matches!(
+                pending.decision,
+                Some(
+                    crate::acp::runtime::permissions::PermissionDecision::AllowOnce
+                        | crate::acp::runtime::permissions::PermissionDecision::Deny
+                )
+            )
+            && pending.intent.external_request_id.as_str() == request
+            && !pending.written
         {
-            let Some(pending) = self.pending_permission.as_mut() else {
-                self.teardown = true;
-                return Err(AdapterPumpError::TeardownRequired);
-            };
-            if pending.intent.external_request_id.as_str() != request || pending.written {
-                self.teardown = true;
-                return Err(AdapterPumpError::TeardownRequired);
-            }
             pending.written = true;
         }
         if delivery_unknown {

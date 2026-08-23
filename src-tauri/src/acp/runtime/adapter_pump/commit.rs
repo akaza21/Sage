@@ -41,6 +41,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             return Err(AdapterPumpError::TeardownRequired);
         }
 
+        let permission_wait_path = new_permission.is_some();
         if let Some(intent) = new_permission.take() {
             self.pending_permission = Some(PendingPermission {
                 intent,
@@ -50,6 +51,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         }
         let mut egress_error = None;
         for value in egress {
+            if permission_wait_path && value.token().is_mandatory() {
+                continue;
+            }
             if value.token().is_mandatory()
                 && self.adapter.commit_mandatory_egress(value.token()).is_err()
             {

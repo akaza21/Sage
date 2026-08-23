@@ -541,9 +541,23 @@ fn permission_request_ignores_an_unpaired_mandatory_deny_egress() {
             state.durable_batches[0].as_slice(),
             [DurableAdapterEvent::PermissionRequest { .. }]
         ));
-        assert_eq!(state.log, ["journal", "mandatory", "publish"]);
-        assert_eq!(state.resolutions, [EgressResolution::Queued]);
+        assert_eq!(state.log, ["journal", "publish"]);
+        assert!(state.resolutions.is_empty());
         drop(state);
+        pump.enqueue(AdapterEgress::new(
+            OutboundFrame::new(br#"{\"result\":{\"decision\":\"decline\"}}"#.to_vec()).unwrap(),
+            EgressToken::mandatory_deny(
+                ExternalId::new("permissionRequest", "leftover-deny").unwrap(),
+                false,
+            ),
+        ))
+        .unwrap();
+        let mut transport = CountingTransport::default();
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            FlushDisposition::Written
+        );
+        assert_eq!(transport.0, 1);
         assert!(!pump.teardown_required());
     });
 }
@@ -701,10 +715,25 @@ fn paired_deny_ingress_does_not_tear_down_the_common_pump() {
             state.durable_batches[0].as_slice(),
             [DurableAdapterEvent::PermissionRequest { .. }]
         ));
-        assert_eq!(state.log, ["journal", "mandatory", "publish"]);
-        assert_eq!(state.resolutions, [EgressResolution::Queued]);
+        assert_eq!(state.log, ["journal", "publish"]);
+        assert!(state.resolutions.is_empty());
         drop(state);
+        pump.enqueue(AdapterEgress::new(
+            OutboundFrame::new(br#"{\"result\":{\"decision\":\"decline\"}}"#.to_vec()).unwrap(),
+            EgressToken::mandatory_deny(
+                ExternalId::new("permissionRequest", "external-request").unwrap(),
+                false,
+            ),
+        ))
+        .unwrap();
+        let mut transport = CountingTransport::default();
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            FlushDisposition::Written
+        );
+        assert_eq!(transport.0, 1);
         assert!(!pump.teardown_required());
+        assert!(!pump.settle_written_permission(2).await.unwrap());
     });
 }
 
