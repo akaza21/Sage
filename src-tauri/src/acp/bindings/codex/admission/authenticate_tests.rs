@@ -113,14 +113,20 @@ fn signed_role_admission_fixture() -> (
 
 #[test]
 fn authenticate_signed_installed_role_is_the_only_production_admission() {
-    let registration = startup_codex_binding_registration();
+    let rejected_registration = CodexBindingRegistration {
+        authority: Arc::new(CodexRegistrationAuthority {
+            state: Mutex::new(CodexRegistrationState::Unavailable(
+                CodexAdmissionUnavailable::IndependentAdmission,
+            )),
+        }),
+    };
     let (packet, mut unbound_role, reproduced, authority, environment, _cleanup) =
         signed_role_admission_fixture();
 
     unbound_role.artifact_relative_path =
         r"vendor\x86_64-pc-windows-msvc\codex-path\rg.exe".to_owned();
     assert_eq!(
-        registration
+        rejected_registration
             .authenticate_signed_installed_role(
                 &packet,
                 unbound_role,
@@ -132,13 +138,14 @@ fn authenticate_signed_installed_role_is_the_only_production_admission() {
         CodexAdmissionUnavailable::IndependentAdmission
     );
     assert_eq!(
-        crate::harnesses::HarnessCatalog::with_codex_registration(registration.clone())
+        crate::harnesses::HarnessCatalog::with_codex_registration(rejected_registration.clone())
             .definitions()
             .remove(0)
             .install_state,
         "notInstalled"
     );
 
+    let registration = startup_codex_binding_registration();
     let (packet, role, reproduced, authority, environment, _cleanup) =
         signed_role_admission_fixture();
     let admitted = registration
