@@ -6,6 +6,7 @@ import type {
 
 import { AcpAnnouncementRegions } from "./AcpAnnouncementRegions";
 import { TurnEditSummary } from "./TurnEditSummary";
+import { recordAgentEditDisposition } from "./agentEditDisposition";
 import { CollaborationItem } from "./CollaborationItem";
 import { HarnessActivity } from "./HarnessActivity";
 import { PermissionItem } from "./PermissionItem";
@@ -184,6 +185,7 @@ function Turn({
               ? (resource) => onOpenResource(resource, "diff")
               : undefined
           }
+          onRecordDisposition={recordAgentEditDisposition}
         />
       </div>
     </section>

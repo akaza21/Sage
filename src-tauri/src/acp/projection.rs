@@ -98,6 +98,8 @@ pub struct FileChangeProjection {
     pub operation: FileOperation,
     pub original_resource: Option<SafeResourceLocation>,
     pub summary: SafeText<65536>,
+    pub additions: Option<u32>,
+    pub deletions: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

@@ -140,6 +140,19 @@ export interface FileChangeProjection {
   operation: "created" | "updated" | "deleted" | "renamed" | "unknown";
   originalResource: SafeResourceLocation | null;
   summary: string;
+  additions: number | null;
+  deletions: number | null;
+}
+
+export type AgentEditDispositionState = "accepted" | "rejected";
+
+export interface AgentEditDisposition {
+  projectId: SageProjectId;
+  chatId: SageChatId;
+  sessionId: SageAgentSessionId;
+  turnId: SageTurnId;
+  expectedRevision: EntityRevision;
+  state: AgentEditDispositionState;
 }
 
 export interface AcpItemIdentity {

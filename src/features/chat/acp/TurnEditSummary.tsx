@@ -1,6 +1,13 @@
+import { useState } from "react";
 import { ChevronRight, Files } from "lucide-react";
 
-import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
+import type {
+  AcpChatPage,
+  AcpMutationResult,
+  AgentEditDisposition,
+  AgentEditDispositionState,
+  TurnProjection,
+} from "../../../domain/acp";
 import { resourceKey } from "../../../domain/resourceIdentity";
 import type { ResourceRef } from "../../../domain/workbench";
 import { projectAgentEditSummary } from "./agentEditSummary";
@@ -11,7 +18,12 @@ interface TurnEditSummaryProps {
   rootLabels: Readonly<Record<string, string>>;
   countIncomplete: boolean;
   onOpenDiff?: (resource: ResourceRef) => void;
+  onRecordDisposition?: (
+    disposition: AgentEditDisposition,
+  ) => Promise<AcpMutationResult>;
 }
+
+const MAX_FILE_CHANGE_LINES = 1_000_000;
 
 function rootDisplayName(
   rootLabels: Readonly<Record<string, string>>,
@@ -31,8 +43,13 @@ export function TurnEditSummary({
   rootLabels,
   countIncomplete,
   onOpenDiff,
+  onRecordDisposition,
 }: TurnEditSummaryProps) {
   const summary = projectAgentEditSummary(page, turn);
+  const [recording, setRecording] = useState<AgentEditDispositionState | null>(
+    null,
+  );
+  const [dispositionError, setDispositionError] = useState(false);
   if (
     summary.changes.length === 0 &&
     !summary.sourceTruncated &&
@@ -45,6 +62,39 @@ export function TurnEditSummary({
     summary.omittedCount > 0 ||
     summary.sourceTruncated ||
     summary.rejectedUnsafeOrStale;
+  const additions = summary.changes.reduce(
+    (total, change) =>
+      Math.min(MAX_FILE_CHANGE_LINES, total + (change.additions ?? 0)),
+    0,
+  );
+  const deletions = summary.changes.reduce(
+    (total, change) =>
+      Math.min(MAX_FILE_CHANGE_LINES, total + (change.deletions ?? 0)),
+    0,
+  );
+  const hasInteractiveChanges = summary.changes.some(
+    (change) => change.resource.kind === "resource",
+  );
+
+  async function recordDisposition(state: AgentEditDispositionState) {
+    if (!onRecordDisposition || recording) return;
+    setRecording(state);
+    setDispositionError(false);
+    try {
+      await onRecordDisposition({
+        projectId: page.projectId,
+        chatId: page.chatId,
+        sessionId: turn.sessionId,
+        turnId: turn.id,
+        expectedRevision: turn.revision,
+        state,
+      });
+    } catch {
+      setDispositionError(true);
+    } finally {
+      setRecording(null);
+    }
+  }
 
   return (
     <section
@@ -59,6 +109,10 @@ export function TurnEditSummary({
             ? `Showing ${summary.changes.length} edited ${summary.changes.length === 1 ? "file" : "files"}`
             : `Edited ${summary.changes.length} ${summary.changes.length === 1 ? "file" : "files"}`}
         </strong>
+        <span className="acp-file-changes__totals" aria-label="Line changes">
+          <span>+{additions}</span>
+          <span>-{deletions}</span>
+        </span>
       </header>
       {summary.changes.length > 0 ? (
         <ul>
@@ -72,6 +126,14 @@ export function TurnEditSummary({
                   </span>
                   <span className="acp-change-operation">
                     {change.operation}
+                  </span>
+                  <span className="acp-file-changes__counts">
+                    <span>
+                      {change.additions === null ? "—" : `+${change.additions}`}
+                    </span>
+                    <span>
+                      {change.deletions === null ? "—" : `-${change.deletions}`}
+                    </span>
                   </span>
                   <span>{change.summary}</span>
                 </li>
@@ -97,11 +159,43 @@ export function TurnEditSummary({
                   <span>{qualifiedLabel}</span>
                 )}
                 <span className="acp-change-operation">{change.operation}</span>
+                <span className="acp-file-changes__counts">
+                  <span>
+                    {change.additions === null ? "—" : `+${change.additions}`}
+                  </span>
+                  <span>
+                    {change.deletions === null ? "—" : `-${change.deletions}`}
+                  </span>
+                </span>
                 <span>{change.summary}</span>
               </li>
             );
           })}
         </ul>
+      ) : null}
+      {hasInteractiveChanges && onRecordDisposition ? (
+        <div className="acp-file-changes__disposition">
+          <button
+            type="button"
+            disabled={recording !== null}
+            onClick={() => void recordDisposition("accepted")}
+          >
+            {recording === "accepted" ? "Accepting…" : "Accept"}
+          </button>
+          <button
+            type="button"
+            disabled={recording !== null}
+            onClick={() => void recordDisposition("rejected")}
+          >
+            {recording === "rejected" ? "Discarding…" : "Discard"}
+          </button>
+        </div>
+      ) : null}
+      {dispositionError ? (
+        <p className="acp-file-changes__disclosure" role="alert">
+          The edit disposition was not recorded. No workspace files were
+          changed.
+        </p>
       ) : null}
       {summary.omittedCount > 0 ? (
         <p className="acp-file-changes__disclosure">

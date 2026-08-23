@@ -171,7 +171,10 @@ fn content(
             output_summary,
         },
         NormalizedPayload::FileChangeDiff {
-            resource, summary, ..
+            resource,
+            summary,
+            additions,
+            deletions,
         } => ItemContent::FileChangeDiff {
             changes: BoundedVec::new(
                 "fileChanges",
@@ -180,6 +183,8 @@ fn content(
                     operation: FileOperation::Updated,
                     original_resource: None,
                     summary,
+                    additions: projected_line_count(additions),
+                    deletions: projected_line_count(deletions),
                 }],
             )
             .map_err(contract)?,
@@ -234,6 +239,12 @@ fn content(
             receiver_labels,
         },
     })
+}
+
+fn projected_line_count(value: Option<u64>) -> Option<u32> {
+    value
+        .filter(|count| *count <= 1_000_000)
+        .and_then(|count| u32::try_from(count).ok())
 }
 
 fn presentation(

@@ -97,6 +97,8 @@ function projection(): AcpChatPage {
             operation: "updated",
             originalResource: null,
             summary: "Updated duplicate path",
+            additions: 2,
+            deletions: 1,
           },
         ],
         truncated: false,

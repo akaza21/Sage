@@ -48,6 +48,8 @@ function fileItem(
           operation: "updated",
           originalResource: null,
           summary,
+          additions: null,
+          deletions: null,
         },
       ],
       truncated: false,
