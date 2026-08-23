@@ -2,9 +2,10 @@ import type {
   AcpChatPage,
   AcpMutationResult,
   AgentSessionProjection,
+  CodexDiscoveryModel,
   CodexDiscoveryResponse,
 } from "../domain/acp";
-import { safeTurn } from "./acpDesktopResponseItems";
+import { safeTurn } from "./acpDesktopResponseTurns";
 
 const ACP_PAGE_LIMITS = {
   sessions: 32,
@@ -50,11 +51,15 @@ export function safeText(value: unknown, maximumBytes: number): string | null {
 }
 
 export function safeOrdinal(value: unknown): number | null {
-  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
 }
 
 export function safeTimestamp(value: unknown): number | null {
-  return Number.isSafeInteger(value) ? value : null;
+  return typeof value === "number" && Number.isSafeInteger(value)
+    ? value
+    : null;
 }
 
 export function safeNullableIdentifier(
@@ -98,17 +103,17 @@ function safeCapabilities(
     value.childTranscriptRead,
     value.collaborationEventProjection,
   ];
+  const modelCount = safeOrdinal(value.modelCount);
+  const configCount = safeOrdinal(value.configCount);
   if (
     value.schemaVersion !== 1 ||
     !protocolVersion ||
     extensionSchemaId === undefined ||
     flags.some((flag) => typeof flag !== "boolean") ||
-    !Number.isSafeInteger(value.modelCount) ||
-    value.modelCount < 0 ||
-    value.modelCount > 128 ||
-    !Number.isSafeInteger(value.configCount) ||
-    value.configCount < 0 ||
-    value.configCount > 128
+    modelCount === null ||
+    modelCount > 128 ||
+    configCount === null ||
+    configCount > 128
   )
     return null;
   return {
@@ -126,8 +131,8 @@ function safeCapabilities(
     childTranscriptRead: value.childTranscriptRead,
     collaborationEventProjection: value.collaborationEventProjection,
     multiRootExtensionSchemaId: extensionSchemaId,
-    modelCount: value.modelCount,
-    configCount: value.configCount,
+    modelCount,
+    configCount,
   } as AgentSessionProjection["capabilities"];
 }
 
@@ -235,7 +240,8 @@ export function safeAcpMutationResponse(
   if (
     itemCount > ACP_PAGE_LIMITS.items ||
     activityCount > ACP_PAGE_LIMITS.activities ||
-    (currentSessionId !== null && !sessionIds.has(currentSessionId)) ||
+    (currentSessionId !== null &&
+      !sessionIds.has(currentSessionId as AgentSessionProjection["id"])) ||
     safeTurns.some(
       (turn) =>
         !sessionIds.has(turn.sessionId) ||
@@ -286,7 +292,7 @@ export function safeCodexDiscovery(
     return null;
   const ids = new Set<string>();
   let defaults = 0;
-  const models = [];
+  const models: CodexDiscoveryModel[] = [];
   for (const candidate of value.models) {
     if (!isRecord(candidate)) return null;
     const id = safeIdentifier(candidate.id);
@@ -295,7 +301,11 @@ export function safeCodexDiscovery(
       return null;
     ids.add(id);
     defaults += Number(candidate.isDefault);
-    models.push({ id, name, isDefault: candidate.isDefault });
+    models.push({
+      id: id as CodexDiscoveryModel["id"],
+      name,
+      isDefault: candidate.isDefault,
+    });
   }
   const defaultModelId =
     value.defaultModelId === null ? null : safeIdentifier(value.defaultModelId);
@@ -319,7 +329,7 @@ export function safeCodexDiscovery(
     bindingId: bindingId as CodexDiscoveryResponse["bindingId"],
     runtimeEpoch: runtimeEpoch as CodexDiscoveryResponse["runtimeEpoch"],
     account: value.account,
-    models: models as CodexDiscoveryResponse["models"],
+    models,
     defaultModelId: defaultModelId as CodexDiscoveryResponse["defaultModelId"],
   };
 }

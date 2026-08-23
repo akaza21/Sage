@@ -1,183 +1,31 @@
-import type {
-  AcpItem,
-  AcpItemIdentity,
-  FileChangeProjection,
-  HarnessActivityProjection,
-  SafeResourceLocation,
-  ToolPresentation,
-  TurnProjection,
-} from "../domain/acp";
-import type { ResourceRef } from "../domain/workbench";
+import type { AcpItem, AcpItemIdentity } from "../domain/acp";
 import {
   isOneOf,
   isRecord,
   safeCounter,
   safeIdentifier,
-  safeNullableCounter,
   safeNullableIdentifier,
   safeNullableText,
   safeOrdinal,
   safeText,
   safeTimestamp,
 } from "./acpDesktopResponses";
+import {
+  MAX_FILE_CHANGES,
+  safeFileChange,
+  safeToolPresentation,
+} from "./acpDesktopResponsePayloads";
 
 const MAX_PLAN_ENTRIES = 512;
-const MAX_FILE_CHANGES = 64;
-const MAX_TOOL_RESOURCES = 64;
 const MAX_COLLABORATION_RECEIVERS = 32;
-
-function safeResourceRef(value: unknown): ResourceRef | null {
-  if (!isRecord(value)) return null;
-  const rootId = safeIdentifier(value.rootId);
-  const relativePath = safeText(value.relativePath, 16_384);
-  return rootId && relativePath !== null ? { rootId, relativePath } : null;
-}
-
-function safeResourceLocation(value: unknown): SafeResourceLocation | null {
-  if (!isRecord(value)) return null;
-  if (value.kind === "resource") {
-    const resource = safeResourceRef(value.resource);
-    return resource ? { kind: "resource", resource } : null;
-  }
-  const label = safeText(value.label, 512);
-  if (
-    label === null ||
-    !isOneOf(value.kind, ["unavailable"] as const) ||
-    !isOneOf(value.reason, [
-      "ambiguousRoot",
-      "foreign",
-      "missing",
-      "noncanonical",
-      "unsupported",
-    ] as const)
-  ) {
-    return null;
-  }
-  return { kind: "unavailable", reason: value.reason, label };
-}
-
-function safeNullableBoundedNumber(value: unknown): number | null | undefined {
-  if (value === null) return null;
-  return Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000
-    ? value
-    : undefined;
-}
 
 function safeNullableNonnegativeInteger(
   value: unknown,
 ): number | null | undefined {
   if (value === null) return null;
-  return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
-}
-
-function safeFileChange(value: unknown): FileChangeProjection | null {
-  if (!isRecord(value)) return null;
-  const resource = safeResourceLocation(value.resource);
-  const originalResource =
-    value.originalResource === null
-      ? null
-      : (safeResourceLocation(value.originalResource) ?? undefined);
-  const summary = safeText(value.summary, 65_536);
-  const additions = safeNullableBoundedNumber(value.additions);
-  const deletions = safeNullableBoundedNumber(value.deletions);
-  if (
-    !resource ||
-    originalResource === undefined ||
-    summary === null ||
-    additions === undefined ||
-    deletions === undefined ||
-    !isOneOf(value.operation, [
-      "created",
-      "updated",
-      "deleted",
-      "renamed",
-      "unknown",
-    ] as const)
-  ) {
-    return null;
-  }
-  return {
-    resource,
-    operation: value.operation,
-    originalResource,
-    summary,
-    additions,
-    deletions,
-  };
-}
-
-function safeToolPresentation(value: unknown): ToolPresentation | null {
-  if (!isRecord(value)) return null;
-  const label = safeText(value.label, 512);
-  if (label === null) return null;
-  switch (value.kind) {
-    case "generic":
-    case "command":
-    case "web": {
-      const summary = safeNullableText(value.summary, 16_384);
-      return summary === undefined
-        ? null
-        : { kind: value.kind, label, summary };
-    }
-    case "file":
-    case "diff": {
-      if (
-        !Array.isArray(value.resources) ||
-        value.resources.length > MAX_TOOL_RESOURCES
-      ) {
-        return null;
-      }
-      const resources = value.resources.map(safeResourceLocation);
-      return resources.some((resource) => !resource)
-        ? null
-        : {
-            kind: value.kind,
-            label,
-            resources: resources as SafeResourceLocation[],
-          };
-    }
-    case "search": {
-      const querySummary = safeText(value.querySummary, 16_384);
-      if (
-        querySummary === null ||
-        !Array.isArray(value.resources) ||
-        value.resources.length > MAX_TOOL_RESOURCES
-      ) {
-        return null;
-      }
-      const resources = value.resources.map(safeResourceRef);
-      return resources.some((resource) => !resource)
-        ? null
-        : {
-            kind: "search",
-            label,
-            querySummary,
-            resources: resources as ResourceRef[],
-          };
-    }
-    case "mcp": {
-      const serverLabel = safeText(value.serverLabel, 512);
-      const toolLabel = safeText(value.toolLabel, 512);
-      return serverLabel === null || toolLabel === null
-        ? null
-        : { kind: "mcp", label, serverLabel, toolLabel };
-    }
-    case "subagent": {
-      const activityId = safeNullableIdentifier(value.activityId);
-      return activityId === undefined
-        ? null
-        : {
-            kind: "subagent",
-            label,
-            activityId: activityId as Extract<
-              ToolPresentation,
-              { kind: "subagent" }
-            >["activityId"],
-          };
-    }
-    default:
-      return null;
-  }
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined;
 }
 
 function safeItemIdentity(
@@ -371,7 +219,7 @@ export function safeItem(value: unknown): AcpItem | null {
             kind: "fileChangeDiff",
             toolState: null,
             payload: {
-              changes: changes as FileChangeProjection[],
+              changes: changes as NonNullable<(typeof changes)[number]>[],
               truncated: payload.truncated,
             },
           };
@@ -507,129 +355,4 @@ export function safeItem(value: unknown): AcpItem | null {
     default:
       return null;
   }
-}
-
-export function safeActivity(value: unknown): HarnessActivityProjection | null {
-  if (!isRecord(value) || !isRecord(value.provenance)) return null;
-  const id = safeIdentifier(value.id);
-  const turnId = safeIdentifier(value.turnId);
-  const parentActivityId = safeNullableIdentifier(value.parentActivityId);
-  const parentItemId = safeIdentifier(value.parentItemId);
-  const revision = safeCounter(value.revision, false);
-  const externalKind = safeText(value.provenance.externalKind, 128);
-  const extensionSchemaId = safeNullableIdentifier(
-    value.provenance.extensionSchemaId,
-  );
-  const safeLabel = safeNullableText(value.provenance.safeLabel, 512);
-  const depth = safeOrdinal(value.depth);
-  if (
-    !id ||
-    !turnId ||
-    parentActivityId === undefined ||
-    !parentItemId ||
-    !isOneOf(value.role, ["root", "fork", "child", "unknown"] as const) ||
-    !isOneOf(value.lifecycle, [
-      "observed",
-      "active",
-      "completed",
-      "failed",
-      "cancelled",
-      "unsupported",
-    ] as const) ||
-    depth === null ||
-    depth > 255 ||
-    value.provenance.schemaVersion !== 1 ||
-    !isOneOf(value.provenance.sourceKind, [
-      "tool",
-      "extension",
-      "collaboration",
-      "unknown",
-    ] as const) ||
-    !externalKind ||
-    extensionSchemaId === undefined ||
-    safeLabel === undefined ||
-    !revision
-  )
-    return null;
-  return {
-    id: id as HarnessActivityProjection["id"],
-    turnId: turnId as HarnessActivityProjection["turnId"],
-    parentActivityId:
-      parentActivityId as HarnessActivityProjection["parentActivityId"],
-    parentItemId: parentItemId as HarnessActivityProjection["parentItemId"],
-    role: value.role,
-    lifecycle: value.lifecycle,
-    depth,
-    provenance: {
-      schemaVersion: 1,
-      sourceKind: value.provenance.sourceKind,
-      externalKind,
-      extensionSchemaId,
-      safeLabel,
-    },
-    revision: revision as HarnessActivityProjection["revision"],
-  };
-}
-
-export function safeTurn(value: unknown): TurnProjection | null {
-  if (
-    !isRecord(value) ||
-    !Array.isArray(value.items) ||
-    !Array.isArray(value.activities) ||
-    value.items.length > 512 ||
-    value.activities.length > 128
-  )
-    return null;
-  const id = safeIdentifier(value.id);
-  const sessionId = safeIdentifier(value.sessionId);
-  const runtimeEpoch = safeCounter(value.runtimeEpoch, false);
-  const revision = safeCounter(value.revision, false);
-  const ordinal = safeOrdinal(value.ordinal);
-  const createdAt = safeTimestamp(value.createdAt);
-  const updatedAt = safeTimestamp(value.updatedAt);
-  const terminalAt =
-    value.terminalAt === null ? null : safeTimestamp(value.terminalAt);
-  if (
-    !id ||
-    !sessionId ||
-    !runtimeEpoch ||
-    ordinal === null ||
-    !isOneOf(value.state, [
-      "queued",
-      "sending",
-      "running",
-      "waitingModel",
-      "waitingTool",
-      "waitingApproval",
-      "waitingUser",
-      "cancelling",
-      "completed",
-      "interrupted",
-      "cancelled",
-      "failed",
-      "deliveryUnknown",
-    ] as const) ||
-    !revision ||
-    createdAt === null ||
-    updatedAt === null ||
-    (terminalAt === null && value.terminalAt !== null)
-  )
-    return null;
-  const items = value.items.map(safeItem);
-  const activities = value.activities.map(safeActivity);
-  return items.some((item) => !item) || activities.some((activity) => !activity)
-    ? null
-    : {
-        id: id as TurnProjection["id"],
-        sessionId: sessionId as TurnProjection["sessionId"],
-        runtimeEpoch: runtimeEpoch as TurnProjection["runtimeEpoch"],
-        ordinal,
-        state: value.state,
-        revision: revision as TurnProjection["revision"],
-        createdAt,
-        updatedAt,
-        terminalAt,
-        items: items as AcpItem[],
-        activities: activities as HarnessActivityProjection[],
-      };
 }

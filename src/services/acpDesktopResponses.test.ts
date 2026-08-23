@@ -36,6 +36,20 @@ function session(index = 0): object {
   };
 }
 
+function fileChange(relativePath: string): object {
+  return {
+    resource: {
+      kind: "resource",
+      resource: { rootId: "root-a", relativePath },
+    },
+    operation: "updated",
+    originalResource: null,
+    summary: `Changed ${relativePath}`,
+    additions: 1,
+    deletions: 0,
+  };
+}
+
 function item(index = 0, overrides: Record<string, unknown> = {}): object {
   return {
     id: `item-${index}`,
@@ -194,6 +208,30 @@ describe("safeAcpMutationResponse", () => {
     ).toBeNull();
   });
 
+  it("admits a file-change payload at the 64-change bound", () => {
+    expect(
+      safeAcpMutationResponse(
+        mutation({
+          turns: [
+            turn({
+              items: [
+                item(0, {
+                  kind: "fileChangeDiff",
+                  payload: {
+                    changes: Array.from({ length: 64 }, (_, index) =>
+                      fileChange(`a${index}.ts`),
+                    ),
+                    truncated: false,
+                  },
+                }),
+              ],
+            }),
+          ],
+        }),
+      ),
+    ).not.toBeNull();
+  });
+
   it("fails closed when a file-change payload exceeds its change limit", () => {
     expect(
       safeAcpMutationResponse(
@@ -204,14 +242,9 @@ describe("safeAcpMutationResponse", () => {
                 item(0, {
                   kind: "fileChangeDiff",
                   payload: {
-                    changes: Array.from({ length: 65 }, () => ({
-                      resource: { rootId: "root-a", relativePath: "a.ts" },
-                      operation: "updated",
-                      originalResource: null,
-                      summary: "Changed a.ts",
-                      additions: 1,
-                      deletions: 0,
-                    })),
+                    changes: Array.from({ length: 65 }, (_, index) =>
+                      fileChange(`a${index}.ts`),
+                    ),
                     truncated: true,
                   },
                 }),

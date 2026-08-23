@@ -264,6 +264,12 @@ describe("AcpChatProjection", () => {
     expect(within(summary).getAllByText("+2")).toHaveLength(2);
     expect(within(summary).getAllByText("-1")).toHaveLength(2);
     expect(within(summary).getAllByText("—")).toHaveLength(2);
+    expect(
+      within(summary).getByRole("button", { name: "Accept" }),
+    ).toBeEnabled();
+    expect(
+      within(summary).getByRole("button", { name: "Discard" }),
+    ).toBeEnabled();
   });
 
   it("selecting_a_changed_file_opens_the_existing_per_file_diff", () => {

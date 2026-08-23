@@ -72,6 +72,9 @@ export function TurnEditSummary({
       Math.min(MAX_FILE_CHANGE_LINES, total + (change.deletions ?? 0)),
     0,
   );
+  const hasInteractiveChanges = summary.changes.some(
+    (change) => change.resource.kind === "resource",
+  );
 
   async function recordDisposition(state: AgentEditDispositionState) {
     if (!onRecordDisposition || recording) return;
@@ -170,7 +173,7 @@ export function TurnEditSummary({
           })}
         </ul>
       ) : null}
-      {summary.changes.length > 0 && onRecordDisposition ? (
+      {hasInteractiveChanges && onRecordDisposition ? (
         <div className="acp-file-changes__disposition">
           <button
             type="button"

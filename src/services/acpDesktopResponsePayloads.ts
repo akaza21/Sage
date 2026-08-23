@@ -50,7 +50,10 @@ export function safeResourceLocation(
 
 function safeNullableBoundedNumber(value: unknown): number | null | undefined {
   if (value === null) return null;
-  return Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 0 &&
+    value <= 1_000_000
     ? value
     : undefined;
 }
@@ -91,9 +94,7 @@ export function safeFileChange(value: unknown): FileChangeProjection | null {
   };
 }
 
-export function safeToolPresentation(
-  value: unknown,
-): ToolPresentation | null {
+export function safeToolPresentation(value: unknown): ToolPresentation | null {
   if (!isRecord(value)) return null;
   const label = safeText(value.label, 512);
   if (label === null) return null;
