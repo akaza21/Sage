@@ -4,7 +4,7 @@ use crate::acp::{
     scheduler::RuntimeOwner,
     store::{AdapterTurnCursor, CloseSessionCommand, PrepareTurnCommand},
 };
-use std::time::Instant;
+use std::{sync::mpsc, time::Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HostState {
@@ -102,6 +102,33 @@ impl HostCloseIntent {
     }
 }
 
+pub(super) struct PendingTerminal {
+    pub(super) owner: RuntimeOwner,
+    pub(super) cursor: AdapterTurnCursor,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum CancelPhase {
+    Begin,
+    Dispatch,
+}
+
+pub(super) struct PendingCancel {
+    pub(super) intent: HostCancelIntent,
+    pub(super) phase: CancelPhase,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ClosePhase {
+    Begin,
+    Finish,
+}
+
+pub(super) struct PendingClose {
+    pub(super) intent: HostCloseIntent,
+    pub(super) phase: ClosePhase,
+}
+
 pub(crate) trait RuntimeEngine: Send + 'static {
     fn resolve_permission(
         &mut self,
@@ -180,6 +207,26 @@ pub(super) enum HostReply {
     Outcome(HostOutcome),
     Prepared(SageTurnId),
     State(HostState),
+}
+
+pub(crate) struct TerminalNotification {
+    pub(super) response: mpsc::Receiver<Result<HostReply, HostError>>,
+    pub(super) deadline: Instant,
+}
+
+impl TerminalNotification {
+    pub(crate) fn wait(self) -> Result<(), HostError> {
+        let remaining = self.deadline.saturating_duration_since(Instant::now());
+        match self.response.recv_timeout(remaining) {
+            Ok(Ok(HostReply::Outcome(HostOutcome::TurnTerminal))) => Ok(()),
+            Ok(Ok(HostReply::Outcome(_) | HostReply::Prepared(_) | HostReply::State(_))) => {
+                Err(HostError::State)
+            }
+            Ok(Err(error)) => Err(error),
+            Err(mpsc::RecvTimeoutError::Timeout) => Err(HostError::Deadline),
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(HostError::Closed),
+        }
+    }
 }
 
 impl HostCommand {

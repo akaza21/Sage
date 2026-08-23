@@ -22,11 +22,20 @@ impl CodexAdapter {
             .iter()
             .find(|entry| entry.id == request_id)
         {
+            let allow_response_queued = existing.state == ServerRequestState::ResponseQueued
+                && existing.response.is_empty();
             if existing.fingerprint != fingerprint
                 || existing.method != method
                 || existing.turn_id != turn_id
                 || existing.item_id != item_id
-                || existing.response != response
+                || (!allow_response_queued
+                    && !matches!(
+                        existing.state,
+                        ServerRequestState::AllowPending
+                            | ServerRequestState::AllowCommitted
+                            | ServerRequestState::ResolvedAllowed
+                    )
+                    && existing.response != response)
             {
                 return Err(AdapterError::PermissionTeardownRequired);
             }
@@ -34,22 +43,26 @@ impl CodexAdapter {
                 ServerRequestState::Received
                 | ServerRequestState::Asked
                 | ServerRequestState::AllowPending
-                | ServerRequestState::DeclinePending => PermissionRegistration::DuplicatePending,
-                ServerRequestState::AllowCommitted
-                | ServerRequestState::DeclineCommitted
+                | ServerRequestState::AllowCommitted
+                | ServerRequestState::ResolvedAllowed => PermissionRegistration::DuplicatePending,
+                ServerRequestState::ResponseQueued if allow_response_queued => {
+                    PermissionRegistration::DuplicatePending
+                }
+                ServerRequestState::DeclinePending => PermissionRegistration::DuplicatePending,
+                ServerRequestState::DeclineCommitted
                 | ServerRequestState::ResponseQueued
-                | ServerRequestState::ResolvedAllowed
                 | ServerRequestState::ResolvedDeclined => {
                     PermissionRegistration::DuplicateCommitted(existing.response.clone())
                 }
             });
         }
         if self.permission_requests.len() >= LIMITS.queues.server_requests_per_session as usize {
-            let Some(index) = self
-                .permission_requests
-                .iter()
-                .position(|entry| entry.state == ServerRequestState::ResolvedDeclined)
-            else {
+            let Some(index) = self.permission_requests.iter().position(|entry| {
+                matches!(
+                    entry.state,
+                    ServerRequestState::ResolvedAllowed | ServerRequestState::ResolvedDeclined
+                )
+            }) else {
                 return Err(AdapterError::PermissionTeardownRequired);
             };
             self.permission_requests.swap_remove(index);
@@ -97,16 +110,22 @@ impl CodexAdapter {
 
     pub(crate) fn resolve_pending_permission(
         &mut self,
+        request_id: &str,
         decision: PermissionDecision,
     ) -> Result<Option<(String, Vec<u8>)>, AdapterError> {
-        let Some(entry) = self.permission_requests.iter_mut().find(|entry| {
-            matches!(
-                entry.state,
-                ServerRequestState::Received | ServerRequestState::Asked
-            )
-        }) else {
+        let Some(entry) = self
+            .permission_requests
+            .iter_mut()
+            .find(|entry| entry.id == request_id)
+        else {
             return Err(AdapterError::PermissionTeardownRequired);
         };
+        if !matches!(
+            entry.state,
+            ServerRequestState::Received | ServerRequestState::Asked
+        ) {
+            return Err(AdapterError::PermissionTeardownRequired);
+        }
         match decision {
             PermissionDecision::Ask => {
                 entry.state = ServerRequestState::Asked;
@@ -115,6 +134,9 @@ impl CodexAdapter {
             PermissionDecision::AllowOnce => {
                 entry.state = ServerRequestState::AllowPending;
                 entry.state = ServerRequestState::AllowCommitted;
+                // An empty retained response marks the shared queued state as
+                // the allow path, so a duplicate cannot replay decline bytes.
+                entry.response.clear();
                 Ok(Some((entry.id.clone(), Vec::new())))
             }
             PermissionDecision::Deny => {

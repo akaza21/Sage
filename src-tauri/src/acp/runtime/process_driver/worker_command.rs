@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, OnceLock, mpsc},
+    sync::{Arc, mpsc},
     time::{Duration, Instant},
 };
 
@@ -58,12 +58,12 @@ pub(crate) enum WorkerReply {
 }
 
 pub(crate) struct WorkerEnvelope {
-    pub(crate) command: WorkerCommand,
-    reply: mpsc::SyncSender<Result<WorkerReply, HostError>>,
-    deadline: Instant,
+    pub(super) command: WorkerCommand,
+    pub(super) reply: mpsc::SyncSender<Result<WorkerReply, HostError>>,
+    pub(super) deadline: Instant,
 }
 
-pub(crate) struct WorkerResponder(mpsc::SyncSender<Result<WorkerReply, HostError>>);
+pub(crate) struct WorkerResponder(pub(super) mpsc::SyncSender<Result<WorkerReply, HostError>>);
 
 impl WorkerCommand {
     fn deadline_millis(&self) -> u64 {
@@ -131,30 +131,6 @@ impl WorkerCommand {
     }
 }
 
-impl WorkerEnvelope {
-    pub(crate) fn respond(self, reply: Result<WorkerReply, HostError>) {
-        let _ = self.reply.send(reply);
-    }
-
-    pub(crate) fn reject(self, error: HostError) {
-        self.respond(Err(error));
-    }
-
-    pub(crate) fn into_parts(self) -> (WorkerCommand, WorkerResponder) {
-        (self.command, WorkerResponder(self.reply))
-    }
-
-    pub(crate) fn deadline(&self) -> Instant {
-        self.deadline
-    }
-}
-
-impl WorkerResponder {
-    pub(crate) fn respond(self, reply: Result<WorkerReply, HostError>) {
-        let _ = self.0.send(reply);
-    }
-}
-
 impl DriverMailbox {
     pub(crate) fn submit_worker(
         &self,
@@ -171,8 +147,9 @@ impl DriverMailbox {
     ) -> Result<mpsc::Receiver<Result<WorkerReply, HostError>>, MailboxError> {
         let bytes = command.actual_bytes().ok_or(MailboxError::Full)?;
         let control = command.is_control();
-        let deadline_millis =
-            monotonic_deadline_millis(deadline.saturating_duration_since(Instant::now()));
+        let deadline_millis = super::driver::monotonic_deadline_millis(
+            deadline.saturating_duration_since(Instant::now()),
+        );
         let mut retained = Some(command);
         let mut response = None;
         let build = || {
@@ -191,14 +168,6 @@ impl DriverMailbox {
         }
         response.ok_or(MailboxError::Closed)
     }
-}
-
-fn monotonic_deadline_millis(after: Duration) -> u64 {
-    static ORIGIN: OnceLock<Instant> = OnceLock::new();
-    let elapsed = ORIGIN.get_or_init(Instant::now).elapsed().as_millis();
-    elapsed
-        .saturating_add(after.as_millis())
-        .min(u128::from(u64::MAX)) as u64
 }
 
 pub(crate) struct ProcessLivePort {

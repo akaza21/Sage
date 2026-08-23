@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpItem, PermissionDecision } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";
+import { desktop } from "../../../services/desktop";
 import { PermissionItem } from "./PermissionItem";
 
 const acpDirectory = path.resolve(import.meta.dirname);
@@ -59,6 +60,7 @@ describe("permission decision seam", () => {
         decision: "deny",
         state: "declinePending",
       });
+    const sendPrompt = vi.spyOn(desktop, "sendPrompt");
 
     render(createElement(PermissionItem, { item: waitingPermission() }));
 
@@ -75,6 +77,7 @@ describe("permission decision seam", () => {
       requestId: "request-1",
       decision: "deny",
     });
+    expect(sendPrompt).not.toHaveBeenCalled();
   });
 
   it("keeps decision behavior harness-neutral", async () => {
@@ -82,6 +85,7 @@ describe("permission decision seam", () => {
       [
         "PermissionItem.tsx",
         path.join("..", "..", "..", "..", "src-tauri", "src", "acp", "runtime", "permissions.rs"),
+        path.join("..", "..", "..", "..", "src-tauri", "src", "acp", "store", "requests.rs"),
       ].map((file) => readFile(path.join(acpDirectory, file), "utf8")),
     );
 

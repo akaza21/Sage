@@ -5,8 +5,9 @@ use crate::acp::{scheduler::RuntimeOwner, store::AdapterTurnCursor};
 use super::{
     mailbox::HostMailbox,
     types::{
-        HostCancelIntent, HostCloseIntent, HostCommand, HostError, HostOutcome, HostPromptIntent,
-        HostReply, HostState, PromptWrite, RuntimeEngine,
+        CancelPhase, ClosePhase, HostCancelIntent, HostCloseIntent, HostCommand, HostError,
+        HostOutcome, HostPromptIntent, HostReply, HostState, PendingCancel, PendingClose,
+        PendingTerminal, PromptWrite, RuntimeEngine,
     },
 };
 
@@ -19,33 +20,6 @@ pub(super) struct Actor<E> {
     pending_cancel: Option<PendingCancel>,
     pending_terminal: Option<PendingTerminal>,
     pending_close: Option<PendingClose>,
-}
-
-struct PendingTerminal {
-    owner: RuntimeOwner,
-    cursor: AdapterTurnCursor,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum CancelPhase {
-    Begin,
-    Dispatch,
-}
-
-struct PendingCancel {
-    intent: HostCancelIntent,
-    phase: CancelPhase,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ClosePhase {
-    Begin,
-    Finish,
-}
-
-struct PendingClose {
-    intent: HostCloseIntent,
-    phase: ClosePhase,
 }
 
 impl<E: RuntimeEngine> Actor<E> {

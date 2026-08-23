@@ -11,7 +11,10 @@ use crate::acp::{
             CodexProjectRootAuthority, Platform, parse_packet_metadata, parse_security_policy,
         },
     },
-    contract::{ProjectGeneration, RequiredText, SafeText, SageProjectId, SageRootId},
+    contract::{
+        ProjectGeneration, RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId, SageProjectId,
+        SageRootId,
+    },
     intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef},
     transport::IncrementalFrameDecoder,
 };
@@ -766,7 +769,7 @@ fn model_resume_load_close_commands_are_capability_driven_and_delimiter_free() {
 }
 
 #[test]
-fn permission_denial_is_mandatory_bounded_and_fail_closed() {
+fn permission_request_waits_for_a_later_deny_and_never_emits_ingress_egress() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     running_turn(&mut runtime);
@@ -781,8 +784,15 @@ fn permission_denial_is_mandatory_bounded_and_fail_closed() {
         batch.events(),
         [AdapterEvent::PermissionRequest { .. }]
     ));
-    assert_eq!(batch.egress().len(), 1);
-    let egress = &batch.egress()[0];
+    assert!(batch.egress().is_empty());
+    assert!(batch.actual_bytes() <= 262_144);
+
+    let egress = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: crate::acp::contract::SageServerRequestId::parse("approval-1").unwrap(),
+            decision: PermissionDecision::Deny,
+        })
+        .expect("later deny");
     assert!(egress.token().is_mandatory());
     assert_eq!(
         serde_json::from_slice::<Value>(egress.frame().payload()).expect("deny json")["result"]["decision"],
@@ -805,19 +815,58 @@ fn permission_denial_is_mandatory_bounded_and_fail_closed() {
         duplicate.events(),
         [AdapterEvent::IgnoredDuplicate]
     ));
+    assert_eq!(duplicate.egress().len(), 1);
     assert!(duplicate.egress()[0].token().is_mandatory());
 
     let mut rejected = fixture_runtime();
     ready(&mut rejected);
     running_turn(&mut rejected);
-    let batch = rejected.ingest(&request, &Mapper).expect("permission");
+    let _batch = rejected.ingest(&request, &Mapper).expect("permission");
+    let egress = rejected
+        .command(AdapterCommand::ResolvePermission {
+            request_id: crate::acp::contract::SageServerRequestId::parse("approval-1").unwrap(),
+            decision: PermissionDecision::Deny,
+        })
+        .expect("later deny");
     assert_eq!(
-        rejected.resolve_egress(
-            batch.egress()[0].token().clone(),
-            EgressResolution::QueueRejected
-        ),
+        rejected.resolve_egress(egress.token().clone(), EgressResolution::QueueRejected),
         Err(AdapterRuntimeError::MandatoryDenyTeardown)
     );
+}
+
+#[test]
+fn allow_once_duplicates_never_replay_the_retained_decline_response() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    let request = frame(json!({
+        "id":"approval-allow","method":"item/commandExecution/requestApproval","params":{
+            "threadId":"thread-1","turnId":"turn-1","itemId":"tool-allow"
+        }
+    }));
+    let first = runtime.ingest(&request, &Mapper).expect("permission");
+    assert!(first.egress().is_empty());
+
+    let allow = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: crate::acp::contract::SageServerRequestId::parse("approval-allow").unwrap(),
+            decision: PermissionDecision::AllowOnce,
+        })
+        .expect("later allow");
+    assert!(!allow.token().is_mandatory());
+    runtime
+        .resolve_egress(allow.token().clone(), EgressResolution::Queued)
+        .expect("allow queued");
+    let queued_duplicate = runtime.ingest(&request, &Mapper).expect("queued duplicate");
+    assert!(queued_duplicate.egress().is_empty());
+
+    runtime
+        .resolve_egress(allow.into_token(), EgressResolution::Written)
+        .expect("allow written");
+    let resolved_duplicate = runtime
+        .ingest(&request, &Mapper)
+        .expect("resolved duplicate");
+    assert!(resolved_duplicate.egress().is_empty());
 }
 
 #[test]

@@ -10,6 +10,8 @@ use std::{
 use crate::acp::{scheduler::RuntimeOwner, store::AdapterTurnCursor};
 
 use super::super::bounded_thread::{BoundedThread, ThreadWaitError};
+pub(crate) use super::types::TerminalNotification;
+
 use super::{
     actor::Actor,
     mailbox::{Envelope, HostMailbox},
@@ -18,26 +20,6 @@ use super::{
         HostReply, HostState, RuntimeEngine, RuntimeShutdownRecovery,
     },
 };
-
-pub(crate) struct TerminalNotification {
-    response: mpsc::Receiver<Result<HostReply, HostError>>,
-    deadline: Instant,
-}
-
-impl TerminalNotification {
-    pub(crate) fn wait(self) -> Result<(), HostError> {
-        let remaining = self.deadline.saturating_duration_since(Instant::now());
-        match self.response.recv_timeout(remaining) {
-            Ok(Ok(HostReply::Outcome(HostOutcome::TurnTerminal))) => Ok(()),
-            Ok(Ok(HostReply::Outcome(_) | HostReply::Prepared(_) | HostReply::State(_))) => {
-                Err(HostError::State)
-            }
-            Ok(Err(error)) => Err(error),
-            Err(mpsc::RecvTimeoutError::Timeout) => Err(HostError::Deadline),
-            Err(mpsc::RecvTimeoutError::Disconnected) => Err(HostError::Closed),
-        }
-    }
-}
 
 pub(crate) struct RuntimeHost {
     pub(super) mailbox: Arc<HostMailbox>,

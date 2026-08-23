@@ -3,7 +3,6 @@ use crate::acp::{
         AdapterBatch, AdapterBatchBuilder, AdapterCommand, AdapterEgress, AdapterEvent,
         AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
-    contract::{RuntimeEpoch, SageAgentSessionId},
     intent::ExternalId,
     lifecycle::ServerRequestState,
     runtime::permissions::PermissionDecision,
@@ -12,16 +11,9 @@ use crate::acp::{
 
 use super::{
     incoming::{IncomingEvent, IngressDisposition},
-    managed::ManagedStagingPrerequisite,
-    manifest::MetadataValidatedPacket,
-    policy::SecurityPolicyPrerequisite,
-    reproduction::ReproducedPackagePrerequisite,
     request::RequestKind,
     state::CodexAdapter,
 };
-
-#[cfg(test)]
-use super::manifest::{Platform, parse_packet_metadata};
 
 #[path = "runtime/support.rs"]
 mod support;
@@ -50,65 +42,6 @@ pub(crate) struct CodexRuntime {
 }
 
 impl CodexRuntime {
-    pub(crate) fn from_metadata_packet(
-        packet: &MetadataValidatedPacket,
-        security_policy: &SecurityPolicyPrerequisite,
-        reproduced_package: &ReproducedPackagePrerequisite,
-        managed_staging: &ManagedStagingPrerequisite,
-        binding_digest: [u8; 32],
-        runtime_epoch: RuntimeEpoch,
-        session_id: SageAgentSessionId,
-    ) -> Result<Self, AdapterRuntimeError> {
-        reproduced_package
-            .revalidate(packet)
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        managed_staging
-            .revalidate(packet, reproduced_package)
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        security_policy
-            .revalidate(packet)
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        packet
-            .require_physical_admission()
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        Ok(Self::new(packet, binding_digest, runtime_epoch, session_id))
-    }
-
-    #[cfg(test)]
-    pub(super) fn fixture(platform: Platform) -> Self {
-        assert_eq!(platform, Platform::WindowsX86_64);
-        let packet = parse_packet_metadata(include_bytes!(
-            "../../../../testdata/acp/codex/candidate-windows.json"
-        ))
-        .expect("pinned Codex fixture");
-        Self::new(
-            &packet,
-            [9; 32],
-            RuntimeEpoch::new(1).expect("fixture epoch"),
-            SageAgentSessionId::parse("session-codex-runtime").expect("fixture session"),
-        )
-    }
-
-    fn new(
-        packet: &MetadataValidatedPacket,
-        binding_digest: [u8; 32],
-        runtime_epoch: RuntimeEpoch,
-        session_id: SageAgentSessionId,
-    ) -> Self {
-        Self {
-            launch_authority: RuntimeLaunchAuthority::metadata_only(),
-            inner: CodexAdapter::from_metadata_packet(
-                packet,
-                binding_digest,
-                runtime_epoch,
-                session_id,
-            ),
-            next_request_id: 0,
-            snapshots: ItemSnapshots::new(),
-            poisoned: false,
-        }
-    }
-
     fn translate(
         &mut self,
         disposition: IngressDisposition,
@@ -314,11 +247,14 @@ impl HarnessAdapter for CodexRuntime {
                 client_message_id,
             } => self.request(|adapter, id| adapter.prompt(id, &prompt, &client_message_id)),
             AdapterCommand::Cancel => self.request_with_control(CodexAdapter::cancel, true),
-            AdapterCommand::ResolvePermission { decision, .. } => {
+            AdapterCommand::ResolvePermission {
+                request_id,
+                decision,
+            } => {
                 match (
                     decision,
                     self.inner
-                        .resolve_pending_permission(decision)
+                        .resolve_pending_permission(request_id.as_str(), decision)
                         .map_err(map_adapter)?,
                 ) {
                     (PermissionDecision::Ask, None) => {
