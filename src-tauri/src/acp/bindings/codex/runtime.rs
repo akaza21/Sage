@@ -3,9 +3,8 @@ use crate::acp::{
         AdapterBatch, AdapterBatchBuilder, AdapterCommand, AdapterEgress, AdapterEvent,
         AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
-    intent::ExternalId,
     lifecycle::ServerRequestState,
-    runtime::permissions::PermissionDecision,
+    runtime::{later_permission::resolve_later_permission, permissions::PermissionDecision},
     transport::{Frame, OutboundFrame, request_payload_digest},
 };
 
@@ -252,26 +251,13 @@ impl HarnessAdapter for CodexRuntime {
                 request_id,
                 decision,
             } => {
-                match (
-                    decision,
-                    self.inner
-                        .resolve_pending_permission(request_id.as_str(), decision)
-                        .map_err(map_adapter)?,
-                ) {
-                    (PermissionDecision::Ask, None) => {
-                        let frame = OutboundFrame::new(
-                            br#"{\"jsonrpc\":\"2.0\",\"method\":\"sage/permissionAsked\"}"#
-                                .to_vec(),
-                        )
-                        .map_err(|_| AdapterRuntimeError::Frame)?;
-                        Ok(AdapterEgress::new(
-                            frame,
-                            EgressToken::protocol_notification(),
-                        ))
-                    }
-                    (PermissionDecision::AllowOnce, Some((request_id, _, method))) => {
-                        let request_id = ExternalId::new("externalRequestId", request_id)
-                            .map_err(|_| AdapterRuntimeError::Frame)?;
+                let pending = self
+                    .inner
+                    .resolve_pending_permission(request_id.as_str(), decision)
+                    .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
+                match (decision, pending) {
+                    (PermissionDecision::Ask, None) => Err(AdapterRuntimeError::Operation),
+                    (PermissionDecision::AllowOnce, Some((_, _, method))) => {
                         let result = if method == "item/permissions/requestApproval" {
                             serde_json::json!({"permissions": {}})
                         } else {
@@ -284,20 +270,30 @@ impl HarnessAdapter for CodexRuntime {
                         .map_err(|_| AdapterRuntimeError::Frame)?;
                         let frame =
                             OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
-                        Ok(AdapterEgress::new(
-                            frame,
-                            EgressToken::permission_allow(request_id),
-                        ))
+                        resolve_later_permission(
+                            &request_id,
+                            decision,
+                            Some(AdapterEgress::new(
+                                frame,
+                                EgressToken::protocol_notification(),
+                            )),
+                        )
+                        .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?
+                        .ok_or(AdapterRuntimeError::LaterPermissionMiss)
                     }
-                    (PermissionDecision::Deny, Some((request_id, bytes, _))) => {
-                        let request_id = ExternalId::new("externalRequestId", request_id)
-                            .map_err(|_| AdapterRuntimeError::Frame)?;
+                    (PermissionDecision::Deny, Some((_, bytes, _))) => {
                         let frame =
                             OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
-                        Ok(AdapterEgress::new(
-                            frame,
-                            EgressToken::mandatory_deny(request_id, false),
-                        ))
+                        resolve_later_permission(
+                            &request_id,
+                            decision,
+                            Some(AdapterEgress::new(
+                                frame,
+                                EgressToken::protocol_notification(),
+                            )),
+                        )
+                        .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?
+                        .ok_or(AdapterRuntimeError::LaterPermissionMiss)
                     }
                     _ => Err(AdapterRuntimeError::Operation),
                 }

@@ -37,7 +37,8 @@ impl ClaudeTranslator {
         self.validate_session(params.get("sessionId"))?;
         let request_id = rpc_id(frame.get("id"))?;
         let tool = object_value(params.get("toolCall"))?;
-        let tool_call_id = RequiredText::new("toolCallId", string(tool, "toolCallId")?)?;
+        let tool_call_id: RequiredText<512> =
+            RequiredText::new("toolCallId", string(tool, "toolCallId")?)?;
         if let Some(existing) = self.resolved_permissions.get(request_id.as_str()) {
             return if existing == tool_call_id.as_str() {
                 Ok(vec![AdapterEvent::IgnoredDuplicate])
@@ -74,27 +75,21 @@ impl ClaudeTranslator {
             request_id.as_str().to_owned(),
             tool_call_id.as_str().to_owned(),
         );
-        Ok(vec![
-            AdapterEvent::Item {
-                external_key: RequiredText::new(
-                    "externalItemId",
-                    format!("permission:{}", request_id.as_str()),
+        Ok(vec![AdapterEvent::Item {
+            external_key: RequiredText::new(
+                "externalItemId",
+                format!("permission:{}", request_id.as_str()),
+            )?,
+            lifecycle: ItemLifecycle::Streaming,
+            tool_state: Some(ToolState::WaitingForApproval),
+            payload: NormalizedPayload::PermissionRequest {
+                category: ToolCategory::Other,
+                summary: SafeText::new(
+                    "permissionSummary",
+                    "Claude tool permission requested; awaiting your decision",
                 )?,
-                lifecycle: ItemLifecycle::Streaming,
-                tool_state: Some(ToolState::WaitingForApproval),
-                payload: NormalizedPayload::PermissionRequest {
-                    category: ToolCategory::Other,
-                    summary: SafeText::new(
-                        "permissionSummary",
-                        "Claude tool permission requested; Sage policy requires denial",
-                    )?,
-                },
             },
-            AdapterEvent::PermissionDecline {
-                request_id,
-                tool_call_id,
-            },
-        ])
+        }])
     }
 
     /// Called only after the durable decline fact has committed.

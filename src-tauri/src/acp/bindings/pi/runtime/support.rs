@@ -1,6 +1,7 @@
 use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterBatchBuilder, AdapterEgress, AdapterEvent, AdapterRuntimeError,
+        EgressToken,
     },
     contract::{RequiredText, SafeText, SchemaVersionV1},
     intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload, ToolCategory},
@@ -20,9 +21,48 @@ use identity::{external, model_event, model_key, text_payload, tool_payload, uns
 impl PiRuntime {
     pub(super) fn resolve_later_permission(
         &mut self,
+        request_id: &crate::acp::contract::SageServerRequestId,
+        decision: crate::acp::runtime::permissions::PermissionDecision,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
-        self.mandatory_abort()?
-            .ok_or(AdapterRuntimeError::Operation)
+        let pending = self
+            .deny
+            .as_ref()
+            .is_some_and(|intent| intent.request_id.as_str() == request_id.as_str());
+        if !pending {
+            return Err(AdapterRuntimeError::LaterPermissionMiss);
+        }
+        let reply = match decision {
+            crate::acp::runtime::permissions::PermissionDecision::Ask => {
+                let _ = crate::acp::runtime::later_permission::resolve_later_permission(
+                    request_id, decision, None,
+                )
+                .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
+                return Err(AdapterRuntimeError::Operation);
+            }
+            crate::acp::runtime::permissions::PermissionDecision::AllowOnce => {
+                self.translator.release_permission_wait();
+                let bytes = serde_json::to_vec(&serde_json::json!({
+                    "type": "permission_response",
+                    "requestId": request_id.as_str(),
+                    "decision": "allow_once",
+                }))
+                .map_err(|_| AdapterRuntimeError::Frame)?;
+                let frame = crate::acp::transport::OutboundFrame::new(bytes)
+                    .map_err(|_| AdapterRuntimeError::Frame)?;
+                AdapterEgress::new(frame, EgressToken::protocol_notification())
+            }
+            crate::acp::runtime::permissions::PermissionDecision::Deny => {
+                self.mandatory_abort()?
+                    .ok_or(AdapterRuntimeError::Operation)?
+            }
+        };
+        crate::acp::runtime::later_permission::resolve_later_permission(
+            request_id,
+            decision,
+            Some(reply),
+        )
+        .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?
+        .ok_or(AdapterRuntimeError::LaterPermissionMiss)
     }
 }
 
@@ -295,7 +335,7 @@ impl PiRuntime {
                             summary: SafeText::new(
                                 "permissionSummary",
                                 format!(
-                                    "Pi requested disallowed authority for {tool}; Sage declined"
+                                    "Pi requested authority for {tool}; awaiting your decision"
                                 ),
                             )
                             .map_err(|_| AdapterRuntimeError::Frame)?,

@@ -311,9 +311,6 @@ impl PiTranslator {
             } else if kind == PendingKind::Abort {
                 let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
                 active.abort_requested = false;
-                if active.denial_latched {
-                    output.push(AdapterOutput::AbortRequired);
-                }
             } else if matches!(kind, PendingKind::State | PendingKind::Models) {
                 self.reset_initialization();
             }

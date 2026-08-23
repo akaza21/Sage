@@ -216,7 +216,7 @@ fn prompt_acceptance_does_not_complete_turn_and_fixture_orders_items() {
 }
 
 #[test]
-fn write_or_shell_tool_is_declined_without_normalizing_arguments() {
+fn write_or_shell_tool_waits_for_a_later_permission_decision_without_normalizing_arguments() {
     let mut translator = admitted_translator(2);
     accept_prompt(&mut translator, "turn-2");
     translator.ingest(br#"{"type":"agent_start"}"#).unwrap();
@@ -227,19 +227,16 @@ fn write_or_shell_tool_is_declined_without_normalizing_arguments() {
         .unwrap();
     assert_eq!(
         output,
-        vec![
-            AdapterOutput::PermissionDeclined {
-                external_id: Some("tool-write".into()),
-                tool: "bash".into()
-            },
-            AdapterOutput::AbortRequired
-        ]
+        vec![AdapterOutput::PermissionDeclined {
+            external_id: Some("tool-write".into()),
+            tool: "bash".into()
+        }]
     );
     assert!(!format!("{output:?}").contains("Users"));
 
     assert_eq!(
         translator.ingest(br#"{"type":"message_update","delta":"must not pass"}"#),
-        Ok(vec![AdapterOutput::AbortRequired])
+        Ok(vec![AdapterOutput::LateIgnored])
     );
 }
 
@@ -303,10 +300,7 @@ fn denial_latch_survives_abort_enqueue_and_response_failures() {
         .unwrap();
     assert!(matches!(
         denied.as_slice(),
-        [
-            AdapterOutput::PermissionDeclined { .. },
-            AdapterOutput::AbortRequired
-        ]
+        [AdapterOutput::PermissionDeclined { .. }]
     ));
     assert_eq!(
         translator.begin(Operation::Abort),
@@ -314,7 +308,7 @@ fn denial_latch_survives_abort_enqueue_and_response_failures() {
     );
     assert_eq!(
         translator.ingest(br#"{"type":"message_update","delta":"blocked"}"#),
-        Ok(vec![AdapterOutput::AbortRequired])
+        Ok(vec![AdapterOutput::LateIgnored])
     );
     assert!(matches!(
         translator
@@ -338,16 +332,13 @@ fn denial_latch_survives_abort_enqueue_and_response_failures() {
         translator
             .ingest(&failed_response(&abort.command_id, "abort", Value::Null))
             .unwrap(),
-        vec![
-            AdapterOutput::Error {
-                code: "command_failed"
-            },
-            AdapterOutput::AbortRequired
-        ]
+        vec![AdapterOutput::Error {
+            code: "command_failed"
+        }]
     );
     assert_eq!(
         translator.ingest(br#"{"type":"message_update","delta":"blocked"}"#),
-        Ok(vec![AdapterOutput::AbortRequired])
+        Ok(vec![AdapterOutput::LateIgnored])
     );
 }
 

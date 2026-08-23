@@ -84,18 +84,58 @@ impl ClaudeRuntime {
                     json!({"sessionId":active.external_id.as_str()}),
                 )
             }
-            AdapterCommand::ResolvePermission { request_id, .. } => {
+            AdapterCommand::ResolvePermission {
+                request_id,
+                decision,
+            } => {
                 let record = self
                     .denials
-                    .get(request_id.as_str())
-                    .ok_or(AdapterRuntimeError::PermissionIntent)?;
-                let request_id = crate::acp::intent::ExternalId::new(
-                    "permissionRequest",
-                    request_id.as_str(),
-                )
-                .map_err(|_| AdapterRuntimeError::PermissionIntent)?;
-                super::denial(&request_id, &record.wire_id, false)
+                    .get_mut(request_id.as_str())
+                    .ok_or(AdapterRuntimeError::LaterPermissionMiss)?;
+                if record.state != DenialState::Pending {
+                    return Err(AdapterRuntimeError::LaterPermissionMiss);
+                }
+                let reply = match decision {
+                    PermissionDecision::Ask => {
+                        let _ = resolve_later_permission(&request_id, decision, None)
+                            .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
+                        return Err(AdapterRuntimeError::Operation);
+                    }
+                    PermissionDecision::AllowOnce => {
+                        record.reply = PermissionReply::AllowOnce;
+                        permission_selected(&record.wire_id, &record.allow_once_option_id)?
+                    }
+                    PermissionDecision::Deny => {
+                        record.reply = PermissionReply::Deny;
+                        let external = crate::acp::intent::ExternalId::new(
+                            "permissionRequest",
+                            request_id.as_str(),
+                        )
+                        .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
+                        super::denial(&external, &record.wire_id, false)?
+                    }
+                };
+                resolve_later_permission(&request_id, decision, Some(reply))
+                    .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?
+                    .ok_or(AdapterRuntimeError::LaterPermissionMiss)
             }
         }
     }
+}
+
+fn permission_selected(
+    wire_id: &Value,
+    option_id: &str,
+) -> Result<AdapterEgress, AdapterRuntimeError> {
+    let bytes = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": wire_id,
+        "result": { "outcome": { "outcome": "selected", "optionId": option_id } },
+    }))
+    .map_err(|_| AdapterRuntimeError::Frame)?;
+    let frame = OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
+    Ok(AdapterEgress::new(
+        frame,
+        EgressToken::protocol_notification(),
+    ))
 }

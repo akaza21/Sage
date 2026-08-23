@@ -678,7 +678,7 @@ fn mandatory_deny_state_failures_block_or_tear_down_at_the_exact_boundary() {
 }
 
 #[test]
-fn permission_ingress_does_not_require_a_paired_deny_egress() {
+fn paired_deny_ingress_does_not_tear_down_the_common_pump() {
     runtime().block_on(async {
         let permission_event = AdapterEvent::PermissionRequest {
             turn_id: identity("turn-envelope"),
@@ -687,12 +687,24 @@ fn permission_ingress_does_not_require_a_paired_deny_egress() {
             payload: permission(),
             request_payload_digest: [1; 32],
         };
-        let (mut pump, shared) = build_pump(vec![owned(vec![permission_event], Vec::new())]);
+        let paired_deny = AdapterEgress::new(
+            OutboundFrame::new(br#"{\"result\":{\"decision\":\"decline\"}}"#.to_vec()).unwrap(),
+            EgressToken::mandatory_deny(
+                ExternalId::new("permissionRequest", "external-request").unwrap(),
+                false,
+            ),
+        );
+        let (mut pump, shared) = build_pump(vec![owned(vec![permission_event], vec![paired_deny])]);
         pump.push_stdout_chunk(b"{}\n", 1).await.unwrap();
         let state = shared.0.lock().unwrap();
-        assert_eq!(state.durable_batches.len(), 1);
-        assert!(state.request_states.is_empty());
-        assert!(state.resolutions.is_empty());
+        assert!(matches!(
+            state.durable_batches[0].as_slice(),
+            [DurableAdapterEvent::PermissionRequest { .. }]
+        ));
+        assert_eq!(state.log, ["journal", "mandatory", "publish"]);
+        assert_eq!(state.resolutions, [EgressResolution::Queued]);
+        drop(state);
+        assert!(!pump.teardown_required());
     });
 }
 

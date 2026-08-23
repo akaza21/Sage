@@ -21,7 +21,7 @@ impl PiTranslator {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
         if kind != "agent_end" && self.active.as_ref().is_some_and(|turn| turn.denial_latched) {
-            return Ok(vec![AdapterOutput::AbortRequired]);
+            return Ok(vec![AdapterOutput::LateIgnored]);
         }
         match kind {
             "agent_start" => {
@@ -95,18 +95,15 @@ impl PiTranslator {
             }
             "extension_ui_request" | "permission_request" => {
                 self.latch_denial()?;
-                Ok(vec![
-                    AdapterOutput::PermissionDeclined {
-                        external_id: external_id(
-                            value
-                                .get("requestId")
-                                .or_else(|| value.get("request_id"))
-                                .or_else(|| value.get("id")),
-                        )?,
-                        tool: "extension request".into(),
-                    },
-                    AdapterOutput::AbortRequired,
-                ])
+                Ok(vec![AdapterOutput::PermissionDeclined {
+                    external_id: external_id(
+                        value
+                            .get("requestId")
+                            .or_else(|| value.get("request_id"))
+                            .or_else(|| value.get("id")),
+                    )?,
+                    tool: "extension request".into(),
+                }])
             }
             _ => {
                 self.live_turn()?;
@@ -166,13 +163,10 @@ impl PiTranslator {
         let turn = self.live_turn()?;
         if name != "read" {
             turn.denial_latched = true;
-            return Ok(vec![
-                AdapterOutput::PermissionDeclined {
-                    external_id: Some(id),
-                    tool: name,
-                },
-                AdapterOutput::AbortRequired,
-            ]);
+            return Ok(vec![AdapterOutput::PermissionDeclined {
+                external_id: Some(id),
+                tool: name,
+            }]);
         }
         if turn.tools.contains_key(&id) {
             return Ok(vec![AdapterOutput::DuplicateIgnored]);
@@ -227,6 +221,14 @@ impl PiTranslator {
                     outcome,
                 }])
             }
+        }
+    }
+}
+
+impl PiTranslator {
+    pub(crate) fn release_permission_wait(&mut self) {
+        if let Some(turn) = self.active.as_mut() {
+            turn.denial_latched = false;
         }
     }
 }

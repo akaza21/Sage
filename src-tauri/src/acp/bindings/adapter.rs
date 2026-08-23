@@ -244,6 +244,10 @@ impl AdapterEgress {
         &self.token
     }
 
+    pub(crate) fn into_frame(self) -> OutboundFrame {
+        self.frame
+    }
+
     pub(crate) fn into_token(self) -> EgressToken {
         self.token
     }
@@ -384,6 +388,8 @@ pub(crate) enum AdapterRuntimeError {
     UnsupportedCommand,
     #[error("there is no exact pending permission intent for this decision")]
     PermissionIntent,
+    #[error("there is no exact pending request for this later permission decision")]
+    LaterPermissionMiss,
     #[error("adapter launch artifact is not admitted")]
     LaunchUnavailable,
     #[error("adapter frame is invalid")]

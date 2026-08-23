@@ -160,20 +160,17 @@ impl ClaudeRuntime {
         request_digest: [u8; 32],
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let (request_id, translator_id, wire_id) = permission_identity(value.get("id"))?;
-        if let Some(record) = self
-            .denials
-            .get(request_id.as_str())
-            .filter(|record| record.state == DenialState::Written)
-        {
-            return AdapterBatch::new(
-                vec![SharedEvent::IgnoredDuplicate],
-                vec![denial(&request_id, &record.wire_id, true)?],
-            )
-            .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown);
+        if let Some(record) = self.denials.get(request_id.as_str()) {
+            if record.state == DenialState::Written && record.reply == PermissionReply::Deny {
+                return AdapterBatch::new(
+                    vec![SharedEvent::IgnoredDuplicate],
+                    vec![denial(&request_id, &record.wire_id, true)?],
+                )
+                .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown);
+            }
+            return AdapterBatch::new(vec![SharedEvent::IgnoredDuplicate], Vec::new());
         }
-        if self.denials.contains_key(request_id.as_str()) {
-            return Err(AdapterRuntimeError::MandatoryDenyTeardown);
-        }
+        let allow_once_option_id = permission_allow_once_option(&value)?;
         let events = self
             .active
             .as_mut()
@@ -198,13 +195,13 @@ impl ClaudeRuntime {
             }
         }
         let request_event = request_event.ok_or(AdapterRuntimeError::MandatoryDenyTeardown)?;
-        let batch = AdapterBatch::new(
-            vec![request_event],
-            vec![denial(&request_id, &wire_id, false)?],
-        )
-        .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
-        self.reserve_denial(request_id.as_str(), translator_id, wire_id)?;
-        Ok(batch)
+        self.reserve_denial(
+            request_id.as_str(),
+            translator_id,
+            wire_id,
+            allow_once_option_id,
+        )?;
+        AdapterBatch::new(vec![request_event], Vec::new())
     }
 
     pub(super) fn reserve_denial(
@@ -212,6 +209,7 @@ impl ClaudeRuntime {
         request_id: &str,
         translator_id: String,
         wire_id: Value,
+        allow_once_option_id: String,
     ) -> Result<(), AdapterRuntimeError> {
         let limit = LIMITS.queues.server_requests_per_session as usize;
         if self.denials.len() >= limit {
@@ -235,6 +233,8 @@ impl ClaudeRuntime {
                 sequence,
                 translator_id,
                 wire_id,
+                allow_once_option_id,
+                reply: PermissionReply::Deny,
             },
         );
         self.next_denial_sequence = sequence;
@@ -353,4 +353,34 @@ pub(super) fn terminal_state(value: PromptTerminal) -> TurnState {
         PromptTerminal::Cancelled => TurnState::Cancelled,
         PromptTerminal::Failed => TurnState::Failed,
     }
+}
+
+fn permission_allow_once_option(value: &Value) -> Result<String, AdapterRuntimeError> {
+    let options = value
+        .get("params")
+        .and_then(Value::as_object)
+        .and_then(|params| params.get("options"))
+        .and_then(Value::as_array)
+        .ok_or(AdapterRuntimeError::Frame)?;
+    options
+        .iter()
+        .find_map(|option| {
+            let option_id = option.get("optionId")?.as_str().map(str::to_owned)?;
+            let kind = option
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if kind == "allow_once" {
+                return Some(option_id);
+            }
+            let name = option
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            (kind.is_empty() && name.contains("allow") && !name.contains("always"))
+                .then_some(option_id)
+        })
+        .ok_or(AdapterRuntimeError::Frame)
 }

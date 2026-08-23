@@ -12,7 +12,8 @@ use crate::acp::{
     intent::{CapabilitySnapshotV1, ExternalId},
     lifecycle::TurnState,
     limits::LIMITS,
-    transport::{Frame, request_payload_digest},
+    runtime::{later_permission::resolve_later_permission, permissions::PermissionDecision},
+    transport::{Frame, OutboundFrame, request_payload_digest},
 };
 
 use super::{
@@ -78,6 +79,14 @@ struct DenialRecord {
     sequence: u64,
     translator_id: String,
     wire_id: Value,
+    allow_once_option_id: String,
+    reply: PermissionReply,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PermissionReply {
+    AllowOnce,
+    Deny,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

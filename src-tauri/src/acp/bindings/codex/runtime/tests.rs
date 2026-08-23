@@ -847,7 +847,7 @@ fn permission_request_waits_for_a_later_deny_and_never_emits_ingress_egress() {
 }
 
 #[test]
-fn allow_once_duplicates_never_replay_the_retained_decline_response() {
+fn allow_once_on_codex_does_not_emit_denial_and_records_resolved_allowed() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     running_turn(&mut runtime);
@@ -879,6 +879,31 @@ fn allow_once_duplicates_never_replay_the_retained_decline_response() {
         .ingest(&request, &Mapper)
         .expect("resolved duplicate");
     assert!(resolved_duplicate.egress().is_empty());
+}
+
+#[test]
+fn durable_permission_id_correlates_to_codex_jsonrpc_request_id() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    let batch = runtime
+        .ingest(
+            &frame(json!({
+                "id":"approval-correlation","method":"item/commandExecution/requestApproval","params":{
+                    "threadId":"thread-1","turnId":"turn-1","itemId":"tool-correlation"
+                }
+            })),
+            &Mapper,
+        )
+        .expect("permission");
+    let AdapterEvent::PermissionRequest {
+        external_request_id,
+        ..
+    } = &batch.events()[0]
+    else {
+        panic!("permission request")
+    };
+    assert_eq!(external_request_id.as_str(), "approval-correlation");
 }
 
 #[test]

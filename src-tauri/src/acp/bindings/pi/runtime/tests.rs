@@ -399,7 +399,7 @@ fn lifecycle_models_text_tools_usage_cancel_and_unavailable_commands_are_normali
 }
 
 #[test]
-fn permission_abort_is_mandatory_and_fail_closed() {
+fn allow_once_on_pi_does_not_emit_denial_and_records_resolved_allowed() {
     let mut runtime = fixture_runtime(7);
     ready(&mut runtime);
     running(&mut runtime);
@@ -422,46 +422,64 @@ fn permission_abort_is_mandatory_and_fail_closed() {
             ..
         }]
     ));
-    assert_eq!(batch.egress().len(), 1);
-    assert_eq!(request(&batch.egress()[0])["type"], "abort");
-    assert!(!String::from_utf8_lossy(batch.egress()[0].frame().payload()).contains("Users"));
-    let token = batch.egress()[0].token().clone();
-    runtime.commit_mandatory_egress(&token).expect("commit");
+    assert!(batch.egress().is_empty());
+    let AdapterEvent::PermissionRequest {
+        external_request_id,
+        ..
+    } = &batch.events()[0]
+    else {
+        panic!("permission request")
+    };
+    assert_eq!(external_request_id.as_str(), "write-1");
+    let allow = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse("write-1").expect("request"),
+            decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+        })
+        .expect("allow once");
+    assert!(!allow.token().is_mandatory());
+    assert_eq!(allow.token().allow_request(), Some("write-1"));
+    assert_ne!(request(&allow)["type"], "abort");
     runtime
-        .resolve_egress(token.clone(), EgressResolution::Queued)
+        .resolve_egress(allow.token().clone(), EgressResolution::Queued)
         .expect("queued");
     runtime
-        .resolve_egress(token, EgressResolution::Written)
+        .resolve_egress(allow.into_token(), EgressResolution::Written)
         .expect("written");
+}
 
-    let mut failed = fixture_runtime(8);
-    ready(&mut failed);
-    running(&mut failed);
-    let batch = failed
+#[test]
+fn durable_permission_id_correlates_to_pi_request_id() {
+    let mut runtime = fixture_runtime(12);
+    ready(&mut runtime);
+    running(&mut runtime);
+    let batch = runtime
         .ingest(
             &frame(json!({
-                "type":"tool_execution_start","toolCallId":"write-2","toolName":"bash"
+                "type":"permission_request","requestId":"pi-correlation"
             })),
             &Mapper,
         )
         .expect("permission");
-    let token = batch.egress()[0].token().clone();
-    failed.commit_mandatory_egress(&token).expect("commit");
-    assert_eq!(
-        failed.resolve_egress(token, EgressResolution::WriteZeroBytes),
-        Err(AdapterRuntimeError::MandatoryDenyTeardown)
-    );
+    let AdapterEvent::PermissionRequest {
+        external_request_id,
+        ..
+    } = &batch.events()[0]
+    else {
+        panic!("permission request")
+    };
+    assert_eq!(external_request_id.as_str(), "pi-correlation");
 }
 
 #[test]
-fn unresolved_permission_decision_reports_missing_intent() {
+fn later_decision_uses_the_shared_helper_not_permission_intent_reject() {
     let mut runtime = fixture_runtime(11);
     assert!(matches!(
         runtime.command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse("request-pi-missing").expect("request"),
             decision: crate::acp::runtime::permissions::PermissionDecision::Deny,
         }),
-        Err(AdapterRuntimeError::PermissionIntent)
+        Err(AdapterRuntimeError::LaterPermissionMiss)
     ));
 }
 
