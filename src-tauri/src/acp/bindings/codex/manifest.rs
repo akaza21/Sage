@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use super::{
-    installed_role::admit_installed_role,
+    installed_role::{SignedInstalledRole, admit_installed_role},
     trust_root::{WinVerifyTrustCatalog, verify_installed_authenticode},
 };
 
@@ -159,7 +159,9 @@ impl MetadataValidatedPacket {
         &self.0
     }
 
-    pub(crate) fn require_physical_admission(&self) -> Result<(), PhysicalAdmissionUnavailable> {
+    pub(crate) fn require_physical_admission(
+        &self,
+    ) -> Result<SignedInstalledRole, PhysicalAdmissionUnavailable> {
         let entrypoint = &self.0.entrypoint;
         let signature = verify_installed_authenticode(
             &WinVerifyTrustCatalog,
@@ -168,9 +170,8 @@ impl MetadataValidatedPacket {
             &entrypoint.path,
         )
         .map_err(|_| PhysicalAdmissionUnavailable::ArtifactNotAdmitted)?;
-        let _role = admit_installed_role(self, signature)
-            .map_err(|_| PhysicalAdmissionUnavailable::ArtifactNotAdmitted)?;
-        Ok(())
+        admit_installed_role(self, signature)
+            .map_err(|_| PhysicalAdmissionUnavailable::ArtifactNotAdmitted)
     }
 
     pub(crate) fn codex_home(&self) -> &Path {
