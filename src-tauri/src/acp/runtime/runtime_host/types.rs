@@ -163,9 +163,18 @@ pub(crate) trait RuntimeEngine: Send + 'static {
     fn begin_cancel(&mut self, intent: &HostCancelIntent) -> Result<(), HostError>;
     fn dispatch_cancel(&mut self, intent: &HostCancelIntent) -> Result<(), HostError>;
     fn accept_terminal(&mut self, cursor: &AdapterTurnCursor) -> Result<(), HostError>;
+    fn accept_latest_completed(&mut self) -> Result<(), HostError> {
+        Ok(())
+    }
     fn begin_close(&mut self, intent: &HostCloseIntent) -> Result<(), HostError>;
     fn converge_zero(&mut self, intent: &HostCloseIntent) -> Result<(), HostError>;
     fn finalize_close(&mut self, intent: &HostCloseIntent) -> Result<(), HostError>;
+    fn begin_park(&mut self) -> Result<(), HostError> {
+        Ok(())
+    }
+    fn park_zero(&mut self, _deadline: Instant) -> Result<(), HostError> {
+        Ok(())
+    }
     fn shutdown(&mut self, deadline: Instant) -> Result<(), HostError>;
 }
 
@@ -200,6 +209,9 @@ pub(super) enum HostCommand {
     BeginClose(HostCloseIntent),
     FinishClose(HostCloseIntent),
     RecoverClose(HostCloseIntent),
+    AcceptDurableCompleted,
+    BeginPark,
+    FinishPark,
     Shutdown,
 }
 
@@ -240,6 +252,9 @@ impl HostCommand {
             | Self::BeginClose(_)
             | Self::FinishClose(_)
             | Self::RecoverClose(_)
+            | Self::AcceptDurableCompleted
+            | Self::BeginPark
+            | Self::FinishPark
             | Self::Shutdown => LIMITS.deadlines_ms.explicit_close,
             Self::PreparePrompt(_)
             | Self::DispatchPrompt { .. }
@@ -258,6 +273,9 @@ impl HostCommand {
                 | Self::BeginClose(_)
                 | Self::FinishClose(_)
                 | Self::RecoverClose(_)
+                | Self::AcceptDurableCompleted
+                | Self::BeginPark
+                | Self::FinishPark
                 | Self::Shutdown
         )
     }
@@ -297,7 +315,11 @@ impl HostCommand {
                 owner_bytes(owner) + cursor.turn_id().as_str().len() + 32
             }
             Self::ProjectSwitched(project) => project.as_str().len(),
-            Self::State | Self::Shutdown => 1,
+            Self::State
+            | Self::AcceptDurableCompleted
+            | Self::BeginPark
+            | Self::FinishPark
+            | Self::Shutdown => 1,
         }
     }
 }

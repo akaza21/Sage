@@ -1,6 +1,8 @@
 use super::{extended_tests::*, *};
 use crate::acp::{
-    contract::{ClientIntentId, ProjectGeneration, RequiredText, SafeText, SchemaVersionV1},
+    contract::{
+        ClientIntentId, EntityRevision, ProjectGeneration, RequiredText, SafeText, SchemaVersionV1,
+    },
     intent::{
         ActivityProvenanceV1, ActivitySourceKind, ExternalId, NormalizedPayload, Prompt,
         ToolCategory,

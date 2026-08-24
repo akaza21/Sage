@@ -1,3 +1,5 @@
+#[cfg(all(test, windows))]
+use std::collections::VecDeque;
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex, MutexGuard},
@@ -35,6 +37,10 @@ pub(crate) struct AdmittedCodexBinding {
     environment: CodexLaunchEnvironment,
     entrypoint: EntrypointIdentity,
     #[cfg(all(test, windows))]
+    journey_test_entrypoint: Option<EntrypointIdentity>,
+    #[cfg(all(test, windows))]
+    journey_test_cases: Option<Mutex<VecDeque<&'static str>>>,
+    #[cfg(all(test, windows))]
     _cleanup: Option<authenticate_tests::TestCleanup>,
 }
 
@@ -63,6 +69,10 @@ impl AdmittedCodexBinding {
             authority,
             environment,
             entrypoint,
+            #[cfg(all(test, windows))]
+            journey_test_entrypoint: None,
+            #[cfg(all(test, windows))]
+            journey_test_cases: None,
             #[cfg(all(test, windows))]
             _cleanup: None,
         };
@@ -116,6 +126,23 @@ impl AdmittedCodexBinding {
         &self.entrypoint
     }
 
+    /// The Windows journey uses the already-built ACP fixture only after this
+    /// binding has passed normal admission revalidation. This deliberately
+    /// does not alter the admitted packet, its digest, or the signed role.
+    #[cfg(all(test, windows))]
+    pub(crate) fn journey_test_entrypoint(&self) -> Option<&EntrypointIdentity> {
+        self.journey_test_entrypoint.as_ref()
+    }
+
+    #[cfg(all(test, windows))]
+    pub(crate) fn next_journey_test_case(&self) -> Option<&'static str> {
+        self.journey_test_cases
+            .as_ref()?
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .pop_front()
+    }
+
     pub(crate) fn packet(&self) -> &MetadataValidatedPacket {
         &self.packet
     }
@@ -159,6 +186,8 @@ impl AdmittedCodexBinding {
 pub(crate) enum CodexAdmissionUnavailable {
     #[error("Codex Harness Admission is unavailable on this platform")]
     Platform,
+    #[error("the workstation can only observe the Codex Authenticode role")]
+    ObservationOnly,
     #[error("the exact Codex Binding has not completed independent Harness Admission")]
     IndependentAdmission,
     #[error("the admitted Codex Binding changed after admission")]
@@ -260,116 +289,25 @@ impl CodexBindingRegistration {
         }
     }
 
-    #[cfg(all(test, windows))]
-    pub(crate) fn unavailable_for_test() -> Self {
-        Self {
-            authority: Arc::new(CodexRegistrationAuthority {
-                state: Mutex::new(CodexRegistrationState::Unavailable(
-                    CodexAdmissionUnavailable::IndependentAdmission,
-                )),
-            }),
-        }
-    }
-
-    #[cfg(all(test, windows))]
-    pub(crate) fn admitted_for_test() -> Self {
-        Self {
-            authority: Arc::new(CodexRegistrationAuthority {
-                state: Mutex::new(CodexRegistrationState::Admitted(Arc::new(
-                    authenticate_tests::admitted_binding_fixture(),
-                ))),
-            }),
-        }
-    }
-
-    #[cfg(all(test, windows))]
-    pub(crate) fn induce_drift_for_test(&self) {
-        let binding = match &*self.lock_state() {
-            CodexRegistrationState::Admitted(binding) => Arc::clone(binding),
-            CodexRegistrationState::Unavailable(_) => panic!("registration already unavailable"),
+    /// Authenticode can identify the installed role, but this workstation's
+    /// curated evidence records it as observation-only. If independent launch
+    /// admission cannot proceed, retain that more precise fail-closed state.
+    fn refuse_independent_launch_after_workstation_authenticode_observation(
+        &self,
+    ) -> CodexAdmissionUnavailable {
+        let mut state = self.lock_state();
+        let unavailable = match &*state {
+            CodexRegistrationState::Unavailable(reason) => *reason,
+            CodexRegistrationState::Admitted(_) => return CodexAdmissionUnavailable::Drift,
         };
-        std::fs::write(
-            binding
-                .packet()
-                .codex_home()
-                .join("sessions")
-                .join("registration-drift"),
-            b"drift",
-        )
-        .unwrap();
+        if unavailable == CodexAdmissionUnavailable::IndependentAdmission {
+            *state =
+                CodexRegistrationState::Unavailable(CodexAdmissionUnavailable::ObservationOnly);
+            CodexAdmissionUnavailable::ObservationOnly
+        } else {
+            unavailable
+        }
     }
-
-    #[cfg(test)]
-    pub(crate) fn same_authority(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.authority, &other.authority)
-    }
-}
-
-pub(crate) fn startup_codex_binding_registration() -> CodexBindingRegistration {
-    let unavailable = if cfg!(windows) {
-        CodexAdmissionUnavailable::IndependentAdmission
-    } else {
-        CodexAdmissionUnavailable::Platform
-    };
-    let registration = CodexBindingRegistration {
-        authority: Arc::new(CodexRegistrationAuthority {
-            state: Mutex::new(CodexRegistrationState::Unavailable(unavailable)),
-        }),
-    };
-    #[cfg(windows)]
-    {
-        let _ = authenticate_startup_signed_installed_role(&registration);
-    }
-    registration
-}
-
-#[cfg(windows)]
-fn authenticate_startup_signed_installed_role(
-    registration: &CodexBindingRegistration,
-) -> Result<Arc<AdmittedCodexBinding>, CodexAdmissionUnavailable> {
-    let packet = super::parse_packet_metadata(include_bytes!(
-        "../../../../testdata/acp/codex/candidate-windows.json"
-    ))
-    .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let role = packet
-        .require_physical_admission()
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let requirements = super::parse_reproduction_requirements(
-        include_bytes!("../../../../testdata/acp/codex/package-reproduction-v1.json"),
-        &packet,
-    )
-    .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let root = super::ConfiguredManagedPackageRoot::new(packet.managed_package_root())
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let inspection = super::inspect_managed_package(&packet, &root)
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let reproduced = super::bind_reproduced_package(requirements, &packet, inspection)
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let managed = super::inspect_managed_staging(&packet, &reproduced)
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let policy = super::parse_security_policy(
-        include_bytes!("../../../../testdata/acp/codex/security-policy-v1.json"),
-        &packet,
-    )
-    .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let config = super::verify_codex_config(
-        include_bytes!("../../../../testdata/acp/codex/config-v1.toml"),
-        &policy,
-    )
-    .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let environment =
-        super::authority::build_system_codex_launch_environment(&packet, &policy, &config)
-            .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let authority = super::inspect_codex_authority(&packet, policy, config, &reproduced, managed)
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-
-    registration.authenticate_signed_installed_role(
-        &packet,
-        role,
-        reproduced,
-        authority,
-        environment,
-    )
 }
 
 fn entrypoint_identity(
@@ -402,6 +340,14 @@ fn hex_nibble(value: u8) -> Result<u8, CodexAdmissionUnavailable> {
     }
 }
 
+#[path = "admission/startup.rs"]
+mod startup;
+pub(crate) use startup::startup_codex_binding_registration;
+
+#[cfg(test)]
+#[path = "admission/test_registration.rs"]
+mod test_registration;
+
 #[cfg(all(test, windows))]
 #[path = "admission/authenticate_tests.rs"]
 mod authenticate_tests;
@@ -423,9 +369,11 @@ mod tests {
         );
         #[cfg(windows)]
         match registration.unavailable() {
-            Some(unavailable) => {
-                assert_eq!(unavailable, CodexAdmissionUnavailable::IndependentAdmission)
+            Some(CodexAdmissionUnavailable::ObservationOnly) => {}
+            Some(CodexAdmissionUnavailable::IndependentAdmission) => {
+                panic!("startup did not retain the workstation Authenticode observation")
             }
+            Some(unavailable) => panic!("unexpected startup availability: {unavailable:?}"),
             None => {
                 assert!(registration.is_available());
                 registration.refresh().unwrap();

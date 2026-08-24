@@ -261,11 +261,7 @@ impl DriverMailbox {
     ) -> Result<Option<ControlMessage>, MailboxError> {
         let mut state = self.lock();
         loop {
-            let message = if control_only {
-                state.queue.pop_control()
-            } else {
-                state.queue.pop()
-            };
+            let message = pop_driver_message(&mut state.queue, control_only);
             if let Some(message) = message {
                 self.space.notify_all();
                 return Ok(Some(message));
@@ -299,7 +295,13 @@ impl DriverMailbox {
 
     pub(super) fn try_pop_control(&self) -> Option<ControlMessage> {
         let mut state = self.lock();
-        let message = state.queue.pop_control();
+        let stdout_pending = matches!(
+            state.queue.data_front(),
+            Some(ControlMessage::StdoutChunk(_))
+        );
+        let message = state.queue.pop_control_if(|message| {
+            !(stdout_pending && matches!(message, ControlMessage::ProcessExit))
+        });
         if message.is_some() {
             self.space.notify_all();
         }
@@ -390,6 +392,26 @@ impl DriverMailbox {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
+}
+
+fn pop_driver_message(
+    queue: &mut crate::acp::transport::ReservedQueue<ControlMessage>,
+    control_only: bool,
+) -> Option<ControlMessage> {
+    if let Some(message) = queue.pop_control_if(|message| {
+        !matches!(message, ControlMessage::ProcessExit)
+    }) {
+        return Some(message);
+    }
+    if control_only {
+        return None;
+    }
+    if let Some(message) =
+        queue.pop_data_if(|message| matches!(message, ControlMessage::StdoutChunk(_)))
+    {
+        return Some(message);
+    }
+    queue.pop()
 }
 
 fn map_queue(error: QueueError) -> MailboxError {

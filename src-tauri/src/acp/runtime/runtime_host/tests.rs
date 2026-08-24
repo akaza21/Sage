@@ -353,7 +353,7 @@ fn active_turn_survives_project_switch_and_cancel_commits_before_dispatch() {
             "dispatchCancel"
         ]
     );
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -388,7 +388,7 @@ fn post_commit_cancel_begin_failure_retries_only_the_exact_begin_intent() {
             "dispatchCancel"
         ]
     );
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -415,7 +415,7 @@ fn project_switch_between_durable_prepare_and_process_dispatch_keeps_exact_turn_
         observed.events(),
         ["activate", "preparePrompt", "dispatchPrompt"]
     );
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -440,7 +440,7 @@ fn possible_bytes_are_terminally_recorded_without_prompt_replay() {
             "deliveryUnknown"
         ]
     );
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -465,7 +465,7 @@ fn failed_first_dispatch_enters_recovery_and_cannot_replay_the_prepared_turn() {
         observed.events(),
         ["activate", "preparePrompt", "dispatchPrompt"]
     );
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -483,7 +483,7 @@ fn failed_zero_byte_retry_enters_recovery_and_cannot_replay() {
         observed.events(),
         ["activate", "preparePrompt", "dispatchPrompt", "retryPrompt"]
     );
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -509,7 +509,7 @@ fn failed_delivery_unknown_record_enters_recovery_without_replay() {
             "deliveryUnknown"
         ]
     );
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -530,7 +530,7 @@ fn uncertain_prepare_failure_enters_recovery_and_cannot_prepare_again() {
         Err(HostError::Intent)
     );
     assert_eq!(observed.events(), ["activate", "preparePrompt"]);
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -545,7 +545,7 @@ fn zero_byte_retry_cannot_substitute_a_different_store_minted_turn() {
 
     assert_eq!(host.send(prompt(&runtime)), Err(HostError::Intent));
     assert_eq!(host.state().unwrap(), HostState::Recovery);
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -571,7 +571,7 @@ fn zero_bytes_retry_once_and_second_failure_is_durable() {
             "retryExhausted"
         ]
     );
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -609,7 +609,7 @@ fn terminal_cursor_returns_idle_and_close_orders_zero_before_finalize() {
             "finalizeClose",
         ]
     );
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -654,7 +654,7 @@ fn worker_terminal_notification_never_waits_for_the_host_callback() {
             "acceptTerminal"
         ]
     );
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -698,7 +698,7 @@ fn terminal_acceptance_failure_retries_only_the_exact_cursor_and_releases_once()
             "acceptTerminal"
         ]
     );
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -718,7 +718,7 @@ fn close_convergence_failure_retains_recovery_and_never_finalizes() {
         observed.events(),
         ["activate", "beginClose", "convergeZero"]
     );
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -750,7 +750,7 @@ fn post_commit_begin_close_failure_retains_exact_intent_and_retries_the_begin_ph
             "finalizeClose"
         ]
     );
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -772,7 +772,7 @@ fn close_releases_the_caller_between_durable_begin_and_zero_process_wait() {
         observed.events(),
         ["activate", "beginClose", "convergeZero", "finalizeClose"]
     );
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -937,7 +937,7 @@ fn nonresponding_actor_returns_at_deadline_and_closes_queued_work() {
     state.1 = true;
     ready.notify_all();
     drop(state);
-    assert_eq!(host.shutdown(), Ok(()));
+    assert_eq!(host.shutdown(RuntimeHost::close_deadline()), Ok(()));
 }
 
 #[test]

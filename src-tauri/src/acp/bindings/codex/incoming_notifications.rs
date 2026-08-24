@@ -104,7 +104,7 @@ fn turn_completed(
     {
         TerminalUpdate::Apply => {
             let id = adapter
-                .scoped_id(ExternalKind::Turn, external)
+                .scoped_in_turn(ExternalKind::Turn, external, external)
                 .map_err(identity)?;
             Ok(IncomingEvent::Turn { id, state }.into())
         }

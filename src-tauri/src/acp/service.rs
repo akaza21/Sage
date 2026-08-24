@@ -99,6 +99,10 @@ pub(crate) struct AcpService {
     codex_runtime_release_fail_always: AtomicBool,
     #[cfg(all(windows, feature = "acp-fixture"))]
     characterization: Option<CharacterizationBinding>,
+    #[cfg(test)]
+    last_shutdown_stage: Mutex<&'static str>,
+    #[cfg(test)]
+    last_cancel_stage: Mutex<&'static str>,
 }
 
 impl AcpService {
@@ -172,7 +176,43 @@ impl AcpService {
             codex_runtime_release_fail_always: AtomicBool::new(false),
             #[cfg(all(windows, feature = "acp-fixture"))]
             characterization: configuration.characterization,
+            #[cfg(test)]
+            last_shutdown_stage: Mutex::new("none"),
+            #[cfg(test)]
+            last_cancel_stage: Mutex::new("none"),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn last_shutdown_stage(&self) -> &'static str {
+        *self
+            .last_shutdown_stage
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn last_cancel_stage(&self) -> &'static str {
+        *self
+            .last_cancel_stage
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    #[cfg(test)]
+    fn record_shutdown_stage(&self, stage: &'static str) {
+        *self
+            .last_shutdown_stage
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = stage;
+    }
+
+    #[cfg(test)]
+    pub(super) fn record_cancel_stage(&self, stage: &'static str) {
+        *self
+            .last_cancel_stage
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = stage;
     }
 
     #[cfg(test)]

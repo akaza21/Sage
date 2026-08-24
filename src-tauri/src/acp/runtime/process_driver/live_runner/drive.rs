@@ -46,7 +46,46 @@ where
                     Ok(DriverStep::YieldWorker { envelope, .. }) => {
                         handle_worker(FirstTurnWorkerState::Active(active), context, envelope).await
                     }
+                    Err(_) if active.has_durable_terminal() => {
+                        match context
+                            .mailbox
+                            .wait_control_until(None, context.clock.as_ref())
+                        {
+                            Ok(Some(ControlMessage::Worker(envelope))) => {
+                                handle_worker(
+                                    FirstTurnWorkerState::Active(active),
+                                    context,
+                                    envelope,
+                                )
+                                .await
+                            }
+                            Ok(Some(message)) if process_tail(&message) => (
+                                RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
+                                None,
+                            ),
+                            _ => return failed(FirstTurnWorkerState::Active(active)),
+                        }
+                    }
                     Err(_) => return failed(FirstTurnWorkerState::Active(active)),
+                }
+            }
+            FirstTurnWorkerState::Active(active) if active.ready_for_write() => {
+                match context
+                    .mailbox
+                    .wait_next_until(None, context.clock.as_ref())
+                {
+                    Ok(Some(ControlMessage::Worker(envelope))) => {
+                        handle_worker(FirstTurnWorkerState::Active(active), context, envelope).await
+                    }
+                    Ok(Some(message))
+                        if active.has_durable_terminal() && process_tail(&message) =>
+                    {
+                        (
+                            RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
+                            None,
+                        )
+                    }
+                    _ => return failed(FirstTurnWorkerState::Active(active)),
                 }
             }
             FirstTurnWorkerState::Active(active) => {
@@ -56,6 +95,14 @@ where
                 {
                     Ok(Some(ControlMessage::Worker(envelope))) => {
                         handle_worker(FirstTurnWorkerState::Active(active), context, envelope).await
+                    }
+                    Ok(Some(message))
+                        if active.has_durable_terminal() && process_tail(&message) =>
+                    {
+                        (
+                            RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
+                            None,
+                        )
                     }
                     _ => return failed(FirstTurnWorkerState::Active(active)),
                 }
@@ -84,10 +131,17 @@ where
             }
             RunnerAction::Failure(state) => return failed(state),
             RunnerAction::Shutdown(state, envelope) => {
+                let reason = if state.has_durable_completed_cursor()
+                    || state.has_durable_cancelled_cursor()
+                {
+                    TreeExit::Cancelled
+                } else {
+                    TreeExit::ParentShutdown
+                };
                 return RunnerExit {
                     state: *state,
                     shutdown: Some(envelope),
-                    reason: TreeExit::ParentShutdown,
+                    reason,
                 };
             }
         }
@@ -106,6 +160,8 @@ where
     Auth: ProjectIntentAuthority,
 {
     if matches!(&envelope.command, WorkerCommand::Shutdown) {
+        let mut state = state;
+        state.close_stdin_after_durable_completed();
         return (RunnerAction::Shutdown(Box::new(state), envelope), None);
     }
     let mut terminal_callback = terminal_cursor(&envelope);
@@ -134,11 +190,10 @@ where
             }
             Ok(DriverStep::YieldWorker { envelope, .. }) => {
                 if matches!(&envelope.command, WorkerCommand::Shutdown) {
+                    let mut state = FirstTurnWorkerState::Active(active);
+                    state.close_stdin_after_durable_completed();
                     return (
-                        RunnerAction::Shutdown(
-                            Box::new(FirstTurnWorkerState::Active(active)),
-                            envelope,
-                        ),
+                        RunnerAction::Shutdown(Box::new(state), envelope),
                         terminal_callback,
                     );
                 }

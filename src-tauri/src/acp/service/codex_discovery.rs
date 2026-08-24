@@ -96,7 +96,8 @@ impl CodexDiscoveryManager {
                 crate::acp::bindings::codex::CodexAdmissionUnavailable::Drift => {
                     CodexDiscoveryRunError::Drift
                 }
-                crate::acp::bindings::codex::CodexAdmissionUnavailable::Platform => {
+                crate::acp::bindings::codex::CodexAdmissionUnavailable::Platform
+                | crate::acp::bindings::codex::CodexAdmissionUnavailable::ObservationOnly => {
                     CodexDiscoveryRunError::Unavailable
                 }
                 crate::acp::bindings::codex::CodexAdmissionUnavailable::IndependentAdmission => {

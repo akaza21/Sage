@@ -16,6 +16,18 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         &self.terminal_cursor
     }
 
+    pub(crate) fn write_close_session(&mut self, transport: &mut impl super::EgressTransport) {
+        let Ok(egress) = self.adapter.command(AdapterCommand::CloseSession) else {
+            return;
+        };
+        let resolution = match transport.write(egress.frame()) {
+            FrameWriteOutcome::Complete => EgressResolution::Written,
+            FrameWriteOutcome::ZeroByteFailure => EgressResolution::WriteZeroBytes,
+            FrameWriteOutcome::DeliveryUnknown { .. } => EgressResolution::DeliveryUnknown,
+        };
+        let _ = self.adapter.resolve_egress(egress.into_token(), resolution);
+    }
+
     pub(crate) fn bind_turn(
         self,
         active_turn: ActiveTurnIntent,

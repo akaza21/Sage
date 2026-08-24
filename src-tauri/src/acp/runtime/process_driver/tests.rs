@@ -694,13 +694,11 @@ fn malformed_pump_input_process_exit_and_mandatory_failure_all_request_teardown(
             VecDeque::new(),
         );
         let mailbox = DriverMailbox::new().expect("mailbox");
-        mailbox.try_push_chunk(b"{}\n".to_vec()).expect("data");
         mailbox.signal_process_exit().expect("exit");
         assert_eq!(
             exited.run_next(&mailbox).await,
             Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
         );
-        assert_eq!(shared.0.lock().expect("shared").batches.len(), 1);
 
         let (mut mandatory, shared, _, control) = build_driver(Vec::new(), VecDeque::new());
         shared.0.lock().expect("shared").ingest_error =
@@ -718,6 +716,40 @@ fn malformed_pump_input_process_exit_and_mandatory_failure_all_request_teardown(
             [TreeExit::ProtocolFailure]
         );
     });
+}
+
+#[test]
+fn process_exit_does_not_outrank_queued_stdout() {
+    let mailbox = DriverMailbox::new().expect("mailbox");
+    mailbox
+        .try_push_chunk(b"{\"result\":\"interrupted\"}\n".to_vec())
+        .expect("chunk");
+    mailbox.signal_process_exit().expect("exit");
+    let message = mailbox
+        .wait_next_until(None, &SystemDriverClock)
+        .expect("pop")
+        .expect("stdout first");
+    assert!(
+        matches!(message, ControlMessage::StdoutChunk(_)),
+        "queued stdout must commit before ProcessExit"
+    );
+}
+
+#[test]
+fn process_exit_does_not_starve_later_worker_control() {
+    let mailbox = DriverMailbox::new().expect("mailbox");
+    mailbox.signal_process_exit().expect("exit");
+    let _shutdown = mailbox
+        .submit_worker(WorkerCommand::Shutdown)
+        .expect("shutdown");
+    let message = mailbox
+        .wait_control_until(None, &SystemDriverClock)
+        .expect("pop")
+        .expect("worker first");
+    assert!(
+        matches!(message, ControlMessage::Worker(_)),
+        "ProcessExit must not hide Shutdown on the control lane"
+    );
 }
 
 #[test]

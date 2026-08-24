@@ -168,3 +168,51 @@ fn first_terminal_wins_and_a_conflicting_terminal_fails_closed() {
         .unwrap();
     assert_eq!(state, "completed");
 }
+
+#[test]
+fn deferred_running_after_cancel_keeps_the_interrupted_terminal() {
+    let mut fixture = fixture();
+    let revision: i64 = fixture
+        .connection
+        .query_row("SELECT revision FROM turns", [], |row| row.get(0))
+        .unwrap();
+    begin_cancel(
+        &mut fixture.connection,
+        BeginCancelCommand {
+            turn: TurnMutationCommand {
+                project_id: fixture.owner.project_id.clone(),
+                chat_id: fixture.owner.chat_id.clone(),
+                session_id: fixture.owner.session_id.clone(),
+                runtime_epoch: fixture.owner.runtime_epoch,
+                turn_id: fixture.owner.turn_id.clone(),
+                expected_revision: EntityRevision::new(revision as u64).unwrap(),
+                now_millis: 6,
+            },
+            client_intent_id: ClientIntentId::parse("cancel-running-race").unwrap(),
+        },
+    )
+    .unwrap();
+    let mutation = apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        batch(
+            &fixture.owner,
+            vec![
+                AdapterInboundEvent::Turn {
+                    state: TurnState::Running,
+                    now_millis: 7,
+                },
+                AdapterInboundEvent::Turn {
+                    state: TurnState::Interrupted,
+                    now_millis: 8,
+                },
+            ],
+        ),
+    )
+    .unwrap();
+    assert_eq!(mutation.turn_cursor().state(), TurnState::Interrupted);
+    let state: String = fixture
+        .connection
+        .query_row("SELECT state FROM turns", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(state, "interrupted");
+}

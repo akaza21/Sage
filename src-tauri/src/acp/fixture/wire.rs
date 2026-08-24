@@ -7,10 +7,16 @@ use crate::acp::limits::LIMITS;
 use super::FixtureError;
 use super::interpreter::{field_str, field_u64};
 
+#[path = "wire_codex.rs"]
+mod codex;
+
 pub(super) struct WireState {
     stdin_open: bool,
     stdout_open: bool,
     expanded_bytes: u64,
+    last_request_id: Option<u64>,
+    current_turn_id: Option<String>,
+    turn_count: u64,
 }
 
 impl WireState {
@@ -19,6 +25,9 @@ impl WireState {
             stdin_open: true,
             stdout_open: true,
             expanded_bytes: 0,
+            last_request_id: None,
+            current_turn_id: None,
+            turn_count: 0,
         }
     }
 
@@ -52,7 +61,7 @@ fn execute_with_io(
     error: &mut impl Write,
 ) -> Result<(), FixtureError> {
     match field_str(step, "op")? {
-        "awaitClient" => await_client(input, state, LIMITS.wire.frame_bytes)?,
+        "awaitClient" => await_client_kind(step, input, output, state)?,
         "readPromptBytes" | "readRequestBytes" => {
             await_client(input, state, field_u64(step, "bytes")?)?
         }
@@ -79,6 +88,34 @@ fn execute_with_io(
         _ => return Err(FixtureError::UnknownStep),
     }
     Ok(())
+}
+
+fn await_client_kind(
+    step: &Value,
+    input: &mut impl Read,
+    output: &mut impl Write,
+    state: &mut WireState,
+) -> Result<(), FixtureError> {
+    let expected_method = match field_str(step, "kind")? {
+        "codexInitialize" => Some("initialize"),
+        "codexStart" => Some("thread/start"),
+        "codexResume" => Some("thread/resume"),
+        "codexTurnStart" => Some("turn/start"),
+        "codexInterrupt" => Some("turn/interrupt"),
+        "codexUnsubscribe" => Some("thread/unsubscribe"),
+        _ => None,
+    };
+    match expected_method {
+        Some(method) => {
+            codex::await_request(input, state, method)?;
+            if method == "turn/interrupt" {
+                let _ = codex::emit_response("ack", state, output);
+                codex::emit_notification("interrupted", state, output)?;
+            }
+            Ok(())
+        }
+        None => await_client(input, state, LIMITS.wire.frame_bytes),
+    }
 }
 
 fn await_client(
@@ -109,6 +146,17 @@ fn emit_known(
     output: &mut impl Write,
 ) -> Result<(), FixtureError> {
     let shape = field_str(step, "shape")?;
+    match shape {
+        "codexInitializeResult" => return codex::emit_response("initialize", state, output),
+        "codexThreadResult" => return codex::emit_response("thread", state, output),
+        "codexTurnResult" => return codex::emit_response("turn", state, output),
+        "codexStarted" => return codex::emit_notification("started", state, output),
+        "codexAck" => return codex::emit_response("ack", state, output),
+        "codexDelta" => return codex::emit_notification("delta", state, output),
+        "codexCompleted" => return codex::emit_notification("completed", state, output),
+        "codexInterrupted" => return codex::emit_notification("interrupted", state, output),
+        _ => {}
+    }
     match shape {
         "childActivityDepth4"
         | "childActivityDepth5"

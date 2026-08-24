@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use rusqlite::{OptionalExtension, params};
 
 use crate::acp::{
@@ -90,11 +92,7 @@ impl AcpService {
             .map(|value| ModelId::new("modelId", value))
             .transpose()
             .map_err(|_| CodexSessionError::Intent)?;
-        let native_root = project_root
-            .as_path()
-            .to_str()
-            .ok_or(CodexSessionError::Intent)?
-            .to_owned();
+        let native_root = native_app_server_root(project_root.as_path())?;
         let mode = match (
             session.state.as_str(),
             session.residency.as_str(),
@@ -165,4 +163,16 @@ fn load_durable_session(
         .optional()
         .map_err(|_| CodexSessionError::Intent)?
         .ok_or(CodexSessionError::Intent)
+}
+
+fn native_app_server_root(path: &Path) -> Result<String, CodexSessionError> {
+    let text = path.to_str().ok_or(CodexSessionError::Intent)?;
+    let text = text
+        .strip_prefix(r"\\?\")
+        .or_else(|| text.strip_prefix(r"//?/"))
+        .unwrap_or(text);
+    if text.is_empty() {
+        return Err(CodexSessionError::Intent);
+    }
+    Ok(text.to_owned())
 }

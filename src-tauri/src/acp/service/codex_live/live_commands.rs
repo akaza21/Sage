@@ -29,15 +29,73 @@ impl AcpService {
         intent: crate::acp::runtime::HostCancelIntent,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
         let owner = intent.owner.clone();
+        let turn_id = intent.turn_id.clone();
         let host = self.runtime.for_owner(&owner).map_err(map_slot_error)?;
         match host.cancel(intent) {
-            Ok(outcome) => Ok(outcome),
+            Ok(outcome) => self.finish_cancelled_shutdown(owner, turn_id, host, outcome),
             Err(error) => Err(self.retain_live_host_error(
                 owner,
                 host,
                 LiveHostRecoveryPhase::CancelEffect,
                 error,
             )),
+        }
+    }
+
+    fn finish_cancelled_shutdown(
+        &self,
+        owner: RuntimeOwner,
+        turn_id: crate::acp::contract::SageTurnId,
+        host: Arc<RuntimeHost>,
+        outcome: crate::acp::runtime::HostOutcome,
+    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
+        let deadline = Instant::now()
+            + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+        #[cfg(test)]
+        self.record_cancel_stage("durable-wait");
+        while !self.cancel_is_durable(&owner, &turn_id) {
+            if Instant::now() >= deadline {
+                #[cfg(test)]
+                self.record_cancel_stage("durable-timeout");
+                let _ = self.runtime.mark_recovery(&owner);
+                self.retain_live_recovery(LiveHostRecovery {
+                    owner,
+                    host,
+                    phase: LiveHostRecoveryPhase::CancelEffect,
+                });
+                return Err(CodexSessionError::Recovery);
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        #[cfg(test)]
+        self.record_cancel_stage("converge");
+        match self.converge_closed_shutdown(
+            &owner,
+            &host,
+            ClosedShutdownAuthority::Host,
+            false,
+            deadline,
+        ) {
+            Ok(()) => {
+                #[cfg(test)]
+                self.record_cancel_stage("park");
+                self.park_after_cancel_zero(&owner).map(|()| {
+                    #[cfg(test)]
+                    self.record_cancel_stage("ok");
+                    outcome
+                })
+            }
+            Err(_) => {
+                #[cfg(test)]
+                self.record_cancel_stage("converge");
+                let _ = self.runtime.mark_recovery(&owner);
+                self.retain_live_recovery(LiveHostRecovery {
+                    owner,
+                    host,
+                    phase: LiveHostRecoveryPhase::CancelEffect,
+                });
+                Err(CodexSessionError::Recovery)
+            }
         }
     }
 
@@ -221,7 +279,13 @@ impl AcpService {
                     let release = if recovering {
                         self.runtime.release_recovered(owner, host)
                     } else {
-                        self.runtime.release(owner, host)
+                        match self.runtime.release(owner, host) {
+                            Ok(()) => Ok(()),
+                            Err(super::super::runtime_slot::RuntimeSlotError::Recovery) => {
+                                self.runtime.release_recovered(owner, host)
+                            }
+                            Err(error) => Err(error),
+                        }
                     };
                     return release.map_err(|_| ClosedShutdownAuthority::Release(proof));
                 }

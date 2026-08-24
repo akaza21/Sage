@@ -48,6 +48,18 @@ fn worker_commands_use_the_frozen_operation_deadlines() {
         LIMITS.deadlines_ms.explicit_close
     );
     assert_eq!(
+        WorkerCommand::AcceptLatestCompleted.deadline_millis(),
+        LIMITS.deadlines_ms.explicit_close
+    );
+    assert_eq!(
+        WorkerCommand::BeginPark.deadline_millis(),
+        LIMITS.deadlines_ms.explicit_close
+    );
+    assert_eq!(
+        WorkerCommand::ParkAfterZero { owner: owner() }.deadline_millis(),
+        LIMITS.deadlines_ms.explicit_close
+    );
+    assert_eq!(
         WorkerCommand::Shutdown.deadline_millis(),
         LIMITS.deadlines_ms.explicit_close
     );

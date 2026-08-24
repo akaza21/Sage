@@ -18,6 +18,8 @@ impl CodexRuntime {
         self.launch_authority.revalidate()?;
         let binding = self.launch_authority.binding()?;
         let entrypoint = binding.entrypoint();
+        #[cfg(all(test, windows))]
+        let entrypoint = binding.journey_test_entrypoint().unwrap_or(entrypoint);
         let environment = binding
             .environment()
             .entries()
@@ -33,8 +35,24 @@ impl CodexRuntime {
             entrypoint.byte_len,
         )
         .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        let fixed_args = BoundedOsArgs::new(vec![OsString::from("app-server")])
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        #[cfg(all(test, windows))]
+        let fixed_args = if binding.journey_test_entrypoint().is_some() {
+            let case_id = binding
+                .next_journey_test_case()
+                .ok_or(AdapterRuntimeError::LaunchUnavailable)?;
+            vec![
+                OsString::from("--case"),
+                OsString::from(case_id),
+                OsString::from("--seed"),
+                OsString::from("0"),
+            ]
+        } else {
+            vec![OsString::from("app-server")]
+        };
+        #[cfg(not(all(test, windows)))]
+        let fixed_args = vec![OsString::from("app-server")];
+        let fixed_args =
+            BoundedOsArgs::new(fixed_args).map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         let environment = BoundedEnvironment::new(environment)
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         let project_root = self.launch_authority.take_project_root()?;

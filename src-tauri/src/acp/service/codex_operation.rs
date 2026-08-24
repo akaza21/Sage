@@ -227,7 +227,9 @@ impl CodexOperationGate {
 
     pub(super) fn shutdown(&self, timeout: Duration) -> Result<(), CodexDiscoveryRunError> {
         self.shutting_down.store(true, Ordering::Release);
-        let (was_running, cancellation) = self.invalidate_active();
+        // Live sessions are parked by runtime shutdown. Waiting on them here
+        // spends the whole close budget before park can run.
+        let (was_running, cancellation) = self.invalidate_ephemeral();
         cancellation.and(self.wait_for_idle(timeout, was_running))
     }
 
@@ -407,6 +409,21 @@ mod tests {
         );
         assert!(!cancellation.requested.load(Ordering::Acquire));
         assert!(!gate.is_current(CodexOperationGate::prepared_epoch(&prepared)));
+        active.settle(Ok(()));
+    }
+
+    #[test]
+    fn shutdown_does_not_wait_for_a_live_operation() {
+        let gate = CodexOperationGate::new();
+        let prepared = gate.prepare_live().unwrap();
+        let active = gate.begin(&prepared).unwrap();
+        let cancellation = Arc::new(TestCancellation {
+            requested: AtomicBool::new(false),
+        });
+        active.register_cancellation(cancellation.clone()).unwrap();
+
+        assert_eq!(gate.shutdown(Duration::from_millis(10)), Ok(()));
+        assert!(!cancellation.requested.load(Ordering::Acquire));
         active.settle(Ok(()));
     }
 }

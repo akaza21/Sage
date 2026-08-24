@@ -5,6 +5,7 @@ use std::sync::{
 
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
+    lifecycle::TurnState,
     runtime::{
         CoordinatorActivationJournal, HostCancelIntent, HostError, JournalHandle,
         ProjectIntentAuthority, ProjectionPublisher, SendCoordinator, SqliteAdapterBatchJournal,
@@ -27,6 +28,7 @@ mod idle;
 mod recovery;
 mod reusable;
 mod turn;
+mod turn_park;
 mod write_recovery;
 
 pub(crate) struct FirstTurnWorkerContext<Auth> {
@@ -292,6 +294,80 @@ where
                     Self::Recovery(Box::new(retained))
                 }
             },
+        }
+    }
+}
+
+impl<A, R, T, C> FirstTurnWorkerState<A, R, T, C>
+where
+    A: HarnessAdapter,
+    R: ResourceMapper,
+    T: StdinTransport,
+    C: ProcessTreeControl,
+    C::ZeroProof: CoordinatorZeroToken,
+{
+    pub(crate) fn close_stdin_after_durable_completed(&mut self) {
+        match self {
+            Self::Reusable(parts) => {
+                parts.write_close_session();
+                parts.close_stdin();
+            }
+            Self::Active(active) => {
+                if active.has_durable_terminal() {
+                    active.write_close_session();
+                }
+                active.close_stdin();
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) async fn park_after_zero(
+        &mut self,
+        token: crate::acp::process::ZeroProcessToken,
+    ) {
+        match self {
+            Self::Reusable(parts) => parts.park_after_zero(token).await,
+            Self::Active(active) if active.has_durable_terminal() => {
+                active.park_after_zero(token).await;
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn has_durable_completed_cursor(&self) -> bool {
+        self.durable_cursor_is(TurnState::Completed)
+    }
+
+    pub(crate) fn has_durable_cancelled_cursor(&self) -> bool {
+        match self {
+            Self::Reusable(parts) => matches!(
+                parts.terminal_cursor().state(),
+                TurnState::Cancelled | TurnState::Interrupted
+            ),
+            Self::Active(active) => active
+                .turn
+                .driver
+                .latest_durable_turn_cursor()
+                .is_some_and(|cursor| {
+                    matches!(
+                        cursor.state(),
+                        TurnState::Cancelled | TurnState::Interrupted
+                    )
+                }),
+            _ => false,
+        }
+    }
+
+    fn durable_cursor_is(&self, expected: TurnState) -> bool {
+        match self {
+            Self::Reusable(parts) => parts.terminal_cursor().state() == expected,
+            Self::Active(active) => active
+                .turn
+                .driver
+                .latest_durable_turn_cursor()
+                .is_some_and(|cursor| cursor.state() == expected),
+            _ => false,
         }
     }
 }

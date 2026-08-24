@@ -145,6 +145,10 @@ where
         self.pump.latest_durable_turn_cursor()
     }
 
+    pub(crate) fn close_stdin(&mut self) {
+        self.transport.close();
+    }
+
     pub(crate) fn runtime_owner(&self) -> &RuntimeOwner {
         &self.owner
     }
@@ -184,6 +188,23 @@ where
     ) -> Result<DriverProgress, DriverError> {
         self.ensure_running()?;
         self.cancel(intent, DispatchSource::Cancel)
+    }
+
+    pub(crate) fn dispatch_close_session(&mut self) -> Result<DriverProgress, DriverError> {
+        self.ensure_running()?;
+        match self
+            .pump
+            .queue_command(crate::acp::bindings::adapter::AdapterCommand::CloseSession)
+        {
+            Ok(_) => {}
+            Err(AdapterPumpError::NoActiveTurn | AdapterPumpError::Intent) => {
+                return Err(DriverError::RejectedIntent);
+            }
+            Err(error) => return Err(self.pump_error(error)),
+        }
+        let mut progress = DriverProgress::default();
+        self.flush_all(DispatchSource::Cancel, &mut progress)?;
+        Ok(progress)
     }
 
     pub(crate) async fn resolve_permission(

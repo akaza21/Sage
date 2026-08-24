@@ -52,6 +52,9 @@ pub(crate) trait LiveRuntimePort: Send + 'static {
     fn begin_cancel(&mut self, intent: &HostCancelIntent) -> Result<(), HostError>;
     fn dispatch_cancel(&mut self, intent: &HostCancelIntent) -> Result<(), HostError>;
     fn accept_terminal(&mut self, cursor: &AdapterTurnCursor) -> Result<(), HostError>;
+    fn accept_latest_completed(&mut self) -> Result<(), HostError> {
+        Ok(())
+    }
     /// Commits the session close intent, durably begins cancellation for any
     /// correlated active Turn, dispatches adapter cancellation, and only then
     /// requests process-tree termination.
@@ -62,6 +65,12 @@ pub(crate) trait LiveRuntimePort: Send + 'static {
         command: &CloseSessionCommand,
         proof: Self::ZeroProof,
     ) -> Result<(), (HostError, Self::ZeroProof)>;
+    fn begin_park(&mut self) -> Result<(), HostError> {
+        Err(HostError::State)
+    }
+    fn park_zero(&mut self, _deadline: Instant) -> Result<(), HostError> {
+        Ok(())
+    }
     fn shutdown(&mut self, deadline: Instant) -> Result<(), HostError>;
 }
 
@@ -169,6 +178,10 @@ impl<P: LiveRuntimePort> RuntimeEngine for LiveRuntimeEngine<P> {
         self.port.accept_terminal(cursor)
     }
 
+    fn accept_latest_completed(&mut self) -> Result<(), HostError> {
+        self.port.accept_latest_completed()
+    }
+
     fn begin_close(&mut self, intent: &HostCloseIntent) -> Result<(), HostError> {
         if self.port.owner() != &intent.owner() || self.zero_proof.is_some() {
             return Err(HostError::Intent);
@@ -195,6 +208,20 @@ impl<P: LiveRuntimePort> RuntimeEngine for LiveRuntimeEngine<P> {
                 self.zero_proof = Some(proof);
                 Err(error)
             }
+        }
+    }
+
+    fn begin_park(&mut self) -> Result<(), HostError> {
+        match self.port.begin_park() {
+            Ok(()) | Err(HostError::Closed | HostError::State | HostError::Intent) => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn park_zero(&mut self, deadline: Instant) -> Result<(), HostError> {
+        match self.port.park_zero(deadline) {
+            Ok(()) | Err(HostError::Closed | HostError::State) => Ok(()),
+            Err(error) => Err(error),
         }
     }
 

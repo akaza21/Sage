@@ -64,6 +64,10 @@ impl<T> BoundedQueue<T> {
         Some(item)
     }
 
+    fn front(&self) -> Option<&T> {
+        self.entries.front().map(|(item, _)| item)
+    }
+
     pub(crate) fn len(&self) -> usize {
         self.entries.len()
     }
@@ -183,6 +187,30 @@ impl<T> ReservedQueue<T> {
         let entry = self.control.remove(index)?;
         self.control_bytes -= entry.bytes;
         Some(entry.item)
+    }
+
+    pub(crate) fn pop_control_if(&mut self, mut pred: impl FnMut(&T) -> bool) -> Option<T> {
+        let index = self
+            .control
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| pred(&entry.item))
+            .min_by_key(|(_, entry)| (entry.deadline_ms, entry.sequence))
+            .map(|(index, _)| index)?;
+        let entry = self.control.remove(index)?;
+        self.control_bytes -= entry.bytes;
+        Some(entry.item)
+    }
+
+    pub(crate) fn pop_data_if(&mut self, pred: impl FnOnce(&T) -> bool) -> Option<T> {
+        if !self.data.front().is_some_and(pred) {
+            return None;
+        }
+        self.data.pop()
+    }
+
+    pub(crate) fn data_front(&self) -> Option<&T> {
+        self.data.front()
     }
 
     pub(crate) fn data_usage(&self) -> (usize, usize) {
