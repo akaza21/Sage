@@ -6,12 +6,16 @@ export function SearchSurface() {
   const transitionEpoch = useWorkbenchStore(
     (state) => state.nativeTransitionEpoch,
   );
+  const projectGeneration = useWorkbenchStore(
+    (state) => state.projectGeneration,
+  );
   const openSearchMatch = useWorkbenchStore((state) => state.openSearchMatch);
 
   return (
     <WorkspaceSearchView
       projectId={projectId}
       transitionEpoch={transitionEpoch}
+      indexGeneration={projectGeneration}
       onOpenMatch={(request) => void openSearchMatch(request)}
     />
   );

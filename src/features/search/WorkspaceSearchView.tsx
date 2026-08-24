@@ -2,12 +2,12 @@ import { CaseSensitive, FileSearch, LoaderCircle, X } from "lucide-react";
 import type { FormEvent, KeyboardEvent } from "react";
 
 import {
-  MAX_WORKSPACE_SEARCH_RESULTS,
   type WorkspaceSearchGateway,
   type WorkspaceSearchLimitReason,
   type WorkspaceSearchMatch,
   type WorkspaceSearchNavigationRequest,
 } from "./workspaceSearchDomain";
+import { WORKSPACE_SEARCH_LIMITS } from "./workspaceSearchLimits";
 import { workspaceSearchDesktop } from "./workspaceSearchDesktop";
 import { useWorkspaceSearch } from "./useWorkspaceSearch";
 import "./workspace-search.css";
@@ -15,6 +15,7 @@ import "./workspace-search.css";
 interface WorkspaceSearchViewProps {
   projectId: string | null;
   transitionEpoch: number;
+  indexGeneration: number;
   onOpenMatch: (request: WorkspaceSearchNavigationRequest) => void;
   gateway?: WorkspaceSearchGateway;
 }
@@ -32,11 +33,17 @@ const limitMessages: Record<WorkspaceSearchLimitReason, string> = {
 export function WorkspaceSearchView({
   projectId,
   transitionEpoch,
+  indexGeneration,
   onOpenMatch,
   gateway = workspaceSearchDesktop,
 }: WorkspaceSearchViewProps) {
-  const { state, setQuery, setCaseSensitive, submit, cancel } =
-    useWorkspaceSearch({ projectId, transitionEpoch, gateway });
+  const { state, setQuery, setCaseSensitive, submit, continueSearch, cancel } =
+    useWorkspaceSearch({
+      projectId,
+      transitionEpoch,
+      indexGeneration,
+      gateway,
+    });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -66,8 +73,14 @@ export function WorkspaceSearchView({
     openMatch(match);
   }
 
-  const matches =
-    state.response?.matches.slice(0, MAX_WORKSPACE_SEARCH_RESULTS) ?? [];
+  const matches = state.pages
+    .flatMap((page) => page.matches)
+    .slice(
+      0,
+      WORKSPACE_SEARCH_LIMITS.results *
+        WORKSPACE_SEARCH_LIMITS.continuationPages,
+    );
+  const lastPage = state.pages.at(-1);
   const rootNames = new Map(
     state.response?.roots.map((root) => [root.rootId, root.rootName]) ?? [],
   );
@@ -163,6 +176,12 @@ export function WorkspaceSearchView({
                 {root.rootName}: {root.message ?? "Search was partial."}
               </p>
             ))}
+            {state.pages.length < WORKSPACE_SEARCH_LIMITS.continuationPages &&
+            lastPage?.continuationToken ? (
+              <button type="button" onClick={() => void continueSearch()}>
+                Continue search
+              </button>
+            ) : null}
             {matches.length === 0 ? (
               <p className="workspace-search__empty">
                 No matches found for "{state.response.query}".

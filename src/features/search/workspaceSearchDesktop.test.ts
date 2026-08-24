@@ -6,6 +6,7 @@ const response = {
   requestId: "request-a",
   projectId: "project-a",
   transitionEpoch: 4,
+  indexGeneration: 0,
   query: "needle",
   matches: [],
   roots: [
@@ -22,6 +23,7 @@ const response = {
     },
   ],
   truncated: false,
+  continuationToken: null,
   limitReasons: [],
   elapsedMs: 1,
 } as const;
@@ -39,6 +41,8 @@ describe("workspace Search desktop adapter", () => {
     await adapter.search({
       projectId: "project-a",
       expectedTransitionEpoch: 4,
+      indexGeneration: 0,
+      continuationToken: null,
       query: "  needle  ",
       caseSensitive: false,
     });
@@ -47,6 +51,8 @@ describe("workspace Search desktop adapter", () => {
       request: {
         projectId: "project-a",
         expectedTransitionEpoch: 4,
+        indexGeneration: 0,
+        continuationToken: null,
         query: "needle",
         caseSensitive: false,
         requestId: expect.any(String),
@@ -68,6 +74,8 @@ describe("workspace Search desktop adapter", () => {
       {
         projectId: "project-a",
         expectedTransitionEpoch: 4,
+        indexGeneration: 0,
+        continuationToken: null,
         query: "needle",
         caseSensitive: false,
       },
@@ -98,6 +106,8 @@ describe("workspace Search desktop adapter", () => {
       adapter.search({
         projectId: "project-a",
         expectedTransitionEpoch: 4,
+        indexGeneration: 0,
+        continuationToken: null,
         query: "needle",
         caseSensitive: false,
       }),

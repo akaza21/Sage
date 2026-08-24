@@ -5,10 +5,12 @@ use crate::{
     workspace::Workspace,
 };
 
+use super::engine_continue::{ContinuationSeek, stale_report};
 use super::types::{
-    MAX_RESOURCE_PATH_BYTES, SearchLimitReason, SearchLimits, SearchRoot, SearchRootReport,
-    SearchRootSource, SearchRootState, WorkspaceSearchMatch, WorkspaceSearchRequest,
-    WorkspaceSearchResponse, validate_search_request,
+    ContinuationCursor, MAX_RESOURCE_PATH_BYTES, SearchLimitReason, SearchLimits, SearchRoot,
+    SearchRootReport, SearchRootSource, SearchRootState, WorkspaceSearchMatch,
+    WorkspaceSearchRequest, WorkspaceSearchResponse, encode_continuation_token, stale_continuation,
+    validate_continuation_stamp, validate_search_request,
 };
 
 pub struct SearchEngine {
@@ -44,6 +46,16 @@ impl SearchEngine {
     ) -> AppResult<WorkspaceSearchResponse> {
         validate_search_request(&request)?;
         let query = request.query.trim();
+        let mut seek = request
+            .continuation_token
+            .as_deref()
+            .map(|token| validate_continuation_stamp(token, &request, query))
+            .transpose()?
+            .map(|cursor| ContinuationSeek {
+                cursor,
+                started_at: Instant::now(),
+                entries_visited: 0,
+            });
         if self.limits.max_results == 0
             || self.limits.max_files == 0
             || self.limits.max_total_bytes == 0
@@ -84,20 +96,45 @@ impl SearchEngine {
                     request.case_sensitive,
                     &mut matches,
                     &mut budget,
+                    &mut seek,
                 ),
             };
             reports.push(report);
         }
 
+        if seek.is_some() {
+            return Err(stale_continuation());
+        }
+
+        let truncated = !budget.reasons.is_empty()
+            || reports
+                .iter()
+                .any(|report| report.state == SearchRootState::Partial);
+        let continuation_token = if truncated {
+            matches.last().and_then(|last| {
+                encode_continuation_token(
+                    &request,
+                    query,
+                    &ContinuationCursor {
+                        root_id: last.resource.root_id.clone(),
+                        relative_path: last.resource.relative_path.clone(),
+                        line_number: last.line_number,
+                        column_number: last.column_number,
+                    },
+                )
+            })
+        } else {
+            None
+        };
+
         Ok(WorkspaceSearchResponse {
             request_id: request.request_id,
             project_id: request.project_id,
             transition_epoch: request.expected_transition_epoch,
+            index_generation: request.index_generation,
             query: query.into(),
-            truncated: !budget.reasons.is_empty()
-                || reports
-                    .iter()
-                    .any(|report| report.state == SearchRootState::Partial),
+            truncated,
+            continuation_token,
             limit_reasons: budget.reasons,
             matches,
             roots: reports,
@@ -115,6 +152,7 @@ impl SearchEngine {
         case_sensitive: bool,
         matches: &mut Vec<WorkspaceSearchMatch>,
         budget: &mut SearchBudget,
+        seek: &mut Option<ContinuationSeek>,
     ) -> SearchRootReport {
         if workspace.root_id() != root_id {
             return SearchRootReport {
@@ -141,7 +179,7 @@ impl SearchEngine {
         let mut directories = VecDeque::from([(workspace.root().to_path_buf(), String::new(), 0)]);
 
         while let Some((directory, relative, depth)) = directories.pop_front() {
-            if self.limit_reached(budget, matches.len()) {
+            if self.limit_reached_for_phase(budget, matches.len(), seek.as_ref()) {
                 counters.partial = true;
                 break;
             }
@@ -155,17 +193,24 @@ impl SearchEngine {
             };
             let mut entries = Vec::new();
             for entry in read_directory {
-                if self.limit_reached(budget, matches.len()) {
+                if self.limit_reached_for_phase(budget, matches.len(), seek.as_ref()) {
                     counters.partial = true;
                     break;
                 }
-                if budget.entries_visited == self.limits.max_entries {
-                    push_reason(&mut budget.reasons, SearchLimitReason::Entries);
-                    counters.partial = true;
-                    break;
+                if let Some(active_seek) = seek.as_mut() {
+                    if active_seek.entries_visited == self.limits.max_entries {
+                        return stale_report(root_id, root_name);
+                    }
+                    active_seek.entries_visited += 1;
+                } else {
+                    if budget.entries_visited == self.limits.max_entries {
+                        push_reason(&mut budget.reasons, SearchLimitReason::Entries);
+                        counters.partial = true;
+                        break;
+                    }
+                    budget.entries_visited += 1;
+                    counters.entries_visited += 1;
                 }
-                budget.entries_visited += 1;
-                counters.entries_visited += 1;
                 match entry {
                     Ok(entry) => entries.push(entry),
                     Err(_) => {
@@ -176,8 +221,18 @@ impl SearchEngine {
             }
             entries.sort_unstable_by_key(|entry| entry.file_name());
 
+            let mut charge_remaining_to_page = false;
             for entry in entries {
-                if self.limit_reached(budget, matches.len()) {
+                if charge_remaining_to_page {
+                    if budget.entries_visited == self.limits.max_entries {
+                        push_reason(&mut budget.reasons, SearchLimitReason::Entries);
+                        counters.partial = true;
+                        break;
+                    }
+                    budget.entries_visited += 1;
+                    counters.entries_visited += 1;
+                }
+                if self.limit_reached_for_phase(budget, matches.len(), seek.as_ref()) {
                     counters.partial = true;
                     break;
                 }
@@ -225,21 +280,52 @@ impl SearchEngine {
                     counters.skipped_files += 1;
                     continue;
                 }
-                if budget.files_seen == self.limits.max_files {
+                if seek.is_none() && budget.files_seen == self.limits.max_files {
                     push_reason(&mut budget.reasons, SearchLimitReason::FileCount);
                     counters.partial = true;
                     break;
                 }
-                budget.files_seen += 1;
-                self.search_file(
-                    workspace,
-                    child_relative,
-                    query,
-                    case_sensitive,
-                    matches,
-                    budget,
-                    &mut counters,
-                );
+                if let Some(active_seek) = seek.as_ref() {
+                    if active_seek.cursor.root_id != root_id
+                        || active_seek.cursor.relative_path != child_relative
+                    {
+                        continue;
+                    }
+                    if !self.file_has_cursor(
+                        workspace,
+                        &child_relative,
+                        query,
+                        case_sensitive,
+                        &active_seek.cursor,
+                    ) {
+                        continue;
+                    }
+                    let cursor = active_seek.cursor.clone();
+                    *seek = None;
+                    charge_remaining_to_page = true;
+                    budget.started_at = Instant::now();
+                    self.search_file_after_cursor(
+                        workspace,
+                        child_relative,
+                        query,
+                        case_sensitive,
+                        &cursor,
+                        matches,
+                        budget,
+                        &mut counters,
+                    );
+                } else {
+                    budget.files_seen += 1;
+                    self.search_file(
+                        workspace,
+                        child_relative,
+                        query,
+                        case_sensitive,
+                        matches,
+                        budget,
+                        &mut counters,
+                    );
+                }
             }
         }
 
@@ -274,7 +360,7 @@ impl SearchEngine {
         }
     }
 
-    fn limit_reached(&self, budget: &mut SearchBudget, result_count: usize) -> bool {
+    pub(super) fn limit_reached(&self, budget: &mut SearchBudget, result_count: usize) -> bool {
         if result_count >= self.limits.max_results {
             push_reason(&mut budget.reasons, SearchLimitReason::Results);
             return true;
