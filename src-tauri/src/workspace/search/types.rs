@@ -136,7 +136,7 @@ pub struct ContinuationCursor {
     pub column_number: u32,
 }
 
-pub fn parse_continuation_token(value: &str) -> AppResult<ContinuationCursor> {
+fn read_continuation_token(value: &str) -> AppResult<ContinuationToken> {
     if value.len() > MAX_CONTINUATION_TOKEN_BYTES {
         return Err(invalid_continuation());
     }
@@ -152,12 +152,11 @@ pub fn parse_continuation_token(value: &str) -> AppResult<ContinuationCursor> {
     {
         return Err(invalid_continuation());
     }
-    Ok(ContinuationCursor {
-        root_id: token.root_id,
-        relative_path: token.relative_path,
-        line_number: token.line_number,
-        column_number: token.column_number,
-    })
+    Ok(token)
+}
+
+pub fn parse_continuation_token(value: &str) -> AppResult<ContinuationCursor> {
+    Ok(continuation_cursor(read_continuation_token(value)?))
 }
 
 pub fn validate_continuation_stamp(
@@ -165,9 +164,7 @@ pub fn validate_continuation_stamp(
     request: &WorkspaceSearchRequest,
     query: &str,
 ) -> AppResult<ContinuationCursor> {
-    let token: ContinuationToken =
-        serde_json::from_str(value).map_err(|_| invalid_continuation())?;
-    let cursor = parse_continuation_token(value)?;
+    let token = read_continuation_token(value)?;
     if token.index_generation != request.index_generation
         || token.transition_epoch != request.expected_transition_epoch
         || token.case_sensitive != u8::from(request.case_sensitive)
@@ -175,15 +172,15 @@ pub fn validate_continuation_stamp(
     {
         return Err(stale_continuation());
     }
-    Ok(cursor)
+    Ok(continuation_cursor(token))
 }
 
 pub fn encode_continuation_token(
     request: &WorkspaceSearchRequest,
     query: &str,
     cursor: &ContinuationCursor,
-) -> String {
-    serde_json::to_string(&ContinuationToken {
+) -> Option<String> {
+    let encoded = serde_json::to_string(&ContinuationToken {
         version: 1,
         index_generation: request.index_generation,
         transition_epoch: request.expected_transition_epoch,
@@ -194,7 +191,17 @@ pub fn encode_continuation_token(
         line_number: cursor.line_number,
         column_number: cursor.column_number,
     })
-    .expect("continuation token serialization is infallible")
+    .expect("continuation token serialization is infallible");
+    (encoded.len() <= MAX_CONTINUATION_TOKEN_BYTES).then_some(encoded)
+}
+
+fn continuation_cursor(token: ContinuationToken) -> ContinuationCursor {
+    ContinuationCursor {
+        root_id: token.root_id,
+        relative_path: token.relative_path,
+        line_number: token.line_number,
+        column_number: token.column_number,
+    }
 }
 
 pub fn invalid_continuation() -> AppError {

@@ -111,7 +111,7 @@ impl SearchEngine {
                 .iter()
                 .any(|report| report.state == SearchRootState::Partial);
         let continuation_token = if truncated {
-            matches.last().map(|last| {
+            matches.last().and_then(|last| {
                 encode_continuation_token(
                     &request,
                     query,
@@ -221,7 +221,17 @@ impl SearchEngine {
             }
             entries.sort_unstable_by_key(|entry| entry.file_name());
 
+            let mut charge_remaining_to_page = false;
             for entry in entries {
+                if charge_remaining_to_page {
+                    if budget.entries_visited == self.limits.max_entries {
+                        push_reason(&mut budget.reasons, SearchLimitReason::Entries);
+                        counters.partial = true;
+                        break;
+                    }
+                    budget.entries_visited += 1;
+                    counters.entries_visited += 1;
+                }
                 if self.limit_reached_for_phase(budget, matches.len(), seek.as_ref()) {
                     counters.partial = true;
                     break;
@@ -292,6 +302,7 @@ impl SearchEngine {
                     }
                     let cursor = active_seek.cursor.clone();
                     *seek = None;
+                    charge_remaining_to_page = true;
                     budget.started_at = Instant::now();
                     self.search_file_after_cursor(
                         workspace,
