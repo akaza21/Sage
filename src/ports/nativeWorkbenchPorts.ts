@@ -128,6 +128,12 @@ const project: ProjectPort = {
   ): Promise<TrashProjectResourceResult> {
     return invokeNative("trash_project_resource", { request });
   },
+  watchWorkspaceNotify(input) {
+    return invokeNative("watch_workspace_notify", { value: input });
+  },
+  unwatchWorkspaceNotify(input) {
+    return invokeNative("unwatch_workspace_notify", { value: input });
+  },
 };
 
 const editor: EditorPort = {

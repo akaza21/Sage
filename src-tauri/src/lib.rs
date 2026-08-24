@@ -172,6 +172,8 @@ pub fn run() {
             repository_ref_commands::get_repository_ref_file_diff,
             editor_watch::watch_editor_document,
             editor_watch::unwatch_editor_document,
+            workspace::notify::watch_workspace_notify,
+            workspace::notify::unwatch_workspace_notify,
             editor::language::start_language_session,
             editor::language::cancel_language_session,
             repository_mutation_commands::mutate_git_file,

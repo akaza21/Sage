@@ -1,13 +1,19 @@
 #![allow(dead_code)]
 
-use std::collections::BTreeSet;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::{Mutex, OnceLock},
+};
 
+use serde::Serialize;
 use serde_json::Value;
+use tauri::{AppHandle, Emitter};
 
 const MAX_IDENTIFIER_BYTES: usize = 512;
 const MAX_RESOURCE_PATH_BYTES: usize = 16 * 1024;
 const MAX_ROOTS: usize = 8;
 const MAX_QUEUE: usize = 64;
+const MAX_WATCHES: usize = 8;
 
 pub const WORKSPACE_NOTIFY_EVENT: &str = "workspace-notify-v1";
 
@@ -30,7 +36,8 @@ impl std::fmt::Display for WorkspaceNotifyError {
 
 impl std::error::Error for WorkspaceNotifyError {}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceNotifyNotice {
     pub project_id: String,
     pub project_generation: u64,
@@ -204,6 +211,112 @@ pub fn bind_workspace_notify(
     })
 }
 
+struct BoundWatch {
+    generation: u32,
+    session: WorkspaceNotifySession,
+}
+
+struct NotifyRegistry {
+    watches: BTreeMap<String, BoundWatch>,
+    generations: BTreeMap<String, u32>,
+}
+
+fn registry() -> std::sync::MutexGuard<'static, NotifyRegistry> {
+    static REGISTRY: OnceLock<Mutex<NotifyRegistry>> = OnceLock::new();
+    REGISTRY
+        .get_or_init(|| {
+            Mutex::new(NotifyRegistry {
+                watches: BTreeMap::new(),
+                generations: BTreeMap::new(),
+            })
+        })
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+pub fn apply_watch_workspace_notify(value: &Value) -> Result<u32, WorkspaceNotifyError> {
+    let session = bind_workspace_notify(value)?;
+    let project_id = session.project_id.clone();
+    let mut registry = registry();
+    if registry.watches.len() >= MAX_WATCHES && !registry.watches.contains_key(&project_id) {
+        return Err(reject("notify-overflow"));
+    }
+    let generation = registry
+        .generations
+        .get(&project_id)
+        .copied()
+        .unwrap_or(0)
+        .saturating_add(1);
+    registry.generations.insert(project_id.clone(), generation);
+    registry.watches.insert(
+        project_id,
+        BoundWatch {
+            generation,
+            session,
+        },
+    );
+    Ok(generation)
+}
+
+pub fn apply_unwatch_workspace_notify(value: &Value) -> Result<(), WorkspaceNotifyError> {
+    if !exact_keys(value, &["projectId"]) {
+        return Err(reject("schema-invalid"));
+    }
+    let project_id = value["projectId"]
+        .as_str()
+        .filter(|item| bounded_identifier(item))
+        .ok_or_else(|| reject("schema-invalid"))?;
+    let mut registry = registry();
+    if registry.watches.remove(project_id).is_none() {
+        return Err(reject("notify-substituted"));
+    }
+    registry.generations.remove(project_id);
+    Ok(())
+}
+
+pub fn drain_queued_workspace_notices(project_id: &str) -> Vec<WorkspaceNotifyNotice> {
+    registry()
+        .watches
+        .get_mut(project_id)
+        .map(|watch| std::mem::take(&mut watch.session.queue))
+        .unwrap_or_default()
+}
+
+fn emit_queued_workspace_notices(app: &AppHandle, bind: &Value) {
+    let Some(project_id) = bind
+        .get("stamp")
+        .and_then(|stamp| stamp.get("projectId"))
+        .and_then(Value::as_str)
+    else {
+        return;
+    };
+    for notice in drain_queued_workspace_notices(project_id) {
+        let _ = app.emit(WORKSPACE_NOTIFY_EVENT, notice);
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceNotifyWatchAck {
+    pub generation: u32,
+}
+
+#[tauri::command]
+pub fn watch_workspace_notify(
+    app: AppHandle,
+    value: Value,
+) -> Result<WorkspaceNotifyWatchAck, String> {
+    let generation =
+        apply_watch_workspace_notify(&value).map_err(|error| error.code().to_string())?;
+    emit_queued_workspace_notices(&app, &value);
+    Ok(WorkspaceNotifyWatchAck { generation })
+}
+
+#[tauri::command]
+pub fn unwatch_workspace_notify(value: Value) -> Result<(), String> {
+    apply_unwatch_workspace_notify(&value).map_err(|error| error.code().to_string())
+}
+
 impl WorkspaceNotifySession {
     pub fn classify(
         &self,
@@ -256,6 +369,7 @@ impl WorkspaceNotifySession {
 mod tests {
     use super::*;
     use serde_json::{json, Value};
+    use std::sync::{Mutex, OnceLock};
 
     fn stamp_json() -> Value {
         json!({
@@ -693,5 +807,140 @@ mod tests {
         let mut substituted = notice_json();
         substituted["rootId"] = json!("root-b");
         rejects_push(&mut session, substituted, "notify-substituted");
+    }
+
+    fn with_isolated_watches<T>(body: impl FnOnce() -> T) -> T {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        {
+            let mut registry = registry();
+            registry.watches.clear();
+            registry.generations.clear();
+        }
+        let result = body();
+        {
+            let mut registry = registry();
+            registry.watches.clear();
+            registry.generations.clear();
+        }
+        result
+    }
+
+    fn rejects_watch(value: Value, code: &str) {
+        let error = apply_watch_workspace_notify(&value).expect_err("expected watch reject");
+        assert_eq!(error.code(), code);
+    }
+
+    fn rejects_unwatch(value: Value, code: &str) {
+        let error = apply_unwatch_workspace_notify(&value).expect_err("expected unwatch reject");
+        assert_eq!(error.code(), code);
+    }
+
+    #[test]
+    fn watch_bind_returns_generation() {
+        with_isolated_watches(|| {
+            let generation = apply_watch_workspace_notify(&bound()).expect("watch");
+            assert_eq!(generation, 1);
+            apply_unwatch_workspace_notify(&json!({ "projectId": "project-a" })).expect("unwatch");
+        });
+    }
+
+    #[test]
+    fn watch_extra_or_missing_bind_keys_are_schema_invalid() {
+        with_isolated_watches(|| {
+            let mut extra = bound();
+            extra
+                .as_object_mut()
+                .unwrap()
+                .insert("extra".into(), json!(true));
+            rejects_watch(extra, "schema-invalid");
+            rejects_watch(json!({ "stamp": stamp_json() }), "schema-invalid");
+            rejects_watch(json!({}), "schema-invalid");
+        });
+    }
+
+    #[test]
+    fn rewatch_replaces_session_and_bumps_generation() {
+        with_isolated_watches(|| {
+            assert_eq!(apply_watch_workspace_notify(&bound()).expect("first"), 1);
+            assert_eq!(apply_watch_workspace_notify(&bound()).expect("second"), 2);
+            apply_unwatch_workspace_notify(&json!({ "projectId": "project-a" })).expect("unwatch");
+            rejects_unwatch(json!({ "projectId": "project-a" }), "notify-substituted");
+        });
+    }
+
+    #[test]
+    fn unwatch_extra_or_missing_keys_are_schema_invalid() {
+        with_isolated_watches(|| {
+            apply_watch_workspace_notify(&bound()).expect("watch");
+            rejects_unwatch(
+                json!({ "projectId": "project-a", "extra": true }),
+                "schema-invalid",
+            );
+            rejects_unwatch(json!({}), "schema-invalid");
+            rejects_unwatch(json!({ "projectId": "" }), "schema-invalid");
+            apply_unwatch_workspace_notify(&json!({ "projectId": "project-a" })).expect("cleanup");
+        });
+    }
+
+    #[test]
+    fn unwatch_unbound_project_id_is_notify_substituted() {
+        with_isolated_watches(|| {
+            rejects_unwatch(json!({ "projectId": "project-a" }), "notify-substituted");
+        });
+    }
+
+    #[test]
+    fn ninth_distinct_watch_is_notify_overflow() {
+        with_isolated_watches(|| {
+            for index in 0..8 {
+                let stamp = json!({
+                    "projectId": format!("project-{index}"),
+                    "projectGeneration": 3,
+                    "transitionEpoch": 7
+                });
+                apply_watch_workspace_notify(&json!({
+                    "stamp": stamp,
+                    "roots": [{ "rootId": "root-a" }]
+                }))
+                .expect("watch slot");
+            }
+            rejects_watch(bound(), "notify-overflow");
+        });
+    }
+
+    #[test]
+    fn drain_after_push_returns_queued_notice() {
+        with_isolated_watches(|| {
+            apply_watch_workspace_notify(&bound()).expect("watch");
+            registry()
+                .watches
+                .get_mut("project-a")
+                .expect("bound")
+                .session
+                .push(&notice_json())
+                .expect("push");
+            let notices = drain_queued_workspace_notices("project-a");
+            assert_eq!(notices.len(), 1);
+            assert_eq!(notices[0].kind, "changed");
+            assert_eq!(workspace_notify_event_name(), "workspace-notify-v1");
+            assert!(drain_queued_workspace_notices("project-a").is_empty());
+        });
+    }
+
+    #[test]
+    fn unwatch_clears_generation_so_next_watch_starts_at_one() {
+        with_isolated_watches(|| {
+            assert_eq!(apply_watch_workspace_notify(&bound()).expect("first"), 1);
+            assert_eq!(apply_watch_workspace_notify(&bound()).expect("replace"), 2);
+            apply_unwatch_workspace_notify(&json!({ "projectId": "project-a" })).expect("unwatch");
+            assert_eq!(
+                apply_watch_workspace_notify(&bound()).expect("after unwatch"),
+                1
+            );
+        });
     }
 }

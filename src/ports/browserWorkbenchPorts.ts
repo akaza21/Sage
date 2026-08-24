@@ -55,6 +55,14 @@ const project: ProjectPort = {
     ),
   trashProjectResource: (request) =>
     browserDesktop.trashProjectResource(request),
+  watchWorkspaceNotify: () =>
+    Promise.reject(
+      new Error("workspace notify is not available in the browser adapter"),
+    ),
+  unwatchWorkspaceNotify: () =>
+    Promise.reject(
+      new Error("workspace notify is not available in the browser adapter"),
+    ),
 };
 
 const editor: EditorPort = {

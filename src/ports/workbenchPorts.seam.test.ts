@@ -63,6 +63,8 @@ describe("S0.3 workbench port seam", () => {
       "renameProjectFolder",
       "switchProject",
       "trashProjectResource",
+      "unwatchWorkspaceNotify",
+      "watchWorkspaceNotify",
     ]);
     expect(FROZEN_WORKBENCH_PORT_METHODS.editor).toEqual([
       "discardEditorBuffer",

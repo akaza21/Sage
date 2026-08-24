@@ -84,6 +84,15 @@ export interface ProjectPort {
   trashProjectResource(
     request: TrashProjectResourceRequest,
   ): Promise<TrashProjectResourceResult>;
+  watchWorkspaceNotify(input: {
+    stamp: {
+      projectId: string;
+      projectGeneration: number;
+      transitionEpoch: number;
+    };
+    roots: Array<{ rootId: string }>;
+  }): Promise<{ generation: number }>;
+  unwatchWorkspaceNotify(input: { projectId: string }): Promise<void>;
 }
 
 export interface EditorPort {
@@ -169,6 +178,8 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "renameProjectFolder",
     "switchProject",
     "trashProjectResource",
+    "unwatchWorkspaceNotify",
+    "watchWorkspaceNotify",
   ],
   editor: [
     "discardEditorBuffer",
