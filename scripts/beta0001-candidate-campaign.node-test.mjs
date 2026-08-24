@@ -1034,11 +1034,14 @@ test("journey file junction on re-read is evidence-link", async () => {
     const boundValue = await bound(value);
     const file = path.join(value.root, `${quartet[0]}.json`);
     const other = path.join(value.root, `${quartet[1]}.json`);
+    let campaignOpen = 0;
     await rejectsCode(
       () =>
         validate(value, {
           expectedCampaignReceiptSha256: boundValue.campaignReceiptSha256,
-          onAfterFirstJourneyBind: async () => {
+          onAfterCampaignOpen: async () => {
+            campaignOpen += 1;
+            if (campaignOpen !== 3) return;
             await unlink(file);
             await link(other, file);
           },

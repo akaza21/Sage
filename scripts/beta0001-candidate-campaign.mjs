@@ -221,6 +221,7 @@ export async function validateBetaCandidateCampaignAdmission({
   ) {
     reject("contract-drift");
   }
+  if (typeof onAfterCampaignOpen === "function") await onAfterCampaignOpen();
   await bindJourneyBytes({
     evidenceRoot,
     journeyEvidence: receipt.journeyEvidence,
