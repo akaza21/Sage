@@ -1,5 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { resetWorkspaceNotifyComposeForTests } from "../files/workspaceNotifyCompose";
 
 import type { WorkspaceSearchResponse } from "./workspaceSearchDomain";
 import { useWorkspaceSearch } from "./useWorkspaceSearch";
@@ -39,6 +41,10 @@ function response(query: string): WorkspaceSearchResponse {
 }
 
 describe("workspace Search state", () => {
+  afterEach(() => {
+    resetWorkspaceNotifyComposeForTests();
+  });
+
   it("aborts an older scan and never projects its stale response", async () => {
     const first = deferred<WorkspaceSearchResponse>();
     const second = deferred<WorkspaceSearchResponse>();
@@ -202,5 +208,75 @@ describe("workspace Search state", () => {
       response: null,
       error: "invalid workspace Search response",
     });
+  });
+
+  it("resubmits a live query when an accepted workspace notice arrives", async () => {
+    const liveResponse = {
+      ...response("needle"),
+      transitionEpoch: 7,
+      indexGeneration: 3,
+    };
+    const search = vi
+      .fn()
+      .mockResolvedValueOnce(liveResponse)
+      .mockResolvedValueOnce({
+        ...liveResponse,
+        requestId: "request-b",
+      });
+    const { result } = renderHook(() =>
+      useWorkspaceSearch({
+        projectId: "project-a",
+        transitionEpoch: 7,
+        indexGeneration: 3,
+        gateway: { search },
+      }),
+    );
+    act(() => result.current.setQuery("needle"));
+    await act(async () => void (await result.current.submit()));
+    expect(search).toHaveBeenCalledTimes(1);
+
+    const { publishWorkspaceNotifySearch } = await import(
+      "../files/workspaceNotifyCompose"
+    );
+    await act(async () => {
+      publishWorkspaceNotifySearch({
+        projectId: "project-a",
+        projectGeneration: 3,
+        transitionEpoch: 7,
+        rootId: "root-a",
+        relativePath: "src/main.ts",
+        kind: "changed",
+      });
+      await Promise.resolve();
+    });
+    expect(search).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not search an unsubmitted draft when a notice arrives", async () => {
+    const search = vi.fn().mockResolvedValue(response("needle"));
+    const { result } = renderHook(() =>
+      useWorkspaceSearch({
+        projectId: "project-a",
+        transitionEpoch: 7,
+        indexGeneration: 3,
+        gateway: { search },
+      }),
+    );
+    act(() => result.current.setQuery("needle"));
+    const { publishWorkspaceNotifySearch } = await import(
+      "../files/workspaceNotifyCompose"
+    );
+    await act(async () => {
+      publishWorkspaceNotifySearch({
+        projectId: "project-a",
+        projectGeneration: 3,
+        transitionEpoch: 7,
+        rootId: "root-a",
+        relativePath: "src/main.ts",
+        kind: "changed",
+      });
+      await Promise.resolve();
+    });
+    expect(search).not.toHaveBeenCalled();
   });
 });

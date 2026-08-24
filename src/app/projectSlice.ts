@@ -15,6 +15,7 @@ import {
 } from "./projectProjection";
 import { loadProjectProjection } from "./projectProjectionLoader";
 import type { WorkbenchState } from "./store";
+import { closeLiveWorkbench } from "./workspaceNotifyLifecycle";
 
 export interface ProjectSlice {
   projectGeneration: number;
@@ -223,11 +224,7 @@ export const createProjectSlice: StateCreator<
       if (get().projectTransitioning) {
         throw new Error("Project layout mutation is already in progress");
       }
-      await get().flushActiveEditor();
-      await getWorkbenchPorts().project.persistProjectLayoutAndClose(
-        layout(get()),
-        get().nativeTransitionEpoch,
-      );
+      await closeLiveWorkbench(get);
     },
 
     createProject: async () => {

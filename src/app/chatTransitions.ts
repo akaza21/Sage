@@ -15,6 +15,7 @@ import {
 import { snapshotProjection } from "./projectProjection";
 import { projectChatOwnership } from "./chatOwnershipProjection";
 import type { WorkbenchState } from "./store";
+import { bindWorkspaceNotifyFromState } from "./workspaceNotifyLifecycle";
 
 export type ProjectionOutcome = "committed" | "unchanged" | "diverged";
 
@@ -142,6 +143,11 @@ export function createChatTransitionContext(
     await Promise.all(projectionLoads);
     if (!projectId || matchesProjectIntent(get(), generation, projectId)) {
       set({ projectTransitioning: false });
+      try {
+        await bindWorkspaceNotifyFromState(get);
+      } catch {
+        /* watch failure must not fail Chat projection */
+      }
     }
   };
 
