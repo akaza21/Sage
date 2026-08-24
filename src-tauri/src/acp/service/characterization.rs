@@ -227,7 +227,7 @@ impl AcpService {
             Err(_) => {
                 let error =
                     converge_failed_runtime(&self.runtime, &owner, &control, cleanup_deadline);
-                let _ = host.shutdown();
+                let _ = host.shutdown(RuntimeHost::close_deadline());
                 return Err(error);
             }
         };
@@ -243,7 +243,7 @@ impl AcpService {
             Err(_) => {
                 let error =
                     converge_failed_runtime(&self.runtime, &owner, &control, cleanup_deadline);
-                let _ = host.shutdown();
+                let _ = host.shutdown(RuntimeHost::close_deadline());
                 return Err(error);
             }
         };
@@ -273,12 +273,12 @@ impl AcpService {
             || host.activate(owner.clone()).is_err()
         {
             let _ = self.runtime.mark_recovery(&owner);
-            let _ = host.shutdown();
+            let _ = host.shutdown(RuntimeHost::close_deadline());
             return Err(CharacterizationError::Recovery);
         }
         if let Err(error) = self.runtime.finish_start(&owner, Arc::clone(&host)) {
             let _ = self.runtime.mark_recovery(&owner);
-            let _ = host.shutdown();
+            let _ = host.shutdown(RuntimeHost::close_deadline());
             return Err(map_slot(error));
         }
         if observe_runner(&self.runtime, &owner, &runner).is_err() {
@@ -349,7 +349,7 @@ impl AcpService {
             let _ = self.runtime.mark_recovery(&owner);
             CharacterizationError::Recovery
         })?;
-        host.shutdown().map_err(|_| {
+        host.shutdown(RuntimeHost::close_deadline()).map_err(|_| {
             let _ = self.runtime.mark_recovery(&owner);
             CharacterizationError::Recovery
         })?;

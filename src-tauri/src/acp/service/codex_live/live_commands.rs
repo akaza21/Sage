@@ -69,14 +69,12 @@ impl AcpService {
         }
         #[cfg(test)]
         self.record_cancel_stage("converge");
-        let converge_deadline = Instant::now()
-            + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
         match self.converge_closed_shutdown(
             &owner,
             &host,
             ClosedShutdownAuthority::Host,
             false,
-            converge_deadline,
+            deadline,
         ) {
             Ok(()) => {
                 #[cfg(test)]

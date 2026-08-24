@@ -68,32 +68,52 @@ where
     };
     match active.turn.driver.control.wait_zero() {
         Ok((_exit, native)) => {
-            if active
+            if !active
                 .turn
                 .driver
                 .latest_durable_turn_cursor()
                 .is_some_and(|cursor| cursor.state() == crate::acp::lifecycle::TurnState::Completed)
-                && let Ok(proof) = native.try_into_coordinator_proof(context.owner.clone())
-                && let Some(lease) = active.turn.driver.lease.as_mut()
-                && let Ok(exit_kind) =
-                    crate::acp::contract::RequiredText::new("exitKind", "hostShutdown")
             {
-                let _ = lease
-                    .park_after_zero_process(
-                        crate::acp::store::ParkSessionCommand {
-                            project_id: context.owner.project_id.clone(),
-                            chat_id: context.owner.chat_id.clone(),
-                            session_id: context.owner.session_id.clone(),
-                            runtime_epoch: context.owner.runtime_epoch,
-                            exit_kind,
-                            now_millis: crate::persistence::now_millis(),
-                        },
-                        proof,
-                    )
-                    .await;
+                envelope.respond(Ok(WorkerReply::Zero(receipt)));
+                return FirstTurnWorkerState::Active(active);
             }
-            envelope.respond(Ok(WorkerReply::Zero(receipt)));
-            FirstTurnWorkerState::Active(active)
+            let Ok(proof) = native.try_into_coordinator_proof(context.owner.clone()) else {
+                envelope.reject(HostError::RecoveryRequired);
+                return FirstTurnWorkerState::Active(active);
+            };
+            let Some(lease) = active.turn.driver.lease.as_mut() else {
+                envelope.reject(HostError::RecoveryRequired);
+                return FirstTurnWorkerState::Active(active);
+            };
+            let Ok(exit_kind) =
+                crate::acp::contract::RequiredText::new("exitKind", "hostShutdown")
+            else {
+                envelope.reject(HostError::RecoveryRequired);
+                return FirstTurnWorkerState::Active(active);
+            };
+            match lease
+                .park_after_zero_process(
+                    crate::acp::store::ParkSessionCommand {
+                        project_id: context.owner.project_id.clone(),
+                        chat_id: context.owner.chat_id.clone(),
+                        session_id: context.owner.session_id.clone(),
+                        runtime_epoch: context.owner.runtime_epoch,
+                        exit_kind,
+                        now_millis: crate::persistence::now_millis(),
+                    },
+                    proof,
+                )
+                .await
+            {
+                Ok(_) => {
+                    envelope.respond(Ok(WorkerReply::Zero(receipt)));
+                    FirstTurnWorkerState::Active(active)
+                }
+                Err(_) => {
+                    envelope.reject(HostError::RecoveryRequired);
+                    FirstTurnWorkerState::Active(active)
+                }
+            }
         }
         Err(_) => {
             envelope.reject(HostError::RecoveryRequired);

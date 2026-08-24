@@ -369,7 +369,8 @@ impl RuntimeSlot {
             }
         };
         let host = host.expect("recovery host retained");
-        host.shutdown().map_err(|_| RuntimeSlotError::Recovery)?;
+        host.shutdown(crate::acp::runtime::RuntimeHost::close_deadline())
+            .map_err(|_| RuntimeSlotError::Recovery)?;
         let mut state = self.lock();
         match &*state {
             State::Recovery {

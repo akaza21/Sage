@@ -208,7 +208,7 @@ fn failed_finalize_retains_the_exact_zero_proof_for_explicit_recovery() {
             "worker:finalize:7",
         ]
     );
-    host.shutdown().unwrap();
+    host.shutdown(crate::acp::runtime::RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -231,7 +231,7 @@ fn zero_byte_retry_prepares_once_binds_once_and_reuses_store_minted_id() {
             "worker:observe:CompleteBytes",
         ]
     );
-    host.shutdown().unwrap();
+    host.shutdown(crate::acp::runtime::RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -249,7 +249,7 @@ fn possible_bytes_commit_delivery_unknown_without_retry() {
             "worker:observe:PossibleBytes",
         ]
     );
-    host.shutdown().unwrap();
+    host.shutdown(crate::acp::runtime::RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -271,7 +271,7 @@ fn close_commits_before_termination_and_finalizes_only_after_zero_proof() {
             "worker:finalize:7",
         ]
     );
-    host.shutdown().unwrap();
+    host.shutdown(crate::acp::runtime::RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -297,7 +297,7 @@ fn active_close_orders_session_cancel_adapter_control_and_termination_before_zer
             "worker:finalize:7",
         ]
     );
-    host.shutdown().unwrap();
+    host.shutdown(crate::acp::runtime::RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -319,5 +319,5 @@ fn terminal_cursor_is_forwarded_to_the_same_worker_owner() {
     )
     .unwrap();
     assert!(trace.values().contains(&"worker:terminal".to_owned()));
-    host.shutdown().unwrap();
+    host.shutdown(crate::acp::runtime::RuntimeHost::close_deadline()).unwrap();
 }

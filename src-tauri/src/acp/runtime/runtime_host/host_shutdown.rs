@@ -9,9 +9,12 @@ use super::host::{
 use super::types::{HostCommand, HostError, HostOutcome};
 
 impl RuntimeHost {
-    pub(crate) fn shutdown(&self) -> Result<(), HostError> {
-        let deadline = Instant::now()
-            + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+    pub(crate) fn close_deadline() -> Instant {
+        Instant::now()
+            + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close)
+    }
+
+    pub(crate) fn shutdown(&self, deadline: Instant) -> Result<(), HostError> {
         self.record_shutdown_phase("drain");
         match self.submit_with_timeout(
             HostCommand::State,

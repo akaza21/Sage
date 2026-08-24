@@ -106,7 +106,7 @@ async fn observe_zero_bytes(prepared: ExternalPrepared, deadline: FixtureDeadlin
         assert_eq!(host.activate(owner), Ok(HostOutcome::Activated));
         assert_eq!(host.send(prompt_intent), Err(HostError::RetryExhausted));
         assert_eq!(host.state(), Ok(HostState::Recovery));
-        host.shutdown().unwrap();
+        host.shutdown(RuntimeHost::close_deadline()).unwrap();
     })
     .unwrap();
     let host_result = host_thread.wait(host_deadline.saturating_duration_since(Instant::now()));

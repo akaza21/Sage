@@ -25,7 +25,7 @@ impl AcpService {
             if failure.is_none() {
                 self.record_shutdown_stage("runtime");
             }
-            if let Err(error) = runtime.shutdown() {
+            if let Err(error) = runtime.shutdown(started + budget) {
                 #[cfg(test)]
                 self.record_shutdown_stage(runtime.last_shutdown_phase());
                 self.runtime
@@ -125,7 +125,7 @@ impl Drop for AcpService {
         self.codex_auth.invalidate();
         let mut runtime_stopped = true;
         if let Some(runtime) = self.runtime.begin_shutdown()
-            && runtime.shutdown().is_err()
+            && runtime.shutdown(started + budget).is_err()
         {
             let _ = self.runtime.shutdown_failed();
             runtime_stopped = false;

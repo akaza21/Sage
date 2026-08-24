@@ -136,7 +136,7 @@ fn claim_never_overwrites_a_live_or_recovery_owner() {
         Err(RuntimeSlotError::Foreign)
     ));
     if let Some(host) = slot.begin_shutdown() {
-        host.shutdown().unwrap();
+        host.shutdown(RuntimeHost::close_deadline()).unwrap();
     }
     slot.finish_shutdown().unwrap();
 }
@@ -189,8 +189,8 @@ fn release_requires_the_exact_owner_and_host_then_reopens_the_slot() {
         slot.release(&first, &foreign_host),
         Err(RuntimeSlotError::Foreign)
     );
-    foreign_host.shutdown().unwrap();
-    first_host.shutdown().unwrap();
+    foreign_host.shutdown(RuntimeHost::close_deadline()).unwrap();
+    first_host.shutdown(RuntimeHost::close_deadline()).unwrap();
     slot.release(&first, &first_host).unwrap();
     assert!(!slot.is_active());
 
@@ -198,7 +198,7 @@ fn release_requires_the_exact_owner_and_host_then_reopens_the_slot() {
     let second_host = host(&second);
     slot.claim(second.clone(), Arc::clone(&second_host))
         .unwrap();
-    second_host.shutdown().unwrap();
+    second_host.shutdown(RuntimeHost::close_deadline()).unwrap();
     slot.release(&second, &second_host).unwrap();
 }
 
@@ -215,7 +215,7 @@ fn primed_host_is_not_addressable_until_runner_ready_is_published() {
     ));
     slot.publish_start(&active).unwrap();
     assert!(Arc::ptr_eq(&slot.for_owner(&active).unwrap(), &host));
-    host.shutdown().unwrap();
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
     slot.release(&active, &host).unwrap();
 }
 
@@ -250,7 +250,10 @@ fn failed_shutdown_retains_the_exact_owner_in_recovery_until_retry_succeeds() {
     .unwrap();
 
     let runtime = slot.begin_shutdown().expect("exact retained host");
-    assert_eq!(runtime.shutdown(), Err(HostError::Unavailable));
+    assert_eq!(
+        runtime.shutdown(RuntimeHost::close_deadline()),
+        Err(HostError::Unavailable)
+    );
     slot.shutdown_failed().unwrap();
     assert!(slot.is_active());
     assert!(matches!(
@@ -266,7 +269,7 @@ fn failed_shutdown_retains_the_exact_owner_in_recovery_until_retry_succeeds() {
 
     slot.begin_shutdown()
         .expect("same host retry")
-        .shutdown()
+        .shutdown(RuntimeHost::close_deadline())
         .unwrap();
     slot.finish_shutdown().unwrap();
     assert!(!slot.is_active());
@@ -313,8 +316,8 @@ fn explicit_recovery_close_releases_only_the_retained_exact_host() {
         Err(RuntimeSlotError::Foreign)
     );
     assert!(slot.is_active());
-    exact.shutdown().unwrap();
+    exact.shutdown(RuntimeHost::close_deadline()).unwrap();
     slot.release_recovered(&exact_owner, &exact).unwrap();
     assert!(!slot.is_active());
-    foreign.shutdown().unwrap();
+    foreign.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
