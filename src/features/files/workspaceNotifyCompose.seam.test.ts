@@ -45,6 +45,12 @@ describe("workspace notify compose", () => {
     expect(acceptWorkspaceNotifyNotice(notice, live)).toEqual(notice);
   });
 
+  it("accepts a resync notice and maps it to the root listing", () => {
+    const resync = { ...notice, relativePath: "lost-notices", kind: "resync" };
+    expect(acceptWorkspaceNotifyNotice(resync, live)).toEqual(resync);
+    expect(listingResourceForNotify(resync)).toEqual(childResource("root-a"));
+  });
+
   it("rejects a notice whose path or kind is outside the native bounds", () => {
     const oversize = "a".repeat(16 * 1024 + 1);
     expect(

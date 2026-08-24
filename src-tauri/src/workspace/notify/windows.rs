@@ -21,8 +21,10 @@ use windows_sys::Win32::{
 
 use super::{
     apply_unwatch_if_generation, deliver_workspace_notify_action, reject, WorkspaceNotifyError,
-    WORKSPACE_NOTIFY_EVENT,
+    OVERFLOW_NOTIFY_ACTION, OVERFLOW_RELATIVE_PATH, WORKSPACE_NOTIFY_EVENT,
 };
+
+const ERROR_NOTIFY_ENUM_DIR: i32 = 1022;
 
 const WAIT_OBJECT_0: u32 = 0;
 const WAIT_TIMEOUT: u32 = 258;
@@ -120,14 +122,20 @@ fn watch_opened_directory(
         }
         let mut received = 0_u32;
         let completed = unsafe { get_overlapped_result(handle, &overlapped, &mut received, 1) };
-        if completed == 0 {
-            if cancelled.load(Ordering::Acquire) {
-                return Ok(());
-            }
-            return Err(std::io::Error::last_os_error());
-        }
         if cancelled.load(Ordering::Acquire) {
             return Ok(());
+        }
+        if completed == 0 {
+            let last_error = std::io::Error::last_os_error();
+            if overflow_watch_completion(0, received, last_error.raw_os_error()) {
+                deliver(OVERFLOW_RELATIVE_PATH.to_string(), OVERFLOW_NOTIFY_ACTION);
+                continue;
+            }
+            return Err(last_error);
+        }
+        if overflow_watch_completion(completed, received, None) {
+            deliver(OVERFLOW_RELATIVE_PATH.to_string(), OVERFLOW_NOTIFY_ACTION);
+            continue;
         }
         for (name, action) in parse_notify_records(
             &buffer,
@@ -139,6 +147,13 @@ fn watch_opened_directory(
         }
     }
     Ok(())
+}
+
+fn overflow_watch_completion(completed: i32, received: u32, last_error: Option<i32>) -> bool {
+    if completed != 0 {
+        return received == 0;
+    }
+    last_error == Some(ERROR_NOTIFY_ENUM_DIR)
 }
 
 fn parse_notify_records(buffer: &[u8], received: usize) -> Vec<(String, u32)> {
@@ -288,6 +303,14 @@ mod tests {
         bytes[8..12].copy_from_slice(&(name.len() as u32).to_le_bytes());
         bytes.extend(name);
         bytes
+    }
+
+    #[test]
+    fn zero_byte_completion_is_overflow_resync() {
+        assert!(overflow_watch_completion(1, 0, None));
+        assert!(overflow_watch_completion(0, 0, Some(ERROR_NOTIFY_ENUM_DIR)));
+        assert!(!overflow_watch_completion(1, 16, None));
+        assert!(!overflow_watch_completion(0, 0, Some(5)));
     }
 
     #[test]

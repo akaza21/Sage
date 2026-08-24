@@ -1,13 +1,16 @@
 import { resourceKey } from "../domain/resourceIdentity";
-import { currentProjectLayout } from "./projectProjection";
+import type { ResourceRef } from "../domain/workbench";
 import {
+  MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
   WORKSPACE_NOTIFY_EVENT,
   syncLiveProjectWorkspaceNotify,
   type LiveProjectNotifyStamp,
   type WorkspaceNotifyHooks,
+  type WorkspaceNotifyNotice,
 } from "../features/files/workspaceNotifyCompose";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import { currentProjectLayout } from "./projectProjection";
 import type { WorkbenchState } from "./store";
 
 export function liveProjectNotifyStamp(
@@ -31,6 +34,56 @@ export function liveProjectNotifyStamp(
   };
 }
 
+function resourceFromKey(key: string): ResourceRef | null {
+  const colon = key.indexOf(":");
+  if (colon < 1) {
+    return null;
+  }
+  const length = Number(key.slice(0, colon));
+  if (!Number.isInteger(length) || length < 1) {
+    return null;
+  }
+  const rest = key.slice(colon + 1);
+  if (rest.length < length) {
+    return null;
+  }
+  return {
+    rootId: rest.slice(0, length),
+    relativePath: rest.slice(length),
+  };
+}
+
+function refreshListingsForResync(
+  get: () => WorkbenchState,
+  notice: WorkspaceNotifyNotice,
+): Promise<void> {
+  const seen = new Set<string>();
+  const loads: Array<Promise<void>> = [];
+  const add = (resource: ResourceRef) => {
+    if (
+      resource.rootId !== notice.rootId ||
+      seen.has(resourceKey(resource)) ||
+      loads.length >= MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS
+    ) {
+      return;
+    }
+    seen.add(resourceKey(resource));
+    loads.push(Promise.resolve(get().loadDirectory(resource, true)));
+  };
+  for (const entry of Object.values(get().directoryListings)) {
+    if (entry.phase === "ready") {
+      add(entry.value.resource);
+    }
+  }
+  for (const key of Object.keys(get().expandedDirectories)) {
+    const resource = resourceFromKey(key);
+    if (resource) {
+      add(resource);
+    }
+  }
+  return Promise.all(loads).then(() => undefined);
+}
+
 export function createWorkspaceNotifyHooks(
   get: () => WorkbenchState,
 ): WorkspaceNotifyHooks {
@@ -50,7 +103,10 @@ export function createWorkspaceNotifyHooks(
         emit(event.payload);
       });
     },
-    invalidate(_notice, listing) {
+    invalidate(notice, listing) {
+      if (notice.kind === "resync") {
+        return refreshListingsForResync(get, notice);
+      }
       const key = resourceKey(listing);
       if (get().directoryListings[key] || get().expandedDirectories[key]) {
         return get().loadDirectory(listing, true);

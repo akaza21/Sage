@@ -27,6 +27,8 @@ const MAX_RESOURCE_PATH_BYTES: usize = 16 * 1024;
 const MAX_ROOTS: usize = 8;
 const MAX_QUEUE: usize = 64;
 const MAX_WATCHES: usize = 8;
+pub(crate) const OVERFLOW_NOTIFY_ACTION: u32 = 8;
+pub(crate) const OVERFLOW_RELATIVE_PATH: &str = "lost-notices";
 
 pub const WORKSPACE_NOTIFY_EVENT: &str = "workspace-notify-v1";
 
@@ -170,7 +172,7 @@ fn notice(value: &Value) -> Result<WorkspaceNotifyNotice, WorkspaceNotifyError> 
         .ok_or_else(|| reject("schema-invalid"))?;
     let kind = value["kind"]
         .as_str()
-        .filter(|item| matches!(*item, "created" | "changed" | "deleted"))
+        .filter(|item| matches!(*item, "created" | "changed" | "deleted" | "resync"))
         .ok_or_else(|| reject("schema-invalid"))?;
     Ok(WorkspaceNotifyNotice {
         project_id: project_id.to_string(),
@@ -187,6 +189,7 @@ fn kind_for_action(action: u32) -> Option<&'static str> {
         1 | 5 => Some("created"),
         2 | 4 => Some("deleted"),
         3 => Some("changed"),
+        OVERFLOW_NOTIFY_ACTION => Some("resync"),
         _ => None,
     }
 }
@@ -725,6 +728,17 @@ mod tests {
             .classify("root-a", "src/main.ts", 9)
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn classify_overflow_action_is_resync_at_the_reserved_path() {
+        let notice = bind_ok()
+            .classify("root-a", OVERFLOW_RELATIVE_PATH, OVERFLOW_NOTIFY_ACTION)
+            .unwrap()
+            .unwrap();
+        assert_eq!(notice.kind, "resync");
+        assert_eq!(notice.relative_path, OVERFLOW_RELATIVE_PATH);
+        assert_eq!(notice.root_id, "root-a");
     }
 
     #[test]

@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { childResource, resourceKey } from "../domain/resourceIdentity";
 import type { BootstrapSnapshot } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { useWorkbenchStore } from "./store";
-import { unbindWorkspaceNotify } from "./workspaceNotifyLifecycle";
+import {
+  createWorkspaceNotifyHooks,
+  unbindWorkspaceNotify,
+} from "./workspaceNotifyLifecycle";
 
 const projectPort = getWorkbenchPorts().project;
 const initialState = useWorkbenchStore.getState();
@@ -84,6 +88,44 @@ describe("live Project workspace notify bind", () => {
     ).resolves.toBeUndefined();
     expect(useWorkbenchStore.getState().project?.id).toBe("project-a");
     expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+  });
+
+  it("refreshes cached listings for the root on a resync notice", async () => {
+    await useWorkbenchStore.getState().initialize();
+    const root = childResource("root-a");
+    const nested = { rootId: "root-a", relativePath: "src" };
+    useWorkbenchStore.setState({
+      directoryListings: {
+        [resourceKey(root)]: {
+          phase: "ready",
+          value: { resource: root, entries: [], truncated: false },
+        },
+        [resourceKey(nested)]: {
+          phase: "ready",
+          value: { resource: nested, entries: [], truncated: false },
+        },
+      },
+      expandedDirectories: { [resourceKey(nested)]: true },
+    });
+    projectPort.listDirectory.mockClear();
+    await createWorkspaceNotifyHooks(() =>
+      useWorkbenchStore.getState(),
+    ).invalidate(
+      {
+        projectId: "project-a",
+        projectGeneration: 1,
+        transitionEpoch: 7,
+        rootId: "root-a",
+        relativePath: "lost-notices",
+        kind: "resync",
+      },
+      root,
+    );
+    const refreshed = projectPort.listDirectory.mock.calls.map(
+      ([resource]) => resource,
+    );
+    expect(refreshed).toEqual(expect.arrayContaining([root, nested]));
+    expect(refreshed).toHaveLength(2);
   });
 
   it("unwatches when the workbench closes", async () => {

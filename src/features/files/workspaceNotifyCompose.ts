@@ -66,7 +66,7 @@ function safeCounter(value: unknown): number | null {
 }
 
 const MAX_NOTICE_PATH_BYTES = 16 * 1024;
-const NOTICE_KINDS = new Set(["created", "changed", "deleted"]);
+const NOTICE_KINDS = new Set(["created", "changed", "deleted", "resync"]);
 
 function boundedIdentifier(value: unknown): value is string {
   return (
@@ -144,6 +144,9 @@ export function acceptWorkspaceNotifyNotice(
 export function listingResourceForNotify(
   notice: WorkspaceNotifyNotice,
 ): ResourceRef {
+  if (notice.kind === "resync") {
+    return { rootId: notice.rootId, relativePath: "" };
+  }
   return parentResource({
     rootId: notice.rootId,
     relativePath: notice.relativePath,
