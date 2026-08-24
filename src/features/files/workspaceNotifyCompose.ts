@@ -68,16 +68,20 @@ export async function acquireNotifyListingSlot(): Promise<boolean> {
   await new Promise<void>((resolve) => {
     listingAdmissionWaiters.push(resolve);
   });
-  return epoch === listingAdmissionEpoch;
+  if (epoch !== listingAdmissionEpoch) {
+    return false;
+  }
+  if (listingAdmission >= MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS) {
+    return false;
+  }
+  listingAdmission += 1;
+  return true;
 }
 
 export function releaseNotifyListingSlot(): void {
-  if (listingAdmissionWaiters.length > 0) {
-    const next = listingAdmissionWaiters.shift();
-    next?.();
-    return;
-  }
   listingAdmission = Math.max(0, listingAdmission - 1);
+  const next = listingAdmissionWaiters.shift();
+  next?.();
 }
 
 export function resetNotifyListingAdmission(): void {
@@ -208,6 +212,7 @@ export function publishWorkspaceNotifySearch(
 export function resetWorkspaceNotifyComposeForTests(): void {
   searchSubscribers.clear();
   resetNotifyListingAdmission();
+  listingAdmission = 0;
 }
 
 function sameLiveStamp(
