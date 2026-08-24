@@ -50,12 +50,34 @@ const betaAcceptanceSha256 = createHash("sha256")
   .digest("hex");
 if (
   betaAcceptanceSha256 !==
-    "c947f075aea6ae44f425a9a1db983024bb4acebc7b1de64194e5d774776a6b7a" ||
+    "a6e976aeaf68b1285c4019f131a5859af327293c363d308fb96c23ced67603af" ||
   betaAcceptance.schemaVersion !== 1 ||
-  betaAcceptance.status !== "frozen-thresholds-awaiting-candidate-verifier" ||
+  betaAcceptance.status !== "frozen-thresholds-verifier-local-green" ||
   betaAcceptance.workItem !== "BETA-0001"
 ) {
   fail("BETA-0001 acceptance contract drifted from its reviewed v1 bytes.");
+}
+const betaCandidateRelativePath =
+  "docs/work-items/BETA-0001-primary-beta-path/contracts/beta-candidate-evidence-v1.json";
+const betaCandidateBytes = await readFile(
+  path.join(root, betaCandidateRelativePath),
+);
+const betaCandidate = JSON.parse(betaCandidateBytes.toString("utf8"));
+const betaCandidateSha256 = createHash("sha256")
+  .update(betaCandidateBytes)
+  .digest("hex");
+if (
+  betaCandidateSha256 !==
+    "0e02f56048c969784d9fdb43e1a8b47e47a992e1c4234c033b851f91c9336b3b" ||
+  betaCandidate.schemaVersion !== 1 ||
+  betaCandidate.status !== "frozen-verdict-matrix" ||
+  betaCandidate.workItem !== "BETA-0001" ||
+  betaCandidate.thresholdAuthority?.relativePath !==
+    "beta-acceptance-v1.json" ||
+  betaCandidate.thresholdAuthority?.bytes !== betaAcceptanceBytes.length ||
+  betaCandidate.thresholdAuthority?.sha256 !== betaAcceptanceSha256
+) {
+  fail("BETA-0001 candidate matrix or one-way threshold authority drifted.");
 }
 const betaContractDirectory = path.dirname(
   path.join(root, betaAcceptanceRelativePath),

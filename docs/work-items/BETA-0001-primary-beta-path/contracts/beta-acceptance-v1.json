@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "frozen-thresholds-awaiting-candidate-verifier",
+  "status": "frozen-thresholds-verifier-local-green",
   "workItem": "BETA-0001",
   "candidate": {
     "platform": "windows",
@@ -74,7 +74,7 @@
     "testMayChangeCeiling": false
   },
   "candidateVerifier": {
-    "status": "planned",
+    "status": "local-green-no-candidate-evidence",
     "requiredBeforeFeatureFreezeCampaign": true,
     "mustAuthenticateThisContractSha256": true,
     "mustDefineEveryIncludedJourneyResult": true,
