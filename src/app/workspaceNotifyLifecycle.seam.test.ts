@@ -107,7 +107,8 @@ describe("live Project workspace notify bind", () => {
       },
       expandedDirectories: { [resourceKey(nested)]: true },
     });
-    projectPort.listDirectory.mockClear();
+    const listDirectory = vi.mocked(projectPort.listDirectory);
+    listDirectory.mockClear();
     await createWorkspaceNotifyHooks(() =>
       useWorkbenchStore.getState(),
     ).invalidate(
@@ -121,9 +122,7 @@ describe("live Project workspace notify bind", () => {
       },
       root,
     );
-    const refreshed = projectPort.listDirectory.mock.calls.map(
-      ([resource]) => resource,
-    );
+    const refreshed = listDirectory.mock.calls.map(([resource]) => resource);
     expect(refreshed).toEqual(expect.arrayContaining([root, nested]));
     expect(refreshed).toHaveLength(2);
   });

@@ -222,6 +222,12 @@ describe("workspace notify compose", () => {
       emit({ ...notice, relativePath: `dir-${index}/file.ts` });
     }
     expect(invalidate).toHaveBeenCalledTimes(8);
+    emit({ ...notice, relativePath: "lost-notices", kind: "resync" });
+    expect(invalidate).toHaveBeenCalledTimes(9);
+    expect(invalidate).toHaveBeenCalledWith(
+      { ...notice, relativePath: "lost-notices", kind: "resync" },
+      childResource("root-a"),
+    );
   });
 
   it("ignores a ninth Search subscriber", () => {

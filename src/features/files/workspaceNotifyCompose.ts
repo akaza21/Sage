@@ -236,6 +236,10 @@ export async function syncLiveProjectWorkspaceNotify(
     }
     publishWorkspaceNotifySearch(accepted);
     const listing = listingResourceForNotify(accepted);
+    if (accepted.kind === "resync") {
+      void Promise.resolve(hooks.invalidate(accepted, listing));
+      return;
+    }
     const key = `${listing.rootId}\0${listing.relativePath}`;
     if (inflight.has(key)) {
       return;
