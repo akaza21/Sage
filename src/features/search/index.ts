@@ -4,6 +4,10 @@ export {
   coordinateWorkspaceSearchIndex,
   type WorkspaceSearchIndexStamp,
 } from "./workspaceSearchContinuation";
+export {
+  assertIde1ProjectExplorerSearchFileJourney,
+  type Ide1JourneyInput,
+} from "./ide1ProjectExplorerSearchFile";
 export type {
   WorkspaceSearchGateway,
   WorkspaceSearchMatch,
