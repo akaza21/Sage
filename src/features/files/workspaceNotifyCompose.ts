@@ -45,7 +45,10 @@ export interface WorkspaceNotifyHooks {
   listen(
     emit: (value: unknown) => void,
   ): Promise<() => void>;
-  invalidate(notice: WorkspaceNotifyNotice, listing: ResourceRef): void;
+  invalidate(
+    notice: WorkspaceNotifyNotice,
+    listing: ResourceRef,
+  ): void | Promise<void>;
 }
 
 interface BoundNotifySession {
@@ -199,6 +202,30 @@ export async function syncLiveProjectWorkspaceNotify(
     session.unlisten();
     session = null;
   }
+  const inflight = new Set<string>();
+  const unlisten = await hooks.listen((value) => {
+    if (!session) {
+      return;
+    }
+    const accepted = acceptWorkspaceNotifyNotice(value, session.live);
+    if (!accepted) {
+      return;
+    }
+    publishWorkspaceNotifySearch(accepted);
+    const listing = listingResourceForNotify(accepted);
+    const key = `${listing.rootId}\0${listing.relativePath}`;
+    if (
+      inflight.size >= MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS &&
+      !inflight.has(key)
+    ) {
+      return;
+    }
+    inflight.add(key);
+    void Promise.resolve(hooks.invalidate(accepted, listing)).finally(() => {
+      inflight.delete(key);
+    });
+  });
+  session = { live, unlisten, inflight };
   try {
     await hooks.watch({
       stamp: {
@@ -210,29 +237,5 @@ export async function syncLiveProjectWorkspaceNotify(
     });
   } catch {
     await dropSession(hooks);
-    return;
   }
-  const unlisten = await hooks.listen((value) => {
-    if (!session) {
-      return;
-    }
-    const accepted = acceptWorkspaceNotifyNotice(value, session.live);
-    if (!accepted) {
-      return;
-    }
-    const listing = listingResourceForNotify(accepted);
-    const key = `${listing.rootId}\0${listing.relativePath}`;
-    if (
-      session.inflight.size >= MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS &&
-      !session.inflight.has(key)
-    ) {
-      return;
-    }
-    session.inflight.add(key);
-    hooks.invalidate(accepted, listing);
-    queueMicrotask(() => {
-      session?.inflight.delete(key);
-    });
-  });
-  session = { live, unlisten, inflight: new Set() };
 }

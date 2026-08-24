@@ -2,7 +2,6 @@ import { resourceKey } from "../domain/resourceIdentity";
 import { currentProjectLayout } from "./projectProjection";
 import {
   WORKSPACE_NOTIFY_EVENT,
-  publishWorkspaceNotifySearch,
   syncLiveProjectWorkspaceNotify,
   type LiveProjectNotifyStamp,
   type WorkspaceNotifyHooks,
@@ -51,12 +50,12 @@ export function createWorkspaceNotifyHooks(
         emit(event.payload);
       });
     },
-    invalidate(notice, listing) {
-      publishWorkspaceNotifySearch(notice);
+    invalidate(_notice, listing) {
       const key = resourceKey(listing);
       if (get().directoryListings[key] || get().expandedDirectories[key]) {
-        void get().loadDirectory(listing, true);
+        return get().loadDirectory(listing, true);
       }
+      return undefined;
     },
   };
 }

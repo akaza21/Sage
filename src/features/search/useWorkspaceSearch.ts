@@ -282,13 +282,16 @@ export function useWorkspaceSearch({
 
   const submitRef = useRef(submit);
   submitRef.current = submit;
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     return subscribeWorkspaceNotifySearch((notice) => {
       if (
         notice.projectId !== projectId ||
         notice.projectGeneration !== indexGeneration ||
-        notice.transitionEpoch !== transitionEpoch
+        notice.transitionEpoch !== transitionEpoch ||
+        stateRef.current.phase !== "results"
       ) {
         return;
       }

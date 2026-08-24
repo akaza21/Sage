@@ -115,4 +115,26 @@ describe("workspace notify compose", () => {
 
     expect(unwatch).toHaveBeenCalledWith({ projectId: "project-a" });
   });
+
+  it("listens before watch so queued notices are not dropped", async () => {
+    const order: string[] = [];
+    const invalidate = vi.fn();
+    let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
+    await syncLiveProjectWorkspaceNotify(live, {
+      async watch() {
+        order.push("watch");
+        emit(notice);
+        return { generation: 1 };
+      },
+      unwatch: vi.fn(),
+      async listen(next) {
+        order.push("listen");
+        emit = next;
+        return () => undefined;
+      },
+      invalidate,
+    });
+    expect(order).toEqual(["listen", "watch"]);
+    expect(invalidate).toHaveBeenCalledTimes(1);
+  });
 });
