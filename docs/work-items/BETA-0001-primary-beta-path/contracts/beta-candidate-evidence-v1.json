@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 1,
+  "status": "frozen-verdict-matrix",
+  "workItem": "BETA-0001",
+  "thresholdAuthority": {
+    "relativePath": "beta-acceptance-v1.json",
+    "bytes": 3017,
+    "sha256": "a6e976aeaf68b1285c4019f131a5859af327293c363d308fb96c23ced67603af"
+  },
+  "limits": {
+    "resultBytesMaximum": 262144,
+    "evidenceBytesMaximum": 1048576,
+    "evidenceAggregateBytesMaximum": 4194304,
+    "jsonDepthMaximum": 32,
+    "jsonNodesMaximum": 16384,
+    "stringBytesMaximum": 4096,
+    "relativePathBytesMaximum": 512,
+    "evidenceCount": 20
+  },
+  "requiredEvidence": [
+    { "id": "windows.source-package", "metrics": [] },
+    { "id": "windows.installed-lifecycle", "metrics": [] },
+    { "id": "projects.workbench-multiroot", "metrics": [] },
+    { "id": "resources.explorer", "metrics": [] },
+    { "id": "editor.file-diff-recovery-find", "metrics": [] },
+    { "id": "search.workspace", "metrics": [] },
+    { "id": "git.basic", "metrics": [] },
+    { "id": "chat.lifecycle-handoff", "metrics": [] },
+    { "id": "acp.durable-edit-summary", "metrics": [] },
+    {
+      "id": "codex.account-models",
+      "metrics": [
+        {
+          "name": "observedModels",
+          "operator": "minimum",
+          "thresholdField": "minimumObservedModels"
+        }
+      ]
+    },
+    {
+      "id": "codex.multichat-turn-restart-cancel",
+      "metrics": [
+        {
+          "name": "distinctChats",
+          "operator": "minimum",
+          "thresholdField": "minimumDistinctChats"
+        },
+        {
+          "name": "sequentialTurnsInOneSession",
+          "operator": "minimum",
+          "thresholdField": "minimumSequentialTurnsInOneSession"
+        },
+        {
+          "name": "successfulTurns",
+          "operator": "minimum",
+          "thresholdField": "minimumSuccessfulTurns"
+        },
+        {
+          "name": "restartResumeThenTurnCycles",
+          "operator": "minimum",
+          "thresholdField": "minimumRestartResumeThenTurnCycles"
+        },
+        {
+          "name": "cancelThenReuseCycles",
+          "operator": "minimum",
+          "thresholdField": "minimumCancelThenReuseCycles"
+        },
+        {
+          "name": "cleanCycles",
+          "operator": "minimum",
+          "thresholdField": "minimumCleanCycles"
+        },
+        {
+          "name": "failureCycles",
+          "operator": "minimum",
+          "thresholdField": "minimumFailureCycles"
+        }
+      ]
+    },
+    {
+      "id": "codex.process-convergence",
+      "metrics": [
+        {
+          "name": "orphanProcessesAfterClose",
+          "operator": "maximum",
+          "thresholdField": "maximumOrphanProcessesAfterClose"
+        }
+      ]
+    },
+    { "id": "renderer.a11y-reload-focus", "metrics": [] },
+    {
+      "id": "security.authority-secrets",
+      "metrics": [
+        {
+          "name": "secretExposureObservations",
+          "operator": "maximum",
+          "thresholdField": "maximumSecretExposureObservations"
+        },
+        {
+          "name": "unauthorizedMutationObservations",
+          "operator": "maximum",
+          "thresholdField": "maximumUnauthorizedMutationObservations"
+        },
+        {
+          "name": "unexpectedListenerCount",
+          "operator": "maximum",
+          "thresholdField": "unexpectedListenerCountMaximum"
+        },
+        {
+          "name": "unexpectedEnvironmentEntryCount",
+          "operator": "maximum",
+          "thresholdField": "unexpectedEnvironmentEntryCountMaximum"
+        }
+      ]
+    },
+    { "id": "recovery.crash-cleanup", "metrics": [] },
+    {
+      "id": "performance.resource-storage",
+      "metrics": [
+        {
+          "name": "latencySamples",
+          "operator": "minimum",
+          "thresholdField": "minimumLatencySamples"
+        },
+        {
+          "name": "managedArtifactLogicalBytes",
+          "operator": "maximum",
+          "thresholdField": "managedArtifactLogicalBytesMaximum"
+        },
+        {
+          "name": "managedStateLogicalBytes",
+          "operator": "maximum",
+          "thresholdField": "managedStateLogicalBytesMaximum"
+        },
+        {
+          "name": "managedStateAllocatedBytes",
+          "operator": "maximum",
+          "thresholdField": "managedStateAllocatedBytesMaximum"
+        },
+        {
+          "name": "operationalRuntimeTrees",
+          "operator": "maximum",
+          "thresholdField": "operationalRuntimeTreesMaximum"
+        },
+        {
+          "name": "operationalProcessCount",
+          "operator": "maximum",
+          "thresholdField": "operationalProcessCountMaximum"
+        },
+        {
+          "name": "operationalTreePrivateBytesP95",
+          "operator": "maximum",
+          "thresholdField": "operationalTreePrivateBytesP95Maximum"
+        },
+        {
+          "name": "readyIdleCpuSingleCorePercentP95",
+          "operator": "maximum",
+          "thresholdField": "readyIdleCpuSingleCorePercentP95Maximum"
+        },
+        {
+          "name": "spawnToProcessReadyP95Ms",
+          "operator": "maximum",
+          "thresholdField": "spawnToProcessReadyP95MsMaximum"
+        },
+        {
+          "name": "initializeP95Ms",
+          "operator": "maximum",
+          "thresholdField": "initializeP95MsMaximum"
+        },
+        {
+          "name": "promptWriteCompleteToFirstNormalizedOutputP95Ms",
+          "operator": "maximum",
+          "thresholdField": "promptWriteCompleteToFirstNormalizedOutputP95MsMaximum"
+        },
+        {
+          "name": "cancelDispatchP95Ms",
+          "operator": "maximum",
+          "thresholdField": "cancelDispatchP95MsMaximum"
+        },
+        {
+          "name": "cancelTerminalP95Ms",
+          "operator": "maximum",
+          "thresholdField": "cancelTerminalP95MsMaximum"
+        },
+        {
+          "name": "explicitCloseP95Ms",
+          "operator": "maximum",
+          "thresholdField": "explicitCloseP95MsMaximum"
+        },
+        {
+          "name": "databaseBytes",
+          "operator": "maximum",
+          "thresholdField": "databaseBytesMaximum"
+        },
+        {
+          "name": "walBytes",
+          "operator": "maximum",
+          "thresholdField": "walBytesMaximum"
+        }
+      ]
+    },
+    { "id": "macos.shared-contract-ci", "metrics": [] },
+    { "id": "review.standards", "metrics": [] },
+    { "id": "review.spec", "metrics": [] },
+    { "id": "test.independent", "metrics": [] }
+  ]
+}

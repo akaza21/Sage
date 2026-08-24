@@ -21,7 +21,7 @@ async function contract() {
 test("beta contract freezes single-root Codex multi-Chat durability", async () => {
   const value = await contract();
 
-  assert.equal(value.status, "frozen-thresholds-awaiting-candidate-verifier");
+  assert.equal(value.status, "frozen-thresholds-verifier-local-green");
   assert.equal(value.codexJourney.projectRootMode, "single-root-project-only");
   assert.equal(value.codexJourney.minimumDistinctChats, 2);
   assert.equal(value.codexJourney.minimumSequentialTurnsInOneSession, 2);
@@ -49,7 +49,10 @@ test("beta contract binds executable Codex ceilings and acceptance owners", asyn
   assert.equal(value.candidate.freshSpecReviewRequired, true);
   assert.equal(value.candidate.independentTestRequired, true);
 
-  assert.equal(value.candidateVerifier.status, "planned");
+  assert.equal(
+    value.candidateVerifier.status,
+    "local-green-no-candidate-evidence",
+  );
   assert.equal(
     value.candidateVerifier.requiredBeforeFeatureFreezeCampaign,
     true,
