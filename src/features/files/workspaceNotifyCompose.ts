@@ -82,7 +82,6 @@ export function releaseNotifyListingSlot(): void {
 
 export function resetNotifyListingAdmission(): void {
   listingAdmissionEpoch += 1;
-  listingAdmission = 0;
   const pending = listingAdmissionWaiters.splice(0);
   for (const resolve of pending) {
     resolve();
