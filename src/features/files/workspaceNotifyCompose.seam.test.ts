@@ -200,6 +200,7 @@ describe("workspace notify compose", () => {
   });
 
   it("drops a ninth distinct in-flight listing refresh", async () => {
+    expect(MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS).toBe(8);
     let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
     const invalidate = vi.fn(() => new Promise<void>(() => undefined));
     await syncLiveProjectWorkspaceNotify(live, {
@@ -211,22 +212,17 @@ describe("workspace notify compose", () => {
       },
       invalidate,
     });
-    for (
-      let index = 0;
-      index < MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS + 1;
-      index += 1
-    ) {
+    for (let index = 0; index < 9; index += 1) {
       emit({ ...notice, relativePath: `dir-${index}/file.ts` });
     }
-    expect(invalidate).toHaveBeenCalledTimes(
-      MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
-    );
+    expect(invalidate).toHaveBeenCalledTimes(8);
   });
 
   it("ignores a ninth Search subscriber", () => {
+    expect(MAX_NOTIFY_SEARCH_SUBSCRIBERS).toBe(8);
     const heard: number[] = [];
     const unsubscribers: Array<() => void> = [];
-    for (let index = 0; index < MAX_NOTIFY_SEARCH_SUBSCRIBERS + 1; index += 1) {
+    for (let index = 0; index < 9; index += 1) {
       const slot = index;
       unsubscribers.push(
         subscribeWorkspaceNotifySearch(() => {
@@ -235,12 +231,7 @@ describe("workspace notify compose", () => {
       );
     }
     publishWorkspaceNotifySearch(notice);
-    expect(heard).toEqual(
-      Array.from(
-        { length: MAX_NOTIFY_SEARCH_SUBSCRIBERS },
-        (_, index) => index,
-      ),
-    );
+    expect(heard).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
     for (const unsubscribe of unsubscribers) {
       unsubscribe();
     }
