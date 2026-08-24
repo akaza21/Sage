@@ -137,4 +137,28 @@ describe("workspace notify compose", () => {
     expect(order).toEqual(["listen", "watch"]);
     expect(invalidate).toHaveBeenCalledTimes(1);
   });
+
+  it("coalesces a second notice for a listing that is already refreshing", async () => {
+    let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
+    let finish: () => void = () => undefined;
+    const invalidate = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await syncLiveProjectWorkspaceNotify(live, {
+      watch: vi.fn().mockResolvedValue({ generation: 1 }),
+      unwatch: vi.fn(),
+      async listen(next) {
+        emit = next;
+        return () => undefined;
+      },
+      invalidate,
+    });
+    emit(notice);
+    emit(notice);
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    finish();
+  });
 });

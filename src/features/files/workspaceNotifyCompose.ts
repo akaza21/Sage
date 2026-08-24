@@ -214,10 +214,10 @@ export async function syncLiveProjectWorkspaceNotify(
     publishWorkspaceNotifySearch(accepted);
     const listing = listingResourceForNotify(accepted);
     const key = `${listing.rootId}\0${listing.relativePath}`;
-    if (
-      inflight.size >= MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS &&
-      !inflight.has(key)
-    ) {
+    if (inflight.has(key)) {
+      return;
+    }
+    if (inflight.size >= MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS) {
       return;
     }
     inflight.add(key);
