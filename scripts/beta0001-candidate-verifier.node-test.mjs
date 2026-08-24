@@ -548,6 +548,53 @@ test("identity replacement during read is evidence-identity-changed", async () =
   }
 });
 
+test("evidence root identity change during read is rejected", async () => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "beta0001-candidate-root-read-"),
+  );
+  const id = "git.basic";
+  await writeFile(path.join(root, `${id}.json`), "{}");
+  try {
+    await rejectsCode(
+      () =>
+        readBoundedPlainEvidenceFile({
+          root,
+          id,
+          maximumBytes: 2,
+          onAfterOpen: async () => {
+            await writeFile(path.join(root, "root-identity-marker"), "changed");
+          },
+        }),
+      "evidence-identity-changed",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("file disappearance after first snapshot is evidence-identity-changed, not incomplete", async () => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "beta0001-candidate-disappear-"),
+  );
+  const id = "git.basic";
+  const file = path.join(root, `${id}.json`);
+  await writeFile(file, "{}");
+  try {
+    await rejectsCode(
+      () =>
+        readBoundedPlainEvidenceFile({
+          root,
+          id,
+          maximumBytes: 2,
+          onAfterOpen: () => unlink(file),
+        }),
+      "evidence-identity-changed",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("result evidence and aggregate-byte ceilings accept exact and reject plus one", async () => {
   const exact = await fixture();
   exact.bytes = Buffer.concat([

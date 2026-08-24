@@ -95,6 +95,16 @@ function assertPlain(metadata) {
   }
 }
 
+function assertPlainDirectory(metadata) {
+  if (
+    !metadata.isDirectory() ||
+    metadata.isSymbolicLink() ||
+    metadata.nlink !== 1n
+  ) {
+    reject("evidence-link");
+  }
+}
+
 export async function readBoundedPlainEvidenceFile({
   root,
   id,
@@ -119,13 +129,7 @@ export async function readBoundedPlainEvidenceFile({
   } catch {
     reject("evidence-path-invalid");
   }
-  if (
-    !rootMetadata.isDirectory() ||
-    rootMetadata.isSymbolicLink() ||
-    rootMetadata.nlink !== 1n
-  ) {
-    reject("evidence-link");
-  }
+  assertPlainDirectory(rootMetadata);
   const file = path.join(root, `${component}.json`);
   const before = await lstat(file, { bigint: true });
   assertPlain(before);
@@ -154,8 +158,20 @@ export async function readBoundedPlainEvidenceFile({
     }
     if (offset > maximumBytes) reject("evidence-oversize");
     const afterRead = await handle.stat({ bigint: true });
-    const afterPath = await lstat(file, { bigint: true });
-    if (!sameIdentity(opened, afterRead) || !sameIdentity(before, afterPath)) {
+    let afterPath;
+    let afterRoot;
+    try {
+      afterPath = await lstat(file, { bigint: true });
+      afterRoot = await lstat(root, { bigint: true });
+    } catch {
+      reject("evidence-identity-changed");
+    }
+    assertPlainDirectory(afterRoot);
+    if (
+      !sameIdentity(opened, afterRead) ||
+      !sameIdentity(before, afterPath) ||
+      !sameIdentity(rootMetadata, afterRoot)
+    ) {
       reject("evidence-identity-changed");
     }
     return buffer.subarray(0, offset);
