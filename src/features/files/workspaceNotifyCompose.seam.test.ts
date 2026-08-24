@@ -5,8 +5,11 @@ import {
   MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
   MAX_NOTIFY_SEARCH_SUBSCRIBERS,
   acceptWorkspaceNotifyNotice,
+  acquireNotifyListingSlot,
   listingResourceForNotify,
   publishWorkspaceNotifySearch,
+  releaseNotifyListingSlot,
+  resetNotifyListingAdmission,
   resetWorkspaceNotifyComposeForTests,
   subscribeWorkspaceNotifySearch,
   syncLiveProjectWorkspaceNotify,
@@ -43,6 +46,12 @@ describe("workspace notify compose", () => {
 
   it("accepts a notice that matches the live Project stamp", () => {
     expect(acceptWorkspaceNotifyNotice(notice, live)).toEqual(notice);
+  });
+
+  it("accepts a resync notice and maps it to the root listing", () => {
+    const resync = { ...notice, relativePath: "lost-notices", kind: "resync" };
+    expect(acceptWorkspaceNotifyNotice(resync, live)).toEqual(resync);
+    expect(listingResourceForNotify(resync)).toEqual(childResource("root-a"));
   });
 
   it("rejects a notice whose path or kind is outside the native bounds", () => {
@@ -216,6 +225,34 @@ describe("workspace notify compose", () => {
       emit({ ...notice, relativePath: `dir-${index}/file.ts` });
     }
     expect(invalidate).toHaveBeenCalledTimes(8);
+    emit({ ...notice, relativePath: "lost-notices", kind: "resync" });
+    expect(invalidate).toHaveBeenCalledTimes(9);
+    expect(invalidate).toHaveBeenCalledWith(
+      { ...notice, relativePath: "lost-notices", kind: "resync" },
+      childResource("root-a"),
+    );
+  });
+
+  it("does not leak a listing slot when release wakes a waiter then reset runs", async () => {
+    const held = await Promise.all(
+      Array.from({ length: MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS }, () =>
+        acquireNotifyListingSlot(),
+      ),
+    );
+    expect(held.every(Boolean)).toBe(true);
+    let ninth: boolean | undefined;
+    const ninthPending = acquireNotifyListingSlot().then((acquired) => {
+      ninth = acquired;
+      return acquired;
+    });
+    releaseNotifyListingSlot();
+    resetNotifyListingAdmission();
+    await expect(ninthPending).resolves.toBe(false);
+    expect(ninth).toBe(false);
+    await expect(acquireNotifyListingSlot()).resolves.toBe(true);
+    for (let index = 0; index < MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS; index += 1) {
+      releaseNotifyListingSlot();
+    }
   });
 
   it("ignores a ninth Search subscriber", () => {

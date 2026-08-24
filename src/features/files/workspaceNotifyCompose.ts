@@ -55,6 +55,42 @@ interface BoundNotifySession {
 
 const searchSubscribers = new Set<(notice: WorkspaceNotifyNotice) => void>();
 let session: BoundNotifySession | null = null;
+let listingAdmission = 0;
+let listingAdmissionEpoch = 0;
+const listingAdmissionWaiters: Array<() => void> = [];
+
+export async function acquireNotifyListingSlot(): Promise<boolean> {
+  const epoch = listingAdmissionEpoch;
+  if (listingAdmission < MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS) {
+    listingAdmission += 1;
+    return epoch === listingAdmissionEpoch;
+  }
+  await new Promise<void>((resolve) => {
+    listingAdmissionWaiters.push(resolve);
+  });
+  if (epoch !== listingAdmissionEpoch) {
+    return false;
+  }
+  if (listingAdmission >= MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS) {
+    return false;
+  }
+  listingAdmission += 1;
+  return true;
+}
+
+export function releaseNotifyListingSlot(): void {
+  listingAdmission = Math.max(0, listingAdmission - 1);
+  const next = listingAdmissionWaiters.shift();
+  next?.();
+}
+
+export function resetNotifyListingAdmission(): void {
+  listingAdmissionEpoch += 1;
+  const pending = listingAdmissionWaiters.splice(0);
+  for (const resolve of pending) {
+    resolve();
+  }
+}
 
 function safeCounter(value: unknown): number | null {
   return typeof value === "number" &&
@@ -66,7 +102,7 @@ function safeCounter(value: unknown): number | null {
 }
 
 const MAX_NOTICE_PATH_BYTES = 16 * 1024;
-const NOTICE_KINDS = new Set(["created", "changed", "deleted"]);
+const NOTICE_KINDS = new Set(["created", "changed", "deleted", "resync"]);
 
 function boundedIdentifier(value: unknown): value is string {
   return (
@@ -144,6 +180,9 @@ export function acceptWorkspaceNotifyNotice(
 export function listingResourceForNotify(
   notice: WorkspaceNotifyNotice,
 ): ResourceRef {
+  if (notice.kind === "resync") {
+    return { rootId: notice.rootId, relativePath: "" };
+  }
   return parentResource({
     rootId: notice.rootId,
     relativePath: notice.relativePath,
@@ -172,6 +211,8 @@ export function publishWorkspaceNotifySearch(
 
 export function resetWorkspaceNotifyComposeForTests(): void {
   searchSubscribers.clear();
+  resetNotifyListingAdmission();
+  listingAdmission = 0;
 }
 
 function sameLiveStamp(
@@ -198,6 +239,7 @@ async function dropSession(
   const projectId = session.live.projectId;
   session.unlisten();
   session = null;
+  resetNotifyListingAdmission();
   try {
     await hooks.unwatch({ projectId });
   } catch {
@@ -233,6 +275,10 @@ export async function syncLiveProjectWorkspaceNotify(
     }
     publishWorkspaceNotifySearch(accepted);
     const listing = listingResourceForNotify(accepted);
+    if (accepted.kind === "resync") {
+      void Promise.resolve(hooks.invalidate(accepted, listing));
+      return;
+    }
     const key = `${listing.rootId}\0${listing.relativePath}`;
     if (inflight.has(key)) {
       return;
