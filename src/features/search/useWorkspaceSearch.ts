@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { subscribeWorkspaceNotifySearch } from "../files/workspaceNotifyCompose";
 import type {
   WorkspaceSearchGateway,
   WorkspaceSearchResponse,
@@ -278,6 +279,22 @@ export function useWorkspaceSearch({
     state.query,
     transitionEpoch,
   ]);
+
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+
+  useEffect(() => {
+    return subscribeWorkspaceNotifySearch((notice) => {
+      if (
+        notice.projectId !== projectId ||
+        notice.projectGeneration !== indexGeneration ||
+        notice.transitionEpoch !== transitionEpoch
+      ) {
+        return;
+      }
+      void submitRef.current();
+    });
+  }, [indexGeneration, projectId, transitionEpoch]);
 
   return { state, setQuery, setCaseSensitive, submit, continueSearch, cancel };
 }

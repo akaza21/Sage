@@ -6,6 +6,7 @@ import { projectChatOwnership } from "./chatOwnershipProjection";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import { snapshotProjection } from "./projectProjection";
 import type { WorkbenchState } from "./store";
+import { bindWorkspaceNotifyFromState } from "./workspaceNotifyLifecycle";
 
 export async function loadProjectProjection(
   set: StoreApi<WorkbenchState>["setState"],
@@ -56,5 +57,10 @@ export async function loadProjectProjection(
   }
   if (!projectId || matchesProjectIntent(get(), generation, projectId)) {
     set({ projectTransitioning: false });
+    try {
+      await bindWorkspaceNotifyFromState(get);
+    } catch {
+      /* watch failure must not fail Project projection */
+    }
   }
 }
