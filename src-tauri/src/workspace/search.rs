@@ -18,7 +18,10 @@ mod tests {
 
     use super::{
         engine::SearchEngine,
-        types::{SearchLimits, SearchRoot, SearchRootSource, WorkspaceSearchRequest},
+        types::{
+            ContinuationCursor, SearchLimits, SearchRoot, SearchRootSource, WorkspaceSearchRequest,
+            encode_continuation_token,
+        },
     };
     use crate::workspace::Workspace;
 
@@ -280,6 +283,70 @@ mod tests {
                 .to_string()
                 .contains("workspace search continuation is invalid")
         );
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn oversize_continuation_token_is_invalid() {
+        let (path, root) = fixture_root();
+        let error = SearchEngine::new(SearchLimits::default())
+            .search(
+                WorkspaceSearchRequest {
+                    continuation_token: Some("x".repeat(1025)),
+                    ..request("needle")
+                },
+                vec![root],
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("workspace search continuation is invalid")
+        );
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn oversized_encoded_token_is_omitted() {
+        let token = encode_continuation_token(
+            &request("needle"),
+            "needle",
+            &ContinuationCursor {
+                root_id: "root-test".into(),
+                relative_path: "a".repeat(2000),
+                line_number: 1,
+                column_number: 1,
+            },
+        );
+        assert!(token.is_none());
+    }
+
+    #[test]
+    fn post_cursor_siblings_charge_the_page_entry_budget() {
+        let (path, root) = fixture_root();
+        fs::write(path.join("another.txt"), "needle needle\n").unwrap();
+        let limits = SearchLimits {
+            max_results: 1,
+            ..SearchLimits::default()
+        };
+        let first = SearchEngine::new(limits)
+            .search(request("needle"), vec![root])
+            .unwrap();
+        let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
+        let second = SearchEngine::new(limits)
+            .search(
+                WorkspaceSearchRequest {
+                    continuation_token: first.continuation_token,
+                    ..request("needle")
+                },
+                vec![SearchRoot {
+                    root_id: "root-test".into(),
+                    root_name: "fixture".into(),
+                    source: SearchRootSource::Available(workspace),
+                }],
+            )
+            .unwrap();
+        assert!(second.roots[0].entries_visited > 0);
         fs::remove_dir_all(path).unwrap();
     }
 
