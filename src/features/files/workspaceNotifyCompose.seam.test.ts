@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { childResource, parentResource } from "../../domain/resourceIdentity";
 import {
   MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
+  MAX_NOTIFY_LISTING_WAITERS,
   MAX_NOTIFY_SEARCH_SUBSCRIBERS,
   acceptWorkspaceNotifyNotice,
   acquireNotifyListingSlot,
@@ -231,6 +232,30 @@ describe("workspace notify compose", () => {
       { ...notice, relativePath: "lost-notices", kind: "resync" },
       childResource("root-a"),
     );
+  });
+
+  it("rejects a listing-slot wait beyond the cache-sized waiter cap", async () => {
+    expect(MAX_NOTIFY_LISTING_WAITERS).toBe(64);
+    const held = await Promise.all(
+      Array.from({ length: MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS }, () =>
+        acquireNotifyListingSlot(),
+      ),
+    );
+    expect(held.every(Boolean)).toBe(true);
+    const waiting = Array.from({ length: MAX_NOTIFY_LISTING_WAITERS }, () =>
+      acquireNotifyListingSlot(),
+    );
+    await Promise.resolve();
+    await expect(acquireNotifyListingSlot()).resolves.toBe(false);
+    resetNotifyListingAdmission();
+    await Promise.all(waiting);
+    for (
+      let index = 0;
+      index < MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS;
+      index += 1
+    ) {
+      releaseNotifyListingSlot();
+    }
   });
 
   it("does not leak a listing slot when release wakes a waiter then reset runs", async () => {
