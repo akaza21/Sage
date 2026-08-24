@@ -221,22 +221,23 @@ export function assertIde1ProjectExplorerSearchFileJourney(
     stamp: journeyStamp,
     listing: journeyListing,
     search: journeySearch,
+    opened: journeyOpened,
   } = input;
   if (
     journeyListing.projectId !== journeyStamp.projectId ||
     journeySearch.projectId !== journeyStamp.projectId ||
-    input.opened.projectId !== journeyStamp.projectId ||
+    journeyOpened.projectId !== journeyStamp.projectId ||
     journeyListing.projectGeneration !== journeyStamp.projectGeneration ||
     journeySearch.indexGeneration !== journeyStamp.projectGeneration ||
-    input.opened.projectGeneration !== journeyStamp.projectGeneration ||
+    journeyOpened.projectGeneration !== journeyStamp.projectGeneration ||
     journeyListing.transitionEpoch !== journeyStamp.transitionEpoch ||
     journeySearch.transitionEpoch !== journeyStamp.transitionEpoch ||
-    input.opened.transitionEpoch !== journeyStamp.transitionEpoch
+    journeyOpened.transitionEpoch !== journeyStamp.transitionEpoch
   ) {
     reject("journey-stale");
   }
   const bound = journeySearch.matches.find((item) =>
-    sameMatch(item, input.opened),
+    sameMatch(item, journeyOpened),
   );
   if (!bound) reject("journey-substituted");
   if (

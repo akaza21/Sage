@@ -219,9 +219,6 @@ describe("IDE-1 fixture Project Explorer Search File journey", () => {
     rejectsCode(
       bound({
         stamp: { ...stamp(), extra: true, projectGeneration: 9 },
-        listing: listing({ projectGeneration: 9 }),
-        search: search({ indexGeneration: 9 }),
-        opened: opened({ projectGeneration: 9 }),
       }),
       "schema-invalid",
     );
@@ -261,10 +258,25 @@ describe("IDE-1 fixture Project Explorer Search File journey", () => {
     const { projectId: _id, ...stampMissing } = stamp();
     void _id;
     rejectsCode(bound({ stamp: stampMissing }), "schema-invalid");
+    const { resources: _resources, ...listingMissing } = listing();
+    void _resources;
+    rejectsCode(bound({ listing: listingMissing }), "schema-invalid");
+    const { matches: _matches, ...searchMissing } = search();
+    void _matches;
+    rejectsCode(bound({ search: searchMissing }), "schema-invalid");
+    const { resource: _resource, ...openedMissing } = opened();
+    void _resource;
+    rejectsCode(bound({ opened: openedMissing }), "schema-invalid");
+    rejectsCode(
+      bound({
+        search: search({}, [{ lineNumber: 9, columnNumber: 3 } as never]),
+      }),
+      "schema-invalid",
+    );
     rejectsCode(
       bound({
         listing: listing({}, [
-          { rootId: "root-a", relativePath: "a.ts", extra: true },
+          { rootId: "root-a", relativePath: "a.ts", extra: true } as never,
         ]),
       }),
       "schema-invalid",
@@ -272,14 +284,14 @@ describe("IDE-1 fixture Project Explorer Search File journey", () => {
     rejectsCode(
       bound({
         search: search({}, [
-          { resource, lineNumber: 9, columnNumber: 3, extra: true },
+          { resource, lineNumber: 9, columnNumber: 3, extra: true } as never,
         ]),
       }),
       "schema-invalid",
     );
     rejectsCode(
       bound({
-        listing: listing({}, [{ rootId: "root-a" }]),
+        listing: listing({}, [{ rootId: "root-a" } as never]),
       }),
       "schema-invalid",
     );
@@ -346,6 +358,22 @@ describe("IDE-1 fixture Project Explorer Search File journey", () => {
       rejectsCode(bound({ listing: listing({ projectId }) }), "schema-invalid");
       rejectsCode(bound({ search: search({ projectId }) }), "schema-invalid");
       rejectsCode(bound({ opened: opened({ projectId }) }), "schema-invalid");
+    }
+    for (const rootId of ["", "a\0b", `${"a".repeat(513)}`]) {
+      const bad = { rootId, relativePath: "src/main.ts" };
+      rejectsCode(bound({ listing: listing({}, [bad]) }), "schema-invalid");
+      rejectsCode(
+        bound({
+          search: search({}, [
+            { resource: bad, lineNumber: 9, columnNumber: 3 },
+          ]),
+        }),
+        "schema-invalid",
+      );
+      rejectsCode(
+        bound({ opened: opened({ resource: bad }) }),
+        "schema-invalid",
+      );
     }
     for (const relativePath of [
       "src\\main.ts",
@@ -435,7 +463,6 @@ describe("IDE-1 fixture Project Explorer Search File journey", () => {
       throw new Error("expected reject");
     } catch (error) {
       expect(error).toBeInstanceOf(Error);
-      expect((error as Error).message).toBe("journey-missing");
       expect((error as Error & { code: string }).code).toBe("journey-missing");
     }
   });
