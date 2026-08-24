@@ -129,10 +129,11 @@ describe("live Project workspace notify bind", () => {
 
   it("refreshes more than eight cached listings for one resync in batches", async () => {
     await useWorkbenchStore.getState().initialize();
-    const listings = Array.from({ length: 9 }, (_, index) => ({
+    const listings = Array.from({ length: 8 }, (_, index) => ({
       rootId: "root-a",
       relativePath: index === 0 ? "" : `dir-${index}`,
     }));
+    const expandedOnly = { rootId: "root-a", relativePath: "expanded-only" };
     const directoryListings = Object.fromEntries(
       listings.map((resource) => [
         resourceKey(resource),
@@ -142,10 +143,27 @@ describe("live Project workspace notify bind", () => {
         },
       ]),
     );
-    useWorkbenchStore.setState({ directoryListings, expandedDirectories: {} });
+    useWorkbenchStore.setState({
+      directoryListings,
+      expandedDirectories: { [resourceKey(expandedOnly)]: true },
+    });
     const listDirectory = vi.mocked(projectPort.listDirectory);
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const finishers: Array<() => void> = [];
+    listDirectory.mockImplementation(
+      (resource) =>
+        new Promise((resolve) => {
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          finishers.push(() => {
+            inFlight -= 1;
+            resolve({ resource, entries: [], truncated: false });
+          });
+        }),
+    );
     listDirectory.mockClear();
-    await createWorkspaceNotifyHooks(() =>
+    const pending = createWorkspaceNotifyHooks(() =>
       useWorkbenchStore.getState(),
     ).invalidate(
       {
@@ -158,7 +176,25 @@ describe("live Project workspace notify bind", () => {
       },
       listings[0],
     );
-    expect(listDirectory).toHaveBeenCalledTimes(9);
+    await Promise.resolve();
+    expect(listDirectory).toHaveBeenCalledTimes(8);
+    expect(
+      listDirectory.mock.calls.map(([resource]) => resource),
+    ).not.toContainEqual(expandedOnly);
+    expect(maxInFlight).toBe(8);
+    const firstBatch = finishers.splice(0);
+    for (const finish of firstBatch) {
+      finish();
+    }
+    await vi.waitFor(() => {
+      expect(listDirectory).toHaveBeenCalledTimes(9);
+    });
+    expect(listDirectory).toHaveBeenCalledWith(expandedOnly);
+    for (const finish of finishers.splice(0)) {
+      finish();
+    }
+    await pending;
+    expect(maxInFlight).toBe(8);
   });
 
   it("unwatches when the workbench closes", async () => {
