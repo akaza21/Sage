@@ -3,6 +3,7 @@ import type { ResourceRef } from "../../domain/workbench";
 
 export const WORKSPACE_NOTIFY_EVENT = "workspace-notify-v1";
 export const MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS = 8;
+export const MAX_NOTIFY_LISTING_WAITERS = 64;
 export const MAX_NOTIFY_SEARCH_SUBSCRIBERS = 8;
 
 const NOTICE_KEYS = [
@@ -64,6 +65,9 @@ export async function acquireNotifyListingSlot(): Promise<boolean> {
   if (listingAdmission < MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS) {
     listingAdmission += 1;
     return epoch === listingAdmissionEpoch;
+  }
+  if (listingAdmissionWaiters.length >= MAX_NOTIFY_LISTING_WAITERS) {
+    return false;
   }
   await new Promise<void>((resolve) => {
     listingAdmissionWaiters.push(resolve);
