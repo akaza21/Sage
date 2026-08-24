@@ -31,20 +31,16 @@ export interface LiveProjectNotifyStamp {
 }
 
 export interface WorkspaceNotifyHooks {
-  watch(
-    input: {
-      stamp: {
-        projectId: string;
-        projectGeneration: number;
-        transitionEpoch: number;
-      };
-      roots: Array<{ rootId: string }>;
-    },
-  ): Promise<{ generation: number }>;
+  watch(input: {
+    stamp: {
+      projectId: string;
+      projectGeneration: number;
+      transitionEpoch: number;
+    };
+    roots: Array<{ rootId: string }>;
+  }): Promise<{ generation: number }>;
   unwatch(input: { projectId: string }): Promise<void>;
-  listen(
-    emit: (value: unknown) => void,
-  ): Promise<() => void>;
+  listen(emit: (value: unknown) => void): Promise<() => void>;
   invalidate(
     notice: WorkspaceNotifyNotice,
     listing: ResourceRef,
@@ -165,7 +161,9 @@ function sameLiveStamp(
     left.projectGeneration === right.projectGeneration &&
     left.transitionEpoch === right.transitionEpoch &&
     left.roots.length === right.roots.length &&
-    left.roots.every((root, index) => root.rootId === right.roots[index]?.rootId)
+    left.roots.every(
+      (root, index) => root.rootId === right.roots[index]?.rootId,
+    )
   );
 }
 

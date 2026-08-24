@@ -235,9 +235,8 @@ describe("workspace Search state", () => {
     await act(async () => void (await result.current.submit()));
     expect(search).toHaveBeenCalledTimes(1);
 
-    const { publishWorkspaceNotifySearch } = await import(
-      "../files/workspaceNotifyCompose"
-    );
+    const { publishWorkspaceNotifySearch } =
+      await import("../files/workspaceNotifyCompose");
     await act(async () => {
       publishWorkspaceNotifySearch({
         projectId: "project-a",
@@ -263,9 +262,8 @@ describe("workspace Search state", () => {
       }),
     );
     act(() => result.current.setQuery("needle"));
-    const { publishWorkspaceNotifySearch } = await import(
-      "../files/workspaceNotifyCompose"
-    );
+    const { publishWorkspaceNotifySearch } =
+      await import("../files/workspaceNotifyCompose");
     await act(async () => {
       publishWorkspaceNotifySearch({
         projectId: "project-a",
