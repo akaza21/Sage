@@ -55,6 +55,39 @@ interface BoundNotifySession {
 
 const searchSubscribers = new Set<(notice: WorkspaceNotifyNotice) => void>();
 let session: BoundNotifySession | null = null;
+let listingAdmission = 0;
+let listingAdmissionEpoch = 0;
+const listingAdmissionWaiters: Array<() => void> = [];
+
+export async function acquireNotifyListingSlot(): Promise<boolean> {
+  const epoch = listingAdmissionEpoch;
+  if (listingAdmission < MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS) {
+    listingAdmission += 1;
+    return epoch === listingAdmissionEpoch;
+  }
+  await new Promise<void>((resolve) => {
+    listingAdmissionWaiters.push(resolve);
+  });
+  return epoch === listingAdmissionEpoch;
+}
+
+export function releaseNotifyListingSlot(): void {
+  if (listingAdmissionWaiters.length > 0) {
+    const next = listingAdmissionWaiters.shift();
+    next?.();
+    return;
+  }
+  listingAdmission = Math.max(0, listingAdmission - 1);
+}
+
+export function resetNotifyListingAdmission(): void {
+  listingAdmissionEpoch += 1;
+  listingAdmission = 0;
+  const pending = listingAdmissionWaiters.splice(0);
+  for (const resolve of pending) {
+    resolve();
+  }
+}
 
 function safeCounter(value: unknown): number | null {
   return typeof value === "number" &&
@@ -175,6 +208,7 @@ export function publishWorkspaceNotifySearch(
 
 export function resetWorkspaceNotifyComposeForTests(): void {
   searchSubscribers.clear();
+  resetNotifyListingAdmission();
 }
 
 function sameLiveStamp(
@@ -201,6 +235,7 @@ async function dropSession(
   const projectId = session.live.projectId;
   session.unlisten();
   session = null;
+  resetNotifyListingAdmission();
   try {
     await hooks.unwatch({ projectId });
   } catch {

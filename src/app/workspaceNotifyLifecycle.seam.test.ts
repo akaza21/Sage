@@ -197,6 +197,97 @@ describe("live Project workspace notify bind", () => {
     expect(maxInFlight).toBe(8);
   });
 
+  it("keeps overflow resync inside the shared eight listing slots", async () => {
+    await useWorkbenchStore.getState().initialize();
+    const resyncOnly = Array.from({ length: 8 }, (_, index) => ({
+      rootId: "root-a",
+      relativePath: `resync-${index}`,
+    }));
+    const ordinary = Array.from({ length: 8 }, (_, index) => ({
+      rootId: "root-a",
+      relativePath: `ordinary-${index}`,
+    }));
+    useWorkbenchStore.setState({
+      directoryListings: Object.fromEntries(
+        [...resyncOnly, ...ordinary].map((resource) => [
+          resourceKey(resource),
+          {
+            phase: "ready" as const,
+            value: { resource, entries: [], truncated: false },
+          },
+        ]),
+      ),
+    });
+    const listDirectory = vi.mocked(projectPort.listDirectory);
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const finishers: Array<() => void> = [];
+    listDirectory.mockImplementation(
+      (resource) =>
+        new Promise((resolve) => {
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          finishers.push(() => {
+            inFlight -= 1;
+            resolve({ resource, entries: [], truncated: false });
+          });
+        }),
+    );
+    listDirectory.mockClear();
+    const hooks = createWorkspaceNotifyHooks(() => useWorkbenchStore.getState());
+    const ordinaryPending = ordinary.map((listing) =>
+      Promise.resolve(
+        hooks.invalidate(
+          {
+            projectId: "project-a",
+            projectGeneration: 1,
+            transitionEpoch: 7,
+            rootId: "root-a",
+            relativePath: `${listing.relativePath}/file.ts`,
+            kind: "changed",
+          },
+          listing,
+        ),
+      ),
+    );
+    await Promise.resolve();
+    expect(listDirectory).toHaveBeenCalledTimes(8);
+    expect(maxInFlight).toBe(8);
+    const resyncPending = hooks.invalidate(
+      {
+        projectId: "project-a",
+        projectGeneration: 1,
+        transitionEpoch: 7,
+        rootId: "root-a",
+        relativePath: "lost-notices",
+        kind: "resync",
+      },
+      { rootId: "root-a", relativePath: "" },
+    );
+    await Promise.resolve();
+    expect(listDirectory).toHaveBeenCalledTimes(8);
+    expect(maxInFlight).toBe(8);
+    const firstBatch = finishers.splice(0);
+    for (const finish of firstBatch) {
+      finish();
+    }
+    await Promise.all(ordinaryPending);
+    await vi.waitFor(() => {
+      expect(listDirectory.mock.calls.length).toBeGreaterThan(8);
+    });
+    expect(maxInFlight).toBe(8);
+    while (finishers.length > 0) {
+      const batch = finishers.splice(0);
+      for (const finish of batch) {
+        finish();
+      }
+      await Promise.resolve();
+    }
+    await resyncPending;
+    expect(maxInFlight).toBe(8);
+    expect(listDirectory).toHaveBeenCalledWith(resyncOnly[0]);
+  });
+
   it("unwatches when the workbench closes", async () => {
     vi.spyOn(projectPort, "persistProjectLayoutAndClose").mockResolvedValue();
     await useWorkbenchStore.getState().initialize();

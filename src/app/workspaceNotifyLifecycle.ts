@@ -1,7 +1,8 @@
 import { resourceKey } from "../domain/resourceIdentity";
 import type { ResourceRef } from "../domain/workbench";
 import {
-  MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
+  acquireNotifyListingSlot,
+  releaseNotifyListingSlot,
   WORKSPACE_NOTIFY_EVENT,
   syncLiveProjectWorkspaceNotify,
   type LiveProjectNotifyStamp,
@@ -53,43 +54,63 @@ function resourceFromKey(key: string): ResourceRef | null {
   };
 }
 
+const resyncRootsInFlight = new Set<string>();
+const resyncRootsQueued = new Set<string>();
+
+async function admittedLoadDirectory(
+  get: () => WorkbenchState,
+  resource: ResourceRef,
+): Promise<void> {
+  const acquired = await acquireNotifyListingSlot();
+  if (!acquired) {
+    return;
+  }
+  try {
+    await get().loadDirectory(resource, true);
+  } finally {
+    releaseNotifyListingSlot();
+  }
+}
+
 async function refreshListingsForResync(
   get: () => WorkbenchState,
   notice: WorkspaceNotifyNotice,
 ): Promise<void> {
-  const seen = new Set<string>();
-  const resources: ResourceRef[] = [];
-  const add = (resource: ResourceRef) => {
-    const key = resourceKey(resource);
-    if (resource.rootId !== notice.rootId || seen.has(key)) {
-      return;
-    }
-    seen.add(key);
-    resources.push(resource);
-  };
-  for (const entry of Object.values(get().directoryListings)) {
-    if (entry.phase === "ready") {
-      add(entry.value.resource);
-    }
+  if (resyncRootsInFlight.has(notice.rootId)) {
+    resyncRootsQueued.add(notice.rootId);
+    return;
   }
-  for (const key of Object.keys(get().expandedDirectories)) {
-    const resource = resourceFromKey(key);
-    if (resource) {
-      add(resource);
-    }
-  }
-  for (
-    let offset = 0;
-    offset < resources.length;
-    offset += MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS
-  ) {
-    const batch = resources.slice(
-      offset,
-      offset + MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
-    );
-    await Promise.all(
-      batch.map((resource) => get().loadDirectory(resource, true)),
-    );
+  resyncRootsInFlight.add(notice.rootId);
+  try {
+    do {
+      resyncRootsQueued.delete(notice.rootId);
+      const seen = new Set<string>();
+      const resources: ResourceRef[] = [];
+      const add = (resource: ResourceRef) => {
+        const key = resourceKey(resource);
+        if (resource.rootId !== notice.rootId || seen.has(key)) {
+          return;
+        }
+        seen.add(key);
+        resources.push(resource);
+      };
+      for (const entry of Object.values(get().directoryListings)) {
+        if (entry.phase === "ready") {
+          add(entry.value.resource);
+        }
+      }
+      for (const key of Object.keys(get().expandedDirectories)) {
+        const resource = resourceFromKey(key);
+        if (resource) {
+          add(resource);
+        }
+      }
+      await Promise.all(
+        resources.map((resource) => admittedLoadDirectory(get, resource)),
+      );
+    } while (resyncRootsQueued.has(notice.rootId));
+  } finally {
+    resyncRootsInFlight.delete(notice.rootId);
   }
 }
 
@@ -118,7 +139,7 @@ export function createWorkspaceNotifyHooks(
       }
       const key = resourceKey(listing);
       if (get().directoryListings[key] || get().expandedDirectories[key]) {
-        return get().loadDirectory(listing, true);
+        return admittedLoadDirectory(get, listing);
       }
       return undefined;
     },
@@ -135,6 +156,8 @@ export async function bindWorkspaceNotifyFromState(
 }
 
 export async function unbindWorkspaceNotify(): Promise<void> {
+  resyncRootsInFlight.clear();
+  resyncRootsQueued.clear();
   await syncLiveProjectWorkspaceNotify(null, {
     watch: async () => ({ generation: 0 }),
     unwatch(input) {
