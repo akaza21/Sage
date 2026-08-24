@@ -9,7 +9,7 @@ use std::{
 };
 
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::state::AppState;
@@ -289,7 +289,25 @@ pub fn apply_unwatch_workspace_notify(value: &Value) -> Result<(), WorkspaceNoti
         return Err(reject("notify-substituted"));
     };
     watch.cancelled.store(true, Ordering::Release);
-    registry.generations.remove(project_id);
+    Ok(())
+}
+
+pub fn apply_unwatch_if_generation(
+    project_id: &str,
+    generation: u32,
+) -> Result<(), WorkspaceNotifyError> {
+    let mut registry = registry();
+    let Some(watch) = registry.watches.get(project_id) else {
+        return Err(reject("notify-substituted"));
+    };
+    if watch.generation != generation {
+        return Ok(());
+    }
+    let watch = registry
+        .watches
+        .remove(project_id)
+        .expect("generation held");
+    watch.cancelled.store(true, Ordering::Release);
     Ok(())
 }
 
@@ -341,7 +359,7 @@ pub fn watch_workspace_notify(
             watch::start_workspace_notify_watchers(&app, &state, &project_id, generation, root_ids)
         },
     ) {
-        let _ = apply_unwatch_workspace_notify(&json!({ "projectId": project_id }));
+        let _ = apply_unwatch_if_generation(&project_id, generation);
         return Err(error.code().to_string());
     }
     emit_queued_workspace_notices(&app, &value);
@@ -968,14 +986,14 @@ mod tests {
     }
 
     #[test]
-    fn unwatch_clears_generation_so_next_watch_starts_at_one() {
+    fn unwatch_keeps_generation_so_stale_workers_cannot_rebind() {
         with_isolated_watches(|| {
             assert_eq!(apply_watch_workspace_notify(&bound()).expect("first"), 1);
             assert_eq!(apply_watch_workspace_notify(&bound()).expect("replace"), 2);
             apply_unwatch_workspace_notify(&json!({ "projectId": "project-a" })).expect("unwatch");
             assert_eq!(
                 apply_watch_workspace_notify(&bound()).expect("after unwatch"),
-                1
+                3
             );
         });
     }
@@ -1064,6 +1082,48 @@ mod tests {
             .expect("current")
             .expect("created");
             assert_eq!(notice.kind, "created");
+        });
+    }
+
+    #[test]
+    fn deliver_succeeds_when_push_queue_is_full() {
+        with_isolated_watches(|| {
+            let generation = apply_watch_workspace_notify(&bound()).expect("watch");
+            fill_queue(
+                &mut registry()
+                    .watches
+                    .get_mut("project-a")
+                    .expect("bound")
+                    .session,
+            );
+            let notice = deliver_workspace_notify_action(
+                "project-a",
+                generation,
+                "root-a",
+                "src/other.ts",
+                3,
+            )
+            .expect("live emit")
+            .expect("changed");
+            assert_eq!(notice.kind, "changed");
+        });
+    }
+
+    #[test]
+    fn unwatch_if_generation_leaves_a_newer_session() {
+        with_isolated_watches(|| {
+            apply_watch_workspace_notify(&bound()).expect("first");
+            let generation = apply_watch_workspace_notify(&bound()).expect("second");
+            apply_unwatch_if_generation("project-a", generation - 1).expect("stale cleanup");
+            assert!(deliver_workspace_notify_action(
+                "project-a",
+                generation,
+                "root-a",
+                "src/main.ts",
+                3,
+            )
+            .expect("kept")
+            .is_some());
         });
     }
 }

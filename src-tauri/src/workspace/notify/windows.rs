@@ -20,11 +20,20 @@ use windows_sys::Win32::{
 };
 
 use super::{
-    deliver_workspace_notify_action, reject, WorkspaceNotifyError, WORKSPACE_NOTIFY_EVENT,
+    apply_unwatch_if_generation, deliver_workspace_notify_action, reject, WorkspaceNotifyError,
+    WORKSPACE_NOTIFY_EVENT,
 };
 
 const WAIT_OBJECT_0: u32 = 0;
 const WAIT_TIMEOUT: u32 = 258;
+
+fn open_notify_directory(directory: &Path) -> std::io::Result<std::fs::File> {
+    OpenOptions::new()
+        .access_mode(FILE_LIST_DIRECTORY)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED)
+        .open(directory)
+}
 
 pub(super) fn spawn_workspace_root_watch(
     app: AppHandle,
@@ -34,20 +43,29 @@ pub(super) fn spawn_workspace_root_watch(
     path: PathBuf,
     cancelled: Arc<AtomicBool>,
 ) -> Result<(), WorkspaceNotifyError> {
+    let directory_handle =
+        open_notify_directory(&path).map_err(|_| reject("notify-substituted"))?;
     std::thread::Builder::new()
         .name("sage-workspace-notify".into())
         .spawn(move || {
-            let _ = run_workspace_root_watch(&cancelled, &path, |relative, action| {
-                if let Ok(Some(notice)) = deliver_workspace_notify_action(
-                    &project_id,
-                    generation,
-                    &root_id,
-                    &relative,
-                    action,
-                ) {
-                    let _ = app.emit(WORKSPACE_NOTIFY_EVENT, notice);
-                }
-            });
+            let result =
+                watch_opened_directory(&cancelled, directory_handle, |relative, action| {
+                    if cancelled.load(Ordering::Acquire) {
+                        return;
+                    }
+                    if let Ok(Some(notice)) = deliver_workspace_notify_action(
+                        &project_id,
+                        generation,
+                        &root_id,
+                        &relative,
+                        action,
+                    ) {
+                        let _ = app.emit(WORKSPACE_NOTIFY_EVENT, notice);
+                    }
+                });
+            if result.is_err() && !cancelled.load(Ordering::Acquire) {
+                let _ = apply_unwatch_if_generation(&project_id, generation);
+            }
         })
         .map(|_| ())
         .map_err(|_| reject("notify-substituted"))
@@ -56,13 +74,16 @@ pub(super) fn spawn_workspace_root_watch(
 fn run_workspace_root_watch(
     cancelled: &AtomicBool,
     directory: &Path,
+    deliver: impl FnMut(String, u32),
+) -> std::io::Result<()> {
+    watch_opened_directory(cancelled, open_notify_directory(directory)?, deliver)
+}
+
+fn watch_opened_directory(
+    cancelled: &AtomicBool,
+    directory_handle: std::fs::File,
     mut deliver: impl FnMut(String, u32),
 ) -> std::io::Result<()> {
-    let directory_handle = OpenOptions::new()
-        .access_mode(FILE_LIST_DIRECTORY)
-        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED)
-        .open(directory)?;
     let event = EventHandle::new()?;
     let handle = directory_handle.as_raw_handle() as HANDLE;
     let mut buffer = [0_u8; 8_192];
@@ -104,6 +125,9 @@ fn run_workspace_root_watch(
                 return Ok(());
             }
             return Err(std::io::Error::last_os_error());
+        }
+        if cancelled.load(Ordering::Acquire) {
+            return Ok(());
         }
         for (name, action) in parse_notify_records(
             &buffer,

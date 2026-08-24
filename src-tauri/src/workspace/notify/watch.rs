@@ -13,7 +13,7 @@ use crate::{persistence::Database, state::AppState};
 
 use super::{
     bounded_identifier, registry, reject, relative_path, WorkspaceNotifyError,
-    WorkspaceNotifyNotice, MAX_QUEUE,
+    WorkspaceNotifyNotice,
 };
 
 #[cfg(windows)]
@@ -62,14 +62,7 @@ pub fn deliver_workspace_notify_action(
     if watch.generation != generation || watch.cancelled.load(Ordering::Acquire) {
         return Ok(None);
     }
-    let Some(notice) = watch.session.classify(root_id, relative, action)? else {
-        return Ok(None);
-    };
-    if watch.session.queue.len() >= MAX_QUEUE {
-        return Err(reject("notify-overflow"));
-    }
-    watch.session.queue.push(notice.clone());
-    Ok(Some(notice))
+    Ok(watch.session.classify(root_id, relative, action)?)
 }
 
 pub(super) fn workspace_notify_bound_roots(project_id: &str) -> Option<BTreeSet<String>> {
