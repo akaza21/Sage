@@ -8,6 +8,7 @@ describe("workspace Search domain", () => {
       requestId: "request-a",
       projectId: "project-a",
       transitionEpoch: 4,
+      indexGeneration: 0,
       query: "needle",
       matches: [
         {
@@ -31,6 +32,7 @@ describe("workspace Search domain", () => {
         },
       ],
       truncated: false,
+      continuationToken: null,
       limitReasons: [],
       elapsedMs: 8,
     });
@@ -52,10 +54,12 @@ describe("workspace Search domain", () => {
       requestId: "request-a",
       projectId: "project-a",
       transitionEpoch: 4,
+      indexGeneration: 0,
       query: "needle",
       matches: [match],
       roots: [],
       truncated: false,
+      continuationToken: null,
       limitReasons: [],
       elapsedMs: 1,
     };
@@ -95,10 +99,12 @@ describe("workspace Search domain", () => {
       requestId: "request-a",
       projectId: "project-a",
       transitionEpoch: 4,
+      indexGeneration: 0,
       query: "needle",
       matches: [],
       roots: [unavailable],
       truncated: false,
+      continuationToken: null,
       limitReasons: [],
       elapsedMs: 1,
     };
@@ -171,10 +177,12 @@ describe("workspace Search domain", () => {
       requestId: "request-a",
       projectId: "project-a",
       transitionEpoch: 4,
+      indexGeneration: 0,
       query: "needle",
       matches: [match],
       roots: [root],
       truncated: false,
+      continuationToken: null,
       limitReasons: [],
       elapsedMs: 1,
     };

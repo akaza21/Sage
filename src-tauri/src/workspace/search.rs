@@ -1,6 +1,7 @@
 pub(crate) mod command;
 mod contained_file;
 mod engine;
+mod engine_continue;
 mod file_scan;
 mod helper_process;
 mod helper_protocol;
@@ -45,6 +46,8 @@ mod tests {
             request_id: "request-test".into(),
             project_id: "project-test".into(),
             expected_transition_epoch: 0,
+            index_generation: 0,
+            continuation_token: None,
             query: query.into(),
             case_sensitive: false,
         }
@@ -157,6 +160,126 @@ mod tests {
                 super::types::SearchRootState::Partial
             );
         }
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn result_limited_first_page_returns_a_token_and_the_second_page_starts_after_the_last_match() {
+        let (path, root) = fixture_root();
+        fs::write(path.join("another.txt"), "needle needle\n").unwrap();
+        let limits = SearchLimits {
+            max_results: 1,
+            ..SearchLimits::default()
+        };
+        let first = SearchEngine::new(limits)
+            .search(request("needle"), vec![root])
+            .unwrap();
+        let token = first.continuation_token.clone().unwrap();
+        let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
+        let second = SearchEngine::new(limits)
+            .search(
+                WorkspaceSearchRequest {
+                    continuation_token: Some(token),
+                    ..request("needle")
+                },
+                vec![SearchRoot {
+                    root_id: "root-test".into(),
+                    root_name: "fixture".into(),
+                    source: SearchRootSource::Available(workspace),
+                }],
+            )
+            .unwrap();
+
+        assert_eq!(first.matches[0].column_number, 1);
+        assert_eq!(second.matches[0].column_number, 8);
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn continuation_with_a_different_query_or_index_generation_is_stale() {
+        let (path, root) = fixture_root();
+        fs::write(path.join("another.txt"), "needle needle\n").unwrap();
+        let first = SearchEngine::new(SearchLimits {
+            max_results: 1,
+            ..SearchLimits::default()
+        })
+        .search(request("needle"), vec![root])
+        .unwrap();
+        for mut continued in [request("other"), request("needle")] {
+            continued.continuation_token = first.continuation_token.clone();
+            if continued.query == "needle" {
+                continued.index_generation = 1;
+            }
+            let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
+            let error = SearchEngine::new(SearchLimits::default())
+                .search(
+                    continued,
+                    vec![SearchRoot {
+                        root_id: "root-test".into(),
+                        root_name: "fixture".into(),
+                        source: SearchRootSource::Available(workspace),
+                    }],
+                )
+                .unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("workspace search continuation is stale")
+            );
+        }
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn continuation_whose_resume_file_was_removed_is_stale() {
+        let (path, root) = fixture_root();
+        fs::write(path.join("another.txt"), "needle needle\n").unwrap();
+        let first = SearchEngine::new(SearchLimits {
+            max_results: 1,
+            ..SearchLimits::default()
+        })
+        .search(request("needle"), vec![root])
+        .unwrap();
+        fs::remove_file(path.join("another.txt")).unwrap();
+        let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
+        let error = SearchEngine::new(SearchLimits::default())
+            .search(
+                WorkspaceSearchRequest {
+                    continuation_token: first.continuation_token,
+                    ..request("needle")
+                },
+                vec![SearchRoot {
+                    root_id: "root-test".into(),
+                    root_name: "fixture".into(),
+                    source: SearchRootSource::Available(workspace),
+                }],
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("workspace search continuation is stale")
+        );
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn malformed_continuation_token_is_invalid() {
+        let (path, root) = fixture_root();
+        let error = SearchEngine::new(SearchLimits::default())
+            .search(
+                WorkspaceSearchRequest {
+                    continuation_token: Some("not-json".into()),
+                    ..request("needle")
+                },
+                vec![root],
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("workspace search continuation is invalid")
+        );
         fs::remove_dir_all(path).unwrap();
     }
 

@@ -55,6 +55,7 @@ describe("RightSidebar Search", () => {
         requestId: "request-a",
         projectId: "project-a",
         transitionEpoch: 7,
+        indexGeneration: 0,
         query: "needle",
         matches: [
           {
@@ -78,6 +79,7 @@ describe("RightSidebar Search", () => {
           },
         ],
         truncated: false,
+        continuationToken: null,
         limitReasons: [],
         elapsedMs: 1,
       });
@@ -117,6 +119,8 @@ describe("RightSidebar Search", () => {
       {
         projectId: "project-a",
         expectedTransitionEpoch: 7,
+        indexGeneration: 0,
+        continuationToken: null,
         query: "needle",
         caseSensitive: false,
       },

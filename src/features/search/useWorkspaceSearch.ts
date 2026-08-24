@@ -5,6 +5,7 @@ import type {
   WorkspaceSearchResponse,
 } from "./workspaceSearchDomain";
 import { parseWorkspaceSearchResponse } from "./workspaceSearchDomain";
+import { WORKSPACE_SEARCH_LIMITS } from "./workspaceSearchLimits";
 
 export type WorkspaceSearchPhase = "idle" | "searching" | "results" | "error";
 
@@ -13,12 +14,14 @@ export interface WorkspaceSearchState {
   query: string;
   caseSensitive: boolean;
   response: WorkspaceSearchResponse | null;
+  pages: WorkspaceSearchResponse[];
   error: string | null;
 }
 
 interface UseWorkspaceSearchOptions {
   projectId: string | null;
   transitionEpoch: number;
+  indexGeneration: number;
   gateway: WorkspaceSearchGateway;
 }
 
@@ -27,6 +30,7 @@ const initialState = (): WorkspaceSearchState => ({
   query: "",
   caseSensitive: false,
   response: null,
+  pages: [],
   error: null,
 });
 
@@ -37,6 +41,7 @@ function errorMessage(error: unknown): string {
 export function useWorkspaceSearch({
   projectId,
   transitionEpoch,
+  indexGeneration,
   gateway,
 }: UseWorkspaceSearchOptions) {
   const [state, setState] = useState<WorkspaceSearchState>(initialState);
@@ -49,7 +54,7 @@ export function useWorkspaceSearch({
     active.current = null;
     setState(initialState());
     return () => active.current?.abort();
-  }, [projectId, transitionEpoch]);
+  }, [indexGeneration, projectId, transitionEpoch]);
 
   const retireCriteria = useCallback(() => {
     generation.current += 1;
@@ -65,6 +70,7 @@ export function useWorkspaceSearch({
         phase: "idle",
         query,
         response: null,
+        pages: [],
         error: null,
       }));
     },
@@ -79,6 +85,7 @@ export function useWorkspaceSearch({
         phase: "idle",
         caseSensitive,
         response: null,
+        pages: [],
         error: null,
       }));
     },
@@ -93,6 +100,7 @@ export function useWorkspaceSearch({
       ...current,
       phase: "idle",
       response: null,
+      pages: [],
       error: null,
     }));
   }, []);
@@ -136,6 +144,8 @@ export function useWorkspaceSearch({
         {
           projectId,
           expectedTransitionEpoch: transitionEpoch,
+          indexGeneration,
+          continuationToken: null,
           query,
           caseSensitive: state.caseSensitive,
         },
@@ -151,6 +161,7 @@ export function useWorkspaceSearch({
       if (
         validated.projectId !== projectId ||
         validated.transitionEpoch !== transitionEpoch ||
+        validated.indexGeneration !== indexGeneration ||
         validated.query !== query
       ) {
         throw new Error("invalid workspace Search response");
@@ -160,6 +171,7 @@ export function useWorkspaceSearch({
         ...current,
         phase: "results",
         response: validated,
+        pages: [validated],
         error: null,
       }));
     } catch (error: unknown) {
@@ -177,7 +189,95 @@ export function useWorkspaceSearch({
         error: errorMessage(error),
       }));
     }
-  }, [gateway, projectId, state.caseSensitive, state.query, transitionEpoch]);
+  }, [
+    gateway,
+    indexGeneration,
+    projectId,
+    state.caseSensitive,
+    state.query,
+    transitionEpoch,
+  ]);
 
-  return { state, setQuery, setCaseSensitive, submit, cancel };
+  const continueSearch = useCallback(async () => {
+    const lastPage = state.pages.at(-1);
+    const query = state.query.trim();
+    if (
+      !projectId ||
+      !query ||
+      !lastPage?.continuationToken ||
+      state.pages.length >= WORKSPACE_SEARCH_LIMITS.continuationPages
+    ) {
+      return;
+    }
+
+    active.current?.abort();
+    const controller = new AbortController();
+    active.current = controller;
+    const requestGeneration = generation.current + 1;
+    generation.current = requestGeneration;
+    setState((current) => ({ ...current, phase: "searching", error: null }));
+
+    try {
+      const response = await gateway.search(
+        {
+          projectId,
+          expectedTransitionEpoch: transitionEpoch,
+          indexGeneration,
+          continuationToken: lastPage.continuationToken,
+          query,
+          caseSensitive: state.caseSensitive,
+        },
+        controller.signal,
+      );
+      if (
+        controller.signal.aborted ||
+        generation.current !== requestGeneration
+      ) {
+        return;
+      }
+      const validated = parseWorkspaceSearchResponse(response);
+      if (
+        validated.projectId !== projectId ||
+        validated.transitionEpoch !== transitionEpoch ||
+        validated.indexGeneration !== indexGeneration ||
+        validated.query !== query
+      ) {
+        throw new Error("invalid workspace Search response");
+      }
+      active.current = null;
+      setState((current) => ({
+        ...current,
+        phase: "results",
+        response: validated,
+        pages: [...current.pages, validated].slice(
+          0,
+          WORKSPACE_SEARCH_LIMITS.continuationPages,
+        ),
+        error: null,
+      }));
+    } catch (error: unknown) {
+      if (
+        controller.signal.aborted ||
+        generation.current !== requestGeneration
+      ) {
+        return;
+      }
+      active.current = null;
+      setState((current) => ({
+        ...current,
+        phase: "error",
+        error: errorMessage(error),
+      }));
+    }
+  }, [
+    gateway,
+    indexGeneration,
+    projectId,
+    state.caseSensitive,
+    state.pages,
+    state.query,
+    transitionEpoch,
+  ]);
+
+  return { state, setQuery, setCaseSensitive, submit, continueSearch, cancel };
 }

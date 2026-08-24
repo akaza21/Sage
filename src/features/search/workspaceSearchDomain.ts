@@ -1,5 +1,14 @@
 import type { ResourceRef } from "../../domain/workbench";
 import { WORKSPACE_SEARCH_LIMITS } from "./workspaceSearchLimits";
+import {
+  assertWorkspaceSearchContinuationMatchesRequest,
+  continuationTokenMatchesResponse,
+  coordinateWorkspaceSearchIndex,
+  validWorkspaceSearchContinuationToken,
+  type WorkspaceSearchIndexStamp,
+} from "./workspaceSearchContinuation";
+
+export { coordinateWorkspaceSearchIndex, type WorkspaceSearchIndexStamp };
 
 export const MAX_WORKSPACE_SEARCH_RESULTS = WORKSPACE_SEARCH_LIMITS.results;
 export const MAX_WORKSPACE_SEARCH_QUERY_BYTES =
@@ -20,6 +29,8 @@ export type WorkspaceSearchLimitReason =
 export interface WorkspaceSearchRequest {
   projectId: string;
   expectedTransitionEpoch: number;
+  indexGeneration: number;
+  continuationToken?: string | null;
   query: string;
   caseSensitive: boolean;
 }
@@ -57,10 +68,12 @@ export interface WorkspaceSearchResponse {
   requestId: string;
   projectId: string;
   transitionEpoch: number;
+  indexGeneration: number;
   query: string;
   matches: WorkspaceSearchMatch[];
   roots: WorkspaceSearchRootReport[];
   truncated: boolean;
+  continuationToken: string | null;
   limitReasons: WorkspaceSearchLimitReason[];
   elapsedMs: number;
 }
@@ -165,6 +178,18 @@ export function validateWorkspaceSearchRequest(
   if (!safeCount(request.expectedTransitionEpoch)) {
     throw new Error("workspace Search requires a valid transition epoch");
   }
+  if (!safeCount(request.indexGeneration)) {
+    throw new Error("workspace Search requires a valid index generation");
+  }
+  if (
+    request.continuationToken !== undefined &&
+    request.continuationToken !== null
+  ) {
+    assertWorkspaceSearchContinuationMatchesRequest(
+      request.continuationToken,
+      request,
+    );
+  }
   const query = request.query.trim();
   if (!boundedString(query, MAX_WORKSPACE_SEARCH_QUERY_BYTES)) {
     throw new Error(
@@ -183,6 +208,7 @@ export function parseWorkspaceSearchResponse(
     !/^[A-Za-z0-9_:-]+$/.test(value.requestId) ||
     !boundedString(value.projectId, MAX_IDENTIFIER_BYTES) ||
     !safeCount(value.transitionEpoch) ||
+    !safeCount(value.indexGeneration) ||
     !boundedString(value.query, MAX_WORKSPACE_SEARCH_QUERY_BYTES) ||
     !Array.isArray(value.matches) ||
     value.matches.length > MAX_WORKSPACE_SEARCH_RESULTS ||
@@ -192,6 +218,8 @@ export function parseWorkspaceSearchResponse(
     value.roots.length > WORKSPACE_SEARCH_LIMITS.projectRoots ||
     !value.roots.every(rootReport) ||
     typeof value.truncated !== "boolean" ||
+    (value.continuationToken !== null &&
+      !validWorkspaceSearchContinuationToken(value.continuationToken)) ||
     !Array.isArray(value.limitReasons) ||
     value.limitReasons.length > limitReasons.length ||
     !value.limitReasons.every(limitReason) ||
@@ -261,6 +289,12 @@ export function parseWorkspaceSearchResponse(
         unavailableRootIds.has(match.resource.rootId),
     ) ||
     value.truncated !== expectedTruncated ||
+    (!value.truncated && value.continuationToken !== null) ||
+    (value.continuationToken !== null &&
+      !continuationTokenMatchesResponse(value.continuationToken, {
+        indexGeneration: value.indexGeneration,
+        transitionEpoch: value.transitionEpoch,
+      })) ||
     (hasLimitReason && !hasPartialRoot) ||
     contradictoryRoot ||
     value.elapsedMs > WORKSPACE_SEARCH_LIMITS.responseElapsedMs ||

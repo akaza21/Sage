@@ -15,6 +15,7 @@ function response(query: string): WorkspaceSearchResponse {
     requestId: "request-a",
     projectId: "project-a",
     transitionEpoch: 4,
+    indexGeneration: 0,
     query,
     matches: [],
     roots: [
@@ -31,6 +32,7 @@ function response(query: string): WorkspaceSearchResponse {
       },
     ],
     truncated: false,
+    continuationToken: null,
     limitReasons: [],
     elapsedMs: 1,
   };
@@ -48,6 +50,7 @@ describe("workspace Search state", () => {
       useWorkspaceSearch({
         projectId: "project-a",
         transitionEpoch: 4,
+        indexGeneration: 0,
         gateway: { search },
       }),
     );
@@ -70,7 +73,12 @@ describe("workspace Search state", () => {
     const search = vi.fn().mockReturnValue(pending.promise);
     const { result, rerender } = renderHook(
       ({ projectId, transitionEpoch }) =>
-        useWorkspaceSearch({ projectId, transitionEpoch, gateway: { search } }),
+        useWorkspaceSearch({
+          projectId,
+          transitionEpoch,
+          indexGeneration: 0,
+          gateway: { search },
+        }),
       {
         initialProps: {
           projectId: "project-a" as string | null,
@@ -94,6 +102,7 @@ describe("workspace Search state", () => {
       useWorkspaceSearch({
         projectId: "project-a",
         transitionEpoch: 4,
+        indexGeneration: 0,
         gateway: { search },
       }),
     );
@@ -119,6 +128,7 @@ describe("workspace Search state", () => {
       useWorkspaceSearch({
         projectId: "project-a",
         transitionEpoch: 4,
+        indexGeneration: 0,
         gateway: { search },
       }),
     );
@@ -148,6 +158,7 @@ describe("workspace Search state", () => {
         useWorkspaceSearch({
           projectId: "project-a",
           transitionEpoch: 4,
+          indexGeneration: 0,
           gateway: { search },
         }),
       );
@@ -178,6 +189,7 @@ describe("workspace Search state", () => {
       useWorkspaceSearch({
         projectId: "project-a",
         transitionEpoch: 4,
+        indexGeneration: 0,
         gateway: { search },
       }),
     );

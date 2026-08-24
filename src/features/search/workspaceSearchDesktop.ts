@@ -41,6 +41,7 @@ export function createWorkspaceSearchAdapter(
           response.requestId !== requestId ||
           response.projectId !== normalized.projectId ||
           response.transitionEpoch !== normalized.expectedTransitionEpoch ||
+          response.indexGeneration !== normalized.indexGeneration ||
           response.query !== normalized.query
         ) {
           throw new Error("invalid workspace Search response");

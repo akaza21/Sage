@@ -19,6 +19,7 @@ describe("Workspace Search view", () => {
         requestId: "request-a",
         projectId: "project-a",
         transitionEpoch: 4,
+        indexGeneration: 0,
         query: "needle",
         matches: [
           {
@@ -53,6 +54,7 @@ describe("Workspace Search view", () => {
           },
         ],
         truncated: true,
+        continuationToken: null,
         limitReasons: ["fileSizeLimit"],
         elapsedMs: 7,
       }),
@@ -62,6 +64,7 @@ describe("Workspace Search view", () => {
       <WorkspaceSearchView
         projectId="project-a"
         transitionEpoch={4}
+        indexGeneration={0}
         gateway={gateway}
         onOpenMatch={open}
       />,
@@ -101,6 +104,7 @@ describe("Workspace Search view", () => {
       <WorkspaceSearchView
         projectId={null}
         transitionEpoch={0}
+        indexGeneration={0}
         gateway={{ search: vi.fn() }}
         onOpenMatch={vi.fn()}
       />,
@@ -109,6 +113,61 @@ describe("Workspace Search view", () => {
     expect(screen.getByRole("button", { name: "Search" })).toBeDisabled();
     expect(
       screen.getByText("Open a Project to search its files."),
+    ).toBeVisible();
+  });
+
+  it("shows Continue search while a token remains under the page cap", async () => {
+    const token =
+      '{"v":1,"g":0,"e":4,"c":0,"q":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","r":"root-a","p":"safe.txt","l":1,"o":1}';
+    const gateway: WorkspaceSearchGateway = {
+      search: vi.fn().mockResolvedValue({
+        requestId: "request-a",
+        projectId: "project-a",
+        transitionEpoch: 4,
+        indexGeneration: 0,
+        query: "needle",
+        matches: [
+          {
+            resource: { rootId: "root-a", relativePath: "safe.txt" },
+            lineNumber: 1,
+            columnNumber: 1,
+            preview: "needle",
+          },
+        ],
+        roots: [
+          {
+            rootId: "root-a",
+            rootName: "Sage",
+            state: "partial",
+            filesScanned: 1,
+            bytesScanned: 6,
+            entriesVisited: 1,
+            skippedFiles: 1,
+            errorCount: 0,
+            message: null,
+          },
+        ],
+        truncated: true,
+        continuationToken: token,
+        limitReasons: ["fileSizeLimit"],
+        elapsedMs: 4,
+      }),
+    };
+    render(
+      <WorkspaceSearchView
+        projectId="project-a"
+        transitionEpoch={4}
+        indexGeneration={0}
+        gateway={gateway}
+        onOpenMatch={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Search files"), {
+      target: { value: "needle" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(
+      await screen.findByRole("button", { name: "Continue search" }),
     ).toBeVisible();
   });
 });
