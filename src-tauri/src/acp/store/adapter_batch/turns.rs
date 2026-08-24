@@ -53,7 +53,7 @@ pub(super) fn apply(
             }
         },
         TurnState::Cancelled | TurnState::Interrupted | TurnState::Failed
-            if state == TurnState::Cancelling =>
+            if matches!(state, TurnState::Cancelling | TurnState::Sending) =>
         {
             delivery
         }

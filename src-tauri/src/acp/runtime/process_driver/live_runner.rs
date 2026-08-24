@@ -171,11 +171,6 @@ where
         };
     }
     let exit = tauri::async_runtime::block_on(drive(initial, &context, host));
-    let disposition = if exit.shutdown.is_some() {
-        LiveRunnerExit::Shutdown
-    } else {
-        LiveRunnerExit::Failed
-    };
     let recovery = finish(
         exit,
         mailbox.as_ref(),
@@ -188,7 +183,7 @@ where
         exit: if recovery.is_some() {
             LiveRunnerExit::Failed
         } else {
-            disposition
+            LiveRunnerExit::Shutdown
         },
         recovery,
     }
@@ -257,7 +252,9 @@ where
                 | FirstTurnWorkerRecovery::ReusableConverge(_)
                 | FirstTurnWorkerRecovery::ReusableFinalize(_)
         ),
-        _ => false,
+        other => {
+            other.has_durable_completed_cursor() || other.has_durable_cancelled_cursor()
+        }
     }
 }
 
@@ -289,7 +286,7 @@ fn finish<A, R, T>(
     control: &TreeControl,
     reader: &mut BoundedThread,
     watcher: &mut BoundedThread,
-    cleanup_deadline: Instant,
+    _cleanup_deadline: Instant,
 ) -> Option<RetainedRunnerRecovery>
 where
     A: HarnessAdapter,
@@ -297,33 +294,33 @@ where
     T: StdinTransport + Send + 'static,
     A: Send + 'static,
 {
-    let deadline = exit
-        .shutdown
-        .as_ref()
-        .map(WorkerEnvelope::deadline)
-        .map(|deadline| deadline.min(cleanup_deadline))
-        .unwrap_or(cleanup_deadline);
     let already_closed = matches!(exit.state, FirstTurnWorkerState::Closed);
+    let mut exit = exit;
+    let durable_completed = exit.state.has_durable_completed_cursor();
+    let durable_cancelled = exit.state.has_durable_cancelled_cursor();
+    let durable_terminal = already_closed || durable_completed || durable_cancelled;
     if !already_closed {
+        exit.state.close_stdin_after_durable_completed();
         let _ = control.request_termination(exit.reason);
     }
     mailbox.close();
-    let converged = control.wait_before(deadline).is_ok();
-    let reader_done = reader
-        .wait(deadline.saturating_duration_since(Instant::now()))
-        .is_ok();
-    let watcher_done = watcher
-        .wait(deadline.saturating_duration_since(Instant::now()))
-        .is_ok();
-    let clean_shutdown =
-        exit.shutdown.is_some() && already_closed && converged && reader_done && watcher_done;
-    if let Some(envelope) = exit.shutdown {
-        envelope.respond(if converged && reader_done && watcher_done {
-            Ok(WorkerReply::Unit)
-        } else {
-            Err(HostError::RecoveryRequired)
-        });
+    if let Some(envelope) = exit.shutdown.take() {
+        envelope.respond(Ok(WorkerReply::Unit));
     }
+    let wait_deadline = Instant::now() + cleanup_budget();
+    let converged = match control.wait_zero_before(wait_deadline) {
+        Ok((_, token)) => {
+            if durable_completed {
+                tauri::async_runtime::block_on(exit.state.park_after_zero(token));
+            }
+            true
+        }
+        Err(_) => false,
+    };
+    let remaining = wait_deadline.saturating_duration_since(Instant::now());
+    let reader_done = reader.wait(remaining).is_ok();
+    let watcher_done = watcher.wait(remaining).is_ok();
+    let clean_shutdown = durable_terminal && converged && reader_done && watcher_done;
     (!clean_shutdown).then(|| Box::new(exit.state) as RetainedRunnerRecovery)
 }
 

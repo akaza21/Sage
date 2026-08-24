@@ -1,5 +1,6 @@
 mod actor;
 mod host;
+mod host_shutdown;
 mod mailbox;
 mod types;
 

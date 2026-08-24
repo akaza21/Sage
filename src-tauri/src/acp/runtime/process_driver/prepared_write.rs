@@ -7,8 +7,9 @@ use crate::acp::{
 };
 
 use super::{
-    CancelIntent, CompletedDriverParts, DriverError, DriverMailbox, PreparedDriverTurn,
-    ProcessTreeControl, RebindFailure, StdinTransport, WriteFence, WriteFenceError,
+    CancelIntent, CompletedDriverParts, CoordinatorZeroToken, DriverError, DriverMailbox,
+    PreparedDriverTurn, ProcessTreeControl, RebindFailure, StdinTransport, WriteFence,
+    WriteFenceError,
 };
 
 mod cancel;
@@ -325,5 +326,52 @@ where
 
     pub(crate) fn ready_for_write(&self) -> bool {
         !self.durable_mutation_unknown && self.fence.ready_for_write()
+    }
+
+    pub(crate) fn has_durable_terminal(&self) -> bool {
+        self.turn
+            .driver
+            .latest_durable_turn_cursor()
+            .is_some_and(|cursor| cursor.state().is_terminal())
+    }
+
+    pub(crate) fn close_stdin(&mut self) {
+        self.turn.driver.close_stdin();
+    }
+
+    pub(crate) fn write_close_session(&mut self) {
+        let _ = self.turn.driver.dispatch_close_session();
+    }
+
+    pub(crate) async fn park_after_zero(
+        &mut self,
+        token: crate::acp::process::ZeroProcessToken,
+    ) where
+        C::ZeroProof: CoordinatorZeroToken,
+    {
+        let owner = self.turn.driver.owner.clone();
+        let Ok(proof) = token.try_into_coordinator_proof(owner.clone()) else {
+            return;
+        };
+        let Some(lease) = self.turn.driver.lease.as_mut() else {
+            return;
+        };
+        let Ok(exit_kind) = crate::acp::contract::RequiredText::new("exitKind", "hostShutdown")
+        else {
+            return;
+        };
+        let _ = lease
+            .park_after_zero_process(
+                crate::acp::store::ParkSessionCommand {
+                    project_id: owner.project_id.clone(),
+                    chat_id: owner.chat_id.clone(),
+                    session_id: owner.session_id.clone(),
+                    runtime_epoch: owner.runtime_epoch,
+                    exit_kind,
+                    now_millis: crate::persistence::now_millis(),
+                },
+                proof,
+            )
+            .await;
     }
 }

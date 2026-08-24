@@ -7,13 +7,14 @@ use crate::acp::{
     contract::{SageServerRequestId, SageTurnId},
     process::TreeExit,
     runtime::permissions::PermissionDecision,
-    runtime::{HostCancelIntent, HostError, HostPromptIntent, LiveRuntimePort, LiveWrite},
+    runtime::{HostCancelIntent, HostError, HostPromptIntent, LiveWrite},
     scheduler::RuntimeOwner,
     store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
 };
 
 use super::{ControlMessage, DriverMailbox, MailboxError, WorkerZeroProof};
 
+mod port;
 mod support;
 use support::{close_bytes, map_mailbox, owner_bytes};
 
@@ -39,6 +40,7 @@ pub(crate) enum WorkerCommand {
         owner: RuntimeOwner,
         cursor: AdapterTurnCursor,
     },
+    AcceptLatestCompleted,
     BeginClose(CloseSessionCommand),
     WaitZero {
         owner: RuntimeOwner,
@@ -46,6 +48,10 @@ pub(crate) enum WorkerCommand {
     FinalizeClose {
         command: CloseSessionCommand,
         proof: WorkerZeroProof,
+    },
+    BeginPark,
+    ParkAfterZero {
+        owner: RuntimeOwner,
     },
     Shutdown,
 }
@@ -73,9 +79,12 @@ impl WorkerCommand {
             Self::DispatchCancel(_) => LIMITS.deadlines_ms.cancel_dispatch,
             Self::BeginCancel(_)
             | Self::AcceptTerminal { .. }
+            | Self::AcceptLatestCompleted
             | Self::BeginClose(_)
             | Self::WaitZero { .. }
             | Self::FinalizeClose { .. }
+            | Self::BeginPark
+            | Self::ParkAfterZero { .. }
             | Self::Shutdown => LIMITS.deadlines_ms.explicit_close,
             Self::PreparePrompt(_) | Self::DispatchPrompt { .. } | Self::ObserveSend { .. } => {
                 LIMITS.deadlines_ms.ordinary_rpc
@@ -91,9 +100,12 @@ impl WorkerCommand {
                 | Self::BeginCancel(_)
                 | Self::DispatchCancel(_)
                 | Self::AcceptTerminal { .. }
+                | Self::AcceptLatestCompleted
                 | Self::BeginClose(_)
                 | Self::WaitZero { .. }
                 | Self::FinalizeClose { .. }
+                | Self::BeginPark
+                | Self::ParkAfterZero { .. }
                 | Self::Shutdown
         )
     }
@@ -122,11 +134,13 @@ impl WorkerCommand {
                 .checked_add(cursor.turn_id().as_str().len())?
                 .checked_add(32),
             Self::BeginClose(command) => close_bytes(command),
-            Self::WaitZero { owner } => owner_bytes(owner).checked_add(1),
+            Self::WaitZero { owner } | Self::ParkAfterZero { owner } => {
+                owner_bytes(owner).checked_add(1)
+            }
             Self::FinalizeClose { command, proof } => {
                 close_bytes(command)?.checked_add(proof.actual_bytes()?)
             }
-            Self::Shutdown => Some(1),
+            Self::AcceptLatestCompleted | Self::BeginPark | Self::Shutdown => Some(1),
         }
     }
 }
@@ -171,10 +185,10 @@ impl DriverMailbox {
 }
 
 pub(crate) struct ProcessLivePort {
-    owner: RuntimeOwner,
+    pub(super) owner: RuntimeOwner,
     mailbox: Arc<DriverMailbox>,
     deadline_abort: Arc<dyn WorkerDeadlineAbort>,
-    managed_runner: Option<Arc<super::LiveRunnerHandle>>,
+    pub(super) managed_runner: Option<Arc<super::LiveRunnerHandle>>,
     #[cfg(test)]
     timeout_override_millis: Option<u64>,
 }
@@ -237,7 +251,7 @@ impl ProcessLivePort {
         }
     }
 
-    fn call(&self, command: WorkerCommand) -> Result<WorkerReply, HostError> {
+    pub(super) fn call(&self, command: WorkerCommand) -> Result<WorkerReply, HostError> {
         let deadline_millis = command.deadline_millis();
         #[cfg(test)]
         let deadline_millis = self.timeout_override_millis.unwrap_or(deadline_millis);
@@ -245,7 +259,7 @@ impl ProcessLivePort {
         self.call_until(command, deadline)
     }
 
-    fn call_until(
+    pub(super) fn call_until(
         &self,
         command: WorkerCommand,
         deadline: Instant,
@@ -262,165 +276,6 @@ impl ProcessLivePort {
                 Err(HostError::Deadline)
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => Err(HostError::Closed),
-        }
-    }
-}
-
-impl LiveRuntimePort for ProcessLivePort {
-    type ZeroProof = WorkerZeroProof;
-
-    fn owner(&self) -> &RuntimeOwner {
-        &self.owner
-    }
-
-    fn resolve_permission(
-        &mut self,
-        owner: &RuntimeOwner,
-        request_id: &SageServerRequestId,
-        decision: PermissionDecision,
-    ) -> Result<(), HostError> {
-        match self.call(WorkerCommand::ResolvePermission {
-            owner: owner.clone(),
-            request_id: request_id.clone(),
-            decision,
-        })? {
-            WorkerReply::Unit => Ok(()),
-            WorkerReply::Prepared(_) | WorkerReply::Write(_) | WorkerReply::Zero(_) => {
-                Err(HostError::State)
-            }
-        }
-    }
-
-    fn prepare_prompt(&mut self, intent: &HostPromptIntent) -> Result<SageTurnId, HostError> {
-        match self.call(WorkerCommand::PreparePrompt(intent.clone()))? {
-            WorkerReply::Prepared(turn_id) => Ok(turn_id),
-            WorkerReply::Write(_) | WorkerReply::Unit | WorkerReply::Zero(_) => {
-                Err(HostError::State)
-            }
-        }
-    }
-
-    fn dispatch_prompt(
-        &mut self,
-        owner: &RuntimeOwner,
-        turn_id: &SageTurnId,
-    ) -> Result<LiveWrite, HostError> {
-        match self.call(WorkerCommand::DispatchPrompt {
-            owner: owner.clone(),
-            turn_id: turn_id.clone(),
-        })? {
-            WorkerReply::Write(write) => Ok(write),
-            WorkerReply::Prepared(_) | WorkerReply::Unit | WorkerReply::Zero(_) => {
-                Err(HostError::State)
-            }
-        }
-    }
-
-    fn observe_send(
-        &mut self,
-        owner: &RuntimeOwner,
-        turn_id: &SageTurnId,
-        observation: SendObservation,
-    ) -> Result<(), HostError> {
-        match self.call(WorkerCommand::ObserveSend {
-            owner: owner.clone(),
-            turn_id: turn_id.clone(),
-            observation,
-        })? {
-            WorkerReply::Unit => Ok(()),
-            WorkerReply::Prepared(_) | WorkerReply::Write(_) | WorkerReply::Zero(_) => {
-                Err(HostError::State)
-            }
-        }
-    }
-
-    fn begin_cancel(&mut self, intent: &HostCancelIntent) -> Result<(), HostError> {
-        match self.call(WorkerCommand::BeginCancel(intent.clone()))? {
-            WorkerReply::Unit => Ok(()),
-            WorkerReply::Prepared(_) | WorkerReply::Write(_) | WorkerReply::Zero(_) => {
-                Err(HostError::State)
-            }
-        }
-    }
-
-    fn dispatch_cancel(&mut self, intent: &HostCancelIntent) -> Result<(), HostError> {
-        match self.call(WorkerCommand::DispatchCancel(intent.clone()))? {
-            WorkerReply::Unit => Ok(()),
-            WorkerReply::Prepared(_) | WorkerReply::Write(_) | WorkerReply::Zero(_) => {
-                Err(HostError::State)
-            }
-        }
-    }
-
-    fn accept_terminal(&mut self, cursor: &AdapterTurnCursor) -> Result<(), HostError> {
-        match self.call(WorkerCommand::AcceptTerminal {
-            owner: self.owner.clone(),
-            cursor: cursor.clone(),
-        })? {
-            WorkerReply::Unit => Ok(()),
-            WorkerReply::Prepared(_) | WorkerReply::Write(_) | WorkerReply::Zero(_) => {
-                Err(HostError::State)
-            }
-        }
-    }
-
-    fn begin_close(&mut self, command: &CloseSessionCommand) -> Result<(), HostError> {
-        match self.call(WorkerCommand::BeginClose(command.clone()))? {
-            WorkerReply::Unit => Ok(()),
-            WorkerReply::Prepared(_) | WorkerReply::Write(_) | WorkerReply::Zero(_) => {
-                Err(HostError::State)
-            }
-        }
-    }
-
-    fn wait_zero(&mut self, owner: &RuntimeOwner) -> Result<Self::ZeroProof, HostError> {
-        match self.call(WorkerCommand::WaitZero {
-            owner: owner.clone(),
-        })? {
-            WorkerReply::Zero(proof) => Ok(proof),
-            WorkerReply::Prepared(_) | WorkerReply::Write(_) | WorkerReply::Unit => {
-                Err(HostError::State)
-            }
-        }
-    }
-
-    fn finalize_close(
-        &mut self,
-        command: &CloseSessionCommand,
-        proof: Self::ZeroProof,
-    ) -> Result<(), (HostError, Self::ZeroProof)> {
-        let retained = proof.clone();
-        match self.call(WorkerCommand::FinalizeClose {
-            command: command.clone(),
-            proof,
-        }) {
-            Ok(WorkerReply::Unit) => Ok(()),
-            Ok(WorkerReply::Prepared(_) | WorkerReply::Write(_) | WorkerReply::Zero(_)) => {
-                Err((HostError::State, retained))
-            }
-            Err(error) => Err((error, retained)),
-        }
-    }
-
-    fn shutdown(&mut self, deadline: Instant) -> Result<(), HostError> {
-        let reply = self.call_until(WorkerCommand::Shutdown, deadline);
-        match reply {
-            Ok(WorkerReply::Unit) => match &self.managed_runner {
-                Some(runner) => runner.join_before(deadline),
-                None => Ok(()),
-            },
-            Err(HostError::Closed) if self.managed_runner.is_some() => {
-                let runner = self
-                    .managed_runner
-                    .as_ref()
-                    .expect("managed runner checked");
-                runner.abort(TreeExit::ParentShutdown);
-                runner.join_before(deadline)
-            }
-            Err(error) => Err(error),
-            Ok(WorkerReply::Prepared(_) | WorkerReply::Write(_) | WorkerReply::Zero(_)) => {
-                Err(HostError::State)
-            }
         }
     }
 }

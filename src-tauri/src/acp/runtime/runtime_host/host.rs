@@ -24,10 +24,12 @@ use super::{
 pub(crate) struct RuntimeHost {
     pub(super) mailbox: Arc<HostMailbox>,
     thread: Mutex<Option<BoundedThread>>,
-    lifecycle: AtomicU8,
+    pub(crate) lifecycle: AtomicU8,
     shutdown_recovery: Option<Arc<dyn RuntimeShutdownRecovery>>,
     #[cfg(any(test, all(windows, feature = "acp-fixture")))]
     timeout_override: Option<TimeoutOverride>,
+    #[cfg(test)]
+    pub(crate) last_shutdown_phase: Mutex<&'static str>,
 }
 
 #[cfg(any(test, all(windows, feature = "acp-fixture")))]
@@ -121,6 +123,8 @@ impl RuntimeHost {
             shutdown_recovery,
             #[cfg(any(test, all(windows, feature = "acp-fixture")))]
             timeout_override,
+            #[cfg(test)]
+            last_shutdown_phase: Mutex::new("none"),
         })
     }
 
@@ -243,34 +247,6 @@ impl RuntimeHost {
         )
     }
 
-    pub(crate) fn shutdown(&self) -> Result<(), HostError> {
-        let started = Instant::now();
-        self.shutdown_before(started + self.cleanup_timeout())
-    }
-
-    fn shutdown_before(&self, deadline: Instant) -> Result<(), HostError> {
-        let started = Instant::now();
-        let budget = self
-            .cleanup_timeout()
-            .min(deadline.saturating_duration_since(started));
-        match self.lifecycle.load(Ordering::Acquire) {
-            HOST_JOINED => return Ok(()),
-            HOST_AWAITING_EXIT | HOST_SHUTDOWN_ACKNOWLEDGED => {
-                return self.join_with_timeout(budget);
-            }
-            HOST_RUNNING => {}
-            _ => return Err(HostError::RecoveryRequired),
-        }
-        match self.outcome_with_timeout(HostCommand::Shutdown, budget)? {
-            HostOutcome::Shutdown => {
-                self.lifecycle
-                    .store(HOST_SHUTDOWN_ACKNOWLEDGED, Ordering::Release);
-                self.join_with_timeout(budget.saturating_sub(started.elapsed()))
-            }
-            _ => Err(HostError::State),
-        }
-    }
-
     /// Joins the host actor, then consumes the managed runner's retained
     /// recovery and returns supervisor-minted zero-process evidence. Plain
     /// in-memory hosts have no native recovery authority and return `None`.
@@ -301,7 +277,7 @@ impl RuntimeHost {
         }
     }
 
-    fn outcome_with_timeout(
+    pub(super) fn outcome_with_timeout(
         &self,
         command: HostCommand,
         timeout: Duration,
@@ -317,7 +293,7 @@ impl RuntimeHost {
         self.submit_with_timeout(command, timeout)
     }
 
-    fn submit_with_timeout(
+    pub(super) fn submit_with_timeout(
         &self,
         command: HostCommand,
         timeout: Duration,
@@ -391,7 +367,7 @@ impl RuntimeHost {
         native
     }
 
-    fn join_with_timeout(&self, timeout: Duration) -> Result<(), HostError> {
+    pub(super) fn join_with_timeout(&self, timeout: Duration) -> Result<(), HostError> {
         let mut thread = self
             .thread
             .lock()
@@ -434,7 +410,7 @@ impl Drop for RuntimeHost {
     }
 }
 
-const HOST_RUNNING: u8 = 0;
-const HOST_AWAITING_EXIT: u8 = 1;
-const HOST_SHUTDOWN_ACKNOWLEDGED: u8 = 2;
-const HOST_JOINED: u8 = 3;
+pub(crate) const HOST_RUNNING: u8 = 0;
+pub(crate) const HOST_AWAITING_EXIT: u8 = 1;
+pub(crate) const HOST_SHUTDOWN_ACKNOWLEDGED: u8 = 2;
+pub(crate) const HOST_JOINED: u8 = 3;

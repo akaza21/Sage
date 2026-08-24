@@ -15,8 +15,8 @@ use crate::acp::{
 };
 
 use super::{
-    DriverClock, DriverError, DriverMailbox, ProcessAdapterDriver, ProcessTreeControl,
-    StdinTransport, TeardownCause, TreeLeaseOwner, driver::DriverState,
+    CoordinatorZeroToken, DriverClock, DriverError, DriverMailbox, ProcessAdapterDriver,
+    ProcessTreeControl, StdinTransport, TeardownCause, TreeLeaseOwner, driver::DriverState,
 };
 
 impl<A, J, R, T, C, L> ProcessAdapterDriver<A, J, R, T, C, L>
@@ -201,6 +201,14 @@ where
         self.completed.terminal_cursor()
     }
 
+    pub(crate) fn close_stdin(&mut self) {
+        self.transport.close();
+    }
+
+    pub(crate) fn write_close_session(&mut self) {
+        self.completed.write_close_session(&mut self.transport);
+    }
+
     pub(crate) fn bind_turn(
         self,
         active_turn: ActiveTurnIntent,
@@ -250,6 +258,35 @@ where
     T: StdinTransport,
     C: ProcessTreeControl,
 {
+    pub(crate) async fn park_after_zero(&mut self, token: crate::acp::process::ZeroProcessToken)
+    where
+        C::ZeroProof: CoordinatorZeroToken,
+    {
+        let Ok(proof) = token.try_into_coordinator_proof(self.owner.clone()) else {
+            return;
+        };
+        let Some(lease) = self.lease.as_mut() else {
+            return;
+        };
+        let Ok(exit_kind) = crate::acp::contract::RequiredText::new("exitKind", "hostShutdown")
+        else {
+            return;
+        };
+        let _ = lease
+            .park_after_zero_process(
+                crate::acp::store::ParkSessionCommand {
+                    project_id: self.owner.project_id.clone(),
+                    chat_id: self.owner.chat_id.clone(),
+                    session_id: self.owner.session_id.clone(),
+                    runtime_epoch: self.owner.runtime_epoch,
+                    exit_kind,
+                    now_millis: crate::persistence::now_millis(),
+                },
+                proof,
+            )
+            .await;
+    }
+
     pub(crate) async fn prepare_and_bind<Auth: ProjectIntentAuthority>(
         self,
         coordinator: &SendCoordinator<Auth>,

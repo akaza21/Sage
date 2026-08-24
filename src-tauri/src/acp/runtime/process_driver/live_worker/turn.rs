@@ -64,8 +64,26 @@ where
                 }
             }
         }
+        WorkerCommand::AcceptLatestCompleted => {
+            responder.respond(Ok(WorkerReply::Unit));
+            FirstTurnWorkerState::Reusable(parts)
+        }
         WorkerCommand::BeginClose(command) => {
             super::reusable::begin(ReusableCloseBeginState::new(parts, command), responder).await
+        }
+        WorkerCommand::BeginPark => {
+            match ReusableCloseBeginState::begin_park(parts).await {
+                Ok(closing) => {
+                    responder.respond(Ok(WorkerReply::Unit));
+                    FirstTurnWorkerState::ReusableDraining(closing)
+                }
+                Err(failure) => {
+                    responder.respond(Err(super::map_close(&failure.error)));
+                    FirstTurnWorkerState::Recovery(Box::new(
+                        FirstTurnWorkerRecovery::ReusableBegin(failure),
+                    ))
+                }
+            }
         }
         _ => {
             responder.respond(Err(HostError::State));
@@ -288,6 +306,15 @@ where
             let owner = owner.clone();
             let cursor = cursor.clone();
             super::recovery::accept_terminal_once(active, owner, cursor, context, envelope)
+        }
+        WorkerCommand::AcceptLatestCompleted => {
+            super::turn_park::accept_latest_completed(active, context, envelope)
+        }
+        WorkerCommand::WaitZero { .. } => {
+            super::turn_park::wait_zero_active(active, context, envelope).await
+        }
+        WorkerCommand::ParkAfterZero { .. } => {
+            super::turn_park::park_after_zero_active(active, context, envelope)
         }
         WorkerCommand::BeginClose(command)
             if command.project_id == context.owner.project_id

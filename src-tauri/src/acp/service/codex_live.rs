@@ -43,6 +43,7 @@ type CodexActivationDriver = ActivationProcessDriver<
 
 mod assembly;
 mod cleanup;
+mod live_cancel;
 mod live_commands;
 mod live_recovery;
 mod projection_recovery;

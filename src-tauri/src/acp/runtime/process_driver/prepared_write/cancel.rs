@@ -8,6 +8,7 @@ use super::{
     CancelIntent, CancelWireState, DriverError, PreparedProcessWrite, PreparedWriteError,
     PreparedWriteFailure, ProcessTreeControl, StdinTransport,
 };
+use super::super::TeardownCause;
 
 impl<A, J, R, T, C> PreparedProcessWrite<A, J, R, T, C>
 where
@@ -127,12 +128,18 @@ where
                     if progress.written_frames == 0 && progress.zero_byte_failures == 1 =>
                 {
                     let _ = self.turn.driver.request_host_termination();
-                    self.cancel_wire = CancelWireState::Teardown;
-                    return Ok(self);
+                    return Err(Box::new(PreparedWriteFailure {
+                        state: self,
+                        error: PreparedWriteError::Driver(DriverError::TeardownRequired(
+                            TeardownCause::HostTermination,
+                        )),
+                    }));
                 }
-                Err(DriverError::TeardownRequired(_)) => {
-                    self.cancel_wire = CancelWireState::Teardown;
-                    return Ok(self);
+                Err(DriverError::TeardownRequired(cause)) => {
+                    return Err(Box::new(PreparedWriteFailure {
+                        state: self,
+                        error: PreparedWriteError::Driver(DriverError::TeardownRequired(cause)),
+                    }));
                 }
                 Ok(_) => {
                     return Err(Box::new(PreparedWriteFailure {

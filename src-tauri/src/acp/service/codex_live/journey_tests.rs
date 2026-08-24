@@ -156,7 +156,14 @@ fn restart_resume_then_another_turn_reads_sqlite() {
         let root_path = setup.root_path.clone();
         let root_id = setup.root_id.clone();
 
-        setup.service.shutdown_blocking().unwrap();
+        let shutdown_started = Instant::now();
+        setup.service.shutdown_blocking().unwrap_or_else(|error| {
+            panic!(
+                "restart first-life shutdown failed: {error:?} after {} in {}ms",
+                setup.service.last_shutdown_stage(),
+                shutdown_started.elapsed().as_millis()
+            )
+        });
         drop(setup);
         assert_job_zero();
 
@@ -220,27 +227,48 @@ fn cancel_then_reuse_session_converges_to_zero_orphans() {
             .service
             .send_codex_turn(setup.turn_command(&owner))
             .unwrap();
-        let turn_id = setup.wait_for_cancellable_turn(&owner);
+        let turn_id = setup.wait_for_running_turn(&owner);
         setup
             .service
             .cancel_codex_turn(HostCancelIntent {
                 owner: owner.clone(),
-                turn_id,
+                turn_id: turn_id.clone(),
                 client_intent_id: ClientIntentId::new(),
                 now_millis: crate::persistence::now_millis(),
             })
-            .unwrap();
+            .unwrap_or_else(|error| {
+                panic!(
+                    "cancel seam failed: {error:?} after {}; turns={:?}",
+                    setup.service.last_cancel_stage(),
+                    setup
+                        .page(&owner)
+                        .turns
+                        .as_slice()
+                        .iter()
+                        .map(|turn| (turn.id.as_str().to_owned(), format!("{:?}", turn.state)))
+                        .collect::<Vec<_>>()
+                )
+            });
         setup.wait_for_cancelled(&owner);
 
         // The production cancel path must relinquish its Job before this
         // session is activated again. A direct slot mutation would not prove it.
         setup.wait_for_job_zero();
-        setup.activate(&owner).await.unwrap();
-        setup.wait_for_ready(&owner);
-        setup.send_and_wait_completed(&owner).await;
-        setup.close(&owner);
+        let reuse_owner = RuntimeOwner {
+            runtime_epoch: RuntimeEpoch::new(2).unwrap(),
+            ..owner.clone()
+        };
+        setup.activate(&reuse_owner).await.unwrap();
+        setup.wait_for_ready(&reuse_owner);
+        setup.send_and_wait_completed(&reuse_owner).await;
+        setup.close(&reuse_owner);
         assert_job_zero();
-        setup.service.shutdown_blocking().unwrap();
+        setup.service.shutdown_blocking().unwrap_or_else(|error| {
+            panic!(
+                "cancel final shutdown failed: {error:?} after {}",
+                setup.service.last_shutdown_stage()
+            )
+        });
     });
 }
 
@@ -509,35 +537,17 @@ impl FixtureSetup {
             .unwrap()
     }
 
-    fn wait_for_cancellable_turn(&self, owner: &RuntimeOwner) -> SageTurnId {
+    fn wait_for_running_turn(&self, owner: &RuntimeOwner) -> SageTurnId {
         self.wait_until(|| {
             self.page(owner).turns.as_slice().iter().any(|turn| {
-                turn.session_id == owner.session_id
-                    && matches!(
-                        turn.state,
-                        TurnState::Sending
-                            | TurnState::Running
-                            | TurnState::WaitingModel
-                            | TurnState::WaitingTool
-                            | TurnState::WaitingApproval
-                            | TurnState::WaitingUser
-                    )
+                turn.session_id == owner.session_id && turn.state == TurnState::Running
             })
         });
         self.page(owner)
             .turns
             .as_slice()
             .iter()
-            .find(|turn| {
-                turn.session_id == owner.session_id
-                    && !matches!(
-                        turn.state,
-                        TurnState::Completed
-                            | TurnState::Cancelled
-                            | TurnState::Failed
-                            | TurnState::Interrupted
-                    )
-            })
+            .find(|turn| turn.session_id == owner.session_id && turn.state == TurnState::Running)
             .unwrap()
             .id
             .clone()

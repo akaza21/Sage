@@ -113,20 +113,42 @@ where
     C::ZeroProof: CoordinatorZeroToken,
     Auth: ProjectIntentAuthority,
 {
-    let WorkerCommand::FinalizeClose { command, proof } = &envelope.command else {
-        envelope.reject(HostError::State);
-        return FirstTurnWorkerState::ReusableZero(zero);
-    };
-    match zero.finalize(command, proof).await {
-        Ok(()) => {
-            envelope.respond(Ok(WorkerReply::Unit));
-            FirstTurnWorkerState::Closed
+    match &envelope.command {
+        WorkerCommand::ParkAfterZero { owner } => {
+            if owner != zero.owner() {
+                envelope.reject(HostError::Intent);
+                return FirstTurnWorkerState::ReusableZero(zero);
+            }
+            match zero.park().await {
+                Ok(()) => {
+                    envelope.respond(Ok(WorkerReply::Unit));
+                    FirstTurnWorkerState::Closed
+                }
+                Err(failure) => {
+                    envelope.respond(Err(super::map_close(&failure.error)));
+                    FirstTurnWorkerState::Recovery(Box::new(
+                        FirstTurnWorkerRecovery::ReusableFinalize(failure),
+                    ))
+                }
+            }
         }
-        Err(failure) => {
-            envelope.respond(Err(super::map_close(&failure.error)));
-            FirstTurnWorkerState::Recovery(Box::new(FirstTurnWorkerRecovery::ReusableFinalize(
-                failure,
-            )))
+        WorkerCommand::FinalizeClose { command, proof } => {
+            match zero.finalize(command, proof).await {
+                Ok(()) => {
+                    envelope.respond(Ok(WorkerReply::Unit));
+                    FirstTurnWorkerState::Closed
+                }
+                Err(failure) => {
+                    envelope.respond(Err(super::map_close(&failure.error)));
+                    FirstTurnWorkerState::Recovery(Box::new(
+                        FirstTurnWorkerRecovery::ReusableFinalize(failure),
+                    ))
+                }
+            }
+        }
+        _ => {
+            envelope.reject(HostError::State);
+            FirstTurnWorkerState::ReusableZero(zero)
         }
     }
 }

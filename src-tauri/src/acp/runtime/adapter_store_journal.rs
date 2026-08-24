@@ -89,7 +89,8 @@ impl AdapterBatchJournal for SqliteAdapterBatchJournal {
                 matches!(
                     event,
                     DurableAdapterEvent::Turn {
-                        state: crate::acp::lifecycle::TurnState::Cancelled,
+                        state: crate::acp::lifecycle::TurnState::Cancelled
+                            | crate::acp::lifecycle::TurnState::Interrupted,
                         ..
                     }
                 )
@@ -121,7 +122,11 @@ impl AdapterBatchJournal for SqliteAdapterBatchJournal {
             #[cfg(feature = "acp-fixture")]
             if has_cancelled_turn
                 && applied
-                && cursor.state() == crate::acp::lifecycle::TurnState::Cancelled
+                && matches!(
+                    cursor.state(),
+                    crate::acp::lifecycle::TurnState::Cancelled
+                        | crate::acp::lifecycle::TurnState::Interrupted
+                )
                 && let Some(observation) = &self.characterization_observation
             {
                 observation.record(

@@ -2,6 +2,9 @@ use std::time::{Duration, Instant};
 
 use crate::acp::{scheduler::RuntimeOwner, store::AdapterTurnCursor};
 
+#[path = "actor_park.rs"]
+mod actor_park;
+
 use super::{
     mailbox::HostMailbox,
     types::{
@@ -12,14 +15,14 @@ use super::{
 };
 
 pub(super) struct Actor<E> {
-    engine: E,
-    state: HostState,
-    owner: Option<RuntimeOwner>,
-    active_turn: Option<crate::acp::contract::SageTurnId>,
-    pending_prompt: bool,
-    pending_cancel: Option<PendingCancel>,
-    pending_terminal: Option<PendingTerminal>,
-    pending_close: Option<PendingClose>,
+    pub(super) engine: E,
+    pub(super) state: HostState,
+    pub(super) owner: Option<RuntimeOwner>,
+    pub(super) active_turn: Option<crate::acp::contract::SageTurnId>,
+    pub(super) pending_prompt: bool,
+    pub(super) pending_cancel: Option<PendingCancel>,
+    pub(super) pending_terminal: Option<PendingTerminal>,
+    pub(super) pending_close: Option<PendingClose>,
 }
 
 impl<E: RuntimeEngine> Actor<E> {
@@ -82,6 +85,9 @@ impl<E: RuntimeEngine> Actor<E> {
             HostCommand::BeginClose(intent) => self.begin_close(intent),
             HostCommand::FinishClose(intent) => self.finish_close(intent),
             HostCommand::RecoverClose(intent) => self.recover_close(intent),
+            HostCommand::AcceptDurableCompleted => self.accept_durable_completed(),
+            HostCommand::BeginPark => self.begin_park(),
+            HostCommand::FinishPark => self.finish_park(deadline),
             HostCommand::Shutdown => self.shutdown(deadline),
         }
     }
@@ -381,26 +387,6 @@ impl<E: RuntimeEngine> Actor<E> {
                 .phase = ClosePhase::Finish;
         }
         self.finish_close(intent)
-    }
-
-    fn shutdown(&mut self, deadline: Instant) -> Result<HostReply, HostError> {
-        self.state = HostState::Draining;
-        match self.engine.shutdown(deadline) {
-            Ok(()) => {
-                self.owner = None;
-                self.active_turn = None;
-                self.pending_prompt = false;
-                self.pending_cancel = None;
-                self.pending_terminal = None;
-                self.pending_close = None;
-                self.state = HostState::Closed;
-                Ok(HostReply::Outcome(HostOutcome::Shutdown))
-            }
-            Err(error) => {
-                self.state = HostState::Recovery;
-                Err(error)
-            }
-        }
     }
 
     fn matches_owner(&self, owner: &RuntimeOwner) -> bool {

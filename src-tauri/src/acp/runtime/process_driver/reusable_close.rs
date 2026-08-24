@@ -78,6 +78,28 @@ where
         &self.command
     }
 
+    pub(crate) async fn begin_park(
+        parts: CompletedDriverParts<A, J, R, T, C, SessionTreeLease>,
+    ) -> Result<ReusableClosingState<A, J, R, T, C>, Box<CloseFailure<Self>>> {
+        let command = CloseSessionCommand {
+            project_id: parts.owner.project_id.clone(),
+            chat_id: parts.owner.chat_id.clone(),
+            expected_projection_revision: crate::acp::contract::ProjectionRevision::ZERO,
+            client_intent_id: crate::acp::contract::ClientIntentId::new(),
+            session_id: parts.owner.session_id.clone(),
+            runtime_epoch: parts.owner.runtime_epoch,
+            now_millis: crate::persistence::now_millis(),
+        };
+        Self {
+            parts,
+            command,
+            close_committed: true,
+            stdin_closed: false,
+        }
+        .begin()
+        .await
+    }
+
     pub(crate) async fn begin(
         mut self,
     ) -> Result<ReusableClosingState<A, J, R, T, C>, Box<CloseFailure<Self>>> {
@@ -99,6 +121,7 @@ where
             self.close_committed = true;
         }
         if !self.stdin_closed {
+            self.parts.write_close_session();
             self.parts.transport.close();
             self.stdin_closed = true;
         }
@@ -159,6 +182,60 @@ where
 {
     pub(crate) fn receipt(&self) -> &WorkerZeroProof {
         &self.receipt
+    }
+
+    pub(crate) fn owner(&self) -> &crate::acp::scheduler::RuntimeOwner {
+        &self.candidate.parts.owner
+    }
+
+    pub(crate) async fn park(mut self) -> Result<(), Box<CloseFailure<Self>>> {
+        let retained = match self.proof.take() {
+            Some(proof) => proof,
+            None => return Err(failure(self, CloseError::Proof)),
+        };
+        let owner = self.candidate.parts.owner.clone();
+        let proof = match retained {
+            ReusableProof::Validated(proof) => proof,
+            ReusableProof::Native(native) => match native.try_into_coordinator_proof(owner.clone()) {
+                Ok(proof) => proof,
+                Err((native, error)) => {
+                    self.proof = Some(ReusableProof::Native(native));
+                    return Err(failure(self, CloseError::Driver(error)));
+                }
+            },
+        };
+        if !matches!(
+            self.candidate.parts.terminal_cursor().state(),
+            crate::acp::lifecycle::TurnState::Completed
+        ) {
+            return Ok(());
+        }
+        let Some(lease) = self.candidate.parts.lease.as_mut() else {
+            self.proof = Some(ReusableProof::Validated(proof));
+            return Err(failure(self, CloseError::Driver(DriverError::Tree)));
+        };
+        let Ok(exit_kind) = crate::acp::contract::RequiredText::new("exitKind", "hostShutdown")
+        else {
+            self.proof = Some(ReusableProof::Validated(proof));
+            return Err(failure(self, CloseError::Proof));
+        };
+        match lease
+            .park_after_zero_process(
+                crate::acp::store::ParkSessionCommand {
+                    project_id: owner.project_id,
+                    chat_id: owner.chat_id,
+                    session_id: owner.session_id,
+                    runtime_epoch: owner.runtime_epoch,
+                    exit_kind,
+                    now_millis: crate::persistence::now_millis(),
+                },
+                proof,
+            )
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(error) => Err(failure(self, error.into())),
+        }
     }
 
     pub(crate) async fn finalize(

@@ -16,7 +16,13 @@ pub(super) fn await_request(
     expected_method: &str,
 ) -> Result<(), FixtureError> {
     loop {
-        let request = read_json_line(input, state)?;
+        let Some(request) = read_json_line(input, state)? else {
+            return if expected_method == "thread/unsubscribe" {
+                Ok(())
+            } else {
+                Err(FixtureError::Io)
+            };
+        };
         let object = request.as_object().ok_or(FixtureError::InvalidArguments)?;
         let method = object
             .get("method")
@@ -44,10 +50,13 @@ pub(super) fn emit_response(
     state: &mut WireState,
     output: &mut impl Write,
 ) -> Result<(), FixtureError> {
-    let id = state
-        .last_request_id
-        .take()
-        .ok_or(FixtureError::InvalidArguments)?;
+    let Some(id) = state.last_request_id.take() else {
+        return if shape == "ack" {
+            Ok(())
+        } else {
+            Err(FixtureError::InvalidArguments)
+        };
+    };
     let result = match shape {
         "initialize" => json!({
             "userAgent": USER_AGENT,
@@ -110,7 +119,7 @@ pub(super) fn emit_notification(
     emit_json(output, state, &notification)
 }
 
-fn read_json_line(input: &mut impl Read, state: &WireState) -> Result<Value, FixtureError> {
+fn read_json_line(input: &mut impl Read, state: &WireState) -> Result<Option<Value>, FixtureError> {
     if !state.stdin_open {
         return Err(FixtureError::InvalidArguments);
     }
@@ -119,10 +128,12 @@ fn read_json_line(input: &mut impl Read, state: &WireState) -> Result<Value, Fix
     loop {
         let read = input.read(&mut byte).map_err(|_| FixtureError::Io)?;
         if read == 0 {
-            return Err(FixtureError::Io);
+            return Ok(None);
         }
         if byte[0] == b'\n' {
-            return serde_json::from_slice(&bytes).map_err(|_| FixtureError::InvalidArguments);
+            return serde_json::from_slice(&bytes)
+                .map(Some)
+                .map_err(|_| FixtureError::InvalidArguments);
         }
         if bytes.len() as u64 >= LIMITS.wire.frame_bytes {
             return Err(FixtureError::ExpandedLimit);

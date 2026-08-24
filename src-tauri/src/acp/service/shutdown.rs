@@ -5,34 +5,60 @@ impl AcpService {
         let started = Instant::now();
         let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
         let mut failure = None;
+        #[cfg(test)]
+        self.record_shutdown_stage("discovery");
         if let Err(error) = self
             .codex_discovery
             .shutdown(budget.saturating_sub(started.elapsed()))
         {
             failure = Some(map_discovery_shutdown(error));
+        } else {
+            #[cfg(test)]
+            self.record_shutdown_stage("recovery");
         }
         self.codex_auth.invalidate();
         // Recovery still owns native/durable authority on error. The early
         // return keeps the slot, publisher, and journal alive for exact retry.
         self.shutdown_codex_recovery(started + budget)?;
-        if let Some(runtime) = self.runtime.begin_shutdown()
-            && let Err(error) = runtime.shutdown()
-        {
-            self.runtime
-                .shutdown_failed()
-                .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
-            return Err(error);
+        if let Some(runtime) = self.runtime.begin_shutdown() {
+            #[cfg(test)]
+            if failure.is_none() {
+                self.record_shutdown_stage("runtime");
+            }
+            if let Err(error) = runtime.shutdown() {
+                #[cfg(test)]
+                self.record_shutdown_stage(runtime.last_shutdown_phase());
+                self.runtime
+                    .shutdown_failed()
+                    .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
+                return Err(error);
+            }
         }
-        if let Err(error) = self.stop_notifier(budget.saturating_sub(started.elapsed())) {
+        let remaining = (started + budget).saturating_duration_since(Instant::now());
+        if let Err(error) = self.stop_notifier(remaining) {
+            #[cfg(test)]
+            self.record_shutdown_stage("notifier");
             failure.get_or_insert(error);
         }
         self.journal.close_when_drained();
-        if let Err(error) = self.wait_journal(budget.saturating_sub(started.elapsed())) {
+        if let Err(error) = self.wait_journal(
+            (started + budget).saturating_duration_since(Instant::now()),
+        ) {
             self.journal.shutdown();
+            #[cfg(test)]
+            self.record_shutdown_stage("journal");
             failure.get_or_insert(error);
         }
         if self.runtime.finish_shutdown().is_err() {
+            #[cfg(test)]
+            if failure.is_none() {
+                self.record_shutdown_stage("finish");
+            }
             failure.get_or_insert(crate::acp::runtime::HostError::RecoveryRequired);
+        }
+        #[cfg(test)]
+        if failure.is_none() {
+            self.record_shutdown_stage("ok");
         }
         failure.map_or(Ok(()), Err)
     }

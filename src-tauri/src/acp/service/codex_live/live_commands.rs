@@ -51,8 +51,12 @@ impl AcpService {
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
         let deadline = Instant::now()
             + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+        #[cfg(test)]
+        self.record_cancel_stage("durable-wait");
         while !self.cancel_is_durable(&owner, &turn_id) {
             if Instant::now() >= deadline {
+                #[cfg(test)]
+                self.record_cancel_stage("durable-timeout");
                 let _ = self.runtime.mark_recovery(&owner);
                 self.retain_live_recovery(LiveHostRecovery {
                     owner,
@@ -63,15 +67,29 @@ impl AcpService {
             }
             std::thread::sleep(Duration::from_millis(5));
         }
+        #[cfg(test)]
+        self.record_cancel_stage("converge");
+        let converge_deadline = Instant::now()
+            + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
         match self.converge_closed_shutdown(
             &owner,
             &host,
             ClosedShutdownAuthority::Host,
             false,
-            deadline,
+            converge_deadline,
         ) {
-            Ok(()) => Ok(outcome),
+            Ok(()) => {
+                #[cfg(test)]
+                self.record_cancel_stage("park");
+                self.park_after_cancel_zero(&owner).map(|()| {
+                    #[cfg(test)]
+                    self.record_cancel_stage("ok");
+                    outcome
+                })
+            }
             Err(_) => {
+                #[cfg(test)]
+                self.record_cancel_stage("converge");
                 let _ = self.runtime.mark_recovery(&owner);
                 self.retain_live_recovery(LiveHostRecovery {
                     owner,
@@ -81,25 +99,6 @@ impl AcpService {
                 Err(CodexSessionError::Recovery)
             }
         }
-    }
-
-    fn cancel_is_durable(
-        &self,
-        owner: &RuntimeOwner,
-        turn_id: &crate::acp::contract::SageTurnId,
-    ) -> bool {
-        self.load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
-            .is_ok_and(|page| {
-                page.turns.as_slice().iter().any(|turn| {
-                    turn.id == *turn_id
-                        && turn.session_id == owner.session_id
-                        && matches!(
-                            turn.state,
-                            crate::acp::lifecycle::TurnState::Cancelled
-                                | crate::acp::lifecycle::TurnState::Interrupted
-                        )
-                })
-            })
     }
 
     pub(crate) fn close_codex_session(
@@ -282,7 +281,13 @@ impl AcpService {
                     let release = if recovering {
                         self.runtime.release_recovered(owner, host)
                     } else {
-                        self.runtime.release(owner, host)
+                        match self.runtime.release(owner, host) {
+                            Ok(()) => Ok(()),
+                            Err(super::super::runtime_slot::RuntimeSlotError::Recovery) => {
+                                self.runtime.release_recovered(owner, host)
+                            }
+                            Err(error) => Err(error),
+                        }
                     };
                     return release.map_err(|_| ClosedShutdownAuthority::Release(proof));
                 }

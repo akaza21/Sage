@@ -61,7 +61,7 @@ fn execute_with_io(
     error: &mut impl Write,
 ) -> Result<(), FixtureError> {
     match field_str(step, "op")? {
-        "awaitClient" => await_client_kind(step, input, state)?,
+        "awaitClient" => await_client_kind(step, input, output, state)?,
         "readPromptBytes" | "readRequestBytes" => {
             await_client(input, state, field_u64(step, "bytes")?)?
         }
@@ -93,6 +93,7 @@ fn execute_with_io(
 fn await_client_kind(
     step: &Value,
     input: &mut impl Read,
+    output: &mut impl Write,
     state: &mut WireState,
 ) -> Result<(), FixtureError> {
     let expected_method = match field_str(step, "kind")? {
@@ -105,7 +106,14 @@ fn await_client_kind(
         _ => None,
     };
     match expected_method {
-        Some(method) => codex::await_request(input, state, method),
+        Some(method) => {
+            codex::await_request(input, state, method)?;
+            if method == "turn/interrupt" {
+                let _ = codex::emit_response("ack", state, output);
+                codex::emit_notification("interrupted", state, output)?;
+            }
+            Ok(())
+        }
         None => await_client(input, state, LIMITS.wire.frame_bytes),
     }
 }
