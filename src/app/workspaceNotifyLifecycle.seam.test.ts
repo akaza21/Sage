@@ -234,7 +234,9 @@ describe("live Project workspace notify bind", () => {
         }),
     );
     listDirectory.mockClear();
-    const hooks = createWorkspaceNotifyHooks(() => useWorkbenchStore.getState());
+    const hooks = createWorkspaceNotifyHooks(() =>
+      useWorkbenchStore.getState(),
+    );
     const ordinaryPending = ordinary.map((listing) =>
       Promise.resolve(
         hooks.invalidate(

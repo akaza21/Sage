@@ -250,7 +250,11 @@ describe("workspace notify compose", () => {
     await expect(ninthPending).resolves.toBe(false);
     expect(ninth).toBe(false);
     await expect(acquireNotifyListingSlot()).resolves.toBe(true);
-    for (let index = 0; index < MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS; index += 1) {
+    for (
+      let index = 0;
+      index < MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS;
+      index += 1
+    ) {
       releaseNotifyListingSlot();
     }
   });
