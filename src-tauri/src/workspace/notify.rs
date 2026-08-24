@@ -2,12 +2,25 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, OnceLock,
+    },
 };
 
 use serde::Serialize;
-use serde_json::Value;
-use tauri::{AppHandle, Emitter};
+use serde_json::{json, Value};
+use tauri::{AppHandle, Emitter, State};
+
+use crate::state::AppState;
+
+mod watch;
+#[cfg(windows)]
+mod windows;
+
+pub use watch::{
+    authenticate_workspace_notify_root, deliver_workspace_notify_action, relative_from_notify_name,
+};
 
 const MAX_IDENTIFIER_BYTES: usize = 512;
 const MAX_RESOURCE_PATH_BYTES: usize = 16 * 1024;
@@ -214,6 +227,7 @@ pub fn bind_workspace_notify(
 struct BoundWatch {
     generation: u32,
     session: WorkspaceNotifySession,
+    cancelled: Arc<AtomicBool>,
 }
 
 struct NotifyRegistry {
@@ -248,11 +262,15 @@ pub fn apply_watch_workspace_notify(value: &Value) -> Result<u32, WorkspaceNotif
         .unwrap_or(0)
         .saturating_add(1);
     registry.generations.insert(project_id.clone(), generation);
+    if let Some(previous) = registry.watches.remove(&project_id) {
+        previous.cancelled.store(true, Ordering::Release);
+    }
     registry.watches.insert(
         project_id,
         BoundWatch {
             generation,
             session,
+            cancelled: Arc::new(AtomicBool::new(false)),
         },
     );
     Ok(generation)
@@ -267,9 +285,10 @@ pub fn apply_unwatch_workspace_notify(value: &Value) -> Result<(), WorkspaceNoti
         .filter(|item| bounded_identifier(item))
         .ok_or_else(|| reject("schema-invalid"))?;
     let mut registry = registry();
-    if registry.watches.remove(project_id).is_none() {
+    let Some(watch) = registry.watches.remove(project_id) else {
         return Err(reject("notify-substituted"));
-    }
+    };
+    watch.cancelled.store(true, Ordering::Release);
     registry.generations.remove(project_id);
     Ok(())
 }
@@ -304,10 +323,27 @@ pub struct WorkspaceNotifyWatchAck {
 #[tauri::command]
 pub fn watch_workspace_notify(
     app: AppHandle,
+    state: State<'_, AppState>,
     value: Value,
 ) -> Result<WorkspaceNotifyWatchAck, String> {
     let generation =
         apply_watch_workspace_notify(&value).map_err(|error| error.code().to_string())?;
+    let project_id = value
+        .get("stamp")
+        .and_then(|stamp| stamp.get("projectId"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let roots = watch::workspace_notify_bound_roots(&project_id);
+    if let Err(error) = roots.as_ref().map_or_else(
+        || Err(reject("notify-substituted")),
+        |root_ids| {
+            watch::start_workspace_notify_watchers(&app, &state, &project_id, generation, root_ids)
+        },
+    ) {
+        let _ = apply_unwatch_workspace_notify(&json!({ "projectId": project_id }));
+        return Err(error.code().to_string());
+    }
     emit_queued_workspace_notices(&app, &value);
     Ok(WorkspaceNotifyWatchAck { generation })
 }
@@ -941,6 +977,93 @@ mod tests {
                 apply_watch_workspace_notify(&bound()).expect("after unwatch"),
                 1
             );
+        });
+    }
+
+    #[test]
+    fn notify_name_backslash_becomes_relative_path() {
+        assert_eq!(
+            relative_from_notify_name("src\\main.ts").expect("normalize"),
+            "src/main.ts"
+        );
+    }
+
+    #[test]
+    fn notify_name_traversal_is_schema_invalid() {
+        assert_eq!(
+            relative_from_notify_name("src\\..\\x.ts")
+                .expect_err("traversal")
+                .code(),
+            "schema-invalid"
+        );
+    }
+
+    #[test]
+    fn foreign_or_missing_root_directory_is_notify_substituted() {
+        let missing = std::env::temp_dir().join("sage-notify-missing-root");
+        assert_eq!(
+            authenticate_workspace_notify_root(
+                "project-a",
+                "root-a",
+                "project-b",
+                std::env::temp_dir().as_path(),
+            )
+            .expect_err("foreign")
+            .code(),
+            "notify-substituted"
+        );
+        assert_eq!(
+            authenticate_workspace_notify_root("project-a", "root-a", "project-a", &missing)
+                .expect_err("missing")
+                .code(),
+            "notify-substituted"
+        );
+    }
+
+    #[test]
+    fn deliver_after_unwatch_is_notify_substituted() {
+        with_isolated_watches(|| {
+            let generation = apply_watch_workspace_notify(&bound()).expect("watch");
+            apply_unwatch_workspace_notify(&json!({ "projectId": "project-a" })).expect("unwatch");
+            assert_eq!(
+                deliver_workspace_notify_action(
+                    "project-a",
+                    generation,
+                    "root-a",
+                    "src/main.ts",
+                    3,
+                )
+                .expect_err("dropped")
+                .code(),
+                "notify-substituted"
+            );
+        });
+    }
+
+    #[test]
+    fn deliver_stale_generation_is_ignored() {
+        with_isolated_watches(|| {
+            apply_watch_workspace_notify(&bound()).expect("first");
+            let generation = apply_watch_workspace_notify(&bound()).expect("replace");
+            assert!(deliver_workspace_notify_action(
+                "project-a",
+                generation - 1,
+                "root-a",
+                "src/main.ts",
+                3,
+            )
+            .expect("stale")
+            .is_none());
+            let notice = deliver_workspace_notify_action(
+                "project-a",
+                generation,
+                "root-a",
+                "src/main.ts",
+                1,
+            )
+            .expect("current")
+            .expect("created");
+            assert_eq!(notice.kind, "created");
         });
     }
 }
