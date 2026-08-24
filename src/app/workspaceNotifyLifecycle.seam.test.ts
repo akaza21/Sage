@@ -127,6 +127,40 @@ describe("live Project workspace notify bind", () => {
     expect(refreshed).toHaveLength(2);
   });
 
+  it("refreshes more than eight cached listings for one resync in batches", async () => {
+    await useWorkbenchStore.getState().initialize();
+    const listings = Array.from({ length: 9 }, (_, index) => ({
+      rootId: "root-a",
+      relativePath: index === 0 ? "" : `dir-${index}`,
+    }));
+    const directoryListings = Object.fromEntries(
+      listings.map((resource) => [
+        resourceKey(resource),
+        {
+          phase: "ready" as const,
+          value: { resource, entries: [], truncated: false },
+        },
+      ]),
+    );
+    useWorkbenchStore.setState({ directoryListings, expandedDirectories: {} });
+    const listDirectory = vi.mocked(projectPort.listDirectory);
+    listDirectory.mockClear();
+    await createWorkspaceNotifyHooks(() =>
+      useWorkbenchStore.getState(),
+    ).invalidate(
+      {
+        projectId: "project-a",
+        projectGeneration: 1,
+        transitionEpoch: 7,
+        rootId: "root-a",
+        relativePath: "lost-notices",
+        kind: "resync",
+      },
+      listings[0],
+    );
+    expect(listDirectory).toHaveBeenCalledTimes(9);
+  });
+
   it("unwatches when the workbench closes", async () => {
     vi.spyOn(projectPort, "persistProjectLayoutAndClose").mockResolvedValue();
     await useWorkbenchStore.getState().initialize();

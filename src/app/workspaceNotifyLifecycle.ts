@@ -53,22 +53,19 @@ function resourceFromKey(key: string): ResourceRef | null {
   };
 }
 
-function refreshListingsForResync(
+async function refreshListingsForResync(
   get: () => WorkbenchState,
   notice: WorkspaceNotifyNotice,
 ): Promise<void> {
   const seen = new Set<string>();
-  const loads: Array<Promise<void>> = [];
+  const resources: ResourceRef[] = [];
   const add = (resource: ResourceRef) => {
-    if (
-      resource.rootId !== notice.rootId ||
-      seen.has(resourceKey(resource)) ||
-      loads.length >= MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS
-    ) {
+    const key = resourceKey(resource);
+    if (resource.rootId !== notice.rootId || seen.has(key)) {
       return;
     }
-    seen.add(resourceKey(resource));
-    loads.push(Promise.resolve(get().loadDirectory(resource, true)));
+    seen.add(key);
+    resources.push(resource);
   };
   for (const entry of Object.values(get().directoryListings)) {
     if (entry.phase === "ready") {
@@ -81,7 +78,19 @@ function refreshListingsForResync(
       add(resource);
     }
   }
-  return Promise.all(loads).then(() => undefined);
+  for (
+    let offset = 0;
+    offset < resources.length;
+    offset += MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS
+  ) {
+    const batch = resources.slice(
+      offset,
+      offset + MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
+    );
+    await Promise.all(
+      batch.map((resource) => get().loadDirectory(resource, true)),
+    );
+  }
 }
 
 export function createWorkspaceNotifyHooks(
