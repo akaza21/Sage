@@ -75,6 +75,17 @@ describe("live Project workspace notify bind", () => {
     });
   });
 
+  it("still commits Project projection when watch rejects", async () => {
+    vi.spyOn(projectPort, "watchWorkspaceNotify").mockRejectedValue(
+      new Error("watch failed"),
+    );
+    await expect(
+      useWorkbenchStore.getState().initialize(),
+    ).resolves.toBeUndefined();
+    expect(useWorkbenchStore.getState().project?.id).toBe("project-a");
+    expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+  });
+
   it("unwatches when the workbench closes", async () => {
     vi.spyOn(projectPort, "persistProjectLayoutAndClose").mockResolvedValue();
     await useWorkbenchStore.getState().initialize();

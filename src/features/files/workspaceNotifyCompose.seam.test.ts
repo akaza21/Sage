@@ -2,8 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { childResource, parentResource } from "../../domain/resourceIdentity";
 import {
+  MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
+  MAX_NOTIFY_SEARCH_SUBSCRIBERS,
   acceptWorkspaceNotifyNotice,
   listingResourceForNotify,
+  publishWorkspaceNotifySearch,
+  resetWorkspaceNotifyComposeForTests,
+  subscribeWorkspaceNotifySearch,
   syncLiveProjectWorkspaceNotify,
   type LiveProjectNotifyStamp,
   type WorkspaceNotifyNotice,
@@ -27,6 +32,7 @@ const notice: WorkspaceNotifyNotice = {
 
 describe("workspace notify compose", () => {
   afterEach(async () => {
+    resetWorkspaceNotifyComposeForTests();
     await syncLiveProjectWorkspaceNotify(null, {
       watch: vi.fn(),
       unwatch: vi.fn(),
@@ -37,6 +43,37 @@ describe("workspace notify compose", () => {
 
   it("accepts a notice that matches the live Project stamp", () => {
     expect(acceptWorkspaceNotifyNotice(notice, live)).toEqual(notice);
+  });
+
+  it("rejects a notice whose path or kind is outside the native bounds", () => {
+    const oversize = "a".repeat(16 * 1024 + 1);
+    expect(
+      acceptWorkspaceNotifyNotice(
+        { ...notice, relativePath: "src/../x.ts" },
+        live,
+      ),
+    ).toBeNull();
+    expect(
+      acceptWorkspaceNotifyNotice(
+        { ...notice, relativePath: "src\\main.ts" },
+        live,
+      ),
+    ).toBeNull();
+    expect(
+      acceptWorkspaceNotifyNotice(
+        { ...notice, relativePath: "/src/main.ts" },
+        live,
+      ),
+    ).toBeNull();
+    expect(
+      acceptWorkspaceNotifyNotice({ ...notice, relativePath: "src/" }, live),
+    ).toBeNull();
+    expect(
+      acceptWorkspaceNotifyNotice({ ...notice, relativePath: oversize }, live),
+    ).toBeNull();
+    expect(
+      acceptWorkspaceNotifyNotice({ ...notice, kind: "renamed" }, live),
+    ).toBeNull();
   });
 
   it("ignores a stale projectGeneration or transitionEpoch", () => {
@@ -160,5 +197,43 @@ describe("workspace notify compose", () => {
     emit(notice);
     expect(invalidate).toHaveBeenCalledTimes(1);
     finish();
+  });
+
+  it("drops a ninth distinct in-flight listing refresh", async () => {
+    expect(MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS).toBe(8);
+    let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
+    const invalidate = vi.fn(() => new Promise<void>(() => undefined));
+    await syncLiveProjectWorkspaceNotify(live, {
+      watch: vi.fn().mockResolvedValue({ generation: 1 }),
+      unwatch: vi.fn(),
+      async listen(next) {
+        emit = next;
+        return () => undefined;
+      },
+      invalidate,
+    });
+    for (let index = 0; index < 9; index += 1) {
+      emit({ ...notice, relativePath: `dir-${index}/file.ts` });
+    }
+    expect(invalidate).toHaveBeenCalledTimes(8);
+  });
+
+  it("ignores a ninth Search subscriber", () => {
+    expect(MAX_NOTIFY_SEARCH_SUBSCRIBERS).toBe(8);
+    const heard: number[] = [];
+    const unsubscribers: Array<() => void> = [];
+    for (let index = 0; index < 9; index += 1) {
+      const slot = index;
+      unsubscribers.push(
+        subscribeWorkspaceNotifySearch(() => {
+          heard.push(slot);
+        }),
+      );
+    }
+    publishWorkspaceNotifySearch(notice);
+    expect(heard).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    for (const unsubscribe of unsubscribers) {
+      unsubscribe();
+    }
   });
 });

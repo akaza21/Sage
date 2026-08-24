@@ -65,6 +65,9 @@ function safeCounter(value: unknown): number | null {
     : null;
 }
 
+const MAX_NOTICE_PATH_BYTES = 16 * 1024;
+const NOTICE_KINDS = new Set(["created", "changed", "deleted"]);
+
 function boundedIdentifier(value: unknown): value is string {
   return (
     typeof value === "string" &&
@@ -72,6 +75,25 @@ function boundedIdentifier(value: unknown): value is string {
     value.length <= 512 &&
     !value.includes("\0")
   );
+}
+
+function boundedNotifyPath(value: unknown): value is string {
+  if (typeof value !== "string" || value.length === 0 || value.includes("\0")) {
+    return false;
+  }
+  return (
+    new TextEncoder().encode(value).length <= MAX_NOTICE_PATH_BYTES &&
+    !value.includes("\\") &&
+    !value.startsWith("/") &&
+    !value.endsWith("/") &&
+    value
+      .split("/")
+      .every((segment) => segment !== "" && segment !== "." && segment !== "..")
+  );
+}
+
+function boundedNotifyKind(value: unknown): value is string {
+  return typeof value === "string" && NOTICE_KINDS.has(value);
 }
 
 export function acceptWorkspaceNotifyNotice(
@@ -96,8 +118,8 @@ export function acceptWorkspaceNotifyNotice(
     projectGeneration === null ||
     transitionEpoch === null ||
     !boundedIdentifier(record.rootId) ||
-    typeof record.relativePath !== "string" ||
-    typeof record.kind !== "string"
+    !boundedNotifyPath(record.relativePath) ||
+    !boundedNotifyKind(record.kind)
   ) {
     return null;
   }
