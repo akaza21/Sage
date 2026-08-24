@@ -328,6 +328,13 @@ mod tests {
             .insert("extra".into(), json!(true));
         rejects_bind(extra_bind, "schema-invalid");
         rejects_bind(json!("nope"), "schema-invalid");
+        let mut missing_stamp_key = bound();
+        missing_stamp_key.as_object_mut().unwrap().remove("stamp");
+        rejects_bind(missing_stamp_key, "schema-invalid");
+        rejects_bind(
+            json!({ "stamp": "nope", "roots": [{ "rootId": "root-a" }] }),
+            "schema-invalid",
+        );
 
         let mut extra_stamp = stamp_json();
         extra_stamp
@@ -344,13 +351,26 @@ mod tests {
             json!({ "stamp": missing_stamp, "roots": [{ "rootId": "root-a" }] }),
             "schema-invalid",
         );
-        rejects_bind(
-            json!({
-                "stamp": { "projectId": 1, "projectGeneration": 3, "transitionEpoch": 7 },
-                "roots": [{ "rootId": "root-a" }]
-            }),
-            "schema-invalid",
-        );
+        for missing in ["projectId", "projectGeneration", "transitionEpoch"] {
+            let mut stamp_value = stamp_json();
+            stamp_value.as_object_mut().unwrap().remove(missing);
+            rejects_bind(
+                json!({ "stamp": stamp_value, "roots": [{ "rootId": "root-a" }] }),
+                "schema-invalid",
+            );
+        }
+        for (key, value) in [
+            ("projectId", json!(1)),
+            ("projectGeneration", json!("3")),
+            ("transitionEpoch", json!("7")),
+        ] {
+            let mut stamp_value = stamp_json();
+            stamp_value[key] = value;
+            rejects_bind(
+                json!({ "stamp": stamp_value, "roots": [{ "rootId": "root-a" }] }),
+                "schema-invalid",
+            );
+        }
 
         rejects_bind(
             json!({ "stamp": stamp_json(), "roots": [{ "rootId": "root-a", "extra": true }] }),
@@ -379,18 +399,30 @@ mod tests {
         let mut missing_notice = notice_json();
         missing_notice.as_object_mut().unwrap().remove("kind");
         rejects_push(&mut session, missing_notice, "schema-invalid");
-        rejects_push(
-            &mut session,
-            json!({
-                "projectId": "project-a",
-                "projectGeneration": 3,
-                "transitionEpoch": 7,
-                "rootId": "root-a",
-                "relativePath": "src/main.ts",
-                "kind": 1
-            }),
-            "schema-invalid",
-        );
+        for missing in [
+            "projectId",
+            "projectGeneration",
+            "transitionEpoch",
+            "rootId",
+            "relativePath",
+            "kind",
+        ] {
+            let mut notice_value = notice_json();
+            notice_value.as_object_mut().unwrap().remove(missing);
+            rejects_push(&mut session, notice_value, "schema-invalid");
+        }
+        for (key, value) in [
+            ("projectId", json!(1)),
+            ("projectGeneration", json!("3")),
+            ("transitionEpoch", json!("7")),
+            ("rootId", json!(1)),
+            ("relativePath", json!(1)),
+            ("kind", json!(1)),
+        ] {
+            let mut notice_value = notice_json();
+            notice_value[key] = value;
+            rejects_push(&mut session, notice_value, "schema-invalid");
+        }
     }
 
     #[test]
