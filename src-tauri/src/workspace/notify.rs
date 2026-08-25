@@ -14,6 +14,9 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::state::AppState;
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod unix;
+mod unix_events;
 mod watch;
 #[cfg(windows)]
 mod windows;

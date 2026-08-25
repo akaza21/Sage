@@ -139,7 +139,19 @@ fn spawn_workspace_root_watch(
     windows::spawn_workspace_root_watch(app, project_id, generation, root_id, path, cancelled)
 }
 
-#[cfg(not(windows))]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn spawn_workspace_root_watch(
+    app: AppHandle,
+    project_id: String,
+    generation: u32,
+    root_id: String,
+    path: PathBuf,
+    cancelled: Arc<AtomicBool>,
+) -> Result<(), WorkspaceNotifyError> {
+    super::unix::spawn_workspace_root_watch(app, project_id, generation, root_id, path, cancelled)
+}
+
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "linux"))))]
 fn spawn_workspace_root_watch(
     _app: AppHandle,
     _project_id: String,
@@ -148,5 +160,17 @@ fn spawn_workspace_root_watch(
     _path: PathBuf,
     _cancelled: Arc<AtomicBool>,
 ) -> Result<(), WorkspaceNotifyError> {
-    Ok(())
+    Err(reject("notify-unavailable"))
+}
+
+#[cfg(not(any(windows, unix)))]
+fn spawn_workspace_root_watch(
+    _app: AppHandle,
+    _project_id: String,
+    _generation: u32,
+    _root_id: String,
+    _path: PathBuf,
+    _cancelled: Arc<AtomicBool>,
+) -> Result<(), WorkspaceNotifyError> {
+    Err(reject("notify-unavailable"))
 }
