@@ -5,12 +5,13 @@ use crate::{
     workspace::Workspace,
 };
 
-use super::engine_continue::{ContinuationSeek, stale_report};
+use super::engine_continue::{stale_report, ContinuationSeek};
+use super::skip::skip_search_directory_name;
 use super::types::{
-    ContinuationCursor, MAX_RESOURCE_PATH_BYTES, SearchLimitReason, SearchLimits, SearchRoot,
+    encode_continuation_token, stale_continuation, validate_continuation_stamp,
+    validate_search_request, ContinuationCursor, SearchLimitReason, SearchLimits, SearchRoot,
     SearchRootReport, SearchRootSource, SearchRootState, WorkspaceSearchMatch,
-    WorkspaceSearchRequest, WorkspaceSearchResponse, encode_continuation_token, stale_continuation,
-    validate_continuation_stamp, validate_search_request,
+    WorkspaceSearchRequest, WorkspaceSearchResponse, MAX_RESOURCE_PATH_BYTES,
 };
 
 pub struct SearchEngine {
@@ -236,7 +237,7 @@ impl SearchEngine {
                     counters.partial = true;
                     break;
                 }
-                if entry.file_name() == ".git" {
+                if skip_search_directory_name(&entry.file_name()) {
                     continue;
                 }
                 let Some(name) = entry.file_name().to_str().map(str::to_owned) else {

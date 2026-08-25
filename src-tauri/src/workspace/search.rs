@@ -6,6 +6,7 @@ mod file_scan;
 mod helper_process;
 mod helper_protocol;
 pub(crate) mod language_fixture;
+mod skip;
 mod types;
 
 pub use helper_protocol::run_stdio_helper_if_requested;
@@ -54,6 +55,28 @@ mod tests {
             query: query.into(),
             case_sensitive: false,
         }
+    }
+
+    #[test]
+    fn skips_git_and_node_modules_trees() {
+        let (path, root) = fixture_root();
+        fs::create_dir_all(path.join(".git")).unwrap();
+        fs::create_dir_all(path.join("node_modules").join("pkg")).unwrap();
+        fs::write(path.join(".git").join("config"), "needle in git\n").unwrap();
+        fs::write(
+            path.join("node_modules").join("pkg").join("index.js"),
+            "needle in modules\n",
+        )
+        .unwrap();
+        fs::write(path.join("src").join("main.rs"), "const needle = true;\n").unwrap();
+
+        let result = SearchEngine::new(SearchLimits::default())
+            .search(request("needle"), vec![root])
+            .unwrap();
+
+        assert_eq!(result.matches.len(), 1);
+        assert_eq!(result.matches[0].resource.relative_path, "src/main.rs");
+        fs::remove_dir_all(path).unwrap();
     }
 
     #[test]
