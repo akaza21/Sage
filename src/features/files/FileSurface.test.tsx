@@ -559,3 +559,52 @@ describe("FileSurface in-file find", () => {
     expect(editorSelection(editor)).toEqual({ start: 0, end: 5 });
   });
 });
+
+describe("FileSurface Markdown Preview", () => {
+  const markdownTab: WorkbenchTab = {
+    ...tab,
+    id: "file:docs/readme.md",
+    title: "readme.md",
+    resource: { rootId: "root-a", relativePath: "docs/readme.md" },
+  };
+
+  it("hides Preview on non-markdown files", async () => {
+    setReadyEditor(tab, "plain");
+    render(<FileSurface tab={tab} />);
+    await screen.findByRole("textbox", { name: `Edit ${path}` });
+    expect(screen.queryByRole("button", { name: "Preview" })).toBeNull();
+  });
+
+  it("unmounts the editor while previewing live buffer markdown", async () => {
+    setReadyEditor(
+      markdownTab,
+      "# Title\n\nHello **world** and [docs](https://example.test).",
+    );
+    render(<FileSurface tab={markdownTab} />);
+    const editor = await screen.findByRole("textbox", {
+      name: "Edit docs/readme.md",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+    expect(
+      screen.queryByRole("textbox", { name: "Edit docs/readme.md" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("article", { name: "Markdown preview" }),
+    ).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Title" })).toBeVisible();
+    expect(screen.getByText("Hello world and docs.")).toBeVisible();
+    expect(screen.queryByText("https://example.test")).toBeNull();
+    expect(screen.getByRole("button", { name: "Edit" })).toBeVisible();
+
+    const surface = screen.getByLabelText("File editor docs/readme.md");
+    fireEvent.keyDown(surface, { key: "f", ctrlKey: true });
+    expect(screen.queryByRole("search", { name: "Find in file" })).toBeNull();
+    fireEvent.keyDown(surface, { key: "Escape" });
+    expect(
+      await screen.findByRole("textbox", { name: "Edit docs/readme.md" }),
+    ).toBeVisible();
+    expect(editor).not.toBeInTheDocument();
+  });
+});

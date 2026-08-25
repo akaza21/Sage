@@ -1448,6 +1448,33 @@ textarea:focus-visible {
   background: #0f110f;
 }
 
+.file-markdown-preview {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 18px;
+  color: var(--text);
+}
+
+.file-markdown-preview h1,
+.file-markdown-preview h2,
+.file-markdown-preview h3 {
+  margin: 0 0 12px;
+}
+
+.file-markdown-preview p,
+.file-markdown-preview ul,
+.file-markdown-preview blockquote,
+.file-markdown-preview pre {
+  margin: 0 0 12px;
+}
+
+.file-markdown-preview pre {
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
 .file-header {
   display: flex;
   min-width: 0;

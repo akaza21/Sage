@@ -7,6 +7,8 @@ import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
 import { FileEditorHeader } from "./FileEditorHeader";
 import { FileEditorNotices } from "./FileEditorNotices";
 import { FileFindBar } from "./FileFindBar";
+import { FileMarkdownPreview } from "./FileMarkdownPreview";
+import { canPreviewMarkdown } from "./markdownPreview";
 import {
   getFileEditorController,
   useFileEditorLifecycle,
@@ -25,6 +27,8 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
   const findInputRef = useRef<HTMLInputElement>(null);
   const selectedMatchRef = useRef<{ start: number; end: number } | null>(null);
   const [findOpen, setFindOpen] = useState(false);
+  const [previewSessionKey, setPreviewSessionKey] = useState("");
+  const previewing = previewSessionKey === activeResourceKey;
   const [findQuery, setFindQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [matchCursor, setMatchCursor] = useState({
@@ -253,6 +257,12 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
       className="file-surface"
       aria-label={`File editor ${path}`}
       onKeyDown={(event) => {
+        if (previewing && event.key === "Escape") {
+          event.preventDefault();
+          setPreviewSessionKey("");
+          setFindOpen(false);
+          return;
+        }
         if (findOpen && event.key === "Escape") {
           event.preventDefault();
           closeFind();
@@ -274,7 +284,9 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
           event.key.toLowerCase() === "f"
         ) {
           event.preventDefault();
-          openFind();
+          if (!previewing) {
+            openFind();
+          }
         }
       }}
     >
@@ -286,11 +298,19 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
         dirty={tab.dirty}
         saving={editor.saving}
         transitioning={projectTransitioning}
+        canPreview={canPreviewMarkdown(path)}
+        previewing={previewing}
+        onTogglePreview={() => {
+          setFindOpen(false);
+          setPreviewSessionKey((current) =>
+            current === activeResourceKey ? "" : activeResourceKey,
+          );
+        }}
         onDiscard={() => void discardActiveEditor()}
         onSave={() => void saveActiveEditor()}
       />
       <FileEditorNotices conflict={conflict} message={editor.message} />
-      {findOpen ? (
+      {findOpen && !previewing ? (
         <FileFindBar
           inputRef={findInputRef}
           query={findQuery}
@@ -309,16 +329,20 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
           onClose={closeFind}
         />
       ) : null}
-      <EditorAdapter
-        key={activeResourceKey}
-        ref={editorInputRef}
-        ariaLabel={`Edit ${path}`}
-        path={path}
-        content={editor.content}
-        maxContentLength={MAX_EDITABLE_CONTENT_BYTES}
-        disabled={editor.saving || projectTransitioning}
-        onChange={updateEditorContent}
-      />
+      {previewing ? (
+        <FileMarkdownPreview source={editor.content} />
+      ) : (
+        <EditorAdapter
+          key={activeResourceKey}
+          ref={editorInputRef}
+          ariaLabel={`Edit ${path}`}
+          path={path}
+          content={editor.content}
+          maxContentLength={MAX_EDITABLE_CONTENT_BYTES}
+          disabled={editor.saving || projectTransitioning}
+          onChange={updateEditorContent}
+        />
+      )}
     </section>
   );
 }
