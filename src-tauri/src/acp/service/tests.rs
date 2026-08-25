@@ -41,7 +41,10 @@ fn codex_drift_transition_invalidates_the_shared_service_and_catalog_registratio
     let registration = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
     let database = Database::open(std::path::Path::new(":memory:")).unwrap();
     let service = AcpService::new_with_codex_for_test(database, registration.clone()).unwrap();
-    let catalog = crate::harnesses::HarnessCatalog::with_codex_registration(registration.clone());
+    let catalog = crate::harnesses::HarnessCatalog::with_codex_registration_and_presence(
+        registration.clone(),
+        crate::acp::bindings::codex::CodexHostPresence::Absent,
+    );
     let project_root = CodexProjectRootAuthority::for_test(
         ProjectRootAuthority::for_test(
             SageProjectId::parse("project-drift").unwrap(),

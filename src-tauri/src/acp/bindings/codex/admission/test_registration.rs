@@ -1,7 +1,7 @@
 use super::*;
 
 impl CodexBindingRegistration {
-    #[cfg(all(test, windows))]
+    #[cfg(test)]
     pub(crate) fn unavailable_for_test() -> Self {
         Self {
             authority: Arc::new(CodexRegistrationAuthority {

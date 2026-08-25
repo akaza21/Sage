@@ -21,7 +21,7 @@ export function ChatHarnessControls({ availableBinding, canPrompt }: Props) {
   const selectModel = useWorkbenchStore((state) => state.selectModel);
   const visibleHarnesses = harnesses.filter(
     (harness) =>
-      harness.installState === "available" ||
+      harness.installState !== "notInstalled" ||
       harness.source === "development" ||
       harness.id === selectedHarnessId,
   );
@@ -44,9 +44,11 @@ export function ChatHarnessControls({ availableBinding, canPrompt }: Props) {
               {harness.name}
               {harness.source === "development"
                 ? " — test only"
-                : harness.installState !== "available"
-                  ? " — unavailable"
-                  : ""}
+                : harness.installState === "notInstalled"
+                  ? " — not installed"
+                  : harness.installState !== "available"
+                    ? " — unavailable"
+                    : ""}
             </option>
           ))}
         </select>

@@ -7,6 +7,7 @@ mod admission;
 mod auth;
 mod authority;
 mod discovery;
+mod host_presence;
 mod incoming;
 mod installed_role;
 mod managed;
@@ -44,6 +45,7 @@ pub(crate) use discovery::{
 pub(crate) use discovery::{
     CodexDiscoveryProtocol, DiscoveryTransport, RevalidationCheckpoint, run_discovery_protocol,
 };
+pub(crate) use host_presence::{CodexHostPresence, observe_codex_host_presence};
 pub(crate) use incoming::{IncomingEvent, IngressDisposition, ResourceMapper};
 pub(crate) use managed::{
     ManagedStagingError, ManagedStagingPrerequisite, inspect_managed_staging,

@@ -179,10 +179,13 @@ fn authenticate_signed_installed_role_is_the_only_production_admission() {
         CodexAdmissionUnavailable::IndependentAdmission
     );
     assert_eq!(
-        crate::harnesses::HarnessCatalog::with_codex_registration(rejected_registration.clone())
-            .definitions()
-            .remove(0)
-            .install_state,
+        crate::harnesses::HarnessCatalog::with_codex_registration_and_presence(
+            rejected_registration.clone(),
+            crate::acp::bindings::codex::CodexHostPresence::Absent,
+        )
+        .definitions()
+        .remove(0)
+        .install_state,
         "notInstalled"
     );
 

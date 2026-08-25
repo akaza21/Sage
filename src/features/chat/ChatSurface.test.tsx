@@ -189,7 +189,7 @@ afterEach(() => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
-  it("keeps selected unavailable Codex truthful and hides later built-in harnesses", () => {
+  it("keeps selected not-installed Codex truthful and hides later built-in harnesses", () => {
     hooks.page = null;
     useWorkbenchStore.setState({
       harnesses: [
@@ -256,12 +256,61 @@ describe("ChatSurface ACP resource integration", () => {
     const harness = screen.getByRole("combobox", { name: "Harness" });
     const options = within(harness).getAllByRole("option");
     expect(options).toHaveLength(2);
-    expect(options[0]).toHaveTextContent("Codex — unavailable");
+    expect(options[0]).toHaveTextContent("Codex — not installed");
     expect(options[0]).toBeDisabled();
     expect(options[1]).toHaveTextContent("Simulator — test only");
     expect(screen.queryByRole("option", { name: "Pi" })).toBeNull();
     expect(screen.queryByRole("option", { name: "Claude Code" })).toBeNull();
     expect(screen.queryByRole("option", { name: "Oh My Pi" })).toBeNull();
+  });
+
+  it("shows present-but-not-admitted Codex as unavailable without hiding the simulator", () => {
+    hooks.page = null;
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "codex",
+          name: "Codex",
+          description: "ACP",
+          installState: "unavailable",
+          source: "builtIn",
+          accountModelDiscovery: true,
+          transport: "acp",
+          bindingId: "codex-app-server",
+        },
+        {
+          id: "pi",
+          name: "Pi",
+          description: "Later harness",
+          installState: "notInstalled",
+          source: "builtIn",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: null,
+        },
+        {
+          id: "sage-simulator",
+          name: "Simulator",
+          description: "Development",
+          installState: "available",
+          source: "development",
+          accountModelDiscovery: false,
+          transport: "legacySimulator",
+          bindingId: null,
+        },
+      ],
+      selectedHarnessId: "sage-simulator",
+    });
+
+    render(<ChatSurface />);
+
+    const harness = screen.getByRole("combobox", { name: "Harness" });
+    const options = within(harness).getAllByRole("option");
+    expect(options).toHaveLength(2);
+    expect(options[0]).toHaveTextContent("Codex — unavailable");
+    expect(options[0]).toBeDisabled();
+    expect(options[1]).toHaveTextContent("Simulator — test only");
+    expect(screen.queryByRole("option", { name: "Pi" })).toBeNull();
   });
 
   it("keeps the available development fallback visible when the selected harness is absent", () => {

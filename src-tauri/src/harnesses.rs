@@ -1,5 +1,8 @@
 use crate::{
-    acp::bindings::codex::{CodexBindingRegistration, startup_codex_binding_registration},
+    acp::bindings::codex::{
+        CodexBindingRegistration, CodexHostPresence, observe_codex_host_presence,
+        startup_codex_binding_registration,
+    },
     domain::{HarnessDefinition, HarnessTransport, ModelOption},
     error::{AppError, AppResult},
 };
@@ -11,6 +14,8 @@ pub const SIMULATOR_DEEP_MODEL_ID: &str = "sim-deep";
 #[derive(Debug)]
 pub struct HarnessCatalog {
     codex: CodexBindingRegistration,
+    #[cfg(test)]
+    presence_override: Option<CodexHostPresence>,
     #[cfg(all(windows, feature = "acp-fixture"))]
     characterization_available: bool,
 }
@@ -25,6 +30,21 @@ impl HarnessCatalog {
     pub(crate) fn with_codex_registration(codex: CodexBindingRegistration) -> Self {
         Self {
             codex,
+            #[cfg(test)]
+            presence_override: None,
+            #[cfg(all(windows, feature = "acp-fixture"))]
+            characterization_available: false,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_codex_registration_and_presence(
+        codex: CodexBindingRegistration,
+        presence: CodexHostPresence,
+    ) -> Self {
+        Self {
+            codex,
+            presence_override: Some(presence),
             #[cfg(all(windows, feature = "acp-fixture"))]
             characterization_available: false,
         }
@@ -52,22 +72,37 @@ impl HarnessCatalog {
     ) -> Self {
         Self {
             codex,
+            #[cfg(test)]
+            presence_override: None,
             characterization_available: true,
         }
     }
 
+    fn observed_presence(&self) -> CodexHostPresence {
+        #[cfg(test)]
+        if let Some(presence) = self.presence_override {
+            return presence;
+        }
+        observe_codex_host_presence()
+    }
+
+    fn codex_install_state(&self) -> &'static str {
+        if self.codex.is_available() {
+            "available"
+        } else if self.observed_presence().is_present() {
+            "unavailable"
+        } else {
+            "notInstalled"
+        }
+    }
+
     pub fn definitions(&self) -> Vec<HarnessDefinition> {
-        let codex_available = self.codex.is_available();
         let definitions = vec![
             definition(
                 "codex",
                 "Codex",
                 "Curated ACP adapter, installed only when requested.",
-                if codex_available {
-                    "available"
-                } else {
-                    "notInstalled"
-                },
+                self.codex_install_state(),
                 "builtIn",
                 CuratedProtocol::account_models("codex-app-server"),
             ),
@@ -256,7 +291,7 @@ mod tests {
         assert_eq!(definitions[0].transport, HarnessTransport::Acp);
         assert!(matches!(
             definitions[0].install_state.as_str(),
-            "notInstalled" | "available"
+            "notInstalled" | "unavailable" | "available"
         ));
         assert_eq!(
             definitions[0].binding_id.as_deref(),
@@ -347,22 +382,41 @@ mod tests {
         assert!(admitted.models("sage-characterization").unwrap().is_empty());
     }
 
+    #[test]
+    fn catalog_reports_absent_codex_as_not_installed() {
+        let catalog = HarnessCatalog::with_codex_registration_and_presence(
+            crate::acp::bindings::codex::CodexBindingRegistration::unavailable_for_test(),
+            CodexHostPresence::Absent,
+        );
+        let codex = catalog.definitions().remove(0);
+        assert_eq!(codex.install_state, "notInstalled");
+        assert!(catalog.models("codex").unwrap().is_empty());
+    }
+
+    #[test]
+    fn catalog_reports_present_unadmitted_codex_as_unavailable() {
+        let catalog = HarnessCatalog::with_codex_registration_and_presence(
+            crate::acp::bindings::codex::CodexBindingRegistration::unavailable_for_test(),
+            CodexHostPresence::Present,
+        );
+        let codex = catalog.definitions().remove(0);
+        assert_eq!(codex.install_state, "unavailable");
+        assert_eq!(codex.binding_id.as_deref(), Some("codex-app-server"));
+        assert!(catalog.models("codex").unwrap().is_empty());
+    }
+
     #[cfg(windows)]
     #[test]
-    fn codex_availability_and_models_come_from_one_admitted_registration() {
-        let unavailable = HarnessCatalog::with_codex_registration(
-            crate::acp::bindings::codex::CodexBindingRegistration::unavailable_for_test(),
-        );
-        let codex = unavailable.definitions().remove(0);
-        assert_eq!(codex.install_state, "notInstalled");
-        assert!(unavailable.models("codex").unwrap().is_empty());
-
+    fn catalog_keeps_admitted_codex_available_without_host_presence() {
         let registration =
             crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
-        let admitted = HarnessCatalog::with_codex_registration(registration);
-        let codex = admitted.definitions().remove(0);
+        let catalog = HarnessCatalog::with_codex_registration_and_presence(
+            registration,
+            CodexHostPresence::Absent,
+        );
+        let codex = catalog.definitions().remove(0);
         assert_eq!(codex.install_state, "available");
         assert_eq!(codex.binding_id.as_deref(), Some("codex-app-server"));
-        assert!(admitted.models("codex").unwrap().is_empty());
+        assert!(catalog.models("codex").unwrap().is_empty());
     }
 }
