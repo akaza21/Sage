@@ -2,7 +2,7 @@ use std::ffi::OsStr;
 
 const SKIP_DIRECTORY_NAMES: &[&str] = &[".git", "node_modules"];
 
-pub(super) fn skip_search_directory_name(name: &OsStr) -> bool {
+pub(crate) fn skip_workspace_directory_name(name: &OsStr) -> bool {
     SKIP_DIRECTORY_NAMES
         .iter()
         .any(|skip| directory_names_match(name, skip))
@@ -23,11 +23,11 @@ mod tests {
 
     #[test]
     fn skips_git_and_node_modules() {
-        assert!(skip_search_directory_name(OsStr::new(".git")));
-        assert!(skip_search_directory_name(OsStr::new("node_modules")));
-        assert!(!skip_search_directory_name(OsStr::new("src")));
-        assert!(!skip_search_directory_name(OsStr::new("vendor")));
-        assert!(!skip_search_directory_name(OsStr::new(
+        assert!(skip_workspace_directory_name(OsStr::new(".git")));
+        assert!(skip_workspace_directory_name(OsStr::new("node_modules")));
+        assert!(!skip_workspace_directory_name(OsStr::new("src")));
+        assert!(!skip_workspace_directory_name(OsStr::new("vendor")));
+        assert!(!skip_workspace_directory_name(OsStr::new(
             "node_modules-guide"
         )));
     }
@@ -35,14 +35,14 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn windows_directory_names_are_case_insensitive() {
-        assert!(skip_search_directory_name(OsStr::new(".GIT")));
-        assert!(skip_search_directory_name(OsStr::new("Node_Modules")));
+        assert!(skip_workspace_directory_name(OsStr::new(".GIT")));
+        assert!(skip_workspace_directory_name(OsStr::new("Node_Modules")));
     }
 
     #[cfg(unix)]
     #[test]
     fn unix_directory_names_are_case_sensitive() {
-        assert!(!skip_search_directory_name(OsStr::new(".GIT")));
-        assert!(!skip_search_directory_name(OsStr::new("Node_Modules")));
+        assert!(!skip_workspace_directory_name(OsStr::new(".GIT")));
+        assert!(!skip_workspace_directory_name(OsStr::new("Node_Modules")));
     }
 }

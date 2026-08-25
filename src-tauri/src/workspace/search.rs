@@ -6,7 +6,6 @@ mod file_scan;
 mod helper_process;
 mod helper_protocol;
 pub(crate) mod language_fixture;
-mod skip;
 mod types;
 
 pub use helper_protocol::run_stdio_helper_if_requested;

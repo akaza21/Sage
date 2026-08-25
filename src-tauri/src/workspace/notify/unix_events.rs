@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use super::{
-    reject, relative_from_notify_name, WorkspaceNotifyError, OVERFLOW_NOTIFY_ACTION,
-    OVERFLOW_RELATIVE_PATH,
+    OVERFLOW_NOTIFY_ACTION, OVERFLOW_RELATIVE_PATH, WorkspaceNotifyError, reject,
+    relative_from_notify_name,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,6 +136,9 @@ pub(super) fn bounded_watch_directories(
                 continue;
             };
             if file_type.is_symlink() || !file_type.is_dir() {
+                continue;
+            }
+            if crate::workspace::directory_skip::skip_workspace_directory_name(&entry.file_name()) {
                 continue;
             }
             if found.len() >= MAX_UNIX_WATCH_DIRECTORIES {
@@ -311,6 +314,38 @@ mod tests {
         if linked {
             assert!(directories.iter().all(|path| path != &link));
         }
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn bounded_watch_directories_skip_git_and_node_modules() {
+        let root = std::env::temp_dir().join(format!(
+            "sage-unix-watch-skip-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time is after the Unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).expect("root");
+        std::fs::create_dir(root.join("src")).expect("src");
+        std::fs::create_dir(root.join("vendor")).expect("vendor");
+        std::fs::create_dir(root.join(".git")).expect("git");
+        std::fs::create_dir_all(root.join("node_modules").join("pkg")).expect("modules");
+
+        let (directories, truncated) = bounded_watch_directories(&root).expect("walk");
+        let names = directories
+            .iter()
+            .filter_map(|path| path.file_name()?.to_str())
+            .collect::<Vec<_>>();
+
+        assert!(!truncated);
+        assert_eq!(directories.len(), 3);
+        assert!(names.iter().any(|name| *name == "src"));
+        assert!(names.iter().any(|name| *name == "vendor"));
+        assert!(!names.iter().any(|name| *name == ".git"));
+        assert!(!names.iter().any(|name| *name == "node_modules"));
+        assert!(!names.iter().any(|name| *name == "pkg"));
         std::fs::remove_dir_all(root).expect("cleanup");
     }
 }

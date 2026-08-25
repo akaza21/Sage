@@ -5,14 +5,14 @@ use crate::{
     workspace::Workspace,
 };
 
-use super::engine_continue::{stale_report, ContinuationSeek};
-use super::skip::skip_search_directory_name;
+use super::engine_continue::{ContinuationSeek, stale_report};
 use super::types::{
-    encode_continuation_token, stale_continuation, validate_continuation_stamp,
-    validate_search_request, ContinuationCursor, SearchLimitReason, SearchLimits, SearchRoot,
+    ContinuationCursor, MAX_RESOURCE_PATH_BYTES, SearchLimitReason, SearchLimits, SearchRoot,
     SearchRootReport, SearchRootSource, SearchRootState, WorkspaceSearchMatch,
-    WorkspaceSearchRequest, WorkspaceSearchResponse, MAX_RESOURCE_PATH_BYTES,
+    WorkspaceSearchRequest, WorkspaceSearchResponse, encode_continuation_token, stale_continuation,
+    validate_continuation_stamp, validate_search_request,
 };
+use crate::workspace::directory_skip::skip_workspace_directory_name;
 
 pub struct SearchEngine {
     pub(super) limits: SearchLimits,
@@ -237,7 +237,7 @@ impl SearchEngine {
                     counters.partial = true;
                     break;
                 }
-                if skip_search_directory_name(&entry.file_name()) {
+                if skip_workspace_directory_name(&entry.file_name()) {
                     continue;
                 }
                 let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
