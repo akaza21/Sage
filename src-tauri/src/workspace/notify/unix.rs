@@ -57,17 +57,17 @@ pub(super) fn spawn_workspace_root_watch(
 }
 
 #[cfg(target_os = "macos")]
-fn prepare_watch(directories: &[PathBuf]) -> std::io::Result<macos::Prepared> {
+pub(crate) fn prepare_watch(directories: &[PathBuf]) -> std::io::Result<macos::Prepared> {
     macos::prepare(directories)
 }
 
 #[cfg(target_os = "linux")]
-fn prepare_watch(directories: &[PathBuf]) -> std::io::Result<linux::Prepared> {
+pub(crate) fn prepare_watch(directories: &[PathBuf]) -> std::io::Result<linux::Prepared> {
     linux::prepare(directories)
 }
 
 #[cfg(target_os = "macos")]
-fn run_prepared(
+pub(crate) fn run_prepared(
     prepared: macos::Prepared,
     cancelled: &AtomicBool,
     deliver: &mut impl FnMut(String, u32),
@@ -76,7 +76,7 @@ fn run_prepared(
 }
 
 #[cfg(target_os = "linux")]
-fn run_prepared(
+pub(crate) fn run_prepared(
     prepared: linux::Prepared,
     cancelled: &AtomicBool,
     deliver: &mut impl FnMut(String, u32),
@@ -137,7 +137,7 @@ mod macos {
         ) -> c_int;
     }
 
-    pub(super) struct Prepared {
+    pub(crate) struct Prepared {
         kq: c_int,
         dir_fds: Vec<c_int>,
     }
@@ -271,7 +271,7 @@ mod linux {
         fn poll(fds: *mut PollFd, nfds: u64, timeout: c_int) -> c_int;
     }
 
-    pub(super) struct Prepared {
+    pub(crate) struct Prepared {
         fd: c_int,
     }
 

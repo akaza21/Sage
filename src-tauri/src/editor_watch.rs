@@ -2,8 +2,8 @@ use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{
-        Arc, Mutex, OnceLock,
         atomic::{AtomicBool, Ordering},
+        Arc, Mutex, OnceLock,
     },
 };
 
@@ -185,14 +185,7 @@ fn can_emit(resource: &ResourceRef, generation: u32, cancelled: &AtomicBool) -> 
             })
 }
 
-fn notice_kind_for_path(
-    watched_file_name: &str,
-    changed_file_name: &str,
-    action: u32,
-) -> Option<EditorExternalWatchKind> {
-    if !watched_file_name.eq_ignore_ascii_case(changed_file_name) {
-        return None;
-    }
+fn notice_kind_for_action(action: u32) -> Option<EditorExternalWatchKind> {
     match action {
         FILE_ACTION_REMOVED | FILE_ACTION_RENAMED_OLD_NAME => {
             Some(EditorExternalWatchKind::Deleted)
@@ -202,6 +195,60 @@ fn notice_kind_for_path(
         }
         _ => None,
     }
+}
+
+fn notice_kind_for_path(
+    watched_file_name: &str,
+    changed_file_name: &str,
+    action: u32,
+) -> Option<EditorExternalWatchKind> {
+    if !watched_file_name.eq_ignore_ascii_case(changed_file_name) {
+        return None;
+    }
+    notice_kind_for_action(action)
+}
+
+#[cfg(any(test, target_os = "macos", target_os = "linux"))]
+pub(crate) fn editor_notice_kind_from_unix_delivery(
+    watched_file_name: &str,
+    relative: &str,
+    action: u32,
+) -> Option<EditorExternalWatchKind> {
+    editor_notice_kind_from_unix_delivery_case(watched_file_name, relative, action, !cfg!(windows))
+}
+
+#[cfg(any(test, target_os = "macos", target_os = "linux"))]
+fn editor_notice_kind_from_unix_delivery_case(
+    watched_file_name: &str,
+    relative: &str,
+    action: u32,
+    case_sensitive: bool,
+) -> Option<EditorExternalWatchKind> {
+    if relative == crate::workspace::notify::OVERFLOW_RELATIVE_PATH
+        && action == crate::workspace::notify::OVERFLOW_NOTIFY_ACTION
+    {
+        return Some(EditorExternalWatchKind::Changed);
+    }
+    let changed_file_name = relative.rsplit('/').next().unwrap_or(relative);
+    let names_match = if case_sensitive {
+        watched_file_name == changed_file_name
+    } else {
+        watched_file_name.eq_ignore_ascii_case(changed_file_name)
+    };
+    if !names_match {
+        return None;
+    }
+    notice_kind_for_action(action)
+}
+
+#[cfg(any(test, target_os = "macos", target_os = "linux"))]
+pub(crate) fn editor_watch_failure_resync(cancelled: bool) -> Option<EditorExternalWatchKind> {
+    (!cancelled).then_some(EditorExternalWatchKind::Changed)
+}
+
+#[cfg(test)]
+pub(crate) fn editor_unix_watch_supported() -> bool {
+    cfg!(any(target_os = "macos", target_os = "linux"))
 }
 
 #[tauri::command]
@@ -251,10 +298,16 @@ fn checked_file_path(path: PathBuf) -> AppResult<PathBuf> {
 #[cfg(windows)]
 mod windows;
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod unix;
+
 #[cfg(windows)]
 use windows::spawn_editor_watch;
 
-#[cfg(not(windows))]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use unix::spawn_editor_watch;
+
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "linux"))))]
 fn spawn_editor_watch(
     _app: tauri::AppHandle,
     _resource: ResourceRef,
@@ -263,7 +316,20 @@ fn spawn_editor_watch(
     _cancelled: Arc<AtomicBool>,
 ) -> AppResult<()> {
     Err(AppError::Unsupported(
-        "editor filesystem watches are only available on Windows".into(),
+        "editor filesystem watches are unavailable on this Unix".into(),
+    ))
+}
+
+#[cfg(not(any(windows, unix)))]
+fn spawn_editor_watch(
+    _app: tauri::AppHandle,
+    _resource: ResourceRef,
+    _path: PathBuf,
+    _generation: u32,
+    _cancelled: Arc<AtomicBool>,
+) -> AppResult<()> {
+    Err(AppError::Unsupported(
+        "editor filesystem watches are unavailable on this platform".into(),
     ))
 }
 

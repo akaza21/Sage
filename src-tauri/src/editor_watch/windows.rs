@@ -3,8 +3,8 @@ use std::{
     os::windows::{fs::OpenOptionsExt, io::AsRawHandle},
     path::{Path, PathBuf},
     sync::{
-        Arc,
         atomic::{AtomicBool, Ordering},
+        Arc,
     },
 };
 
@@ -18,7 +18,7 @@ use windows_sys::Win32::{
     System::Threading::WaitForSingleObject,
 };
 
-use super::{EditorExternalWatchKind, ResourceRef, emit_if_active, notice_kind_for_path};
+use super::{emit_if_active, notice_kind_for_path, EditorExternalWatchKind, ResourceRef};
 use crate::error::{AppError, AppResult};
 
 const WAIT_OBJECT_0: u32 = 0;
@@ -312,7 +312,7 @@ mod tests {
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
         let worker_directory = directory.clone();
-        let (notices, receive_notice) = mpsc::sync_channel(1);
+        let (notices, receive_notice) = mpsc::sync_channel(8);
         let (completed, receive_completion) = mpsc::sync_channel(1);
         let worker = std::thread::spawn(move || {
             let result =
@@ -337,7 +337,10 @@ mod tests {
         }
         assert!(saw_change, "watched file change should be reported");
 
-        while receive_notice.try_recv().is_ok() {}
+        let quiet_deadline = std::time::Instant::now() + Duration::from_millis(300);
+        while std::time::Instant::now() < quiet_deadline {
+            let _ = receive_notice.recv_timeout(Duration::from_millis(50));
+        }
 
         fs::write(directory.join("sibling.md"), "sibling").expect("modify sibling file");
         assert!(

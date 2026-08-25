@@ -6,7 +6,7 @@ use super::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum UnixWatchKind {
+pub(crate) enum UnixWatchKind {
     Created,
     Deleted,
     Changed,
@@ -15,7 +15,7 @@ pub(super) enum UnixWatchKind {
     Overflow,
 }
 
-pub(super) fn unix_watch_delivery(
+pub(crate) fn unix_watch_delivery(
     name: Option<&str>,
     kind: UnixWatchKind,
 ) -> Result<(String, u32), WorkspaceNotifyError> {
