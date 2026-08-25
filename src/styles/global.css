@@ -777,6 +777,23 @@ textarea:focus-visible {
   border-top: 1px solid var(--border);
 }
 
+.source-branches {
+  margin: 0 8px 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.source-branch {
+  padding: 2px 0;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.source-branch--current {
+  color: var(--text);
+  font-weight: 650;
+}
+
 .repository-commit {
   display: grid;
   gap: 5px;

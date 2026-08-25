@@ -74,6 +74,9 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         }
     }
     let branch = symbolic_branch(workspace).await?;
+    let listed = crate::repository_branches::list_local_branches(workspace).await?;
+    let listed =
+        crate::repository_branches::compose_current_named_branch(listed, branch.as_deref());
     let base = diff_base(workspace).await?;
     let output = crate::repository_workspace::run_git(
         workspace,
@@ -98,6 +101,8 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         root_id: workspace.root_id().into(),
         state: "repository".into(),
         branch,
+        branches: listed.names,
+        branches_truncated: listed.truncated,
         changes,
         truncated: true,
         elapsed_ms: started.elapsed().as_millis() as u64,

@@ -23,6 +23,8 @@ const rootStatus: RootRepositoryStatus = {
   rootId: "root-a",
   state: "repository",
   branch: "main",
+  branches: ["main", "topic"],
+  branchesTruncated: false,
   changes: [],
   truncated: false,
   elapsedMs: 1,
@@ -274,6 +276,74 @@ it("does not show root changes while nested status is loading", () => {
   expect(
     screen.queryByRole("button", { name: "Open diff for root-only.ts" }),
   ).toBeNull();
+});
+
+it("does not mark a local branch current while HEAD is detached", () => {
+  const detached: RootRepositoryStatus = {
+    ...rootStatus,
+    branch: "01234567 (detached)",
+  };
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [detached], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: detached,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+
+  render(<SourceControlView />);
+
+  const list = screen.getByRole("list", { name: "Local branches in Root A" });
+  expect(list).toHaveTextContent("main");
+  expect(list).toHaveTextContent("topic");
+  expect(list).not.toHaveTextContent("(current)");
+});
+
+it("lists local branches and marks the current named branch", () => {
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [rootStatus], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: rootStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+
+  render(<SourceControlView />);
+
+  const list = screen.getByRole("list", { name: "Local branches in Root A" });
+  expect(list).toHaveTextContent("main (current)");
+  expect(list).toHaveTextContent("topic");
+  expect(list).not.toHaveTextContent("topic (current)");
 });
 
 it("uses the live selected root status after staging a selected root file", async () => {

@@ -114,10 +114,16 @@ pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         }
     }
 
+    let listed = crate::repository_branches::list_local_branches(workspace).await?;
+    let listed =
+        crate::repository_branches::compose_current_named_branch(listed, branch.as_deref());
+
     Ok(RootRepositoryStatus {
         root_id: workspace.root_id().into(),
         state: "repository".into(),
         branch,
+        branches: listed.names,
+        branches_truncated: listed.truncated,
         changes,
         truncated: parser_truncated || numstat_truncated,
         elapsed_ms: started.elapsed().as_millis() as u64,

@@ -75,6 +75,8 @@ export interface RootRepositoryStatus {
   rootId: string;
   state: RepositoryRootState;
   branch: string | null;
+  branches?: string[];
+  branchesTruncated?: boolean;
   changes: FileChange[];
   truncated: boolean;
   elapsedMs: number;

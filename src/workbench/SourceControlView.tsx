@@ -13,6 +13,7 @@ import type {
   ResourceRef,
 } from "../domain/workbench";
 import { RepositoryCommitControl } from "./RepositoryCommitControl";
+import { SourceBranchList } from "./SourceBranchList";
 
 const statusLabels: Record<GitFileState, string> = {
   unchanged: "",
@@ -361,6 +362,12 @@ export function SourceControlView() {
                       : "Unavailable")}
                 </span>
               </div>
+              <SourceBranchList
+                rootLabel={rootLabel}
+                branch={repository.branch}
+                branches={repository.branches}
+                truncated={repository.branchesTruncated}
+              />
               {repository.message ? (
                 <p className="sidebar__empty">{repository.message}</p>
               ) : null}

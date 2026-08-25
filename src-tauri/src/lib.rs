@@ -28,6 +28,7 @@ mod project_commands;
 mod project_migration;
 mod project_registry;
 mod repository;
+mod repository_branches;
 mod repository_commit;
 mod repository_commit_commands;
 mod repository_discovery;
