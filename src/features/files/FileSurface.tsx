@@ -7,7 +7,10 @@ import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
 import { FileEditorHeader } from "./FileEditorHeader";
 import { FileEditorNotices } from "./FileEditorNotices";
 import { FileFindBar } from "./FileFindBar";
+import { FileGoToLineBar } from "./FileGoToLineBar";
 import { FileMarkdownPreview } from "./FileMarkdownPreview";
+import { handleFileSurfaceCommandKey } from "./fileSurfaceCommands";
+import { goToLineSelection } from "./goToLine";
 import { canPreviewMarkdown } from "./markdownPreview";
 import {
   getFileEditorController,
@@ -25,10 +28,15 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
   const activeResourceKey = resource ? resourceKey(resource) : "";
   const editorInputRef = useRef<EditorAdapterHandle>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
+  const goToInputRef = useRef<HTMLInputElement>(null);
   const selectedMatchRef = useRef<{ start: number; end: number } | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [previewSessionKey, setPreviewSessionKey] = useState("");
+  const [goToSessionKey, setGoToSessionKey] = useState("");
+  const [goToQuery, setGoToQuery] = useState("");
+  const [goToError, setGoToError] = useState(false);
   const previewing = previewSessionKey === activeResourceKey;
+  const goToOpen = goToSessionKey === activeResourceKey;
   const [findQuery, setFindQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [matchCursor, setMatchCursor] = useState({
@@ -131,6 +139,13 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
   }, [findOpen]);
 
   useEffect(() => {
+    if (goToOpen) {
+      goToInputRef.current?.focus();
+      goToInputRef.current?.select();
+    }
+  }, [goToOpen]);
+
+  useEffect(() => {
     const input = editorInputRef.current;
     if (
       !input ||
@@ -195,6 +210,8 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
   ]);
 
   function openFind() {
+    setGoToSessionKey("");
+    setGoToError(false);
     if (findOpen) {
       findInputRef.current?.focus();
       findInputRef.current?.select();
@@ -208,6 +225,28 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
     setMatchCursor({ contextKey: findContextKey, index: 0 });
     selectedMatchRef.current = null;
     editorInputRef.current?.focus();
+  }
+
+  function openGoToLine() {
+    setFindOpen(false);
+    setGoToError(false);
+    setGoToSessionKey(activeResourceKey);
+  }
+
+  function closeGoToLine() {
+    setGoToSessionKey("");
+    setGoToError(false);
+    editorInputRef.current?.focus();
+  }
+
+  function submitGoToLine() {
+    const selection = goToLineSelection(findContent, goToQuery);
+    if (!selection) {
+      setGoToError(true);
+      return;
+    }
+    editorInputRef.current?.setSelection(selection.start, selection.end);
+    closeGoToLine();
   }
 
   function moveMatch(direction: 1 | -1) {
@@ -257,37 +296,23 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
       className="file-surface"
       aria-label={`File editor ${path}`}
       onKeyDown={(event) => {
-        if (previewing && event.key === "Escape") {
-          event.preventDefault();
-          setPreviewSessionKey("");
-          setFindOpen(false);
-          return;
-        }
-        if (findOpen && event.key === "Escape") {
-          event.preventDefault();
-          closeFind();
-          return;
-        }
-        if (
-          (event.ctrlKey || event.metaKey) &&
-          !event.altKey &&
-          event.key.toLowerCase() === "s"
-        ) {
-          event.preventDefault();
-          void saveActiveEditor();
-          return;
-        }
-        if (
-          (event.ctrlKey || event.metaKey) &&
-          !event.altKey &&
-          !event.shiftKey &&
-          event.key.toLowerCase() === "f"
-        ) {
-          event.preventDefault();
-          if (!previewing) {
-            openFind();
-          }
-        }
+        handleFileSurfaceCommandKey(event, {
+          previewing,
+          findOpen,
+          goToOpen,
+          closePreview: () => {
+            setPreviewSessionKey("");
+            setFindOpen(false);
+            setGoToSessionKey("");
+          },
+          closeFind,
+          closeGoToLine,
+          openFind,
+          openGoToLine,
+          save: () => {
+            void saveActiveEditor();
+          },
+        });
       }}
     >
       <FileEditorHeader
@@ -302,6 +327,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
         previewing={previewing}
         onTogglePreview={() => {
           setFindOpen(false);
+          setGoToSessionKey("");
           setPreviewSessionKey((current) =>
             current === activeResourceKey ? "" : activeResourceKey,
           );
@@ -327,6 +353,19 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
             setMatchCursor({ contextKey: findContextKey, index: 0 });
           }}
           onClose={closeFind}
+        />
+      ) : null}
+      {goToOpen && !previewing ? (
+        <FileGoToLineBar
+          inputRef={goToInputRef}
+          query={goToQuery}
+          status={goToError ? "Enter a line" : "Line or line:column"}
+          onQueryChange={(query) => {
+            setGoToQuery(query);
+            setGoToError(false);
+          }}
+          onSubmit={submitGoToLine}
+          onClose={closeGoToLine}
         />
       ) : null}
       {previewing ? (

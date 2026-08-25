@@ -560,6 +560,71 @@ describe("FileSurface in-file find", () => {
   });
 });
 
+describe("FileSurface Go-to Line", () => {
+  it("jumps the caret from Ctrl+G and keeps Find mutually exclusive", async () => {
+    setReadyEditor(tab, "one\ntwo\nthree");
+    render(<FileSurface tab={tab} />);
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
+
+    fireEvent.keyDown(editor, { key: "g", ctrlKey: true });
+    const input = screen.getByRole("textbox", { name: "Go to line" });
+    expect(input).toHaveFocus();
+    expect(screen.getByRole("search", { name: "Go to line" })).toBeVisible();
+
+    fireEvent.change(input, { target: { value: "2:2" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(editorSelection(editor)).toEqual({ start: 5, end: 5 });
+    expect(editor).toHaveFocus();
+    expect(screen.queryByRole("search", { name: "Go to line" })).toBeNull();
+
+    fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
+    expect(screen.getByRole("search", { name: "Find in file" })).toBeVisible();
+    fireEvent.keyDown(editor, { key: "g", ctrlKey: true });
+    expect(screen.queryByRole("search", { name: "Find in file" })).toBeNull();
+    expect(screen.getByRole("search", { name: "Go to line" })).toBeVisible();
+
+    fireEvent.keyDown(screen.getByLabelText(`File editor ${path}`), {
+      key: "Escape",
+    });
+    expect(screen.queryByRole("search", { name: "Go to line" })).toBeNull();
+    expect(editor).toHaveFocus();
+  });
+
+  it("rejects junk without moving the caret and stays closed in Preview", async () => {
+    const markdownTab: WorkbenchTab = {
+      ...tab,
+      id: "file:docs/notes.md",
+      title: "notes.md",
+      resource: { rootId: "root-a", relativePath: "docs/notes.md" },
+    };
+    setReadyEditor(tab, "alpha\nbeta");
+    render(<FileSurface tab={tab} />);
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
+    fireEvent.keyDown(editor, { key: "g", ctrlKey: true });
+    const input = screen.getByRole("textbox", { name: "Go to line" });
+    fireEvent.change(input, { target: { value: "nope" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByRole("status")).toHaveTextContent("Enter a line");
+    expect(editorSelection(editor)).toEqual({ start: 0, end: 0 });
+    expect(screen.getByRole("search", { name: "Go to line" })).toBeVisible();
+
+    cleanup();
+    setReadyEditor(markdownTab, "# Title\n\nHello");
+    render(<FileSurface tab={markdownTab} />);
+    await screen.findByRole("textbox", { name: "Edit docs/notes.md" });
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.keyDown(screen.getByLabelText("File editor docs/notes.md"), {
+      key: "g",
+      ctrlKey: true,
+    });
+    expect(screen.queryByRole("search", { name: "Go to line" })).toBeNull();
+  });
+});
+
 describe("FileSurface Markdown Preview", () => {
   const markdownTab: WorkbenchTab = {
     ...tab,
