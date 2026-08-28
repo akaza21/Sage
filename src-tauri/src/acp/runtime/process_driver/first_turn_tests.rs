@@ -1012,16 +1012,72 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
                     },
                 })
                 .unwrap();
-            let started = Instant::now();
             assert_eq!(
                 port.dispatch_prompt(&caller_owner, &turn_id),
                 Err(HostError::RecoveryRequired)
             );
+            let first = port.dispatch_prompt(&caller_owner, &turn_id).unwrap();
+            port.observe_send(
+                &caller_owner,
+                &turn_id,
+                crate::acp::store::SendObservation::ZeroBytes,
+            )
+            .unwrap();
+            let retry = port.dispatch_prompt(&caller_owner, &turn_id).unwrap();
             assert_eq!(
-                port.dispatch_prompt(&caller_owner, &turn_id),
+                port.observe_send(
+                    &caller_owner,
+                    &turn_id,
+                    crate::acp::store::SendObservation::CompleteBytes,
+                ),
                 Err(HostError::RecoveryRequired)
             );
-            (turn_id, started.elapsed())
+            port.observe_send(
+                &caller_owner,
+                &turn_id,
+                crate::acp::store::SendObservation::CompleteBytes,
+            )
+            .unwrap();
+            let cancel = HostCancelIntent {
+                owner: caller_owner.clone(),
+                turn_id: turn_id.clone(),
+                client_intent_id: ClientIntentId::parse("intent-cancel-turn").unwrap(),
+                now_millis: now + 4,
+            };
+            assert_eq!(
+                port.begin_cancel(&cancel),
+                Err(HostError::RecoveryRequired)
+            );
+            port.begin_cancel(&cancel).unwrap();
+            assert_eq!(
+                port.dispatch_cancel(&cancel),
+                Err(HostError::RecoveryRequired)
+            );
+            let close = crate::acp::store::CloseSessionCommand {
+                project_id: caller_owner.project_id.clone(),
+                chat_id: caller_owner.chat_id.clone(),
+                expected_projection_revision: ProjectionRevision::new(9).unwrap(),
+                client_intent_id: ClientIntentId::parse("intent-close-turn").unwrap(),
+                session_id: caller_owner.session_id.clone(),
+                runtime_epoch: caller_owner.runtime_epoch,
+                now_millis: now + 5,
+            };
+            assert_eq!(
+                port.begin_close(&close),
+                Err(HostError::RecoveryRequired)
+            );
+            port.begin_close(&close).unwrap();
+            assert_eq!(
+                port.wait_zero(&caller_owner),
+                Err(HostError::RecoveryRequired)
+            );
+            let proof = port.wait_zero(&caller_owner).unwrap();
+            let (error, proof) = port
+                .finalize_close(&close, proof)
+                .expect_err("the injected projection conflict requires recovery");
+            assert_eq!(error, HostError::RecoveryRequired);
+            port.finalize_close(&close, proof).unwrap();
+            (turn_id, first, retry)
         });
 
         let first = mailbox
@@ -1044,19 +1100,10 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
         );
         assert_eq!(turn.parts.owner, owner);
 
-        // A foreign projection makes the exact prompt handoff unrecoverable.
-        // The retry keeps the original owner and turn identity, but must remain
-        // fail-closed rather than replaying the prompt against a foreign view.
-        while publisher.take().is_some() {}
-        publisher
-            .publish_committed(crate::acp::intent::ProjectionChangedV1 {
-                project_id: project_id.clone(),
-                chat_id: SageChatId::parse("chat-foreign").unwrap(),
-                session_id: started.session_id.clone(),
-                projection_revision: ProjectionRevision::new(1).unwrap(),
-            })
-            .unwrap();
-        for _ in 0..2 {
+        // The prepare command is handled above. Pump each of the following
+        // fifteen commands so the final successful `FinalizeClose` can answer
+        // its synchronous caller before this test joins that thread.
+        for command_index in 0..15 {
             let command = mailbox
                 .wait_next_until(
                     Some(mailbox_deadline(context.clock.as_ref(), 1_000)),
@@ -1067,36 +1114,81 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
             let ControlMessage::Worker(command) = command else {
                 panic!("worker command")
             };
+            if matches!(command_index, 0 | 4 | 6 | 9 | 11 | 13) {
+                while publisher.take().is_some() {}
+                publisher
+                    .publish_committed(crate::acp::intent::ProjectionChangedV1 {
+                        project_id: project_id.clone(),
+                        chat_id: SageChatId::parse("chat-foreign").unwrap(),
+                        session_id: started.session_id.clone(),
+                        projection_revision: ProjectionRevision::new(1).unwrap(),
+                    })
+                    .unwrap();
+            }
             state = state.handle(&context, command).await;
-            assert!(matches!(
-                &state,
-                FirstTurnWorkerState::Recovery(recovery)
-                    if matches!(recovery.as_ref(), FirstTurnWorkerRecovery::BeginSend { .. })
-            ));
+            if matches!(command_index, 0 | 4 | 6 | 9 | 11 | 13) {
+                assert!(matches!(state, FirstTurnWorkerState::Recovery(_)));
+                assert!(publisher.take().is_some());
+            }
         }
-        let (turn_id, elapsed) = caller.join().unwrap();
-        assert!(elapsed < Duration::from_secs(1));
-        assert_eq!(cancel_count.load(Ordering::SeqCst), 0);
-        assert_eq!(zero_waits.load(Ordering::SeqCst), 0);
-        assert!(scheduler.active().is_some());
-        let turn_count: i64 = database
+        let (turn_id, first, retry) = caller.join().unwrap();
+        assert!(matches!(state, FirstTurnWorkerState::Closed));
+        assert_eq!(first, LiveWrite::ZeroBytes);
+        assert_eq!(retry, LiveWrite::Complete);
+        assert_eq!(cancel_count.load(Ordering::SeqCst), 1);
+        assert_eq!(zero_waits.load(Ordering::SeqCst), 1);
+        assert!(scheduler.active().is_none());
+        let durable_state: (String, String, Option<i64>) = database
             .connection()
             .query_row(
-                "SELECT COUNT(*) FROM turns WHERE id=?1",
+                "SELECT state,delivery_state,terminal_at FROM turns WHERE id=?1",
                 rusqlite::params![turn_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (durable_state.0.as_str(), durable_state.1.as_str()),
+            ("deliveryUnknown", "completeBytes")
+        );
+        assert!(durable_state.2.is_some());
+        let session_state: String = database
+            .connection()
+            .query_row(
+                "SELECT state FROM agent_sessions WHERE id=?1",
+                [started.session_id.as_str()],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(turn_count, 1);
-        let send_facts: i64 = database
+        assert_eq!(session_state, "closed");
+        let cancel_facts: i64 = database
             .connection()
             .query_row(
-                "SELECT COUNT(*) FROM session_facts WHERE turn_id=?1 AND kind='sendStarted'",
+                "SELECT COUNT(*) FROM session_facts WHERE turn_id=?1 AND kind='turnCancelIntent'",
                 [turn_id.as_str()],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(send_facts, 1);
+        assert_eq!(cancel_facts, 1);
+        let send_facts: (i64, i64) = database
+            .connection()
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM session_facts WHERE turn_id=?1 AND kind='sendStarted'),
+                   (SELECT COUNT(*) FROM session_facts WHERE turn_id=?1 AND kind='sendCompleteBytes')",
+                [turn_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(send_facts, (2, 1));
+        let close_facts: i64 = database
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM session_facts WHERE session_id=?1 AND kind='sessionCloseIntent'",
+                [started.session_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(close_facts, 1);
 
         drop(journal);
         drop(database);
