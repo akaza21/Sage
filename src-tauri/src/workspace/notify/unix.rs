@@ -1,16 +1,16 @@
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
 use tauri::{AppHandle, Emitter};
 
 use super::{
-    apply_unwatch_if_generation, deliver_workspace_notify_action, reject, unix_events,
-    WorkspaceNotifyError, WORKSPACE_NOTIFY_EVENT,
+    WORKSPACE_NOTIFY_EVENT, WorkspaceNotifyError, apply_unwatch_if_generation,
+    deliver_workspace_notify_action, reject, unix_events,
 };
 
 pub(super) fn spawn_workspace_root_watch(
@@ -86,7 +86,7 @@ pub(crate) fn run_prepared(
 
 #[cfg(target_os = "macos")]
 mod macos {
-    use super::{unix_events, AtomicBool, Ordering};
+    use super::{AtomicBool, Ordering, unix_events};
     use std::{
         ffi::CString,
         os::raw::{c_int, c_void},
@@ -239,7 +239,7 @@ mod macos {
 
 #[cfg(target_os = "linux")]
 mod linux {
-    use super::{unix_events, AtomicBool, Ordering};
+    use super::{AtomicBool, Ordering, unix_events};
     use std::{
         ffi::CString,
         os::raw::{c_char, c_int},

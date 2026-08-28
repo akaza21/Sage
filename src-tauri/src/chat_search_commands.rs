@@ -30,11 +30,7 @@ pub(crate) async fn search_project_chats_inner(
             "project changed before Chat search could run".into(),
         ));
     }
-    if state.database.active_project_id()?.as_deref() != Some(&request.project_id) {
-        return Err(AppError::InvalidRequest(
-            "Chat search Project is not active".into(),
-        ));
-    }
+    require_existing_project(&state.database, &request.project_id)?;
     let database = state.database.clone();
     let response = tauri::async_runtime::spawn_blocking(move || {
         execute_project_chat_search(&database, &request)
@@ -47,6 +43,23 @@ pub(crate) async fn search_project_chats_inner(
         ));
     }
     Ok(response)
+}
+
+fn require_existing_project(
+    database: &crate::persistence::Database,
+    project_id: &str,
+) -> AppResult<()> {
+    let exists: bool = database.connection().query_row(
+        "SELECT EXISTS(SELECT 1 FROM projects WHERE id=?1)",
+        [project_id],
+        |row| row.get(0),
+    )?;
+    if !exists {
+        return Err(AppError::InvalidRequest(
+            "Chat search Project does not belong to this workspace".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -127,8 +127,8 @@ impl CodexDiscoveryProtocol {
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,
     ) -> Self {
-        Self {
-            adapter: CodexAdapter::from_metadata_packet(
+        Self::with_adapter(
+            CodexAdapter::from_metadata_packet(
                 packet,
                 binding_digest,
                 runtime_epoch,
@@ -138,7 +138,32 @@ impl CodexDiscoveryProtocol {
                 ))
                 .expect("bounded discovery identity"),
             ),
-            platform: packet.metadata().platform,
+            packet.metadata().platform,
+        )
+    }
+
+    pub(crate) fn from_admitted_binding(
+        binding: &crate::acp::bindings::codex::AdmittedCodexBinding,
+        runtime_epoch: RuntimeEpoch,
+    ) -> Self {
+        Self::with_adapter(
+            CodexAdapter::from_admitted_binding(
+                binding,
+                runtime_epoch,
+                SageAgentSessionId::parse(format!(
+                    "session-codex-discovery-{}",
+                    runtime_epoch.get()
+                ))
+                .expect("bounded discovery identity"),
+            ),
+            binding.packet().metadata().platform,
+        )
+    }
+
+    fn with_adapter(adapter: CodexAdapter, platform: Platform) -> Self {
+        Self {
+            adapter,
+            platform,
             phase: Phase::New,
             next_request_id: 0,
             account: None,
@@ -175,6 +200,7 @@ impl CodexDiscoveryProtocol {
         let Phase::AwaitInitialize(expected) = self.phase else {
             return Err(CodexDiscoveryError::Protocol);
         };
+        log_initialize_response(frame);
         require_response_id(frame, expected)?;
         let disposition = self
             .adapter
@@ -352,6 +378,46 @@ impl CodexDiscoveryProtocol {
             .ok_or(CodexDiscoveryError::Protocol)?;
         Ok(self.next_request_id)
     }
+}
+
+fn log_initialize_response(frame: &Frame) {
+    let Ok(value) = serde_json::from_slice::<Value>(frame.as_bytes()) else {
+        tracing::warn!("Codex discovery initialize response was not JSON");
+        return;
+    };
+    let Some(object) = value.as_object() else {
+        tracing::warn!("Codex discovery initialize response was not an object");
+        return;
+    };
+    let response_id = object.get("id").and_then(Value::as_u64);
+    if let Some(error) = object.get("error").and_then(Value::as_object) {
+        tracing::warn!(
+            ?response_id,
+            json_rpc_error_code = ?error.get("code"),
+            json_rpc_error_message = ?error.get("message"),
+            "Codex rejected the discovery initialize request"
+        );
+        return;
+    }
+    let Some(result) = object.get("result").and_then(Value::as_object) else {
+        tracing::warn!(
+            ?response_id,
+            "Codex discovery initialize response had neither result nor error"
+        );
+        return;
+    };
+    tracing::info!(
+        ?response_id,
+        result_fields = ?result.keys().collect::<Vec<_>>(),
+        protocol_version = ?result.get("protocolVersion"),
+        version = ?result.get("version"),
+        agent_info = ?result.get("agentInfo"),
+        codex_home = ?result.get("codexHome"),
+        user_agent = ?result.get("userAgent"),
+        platform_family = ?result.get("platformFamily"),
+        platform_os = ?result.get("platformOs"),
+        "Codex discovery initialize response received"
+    );
 }
 
 #[cfg(test)]

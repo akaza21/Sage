@@ -42,6 +42,14 @@ import {
   type RepositoryCommitSlice,
 } from "./repositoryCommitSlice";
 import {
+  createRepositoryCheckoutSlice,
+  type RepositoryCheckoutSlice,
+} from "./repositoryCheckoutSlice";
+import {
+  createRepositoryRemoteSlice,
+  type RepositoryRemoteSlice,
+} from "./repositoryRemoteSlice";
+import {
   createRepositoryMutationSlice,
   type RepositoryMutationSlice,
 } from "./repositoryMutationSlice";
@@ -74,6 +82,8 @@ export interface WorkbenchState
     HarnessSlice,
     ProjectSlice,
     RepositoryCommitSlice,
+    RepositoryCheckoutSlice,
+    RepositoryRemoteSlice,
     RepositoryInventorySlice,
     RepositoryMutationSlice,
     ResourceSlice,
@@ -149,6 +159,8 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createChatHandoffSlice(set, get, store),
     ...createChatOwnershipSlice(set, get, store),
     ...createRepositoryCommitSlice(set, get, store),
+    ...createRepositoryCheckoutSlice(set, get, store),
+    ...createRepositoryRemoteSlice(set, get, store),
     ...createRepositoryInventorySlice(set, get, store),
     ...createRepositoryMutationSlice(set, get, store),
     ...createResourceSlice(set, get, store),

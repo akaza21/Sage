@@ -221,11 +221,31 @@ pub enum ItemKind {
     ToolCall,
     ToolUpdateResult,
     FileChangeDiff,
+    Image,
     Usage,
     PermissionRequest,
     Error,
     Unsupported,
     Collaboration,
+}
+
+impl ItemKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::ThoughtSummary => "thoughtSummary",
+            Self::Plan => "plan",
+            Self::ToolCall => "toolCall",
+            Self::ToolUpdateResult => "toolUpdateResult",
+            Self::FileChangeDiff => "fileChangeDiff",
+            Self::Image => "image",
+            Self::Usage => "usage",
+            Self::PermissionRequest => "permissionRequest",
+            Self::Error => "error",
+            Self::Unsupported => "unsupported",
+            Self::Collaboration => "collaboration",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

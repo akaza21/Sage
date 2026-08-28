@@ -4,6 +4,7 @@ mod characterization_observation;
 pub mod contract;
 #[cfg(any(test, feature = "acp-fixture"))]
 pub mod fixture;
+pub(crate) mod image_admit;
 pub mod intent;
 mod ipc;
 mod lifecycle;

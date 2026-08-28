@@ -2,8 +2,8 @@ use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -12,8 +12,8 @@ use tauri::AppHandle;
 use crate::{persistence::Database, state::AppState};
 
 use super::{
-    bounded_identifier, registry, reject, relative_path, WorkspaceNotifyError,
-    WorkspaceNotifyNotice,
+    WorkspaceNotifyError, WorkspaceNotifyNotice, bounded_identifier, registry, reject,
+    relative_path,
 };
 
 #[cfg(windows)]
@@ -62,7 +62,7 @@ pub fn deliver_workspace_notify_action(
     if watch.generation != generation || watch.cancelled.load(Ordering::Acquire) {
         return Ok(None);
     }
-    Ok(watch.session.classify(root_id, relative, action)?)
+    watch.session.classify(root_id, relative, action)
 }
 
 pub(super) fn workspace_notify_bound_roots(project_id: &str) -> Option<BTreeSet<String>> {

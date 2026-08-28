@@ -4,6 +4,8 @@ mod chat_archive;
 mod chat_archive_commands;
 mod chat_commands;
 mod chat_lifecycle;
+mod chat_move;
+mod chat_pin;
 mod chat_search;
 mod chat_search_commands;
 #[cfg(feature = "codex-provisioning-helper")]
@@ -20,6 +22,7 @@ mod error;
 mod file_create_commands;
 mod file_rename_commands;
 mod git_process;
+mod harness_discovery;
 mod harnesses;
 mod launch_profile;
 mod persistence;
@@ -28,16 +31,36 @@ mod project_commands;
 mod project_migration;
 mod project_registry;
 mod repository;
+mod repository_branch_create;
+mod repository_branch_create_commands;
+mod repository_branch_delete;
+mod repository_branch_delete_commands;
+mod repository_branch_rename;
+mod repository_branch_rename_commands;
 mod repository_branches;
+mod repository_checkout;
+mod repository_checkout_commands;
+mod repository_cherry_pick_commands;
 mod repository_commit;
 mod repository_commit_commands;
+mod repository_conflict;
 mod repository_discovery;
+mod repository_history;
 mod repository_index_status;
+mod repository_merge_commit;
 mod repository_mutation;
 mod repository_mutation_commands;
 mod repository_parse;
 mod repository_public_error;
+mod repository_rebase_commands;
 mod repository_ref_commands;
+mod repository_remote_transport;
+mod repository_remote_transport_commands;
+mod repository_remotes;
+mod repository_revert;
+mod repository_revert_commands;
+mod repository_sequence_abort;
+mod repository_sequence_abort_commands;
 mod repository_workspace;
 mod resource_commands;
 mod resource_trash_commands;
@@ -47,10 +70,10 @@ mod workbench_persistence;
 mod workbench_restore;
 mod workspace;
 
-use std::fs;
+use std::{fs, sync::Arc};
 
-use tauri::{Manager, RunEvent};
-use tracing::info;
+use tauri::{Manager, RunEvent, webview::PageLoadEvent};
+use tracing::{info, warn};
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -154,8 +177,34 @@ pub fn run() {
                         "Tauri config is missing the main window",
                     )
                 })?;
+            let renderer_recreation =
+                Arc::new(crate::acp::service::RendererRecreationReloadLifecycle::default());
+            let renderer_recreation_app = app.handle().clone();
             let main_window =
-                tauri::WebviewWindowBuilder::from_config(app.handle(), &main_window_config)?;
+                tauri::WebviewWindowBuilder::from_config(app.handle(), &main_window_config)?
+                    .on_page_load(move |window, payload| match payload.event() {
+                        PageLoadEvent::Started => {
+                            let state = renderer_recreation_app.state::<AppState>();
+                            renderer_recreation.record_admitted_start(&state);
+                        }
+                        PageLoadEvent::Finished => {
+                            let lifecycle = Arc::clone(&renderer_recreation);
+                            let app = renderer_recreation_app.clone();
+                            tauri::async_runtime::spawn_blocking(move || {
+                                let state = app.state::<AppState>();
+                                if let Some(result) =
+                                    lifecycle.pair_admitted_finish(&state, &window)
+                                {
+                                    match result {
+                                        Ok(()) => info!("ACP renderer recreation pairing passed"),
+                                        Err(error) => {
+                                            warn!(?error, "ACP renderer recreation pairing failed")
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    });
             let main_window = match profile.webview_dir() {
                 Some(directory) => main_window.data_directory(directory.to_owned()),
                 None => main_window,
@@ -179,6 +228,16 @@ pub fn run() {
             editor::language::cancel_language_session,
             repository_mutation_commands::mutate_git_file,
             repository_commit_commands::commit_git_repository,
+            repository_checkout_commands::checkout_git_local_branch,
+            repository_branch_create_commands::create_git_local_branch,
+            repository_branch_delete_commands::delete_git_local_branch,
+            repository_branch_rename_commands::rename_git_local_branch,
+            repository_sequence_abort_commands::abort_git_in_progress,
+            repository_cherry_pick_commands::continue_git_cherry_pick,
+            repository_rebase_commands::continue_git_rebase,
+            repository_revert_commands::continue_git_revert,
+            repository_remote_transport_commands::fetch_git_remote,
+            repository_remote_transport_commands::push_git_remote,
             resource_commands::list_directory,
             resource_commands::read_text_file,
             resource_commands::open_editor_document,
@@ -192,7 +251,10 @@ pub fn run() {
             resource_trash_commands::trash_project_resource,
             project_commands::create_project_from_picker,
             project_commands::add_project_root_from_picker,
+            project_commands::ensure_local_project,
             chat_commands::create_chat,
+            chat_commands::move_chat,
+            chat_commands::pin_chat,
             chat_commands::activate_chat,
             chat_archive_commands::archive_chat,
             chat_commands::rename_chat,

@@ -51,6 +51,19 @@ pub(crate) async fn mutate_file_with_process_policy(
         .iter()
         .find(|change| change.resource == *resource)
         .ok_or_else(|| AppError::InvalidRequest("resource is not a current Git change".into()))?;
+    if matches!(
+        action,
+        GitFileMutationAction::KeepOurs | GitFileMutationAction::KeepTheirs
+    ) {
+        return crate::repository_conflict::resolve_conflicted_file(
+            workspace,
+            resource,
+            change,
+            action,
+            process_policy,
+        )
+        .await;
+    }
     if change.index_status == "conflicted" || change.worktree_status == "conflicted" {
         return Err(AppError::InvalidRequest(
             "conflicted files require the later conflict workflow".into(),
@@ -131,6 +144,11 @@ pub(crate) async fn mutate_file_with_process_policy(
                 process_policy,
             )
             .await?
+        }
+        GitFileMutationAction::KeepOurs | GitFileMutationAction::KeepTheirs => {
+            return Err(AppError::InvalidRequest(
+                "conflicted files require the later conflict workflow".into(),
+            ));
         }
     };
     repository::ensure_success(&output)

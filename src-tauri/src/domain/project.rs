@@ -7,11 +7,30 @@ use super::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AgentRailChat {
+    pub id: String,
+    pub title: String,
+    pub pinned: bool,
+    pub position: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectListItem {
     pub id: String,
     pub name: String,
     pub root_count: u32,
     pub last_opened_at: i64,
+    #[serde(default)]
+    pub rail_chats: Vec<AgentRailChat>,
+    #[serde(default)]
+    pub rail_chats_truncated: bool,
+    #[serde(default)]
+    pub rail_archived: Vec<ArchivedChatSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

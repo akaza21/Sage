@@ -358,11 +358,9 @@ fn drain_preview_output(mut reader: impl Read + Send + 'static, sender: mpsc::Sy
             if prefix.len() > MAX_STARTUP_OUTPUT_BYTES {
                 prefix.drain(..prefix.len() - MAX_STARTUP_OUTPUT_BYTES);
             }
-            if !notified {
-                if let Some(origin) = parse_loopback_origin_from_output(&prefix) {
-                    let _ = sender.send(origin);
-                    notified = true;
-                }
+            if !notified && let Some(origin) = parse_loopback_origin_from_output(&prefix) {
+                let _ = sender.send(origin);
+                notified = true;
             }
         }
     });

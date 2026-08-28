@@ -431,12 +431,19 @@ export function validateSemanticSettle(
 }
 
 export function validateCloseGate(errors, value, frequencyHz, label) {
-  for (const key of ["closeRequestedTick", "zeroDescendantsTick"]) {
+  for (const key of [
+    "closeRequestedTick",
+    "zeroDescendantsTick",
+    "orphanCheckCompletedTick",
+  ]) {
     safeInteger(errors, value?.[key], `${label}.${key}`, 0, maximumTick);
   }
   if (
     value?.zeroDescendantsTick < value?.closeRequestedTick ||
+    value?.zeroDescendantsTick > value?.orphanCheckCompletedTick ||
     value?.zeroDescendantsTick - value?.closeRequestedTick > 5 * frequencyHz ||
+    value?.orphanCheckCompletedTick - value?.closeRequestedTick <
+      5 * frequencyHz ||
     value?.normalSageDataMutations !== 0 ||
     value?.orphanProcessesAfterClose !== 0
   ) {

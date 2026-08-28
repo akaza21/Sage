@@ -308,6 +308,7 @@ fn restore_rejects_the_plus_one_tab_without_mutation() {
             pinned: false,
             dirty: false,
             status: Some("idle".into()),
+            updated_at: None,
             resource: None,
             repository: None,
         });
@@ -401,5 +402,136 @@ fn foreign_restore_and_storage_failures_leave_authoritative_state_unchanged() {
         before_restore.active_tab_id.as_deref(),
         Some(second_chat_id.as_str())
     );
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn archives_a_chat_on_a_non_active_project_without_switching() {
+    let base = std::env::temp_dir().join(format!("sage-chat-archive-foreign-{}", Uuid::new_v4()));
+    let first_root = base.join("cross");
+    let second_root = base.join("sage");
+    fs::create_dir_all(&first_root).unwrap();
+    fs::create_dir_all(&second_root).unwrap();
+    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let cross = database.create_project_from_root(&first_root).unwrap();
+    let seeded = database
+        .bootstrap_snapshot()
+        .unwrap()
+        .active_tab_id
+        .unwrap();
+    let extra = database
+        .create_chat(
+            &request(&cross.id, &seeded, &database.bootstrap_snapshot().unwrap()).current_layout,
+        )
+        .unwrap();
+    let sage = database.create_project_from_root(&second_root).unwrap();
+    let before = database.bootstrap_snapshot().unwrap();
+    database
+        .archive_chat(&ChatLifecycleRequest {
+            project_id: cross.id.clone(),
+            chat_id: extra.clone(),
+            current_layout: request(
+                &sage.id,
+                before.active_tab_id.as_deref().unwrap_or(""),
+                &before,
+            )
+            .current_layout,
+        })
+        .unwrap();
+    let after = database.bootstrap_snapshot().unwrap();
+    assert_eq!(after.project.as_ref().unwrap().id, sage.id);
+    let cross_item = after
+        .projects
+        .iter()
+        .find(|item| item.id == cross.id)
+        .unwrap();
+    assert!(!cross_item.rail_chats.iter().any(|chat| chat.id == extra));
+    assert!(cross_item.rail_chats.iter().any(|chat| chat.id == seeded));
+    assert!(cross_item.rail_archived.iter().any(|chat| chat.id == extra));
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn restores_a_chat_on_a_non_active_project_without_switching() {
+    let base = std::env::temp_dir().join(format!("sage-chat-restore-foreign-{}", Uuid::new_v4()));
+    let first_root = base.join("cross");
+    let second_root = base.join("sage");
+    fs::create_dir_all(&first_root).unwrap();
+    fs::create_dir_all(&second_root).unwrap();
+    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let cross = database.create_project_from_root(&first_root).unwrap();
+    let seeded = database
+        .bootstrap_snapshot()
+        .unwrap()
+        .active_tab_id
+        .unwrap();
+    let extra = database
+        .create_chat(
+            &request(&cross.id, &seeded, &database.bootstrap_snapshot().unwrap()).current_layout,
+        )
+        .unwrap();
+    let sage = database.create_project_from_root(&second_root).unwrap();
+    let before = database.bootstrap_snapshot().unwrap();
+    let sage_layout = request(
+        &sage.id,
+        before.active_tab_id.as_deref().unwrap_or(""),
+        &before,
+    )
+    .current_layout;
+    database
+        .archive_chat(&ChatLifecycleRequest {
+            project_id: cross.id.clone(),
+            chat_id: extra.clone(),
+            current_layout: sage_layout.clone(),
+        })
+        .unwrap();
+    database
+        .restore_chat(&ChatLifecycleRequest {
+            project_id: cross.id.clone(),
+            chat_id: extra.clone(),
+            current_layout: sage_layout,
+        })
+        .unwrap();
+    let after = database.bootstrap_snapshot().unwrap();
+    assert_eq!(after.project.as_ref().unwrap().id, sage.id);
+    let cross_item = after
+        .projects
+        .iter()
+        .find(|item| item.id == cross.id)
+        .unwrap();
+    assert!(cross_item.rail_chats.iter().any(|chat| chat.id == extra));
+    assert!(!cross_item.rail_archived.iter().any(|chat| chat.id == extra));
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn refuses_to_archive_the_last_chat_on_a_non_active_project() {
+    let base = std::env::temp_dir().join(format!("sage-chat-archive-last-{}", Uuid::new_v4()));
+    let first_root = base.join("cross");
+    let second_root = base.join("sage");
+    fs::create_dir_all(&first_root).unwrap();
+    fs::create_dir_all(&second_root).unwrap();
+    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let cross = database.create_project_from_root(&first_root).unwrap();
+    let seeded = database
+        .bootstrap_snapshot()
+        .unwrap()
+        .active_tab_id
+        .unwrap();
+    let sage = database.create_project_from_root(&second_root).unwrap();
+    let before = database.bootstrap_snapshot().unwrap();
+    let error = database
+        .archive_chat(&ChatLifecycleRequest {
+            project_id: cross.id,
+            chat_id: seeded,
+            current_layout: request(
+                &sage.id,
+                before.active_tab_id.as_deref().unwrap_or(""),
+                &before,
+            )
+            .current_layout,
+        })
+        .unwrap_err();
+    assert!(matches!(error, AppError::InvalidRequest(_)));
     fs::remove_dir_all(base).unwrap();
 }

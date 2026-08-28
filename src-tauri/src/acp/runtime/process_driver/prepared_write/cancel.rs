@@ -4,11 +4,11 @@ use crate::acp::{
     runtime::{AdapterBatchJournal, HostCancelIntent},
 };
 
+use super::super::TeardownCause;
 use super::{
     CancelIntent, CancelWireState, DriverError, PreparedProcessWrite, PreparedWriteError,
     PreparedWriteFailure, ProcessTreeControl, StdinTransport,
 };
-use super::super::TeardownCause;
 
 impl<A, J, R, T, C> PreparedProcessWrite<A, J, R, T, C>
 where
@@ -136,6 +136,7 @@ where
                     }));
                 }
                 Err(DriverError::TeardownRequired(cause)) => {
+                    self.cancel_wire = CancelWireState::Teardown;
                     return Err(Box::new(PreparedWriteFailure {
                         state: self,
                         error: PreparedWriteError::Driver(DriverError::TeardownRequired(cause)),

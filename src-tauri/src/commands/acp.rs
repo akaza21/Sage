@@ -76,10 +76,31 @@ pub(crate) async fn get_codex_discovery_with_deadline(
         .prepare(request, project_root, deadline)
         .map_err(codex_discovery_error)?;
     drop(transition);
-    tauri::async_runtime::spawn_blocking(move || manager.discover(prepared))
+    let discovery_manager = manager.clone();
+    let task = tauri::async_runtime::spawn_blocking(move || manager.discover(prepared));
+    await_codex_discovery(task, deadline, move || discovery_manager.invalidate()).await
+}
+
+pub(crate) async fn await_codex_discovery(
+    task: tauri::async_runtime::JoinHandle<
+        Result<CodexDiscoveryResponse, crate::acp::bindings::codex::CodexDiscoveryRunError>,
+    >,
+    deadline: CodexDiscoveryDeadline,
+    on_timeout: impl FnOnce(),
+) -> Result<CodexDiscoveryResponse, AcpIpcError> {
+    match tokio::time::timeout_at(tokio::time::Instant::from_std(deadline.cleanup_end()), task)
         .await
-        .map_err(|_| internal_error())?
-        .map_err(codex_discovery_error)
+    {
+        Ok(result) => result
+            .map_err(|_| internal_error())?
+            .map_err(codex_discovery_error),
+        Err(_) => {
+            on_timeout();
+            Err(codex_discovery_error(
+                crate::acp::bindings::codex::CodexDiscoveryRunError::Timeout,
+            ))
+        }
+    }
 }
 
 #[tauri::command]

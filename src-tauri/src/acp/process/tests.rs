@@ -85,6 +85,34 @@ fn launch_inputs_reject_nul_invalid_environment_and_case_aliases() {
     );
 }
 
+#[test]
+fn batch_launch_contract_accepts_only_cmd_and_bat_launchers() {
+    let root = std::env::current_dir().unwrap().canonicalize().unwrap();
+    for extension in ["cmd", "bat", "CMD", "BAT"] {
+        let artifact = ArtifactExpectation::windows_batch_launcher(
+            Uuid::nil(),
+            root.join(format!("codex.{extension}")),
+            [7; 32],
+            10,
+        )
+        .expect("npm launcher extension");
+        assert_eq!(
+            artifact.entrypoint_kind,
+            EntryPointKind::WindowsBatchLauncher
+        );
+    }
+    assert_eq!(
+        ArtifactExpectation::windows_batch_launcher(
+            Uuid::nil(),
+            root.join("codex.exe"),
+            [7; 32],
+            10
+        )
+        .err(),
+        Some(LaunchError::InvalidAbsolutePath)
+    );
+}
+
 #[cfg(not(windows))]
 #[test]
 fn unsupported_platform_fails_before_artifact_access() {
@@ -273,6 +301,131 @@ fn verified_fixture_spec_at(case: &str, seed: u32, path: PathBuf) -> LaunchSpec 
         absolute_cleanup_deadline: None,
         test_after_artifact_verified: None,
     }
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_batch_launcher_rejects_a_non_npm_script_before_execution() {
+    use sha2::{Digest, Sha256};
+
+    let directory = std::env::temp_dir().join(format!("sage-batch-launcher-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let launcher = directory.join("codex.cmd");
+    let contents = b"@echo off\r\necho batch-launcher-should-not-run\r\n";
+    std::fs::write(&launcher, contents).unwrap();
+    let spec = LaunchSpec {
+        binding_id: Uuid::nil(),
+        runtime_epoch: 71,
+        artifact: ArtifactExpectation::windows_batch_launcher(
+            Uuid::nil(),
+            launcher.canonicalize().unwrap(),
+            Sha256::digest(contents).into(),
+            u64::try_from(contents.len()).unwrap(),
+        )
+        .unwrap(),
+        fixed_args: BoundedOsArgs::new(vec![OsString::from("app-server")]).unwrap(),
+        environment: BoundedEnvironment::new(
+            [
+                "APPDATA",
+                "HOME",
+                "LOCALAPPDATA",
+                "PATH",
+                "SystemRoot",
+                "TEMP",
+                "TMP",
+                "USERPROFILE",
+                "WINDIR",
+            ]
+            .into_iter()
+            .filter_map(|key| std::env::var_os(key).map(|value| (OsString::from(key), value)))
+            .collect(),
+        )
+        .unwrap(),
+        project_root: test_project_root(),
+        required_guarantee: RequiredContainment::EnforcedTree,
+        limits: TreeLimits::ade_0006a(),
+        deadlines: ProcessDeadlines::ade_0006a(),
+        absolute_cleanup_deadline: None,
+        test_after_artifact_verified: None,
+    };
+    let pool = TreeCapacityPool::isolated_ade_0006a();
+    let failure =
+        PlatformSupervisor::launch(&spec, pool.try_acquire(spec.limits.descendants).unwrap())
+            .err()
+            .expect("only the observed npm Codex launcher shape may derive node execution");
+    assert_eq!(failure.error(), LaunchError::IdentityMismatch);
+    assert!(failure.into_zero_process().is_ok());
+    assert_eq!(pool.usage(), (0, 0));
+    std::fs::remove_file(launcher).unwrap();
+    std::fs::remove_dir(directory).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_batch_launcher_rejects_npm_shim_drift_before_cmd_executes_it() {
+    use sha2::{Digest, Sha256};
+
+    let directory = std::env::temp_dir().join(format!("sage-npm-shim-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let launcher = directory.join("codex.cmd");
+    let original = b"@echo off\r\necho original> \"%~dp0executed.txt\"\r\n";
+    let replacement = b"@echo off\r\necho replacement> \"%~dp0executed.txt\"\r\n";
+    std::fs::write(&launcher, original).unwrap();
+    let mut spec = LaunchSpec {
+        binding_id: Uuid::nil(),
+        runtime_epoch: 72,
+        artifact: ArtifactExpectation::windows_batch_launcher(
+            Uuid::nil(),
+            launcher.canonicalize().unwrap(),
+            Sha256::digest(original).into(),
+            u64::try_from(original.len()).unwrap(),
+        )
+        .unwrap(),
+        fixed_args: BoundedOsArgs::new(vec![OsString::from("app-server")]).unwrap(),
+        environment: BoundedEnvironment::new(
+            [
+                "APPDATA",
+                "HOME",
+                "LOCALAPPDATA",
+                "PATH",
+                "SystemRoot",
+                "TEMP",
+                "TMP",
+                "USERPROFILE",
+                "WINDIR",
+            ]
+            .into_iter()
+            .filter_map(|key| std::env::var_os(key).map(|value| (OsString::from(key), value)))
+            .collect(),
+        )
+        .unwrap(),
+        project_root: test_project_root(),
+        required_guarantee: RequiredContainment::EnforcedTree,
+        limits: TreeLimits::ade_0006a(),
+        deadlines: ProcessDeadlines::ade_0006a(),
+        absolute_cleanup_deadline: None,
+        test_after_artifact_verified: None,
+    };
+    let replacement_path = launcher.clone();
+    spec.test_after_artifact_verified = Some(Box::new(move || {
+        std::fs::write(&replacement_path, replacement).unwrap();
+    }));
+    let pool = TreeCapacityPool::isolated_ade_0006a();
+
+    let failure =
+        PlatformSupervisor::launch(&spec, pool.try_acquire(spec.limits.descendants).unwrap())
+            .err()
+            .expect("drifted batch launcher must not spawn");
+
+    assert_eq!(failure.error(), LaunchError::IdentityMismatch);
+    assert_eq!(failure.into_zero_process().unwrap().runtime_epoch(), 72);
+    assert!(
+        !directory.join("executed.txt").exists(),
+        "cmd.exe must not execute a drifted npm launcher"
+    );
+    assert_eq!(pool.usage(), (0, 0));
+    std::fs::remove_file(launcher).unwrap();
+    std::fs::remove_dir(directory).unwrap();
 }
 
 #[cfg(windows)]

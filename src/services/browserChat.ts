@@ -42,11 +42,16 @@ export function assertBrowserChatCreation(
   transitionEpoch: number,
   projectId: string | undefined,
   durableChatCount: number,
+  targetProjectId?: string,
 ) {
   if (expectedTransitionEpoch !== transitionEpoch) {
     throw new Error("project changed before the requested Chat creation");
   }
-  if (currentLayout.projectId !== projectId) {
+  if (
+    currentLayout.projectId !== projectId ||
+    (typeof targetProjectId === "string" &&
+      targetProjectId !== currentLayout.projectId)
+  ) {
     throw new Error("Chat layout does not belong to the active Project");
   }
   if (currentLayout.tabs.length >= MAX_BROWSER_CHATS) {

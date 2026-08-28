@@ -5,10 +5,16 @@ use serde_json::{Value, json};
 use super::*;
 use crate::acp::{
     contract::SageRootId,
-    intent::{NormalizedPayload, SafeResourceRef, ToolCategory, UnavailableResourceReason},
+    intent::{
+        IMAGE_BASE64_MAX, ImageMediaType, NormalizedPayload, SafeResourceRef, ToolCategory,
+        UnavailableResourceReason,
+    },
     lifecycle::{ItemLifecycle, ToolState, TurnState},
     limits::LIMITS,
 };
+
+const PNG_1X1: &str =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
 
 struct FixtureResources;
 
@@ -142,6 +148,126 @@ fn message_and_plan_text_redact_native_paths_and_secrets() {
         assert!(!projected.contains("private"));
         assert!(!projected.contains("sk-ant"));
         assert!(!projected.contains("token=secret"));
+    }
+}
+
+fn image_chunk(content: Value) -> Value {
+    json!({
+        "method": "session/update",
+        "params": {
+            "sessionId": "claude-session-1",
+            "update": {
+                "sessionUpdate": "agent_message_chunk",
+                "itemId": "image-one",
+                "content": content
+            }
+        }
+    })
+}
+
+#[test]
+fn agent_image_chunk_admits_png_mime_and_base64() {
+    let mut translator = ClaudeTranslator::new("claude-session-1").unwrap();
+    translator.begin_prompt("prompt-1").unwrap();
+    let events = translator
+        .translate_notification(
+            &encoded(&image_chunk(json!({
+                "type": "image",
+                "mimeType": "image/png",
+                "data": PNG_1X1
+            }))),
+            &FixtureResources,
+        )
+        .unwrap();
+    let [
+        AdapterEvent::Item {
+            lifecycle: ItemLifecycle::Completed,
+            payload: NormalizedPayload::Image { media_type, data },
+            ..
+        },
+    ] = events.as_slice()
+    else {
+        panic!("expected one admitted image, got {events:?}")
+    };
+    assert_eq!(*media_type, ImageMediaType::Png);
+    assert_eq!(data.as_str(), PNG_1X1);
+}
+
+#[test]
+fn agent_image_chunk_rejects_svg_uri_oversize_and_missing_bytes() {
+    let mut translator = ClaudeTranslator::new("claude-session-1").unwrap();
+    translator.begin_prompt("prompt-1").unwrap();
+    let cases = [
+        (
+            json!({
+                "type": "image",
+                "mimeType": "image/svg+xml",
+                "data": "PHN2Zy8+"
+            }),
+            "Image media type is not admitted",
+        ),
+        (
+            json!({
+                "type": "image",
+                "mimeType": "image/png",
+                "data": PNG_1X1,
+                "uri": "https://example.com/x.png"
+            }),
+            "Image media type is not admitted",
+        ),
+        (
+            json!({
+                "type": "image",
+                "mimeType": "image/png",
+                "data": "A".repeat(IMAGE_BASE64_MAX)
+            }),
+            "Image exceeds the bounded size cap",
+        ),
+        (
+            json!({
+                "type": "image",
+                "mimeType": "image/png"
+            }),
+            "Image payload is missing",
+        ),
+    ];
+    for (content, summary) in cases {
+        let events = translator
+            .translate_notification(&encoded(&image_chunk(content)), &FixtureResources)
+            .unwrap();
+        assert!(
+            matches!(
+                events.as_slice(),
+                [AdapterEvent::Item {
+                    lifecycle: ItemLifecycle::Unsupported,
+                    payload: NormalizedPayload::Unsupported { summary: got, .. },
+                    ..
+                }] if got.as_str() == summary
+            ),
+            "expected {summary}, got {events:?}"
+        );
+    }
+}
+
+#[test]
+fn agent_audio_and_resource_blocks_stay_unsupported() {
+    let mut translator = ClaudeTranslator::new("claude-session-1").unwrap();
+    translator.begin_prompt("prompt-1").unwrap();
+    for content in [
+        json!({ "type": "audio", "mimeType": "audio/wav", "data": "AAAA" }),
+        json!({ "type": "resource", "resource": { "uri": "file:///tmp/x" } }),
+    ] {
+        let events = translator
+            .translate_notification(&encoded(&image_chunk(content)), &FixtureResources)
+            .unwrap();
+        assert!(matches!(
+            events.as_slice(),
+            [AdapterEvent::Item {
+                lifecycle: ItemLifecycle::Unsupported,
+                payload: NormalizedPayload::Unsupported { summary, .. },
+                ..
+            }] if summary.as_str() == "Non-text content is not admitted"
+        ));
     }
 }
 
@@ -601,6 +727,45 @@ fn research_manifest_is_exact_bounded_single_root_and_never_launchable() {
         validate_research_candidate(candidate, &forbidden),
         Err(ManifestError::AmbientState)
     ));
+}
+
+#[test]
+fn fetch_tool_retains_only_an_admitted_loopback_browse_url() {
+    let start = json!({
+        "method": "session/update",
+        "params": {
+            "sessionId": "claude-session-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "browse-1",
+                "kind": "fetch",
+                "title": "sage.browse",
+                "status": "pending",
+                "locations": [{"url": "http://127.0.0.1:5173/app"}],
+                "rawInput": {"url": "https://example.com/secret"}
+            }
+        }
+    });
+    let mut translator = ClaudeTranslator::new("claude-session-1").unwrap();
+    translator.begin_prompt("prompt-browse").unwrap();
+    let events = translator
+        .translate_notification(&encoded(&start), &FixtureResources)
+        .unwrap();
+    match &events[0] {
+        AdapterEvent::Item {
+            payload:
+                NormalizedPayload::ToolCall {
+                    category: ToolCategory::Web,
+                    input_summary: Some(summary),
+                    ..
+                },
+            ..
+        } => assert_eq!(summary.as_str(), "http://127.0.0.1:5173/app"),
+        other => panic!("expected browse summary, got {other:?}"),
+    }
+    let projected = format!("{events:?}");
+    assert!(!projected.contains("example.com"));
+    assert!(!projected.contains("secret"));
 }
 
 #[cfg(windows)]

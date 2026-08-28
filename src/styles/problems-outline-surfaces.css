@@ -1,0 +1,120 @@
+.problems-surface,
+.outline-surface {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.problems-surface__header,
+.outline-surface__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 6px;
+}
+
+.problems-surface__header h1,
+.outline-surface__header h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.problems-surface__header span,
+.outline-surface__header span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.problems-surface__list,
+.outline-surface__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0 8px 10px;
+  overflow: auto;
+  list-style: none;
+}
+
+.problem-card,
+.outline-card {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: inherit;
+  text-align: left;
+  background: var(--surface-raised);
+  cursor: pointer;
+}
+
+.problem-card:hover,
+.outline-card:hover {
+  border-color: var(--border-strong, var(--border));
+  background: var(--surface-hover);
+}
+
+.problem-card__kind,
+.outline-card__kind {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.outline-card__kind {
+  color: var(--text);
+  background: var(--surface-active);
+}
+
+.problem-card--error .problem-card__kind {
+  color: #fff;
+  background: var(--danger);
+}
+
+.problem-card--warning .problem-card__kind {
+  color: #1a1208;
+  background: var(--warning);
+}
+
+.problem-card--info .problem-card__kind {
+  color: var(--text);
+  background: var(--surface-active);
+}
+
+.problem-card__copy,
+.outline-card__copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.problem-card__copy span,
+.outline-card__copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.problem-card__copy small,
+.outline-card__copy small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.problems-surface__empty,
+.outline-surface__empty {
+  margin: 16px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}

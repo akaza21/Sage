@@ -21,9 +21,24 @@ export function HarnessDiscoveryNotice() {
     );
     return harness?.transport === "acp" && harness.accountModelDiscovery;
   });
+  const selectedInstallState = useWorkbenchStore(
+    (state) =>
+      state.harnesses.find(
+        (candidate) => candidate.id === state.selectedHarnessId,
+      )?.installState,
+  );
 
   if (!accountManaged) return null;
 
+  if (phase === "idle" && selectedInstallState === "unavailable") {
+    return (
+      <div className="composer__notice" role="status">
+        Codex was found but is not admitted. Sage will not start it. A managed
+        package and state roots must pass admission before account sign-in and
+        model discovery are available.
+      </div>
+    );
+  }
   if (phase === "checking") {
     return (
       <div className="composer__notice" role="status">

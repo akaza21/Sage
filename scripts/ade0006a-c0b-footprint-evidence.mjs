@@ -14,6 +14,7 @@ import {
   validateProfileIdentity,
   validateSemanticSettle,
 } from "./ade0006a-c0b-observation.mjs";
+import { validatePaintReceipt } from "./ade0006a-c0b-paint-receipt.mjs";
 
 const participants = ["candidate", "control"];
 const latencyFields = {
@@ -114,9 +115,12 @@ export function validatePackagedRun({
       "spawnToWindowReadyUs",
       "inputToPaintUs",
       "tabSwitchUs",
+      "inputPaintReceipt",
+      "tabPaintReceipt",
       "snapshots",
       "closeRequestedTick",
       "zeroDescendantsTick",
+      "orphanCheckCompletedTick",
       "normalSageDataMutations",
       "orphanProcessesAfterClose",
     ],
@@ -201,6 +205,28 @@ export function validatePackagedRun({
   ) {
     errors.push(`${label} latency anchors are invalid`);
   }
+  validatePaintReceipt(
+    errors,
+    run?.inputPaintReceipt,
+    {
+      startedTick: run?.inputReceivedTick,
+      completedTick: run?.inputPaintedTick,
+      durationUs: run?.inputToPaintUs,
+    },
+    frequencyHz,
+    `${label}.inputPaintReceipt`,
+  );
+  validatePaintReceipt(
+    errors,
+    run?.tabPaintReceipt,
+    {
+      startedTick: run?.tabActivatedTick,
+      completedTick: run?.tabPaintedTick,
+      durationUs: run?.tabSwitchUs,
+    },
+    frequencyHz,
+    `${label}.tabPaintReceipt`,
+  );
   validateSemanticSettle(
     errors,
     run?.stateReadyTick,

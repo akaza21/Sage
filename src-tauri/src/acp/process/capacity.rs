@@ -80,7 +80,6 @@ impl TreeCapacityPool {
         Ok(())
     }
 
-    #[cfg(any(test, feature = "acp-fixture"))]
     pub(crate) fn observation_usage(&self) -> (u32, u32) {
         let state = self.state.lock().unwrap();
         (state.live_trees, state.descendants)

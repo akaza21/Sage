@@ -134,8 +134,6 @@ fn open_authority(
             source: root_identity_file(&source)?,
             kind,
         },
-        _directories: directories,
-        _source: source,
         source_path,
     });
     verify_visible_source(&authority)?;

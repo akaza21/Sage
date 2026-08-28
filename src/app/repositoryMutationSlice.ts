@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand";
 
 import { sameResource } from "../domain/resourceIdentity";
 import { isConflictedChange, isSafeDiscardChange } from "../domain/gitMutation";
+import { canResolveConflictedChange } from "../features/git/conflictResolution";
 import type {
   GitFileMutationAction,
   GitProcessState,
@@ -71,7 +72,13 @@ function eligibleMutation(
   const change = state.repositories.roots
     .find((root) => root.rootId === resource.rootId)
     ?.changes.find((candidate) => sameResource(candidate.resource, resource));
-  if (!change || isConflictedChange(change)) {
+  if (!change) {
+    return false;
+  }
+  if (canResolveConflictedChange(change, action)) {
+    return true;
+  }
+  if (isConflictedChange(change)) {
     return false;
   }
   if (action === "discard") {
@@ -105,6 +112,8 @@ export const createRepositoryMutationSlice: StateCreator<
       get().resourceTrashInFlight ||
       get().repositoryRefreshing ||
       get().repositoryCommit ||
+      get().repositoryCheckout ||
+      get().repositoryRemote ||
       get().repositoryMutation ||
       !matchesResourceIntent(get(), generation, projectId, resource) ||
       !eligibleMutation(get(), resource, action, discardConfirmed)

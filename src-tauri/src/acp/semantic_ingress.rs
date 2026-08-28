@@ -1,18 +1,18 @@
-#[cfg(test)]
+#[cfg(feature = "acp-fixture")]
 use serde_json::{Map, Value};
 
-#[cfg(test)]
+#[cfg(feature = "acp-fixture")]
 use crate::acp::intent::CapabilitySnapshotV1;
 use crate::acp::{bindings::adapter::AdapterModel, limits::LIMITS};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SemanticIngressError {
-    #[cfg(test)]
+    #[cfg(feature = "acp-fixture")]
     Invalid,
     Limit,
 }
 
-#[cfg(test)]
+#[cfg(feature = "acp-fixture")]
 pub(crate) fn decode_capability_token(
     bytes: &[u8],
 ) -> Result<CapabilitySnapshotV1, SemanticIngressError> {
@@ -22,7 +22,7 @@ pub(crate) fn decode_capability_token(
     serde_json::from_slice(bytes).map_err(|_| SemanticIngressError::Invalid)
 }
 
-#[cfg(test)]
+#[cfg(feature = "acp-fixture")]
 pub(crate) fn validate_metadata(metadata: &Map<String, Value>) -> Result<(), SemanticIngressError> {
     if metadata.len() > LIMITS.wire.metadata_entries as usize {
         return Err(SemanticIngressError::Limit);
@@ -55,7 +55,7 @@ pub(crate) fn validate_models(values: &[AdapterModel]) -> Result<(), SemanticIng
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(feature = "acp-fixture")]
 pub(crate) fn validate_permission_payload(bytes: &[u8]) -> Result<(), SemanticIngressError> {
     if bytes.len() > LIMITS.wire.permission_payload_bytes as usize {
         return Err(SemanticIngressError::Limit);

@@ -161,14 +161,9 @@ impl Workspace {
 
 #[cfg(windows)]
 fn hold_empty_directory(path: &Path) -> AppResult<File> {
-    // Retain DELETE on the source while sharing read-only access: no writer can
-    // add a child or replace this directory between the emptiness check and
-    // SetFileInformationByHandle below.
-    let directory = OpenOptions::new()
-        .access_mode(DELETE | FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES)
-        .share_mode(FILE_SHARE_READ)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
-        .open(path)?;
+    // Retain DELETE on the source while sharing read-only access. This holds
+    // source replacement while the empty-directory check is committed below.
+    let directory = hold_directory(path)?;
     let metadata = directory.metadata()?;
     if !metadata.is_dir() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
         return Err(AppError::InvalidRequest(
@@ -184,14 +179,28 @@ fn hold_empty_directory(path: &Path) -> AppResult<File> {
 }
 
 #[cfg(windows)]
+fn hold_directory(path: &Path) -> AppResult<File> {
+    Ok(OpenOptions::new()
+        .access_mode(DELETE | FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES)
+        .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)?)
+}
+
+#[cfg(windows)]
 fn rename_held_directory(source: &File, target: &Path) -> AppResult<()> {
     let name = target.as_os_str().encode_wide().collect::<Vec<_>>();
     let name_bytes = name
         .len()
         .checked_mul(size_of::<u16>())
         .ok_or_else(|| AppError::ResourceLimit("folder rename name is too large".into()))?;
+    // Windows consumes a terminated target name for directory handles even
+    // though FileNameLength excludes that terminator.
+    let storage_bytes = name_bytes
+        .checked_add(size_of::<u16>())
+        .ok_or_else(|| AppError::ResourceLimit("folder rename request is too large".into()))?;
     let total = offset_of!(FILE_RENAME_INFO, FileName)
-        .checked_add(name_bytes)
+        .checked_add(storage_bytes)
         .ok_or_else(|| AppError::ResourceLimit("folder rename request is too large".into()))?;
     let mut storage = vec![0_usize; total.div_ceil(size_of::<usize>())];
     let information = storage.as_mut_ptr().cast::<FILE_RENAME_INFO>();

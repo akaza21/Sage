@@ -4,8 +4,8 @@ use crate::{domain::ResourceRef, workspace::Workspace};
 
 use super::{
     contained_file::{ContainedFile, open_contained_file},
-    engine::{RootCounters, SearchBudget, SearchEngine, push_reason},
-    types::{SearchLimitReason, WorkspaceSearchMatch},
+    engine::{RootCounters, SearchBudget, SearchEngine},
+    types::{SearchLimitReason, WorkspaceSearchMatch, push_reason},
 };
 
 impl SearchEngine {

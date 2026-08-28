@@ -1,4 +1,5 @@
 import { recordDigest, sha256 } from "./ade0006a-c0b-common.mjs";
+import { authenticatePaintReceipt } from "./ade0006a-c0b-paint-receipt.mjs";
 import { buildPairSchedule } from "./validate-ade0006a-c0b-plan.mjs";
 
 const startedAt = Date.parse("2026-08-07T00:00:00.000Z");
@@ -38,6 +39,7 @@ function closeFields(base) {
   return {
     closeRequestedTick: base + 20_000,
     zeroDescendantsTick: base + 20_500,
+    orphanCheckCompletedTick: base + 25_000,
     normalSageDataMutations: 0,
     orphanProcessesAfterClose: 0,
   };
@@ -138,6 +140,20 @@ function footprintRun(context, participant, launchOrdinal, orderIndex) {
     spawnToWindowReadyUs,
     inputToPaintUs,
     tabSwitchUs,
+    inputPaintReceipt: authenticatePaintReceipt({
+      operation: "invoke",
+      startedTick: inputReceivedTick,
+      completedTick: inputPaintedTick,
+      durationUs: inputToPaintUs,
+      frequencyHz: context.frequencyHz,
+    }),
+    tabPaintReceipt: authenticatePaintReceipt({
+      operation: "select",
+      startedTick: tabActivatedTick,
+      completedTick: tabPaintedTick,
+      durationUs: tabSwitchUs,
+      frequencyHz: context.frequencyHz,
+    }),
     snapshots: Array.from({ length: 41 }, (_, ordinal) => ({
       ordinal,
       dueTick: samplingStartedTick + ordinal * 250,

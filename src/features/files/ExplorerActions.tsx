@@ -68,10 +68,21 @@ export function ExplorerActions() {
   const selectedRootName =
     project?.roots.find((root) => root.id === selectedResource?.rootId)?.name ??
     null;
+  const addProjectRoot = useWorkbenchStore((state) => state.addProjectRoot);
 
   return (
     <span className="sidebar__heading-actions">
       <span className="muted">{project?.name ?? "No project"}</span>
+      <button
+        className="explorer-add-root"
+        type="button"
+        title="Add folder root"
+        aria-label="Add folder root"
+        disabled={!project}
+        onClick={() => void addProjectRoot()}
+      >
+        Add folder
+      </button>
       <NewFileControl parent={parent} rootName={parentRootName} />
       <NewFolderControl parent={parent} rootName={parentRootName} />
       <RenameFileControl source={renameSource} rootName={selectedRootName} />

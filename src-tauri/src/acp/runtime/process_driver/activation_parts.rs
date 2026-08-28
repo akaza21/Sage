@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
+use serde_json::Value;
+
 use crate::acp::{
-    bindings::adapter::{HarnessAdapter, ResourceMapper},
+    bindings::adapter::{AdapterEvent, HarnessAdapter, ResourceMapper},
     runtime::{
         ActiveDispatch, ActiveTurnIntent, AdapterPump, AdapterPumpError,
         CoordinatorActivationHandoff, CoordinatorActivationJournal, IdleActivationParts,
@@ -11,6 +13,7 @@ use crate::acp::{
     },
     scheduler::RuntimeOwner,
     store::PrepareTurnCommand,
+    transport::{IncrementalFrameDecoder, validate_structure},
 };
 
 use super::{
@@ -27,10 +30,77 @@ pub(crate) type ActivationDriverHandoff<T, D> = Result<T, Box<ActivationRebindFa
 
 pub(crate) struct CompletedActivationDriverParts<A, J, R, T, C> {
     pub(crate) parts: IdleActivationParts<A, J, R>,
+    pub(crate) idle_decoder: IncrementalFrameDecoder,
     pub(crate) transport: T,
     pub(crate) control: C,
     pub(crate) owner: RuntimeOwner,
     pub(crate) clock: Arc<dyn DriverClock>,
+}
+
+impl<A, J, R, T, C> CompletedActivationDriverParts<A, J, R, T, C>
+where
+    A: HarnessAdapter,
+    R: ResourceMapper,
+{
+    /// Accepts only validated, explicitly ignorable frames that arrive after
+    /// activation hands its ready session to the idle live worker.
+    pub(crate) fn accept_idle_stdout_chunk(&mut self, chunk: &[u8]) -> Result<(), ()> {
+        let mut frame = self.idle_decoder.push_chunk(chunk).map_err(|_| ())?;
+        loop {
+            if let Some(frame) = frame {
+                if validate_structure(&frame).is_err() {
+                    log_idle_frame_rejection(&frame, "invalid-structure");
+                    return Err(());
+                }
+                let (events, egress) = self
+                    .parts
+                    .ingest_idle_frame(&frame)
+                    .map_err(|_| {
+                        log_idle_frame_rejection(&frame, "adapter-rejected");
+                    })?
+                    .into_parts();
+                if !egress.is_empty()
+                    || !events.iter().all(|event| {
+                        matches!(
+                            event,
+                            AdapterEvent::IgnoredLate | AdapterEvent::IgnoredDuplicate
+                        )
+                    })
+                {
+                    log_idle_frame_rejection(&frame, "non-ignorable-event");
+                    return Err(());
+                }
+            }
+            frame = self.idle_decoder.drain_pending().map_err(|_| ())?;
+            if frame.is_none() {
+                return Ok(());
+            }
+        }
+    }
+}
+
+fn log_idle_frame_rejection(frame: &crate::acp::transport::Frame, reason: &'static str) {
+    let value = serde_json::from_slice::<Value>(frame.as_bytes()).ok();
+    let object = value.as_ref().and_then(Value::as_object);
+    let method = object
+        .and_then(|object| object.get("method"))
+        .and_then(Value::as_str);
+    let response_id = object
+        .and_then(|object| object.get("id"))
+        .and_then(Value::as_u64);
+    let error_code = object
+        .and_then(|object| object.get("error"))
+        .and_then(Value::as_object)
+        .and_then(|error| error.get("code"))
+        .and_then(Value::as_i64);
+    tracing::warn!(
+        activation_checkpoint = "activation.idle_stdout",
+        idle_frame_reason = reason,
+        jsonrpc_method = ?method,
+        jsonrpc_response_id = ?response_id,
+        jsonrpc_error_code = ?error_code,
+        "ACP idle handoff rejected inbound frame"
+    );
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -187,6 +257,7 @@ where
         } = self;
         let CompletedActivationDriverParts {
             parts,
+            idle_decoder: _,
             transport,
             control,
             owner,
@@ -204,6 +275,7 @@ where
                             resources,
                             session,
                         ),
+                        idle_decoder: IncrementalFrameDecoder::new(),
                         transport,
                         control,
                         owner,

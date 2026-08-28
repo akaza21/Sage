@@ -9,6 +9,8 @@ import {
   nextProjectGeneration,
   validateTransitionIntent,
 } from "./projectIntent";
+import { runEnsureLocalProject } from "./ensureLocalProject";
+import { runSwitchProject } from "./switchProject";
 import {
   currentProjectLayout as layout,
   projectErrorMessage as errorMessage,
@@ -25,6 +27,7 @@ export interface ProjectSlice {
   persistLayout: () => Promise<void>;
   closeWorkbench: () => Promise<void>;
   createProject: () => Promise<void>;
+  ensureLocalProject: () => Promise<void>;
   addProjectRoot: () => Promise<void>;
   switchProject: (projectId: string) => Promise<void>;
 }
@@ -289,6 +292,22 @@ export const createProjectSlice: StateCreator<
       }
     },
 
+    ensureLocalProject: () =>
+      runEnsureLocalProject({
+        projectId: get().project?.id ?? null,
+        nativeTransitionEpoch: get().nativeTransitionEpoch,
+        begin: beginProjectTransition,
+        persistLayout: persistCurrentLayout,
+        setBooting: () => set({ phase: "booting" }),
+        invalidate: invalidateProjectIntents,
+        applyCommitted: applyCommittedProjection,
+        recoverUnknown: recoverUnknownTransition,
+        fail: failProjectTransition,
+        blockCommitted: blockCommittedTransition,
+        idle: () => set({ phase: "ready", projectTransitioning: false }),
+        setUnchangedError: (error) => set({ error: errorMessage(error) }),
+      }),
+
     addProjectRoot: async () => {
       const project = get().project;
       if (!project || !beginProjectTransition()) {
@@ -354,62 +373,17 @@ export const createProjectSlice: StateCreator<
       }
     },
 
-    switchProject: async (projectId) => {
-      const current = layout(get());
-      if (
-        !current ||
-        current.projectId === projectId ||
-        !beginProjectTransition()
-      ) {
-        return;
-      }
-      let committed = false;
-      let mutationInvoked = false;
-      const expectedTransitionEpoch = get().nativeTransitionEpoch;
-      try {
-        await get().flushActiveEditor();
-        const generation = invalidateProjectIntents();
-        set({ phase: "booting" });
-        mutationInvoked = true;
-        const result = await getWorkbenchPorts().project.switchProject(
-          {
-            targetProjectId: projectId,
-            currentLayout: layout(get())!,
-          },
-          expectedTransitionEpoch,
-        );
-        validateTransitionIntent(result, expectedTransitionEpoch);
-        committed = result.committed;
-        await applyCommittedProjection(
-          result,
-          generation,
-          (snapshot) => snapshot.project?.id === projectId,
-          false,
-        );
-      } catch (error) {
-        if (committed) {
-          blockCommittedTransition(error);
-        } else if (mutationInvoked) {
-          const generation = get().projectGeneration;
-          try {
-            const outcome = await recoverUnknownTransition(
-              generation,
-              (snapshot) =>
-                snapshot.project?.id === projectId
-                  ? "committed"
-                  : snapshot.project?.id === current.projectId
-                    ? "unchanged"
-                    : null,
-              false,
-            );
-            if (outcome === "unchanged") set({ error: errorMessage(error) });
-          } catch (recoveryError) {
-            blockCommittedTransition(recoveryError);
-          }
-        } else {
-          failProjectTransition(error);
-        }
-      }
-    },
+    switchProject: (projectId) =>
+      runSwitchProject(projectId, {
+        get,
+        begin: beginProjectTransition,
+        invalidate: invalidateProjectIntents,
+        setBooting: () => set({ phase: "booting" }),
+        applyCommitted: applyCommittedProjection,
+        recoverUnknown: recoverUnknownTransition,
+        fail: failProjectTransition,
+        blockCommitted: blockCommittedTransition,
+        setUnchangedError: (error) => set({ error: errorMessage(error) }),
+      }),
   };
 };

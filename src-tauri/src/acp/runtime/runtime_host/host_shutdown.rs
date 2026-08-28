@@ -4,7 +4,7 @@ use std::{
 };
 
 use super::host::{
-    RuntimeHost, HOST_AWAITING_EXIT, HOST_JOINED, HOST_RUNNING, HOST_SHUTDOWN_ACKNOWLEDGED,
+    HOST_AWAITING_EXIT, HOST_JOINED, HOST_RUNNING, HOST_SHUTDOWN_ACKNOWLEDGED, RuntimeHost,
 };
 use super::types::{HostCommand, HostError, HostOutcome};
 
@@ -15,6 +15,12 @@ impl RuntimeHost {
     }
 
     pub(crate) fn shutdown(&self, deadline: Instant) -> Result<(), HostError> {
+        // A timed-out actor has already closed its mailbox and is only waiting
+        // to exit. Do not submit further lifecycle commands to that closed
+        // authority; join the retained actor within the caller's deadline.
+        if self.lifecycle.load(Ordering::Acquire) != HOST_RUNNING {
+            return self.shutdown_before(deadline);
+        }
         self.record_shutdown_phase("drain");
         match self.submit_with_timeout(
             HostCommand::State,

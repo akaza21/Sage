@@ -77,6 +77,13 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
     let listed = crate::repository_branches::list_local_branches(workspace).await?;
     let listed =
         crate::repository_branches::compose_current_named_branch(listed, branch.as_deref());
+    let history = crate::repository_history::list_recent_commits(workspace).await?;
+    let remotes = crate::repository_remotes::list_remotes(workspace).await?;
+    let merge_in_progress = crate::repository_conflict::merge_in_progress(workspace).await?;
+    let rebase_in_progress = crate::repository_conflict::rebase_in_progress(workspace).await?;
+    let cherry_pick_in_progress =
+        crate::repository_conflict::cherry_pick_in_progress(workspace).await?;
+    let revert_in_progress = crate::repository_conflict::revert_in_progress(workspace).await?;
     let base = diff_base(workspace).await?;
     let output = crate::repository_workspace::run_git(
         workspace,
@@ -103,6 +110,14 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         branch,
         branches: listed.names,
         branches_truncated: listed.truncated,
+        recent_commits: history.commits,
+        recent_commits_truncated: history.truncated,
+        remotes: remotes.names,
+        remotes_truncated: remotes.truncated,
+        merge_in_progress,
+        rebase_in_progress,
+        cherry_pick_in_progress,
+        revert_in_progress,
         changes,
         truncated: true,
         elapsed_ms: started.elapsed().as_millis() as u64,

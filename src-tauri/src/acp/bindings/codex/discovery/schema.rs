@@ -47,11 +47,27 @@ pub(super) fn response_result(
     crate::acp::bindings::codex::incoming::validate_shape(&value)
         .map_err(|_| CodexDiscoveryError::Protocol)?;
     let object = value.as_object().ok_or(CodexDiscoveryError::Protocol)?;
+    if let Some(error) = object.get("error").and_then(Value::as_object) {
+        tracing::warn!(
+            expected_response_id = expected,
+            json_rpc_error_code = ?error.get("code"),
+            json_rpc_error_message = ?error.get("message"),
+            "Codex rejected a discovery JSON-RPC request"
+        );
+    }
     if object.len() != 2
         || object.get("id").and_then(Value::as_u64) != Some(expected)
         || object.contains_key("error")
         || object.contains_key("method")
     {
+        tracing::warn!(
+            expected_response_id = expected,
+            response_id = ?object.get("id"),
+            response_fields = ?object.keys().collect::<Vec<_>>(),
+            json_rpc_method = ?object.get("method"),
+            json_rpc_params = ?object.get("params"),
+            "Codex discovery response failed JSON-RPC correlation"
+        );
         return Err(CodexDiscoveryError::Protocol);
     }
     object

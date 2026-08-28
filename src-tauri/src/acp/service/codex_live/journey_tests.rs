@@ -539,9 +539,11 @@ impl FixtureSetup {
 
     fn wait_for_running_turn(&self, owner: &RuntimeOwner) -> SageTurnId {
         self.wait_until(|| {
-            self.page(owner).turns.as_slice().iter().any(|turn| {
-                turn.session_id == owner.session_id && turn.state == TurnState::Running
-            })
+            self.page(owner)
+                .turns
+                .as_slice()
+                .iter()
+                .any(|turn| turn.session_id == owner.session_id && turn.state == TurnState::Running)
         });
         self.page(owner)
             .turns

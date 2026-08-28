@@ -1,0 +1,107 @@
+.activity-rail {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 5px;
+}
+
+.activity-rail__button {
+  position: relative;
+  display: grid;
+  width: 35px;
+  height: 35px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.activity-rail__button:hover {
+  color: var(--text-soft);
+  background: var(--surface-hover);
+}
+
+.activity-rail__button--active {
+  color: var(--text);
+  background: var(--surface-active);
+}
+
+.activity-rail__button--active::after {
+  position: absolute;
+  right: -5px;
+  width: 2px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--accent);
+  content: "";
+}
+
+.right-region--leading .activity-rail__button--active::after {
+  right: auto;
+  left: -5px;
+}
+
+.workbench--editor .right-region--leading {
+  width: 100%;
+  grid-template-columns: 44px minmax(0, 1fr);
+  border-right: 1px solid var(--border);
+}
+
+.workbench--editor .right-region--leading.right-region--collapsed {
+  grid-template-columns: 44px;
+}
+
+.workbench--editor .activity-rail {
+  gap: 2px;
+  padding: 4px;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.workbench--editor .activity-rail__button {
+  width: 36px;
+  height: 36px;
+  border-radius: 0;
+}
+
+.workbench--editor .activity-rail__button--active {
+  color: var(--text);
+  background: transparent;
+}
+
+.workbench--editor
+  .right-region--leading
+  .activity-rail__button--active::after {
+  left: -4px;
+  width: 2px;
+  height: 24px;
+  border-radius: 0;
+}
+
+.workbench--editor .sidebar {
+  border-right: 0;
+  background: var(--surface);
+}
+
+.workbench--editor .sidebar__heading {
+  height: 36px;
+  padding: 0 12px;
+  font-size: 10px;
+}
+
+.workbench--editor .workbench-sidebar-splitter::after {
+  left: 3px;
+  width: 1px;
+  background: transparent;
+}
+
+.workbench--editor .workbench-sidebar-splitter:hover::after,
+.workbench--editor .workbench-sidebar-splitter--active::after,
+.workbench--editor .workbench-sidebar-splitter:focus-visible::after {
+  width: 2px;
+  background: var(--accent);
+}

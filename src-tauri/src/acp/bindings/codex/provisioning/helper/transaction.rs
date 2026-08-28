@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use super::{constant_time_equal, AuthenticatedHelperRequest, ElevatedHelperError};
+use super::{AuthenticatedHelperRequest, ElevatedHelperError, constant_time_equal};
 use serde::{Deserialize, Serialize};
 
 #[path = "transaction/remove.rs"]

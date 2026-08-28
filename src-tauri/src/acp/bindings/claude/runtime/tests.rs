@@ -4,7 +4,7 @@ use super::*;
 use crate::acp::{
     bindings::adapter::{AdapterCommand, AdapterRuntimeError, EgressResolution, HarnessAdapter},
     contract::{RequiredText, SageRootId, SageServerRequestId},
-    intent::{ExternalId, Prompt, SafeResourceRef},
+    intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef, ToolCategory},
     lifecycle::{ToolState, TurnState},
     transport::FrameReader,
 };
@@ -273,6 +273,41 @@ fn prompt_zero_byte_rejection_rolls_back_and_delivery_unknown_is_not_replayed() 
 }
 
 #[test]
+fn initialize_advertises_curated_host_tools_including_browse() {
+    let mut runtime = ClaudeRuntime::fixture();
+    let egress = runtime
+        .command(AdapterCommand::Initialize)
+        .expect("initialize");
+    let value: Value = serde_json::from_slice(egress.frame().payload()).expect("json");
+    assert_eq!(value["method"], "initialize");
+    assert_eq!(
+        value["params"]["clientCapabilities"]["availableTools"],
+        json!(["sage.read_text", "sage.apply_file", "sage.browse"])
+    );
+    assert!(value["params"]["clientCapabilities"].get("fs").is_none());
+}
+
+#[test]
+fn unknown_host_tool_request_still_fails_closed() {
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    let (_id, token) = prompt(&mut runtime);
+    runtime
+        .resolve_egress(token, EgressResolution::Queued)
+        .expect("queued");
+    assert!(matches!(
+        runtime.ingest(
+            &frame(json!({
+                "jsonrpc":"2.0","id":"write-1","method":"sage.write_text",
+                "params":{"path":"src/lib.rs"}
+            })),
+            &Mapper,
+        ),
+        Err(AdapterRuntimeError::MandatoryDenyTeardown)
+    ));
+}
+
+#[test]
 fn initialize_delivery_unknown_blocks_reissue_until_exact_response_correlates() {
     let mut runtime = ClaudeRuntime::fixture();
     let initialize = runtime
@@ -495,4 +530,62 @@ fn foreign_session_malformed_and_unknown_messages_are_deterministic() {
         runtime.ingest(&frame(json!({"id":999,"result":{}})), &Mapper),
         Err(AdapterRuntimeError::Frame)
     ));
+}
+
+#[test]
+fn admitted_session_can_request_sage_browse_during_a_turn() {
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    let (_id, token) = prompt(&mut runtime);
+    runtime
+        .resolve_egress(token, EgressResolution::Queued)
+        .expect("queued");
+    let opened = runtime
+        .ingest(
+            &frame(json!({
+                "jsonrpc":"2.0","id":"browse-1","method":"sage.browse",
+                "params":{"sessionId":"claude-session-1","url":"http://127.0.0.1:5173/app"}
+            })),
+            &Mapper,
+        )
+        .expect("browse");
+    assert!(matches!(
+        &opened.events()[0],
+        SharedEvent::Item {
+            payload: NormalizedPayload::ToolCall {
+                category: ToolCategory::Web,
+                input_summary: Some(summary),
+                ..
+            },
+            ..
+        } if summary.as_str() == "http://127.0.0.1:5173/app"
+    ));
+    let reply: Value = serde_json::from_slice(opened.egress()[0].frame().payload()).expect("reply");
+    assert_eq!(reply["result"]["opened"], true);
+    assert_eq!(reply["result"]["href"], "http://127.0.0.1:5173/app");
+
+    let rejected = runtime
+        .ingest(
+            &frame(json!({
+                "jsonrpc":"2.0","id":"browse-2","method":"sage.browse",
+                "params":{"sessionId":"claude-session-1","url":"https://example.com/"}
+            })),
+            &Mapper,
+        )
+        .expect("rejected browse");
+    assert!(rejected.events().is_empty());
+    let closed: Value =
+        serde_json::from_slice(rejected.egress()[0].frame().payload()).expect("closed");
+    assert_eq!(closed["result"]["opened"], false);
+
+    let foreign = runtime
+        .ingest(
+            &frame(json!({
+                "jsonrpc":"2.0","id":"browse-3","method":"sage.browse",
+                "params":{"sessionId":"other-session","url":"http://127.0.0.1:4173/"}
+            })),
+            &Mapper,
+        )
+        .expect("foreign session");
+    assert!(foreign.events().is_empty());
 }

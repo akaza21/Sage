@@ -76,7 +76,7 @@ pub(crate) enum ControlMessage {
     Cancel(CancelIntent),
     Worker(super::WorkerEnvelope),
     ReaderTerminal(ReaderTerminal),
-    ProcessExit,
+    ProcessExit(crate::acp::process::TreeExit),
 }
 
 impl ControlMessage {
@@ -91,7 +91,7 @@ impl ControlMessage {
             Self::StdoutChunk(_)
             | Self::Cancel(_)
             | Self::ReaderTerminal(_)
-            | Self::ProcessExit => {}
+            | Self::ProcessExit(_) => {}
         }
     }
 }
@@ -215,8 +215,11 @@ impl DriverMailbox {
         Ok(response)
     }
 
-    pub(crate) fn signal_process_exit(&self) -> Result<(), MailboxError> {
-        self.try_push_control(1, 0, || ControlMessage::ProcessExit)
+    pub(crate) fn signal_process_exit(
+        &self,
+        exit: crate::acp::process::TreeExit,
+    ) -> Result<(), MailboxError> {
+        self.try_push_control(1, 0, || ControlMessage::ProcessExit(exit))
     }
 
     pub(crate) fn signal_reader_terminal(
@@ -300,7 +303,7 @@ impl DriverMailbox {
             Some(ControlMessage::StdoutChunk(_))
         );
         let message = state.queue.pop_control_if(|message| {
-            !(stdout_pending && matches!(message, ControlMessage::ProcessExit))
+            !(stdout_pending && matches!(message, ControlMessage::ProcessExit(_)))
         });
         if message.is_some() {
             self.space.notify_all();
@@ -314,6 +317,19 @@ impl DriverMailbox {
             && state.queue.control_usage() == (0, 0)
             && !state.terminal_queued
             && !state.closed
+    }
+
+    /// Allows only already-authorized worker operations to cross the atomic
+    /// activation-to-idle ownership boundary. Raw stdout must be drained by
+    /// activation first, so an unknown frame or reader terminal still prevents
+    /// the handoff and is handled fail-closed by the activation driver.
+    pub(super) fn is_activation_handoff_ready(&self) -> bool {
+        let state = self.lock();
+        !state.terminal_queued
+            && !state.closed
+            && state
+                .queue
+                .all_items_match(|message| matches!(message, ControlMessage::Worker(_)))
     }
 
     #[cfg(test)]
@@ -398,9 +414,9 @@ fn pop_driver_message(
     queue: &mut crate::acp::transport::ReservedQueue<ControlMessage>,
     control_only: bool,
 ) -> Option<ControlMessage> {
-    if let Some(message) = queue.pop_control_if(|message| {
-        !matches!(message, ControlMessage::ProcessExit)
-    }) {
+    if let Some(message) =
+        queue.pop_control_if(|message| !matches!(message, ControlMessage::ProcessExit(_)))
+    {
         return Some(message);
     }
     if control_only {

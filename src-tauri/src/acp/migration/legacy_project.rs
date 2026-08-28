@@ -6,7 +6,6 @@ use crate::{
     editor_persistence::{MAX_TOTAL_DIRTY_BYTES, MAX_TOTAL_DIRTY_METADATA_BYTES},
     error::{AppError, AppResult},
     project_registry::{RootRecord, canonical_comparison_key},
-    workbench_restore::restore_layout,
     workspace::validate_contract_path,
 };
 
@@ -115,7 +114,6 @@ fn validate_v4_ownership(connection: &Connection) -> AppResult<()> {
     for project_id in ids {
         let roots = root_page(connection, &project_id)?;
         validate_root_keys(connection, &roots)?;
-        let _ = restore_layout(connection, &project_id, &roots)?;
         validate_buffer_paths(connection, &project_id)?;
     }
     Ok(())

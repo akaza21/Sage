@@ -3,8 +3,8 @@ use std::{
     os::windows::{fs::OpenOptionsExt, io::AsRawHandle},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -20,8 +20,8 @@ use windows_sys::Win32::{
 };
 
 use super::{
-    apply_unwatch_if_generation, deliver_workspace_notify_action, reject, WorkspaceNotifyError,
-    OVERFLOW_NOTIFY_ACTION, OVERFLOW_RELATIVE_PATH, WORKSPACE_NOTIFY_EVENT,
+    OVERFLOW_NOTIFY_ACTION, OVERFLOW_RELATIVE_PATH, WORKSPACE_NOTIFY_EVENT, WorkspaceNotifyError,
+    apply_unwatch_if_generation, deliver_workspace_notify_action, reject,
 };
 
 const ERROR_NOTIFY_ENUM_DIR: i32 = 1022;

@@ -22,6 +22,7 @@ export interface WorkbenchTab {
   pinned: boolean;
   dirty: boolean;
   status?: SessionStatus;
+  updatedAt?: number;
   resource?: ResourceRef;
   repository?: RepositoryRef;
 }
@@ -36,6 +37,18 @@ export interface RenameChatRequest {
 export interface ChatLifecycleRequest {
   projectId: string;
   chatId: string;
+  currentLayout: ProjectLayoutRequest;
+}
+
+export interface PinChatRequest {
+  projectId: string;
+  chatId: string;
+}
+
+export interface MoveChatRequest {
+  projectId: string;
+  chatId: string;
+  targetProjectId: string;
   currentLayout: ProjectLayoutRequest;
 }
 

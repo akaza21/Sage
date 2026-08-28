@@ -6,7 +6,7 @@
 use std::{
     collections::VecDeque,
     fs,
-    path::{Path, PathBuf},
+    path::Path,
     time::{Duration, Instant},
 };
 
@@ -147,7 +147,7 @@ fn is_symlink_or_reparse(path: &Path) -> bool {
     {
         use std::os::windows::fs::MetadataExt;
         const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
-        return metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0;
+        metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
     }
     #[cfg(not(windows))]
     {
@@ -159,6 +159,7 @@ fn is_symlink_or_reparse(path: &Path) -> bool {
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::PathBuf;
 
     fn scratch(name: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!(

@@ -18,26 +18,21 @@ if ($executable.PSIsContainer -or
   throw "The C0-B control smoke requires one executable file."
 }
 
-function New-C0BSelector {
-  param([string]$Name, [string]$ControlType)
-  return [ordered]@{
-    name = $Name
-    automationId = ""
-    controlType = $ControlType
-    view = "control"
-  }
+$binder = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "ade0006a-c0b-campaign-launch.mjs"))
+if (-not (Test-Path -LiteralPath $binder -PathType Leaf)) { throw "Campaign observation binder is missing." }
+$previousErrorAction = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+  $planOutput = & $node $binder plan shell 2>&1
+  $planExit = $LASTEXITCODE
+} finally {
+  $ErrorActionPreference = $previousErrorAction
 }
-
-function New-C0BAction {
-  param([Collections.IDictionary]$Selector, [string]$Operation, [Collections.IDictionary]$ResultSelector)
-  return [ordered]@{
-    selector = $Selector
-    operation = $Operation
-    value = $null
-    resultSelector = $ResultSelector
-    expectedValue = $null
-  }
+if ($planExit -ne 0) {
+  $message = (@($planOutput) | ForEach-Object { "$_" }) -join "`n"
+  throw "Admitted shell state plan is missing: $message"
 }
+$statePlan = (($planOutput | ForEach-Object { "$_" }) -join "`n") | ConvertFrom-Json
 
 $root = Join-Path ([IO.Path]::GetTempPath()) ("sage-c0b-control-smoke-" + [Guid]::NewGuid().ToString("N"))
 $profiles = Join-Path $root "profiles"
@@ -58,14 +53,9 @@ try {
 if ($bindingSha256 -eq $executableSha256) {
   throw "The C0-B control smoke binding must differ from the raw executable hash."
 }
-$shell = New-C0BSelector "Shell" "button"
-$ready = New-C0BSelector "Footprint control shell state" "group"
-$hide = New-C0BSelector "Hide right sidebar" "button"
-$show = New-C0BSelector "Show right sidebar" "button"
-$primary = New-C0BSelector "Control primary tab" "tabitem"
-$secondary = New-C0BSelector "Control secondary tab" "tabitem"
-$secondaryPanel = New-C0BSelector "Control secondary panel" "group"
 
+# Campaign observation executables must come from the Node composer, not a raw request.
+# The state plan must come from the admitted catalog (`plan shell`), not a reconstructed twin.
 $request = [ordered]@{
   schemaVersion = 1
   stateId = "shell"
@@ -85,16 +75,7 @@ $request = [ordered]@{
     snapshotIntervalMs = 250
     snapshotCount = 2
   }
-  statePlan = [ordered]@{
-    setupActions = @((New-C0BAction $shell "toggle" $ready))
-    readySelector = $ready
-    inputProbe = New-C0BAction $hide "invoke" $show
-    tabProbe = New-C0BAction $secondary "select" $secondaryPanel
-    restoreActions = @(
-      (New-C0BAction $primary "select" $ready),
-      (New-C0BAction $show "invoke" $hide)
-    )
-  }
+  statePlan = $statePlan
   outputPath = $outputPath
 }
 

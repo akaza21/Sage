@@ -3,8 +3,8 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -21,9 +21,7 @@ mod watch;
 #[cfg(windows)]
 mod windows;
 
-pub use watch::{
-    authenticate_workspace_notify_root, deliver_workspace_notify_action, relative_from_notify_name,
-};
+pub use watch::{deliver_workspace_notify_action, relative_from_notify_name};
 
 const MAX_IDENTIFIER_BYTES: usize = 512;
 const MAX_RESOURCE_PATH_BYTES: usize = 16 * 1024;
@@ -427,8 +425,9 @@ impl WorkspaceNotifySession {
 
 #[cfg(test)]
 mod tests {
+    use super::watch::authenticate_workspace_notify_root;
     use super::*;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use std::sync::{Mutex, OnceLock};
 
     fn stamp_json() -> Value {
@@ -727,10 +726,12 @@ mod tests {
 
     #[test]
     fn classify_unknown_action_is_ignore() {
-        assert!(bind_ok()
-            .classify("root-a", "src/main.ts", 9)
-            .unwrap()
-            .is_none());
+        assert!(
+            bind_ok()
+                .classify("root-a", "src/main.ts", 9)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -746,10 +747,12 @@ mod tests {
 
     #[test]
     fn classify_unbound_root_id_is_ignore() {
-        assert!(bind_ok()
-            .classify("root-b", "src/main.ts", 3)
-            .unwrap()
-            .is_none());
+        assert!(
+            bind_ok()
+                .classify("root-b", "src/main.ts", 3)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -1080,15 +1083,17 @@ mod tests {
         with_isolated_watches(|| {
             apply_watch_workspace_notify(&bound()).expect("first");
             let generation = apply_watch_workspace_notify(&bound()).expect("replace");
-            assert!(deliver_workspace_notify_action(
-                "project-a",
-                generation - 1,
-                "root-a",
-                "src/main.ts",
-                3,
-            )
-            .expect("stale")
-            .is_none());
+            assert!(
+                deliver_workspace_notify_action(
+                    "project-a",
+                    generation - 1,
+                    "root-a",
+                    "src/main.ts",
+                    3,
+                )
+                .expect("stale")
+                .is_none()
+            );
             let notice = deliver_workspace_notify_action(
                 "project-a",
                 generation,
@@ -1132,15 +1137,17 @@ mod tests {
             apply_watch_workspace_notify(&bound()).expect("first");
             let generation = apply_watch_workspace_notify(&bound()).expect("second");
             apply_unwatch_if_generation("project-a", generation - 1).expect("stale cleanup");
-            assert!(deliver_workspace_notify_action(
-                "project-a",
-                generation,
-                "root-a",
-                "src/main.ts",
-                3,
-            )
-            .expect("kept")
-            .is_some());
+            assert!(
+                deliver_workspace_notify_action(
+                    "project-a",
+                    generation,
+                    "root-a",
+                    "src/main.ts",
+                    3,
+                )
+                .expect("kept")
+                .is_some()
+            );
         });
     }
 }

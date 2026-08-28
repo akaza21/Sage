@@ -34,6 +34,36 @@ const EXTENSION_LANGUAGES: Readonly<Record<string, EditorLanguage>> = {
   rs: "rust",
 };
 
+export function editorLanguageStatusLabel(
+  path: string | null | undefined,
+): string | null {
+  if (!path) {
+    return null;
+  }
+  switch (editorLanguageForPath(path)) {
+    case "typescript":
+    case "typescript-jsx":
+      return "TypeScript";
+    case "javascript":
+    case "javascript-jsx":
+      return "JavaScript";
+    case "json":
+      return "JSON";
+    case "css":
+      return "CSS";
+    case "html":
+      return "HTML";
+    case "markdown":
+      return "Markdown";
+    case "python":
+      return "Python";
+    case "rust":
+      return "Rust";
+    default:
+      return null;
+  }
+}
+
 export function editorLanguageForPath(path: string): EditorLanguage {
   if (path.length === 0 || path.length > MAX_EDITOR_LANGUAGE_PATH_LENGTH) {
     return "plain";

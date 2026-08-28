@@ -6,7 +6,8 @@ use super::manifest::{MetadataValidatedPacket, StatePolicy};
 
 pub(super) const SECURITY_POLICY_BYTES: usize = 16 * 1024;
 pub(super) const APPROVAL_POLICY_NEVER: &str = "never";
-pub(super) const SANDBOX_READ_ONLY: &str = "readOnly";
+pub(super) const SANDBOX_READ_ONLY: &str = "read-only";
+pub(super) const SANDBOX_POLICY_READ_ONLY: &str = "readOnly";
 pub(super) const SANDBOX_NETWORK_ACCESS: bool = false;
 pub(super) const CONFIG_SHA256: &str =
     "cda4ac431cf5f9c615c36513e2831d159bdfc0b3d106cb475012d1677748afd3";
@@ -21,7 +22,8 @@ pub(super) const STATE_RELATIVE_PATH_BYTES_MAX: u64 = 16_384;
 pub(super) const STATE_NATIVE_PATH_BYTES_MAX: u64 = 32_768;
 pub(super) const TEMPORARY_RESIDUE_RETENTION_HOURS: u16 = 24;
 
-const ALLOWED_ENVIRONMENT_KEYS: [&str; 5] = ["CODEX_HOME", "SystemRoot", "TEMP", "TMP", "WINDIR"];
+const ALLOWED_ENVIRONMENT_KEYS: [&str; 6] =
+    ["CODEX_HOME", "PATH", "SystemRoot", "TEMP", "TMP", "WINDIR"];
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -210,7 +212,7 @@ enum ApprovalPolicy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "kebab-case")]
 enum SandboxMode {
     ReadOnly,
     #[serde(other)]

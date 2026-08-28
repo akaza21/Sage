@@ -10,6 +10,7 @@ import {
   safeText,
   safeTimestamp,
 } from "./acpDesktopResponses";
+import { admittedImageDataUrl } from "./acpDesktopResponseImage";
 import {
   MAX_FILE_CHANGES,
   safeFileChange,
@@ -223,6 +224,17 @@ export function safeItem(value: unknown): AcpItem | null {
               truncated: payload.truncated,
             },
           };
+    }
+    case "image": {
+      const image = admittedImageDataUrl(payload.mediaType, payload.dataUrl);
+      return value.toolState === null && image
+        ? {
+            ...identity,
+            kind: "image",
+            toolState: null,
+            payload: image,
+          }
+        : null;
     }
     case "usage": {
       const counters = [

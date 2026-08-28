@@ -85,8 +85,7 @@ where
                 envelope.reject(HostError::RecoveryRequired);
                 return FirstTurnWorkerState::Active(active);
             };
-            let Ok(exit_kind) =
-                crate::acp::contract::RequiredText::new("exitKind", "hostShutdown")
+            let Ok(exit_kind) = crate::acp::contract::RequiredText::new("exitKind", "hostShutdown")
             else {
                 envelope.reject(HostError::RecoveryRequired);
                 return FirstTurnWorkerState::Active(active);

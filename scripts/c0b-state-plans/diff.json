@@ -1,0 +1,97 @@
+{
+  "setupActions": [
+    {
+      "selector": {
+        "name": "Diff",
+        "automationId": "",
+        "controlType": "button",
+        "view": "control"
+      },
+      "operation": "toggle",
+      "value": null,
+      "resultSelector": {
+        "name": "Footprint control diff state",
+        "automationId": "",
+        "controlType": "group",
+        "view": "control"
+      },
+      "expectedValue": null
+    }
+  ],
+  "readySelector": {
+    "name": "Footprint control diff state",
+    "automationId": "",
+    "controlType": "group",
+    "view": "control"
+  },
+  "inputProbe": {
+    "selector": {
+      "name": "Hide right sidebar",
+      "automationId": "",
+      "controlType": "button",
+      "view": "control"
+    },
+    "operation": "invoke",
+    "value": null,
+    "resultSelector": {
+      "name": "Show right sidebar",
+      "automationId": "",
+      "controlType": "button",
+      "view": "control"
+    },
+    "expectedValue": null
+  },
+  "tabProbe": {
+    "selector": {
+      "name": "Control secondary tab",
+      "automationId": "",
+      "controlType": "tabitem",
+      "view": "control"
+    },
+    "operation": "select",
+    "value": null,
+    "resultSelector": {
+      "name": "Control secondary panel",
+      "automationId": "",
+      "controlType": "group",
+      "view": "control"
+    },
+    "expectedValue": null
+  },
+  "restoreActions": [
+    {
+      "selector": {
+        "name": "Control primary tab",
+        "automationId": "",
+        "controlType": "tabitem",
+        "view": "control"
+      },
+      "operation": "select",
+      "value": null,
+      "resultSelector": {
+        "name": "Footprint control diff state",
+        "automationId": "",
+        "controlType": "group",
+        "view": "control"
+      },
+      "expectedValue": null
+    },
+    {
+      "selector": {
+        "name": "Show right sidebar",
+        "automationId": "",
+        "controlType": "button",
+        "view": "control"
+      },
+      "operation": "invoke",
+      "value": null,
+      "resultSelector": {
+        "name": "Hide right sidebar",
+        "automationId": "",
+        "controlType": "button",
+        "view": "control"
+      },
+      "expectedValue": null
+    }
+  ]
+}

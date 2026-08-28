@@ -78,6 +78,8 @@ describe("Workspace Search view", () => {
     const result = await screen.findByRole("button", {
       name: "Open src/main.ts at line 9, column 3",
     });
+    expect(screen.getByText("main.ts")).toBeVisible();
+    expect(screen.getByText("src/main.ts")).toBeVisible();
     expect(
       screen.getByText("Some files exceeded the per-file size limit."),
     ).toBeVisible();

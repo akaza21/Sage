@@ -20,6 +20,7 @@ static LANGUAGE_SESSIONS: OnceLock<Mutex<LanguageSessions>> = OnceLock::new();
 static TEST_ACTIVE_PROCESSES: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
+#[derive(Default)]
 struct LanguageSessions {
     active: Option<LanguageSessionEntry>,
     next_generation: u32,
@@ -32,14 +33,12 @@ struct LanguageSessionEntry {
     completion: oneshot::Receiver<()>,
 }
 
-impl Default for LanguageSessions {
-    fn default() -> Self {
-        Self {
-            active: None,
-            next_generation: 0,
-        }
-    }
-}
+type RegisteredSession = (
+    u32,
+    oneshot::Receiver<()>,
+    oneshot::Sender<()>,
+    Option<oneshot::Sender<()>>,
+);
 
 #[tauri::command]
 pub async fn start_language_session(
@@ -91,17 +90,7 @@ pub async fn cancel_language_session(resource: ResourceRef) -> Result<(), String
     Ok(())
 }
 
-fn register_session(
-    resource: ResourceRef,
-) -> Result<
-    (
-        u32,
-        oneshot::Receiver<()>,
-        oneshot::Sender<()>,
-        Option<oneshot::Sender<()>>,
-    ),
-    String,
-> {
+fn register_session(resource: ResourceRef) -> Result<RegisteredSession, String> {
     let mut sessions = language_sessions()
         .lock()
         .map_err(|_| "language sessions unavailable")?;

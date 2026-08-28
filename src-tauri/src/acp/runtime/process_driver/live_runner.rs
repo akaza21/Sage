@@ -27,7 +27,9 @@ mod terminal;
 
 use drive::drive;
 use handle::RunInput;
-pub(crate) use handle::{ActivationStartFailure, LiveRunnerExit, LiveRunnerHandle};
+pub(crate) use handle::{
+    ActivationStartFailure, LiveRunnerExit, LiveRunnerHandle, RunnerStartSubstep,
+};
 use terminal::{acknowledge as acknowledge_terminal, cursor as terminal_cursor};
 
 type WorkerState<A, R, T> = FirstTurnWorkerState<A, R, T, TreeControl>;
@@ -97,6 +99,7 @@ where
             let failure = recover_activation_startup(
                 activation,
                 HostError::Unavailable,
+                RunnerStartSubstep::StdoutReader,
                 mailbox.as_ref(),
                 None,
                 None,
@@ -121,6 +124,7 @@ where
             let failure = recover_activation_startup(
                 activation,
                 HostError::Unavailable,
+                RunnerStartSubstep::ProcessExitWatcher,
                 mailbox.as_ref(),
                 Some(&mut reader),
                 None,
@@ -142,6 +146,7 @@ where
                 let failure = recover_activation_startup(
                     failure.driver,
                     failure.error,
+                    failure.substep,
                     mailbox.as_ref(),
                     Some(&mut reader),
                     Some(&mut watcher),
@@ -192,6 +197,7 @@ where
 fn recover_activation_startup<A, R, T>(
     driver: ActivationProcessDriver<A, CoordinatorActivationJournal, R, T, TreeControl>,
     error: HostError,
+    substep: RunnerStartSubstep,
     mailbox: &DriverMailbox,
     reader: Option<&mut BoundedThread>,
     watcher: Option<&mut BoundedThread>,
@@ -204,15 +210,24 @@ where
 {
     mailbox.close();
     let failure = match driver.take_projection_recovery_before(deadline) {
-        Ok(handoff) => handle::ActivationStartFailure::Projection { handoff, error },
+        Ok(handoff) => handle::ActivationStartFailure::Projection {
+            handoff,
+            error,
+            substep,
+        },
         Err(failure) => {
             let mut driver = failure.driver;
             driver.fail_before_runner();
             match driver.take_zero_process_handoff_before(deadline) {
-                Ok(handoff) => handle::ActivationStartFailure::Teardown { handoff, error },
+                Ok(handoff) => handle::ActivationStartFailure::Teardown {
+                    handoff,
+                    error,
+                    substep,
+                },
                 Err(failure) => handle::ActivationStartFailure::Retained {
                     driver: failure.driver,
                     error,
+                    substep,
                 },
             }
         }
@@ -252,9 +267,7 @@ where
                 | FirstTurnWorkerRecovery::ReusableConverge(_)
                 | FirstTurnWorkerRecovery::ReusableFinalize(_)
         ),
-        other => {
-            other.has_durable_completed_cursor() || other.has_durable_cancelled_cursor()
-        }
+        other => other.has_durable_completed_cursor() || other.has_durable_cancelled_cursor(),
     }
 }
 
@@ -263,7 +276,7 @@ fn process_tail(message: &ControlMessage) -> bool {
         message,
         ControlMessage::StdoutChunk(_)
             | ControlMessage::ReaderTerminal(_)
-            | ControlMessage::ProcessExit
+            | ControlMessage::ProcessExit(_)
     )
 }
 
@@ -300,6 +313,19 @@ where
     let durable_cancelled = exit.state.has_durable_cancelled_cursor();
     let durable_terminal = already_closed || durable_completed || durable_cancelled;
     if !already_closed {
+        let stderr_summary = control.stderr_summary().ok();
+        let stderr = control.stderr_diagnostic().ok();
+        let native_child_exit_code = control.native_exit_code_if_exited().ok().flatten();
+        tracing::warn!(
+            recovery_checkpoint = "acp_runner.protocol_failure.pre_termination",
+            protocol_failure_reason = ?exit.reason,
+            native_child_exit_code,
+            jsonrpc_method = ?stderr.as_ref().and_then(|diagnostic| diagnostic.method.as_deref()),
+            jsonrpc_error_code = ?stderr.as_ref().and_then(|diagnostic| diagnostic.error_code.as_deref()),
+            jsonrpc_error_message = ?stderr.as_ref().and_then(|diagnostic| diagnostic.error_message.as_deref()),
+            stderr_summary = ?stderr_summary,
+            "ACP runner diagnostic captured before termination"
+        );
         exit.state.close_stdin_after_durable_completed();
         let _ = control.request_termination(exit.reason);
     }
@@ -309,13 +335,28 @@ where
     }
     let wait_deadline = Instant::now() + cleanup_budget();
     let converged = match control.wait_zero_before(wait_deadline) {
-        Ok((_, token)) => {
+        Ok((root_exit, token)) => {
+            let stderr = control.stderr_summary().ok();
+            tracing::warn!(
+                root_exit = ?root_exit,
+                sage_requested_termination = !matches!(root_exit, TreeExit::Exited { .. }),
+                stderr_summary = ?stderr,
+                "ACP runner reached process-tree zero"
+            );
             if durable_completed {
                 tauri::async_runtime::block_on(exit.state.park_after_zero(token));
             }
             true
         }
-        Err(_) => false,
+        Err(error) => {
+            let stderr = control.stderr_summary().ok();
+            tracing::warn!(
+                wait_status = ?error,
+                stderr_summary = ?stderr,
+                "ACP runner could not prove process-tree zero"
+            );
+            false
+        }
     };
     let remaining = wait_deadline.saturating_duration_since(Instant::now());
     let reader_done = reader.wait(remaining).is_ok();

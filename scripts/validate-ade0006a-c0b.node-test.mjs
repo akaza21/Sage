@@ -17,6 +17,7 @@ import {
   selectPackagedObservationExecutable,
 } from "./ade0006a-c0b-package-reference.mjs";
 import { validateCharacterizationNativeReceipt } from "./ade0006a-c0b-observation.mjs";
+import { authenticatePaintReceipt } from "./ade0006a-c0b-paint-receipt.mjs";
 import {
   defaultWorkspaceRoot,
   loadFrozenContracts,
@@ -525,6 +526,17 @@ test("packaged evidence rejects identity reuse, cadence gaps, and malformed snap
       const run = shell.validPairs[0].participants.candidate;
       run.tabPaintedTick = run.closeRequestedTick + 1;
     },
+    (fixture, shell) => {
+      const run = shell.validPairs[0].participants.candidate;
+      run.inputPaintReceipt = {
+        ...run.inputPaintReceipt,
+        sha256: "a".repeat(64),
+      };
+    },
+    (fixture, shell) => {
+      const run = shell.validPairs[0].participants.candidate;
+      run.tabPaintReceipt = run.inputPaintReceipt;
+    },
   ];
   for (const mutate of mutations) {
     const fixture = makeC0BFixture(frozen);
@@ -536,9 +548,77 @@ test("packaged evidence rejects identity reuse, cadence gaps, and malformed snap
   }
 });
 
+test("packaged close isolation requires a five-second empty-tree observation", () => {
+  assert.deepEqual(resultErrors(makeC0BFixture(frozen)), []);
+
+  const shortWindow = makeC0BFixture(frozen);
+  const shortRun = shortWindow.observations.get("footprint-shell.json").value
+    .validPairs[0].participants.candidate;
+  shortRun.orphanCheckCompletedTick =
+    shortRun.closeRequestedTick +
+    5 * shortWindow.results.monotonicClock.frequencyHz -
+    1;
+  refreshObservationRecord(shortWindow, "footprint-shell.json");
+  assert.match(
+    resultErrors(shortWindow).join("\n"),
+    /did not close in isolation/,
+  );
+
+  const omitted = makeC0BFixture(frozen);
+  delete omitted.observations.get("footprint-shell.json").value.validPairs[0]
+    .participants.candidate.orphanCheckCompletedTick;
+  refreshObservationRecord(omitted, "footprint-shell.json");
+  assert.match(
+    resultErrors(omitted).join("\n"),
+    /has missing or unknown fields/,
+  );
+});
+
+test("packaged runs reject a swapped or cross-wired post-paint receipt", () => {
+  assert.deepEqual(resultErrors(makeC0BFixture(frozen)), []);
+
+  const swapped = makeC0BFixture(frozen);
+  const swappedRun = swapped.observations.get("footprint-shell.json").value
+    .validPairs[0].participants.candidate;
+  swappedRun.inputPaintReceipt = {
+    ...swappedRun.inputPaintReceipt,
+    sha256: "a".repeat(64),
+  };
+  refreshObservationRecord(swapped, "footprint-shell.json");
+  assert.match(
+    resultErrors(swapped).join("\n"),
+    /inputPaintReceipt is invalid/,
+  );
+
+  const omitted = makeC0BFixture(frozen);
+  delete omitted.observations.get("footprint-shell.json").value.validPairs[0]
+    .participants.candidate.inputPaintReceipt;
+  refreshObservationRecord(omitted, "footprint-shell.json");
+  assert.match(
+    resultErrors(omitted).join("\n"),
+    /has missing or unknown fields/,
+  );
+});
+
 test("packaged evidence verifies actual alternating chronology", () => {
   assert.deepEqual(resultErrors(makeC0BFixture(frozen)), []);
-  function shift(run, offset) {
+  function rebindPaintReceipts(run, frequencyHz) {
+    run.inputPaintReceipt = authenticatePaintReceipt({
+      operation: run.inputPaintReceipt.operation,
+      startedTick: run.inputReceivedTick,
+      completedTick: run.inputPaintedTick,
+      durationUs: run.inputToPaintUs,
+      frequencyHz,
+    });
+    run.tabPaintReceipt = authenticatePaintReceipt({
+      operation: run.tabPaintReceipt.operation,
+      startedTick: run.tabActivatedTick,
+      completedTick: run.tabPaintedTick,
+      durationUs: run.tabSwitchUs,
+      frequencyHz,
+    });
+  }
+  function shift(run, offset, frequencyHz) {
     for (const key of [
       "spawnStartedTick",
       "windowReadyTick",
@@ -550,6 +630,7 @@ test("packaged evidence verifies actual alternating chronology", () => {
       "tabPaintedTick",
       "closeRequestedTick",
       "zeroDescendantsTick",
+      "orphanCheckCompletedTick",
     ]) {
       run[key] += offset;
     }
@@ -557,40 +638,48 @@ test("packaged evidence verifies actual alternating chronology", () => {
       snapshot.dueTick += offset;
       snapshot.capturedTick += offset;
     }
+    rebindPaintReceipts(run, frequencyHz);
   }
-  function overlap(first, second) {
-    shift(second, first.zeroDescendantsTick - second.spawnStartedTick - 1);
+  function overlap(first, second, frequencyHz) {
+    shift(
+      second,
+      first.zeroDescendantsTick - second.spawnStartedTick - 1,
+      frequencyHz,
+    );
   }
   const mutations = [
-    (_fixture, shell) => {
+    (_fixture, shell, frequencyHz) => {
       const pair = shell.validPairs[0];
       overlap(
         pair.participants[pair.order[0]],
         pair.participants[pair.order[1]],
+        frequencyHz,
       );
     },
-    (_fixture, shell) => {
+    (_fixture, shell, frequencyHz) => {
       const previous = shell.validPairs[0];
       const current = shell.validPairs[1];
       overlap(
         previous.participants[previous.order[1]],
         current.participants[current.order[0]],
+        frequencyHz,
       );
     },
   ];
   for (const mutate of mutations) {
     const fixture = makeC0BFixture(frozen);
     const shell = fixture.observations.get("footprint-shell.json").value;
-    mutate(fixture, shell);
+    mutate(fixture, shell, fixture.results.monotonicClock.frequencyHz);
     refreshObservationRecord(fixture, "footprint-shell.json");
     assert.notEqual(resultErrors(fixture).length, 0);
   }
 
   const stateLocal = makeC0BFixture(frozen);
   const chat = stateLocal.observations.get("footprint-chat.json").value;
+  const frequencyHz = stateLocal.results.monotonicClock.frequencyHz;
   for (const pair of chat.validPairs) {
     for (const participant of pair.order) {
-      shift(pair.participants[participant], -450_000);
+      shift(pair.participants[participant], -450_000, frequencyHz);
     }
   }
   refreshObservationRecord(stateLocal, "footprint-chat.json");

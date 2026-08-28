@@ -1,5 +1,5 @@
 use super::*;
-use crate::workspace::notify::unix_events::{unix_watch_delivery, UnixWatchKind};
+use crate::workspace::notify::unix_events::{UnixWatchKind, unix_watch_delivery};
 
 fn resource(relative_path: &str) -> ResourceRef {
     ResourceRef {

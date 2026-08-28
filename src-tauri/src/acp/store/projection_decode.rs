@@ -190,6 +190,11 @@ fn content(
             .map_err(contract)?,
             truncated: false,
         },
+        NormalizedPayload::Image { media_type, data } => ItemContent::Image {
+            media_type,
+            data_url: crate::acp::image_admit::image_data_url(media_type, data.as_str())
+                .map_err(contract)?,
+        },
         NormalizedPayload::Usage {
             input_tokens,
             output_tokens,
@@ -332,19 +337,7 @@ fn summary_label(value: &str) -> Result<SafeText<512>, StoreError> {
     SafeText::new("planLabel", &value[..end]).map_err(contract)
 }
 fn kind_text(value: crate::acp::contract::ItemKind) -> &'static str {
-    match value {
-        crate::acp::contract::ItemKind::Text => "text",
-        crate::acp::contract::ItemKind::ThoughtSummary => "thoughtSummary",
-        crate::acp::contract::ItemKind::Plan => "plan",
-        crate::acp::contract::ItemKind::ToolCall => "toolCall",
-        crate::acp::contract::ItemKind::ToolUpdateResult => "toolUpdateResult",
-        crate::acp::contract::ItemKind::FileChangeDiff => "fileChangeDiff",
-        crate::acp::contract::ItemKind::Usage => "usage",
-        crate::acp::contract::ItemKind::PermissionRequest => "permissionRequest",
-        crate::acp::contract::ItemKind::Error => "error",
-        crate::acp::contract::ItemKind::Unsupported => "unsupported",
-        crate::acp::contract::ItemKind::Collaboration => "collaboration",
-    }
+    value.as_str()
 }
 fn revision(value: i64) -> Result<EntityRevision, StoreError> {
     EntityRevision::new(value as u64).map_err(|_| StoreError::Corrupt("entity revision"))

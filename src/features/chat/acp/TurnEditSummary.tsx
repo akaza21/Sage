@@ -10,6 +10,8 @@ import type {
 } from "../../../domain/acp";
 import { resourceKey } from "../../../domain/resourceIdentity";
 import type { ResourceRef } from "../../../domain/workbench";
+import { ChatFileChip } from "./FileChip";
+import { chatFileChipBasename } from "./chatFileChip";
 import { projectAgentEditSummary } from "./agentEditSummary";
 
 interface TurnEditSummaryProps {
@@ -142,31 +144,45 @@ export function TurnEditSummary({
             const resource = location.resource;
             const rootName = rootDisplayName(rootLabels, resource.rootId);
             const qualifiedLabel = `${rootName} / ${resource.relativePath}`;
+            const admitted = chatFileChipBasename(resource.relativePath);
+            const chip = admitted ? (
+              <ChatFileChip
+                path={resource.relativePath}
+                rootLabel={rootName}
+                additions={change.additions}
+                deletions={change.deletions}
+              />
+            ) : (
+              <span className="acp-resource-unavailable">unavailable</span>
+            );
+            const counted =
+              change.additions !== null || change.deletions !== null;
             return (
               <li key={resourceKey(resource)}>
-                {onOpenDiff ? (
+                {onOpenDiff && admitted ? (
                   <button
                     type="button"
                     className="acp-resource-action"
                     aria-label={`Open diff ${qualifiedLabel}`}
                     onClick={() => onOpenDiff(resource)}
                   >
-                    <span className="acp-resource-root">{rootName}</span>
-                    <span>{resource.relativePath}</span>
+                    {chip}
                     <ChevronRight size={14} aria-hidden="true" />
                   </button>
                 ) : (
-                  <span>{qualifiedLabel}</span>
+                  chip
                 )}
                 <span className="acp-change-operation">{change.operation}</span>
-                <span className="acp-file-changes__counts">
-                  <span>
-                    {change.additions === null ? "—" : `+${change.additions}`}
+                {admitted && counted ? null : (
+                  <span className="acp-file-changes__counts">
+                    <span>
+                      {change.additions === null ? "—" : `+${change.additions}`}
+                    </span>
+                    <span>
+                      {change.deletions === null ? "—" : `-${change.deletions}`}
+                    </span>
                   </span>
-                  <span>
-                    {change.deletions === null ? "—" : `-${change.deletions}`}
-                  </span>
-                </span>
+                )}
                 <span>{change.summary}</span>
               </li>
             );

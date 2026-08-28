@@ -2,6 +2,7 @@ import type {
   ArchivedChatSummary,
   ChatMessage,
   ProjectLayoutRequest,
+  SessionStatus,
   WorkbenchTab,
 } from "./chat";
 import type { RecoveredEditorBuffer } from "./editor";
@@ -9,11 +10,23 @@ import type { HarnessDefinition } from "./harness";
 import type { FileChange, ProjectRepositoryStatus } from "./repository";
 import type { ResourceRef } from "./resource";
 
+export interface AgentRailChat {
+  id: string;
+  title: string;
+  pinned: boolean;
+  position: number;
+  status?: SessionStatus;
+  updatedAt?: number;
+}
+
 export interface ProjectListItem {
   id: string;
   name: string;
   rootCount: number;
   lastOpenedAt: number;
+  railChats?: AgentRailChat[];
+  railChatsTruncated?: boolean;
+  railArchived?: ArchivedChatSummary[];
 }
 
 export type RootAvailability =

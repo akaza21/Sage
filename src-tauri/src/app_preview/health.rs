@@ -1,6 +1,6 @@
 use std::{
     io::{Read, Write},
-    net::{TcpStream, ToSocketAddrs},
+    net::TcpStream,
     time::Duration,
 };
 

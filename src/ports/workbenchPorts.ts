@@ -3,6 +3,8 @@ import type {
   BufferSnapshotAck,
   BufferSnapshotRequest,
   ChatLifecycleRequest,
+  MoveChatRequest,
+  PinChatRequest,
   DiscoverProjectRepositoriesRequest,
   DiscoverProjectRepositoriesResult,
   EditorWatchSubscription,
@@ -22,6 +24,18 @@ import type {
   GitFileMutationResult,
   GitRepositoryCommitRequest,
   GitRepositoryCommitResult,
+  GitRepositoryBranchRenameRequest,
+  GitRepositoryCheckoutRequest,
+  GitRepositoryCheckoutResult,
+  GitRepositoryCherryPickContinueRequest,
+  GitRepositoryCherryPickContinueResult,
+  GitRepositoryRebaseContinueRequest,
+  GitRepositoryRebaseContinueResult,
+  GitRepositoryRevertContinueRequest,
+  GitRepositoryRevertContinueResult,
+  GitRepositorySequenceAbortRequest,
+  GitRepositoryRemoteTransportRequest,
+  GitRepositoryRemoteTransportResult,
   ModelOption,
   ProjectLayoutRequest,
   ProjectRepositoryStatus,
@@ -66,6 +80,9 @@ export interface ProjectPort {
   ): Promise<void>;
   switchProject(
     request: ProjectSwitchRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult>;
+  ensureLocalProject(
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult>;
   listDirectory(resource: ResourceRef): Promise<DirectoryListing>;
@@ -113,10 +130,42 @@ export interface RepositoryPort {
     request: GitFileMutationRequest,
     expectedTransitionEpoch: number,
   ): Promise<GitFileMutationResult>;
+  abortGitInProgress(
+    request: GitRepositorySequenceAbortRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryCheckoutResult>;
   commitGitRepository(
     request: GitRepositoryCommitRequest,
     expectedTransitionEpoch: number,
   ): Promise<GitRepositoryCommitResult>;
+  checkoutGitLocalBranch(
+    request: GitRepositoryCheckoutRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryCheckoutResult>;
+  continueGitCherryPick(
+    request: GitRepositoryCherryPickContinueRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryCherryPickContinueResult>;
+  continueGitRebase(
+    request: GitRepositoryRebaseContinueRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryRebaseContinueResult>;
+  continueGitRevert(
+    request: GitRepositoryRevertContinueRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryRevertContinueResult>;
+  createGitLocalBranch(
+    request: GitRepositoryCheckoutRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryCheckoutResult>;
+  deleteGitLocalBranch(
+    request: GitRepositoryCheckoutRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryCheckoutResult>;
+  fetchGitRemote(
+    request: GitRepositoryRemoteTransportRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryRemoteTransportResult>;
   discoverProjectRepositories(
     request: DiscoverProjectRepositoriesRequest,
   ): Promise<DiscoverProjectRepositoriesResult>;
@@ -126,12 +175,21 @@ export interface RepositoryPort {
   getNestedRepositoryFileDiff(
     request: NestedRepositoryFileDiffRequest,
   ): Promise<NestedRepositoryFileDiffResult>;
+  pushGitRemote(
+    request: GitRepositoryRemoteTransportRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryRemoteTransportResult>;
+  renameGitLocalBranch(
+    request: GitRepositoryBranchRenameRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryCheckoutResult>;
 }
 
 export interface ChatPort {
   createChat(
     currentLayout: ProjectLayoutRequest,
     expectedTransitionEpoch: number,
+    projectId?: string,
   ): Promise<ProjectTransitionResult>;
   activateChat(
     currentLayout: ProjectLayoutRequest,
@@ -147,6 +205,14 @@ export interface ChatPort {
   ): Promise<ProjectTransitionResult>;
   restoreChat(
     request: ChatLifecycleRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult>;
+  moveChat(
+    request: MoveChatRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult>;
+  pinChat(
+    request: PinChatRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult>;
 }
@@ -170,6 +236,7 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "createProjectFile",
     "createProjectFolder",
     "createProjectFromPicker",
+    "ensureLocalProject",
     "getBootstrapSnapshot",
     "listDirectory",
     "persistProjectLayout",
@@ -190,18 +257,30 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "watchEditorDocument",
   ],
   repository: [
+    "abortGitInProgress",
+    "checkoutGitLocalBranch",
     "commitGitRepository",
+    "continueGitCherryPick",
+    "continueGitRebase",
+    "continueGitRevert",
+    "createGitLocalBranch",
+    "deleteGitLocalBranch",
     "discoverProjectRepositories",
+    "fetchGitRemote",
     "getFileDiff",
     "getNestedRepositoryFileDiff",
     "getNestedRepositoryStatus",
     "getRepositoryStatus",
     "mutateGitFile",
+    "pushGitRemote",
+    "renameGitLocalBranch",
   ],
   chat: [
     "activateChat",
     "archiveChat",
     "createChat",
+    "moveChat",
+    "pinChat",
     "renameChat",
     "restoreChat",
   ],

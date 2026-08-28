@@ -6,7 +6,7 @@ use std::thread::{self, JoinHandle};
 use std::time::Instant;
 
 use crate::acp::limits::LIMITS;
-use crate::acp::redaction::{SafeDiagnostic, StderrRing};
+use crate::acp::redaction::{SafeDiagnostic, SafeStderrDiagnostic, StderrRing};
 use crate::acp::transport::{
     Frame, FrameError, FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame,
     write_json_line_blocking,
@@ -116,6 +116,13 @@ impl StderrDrain {
         self.ring
             .lock()
             .map(|ring| ring.safe_summary())
+            .map_err(|_| LaunchError::ContainmentFailure)
+    }
+
+    pub(super) fn diagnostic(&self) -> Result<SafeStderrDiagnostic, LaunchError> {
+        self.ring
+            .lock()
+            .map(|ring| ring.safe_diagnostic())
             .map_err(|_| LaunchError::ContainmentFailure)
     }
 

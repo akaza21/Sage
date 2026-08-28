@@ -153,8 +153,7 @@ impl CodexAuthManager {
             self.install_cancel(prepared.scope.clone(), Arc::clone(&cancel))?;
             self.publish(CodexAuthPhase::Waiting);
         }
-        let mut protocol =
-            CodexAuthProtocol::new(binding.packet(), binding.binding_digest(), runtime_epoch);
+        let mut protocol = CodexAuthProtocol::from_admitted_binding(&binding, runtime_epoch);
         let mut transport = ProductionAuthTransport::launch(
             binding,
             prepared.root,

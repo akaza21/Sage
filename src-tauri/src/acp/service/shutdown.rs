@@ -41,9 +41,9 @@ impl AcpService {
             failure.get_or_insert(error);
         }
         self.journal.close_when_drained();
-        if let Err(error) = self.wait_journal(
-            (started + budget).saturating_duration_since(Instant::now()),
-        ) {
+        if let Err(error) =
+            self.wait_journal((started + budget).saturating_duration_since(Instant::now()))
+        {
             self.journal.shutdown();
             #[cfg(test)]
             self.record_shutdown_stage("journal");

@@ -22,11 +22,7 @@ impl CodexHostPresence {
 }
 
 pub(crate) fn expected_codex_basename() -> &'static str {
-    if cfg!(windows) {
-        "codex.exe"
-    } else {
-        "codex"
-    }
+    if cfg!(windows) { "codex.exe" } else { "codex" }
 }
 
 pub(crate) fn observe_codex_host_presence() -> CodexHostPresence {
@@ -69,20 +65,14 @@ fn authentic_codex_file(path: &Path) -> bool {
     if !usable_probe_directory(parent) {
         return false;
     }
-    match path.symlink_metadata() {
-        Ok(meta) if meta.is_file() && !is_link(&meta) => true,
-        _ => false,
-    }
+    matches!(path.symlink_metadata(), Ok(meta) if meta.is_file() && !is_link(&meta))
 }
 
 fn usable_probe_directory(dir: &Path) -> bool {
     if !is_local_probe_root(dir) {
         return false;
     }
-    match dir.symlink_metadata() {
-        Ok(meta) if meta.is_dir() && !is_link(&meta) => true,
-        _ => false,
-    }
+    matches!(dir.symlink_metadata(), Ok(meta) if meta.is_dir() && !is_link(&meta))
 }
 
 fn is_local_probe_root(dir: &Path) -> bool {
@@ -118,7 +108,7 @@ fn is_link(meta: &Metadata) -> bool {
     {
         use std::os::windows::fs::MetadataExt;
         const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
-        return meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0;
+        meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
     }
     #[cfg(not(windows))]
     {

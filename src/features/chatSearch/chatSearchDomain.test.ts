@@ -5,6 +5,11 @@ import {
   validateProjectChatSearchRequest,
   type ProjectChatSearchResponse,
 } from "./chatSearchDomain";
+import {
+  admitChatSearchFolder,
+  chatSearchAttachment,
+  chatSearchFolderOptions,
+} from "./chatSearchScope";
 
 const valid: ProjectChatSearchResponse = {
   projectId: "project-a",
@@ -83,5 +88,54 @@ describe("Project Chat search domain", () => {
         query: `${"é".repeat(128)}a`,
       }),
     ).toThrow("1-256 UTF-8 bytes");
+  });
+});
+
+describe("Chat search folder scope", () => {
+  it("admits rail folders and resolves foreign archived attachment", () => {
+    expect(
+      chatSearchFolderOptions([
+        { id: "sage", name: "Sage" },
+        { id: "cross", name: "Cross" },
+        { id: "", name: "junk" },
+      ]),
+    ).toEqual([
+      { id: "all-folders", name: "All folders" },
+      { id: "sage", name: "Sage" },
+      { id: "cross", name: "Cross" },
+    ]);
+    expect(
+      chatSearchAttachment(
+        {
+          project: { id: "sage", name: "Sage", roots: [] },
+          tabs: [],
+          archivedChats: [],
+          projects: [
+            {
+              id: "cross",
+              name: "Cross",
+              rootCount: 1,
+              lastOpenedAt: 1,
+              railArchived: [{ id: "chat-old", title: "Research" }],
+            },
+          ],
+        },
+        "cross",
+        "chat-old",
+      ),
+    ).toEqual({ attached: false, archived: true });
+    expect(
+      admitChatSearchFolder(
+        [
+          { id: "sage", name: "Sage" },
+          { id: "cross", name: "Cross" },
+        ],
+        "cross",
+        "sage",
+      ),
+    ).toBe("cross");
+    expect(
+      admitChatSearchFolder([{ id: "sage", name: "Sage" }], "missing", "sage"),
+    ).toBe("sage");
   });
 });

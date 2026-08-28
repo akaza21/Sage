@@ -1,4 +1,4 @@
-import { ChevronRight, FileCode2, Folder, Link2 } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
@@ -10,8 +10,8 @@ import {
 } from "../../domain/resourceIdentity";
 import type { ProjectRootSummary } from "../../domain/workbench";
 import { ExplorerActions } from "./ExplorerActions";
+import { FileKindIcon } from "./FileKindIcon";
 import { flattenFileTree } from "./fileTree";
-import "./explorer-surface.css";
 
 function RootTree({ root }: { root: ProjectRootSummary }) {
   const selected = useWorkbenchStore((state) => state.selectedResource);
@@ -54,7 +54,7 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
         aria-current={rootSelected ? "page" : undefined}
         onClick={() => selectRoot(root.id)}
       >
-        <Folder size={14} aria-hidden="true" />
+        <FileKindIcon path={root.name} entryKind="directory" />
         <span>{root.name}</span>
         <span className={`root-state root-state--${root.availability}`}>
           {root.availability === "available" ? "" : root.availability}
@@ -74,8 +74,7 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
         const key = resourceKey(entry.resource);
         const directory = entry.kind === "directory";
         const file = entry.kind === "file";
-        const Icon =
-          entry.kind === "symlink" ? Link2 : directory ? Folder : FileCode2;
+        const entryKind = directory ? "directory" : file ? "file" : "symlink";
         return (
           <button
             className={`tree__row ${directory ? "tree__row--folder" : ""} ${
@@ -117,7 +116,10 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
             ) : (
               <span className="tree__indent" />
             )}
-            <Icon size={14} strokeWidth={1.7} aria-hidden="true" />
+            <FileKindIcon
+              path={entry.resource.relativePath}
+              entryKind={entryKind}
+            />
             <span>{entry.name}</span>
           </button>
         );
@@ -174,9 +176,11 @@ export function ExplorerSurface() {
         </p>
       ) : null}
       <div className="tree" role="tree" aria-label="Project files">
-        {project?.roots.map((root) => (
-          <RootTree key={root.id} root={root} />
-        ))}
+        {project?.roots.length ? (
+          project.roots.map((root) => <RootTree key={root.id} root={root} />)
+        ) : (
+          <p className="sidebar__empty">Open a folder to see files.</p>
+        )}
       </div>
     </>
   );

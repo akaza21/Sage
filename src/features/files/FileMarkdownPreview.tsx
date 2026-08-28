@@ -1,9 +1,24 @@
+import { MermaidFigure } from "../chat/acp/MermaidFigure";
 import {
   renderMarkdownPreview,
   type MarkdownPreviewBlock,
 } from "./markdownPreview";
 
-export function FileMarkdownPreview({ source }: { source: string }) {
+export function FileMarkdownPreview({
+  source,
+  asDiagram = false,
+}: {
+  source: string;
+  asDiagram?: boolean;
+}) {
+  if (asDiagram) {
+    return (
+      <article className="file-markdown-preview" aria-label="Diagram preview">
+        <MermaidFigure source={source} />
+      </article>
+    );
+  }
+
   const document = renderMarkdownPreview(source);
   return (
     <article className="file-markdown-preview" aria-label="Markdown preview">
@@ -28,6 +43,9 @@ function PreviewBlock({ block }: { block: MarkdownPreviewBlock }) {
     case "quote":
       return <blockquote>{block.text}</blockquote>;
     case "code":
+      if (block.language.toLowerCase() === "mermaid") {
+        return <MermaidFigure source={block.text} />;
+      }
       return <pre>{block.text}</pre>;
     case "list":
       return (

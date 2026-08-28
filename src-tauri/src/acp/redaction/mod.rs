@@ -4,6 +4,7 @@
 use std::collections::VecDeque;
 
 use serde::Serialize;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -23,6 +24,15 @@ pub(crate) struct SafeDiagnostic {
     pub(crate) code: DiagnosticCode,
     pub(crate) observed_bytes: u64,
     pub(crate) truncated: bool,
+}
+
+/// A bounded, structured child-stderr observation. It intentionally exposes
+/// nothing for unstructured stderr, which can contain arbitrary secrets.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SafeStderrDiagnostic {
+    pub(crate) method: Option<String>,
+    pub(crate) error_code: Option<String>,
+    pub(crate) error_message: Option<String>,
 }
 
 /// Sensitive bytes never implement `Debug`, `Display`, `Clone`, or `Serialize`.
@@ -66,8 +76,9 @@ impl ExternalIdFingerprint {
     }
 }
 
-/// Retains bounded child stderr for native diagnostics only. No API returns its
-/// content; sinks receive only a length/truncation summary.
+/// Retains bounded child stderr for native diagnostics only. Sinks receive
+/// either its length/truncation summary or a strictly structured, sanitized
+/// JSON-RPC error diagnostic.
 pub(crate) struct StderrRing {
     bytes: VecDeque<u8>,
     byte_limit: usize,
@@ -133,10 +144,114 @@ impl StderrRing {
         }
     }
 
+    pub(crate) fn safe_diagnostic(&self) -> SafeStderrDiagnostic {
+        let bytes = self.bytes.iter().copied().collect::<Vec<_>>();
+        if let Ok(value) = serde_json::from_slice::<Value>(&bytes)
+            && let Some(object) = value.as_object()
+            && let Some(error) = object.get("error").and_then(Value::as_object)
+        {
+            let method = object
+                .get("method")
+                .and_then(Value::as_str)
+                .filter(|method| method.len() <= 128)
+                .map(str::to_owned);
+            let error_code = error.get("code").and_then(|code| match code {
+                Value::Number(code) => Some(code.to_string()),
+                Value::String(code) => Some(sanitize_stderr_text(code)),
+                _ => None,
+            });
+            let error_message = error
+                .get("message")
+                .and_then(Value::as_str)
+                .filter(|message| message.len() <= 1024)
+                .map(sanitize_stderr_text);
+            return SafeStderrDiagnostic {
+                method,
+                error_code,
+                error_message,
+            };
+        }
+        std::str::from_utf8(&bytes)
+            .ok()
+            .filter(|message| message.len() <= 1024)
+            .map(|message| SafeStderrDiagnostic {
+                method: None,
+                error_code: Some("child-stderr".to_owned()),
+                error_message: Some(sanitize_stderr_text(message)),
+            })
+            .unwrap_or_else(empty_stderr_diagnostic)
+    }
+
     #[cfg(test)]
     pub(crate) fn retained_bytes(&self) -> usize {
         self.bytes.len()
     }
+}
+
+fn empty_stderr_diagnostic() -> SafeStderrDiagnostic {
+    SafeStderrDiagnostic {
+        method: None,
+        error_code: None,
+        error_message: None,
+    }
+}
+
+fn sanitize_stderr_text(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut redact_next = false;
+    for part in value.split_inclusive(char::is_whitespace) {
+        let token = part.trim_end_matches(char::is_whitespace);
+        let whitespace = &part[token.len()..];
+        let bare = token.trim_matches(|character: char| {
+            matches!(
+                character,
+                '"' | '\'' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | ',' | ';'
+            )
+        });
+        let bearer = bare.eq_ignore_ascii_case("bearer");
+        let embedded_bearer = bare
+            .get(..7)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("bearer:"));
+        if redact_next || embedded_bearer || bare.contains("sk-") || bare.contains('=') {
+            output.push_str("[redacted]");
+        } else if contains_absolute_path(token) {
+            output.push_str("[path]");
+        } else {
+            output.push_str(token);
+        }
+        output.push_str(whitespace);
+        redact_next = bearer;
+    }
+    output
+}
+
+fn contains_absolute_path(token: &str) -> bool {
+    let lower = token.to_ascii_lowercase();
+    if lower.contains("file:///") || lower.contains("file://\\\\") {
+        return true;
+    }
+    let bytes = token.as_bytes();
+    for index in 0..bytes.len() {
+        let boundary = index == 0
+            || matches!(
+                bytes[index - 1],
+                b'"' | b'\'' | b'`' | b'(' | b'[' | b'{' | b'<' | b'=' | b',' | b';'
+            );
+        if !boundary {
+            continue;
+        }
+        let rest = &bytes[index..];
+        if rest.starts_with(b"\\\\")
+            || (rest.starts_with(b"/") && !rest.starts_with(b"//"))
+            || (rest.len() >= 3
+                && rest[0].is_ascii_alphabetic()
+                && rest[1] == b':'
+                && matches!(rest[2], b'\\' | b'/'))
+        {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]

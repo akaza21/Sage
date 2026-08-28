@@ -1,4 +1,6 @@
-import { Eye, FileCode2, FilePenLine, Save, Undo2 } from "lucide-react";
+import { Eye, FilePenLine, Save, Undo2 } from "lucide-react";
+
+import { FilePathChips } from "./FilePathChips";
 
 interface FileEditorHeaderProps {
   path: string;
@@ -32,8 +34,7 @@ export function FileEditorHeader({
   return (
     <header className="file-header">
       <span className="file-header__path">
-        <FileCode2 size={16} aria-hidden="true" />
-        {path}
+        <FilePathChips path={path} />
       </span>
       <span className="file-header__metadata">
         UTF-8 · {lineEnding.toUpperCase()} · {diskByteLen.toLocaleString()} disk

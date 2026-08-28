@@ -71,7 +71,7 @@ fn apply_created_file_uses_workspace_create_not_raw_fs() {
 #[test]
 fn apply_created_file_accepts_matching_recomposed_target() {
     let fixture = Fixture::new();
-    fs::create_dir(&fixture.root.join("notes")).unwrap();
+    fs::create_dir(fixture.root.join("notes")).unwrap();
     let resource = ResourceRef {
         root_id: fixture.workspace.root_id().into(),
         relative_path: "notes/agent.txt".into(),
@@ -87,7 +87,7 @@ fn apply_created_file_accepts_matching_recomposed_target() {
 #[test]
 fn apply_created_file_rejects_mismatched_basename() {
     let fixture = Fixture::new();
-    fs::create_dir(&fixture.root.join("notes")).unwrap();
+    fs::create_dir(fixture.root.join("notes")).unwrap();
     let resource = ResourceRef {
         root_id: fixture.workspace.root_id().into(),
         relative_path: "notes/agent.txt".into(),

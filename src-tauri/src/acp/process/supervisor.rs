@@ -10,6 +10,7 @@ use crate::{acp::limits::LIMITS, project_registry::ProjectRootAuthority};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EntryPointKind {
     NativeExecutable,
+    WindowsBatchLauncher,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +63,29 @@ impl ArtifactExpectation {
             sha256,
             byte_len,
             entrypoint_kind: EntryPointKind::NativeExecutable,
+        })
+    }
+
+    pub(crate) fn windows_batch_launcher(
+        artifact_id: Uuid,
+        canonical_absolute_path: PathBuf,
+        sha256: [u8; 32],
+        byte_len: u64,
+    ) -> Result<Self, LaunchError> {
+        validate_absolute_normalized(&canonical_absolute_path)?;
+        let extension = canonical_absolute_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(str::to_ascii_lowercase);
+        if !matches!(extension.as_deref(), Some("cmd" | "bat")) {
+            return Err(LaunchError::InvalidAbsolutePath);
+        }
+        Ok(Self {
+            artifact_id,
+            canonical_absolute_path,
+            sha256,
+            byte_len,
+            entrypoint_kind: EntryPointKind::WindowsBatchLauncher,
         })
     }
 }

@@ -2,9 +2,16 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
+import {
+  browseSessionForChat,
+  clearBrowseSessions,
+} from "../../preview/harnessBrowse";
 import { ToolItem } from "./ToolItem";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  clearBrowseSessions();
+});
 
 type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
 
@@ -56,7 +63,6 @@ describe("ToolItem", () => {
         onOpenResource={onOpen}
       />,
     );
-    fireEvent.click(screen.getByText("Tool details"));
     fireEvent.click(
       screen.getByRole("button", { name: "Open file src/main.ts" }),
     );
@@ -83,7 +89,6 @@ describe("ToolItem", () => {
         onOpenResource={onOpen}
       />,
     );
-    fireEvent.click(screen.getByText("Tool details"));
     fireEvent.click(
       screen.getByRole("button", { name: "Open diff src/main.ts" }),
     );
@@ -93,8 +98,8 @@ describe("ToolItem", () => {
     );
   });
 
-  it("keeps every tool's content and resources behind one disclosure", () => {
-    const item = tool({
+  it("shows Read and command markers inline without opening Tool details", () => {
+    const fileItem = tool({
       kind: "file",
       label: "Read file",
       resources: [
@@ -104,19 +109,29 @@ describe("ToolItem", () => {
         },
       ],
     });
-    item.payload.inputSummary = null;
-    render(<ToolItem item={item} onOpenResource={vi.fn()} />);
-
-    const card = screen.getByRole("group", { name: "Read file" });
-    const disclosure = card.querySelector("summary");
-    expect(disclosure).not.toBeNull();
-    const details = disclosure?.parentElement;
-    expect(details).not.toHaveAttribute("open");
-    expect(details).toContainElement(
-      screen.getByRole("button", { name: "Open file src/main.ts" }),
+    fileItem.payload.inputSummary = null;
+    const { rerender } = render(
+      <ToolItem item={fileItem} onOpenResource={vi.fn()} />,
     );
-    fireEvent.click(disclosure!);
-    expect(details).toHaveAttribute("open");
+
+    expect(
+      screen.getByRole("button", { name: "Open file src/main.ts" }),
+    ).toBeVisible();
+    expect(screen.queryByText("Tool details")).toBeNull();
+
+    rerender(
+      <ToolItem
+        item={tool({
+          kind: "command",
+          label: "Run tests",
+          summary: "npm test -- src/main.ts",
+        })}
+      />,
+    );
+    expect(screen.getByLabelText("Command")).toHaveTextContent(
+      "npm test -- src/main.ts",
+    );
+    expect(screen.getByText("Tool details")).toBeInTheDocument();
   });
 
   it("uses one generic card for unknown tools and typed safe summaries", () => {
@@ -171,6 +186,24 @@ describe("ToolItem", () => {
     expect(status).toHaveAttribute("aria-atomic", "true");
   });
 
+  it("opens an admitted loopback web tool in the Sage browser", () => {
+    render(
+      <ToolItem
+        item={tool({
+          kind: "web",
+          label: "Browse preview",
+          summary: "Opened http://127.0.0.1:5173/app",
+        })}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open in Sage browser" }),
+    );
+    expect(browseSessionForChat("chat-1")?.href).toBe(
+      "http://127.0.0.1:5173/app",
+    );
+  });
+
   it("keeps canonical resources inert until a native open handler is wired", () => {
     render(
       <ToolItem
@@ -187,6 +220,9 @@ describe("ToolItem", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: /open file/i })).toBeNull();
-    expect(screen.getByText("src/main.ts")).toBeInTheDocument();
+    expect(screen.getByText("main.ts")).toBeInTheDocument();
+    expect(
+      document.querySelector(".file-kind-icon--typescript"),
+    ).not.toBeNull();
   });
 });

@@ -99,6 +99,40 @@ impl AcpService {
         }
     }
 
+    /// Releases a stale runner recovery only after a passive native zero-tree
+    /// check. A still-live tree remains retained for explicit recovery, so a
+    /// new admission cannot bypass containment.
+    pub(super) fn reclaim_zero_process_runner_capacity(
+        &self,
+        deadline: Instant,
+    ) -> Result<bool, crate::acp::runtime::HostError> {
+        let recovery = self
+            .codex_recovery
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        let Some(recovery) = recovery else {
+            return Ok(false);
+        };
+        let PendingCodexRecovery::Runner { owner, runner } = recovery else {
+            self.retain_codex_recovery(recovery);
+            return Ok(false);
+        };
+        match runner.reclaim_if_zero_before(deadline) {
+            Ok(token) => match self.shutdown_runtime_after_token(owner.clone(), token) {
+                Ok(()) => Ok(true),
+                Err(recovery) => {
+                    self.retain_codex_recovery(recovery);
+                    Err(crate::acp::runtime::HostError::RecoveryRequired)
+                }
+            },
+            Err(error) => {
+                self.retain_codex_recovery(PendingCodexRecovery::Runner { owner, runner });
+                Err(error)
+            }
+        }
+    }
+
     pub(in crate::acp::service) fn shutdown_codex_recovery(
         &self,
         deadline: Instant,

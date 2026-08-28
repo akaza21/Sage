@@ -1,0 +1,137 @@
+.diff-limit {
+  margin: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.diff-header__counts {
+  display: flex;
+  gap: 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-header__counts span:first-child {
+  color: #68d983;
+}
+
+.diff-header__counts span:last-child {
+  color: #ef6d67;
+}
+
+.diff-surface {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: 44px 36px minmax(0, 1fr);
+  background: var(--editor);
+}
+
+.diff-header,
+.diff-toolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+
+.diff-header {
+  padding: 0 14px;
+  background: var(--surface);
+}
+
+.diff-header__path {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.diff-header__path span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-toolbar {
+  padding: 0 14px;
+  color: var(--text-soft);
+  background: var(--surface);
+  font-size: 11px;
+}
+
+.diff-toolbar__hint {
+  color: var(--muted);
+}
+
+.diff-editor {
+  min-height: 0;
+  padding: 16px 0;
+  overflow: auto;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+}
+
+.diff-hunk + .diff-hunk {
+  margin-top: 14px;
+}
+
+.diff-hunk__header {
+  min-width: 720px;
+  min-height: 27px;
+  padding: 6px 14px 5px 104px;
+  color: #9bc6a0;
+  background: rgb(53 82 57 / 0.28);
+  font-size: 11px;
+}
+
+.diff-line {
+  display: grid;
+  min-width: 720px;
+  min-height: 26px;
+  grid-template-columns: 46px 46px minmax(0, 1fr);
+  align-items: center;
+  border-left: 3px solid transparent;
+}
+
+.diff-line > span {
+  align-self: stretch;
+  padding: 6px 8px 0 0;
+  border-right: 1px solid rgb(255 255 255 / 0.045);
+  color: #667067;
+  text-align: right;
+  user-select: none;
+}
+
+.diff-line code {
+  padding: 4px 12px;
+  color: #cbd1ca;
+  white-space: pre;
+}
+
+.diff-line--removed {
+  border-left-color: #d85b56;
+  background: rgb(127 43 40 / 0.24);
+}
+
+.diff-line--added {
+  border-left-color: #52c574;
+  background: rgb(42 107 59 / 0.25);
+}
+
+.diff-line--meta {
+  color: var(--muted);
+  background: var(--surface);
+}
+
+.diff-limit {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}

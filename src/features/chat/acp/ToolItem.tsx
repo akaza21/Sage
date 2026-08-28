@@ -2,6 +2,10 @@ import { useId } from "react";
 
 import type { AcpItem, SafeResourceLocation } from "../../../domain/acp";
 import type { ResourceRef } from "../../../domain/workbench";
+import { extractAdmittedBrowseUrl } from "../../preview/harnessBrowse";
+import { ChatFileChip } from "./FileChip";
+import { chatFileChipBasename } from "./chatFileChip";
+import { CURATED_BROWSE_TOOL_NAME, createToolHost } from "./toolHost";
 import { terminalToolStates, toolStateLabels } from "./statusSemantics";
 
 type ToolProjectionItem = Extract<
@@ -31,17 +35,21 @@ function ResourceLocations({
       {locations.map((location, index) => (
         <li key={`${location.kind}:${index}`}>
           {location.kind === "resource" ? (
-            onOpenResource ? (
-              <button
-                type="button"
-                className="acp-resource-action"
-                aria-label={`Open ${target} ${location.resource.relativePath}`}
-                onClick={() => onOpenResource(location.resource, target)}
-              >
-                {location.resource.relativePath}
-              </button>
+            chatFileChipBasename(location.resource.relativePath) ? (
+              onOpenResource ? (
+                <button
+                  type="button"
+                  className="acp-resource-action"
+                  aria-label={`Open ${target} ${location.resource.relativePath}`}
+                  onClick={() => onOpenResource(location.resource, target)}
+                >
+                  <ChatFileChip path={location.resource.relativePath} />
+                </button>
+              ) : (
+                <ChatFileChip path={location.resource.relativePath} />
+              )
             ) : (
-              <span>{location.resource.relativePath}</span>
+              <span className="acp-resource-unavailable">unavailable</span>
             )
           ) : (
             <span className="acp-resource-unavailable">
@@ -91,9 +99,44 @@ function Presentation({
       );
     case "subagent":
       return <p>Harness-owned activity</p>;
+    case "web": {
+      const payload = item.payload;
+      const browse =
+        extractAdmittedBrowseUrl(presentation.summary ?? "") ??
+        extractAdmittedBrowseUrl(
+          "inputSummary" in payload ? (payload.inputSummary ?? "") : "",
+        ) ??
+        extractAdmittedBrowseUrl(
+          "outputSummary" in payload ? (payload.outputSummary ?? "") : "",
+        );
+      return (
+        <>
+          {presentation.summary ? <p>{presentation.summary}</p> : null}
+          {browse ? (
+            <button
+              type="button"
+              className="acp-resource-action"
+              onClick={() =>
+                createToolHost().invoke(CURATED_BROWSE_TOOL_NAME, {
+                  chatId: item.chatId,
+                  sessionId: item.sessionId,
+                  url: browse.href,
+                })
+              }
+            >
+              Open in Sage browser
+            </button>
+          ) : null}
+        </>
+      );
+    }
     case "command":
+      return presentation.summary ? (
+        <pre className="acp-tool-command" aria-label="Command">
+          {presentation.summary}
+        </pre>
+      ) : null;
     case "generic":
-    case "web":
       return presentation.summary ? <p>{presentation.summary}</p> : null;
   }
 }
@@ -131,11 +174,13 @@ export function ToolItem({ item, onOpenResource }: ToolItemProps) {
           {status}
         </span>
       </header>
-      <details className="acp-details">
-        <summary>Tool details</summary>
-        <Presentation item={item} onOpenResource={onOpenResource} />
-        {detail ? <p>{detail}</p> : null}
-      </details>
+      <Presentation item={item} onOpenResource={onOpenResource} />
+      {detail ? (
+        <details className="acp-details">
+          <summary>Tool details</summary>
+          <p>{detail}</p>
+        </details>
+      ) : null}
     </article>
   );
 }

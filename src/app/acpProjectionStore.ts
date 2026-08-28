@@ -205,162 +205,169 @@ const initialState = {
   | "error"
 >;
 
-export const useAcpProjectionStore = create<AcpProjectionState>((set, get) => ({
-  ...initialState,
+export function createAcpProjectionStore() {
+  return create<AcpProjectionState>((set, get) => ({
+    ...initialState,
 
-  activateScope: (scope) => {
-    if (sameScope(get().scope, scope)) return;
-    set({ ...initialState, scope, requestSequence: get().requestSequence });
-  },
+    activateScope: (scope) => {
+      if (sameScope(get().scope, scope)) return;
+      set({ ...initialState, scope, requestSequence: get().requestSequence });
+    },
 
-  beginPageLoad: (cursor) => {
-    const scope = get().scope;
-    if (!scope) throw new Error("ACP projection scope is not active");
-    const sequence = get().requestSequence;
-    if (!Number.isSafeInteger(sequence) || sequence >= MAX_REQUEST_SEQUENCE) {
-      throw new Error("ACP projection request limit reached; restart Sage");
-    }
-    const intent: AcpPageLoadIntent = {
-      ...scope,
-      requestSequence: sequence + 1,
-      cursor,
-      expectedProjectionRevision: get().page?.projectionRevision ?? null,
-    };
-    set({
-      activeLoad: intent,
-      requestSequence: intent.requestSequence,
-      error: null,
-    });
-    return intent;
-  },
+    beginPageLoad: (cursor) => {
+      const scope = get().scope;
+      if (!scope) throw new Error("ACP projection scope is not active");
+      const sequence = get().requestSequence;
+      if (!Number.isSafeInteger(sequence) || sequence >= MAX_REQUEST_SEQUENCE) {
+        throw new Error("ACP projection request limit reached; restart Sage");
+      }
+      const intent: AcpPageLoadIntent = {
+        ...scope,
+        requestSequence: sequence + 1,
+        cursor,
+        expectedProjectionRevision: get().page?.projectionRevision ?? null,
+      };
+      set({
+        activeLoad: intent,
+        requestSequence: intent.requestSequence,
+        error: null,
+      });
+      return intent;
+    },
 
-  completePageLoad: (intent, page) => {
-    const state = get();
-    if (
-      state.activeLoad?.requestSequence !== intent.requestSequence ||
-      !sameScope(state.scope, intent) ||
-      page.projectId !== intent.projectId ||
-      page.chatId !== intent.chatId
-    ) {
-      return "ignoredStaleIntent";
-    }
+    completePageLoad: (intent, page) => {
+      const state = get();
+      if (
+        state.activeLoad?.requestSequence !== intent.requestSequence ||
+        !sameScope(state.scope, intent) ||
+        page.projectId !== intent.projectId ||
+        page.chatId !== intent.chatId
+      ) {
+        return "ignoredStaleIntent";
+      }
 
-    const currentRevision = state.page?.projectionRevision ?? null;
-    if (currentRevision) {
+      const currentRevision = state.page?.projectionRevision ?? null;
+      if (currentRevision) {
+        const comparison = compareDecimalRevision(
+          page.projectionRevision,
+          currentRevision,
+        );
+        if (comparison === null) {
+          set({ activeLoad: null, error: null });
+          return "ignoredInvalidRevision";
+        }
+        if (comparison < 0) {
+          set({ activeLoad: null, error: null });
+          return "ignoredStaleRevision";
+        }
+      }
+
+      if (intent.cursor && intent.expectedProjectionRevision) {
+        const comparison = compareDecimalRevision(
+          page.projectionRevision,
+          intent.expectedProjectionRevision,
+        );
+        if (comparison === null) {
+          set({ activeLoad: null, error: null });
+          return "ignoredInvalidRevision";
+        }
+        if (comparison !== 0) {
+          set({ activeLoad: null, error: null });
+          return "ignoredStaleRevision";
+        }
+      }
+
+      const source =
+        intent.cursor && state.page
+          ? mergeProjectionPage(state.page, page)
+          : normalizeProjectionPage(page);
+      const retained = trimToByteLimit(source);
+      set({
+        page: retained.page,
+        retainedBytes: retained.retainedBytes,
+        retentionIncomplete:
+          state.retentionIncomplete || retained.retentionIncomplete,
+        activeLoad: null,
+        error: null,
+      });
+      return "accepted";
+    },
+
+    failPageLoad: (intent, message) => {
+      const state = get();
+      if (
+        state.activeLoad?.requestSequence !== intent.requestSequence ||
+        !sameScope(state.scope, intent)
+      ) {
+        return false;
+      }
+      set({ activeLoad: null, error: message });
+      return true;
+    },
+
+    applyAuthoritativePage: (scope, page) => {
+      const state = get();
+      if (
+        !sameScope(state.scope, scope) ||
+        page.projectId !== scope.projectId ||
+        page.chatId !== scope.chatId
+      ) {
+        return "ignoredStaleIntent";
+      }
+      if (state.page) {
+        const comparison = compareDecimalRevision(
+          page.projectionRevision,
+          state.page.projectionRevision,
+        );
+        if (comparison === null) return "ignoredInvalidRevision";
+        if (comparison < 0) return "ignoredStaleRevision";
+      }
+      const retained = trimToByteLimit(normalizeProjectionPage(page));
+      set({
+        page: retained.page,
+        retainedBytes: retained.retainedBytes,
+        retentionIncomplete:
+          state.retentionIncomplete || retained.retentionIncomplete,
+        activeLoad: null,
+        error: null,
+      });
+      return "accepted";
+    },
+
+    enqueueProjectionChange: (event) => {
+      const state = get();
+      if (
+        state.scope?.projectId !== event.projectId ||
+        state.scope.chatId !== event.chatId
+      ) {
+        return "ignoredStale";
+      }
+      const pending = state.pendingChange;
+      if (!pending) {
+        set({ pendingChange: event });
+        return "queued";
+      }
+      if (!sameNoticeTuple(pending, event)) return "requiresBootstrap";
       const comparison = compareDecimalRevision(
-        page.projectionRevision,
-        currentRevision,
+        event.projectionRevision,
+        pending.projectionRevision,
       );
-      if (comparison === null) {
-        set({ activeLoad: null, error: null });
-        return "ignoredInvalidRevision";
-      }
-      if (comparison < 0) {
-        set({ activeLoad: null, error: null });
-        return "ignoredStaleRevision";
-      }
-    }
-
-    if (intent.cursor && intent.expectedProjectionRevision) {
-      const comparison = compareDecimalRevision(
-        page.projectionRevision,
-        intent.expectedProjectionRevision,
-      );
-      if (comparison === null) {
-        set({ activeLoad: null, error: null });
-        return "ignoredInvalidRevision";
-      }
-      if (comparison !== 0) {
-        set({ activeLoad: null, error: null });
-        return "ignoredStaleRevision";
-      }
-    }
-
-    const source =
-      intent.cursor && state.page
-        ? mergeProjectionPage(state.page, page)
-        : normalizeProjectionPage(page);
-    const retained = trimToByteLimit(source);
-    set({
-      page: retained.page,
-      retainedBytes: retained.retainedBytes,
-      retentionIncomplete:
-        state.retentionIncomplete || retained.retentionIncomplete,
-      activeLoad: null,
-      error: null,
-    });
-    return "accepted";
-  },
-
-  failPageLoad: (intent, message) => {
-    const state = get();
-    if (
-      state.activeLoad?.requestSequence !== intent.requestSequence ||
-      !sameScope(state.scope, intent)
-    ) {
-      return false;
-    }
-    set({ activeLoad: null, error: message });
-    return true;
-  },
-
-  applyAuthoritativePage: (scope, page) => {
-    const state = get();
-    if (
-      !sameScope(state.scope, scope) ||
-      page.projectId !== scope.projectId ||
-      page.chatId !== scope.chatId
-    ) {
-      return "ignoredStaleIntent";
-    }
-    if (state.page) {
-      const comparison = compareDecimalRevision(
-        page.projectionRevision,
-        state.page.projectionRevision,
-      );
-      if (comparison === null) return "ignoredInvalidRevision";
-      if (comparison < 0) return "ignoredStaleRevision";
-    }
-    const retained = trimToByteLimit(normalizeProjectionPage(page));
-    set({
-      page: retained.page,
-      retainedBytes: retained.retainedBytes,
-      retentionIncomplete:
-        state.retentionIncomplete || retained.retentionIncomplete,
-      activeLoad: null,
-      error: null,
-    });
-    return "accepted";
-  },
-
-  enqueueProjectionChange: (event) => {
-    const state = get();
-    if (
-      state.scope?.projectId !== event.projectId ||
-      state.scope.chatId !== event.chatId
-    ) {
-      return "ignoredStale";
-    }
-    const pending = state.pendingChange;
-    if (!pending) {
+      if (comparison === null || comparison <= 0) return "ignoredStale";
       set({ pendingChange: event });
-      return "queued";
-    }
-    if (!sameNoticeTuple(pending, event)) return "requiresBootstrap";
-    const comparison = compareDecimalRevision(
-      event.projectionRevision,
-      pending.projectionRevision,
-    );
-    if (comparison === null || comparison <= 0) return "ignoredStale";
-    set({ pendingChange: event });
-    return "coalesced";
-  },
+      return "coalesced";
+    },
 
-  takeProjectionChange: () => {
-    const pending = get().pendingChange;
-    if (pending) set({ pendingChange: null });
-    return pending;
-  },
+    takeProjectionChange: () => {
+      const pending = get().pendingChange;
+      if (pending) set({ pendingChange: null });
+      return pending;
+    },
 
-  clear: () => set({ ...initialState, requestSequence: get().requestSequence }),
-}));
+    clear: () =>
+      set({ ...initialState, requestSequence: get().requestSequence }),
+  }));
+}
+
+export type AcpProjectionStore = ReturnType<typeof createAcpProjectionStore>;
+
+export const useAcpProjectionStore = createAcpProjectionStore();

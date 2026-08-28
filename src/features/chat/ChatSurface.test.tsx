@@ -9,6 +9,11 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { clearAcpProjectionRegistry } from "../../app/acpProjectionRegistry";
+import {
+  clearAgentChatOwner,
+  pinAgentChatOwner,
+} from "../../app/agentChatOwner";
 import { useAcpProjectionStore } from "../../app/acpProjectionStore";
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage, AcpItem } from "../../domain/acp";
@@ -185,10 +190,43 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   useWorkbenchStore.setState(initialState, true);
+  clearAcpProjectionRegistry();
+  clearAgentChatOwner();
   vi.clearAllMocks();
 });
 
 describe("ChatSurface ACP resource integration", () => {
+  it("follows an advancing ACP streaming projection to its latest content", () => {
+    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView);
+    const { rerender } = render(<ChatSurface />);
+    scrollIntoView.mockClear();
+
+    hooks.page = {
+      ...hooks.page!,
+      projectionRevision: "3" as never,
+      turns: hooks.page!.turns.map((turn) => ({
+        ...turn,
+        items: turn.items.map((item) =>
+          item.kind === "toolCall"
+            ? {
+                ...item,
+                payload: {
+                  ...item.payload,
+                  inputSummary: "Streaming the next retained update",
+                },
+              }
+            : item,
+        ),
+      })),
+    };
+    rerender(<ChatSurface />);
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "end",
+    });
+  });
+
   it("keeps selected not-installed Codex truthful and hides later built-in harnesses", () => {
     hooks.page = null;
     useWorkbenchStore.setState({
@@ -899,6 +937,41 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.getByLabelText("Message agent")).toBeDisabled();
   });
 
+  it("does not misreport a failed admitted session as a missing local binding", () => {
+    hooks.page = {
+      ...hooks.page!,
+      currentSessionId: "session-a" as never,
+      sessions: [
+        {
+          id: "session-a",
+          ordinal: 0,
+          runtimeEpoch: "1",
+          nextRuntimeEpoch: null,
+          state: "failed",
+          residency: "cold",
+          legacy: false,
+          bindingId: "codex-app-server",
+          modelId: null,
+          capabilities: { prompt: false, closeSession: false },
+          revision: "2",
+          projectionRevision: "3",
+        },
+      ],
+    } as unknown as AcpChatPage;
+    hooks.actions.error = "Codex launch failed safely; retry the session.";
+
+    render(<ChatSurface />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Codex launch failed safely; retry the session.",
+    );
+    expect(
+      screen.queryByText(
+        "No reviewed local binding is available for this harness.",
+      ),
+    ).toBeNull();
+  });
+
   it("keeps model selection and prompting disabled while Codex discovery checks", () => {
     useWorkbenchStore.setState({
       harnessDiscoveryPhase: "checking",
@@ -999,14 +1072,21 @@ describe("ChatSurface ACP resource integration", () => {
       screen.getByRole("button", { name: "Open diff root-b / src/main.ts" }),
     );
 
-    expect(openFile).toHaveBeenCalledWith({
-      rootId: "root-a",
-      relativePath: "src/main.ts",
-    });
-    expect(openDiff).toHaveBeenCalledWith({
-      rootId: "root-b",
-      relativePath: "src/main.ts",
-    });
+    expect(openFile).toHaveBeenCalledWith(
+      {
+        rootId: "root-a",
+        relativePath: "src/main.ts",
+      },
+      "agent",
+    );
+    expect(openDiff).toHaveBeenCalledWith(
+      {
+        rootId: "root-b",
+        relativePath: "src/main.ts",
+      },
+      undefined,
+      "agent",
+    );
   });
 
   it("passes frontend retention incompleteness into the ACP edit summary", () => {
@@ -1087,7 +1167,7 @@ describe("ChatSurface ACP resource integration", () => {
         name: "Open diff for legacy/change.ts",
       }),
     );
-    expect(openDiff).toHaveBeenCalledWith(resource);
+    expect(openDiff).toHaveBeenCalledWith(resource, undefined, "agent");
   });
 
   it("hides ACP and legacy resource actions during project transition", () => {
@@ -1111,5 +1191,316 @@ describe("ChatSurface ACP resource integration", () => {
     expect(
       screen.queryByRole("button", { name: /open (?:file|diff)/i }),
     ).toBeNull();
+  });
+});
+
+describe("ChatSurface per-chat composer", () => {
+  it("keeps each mounted Chat composer bound to its chat id", () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projectGeneration: 1,
+      nativeTransitionEpoch: 1,
+      chatOwnershipEpoch: 0,
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "A",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+        {
+          id: "chat-b",
+          kind: "chat",
+          title: "B",
+          position: 1,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+      chatUiById: {
+        "chat-a": {
+          composerText: "",
+          sending: false,
+          error: null,
+          requestGeneration: 0,
+        },
+        "chat-b": {
+          composerText: "",
+          sending: false,
+          error: null,
+          requestGeneration: 0,
+        },
+      },
+      composerText: "",
+      harnesses: [
+        {
+          id: "sage-simulator",
+          name: "Simulator",
+          description: "Development",
+          installState: "available",
+          source: "development",
+          accountModelDiscovery: false,
+          transport: "legacySimulator",
+          bindingId: null,
+        },
+      ],
+      selectedHarnessId: "sage-simulator",
+    });
+    hooks.page = null;
+    render(
+      <>
+        <ChatSurface chatId="chat-a" />
+        <ChatSurface chatId="chat-b" />
+      </>,
+    );
+    const composers = screen.getAllByPlaceholderText("Ask anything (Ctrl+L)");
+    fireEvent.change(composers[0], { target: { value: "Draft A" } });
+    fireEvent.change(composers[1], { target: { value: "Draft B" } });
+    expect(composers[0]).toHaveValue("Draft A");
+    expect(composers[1]).toHaveValue("Draft B");
+    expect(useWorkbenchStore.getState().chatUiById["chat-a"].composerText).toBe(
+      "Draft A",
+    );
+    expect(useWorkbenchStore.getState().chatUiById["chat-b"].composerText).toBe(
+      "Draft B",
+    );
+  });
+});
+
+describe("ChatSurface A11Y-2 singleton chrome", () => {
+  function announcementCountInChat(chatId: string) {
+    const composer = document.getElementById(`prompt-${chatId}`);
+    return (
+      composer
+        ?.closest(".chat-surface")
+        ?.querySelectorAll("[data-acp-announcement]").length ?? 0
+    );
+  }
+
+  it("keeps one announcement pair when two ACP panes are mounted", () => {
+    pinAgentChatOwner("chat-a");
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "A",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+        {
+          id: "chat-b",
+          kind: "chat",
+          title: "B",
+          position: 1,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    render(
+      <>
+        <ChatSurface chatId="chat-a" />
+        <ChatSurface chatId="chat-b" />
+      </>,
+    );
+    expect(document.querySelectorAll("[data-acp-announcement]")).toHaveLength(
+      2,
+    );
+    expect(screen.getAllByText("Durable chat")).toHaveLength(2);
+  });
+
+  it("keeps the pinned Agent chat as a11y owner when a File tab is active", () => {
+    pinAgentChatOwner("chat-a");
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "A",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+        {
+          id: "chat-b",
+          kind: "chat",
+          title: "B",
+          position: 1,
+          pinned: false,
+          dirty: false,
+        },
+        {
+          id: "file:main",
+          kind: "file",
+          title: "main.ts",
+          position: 2,
+          pinned: false,
+          dirty: false,
+          resource: { rootId: "root-a", relativePath: "src/main.ts" },
+        },
+      ],
+      activeTabId: "file:main",
+    });
+    render(
+      <>
+        <ChatSurface chatId="chat-a" />
+        <ChatSurface chatId="chat-b" />
+      </>,
+    );
+    expect(document.querySelectorAll("[data-acp-announcement]")).toHaveLength(
+      2,
+    );
+    expect(screen.getAllByText("Durable chat")).toHaveLength(2);
+    expect(announcementCountInChat("chat-a")).toBe(2);
+    expect(announcementCountInChat("chat-b")).toBe(0);
+  });
+});
+
+describe("ChatSurface session tab", () => {
+  it("shows a fail-closed session tab and drops the leftover Sage workbench header", () => {
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat: Review",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    render(<ChatSurface chatId="chat-a" />);
+
+    const tab = screen.getByRole("tab", { name: "Review" });
+    expect(tab).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText("Sage workbench")).toBeNull();
+    expect(screen.queryByText("Persistent agent session")).toBeNull();
+  });
+
+  it("hides the session tab when the title is invalid", () => {
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: "chat-bad",
+          kind: "chat",
+          title: "Chat: bad\ntitle",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-bad",
+    });
+    render(<ChatSurface chatId="chat-bad" />);
+
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.queryByText("Sage workbench")).toBeNull();
+  });
+});
+
+describe("ChatSurface composer focus hotkey", () => {
+  it("focuses the enabled composer on Ctrl+L", () => {
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "sage-simulator",
+          name: "Simulator",
+          description: "Development",
+          installState: "available",
+          source: "development",
+          accountModelDiscovery: false,
+          transport: "legacySimulator",
+          bindingId: null,
+        },
+      ],
+      selectedHarnessId: "sage-simulator",
+    });
+    render(<ChatSurface />);
+    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    expect(composer).toBeEnabled();
+    expect(composer).toHaveAttribute("placeholder", "Ask anything (Ctrl+L)");
+    composer.blur();
+    expect(composer).not.toHaveFocus();
+    fireEvent.keyDown(window, { key: "l", ctrlKey: true });
+    expect(composer).toHaveFocus();
+  });
+
+  it("does not steal Ctrl+L when the composer is disabled", () => {
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "codex",
+          name: "Codex",
+          description: "ACP",
+          installState: "notInstalled",
+          source: "builtIn",
+          accountModelDiscovery: true,
+          transport: "acp",
+          bindingId: "codex-app-server",
+        },
+      ],
+      selectedHarnessId: "codex",
+    });
+    hooks.page = null;
+    render(<ChatSurface />);
+    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    expect(composer).toBeDisabled();
+    expect(composer).toHaveAttribute(
+      "placeholder",
+      "Choose an available harness before starting a session",
+    );
+    fireEvent.keyDown(window, { key: "l", ctrlKey: true });
+    expect(composer).not.toHaveFocus();
+  });
+});
+
+describe("ChatSurface composer context", () => {
+  it("shows Local and the project workspace name under the composer", () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "  micrograd  ", roots: [] },
+      harnesses: [
+        {
+          id: "sage-simulator",
+          name: "Simulator",
+          description: "Development",
+          installState: "available",
+          source: "development",
+          accountModelDiscovery: false,
+          transport: "legacySimulator",
+          bindingId: null,
+        },
+      ],
+      selectedHarnessId: "sage-simulator",
+    });
+    render(<ChatSurface />);
+    const context = screen.getByLabelText("Composer context");
+    expect(context).toHaveTextContent("Local");
+    expect(context).toHaveTextContent("micrograd");
+  });
+
+  it("shows Working for nonterminal ACP turns but hides it during project transition", async () => {
+    render(<ChatSurface />);
+    expect(screen.getByText("1 turn working")).toBeVisible();
+    expect(screen.getAllByText("1 Working")).toHaveLength(2);
+    expect(
+      screen.getByRole("status", { name: "1 working turn" }),
+    ).toBeVisible();
+
+    await act(async () => {
+      useWorkbenchStore.setState({ projectTransitioning: true });
+    });
+    expect(screen.queryByText("1 turn working")).toBeNull();
+    expect(screen.queryByText("1 Working")).toBeNull();
+    expect(screen.queryByRole("status", { name: "1 working turn" })).toBeNull();
   });
 });

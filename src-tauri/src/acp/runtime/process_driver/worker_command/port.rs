@@ -197,7 +197,11 @@ impl LiveRuntimePort for ProcessLivePort {
 }
 
 impl ProcessLivePort {
-    fn finish_shutdown_join(&mut self, error: HostError, deadline: Instant) -> Result<(), HostError> {
+    fn finish_shutdown_join(
+        &mut self,
+        error: HostError,
+        deadline: Instant,
+    ) -> Result<(), HostError> {
         match error {
             HostError::Deadline | HostError::Closed => match self.managed_runner.as_ref() {
                 Some(runner) => runner.join_before(deadline),

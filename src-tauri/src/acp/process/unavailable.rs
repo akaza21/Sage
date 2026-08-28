@@ -5,7 +5,7 @@ use super::supervisor::{
 };
 use crate::acp::{
     process::ProcessIdentityReceipt,
-    redaction::SafeDiagnostic,
+    redaction::{SafeDiagnostic, SafeStderrDiagnostic},
     transport::{Frame, FrameError, FrameWriteOutcome, OutboundFrame},
 };
 
@@ -131,6 +131,14 @@ impl TreeControl {
     }
 
     pub(crate) fn stderr_summary(&self) -> Result<SafeDiagnostic, LaunchError> {
+        Err(LaunchError::PlatformUnavailable)
+    }
+
+    pub(crate) fn stderr_diagnostic(&self) -> Result<SafeStderrDiagnostic, LaunchError> {
+        Err(LaunchError::PlatformUnavailable)
+    }
+
+    pub(crate) fn native_exit_code_if_exited(&self) -> Result<Option<i32>, LaunchError> {
         Err(LaunchError::PlatformUnavailable)
     }
 }

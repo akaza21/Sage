@@ -11,12 +11,19 @@ impl AdmittedCodexBinding {
         cleanup: TestCleanup,
     ) -> Result<Self, CodexAdmissionUnavailable> {
         let entrypoint = entrypoint_identity(&packet)?;
+        let artifact_digest = packet.metadata().entrypoint.sha256.clone();
+        let harness_version = packet.metadata().codex_runtime_version.clone();
         let binding = Self {
             packet,
-            reproduced,
-            authority,
-            environment,
+            reproduced: Some(reproduced),
+            authority: Some(authority),
+            environment: Some(environment),
             entrypoint,
+            observed: None,
+            binding_digest: BINDING_DIGEST,
+            binding_digest_hex: BINDING_DIGEST_HEX.into(),
+            artifact_digest,
+            harness_version,
             journey_test_entrypoint: None,
             journey_test_cases: None,
             _cleanup: Some(cleanup),
@@ -153,7 +160,7 @@ fn signed_role_admission_fixture() -> (
 }
 
 #[test]
-fn authenticate_signed_installed_role_is_the_only_production_admission() {
+fn authenticate_signed_installed_role_rejects_a_mismatched_artifact_role() {
     let rejected_registration = CodexBindingRegistration {
         authority: Arc::new(CodexRegistrationAuthority {
             state: Mutex::new(CodexRegistrationState::Unavailable(

@@ -35,15 +35,18 @@ use crate::acp::{
 mod characterization;
 mod codex_auth;
 mod codex_discovery;
+mod codex_launch_failure;
 mod codex_live;
 mod codex_operation;
 mod codex_session;
 mod configuration;
 mod intent_snapshot;
 mod permission;
-#[cfg(any(test, feature = "acp-fixture"))]
-#[allow(dead_code)] // The packaged reload orchestrator consumes this next.
+#[allow(dead_code)] // Fixed production observation boundary; lifecycle wiring is separate.
 mod renderer_recreation;
+mod renderer_recreation_orchestrator;
+#[allow(dead_code)] // Fixed packet schema; no generic observer is exposed.
+mod renderer_recreation_packet;
 mod runtime_slot;
 mod shutdown;
 
@@ -55,10 +58,11 @@ pub(crate) use characterization::{
 };
 pub(crate) use codex_auth::{CodexAuthAction, CodexAuthManager};
 use codex_discovery::CodexDiscoveryManager;
+pub(crate) use codex_launch_failure::CodexLaunchSetupError;
 use configuration::ServiceConfiguration;
 use intent_snapshot::load_intent_snapshot;
-#[cfg(any(test, feature = "acp-fixture"))]
 use renderer_recreation::RendererRecreationNativeSnapshot;
+pub(crate) use renderer_recreation_orchestrator::RendererRecreationReloadLifecycle;
 use runtime_slot::RuntimeSlot;
 use shutdown::map_discovery_shutdown;
 
@@ -74,8 +78,10 @@ pub(crate) enum CodexSessionError {
     Capacity,
     #[error("Codex live runtime requires recovery")]
     Recovery,
-    #[error("Codex process launch failed")]
-    Launch,
+    #[error("Codex process launch failed: {0:?}")]
+    LaunchFailure(crate::acp::process::LaunchError),
+    #[error("Codex process launch setup failed: {0:?}")]
+    LaunchSetup(CodexLaunchSetupError),
 }
 
 pub(crate) struct AcpService {
@@ -315,8 +321,7 @@ impl AcpService {
         }
     }
 
-    #[cfg(any(test, feature = "acp-fixture"))]
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[allow(dead_code)] // Invoked by the fixed, internal renderer-recreation path only.
     pub(crate) fn renderer_recreation_native_snapshot(
         &self,
         project_id: &SageProjectId,

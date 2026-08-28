@@ -65,18 +65,38 @@ jobs:
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: cargo check --manifest-path src-tauri/Cargo.toml --release --lib
 
+  macos-shared-contracts:
+    name: macOS shared contracts
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Compile shared contracts
+        run: cargo check --manifest-path src-tauri/Cargo.toml --release --lib
+      - name: Test workspace-notify shared contract
+        run: cargo test --manifest-path src-tauri/Cargo.toml workspace::notify
+      - name: Test editor-watch shared contract
+        run: cargo test --manifest-path src-tauri/Cargo.toml editor_watch
+
   merge-gate:
     name: Merge gate
     if: always()
     needs:
       - frontend
       - rust
+      - macos-shared-contracts
     runs-on: ubuntu-latest
     steps:
       - name: Require all checks
         env:
           FRONTEND: ${{ needs.frontend.result }}
           RUST: ${{ needs.rust.result }}
+          MACOS_SHARED_CONTRACTS: ${{ needs.macos-shared-contracts.result }}
         run: |
           test "$FRONTEND" = "success"
           test "$RUST" = "success"
+          test "$MACOS_SHARED_CONTRACTS" = "success"

@@ -322,10 +322,7 @@ where
         }
     }
 
-    pub(crate) async fn park_after_zero(
-        &mut self,
-        token: crate::acp::process::ZeroProcessToken,
-    ) {
+    pub(crate) async fn park_after_zero(&mut self, token: crate::acp::process::ZeroProcessToken) {
         match self {
             Self::Reusable(parts) => parts.park_after_zero(token).await,
             Self::Active(active) if active.has_durable_terminal() => {
@@ -345,16 +342,18 @@ where
                 parts.terminal_cursor().state(),
                 TurnState::Cancelled | TurnState::Interrupted
             ),
-            Self::Active(active) => active
-                .turn
-                .driver
-                .latest_durable_turn_cursor()
-                .is_some_and(|cursor| {
-                    matches!(
-                        cursor.state(),
-                        TurnState::Cancelled | TurnState::Interrupted
-                    )
-                }),
+            Self::Active(active) => {
+                active
+                    .turn
+                    .driver
+                    .latest_durable_turn_cursor()
+                    .is_some_and(|cursor| {
+                        matches!(
+                            cursor.state(),
+                            TurnState::Cancelled | TurnState::Interrupted
+                        )
+                    })
+            }
             _ => false,
         }
     }

@@ -102,3 +102,44 @@ describe("CodeMirrorEditorRuntime language lifecycle", () => {
     runtime.destroy();
   });
 });
+
+describe("CodeMirrorEditorRuntime caret", () => {
+  it("reports the caret head after create and setSelection", () => {
+    const onCaretOffset = vi.fn();
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const runtime = createCodeMirrorEditorRuntime({
+      parent,
+      ariaLabel: "Edit note.txt",
+      path: "note.txt",
+      content: "alpha\nbeta",
+      disabled: false,
+      maxContentLength: 1024,
+      onChange: vi.fn(),
+      onCaretOffset,
+    });
+    expect(onCaretOffset).toHaveBeenCalledWith(0);
+    runtime.setSelection(6, 6);
+    expect(onCaretOffset).toHaveBeenLastCalledWith(6);
+    runtime.destroy();
+  });
+});
+
+describe("CodeMirrorEditorRuntime appearance", () => {
+  it("applies admitted tab size and word wrap without remounting the buffer", () => {
+    const { runtime, view } = runtimeForPath("notes.txt");
+    expect(view.state.tabSize).toBe(2);
+    runtime.update({
+      ariaLabel: "Edit notes.txt",
+      path: "notes.txt",
+      content: "fn main() {}",
+      disabled: false,
+      maxContentLength: 1024,
+      appearance: { fontSize: 16, tabSize: 4, wordWrap: true },
+      onChange: vi.fn(),
+    });
+    expect(view.state.tabSize).toBe(4);
+    expect(view.dom.className).toContain("cm-editor");
+    runtime.destroy();
+  });
+});

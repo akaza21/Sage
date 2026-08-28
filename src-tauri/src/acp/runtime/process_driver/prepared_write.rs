@@ -343,10 +343,8 @@ where
         let _ = self.turn.driver.dispatch_close_session();
     }
 
-    pub(crate) async fn park_after_zero(
-        &mut self,
-        token: crate::acp::process::ZeroProcessToken,
-    ) where
+    pub(crate) async fn park_after_zero(&mut self, token: crate::acp::process::ZeroProcessToken)
+    where
         C::ZeroProof: CoordinatorZeroToken,
     {
         let owner = self.turn.driver.owner.clone();

@@ -17,7 +17,7 @@ describe("agentCenterChatAction scan bounds", () => {
     expect(AGENT_CENTER_CHAT_SCAN_LIMIT).toBeLessThanOrEqual(1024);
   });
 
-  it("activates the first chat inside the bound without depending on later tabs", () => {
+  it("leaves an in-bound chat in place without depending on later tabs", () => {
     const total = AGENT_CENTER_CHAT_SCAN_LIMIT * 3;
     const tabs: AgentCenterScanTab[] = Array.from(
       { length: total },
@@ -32,8 +32,7 @@ describe("agentCenterChatAction scan bounds", () => {
     };
 
     expect(agentCenterChatAction(tabs, "file:0")).toEqual({
-      action: "activate",
-      tabId: "chat:first",
+      action: "none",
     });
   });
 

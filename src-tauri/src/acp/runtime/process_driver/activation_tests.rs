@@ -226,6 +226,131 @@ fn activation_driver_hands_off_only_after_ready_and_quiescent() {
 }
 
 #[test]
+fn activation_driver_preserves_ready_handoff_when_a_late_frame_arrives() {
+    runtime().block_on(async {
+        let commits = Arc::new(Mutex::new(0));
+        let pump = ActivationPump::new(
+            Adapter {
+                batches: VecDeque::from([
+                    AdapterBatch::new(
+                        vec![AdapterEvent::Initialized {
+                            capabilities: capabilities(),
+                        }],
+                        vec![],
+                    )
+                    .unwrap(),
+                    AdapterBatch::new(
+                        vec![AdapterEvent::SessionReady {
+                            id: identity(),
+                            loaded: false,
+                        }],
+                        vec![],
+                    )
+                    .unwrap(),
+                    AdapterBatch::new(vec![AdapterEvent::IgnoredLate], vec![]).unwrap(),
+                ]),
+                next: 0,
+            },
+            Journal(commits),
+            Mapper,
+            intent(),
+        )
+        .unwrap();
+        let mut driver = ActivationProcessDriver::new(
+            pump,
+            Transport {
+                outcomes: VecDeque::new(),
+                writes: 0,
+                closes: 0,
+            },
+            Control(Arc::new(Mutex::new(ControlState::default()))),
+            owner(),
+            Arc::new(Clock),
+        )
+        .unwrap();
+        let mailbox = DriverMailbox::new().unwrap();
+        driver.begin().unwrap();
+        mailbox.try_push_chunk(b"{}\n".to_vec()).unwrap();
+        driver.run_next(&mailbox).await.unwrap();
+        mailbox.try_push_chunk(b"{}\n".to_vec()).unwrap();
+        driver.run_next(&mailbox).await.unwrap();
+        assert!(driver.completion_ready(&mailbox));
+
+        mailbox.try_push_chunk(b"{}\n".to_vec()).unwrap();
+        let failure = match driver.try_into_idle_parts(&mailbox) {
+            Ok(_) => panic!("late frame must block the ready handoff"),
+            Err(failure) => failure,
+        };
+        let mut driver = failure.driver;
+        driver.run_next(&mailbox).await.unwrap();
+
+        assert!(driver.try_into_idle_parts(&mailbox).is_ok());
+    });
+}
+
+#[test]
+fn activation_driver_hands_off_a_queued_first_turn_command() {
+    runtime().block_on(async {
+        let pump = ActivationPump::new(
+            Adapter {
+                batches: VecDeque::from([
+                    AdapterBatch::new(
+                        vec![AdapterEvent::Initialized {
+                            capabilities: capabilities(),
+                        }],
+                        vec![],
+                    )
+                    .unwrap(),
+                    AdapterBatch::new(
+                        vec![AdapterEvent::SessionReady {
+                            id: identity(),
+                            loaded: false,
+                        }],
+                        vec![],
+                    )
+                    .unwrap(),
+                ]),
+                next: 0,
+            },
+            Journal(Arc::new(Mutex::new(0))),
+            Mapper,
+            intent(),
+        )
+        .unwrap();
+        let mut driver = ActivationProcessDriver::new(
+            pump,
+            Transport {
+                outcomes: VecDeque::new(),
+                writes: 0,
+                closes: 0,
+            },
+            Control(Arc::new(Mutex::new(ControlState::default()))),
+            owner(),
+            Arc::new(Clock),
+        )
+        .unwrap();
+        let mailbox = DriverMailbox::new().unwrap();
+        driver.begin().unwrap();
+        mailbox.try_push_chunk(b"{}\n".to_vec()).unwrap();
+        driver.run_next(&mailbox).await.unwrap();
+        mailbox.try_push_chunk(b"{}\n".to_vec()).unwrap();
+        driver.run_next(&mailbox).await.unwrap();
+        mailbox
+            .submit_worker(WorkerCommand::AcceptLatestCompleted)
+            .unwrap();
+
+        let _parts = match driver.try_into_idle_parts(&mailbox) {
+            Ok(parts) => parts,
+            Err(_) => panic!("first turn command must cross the activation handoff"),
+        };
+        assert!(matches!(
+            mailbox.wait_next_until(None, &Clock).unwrap(),
+            Some(ControlMessage::Worker(_))
+        ));
+    });
+}
+
+#[test]
 fn activation_delivery_unknown_never_replays_and_requires_zero_proof() {
     let pump = ActivationPump::new(
         Adapter {

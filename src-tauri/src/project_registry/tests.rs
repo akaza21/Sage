@@ -499,3 +499,61 @@ fn benchmarks_twenty_project_switches_with_authoritative_projection() {
         samples_micros[9], samples_micros[18]
     );
 }
+
+#[test]
+fn ensure_local_project_creates_a_zero_root_chat_home() {
+    let database = Database::open(Path::new(":memory:")).unwrap();
+    let first = database.ensure_local_project().unwrap();
+    assert_eq!(first.name, "Local");
+    assert!(first.roots.is_empty());
+    let snapshot = database.bootstrap_snapshot().unwrap();
+    assert_eq!(snapshot.project.as_ref().unwrap().id, first.id);
+    assert!(snapshot.tabs.iter().any(|tab| tab.kind == "chat"));
+    let again = database.ensure_local_project().unwrap();
+    assert_eq!(again.id, first.id);
+}
+
+fn snapshot_layout(snapshot: &crate::domain::BootstrapSnapshot) -> ProjectLayoutRequest {
+    ProjectLayoutRequest {
+        project_id: snapshot.project.as_ref().unwrap().id.clone(),
+        tabs: snapshot.tabs.clone(),
+        active_tab_id: snapshot.active_tab_id.clone(),
+        selected_root_id: snapshot.selected_root_id.clone(),
+        selected_resource: snapshot.selected_resource.clone(),
+    }
+}
+
+#[test]
+fn project_list_includes_bounded_chats_for_every_project() {
+    let base = std::env::temp_dir().join(format!("sage-rail-{}", Uuid::new_v4()));
+    let first_root = base.join("cross");
+    let second_root = base.join("sage");
+    fs::create_dir_all(&first_root).unwrap();
+    fs::create_dir_all(&second_root).unwrap();
+    let database = Database::open(Path::new(":memory:")).unwrap();
+    let cross = database.create_project_from_root(&first_root).unwrap();
+    let cross_chat = database
+        .bootstrap_snapshot()
+        .unwrap()
+        .active_tab_id
+        .unwrap();
+    let sage = database.create_project_from_root(&second_root).unwrap();
+    for _ in 0..8 {
+        database
+            .create_chat(&snapshot_layout(&database.bootstrap_snapshot().unwrap()))
+            .unwrap();
+    }
+    let projects = database.project_list().unwrap();
+    let cross_item = projects.iter().find(|item| item.id == cross.id).unwrap();
+    let sage_item = projects.iter().find(|item| item.id == sage.id).unwrap();
+    assert!(
+        cross_item
+            .rail_chats
+            .iter()
+            .any(|chat| chat.id == cross_chat)
+    );
+    assert!(!cross_item.rail_chats_truncated);
+    assert_eq!(sage_item.rail_chats.len(), 8);
+    assert!(sage_item.rail_chats_truncated);
+    fs::remove_dir_all(base).unwrap();
+}

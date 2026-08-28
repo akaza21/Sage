@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use super::{
-    decode_journal, encode_journal, journal_path, journal_payload, persist_phase, seal_payload,
-    AuthenticatedHelperRequest, ElevatedHelperError, HelperTransactionPlatform, JournalOperation,
-    JournalPhase, NodeIdentity, SealedJournal, JOURNAL_BYTES_MAX,
+    AuthenticatedHelperRequest, ElevatedHelperError, HelperTransactionPlatform, JOURNAL_BYTES_MAX,
+    JournalOperation, JournalPhase, NodeIdentity, SealedJournal, decode_journal, encode_journal,
+    journal_path, journal_payload, persist_phase, seal_payload,
 };
 
 pub(in super::super) fn execute_boundary_remove<P: HelperTransactionPlatform>(

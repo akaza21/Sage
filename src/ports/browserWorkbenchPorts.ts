@@ -2,6 +2,8 @@ import { createInjectedEditorWatchDelivery } from "../domain/editorWatch";
 import { browserDesktop } from "../services/browserDesktop";
 import type {
   ChatLifecycleRequest,
+  MoveChatRequest,
+  PinChatRequest,
   EditorWatchSubscription,
   ProjectLayoutRequest,
   ProjectSwitchRequest,
@@ -45,6 +47,8 @@ const project: ProjectPort = {
       : Promise.resolve(),
   switchProject: (request: ProjectSwitchRequest, expectedTransitionEpoch) =>
     browserDesktop.switchProject(request, expectedTransitionEpoch),
+  ensureLocalProject: (expectedTransitionEpoch) =>
+    browserDesktop.ensureLocalProject(expectedTransitionEpoch),
   listDirectory: (resource) => browserDesktop.listDirectory(resource),
   createProjectFile: (request) => browserDesktop.createProjectFile(request),
   createProjectFolder: (request) => browserDesktop.createProjectFolder(request),
@@ -95,8 +99,24 @@ const repository: RepositoryPort = {
   getFileDiff: (resource) => browserDesktop.getFileDiff(resource),
   mutateGitFile: (request, expectedTransitionEpoch) =>
     browserDesktop.mutateGitFile(request, expectedTransitionEpoch),
+  abortGitInProgress: (request, expectedTransitionEpoch) =>
+    browserDesktop.abortGitInProgress(request, expectedTransitionEpoch),
   commitGitRepository: (request, expectedTransitionEpoch) =>
     browserDesktop.commitGitRepository(request, expectedTransitionEpoch),
+  checkoutGitLocalBranch: (request, expectedTransitionEpoch) =>
+    browserDesktop.checkoutGitLocalBranch(request, expectedTransitionEpoch),
+  continueGitCherryPick: (request, expectedTransitionEpoch) =>
+    browserDesktop.continueGitCherryPick(request, expectedTransitionEpoch),
+  continueGitRebase: (request, expectedTransitionEpoch) =>
+    browserDesktop.continueGitRebase(request, expectedTransitionEpoch),
+  continueGitRevert: (request, expectedTransitionEpoch) =>
+    browserDesktop.continueGitRevert(request, expectedTransitionEpoch),
+  createGitLocalBranch: (request, expectedTransitionEpoch) =>
+    browserDesktop.createGitLocalBranch(request, expectedTransitionEpoch),
+  deleteGitLocalBranch: (request, expectedTransitionEpoch) =>
+    browserDesktop.deleteGitLocalBranch(request, expectedTransitionEpoch),
+  fetchGitRemote: (request, expectedTransitionEpoch) =>
+    browserDesktop.fetchGitRemote(request, expectedTransitionEpoch),
   discoverProjectRepositories: async (request) => ({
     projectId: request.projectId,
     transitionEpoch: request.expectedTransitionEpoch,
@@ -107,13 +127,23 @@ const repository: RepositoryPort = {
     Promise.reject(new Error("nested repository status is not implemented")),
   getNestedRepositoryFileDiff: () =>
     Promise.reject(new Error("nested repository Diff is not implemented")),
+  pushGitRemote: (request, expectedTransitionEpoch) =>
+    browserDesktop.pushGitRemote(request, expectedTransitionEpoch),
+  renameGitLocalBranch: (request, expectedTransitionEpoch) =>
+    browserDesktop.renameGitLocalBranch(request, expectedTransitionEpoch),
 };
 
 const chat: ChatPort = {
   createChat: (
     currentLayout: ProjectLayoutRequest,
     expectedTransitionEpoch: number,
-  ) => browserDesktop.createChat(currentLayout, expectedTransitionEpoch),
+    projectId?: string,
+  ) =>
+    browserDesktop.createChat(
+      currentLayout,
+      expectedTransitionEpoch,
+      projectId,
+    ),
   activateChat: (
     currentLayout: ProjectLayoutRequest,
     expectedTransitionEpoch: number,
@@ -128,6 +158,10 @@ const chat: ChatPort = {
     request: ChatLifecycleRequest,
     expectedTransitionEpoch: number,
   ) => browserDesktop.restoreChat(request, expectedTransitionEpoch),
+  moveChat: (request: MoveChatRequest, expectedTransitionEpoch: number) =>
+    browserDesktop.moveChat(request, expectedTransitionEpoch),
+  pinChat: (request: PinChatRequest, expectedTransitionEpoch: number) =>
+    browserDesktop.pinChat(request, expectedTransitionEpoch),
 };
 
 const agent: AgentPort = {

@@ -1,3 +1,4 @@
+import type { AcpImagePayload } from "./acpImage";
 import type { ResourceRef } from "./workbench";
 import type { PermissionState } from "./acpPermission";
 
@@ -215,6 +216,7 @@ export type AcpItem =
       "fileChangeDiff",
       { changes: readonly FileChangeProjection[]; truncated: boolean }
     >
+  | PlainItem<"image", AcpImagePayload>
   | PlainItem<
       "usage",
       {

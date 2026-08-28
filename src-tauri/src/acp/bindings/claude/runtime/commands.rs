@@ -17,7 +17,7 @@ impl ClaudeRuntime {
                         .any(|pending| matches!(pending, PendingRequest::Initialize)) => self.reserve(
                 PendingRequest::Initialize,
                 "initialize",
-                json!({"protocolVersion":1,"clientCapabilities":{},"clientInfo":{"name":"sage","version":env!("CARGO_PKG_VERSION")}}),
+                json!({"protocolVersion":1,"clientCapabilities":crate::acp::runtime::host_browse::advertised_host_client_capabilities(),"clientInfo":{"name":"sage","version":env!("CARGO_PKG_VERSION")}}),
             ),
             AdapterCommand::Initialize => Err(AdapterRuntimeError::Operation),
             AdapterCommand::ModelPage { .. } => Err(AdapterRuntimeError::UnsupportedCommand),

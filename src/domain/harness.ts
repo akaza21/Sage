@@ -7,6 +7,8 @@ interface HarnessDefinitionBase {
   description: string;
   source: "builtIn" | "registry" | "custom" | "development";
   accountModelDiscovery: boolean;
+  executablePath?: string;
+  version?: string;
 }
 
 export type HarnessDefinition = HarnessDefinitionBase &

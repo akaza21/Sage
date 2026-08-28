@@ -1,5 +1,11 @@
+import { FileSearch, Search } from "lucide-react";
+import { useRef } from "react";
+
 import { useWorkbenchStore } from "../app/store";
+import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
+import { titleBarFocusedChatId, titleBarSessionTitle } from "./titleBarCenter";
 import {
+  collectChatTabIds,
   WORKBENCH_WINDOW_MODES,
   type WorkbenchWindowMode,
 } from "./workbenchWindowMode";
@@ -16,7 +22,21 @@ export function TitleBar({
   mode: WorkbenchWindowMode;
   onModeChange: (mode: WorkbenchWindowMode) => void;
 }) {
+  const tabs = useWorkbenchStore((state) => state.tabs);
+  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const project = useWorkbenchStore((state) => state.project);
+  const projectTransitioning = useWorkbenchStore(
+    (state) => state.projectTransitioning,
+  );
+  const setSidebarView = useWorkbenchStore((state) => state.setSidebarView);
+  const chatSearchRef = useRef<HTMLButtonElement | null>(null);
+  const focusedId = titleBarFocusedChatId(collectChatTabIds(tabs), activeTabId);
+  const sessionTitle =
+    mode === "agent"
+      ? titleBarSessionTitle(
+          tabs.find((tab) => tab.id === focusedId)?.title ?? null,
+        )
+      : null;
 
   return (
     <header className="title-bar">
@@ -49,8 +69,41 @@ export function TitleBar({
           ))}
         </div>
       </div>
-      <div className="title-bar__project">{project?.name ?? "No project"}</div>
-      <div className="title-bar__spacer" />
+      <div className="title-bar__center">
+        {mode === "editor" ? (
+          <button
+            className="title-bar__search"
+            type="button"
+            onClick={() => setSidebarView("search")}
+          >
+            <FileSearch size={14} aria-hidden="true" />
+            Search files
+          </button>
+        ) : sessionTitle ? (
+          <h1 className="title-bar__session">{sessionTitle}</h1>
+        ) : null}
+      </div>
+      <div className="title-bar__end">
+        {mode === "agent" ? (
+          <button
+            ref={chatSearchRef}
+            className="title-bar__chat-search"
+            type="button"
+            title="Search chats"
+            aria-label="Search chats"
+            disabled={!project || projectTransitioning}
+            onClick={() => {
+              if (project) {
+                requestChatSearchInFolder(project.id, () =>
+                  chatSearchRef.current?.focus(),
+                );
+              }
+            }}
+          >
+            <Search size={14} aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
     </header>
   );
 }

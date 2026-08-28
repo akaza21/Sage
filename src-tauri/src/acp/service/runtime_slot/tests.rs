@@ -189,7 +189,9 @@ fn release_requires_the_exact_owner_and_host_then_reopens_the_slot() {
         slot.release(&first, &foreign_host),
         Err(RuntimeSlotError::Foreign)
     );
-    foreign_host.shutdown(RuntimeHost::close_deadline()).unwrap();
+    foreign_host
+        .shutdown(RuntimeHost::close_deadline())
+        .unwrap();
     first_host.shutdown(RuntimeHost::close_deadline()).unwrap();
     slot.release(&first, &first_host).unwrap();
     assert!(!slot.is_active());

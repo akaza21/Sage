@@ -30,10 +30,22 @@ impl<C: ProcessTreeControl> ProcessExitWatcher<C> {
     /// Observes only the root handle. The serialized driver retains teardown
     /// authority and is the sole consumer of the linear zero-process proof.
     pub(crate) fn run(self, mailbox: &DriverMailbox) {
-        if self.control.observe_root_exit().is_ok() {
-            let _ = mailbox.signal_process_exit();
-        } else {
-            let _ = mailbox.signal_reader_terminal(ReaderTerminal::Io);
+        self.control
+            .log_wait_handle_observation("acp.process_exit_watcher.attached");
+        match self.control.observe_root_exit() {
+            Ok(exit) => {
+                self.control
+                    .log_wait_handle_observation("acp.process_exit_watcher.exited");
+                tracing::warn!(
+                    root_exit = ?exit,
+                    sage_requested_termination = !matches!(exit, crate::acp::process::TreeExit::Exited { .. }),
+                    "ACP child root exit observed"
+                );
+                let _ = mailbox.signal_process_exit(exit);
+            }
+            Err(_) => {
+                let _ = mailbox.signal_reader_terminal(ReaderTerminal::Io);
+            }
         }
     }
 }
@@ -51,6 +63,7 @@ impl<R: BlockingStdout> BlockingStdoutReader<R> {
         loop {
             match self.stdout.read_chunk(&mut target) {
                 Ok(0) => {
+                    tracing::warn!("ACP stdout EOF observed");
                     let _ = mailbox.signal_reader_terminal(ReaderTerminal::Eof);
                     return;
                 }

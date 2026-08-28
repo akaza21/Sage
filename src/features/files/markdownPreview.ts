@@ -9,7 +9,7 @@ export type MarkdownPreviewBlock =
   | { kind: "heading"; level: 1 | 2 | 3; text: string }
   | { kind: "paragraph"; text: string }
   | { kind: "list"; items: readonly string[] }
-  | { kind: "code"; text: string }
+  | { kind: "code"; text: string; language: string }
   | { kind: "quote"; text: string };
 
 export interface MarkdownPreviewDocument {
@@ -22,6 +22,11 @@ export function canPreviewMarkdown(path: string): boolean {
   return editorLanguageForPath(path) === "markdown";
 }
 
+export function canPreviewDiagram(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower.endsWith(".mmd") || lower.endsWith(".mermaid");
+}
+
 export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
   const windowed = sourceWindow(source);
   const lines = stripHostileMarkup(windowed.text)
@@ -32,7 +37,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
   let paragraph: string[] = [];
   let list: string[] = [];
   let quote: string[] = [];
-  let code: string[] | null = null;
+  let code: { language: string; lines: string[] } | null = null;
 
   const stop = { value: false };
 
@@ -79,19 +84,24 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
       if (/^```/u.test(line)) {
         truncated = pushBlock(
           blocks,
-          { kind: "code", text: code.join("\n") },
+          {
+            kind: "code",
+            text: code.lines.join("\n"),
+            language: code.language,
+          },
           truncated,
           stop,
         );
         code = null;
       } else {
-        code.push(rawLine.replace(/\r$/u, ""));
+        code.lines.push(rawLine.replace(/\r$/u, ""));
       }
       continue;
     }
     if (/^```/u.test(line)) {
       flushFlow();
-      code = [];
+      const language = line.slice(3).trim().split(/\s+/u)[0] ?? "";
+      code = { language, lines: [] };
       continue;
     }
     if (line.length === 0) {
@@ -132,7 +142,11 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
   if (code) {
     truncated = pushBlock(
       blocks,
-      { kind: "code", text: code.join("\n") },
+      {
+        kind: "code",
+        text: code.lines.join("\n"),
+        language: code.language,
+      },
       truncated,
       stop,
     );

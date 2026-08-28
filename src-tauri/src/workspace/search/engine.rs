@@ -9,10 +9,14 @@ use super::engine_continue::{ContinuationSeek, stale_report};
 use super::types::{
     ContinuationCursor, MAX_RESOURCE_PATH_BYTES, SearchLimitReason, SearchLimits, SearchRoot,
     SearchRootReport, SearchRootSource, SearchRootState, WorkspaceSearchMatch,
-    WorkspaceSearchRequest, WorkspaceSearchResponse, encode_continuation_token, stale_continuation,
-    validate_continuation_stamp, validate_search_request,
+    WorkspaceSearchRequest, WorkspaceSearchResponse, contract_join, encode_continuation_token,
+    push_reason, stale_continuation, unavailable_report, validate_continuation_stamp,
+    validate_search_request,
 };
-use crate::workspace::directory_skip::skip_workspace_directory_name;
+use crate::workspace::file_walk::{
+    MAX_WORKSPACE_QUEUED_DIRECTORIES, WalkBufferAdmit, admit_queued_directory, admit_walk_dirent,
+    walk_buffer_remaining, walk_over_cap,
+};
 
 pub struct SearchEngine {
     pub(super) limits: SearchLimits,
@@ -213,7 +217,19 @@ impl SearchEngine {
                     counters.entries_visited += 1;
                 }
                 match entry {
-                    Ok(entry) => entries.push(entry),
+                    Ok(entry) => match admit_walk_dirent(
+                        &entry.file_name(),
+                        entries.len(),
+                        walk_buffer_remaining(budget.entries_visited, self.limits.max_entries),
+                    ) {
+                        WalkBufferAdmit::Skip => {}
+                        WalkBufferAdmit::Keep => entries.push(entry),
+                        WalkBufferAdmit::Cap => {
+                            push_reason(&mut budget.reasons, SearchLimitReason::Entries);
+                            counters.partial = true;
+                            break;
+                        }
+                    },
                     Err(_) => {
                         counters.error_count += 1;
                         counters.partial = true;
@@ -236,9 +252,6 @@ impl SearchEngine {
                 if self.limit_reached_for_phase(budget, matches.len(), seek.as_ref()) {
                     counters.partial = true;
                     break;
-                }
-                if skip_workspace_directory_name(&entry.file_name()) {
-                    continue;
                 }
                 let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
                     counters.error_count += 1;
@@ -271,6 +284,12 @@ impl SearchEngine {
                 if file_type.is_dir() {
                     if depth == self.limits.max_depth {
                         push_reason(&mut budget.reasons, SearchLimitReason::Depth);
+                        counters.partial = true;
+                    } else if !admit_queued_directory(
+                        directories.len(),
+                        MAX_WORKSPACE_QUEUED_DIRECTORIES,
+                    ) {
+                        push_reason(&mut budget.reasons, SearchLimitReason::Entries);
                         counters.partial = true;
                     } else {
                         directories.push_back((entry.path(), child_relative, depth + 1));
@@ -366,11 +385,11 @@ impl SearchEngine {
             push_reason(&mut budget.reasons, SearchLimitReason::Results);
             return true;
         }
-        if budget.files_seen >= self.limits.max_files {
+        if walk_over_cap(budget.files_seen, self.limits.max_files) {
             push_reason(&mut budget.reasons, SearchLimitReason::FileCount);
             return true;
         }
-        if budget.entries_visited >= self.limits.max_entries {
+        if walk_over_cap(budget.entries_visited, self.limits.max_entries) {
             push_reason(&mut budget.reasons, SearchLimitReason::Entries);
             return true;
         }
@@ -379,34 +398,6 @@ impl SearchEngine {
             return true;
         }
         false
-    }
-}
-
-fn unavailable_report(root_id: String, root_name: String, message: String) -> SearchRootReport {
-    SearchRootReport {
-        root_id,
-        root_name,
-        state: SearchRootState::Unavailable,
-        files_scanned: 0,
-        bytes_scanned: 0,
-        entries_visited: 0,
-        skipped_files: 0,
-        error_count: 1,
-        message: Some(message),
-    }
-}
-
-fn contract_join(parent: &str, name: &str) -> String {
-    if parent.is_empty() {
-        name.into()
-    } else {
-        format!("{parent}/{name}")
-    }
-}
-
-pub(super) fn push_reason(reasons: &mut Vec<SearchLimitReason>, reason: SearchLimitReason) {
-    if !reasons.contains(&reason) {
-        reasons.push(reason);
     }
 }
 

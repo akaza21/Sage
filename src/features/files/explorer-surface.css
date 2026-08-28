@@ -1,3 +1,24 @@
+.explorer-add-root {
+  height: 22px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.explorer-add-root:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.explorer-add-root:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .tree {
   padding: 8px 6px;
   color: var(--text-soft);
@@ -79,8 +100,9 @@
 
 .tree__row--selected {
   color: var(--text);
-  background: #29312a;
-  outline: 1px solid #39443a;
+  background: var(--accent-muted);
+  box-shadow: inset 2px 0 0 var(--accent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
 }
 
 .tree__row svg {

@@ -82,6 +82,7 @@ struct ProcessSpec {
 }
 
 impl ProcessSpec {
+    #[cfg(not(test))]
     fn production() -> Result<Self, String> {
         Ok(Self {
             executable: std::env::current_exe().map_err(|error| error.to_string())?,
@@ -91,6 +92,7 @@ impl ProcessSpec {
     }
 }
 
+#[cfg(not(test))]
 pub(crate) async fn run(
     request: LanguageFixtureRequest,
     cancellation: oneshot::Receiver<()>,

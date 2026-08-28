@@ -75,6 +75,8 @@ describe("ProblemsSurface", () => {
     act(() => deliver(report(2, 1)));
     expect(screen.getAllByRole("button")).toHaveLength(1);
     expect(screen.getByRole("button")).toHaveTextContent("problem 1");
+    expect(screen.getByRole("heading", { name: "1 Bug" })).toBeInTheDocument();
+    expect(screen.getByText("Bug")).toBeInTheDocument();
   });
 
   it("inactive_problems_or_outline_stops_retaining_reports", async () => {

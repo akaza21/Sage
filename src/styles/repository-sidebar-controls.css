@@ -1,0 +1,355 @@
+.sidebar {
+  min-width: 0;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+}
+
+.sidebar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.sidebar__heading {
+  display: flex;
+  height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+}
+
+.sidebar__heading-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar__heading-actions button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.sidebar__heading-actions button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.sidebar__heading-actions button:disabled {
+  opacity: 0.5;
+}
+
+.sidebar__empty {
+  max-width: 210px;
+  margin: 20px auto;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.tree__limit {
+  margin: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.source-control-list {
+  padding: 8px 6px;
+}
+
+.source-control-list__group {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.source-root + .source-root {
+  margin-top: 8px;
+  padding-top: 5px;
+  border-top: 1px solid var(--border);
+}
+
+.source-branches {
+  margin: 0 8px 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.source-branch {
+  padding: 5px 8px;
+  border-radius: 7px;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.source-branch--current {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.source-branch__switch {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.source-branch__switch:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.source-branch__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.source-branch__delete {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.source-branch__delete:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.source-branch-create {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 0 8px 6px;
+}
+
+.source-branch-create__label,
+.source-branch-create__label input,
+.source-branch-create__label select {
+  min-width: 0;
+  flex: 1;
+}
+
+.source-branch-create__label input,
+.source-branch-create__label select {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface-raised);
+  font: inherit;
+  font-size: 11px;
+}
+
+.source-branch-create button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface-raised));
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.source-branch-create button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.source-group-label {
+  margin: 4px 8px 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.source-commits {
+  display: grid;
+  gap: 4px;
+  margin: 0 8px 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.source-commit {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-soft);
+  background: var(--surface-raised);
+  font-size: 12px;
+}
+
+.source-commit__sha {
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--accent-strong);
+  background: var(--accent-muted);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-variant-ligatures: none;
+}
+
+.source-commit__subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-remotes {
+  display: grid;
+  gap: 4px;
+  margin: 0 8px 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.source-remote {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-soft);
+  background: var(--surface-raised);
+  font-size: 12px;
+}
+
+.source-remote__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-remote__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.source-remote__action {
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.source-remote__action:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.repository-commit {
+  display: grid;
+  gap: 5px;
+  margin: 0 6px 7px;
+}
+
+.repository-commit__label,
+.repository-commit__label textarea {
+  width: 100%;
+}
+
+.repository-commit__label textarea {
+  min-height: 48px;
+  resize: vertical;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface-raised);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.repository-commit__label textarea:focus-visible {
+  border-color: var(--accent);
+}
+
+.repository-commit__label textarea:disabled,
+.repository-commit__footer button:disabled {
+  opacity: 0.5;
+}
+
+.repository-commit__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.repository-commit__actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.repository-commit__help,
+.repository-commit__error {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.repository-commit__footer button {
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-soft);
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.repository-commit__footer button:hover:not(:disabled),
+.repository-commit__footer button:focus-visible {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.repository-commit__error {
+  color: var(--danger);
+}

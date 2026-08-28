@@ -90,6 +90,7 @@ pub(crate) trait ProcessTreeControl {
 
     fn request_termination(&self, reason: TreeExit) -> Result<(), LaunchError>;
     fn wait_root_exit(&self) -> Result<TreeExit, LaunchError>;
+    fn log_wait_handle_observation(&self, _: &'static str) {}
     fn observe_root_exit(&self) -> Result<TreeExit, LaunchError> {
         self.wait_root_exit()
     }
@@ -136,6 +137,10 @@ impl ProcessTreeControl for TreeControl {
 
     fn wait_root_exit(&self) -> Result<TreeExit, LaunchError> {
         TreeControl::wait_root_exit(self)
+    }
+
+    fn log_wait_handle_observation(&self, checkpoint: &'static str) {
+        TreeControl::log_wait_handle_observation(self, checkpoint);
     }
 
     fn observe_root_exit(&self) -> Result<TreeExit, LaunchError> {

@@ -313,6 +313,54 @@ describe("safeAcpMutationResponse", () => {
     ).toBeNull();
   });
 
+  it("admits a bounded png image item and rejects svg, oversize, and http urls", () => {
+    const png =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
+    const admitted = mutation({
+      turns: [
+        turn({
+          items: [
+            item(0, {
+              kind: "image",
+              payload: {
+                mediaType: "image/png",
+                dataUrl: `data:image/png;base64,${png}`,
+              },
+            }),
+          ],
+        }),
+      ],
+    });
+    expect(safeAcpMutationResponse(admitted)).toEqual(admitted);
+
+    for (const payload of [
+      {
+        mediaType: "image/svg+xml",
+        dataUrl: "data:image/svg+xml;base64,PHN2Zy8+",
+      },
+      {
+        mediaType: "image/png",
+        dataUrl: `data:image/png;base64,${"A".repeat(262_144)}`,
+      },
+      {
+        mediaType: "image/png",
+        dataUrl: "https://example.com/diagram.png",
+      },
+    ]) {
+      expect(
+        safeAcpMutationResponse(
+          mutation({
+            turns: [
+              turn({
+                items: [item(0, { kind: "image", payload })],
+              }),
+            ],
+          }),
+        ),
+      ).toBeNull();
+    }
+  });
+
   it("fails closed when an item payload discriminant mismatches its kind", () => {
     expect(
       safeAcpMutationResponse(

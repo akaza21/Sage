@@ -50,7 +50,7 @@ export function EditSummary() {
             key={resourceKey(change.resource)}
             type="button"
             aria-label={`Open diff for ${change.resource.relativePath}`}
-            onClick={() => openDiff(change.resource)}
+            onClick={() => openDiff(change.resource, undefined, "agent")}
           >
             <span className="edit-file__path">
               {change.resource.relativePath}

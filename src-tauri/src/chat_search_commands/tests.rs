@@ -12,7 +12,7 @@ fn root(label: &str) -> std::path::PathBuf {
 }
 
 #[test]
-fn command_requires_the_exact_active_project_and_transition_intent() {
+fn command_searches_a_non_active_project_without_switching() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let first_root = root("first");
         let second_root = root("second");
@@ -40,11 +40,30 @@ fn command_requires_the_exact_active_project_and_transition_intent() {
         assert!(stale.to_string().contains("project changed"));
 
         *state.project_transitions.lock().await = 0;
-        database.create_project_from_root(&second_root).unwrap();
-        let foreign = search_project_chats_inner(&state, request)
+        let second = database.create_project_from_root(&second_root).unwrap();
+        assert_eq!(
+            database.active_project_id().unwrap().as_deref(),
+            Some(second.id.as_str())
+        );
+        let foreign = search_project_chats_inner(&state, request.clone())
             .await
-            .unwrap_err();
-        assert!(foreign.to_string().contains("not active"));
+            .unwrap();
+        assert_eq!(foreign.project_id, first.id);
+        assert!(!foreign.results.is_empty());
+        assert_eq!(
+            database.active_project_id().unwrap().as_deref(),
+            Some(second.id.as_str())
+        );
+        let missing = search_project_chats_inner(
+            &state,
+            ProjectChatSearchRequest {
+                project_id: "missing-project".into(),
+                ..request
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(missing.to_string().contains("does not belong"));
         fs::remove_dir_all(first_root).unwrap();
         fs::remove_dir_all(second_root).unwrap();
     });

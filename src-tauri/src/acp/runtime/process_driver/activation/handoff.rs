@@ -27,7 +27,9 @@ where
     C: ProcessTreeControl,
 {
     pub(crate) fn completion_ready(&self, mailbox: &DriverMailbox) -> bool {
-        self.state == State::Running && mailbox.is_quiescent() && self.pump.completion_ready()
+        self.state == State::Running
+            && mailbox.is_activation_handoff_ready()
+            && self.pump.completion_ready()
     }
 
     pub(crate) fn try_into_idle_parts(
@@ -51,6 +53,7 @@ where
         match pump.try_into_idle_parts() {
             Ok(parts) => Ok(CompletedActivationDriverParts {
                 parts,
+                idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
                 transport,
                 control,
                 owner,

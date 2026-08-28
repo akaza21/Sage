@@ -1,53 +1,43 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { Minus, Plus, RefreshCw, RotateCcw } from "lucide-react";
+import { useEffect } from "react";
+import { RefreshCw } from "lucide-react";
 
 import { useWorkbenchStore } from "../app/store";
-import { isConflictedChange, isSafeDiscardChange } from "../domain/gitMutation";
 import { isRootRepository, repositoryKey } from "../domain/repositoryInventory";
-import { resourceKey, sameResource } from "../domain/resourceIdentity";
+import { resourceKey } from "../domain/resourceIdentity";
+import {
+  conflictGroupLabel,
+  partitionSourceChanges,
+} from "../features/git/conflictPresentation";
 import type {
   FileChange,
   GitFileMutationAction,
-  GitFileState,
   RepositoryRef,
   ResourceRef,
 } from "../domain/workbench";
 import { RepositoryCommitControl } from "./RepositoryCommitControl";
 import { SourceBranchList } from "./SourceBranchList";
+import { SourceChangeRow } from "./SourceChangeRow";
+import { SourceCommitList } from "./SourceCommitList";
+import { SourceRemoteList } from "./SourceRemoteList";
 
-const statusLabels: Record<GitFileState, string> = {
-  unchanged: "",
-  modified: "M",
-  typeChanged: "T",
-  added: "A",
-  deleted: "D",
-  renamed: "R",
-  copied: "C",
-  conflicted: "!",
-  untracked: "U",
-  unknown: "?",
-};
-
-function visibleStatus(change: FileChange): GitFileState {
-  return change.worktreeStatus !== "unchanged"
-    ? change.worktreeStatus
-    : change.indexStatus;
-}
-
-function disambiguatedRootLabel(
-  rootName: string,
-  ordinal: number,
-  rootNameCounts: ReadonlyMap<string, number>,
-): string {
-  return (rootNameCounts.get(rootName) ?? 0) > 1
-    ? `${rootName} (root ${ordinal + 1})`
-    : rootName;
-}
-
-interface SourceChangeRowProps {
-  change: FileChange;
+function SourceChangeGroups({
+  changes,
+  repository,
+  rootName,
+  rebaseInProgress,
+  cherryPickInProgress,
+  revertInProgress,
+  selected,
+  controlsDisabled,
+  mutateRepositoryFile,
+  openDiff,
+}: {
+  changes: readonly FileChange[];
   repository: RepositoryRef | undefined;
   rootName: string;
+  rebaseInProgress: boolean;
+  cherryPickInProgress: boolean;
+  revertInProgress: boolean;
   selected: ResourceRef | null;
   controlsDisabled: boolean;
   mutateRepositoryFile: (
@@ -59,154 +49,49 @@ interface SourceChangeRowProps {
     resource: ResourceRef,
     repository?: RepositoryRef,
   ) => Promise<void>;
+}) {
+  const { conflicts, others } = partitionSourceChanges(changes);
+  const renderChange = (change: FileChange) => (
+    <SourceChangeRow
+      key={`${resourceKey(change.resource)}:${change.indexStatus}:${change.worktreeStatus}:${change.originalResource ? resourceKey(change.originalResource) : ""}`}
+      change={change}
+      repository={repository}
+      rootName={rootName}
+      selected={selected}
+      controlsDisabled={controlsDisabled}
+      mutateRepositoryFile={mutateRepositoryFile}
+      openDiff={openDiff}
+    />
+  );
+  return (
+    <>
+      {conflicts.length > 0 ? (
+        <>
+          <p className="source-group-label">
+            {conflictGroupLabel({
+              rebaseInProgress,
+              cherryPickInProgress,
+              revertInProgress,
+            })}
+          </p>
+          {conflicts.map(renderChange)}
+        </>
+      ) : rebaseInProgress || cherryPickInProgress || revertInProgress ? (
+        <p className="sidebar__empty">Conflicts are resolved.</p>
+      ) : null}
+      {others.map(renderChange)}
+    </>
+  );
 }
 
-function SourceChangeRow({
-  change,
-  repository,
-  rootName,
-  selected,
-  controlsDisabled,
-  mutateRepositoryFile,
-  openDiff,
-}: SourceChangeRowProps) {
-  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
-  const discardTriggerRef = useRef<HTMLButtonElement>(null);
-  const discardWarningId = useId();
-  const conflicted = isConflictedChange(change);
-  const readOnly = repository !== undefined && !isRootRepository(repository);
-  const canStage =
-    !readOnly &&
-    !conflicted &&
-    change.worktreeStatus !== "unchanged" &&
-    change.worktreeStatus !== "unknown";
-  const canUnstage =
-    !readOnly &&
-    !conflicted &&
-    change.indexStatus !== "unchanged" &&
-    change.indexStatus !== "unknown";
-  const canDiscard = !readOnly && isSafeDiscardChange(change);
-  const path = change.resource.relativePath;
-  const cancelDiscard = () => {
-    setConfirmingDiscard(false);
-    queueMicrotask(() => discardTriggerRef.current?.focus());
-  };
-
-  return (
-    <div
-      className={`source-change-row ${
-        confirmingDiscard ? "source-change-row--confirming" : ""
-      }`}
-    >
-      <button
-        className={`source-change ${
-          sameResource(selected, change.resource)
-            ? "source-change--selected"
-            : ""
-        }`}
-        type="button"
-        aria-label={`Open diff for ${path}`}
-        onClick={() => void openDiff(change.resource, repository)}
-      >
-        <span className="source-change__status">
-          {statusLabels[visibleStatus(change)]}
-        </span>
-        <span className="source-change__path">{path}</span>
-        <span className="source-change__counts">
-          {change.additions === null ? "" : `+${change.additions}`}
-          {change.deletions === null ? "" : ` -${change.deletions}`}
-        </span>
-      </button>
-      {confirmingDiscard && canDiscard ? (
-        <div
-          className="source-change__discard-confirmation"
-          role="group"
-          aria-label={`Confirm discard of ${path} in ${rootName}`}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              event.stopPropagation();
-              cancelDiscard();
-            }
-          }}
-        >
-          <span id={discardWarningId}>
-            Discard unstaged changes to {path} in {rootName}? This cannot be
-            undone.
-          </span>
-          <span className="source-change__confirmation-actions">
-            <button
-              className="source-change__confirmation-button source-change__confirmation-button--danger"
-              type="button"
-              aria-label={`Confirm discard of ${path} in ${rootName}`}
-              aria-describedby={discardWarningId}
-              disabled={controlsDisabled}
-              onClick={() => {
-                setConfirmingDiscard(false);
-                void mutateRepositoryFile(change.resource, "discard", true);
-              }}
-            >
-              Discard
-            </button>
-            <button
-              className="source-change__confirmation-button"
-              type="button"
-              aria-label={`Cancel discard of ${path} in ${rootName}`}
-              aria-describedby={discardWarningId}
-              autoFocus
-              onClick={cancelDiscard}
-            >
-              Cancel
-            </button>
-          </span>
-        </div>
-      ) : (
-        <span className="source-change__actions">
-          {canDiscard ? (
-            <button
-              className="source-change__action"
-              type="button"
-              aria-label={`Discard unstaged changes to ${path} in ${rootName}`}
-              title="Discard unstaged changes"
-              ref={discardTriggerRef}
-              disabled={controlsDisabled}
-              onClick={() => setConfirmingDiscard(true)}
-            >
-              <RotateCcw size={13} aria-hidden="true" />
-            </button>
-          ) : null}
-          {canStage ? (
-            <button
-              className="source-change__action"
-              type="button"
-              aria-label={`Stage ${path} in ${rootName}`}
-              title="Stage file"
-              disabled={controlsDisabled}
-              onClick={() =>
-                void mutateRepositoryFile(change.resource, "stage")
-              }
-            >
-              <Plus size={13} aria-hidden="true" />
-            </button>
-          ) : null}
-          {canUnstage ? (
-            <button
-              className="source-change__action"
-              type="button"
-              aria-label={`Unstage ${path} in ${rootName}`}
-              title="Unstage file"
-              disabled={controlsDisabled}
-              onClick={() =>
-                void mutateRepositoryFile(change.resource, "unstage")
-              }
-            >
-              <Minus size={13} aria-hidden="true" />
-            </button>
-          ) : null}
-        </span>
-      )}
-    </div>
-  );
+function disambiguatedRootLabel(
+  rootName: string,
+  ordinal: number,
+  rootNameCounts: ReadonlyMap<string, number>,
+): string {
+  return (rootNameCounts.get(rootName) ?? 0) > 1
+    ? `${rootName} (root ${ordinal + 1})`
+    : rootName;
 }
 
 export function SourceControlView() {
@@ -237,6 +122,26 @@ export function SourceControlView() {
   const refreshing = useWorkbenchStore((state) => state.repositoryRefreshing);
   const mutation = useWorkbenchStore((state) => state.repositoryMutation);
   const commit = useWorkbenchStore((state) => state.repositoryCommit);
+  const checkout = useWorkbenchStore((state) => state.repositoryCheckout);
+  const checkoutError = useWorkbenchStore(
+    (state) => state.repositoryCheckoutError,
+  );
+  const remote = useWorkbenchStore((state) => state.repositoryRemote);
+  const remoteError = useWorkbenchStore((state) => state.repositoryRemoteError);
+  const checkoutLocalBranch = useWorkbenchStore(
+    (state) => state.checkoutLocalBranch,
+  );
+  const createLocalBranch = useWorkbenchStore(
+    (state) => state.createLocalBranch,
+  );
+  const deleteLocalBranch = useWorkbenchStore(
+    (state) => state.deleteLocalBranch,
+  );
+  const renameLocalBranch = useWorkbenchStore(
+    (state) => state.renameLocalBranch,
+  );
+  const fetchRemote = useWorkbenchStore((state) => state.fetchRemote);
+  const pushRemote = useWorkbenchStore((state) => state.pushRemote);
   const transitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
@@ -250,7 +155,12 @@ export function SourceControlView() {
   );
   const openDiff = useWorkbenchStore((state) => state.openDiff);
   const controlsDisabled =
-    refreshing || transitioning || mutation !== null || commit !== null;
+    refreshing ||
+    transitioning ||
+    mutation !== null ||
+    commit !== null ||
+    checkout !== null ||
+    remote !== null;
   const selectedRootStatus =
     selectedRepository && isRootRepository(selectedRepository)
       ? (repositories.roots.find(
@@ -367,7 +277,72 @@ export function SourceControlView() {
                 branch={repository.branch}
                 branches={repository.branches}
                 truncated={repository.branchesTruncated}
+                checkoutDisabled={controlsDisabled}
+                createDisabled={controlsDisabled}
+                deleteDisabled={controlsDisabled}
+                renameDisabled={controlsDisabled}
+                onCheckout={
+                  repository.state === "repository" &&
+                  (!selectedRepository || isRootRepository(selectedRepository))
+                    ? (name) =>
+                        void checkoutLocalBranch(repository.rootId, name)
+                    : undefined
+                }
+                onCreate={
+                  repository.state === "repository" &&
+                  (!selectedRepository || isRootRepository(selectedRepository))
+                    ? (name) => void createLocalBranch(repository.rootId, name)
+                    : undefined
+                }
+                onDelete={
+                  repository.state === "repository" &&
+                  (!selectedRepository || isRootRepository(selectedRepository))
+                    ? (name) => void deleteLocalBranch(repository.rootId, name)
+                    : undefined
+                }
+                onRename={
+                  repository.state === "repository" &&
+                  (!selectedRepository || isRootRepository(selectedRepository))
+                    ? (from, to) =>
+                        void renameLocalBranch(repository.rootId, from, to)
+                    : undefined
+                }
               />
+              <SourceCommitList
+                rootLabel={rootLabel}
+                commits={repository.recentCommits}
+                truncated={repository.recentCommitsTruncated}
+              />
+              <SourceRemoteList
+                rootLabel={rootLabel}
+                remotes={repository.remotes}
+                truncated={repository.remotesTruncated}
+                repository={
+                  repository.state === "repository" &&
+                  (!selectedRepository || isRootRepository(selectedRepository))
+                    ? repository
+                    : undefined
+                }
+                transportDisabled={controlsDisabled}
+                onFetch={
+                  repository.state === "repository" &&
+                  (!selectedRepository || isRootRepository(selectedRepository))
+                    ? (name) => void fetchRemote(repository.rootId, name)
+                    : undefined
+                }
+                onPush={
+                  repository.state === "repository" &&
+                  (!selectedRepository || isRootRepository(selectedRepository))
+                    ? (name) => void pushRemote(repository.rootId, name)
+                    : undefined
+                }
+              />
+              {checkoutError?.rootId === repository.rootId ? (
+                <p className="sidebar__empty">{checkoutError.message}</p>
+              ) : null}
+              {remoteError?.rootId === repository.rootId ? (
+                <p className="sidebar__empty">{remoteError.message}</p>
+              ) : null}
               {repository.message ? (
                 <p className="sidebar__empty">{repository.message}</p>
               ) : null}
@@ -379,20 +354,18 @@ export function SourceControlView() {
                   controlsDisabled={controlsDisabled}
                 />
               ) : null}
-              {repository.changes.slice(0, 300).map((change) => {
-                return (
-                  <SourceChangeRow
-                    key={`${resourceKey(change.resource)}:${change.indexStatus}:${change.worktreeStatus}:${change.originalResource ? resourceKey(change.originalResource) : ""}`}
-                    change={change}
-                    repository={selectedRepository ?? undefined}
-                    rootName={rootLabel}
-                    selected={selected}
-                    controlsDisabled={controlsDisabled}
-                    mutateRepositoryFile={mutateRepositoryFile}
-                    openDiff={openDiff}
-                  />
-                );
-              })}
+              <SourceChangeGroups
+                changes={repository.changes.slice(0, 300)}
+                repository={selectedRepository ?? undefined}
+                rootName={rootLabel}
+                rebaseInProgress={repository.rebaseInProgress === true}
+                cherryPickInProgress={repository.cherryPickInProgress === true}
+                revertInProgress={repository.revertInProgress === true}
+                selected={selected}
+                controlsDisabled={controlsDisabled}
+                mutateRepositoryFile={mutateRepositoryFile}
+                openDiff={openDiff}
+              />
               {repository.truncated && !repository.message ? (
                 <p className="tree__limit">Change list capped at 300 files.</p>
               ) : null}

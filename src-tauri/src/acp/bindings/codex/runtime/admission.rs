@@ -41,7 +41,7 @@ impl CodexRuntime {
     }
 
     #[cfg(test)]
-    pub(super) fn fixture(platform: super::super::manifest::Platform) -> Self {
+    pub(crate) fn fixture(platform: super::super::manifest::Platform) -> Self {
         assert_eq!(platform, super::super::manifest::Platform::WindowsX86_64);
         let packet = super::super::manifest::parse_packet_metadata(include_bytes!(
             "../../../../../testdata/acp/codex/candidate-windows.json"
@@ -81,12 +81,17 @@ impl CodexRuntime {
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<Self, AdapterRuntimeError> {
-        let mut runtime = Self::new(
-            binding.packet(),
-            binding.binding_digest(),
-            runtime_epoch,
-            session_id,
-        );
+        let mut runtime = Self {
+            launch_authority: RuntimeLaunchAuthority::metadata_only(),
+            inner: super::super::state::CodexAdapter::from_admitted_binding(
+                &binding,
+                runtime_epoch,
+                session_id,
+            ),
+            next_request_id: 0,
+            snapshots: ItemSnapshots::new(),
+            poisoned: false,
+        };
         runtime.launch_authority = RuntimeLaunchAuthority::admitted(binding, project_root)?;
         Ok(runtime)
     }
@@ -94,6 +99,6 @@ impl CodexRuntime {
     pub(crate) fn launch_environment(&self) -> Result<&[(String, String)], AdapterRuntimeError> {
         self.launch_authority
             .binding()
-            .map(|binding| binding.environment().entries())
+            .map(|binding| binding.launch_environment())
     }
 }

@@ -20,7 +20,7 @@ function FocusHarness({
   open = true,
   target = true,
 }: {
-  value: AcpChatPage;
+  value: AcpChatPage | null;
   open?: boolean;
   target?: boolean;
 }) {
@@ -37,6 +37,37 @@ function FocusHarness({
         ) : null}
       </details>
     </section>
+  );
+}
+
+function DualFocusHarness({
+  focusedPage,
+}: {
+  focusedPage: AcpChatPage | null;
+}) {
+  const focusedRef = useRef<HTMLElement>(null);
+  const unfocusedRef = useRef<HTMLElement>(null);
+  useRendererRecreationFocus(focusedRef, focusedPage);
+  useRendererRecreationFocus(unfocusedRef, null);
+  return (
+    <>
+      <section ref={focusedRef} data-testid="focused-surface">
+        <details data-sage-activity-id="activity-a" open>
+          <summary>Focused summary</summary>
+          <div data-sage-id="item-a" role="treeitem" tabIndex={0}>
+            Focused item
+          </div>
+        </details>
+      </section>
+      <section ref={unfocusedRef} data-testid="unfocused-surface">
+        <details data-sage-activity-id="activity-b" open>
+          <summary>Unfocused summary</summary>
+          <div data-sage-id="item-b" role="treeitem" tabIndex={0}>
+            Unfocused item
+          </div>
+        </details>
+      </section>
+    </>
   );
 }
 
@@ -98,5 +129,37 @@ describe("useRendererRecreationFocus", () => {
 
     const recreated = render(<FocusHarness value={page("2")} />);
     expect(recreated.getByRole("treeitem")).not.toHaveFocus();
+  });
+
+  it("does not register pagehide when the page is absent", () => {
+    const add = vi.spyOn(window, "addEventListener");
+    render(<FocusHarness value={null} />);
+    expect(add.mock.calls.filter(([type]) => type === "pagehide")).toHaveLength(
+      0,
+    );
+  });
+
+  it("writes the recreation envelope only from the focused surface", () => {
+    const add = vi.spyOn(window, "addEventListener");
+    const first = render(<DualFocusHarness focusedPage={page("2")} />);
+    expect(add.mock.calls.filter(([type]) => type === "pagehide")).toHaveLength(
+      1,
+    );
+
+    document.querySelector<HTMLElement>('[data-sage-id="item-b"]')!.focus();
+    window.dispatchEvent(new Event("pagehide"));
+    first.unmount();
+
+    const afterUnfocused = render(<FocusHarness value={page("2")} />);
+    expect(afterUnfocused.getByRole("treeitem")).not.toHaveFocus();
+    afterUnfocused.unmount();
+
+    const second = render(<DualFocusHarness focusedPage={page("2")} />);
+    document.querySelector<HTMLElement>('[data-sage-id="item-a"]')!.focus();
+    window.dispatchEvent(new Event("pagehide"));
+    second.unmount();
+
+    const afterFocused = render(<FocusHarness value={page("2")} />);
+    expect(afterFocused.getByRole("treeitem")).toHaveFocus();
   });
 });

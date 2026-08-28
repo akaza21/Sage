@@ -59,6 +59,7 @@ function validateEpoch(
     "fixtureProcess",
     "closeRequestedTick",
     "zeroDescendantsTick",
+    "orphanCheckCompletedTick",
     "normalSageDataMutations",
     "orphanProcessesAfterClose",
   ];

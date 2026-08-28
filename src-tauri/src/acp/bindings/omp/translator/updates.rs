@@ -6,6 +6,7 @@ use crate::acp::{
     contract::{ItemLifecycle, RequiredText, SafeText, ToolState},
     intent::NormalizedPayload,
     limits::LIMITS,
+    runtime::host_browse::browse_tool_summary,
 };
 
 use super::{ActiveTurn, OmpTranslator, ResourceMapper, TranslationError};
@@ -109,7 +110,7 @@ impl OmpTranslator {
             payload: NormalizedPayload::ToolCall {
                 category,
                 label: SafeText::new("toolLabel", category_label(category))?,
-                input_summary: None,
+                input_summary: browse_tool_summary("toolInput", update),
             },
             update_mode: ItemUpdateMode::Replace,
         }];
@@ -150,7 +151,7 @@ impl OmpTranslator {
             payload: NormalizedPayload::ToolUpdateResult {
                 category,
                 label: SafeText::new("toolLabel", category_label(category))?,
-                output_summary: None,
+                output_summary: browse_tool_summary("toolOutput", update),
             },
             update_mode: ItemUpdateMode::Replace,
         }];

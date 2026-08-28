@@ -1,18 +1,20 @@
 import { useCallback } from "react";
+import { useStore } from "zustand";
 
-import { useAcpProjectionStore } from "../../../app/acpProjectionStore";
+import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../../app/store";
 import type { ProjectGeneration } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";
 
-export function useAcpChatHistory() {
-  const page = useAcpProjectionStore((state) => state.page);
-  const scope = useAcpProjectionStore((state) => state.scope);
-  const activeLoad = useAcpProjectionStore((state) => state.activeLoad);
-  const error = useAcpProjectionStore((state) => state.error);
+export function useAcpChatHistory(boundChatId?: string | null) {
+  const store = acpProjectionStoreFor(boundChatId);
+  const page = useStore(store, (state) => state.page);
+  const scope = useStore(store, (state) => state.scope);
+  const activeLoad = useStore(store, (state) => state.activeLoad);
+  const error = useStore(store, (state) => state.error);
 
   const loadEarlier = useCallback(() => {
-    const projection = useAcpProjectionStore.getState();
+    const projection = acpProjectionStoreFor(boundChatId).getState();
     const workbench = useWorkbenchStore.getState();
     const cursor = projection.page?.nextCursor;
     if (
@@ -23,7 +25,9 @@ export function useAcpChatHistory() {
       workbench.project?.id !== projection.scope.projectId ||
       String(workbench.projectGeneration) !==
         projection.scope.projectGeneration ||
-      workbench.activeTabId !== projection.scope.chatId
+      (boundChatId
+        ? projection.scope.chatId !== boundChatId
+        : workbench.activeTabId !== projection.scope.chatId)
     ) {
       return;
     }
@@ -38,17 +42,19 @@ export function useAcpChatHistory() {
         cursor,
       })
       .then((historyPage) => {
-        useAcpProjectionStore.getState().completePageLoad(intent, historyPage);
+        acpProjectionStoreFor(boundChatId)
+          .getState()
+          .completePageLoad(intent, historyPage);
       })
       .catch((loadError: unknown) => {
-        useAcpProjectionStore
+        acpProjectionStoreFor(boundChatId)
           .getState()
           .failPageLoad(
             intent,
             loadError instanceof Error ? loadError.message : String(loadError),
           );
       });
-  }, []);
+  }, [boundChatId]);
 
   return {
     hasEarlier: Boolean(page?.nextCursor && scope),

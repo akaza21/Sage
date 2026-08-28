@@ -86,7 +86,9 @@ async fn observe(case: &FrozenCase) -> Value {
     .await
     .expect("permission fixture driver timed out");
     if case.id == "permission-old-epoch-after-restart" && failure.is_none() {
-        mailbox.signal_process_exit().unwrap();
+        mailbox
+            .signal_process_exit(crate::acp::process::TreeExit::Exited { code: Some(17) })
+            .unwrap();
         failure = tokio::time::timeout(
             deadline.operation_before_cleanup(),
             driver.run_next(&mailbox),

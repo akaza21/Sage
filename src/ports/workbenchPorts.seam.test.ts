@@ -55,6 +55,7 @@ describe("S0.3 workbench port seam", () => {
       "createProjectFile",
       "createProjectFolder",
       "createProjectFromPicker",
+      "ensureLocalProject",
       "getBootstrapSnapshot",
       "listDirectory",
       "persistProjectLayout",
@@ -75,18 +76,30 @@ describe("S0.3 workbench port seam", () => {
       "watchEditorDocument",
     ]);
     expect(FROZEN_WORKBENCH_PORT_METHODS.repository).toEqual([
+      "abortGitInProgress",
+      "checkoutGitLocalBranch",
       "commitGitRepository",
+      "continueGitCherryPick",
+      "continueGitRebase",
+      "continueGitRevert",
+      "createGitLocalBranch",
+      "deleteGitLocalBranch",
       "discoverProjectRepositories",
+      "fetchGitRemote",
       "getFileDiff",
       "getNestedRepositoryFileDiff",
       "getNestedRepositoryStatus",
       "getRepositoryStatus",
       "mutateGitFile",
+      "pushGitRemote",
+      "renameGitLocalBranch",
     ]);
     expect(FROZEN_WORKBENCH_PORT_METHODS.chat).toEqual([
       "activateChat",
       "archiveChat",
       "createChat",
+      "moveChat",
+      "pinChat",
       "renameChat",
       "restoreChat",
     ]);

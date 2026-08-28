@@ -19,6 +19,8 @@ import type {
   BufferSnapshotAck,
   BufferSnapshotRequest,
   ChatLifecycleRequest,
+  MoveChatRequest,
+  PinChatRequest,
   DiscoverProjectRepositoriesRequest,
   DiscoverProjectRepositoriesResult,
   CreateProjectFileRequest,
@@ -33,6 +35,18 @@ import type {
   GitFileMutationResult,
   GitRepositoryCommitRequest,
   GitRepositoryCommitResult,
+  GitRepositoryBranchRenameRequest,
+  GitRepositoryCheckoutRequest,
+  GitRepositoryCheckoutResult,
+  GitRepositoryCherryPickContinueRequest,
+  GitRepositoryCherryPickContinueResult,
+  GitRepositoryRebaseContinueRequest,
+  GitRepositoryRebaseContinueResult,
+  GitRepositoryRevertContinueRequest,
+  GitRepositoryRevertContinueResult,
+  GitRepositorySequenceAbortRequest,
+  GitRepositoryRemoteTransportRequest,
+  GitRepositoryRemoteTransportResult,
   ModelOption,
   NestedRepositoryFileDiffRequest,
   NestedRepositoryFileDiffResult,
@@ -99,6 +113,11 @@ const project: ProjectPort = {
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
     return invokeNative("switch_project", { request, expectedTransitionEpoch });
+  },
+  ensureLocalProject(
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    return invokeNative("ensure_local_project", { expectedTransitionEpoch });
   },
   listDirectory(resource: ResourceRef): Promise<DirectoryListing> {
     return invokeNative("list_directory", { resource });
@@ -194,11 +213,83 @@ const repository: RepositoryPort = {
       expectedTransitionEpoch,
     });
   },
+  abortGitInProgress(
+    request: GitRepositorySequenceAbortRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryCheckoutResult> {
+    return invokeNative("abort_git_in_progress", {
+      request,
+      expectedTransitionEpoch,
+    });
+  },
   commitGitRepository(
     request: GitRepositoryCommitRequest,
     expectedTransitionEpoch: number,
   ): Promise<GitRepositoryCommitResult> {
     return invokeNative("commit_git_repository", {
+      request,
+      expectedTransitionEpoch,
+    });
+  },
+  checkoutGitLocalBranch(
+    request: GitRepositoryCheckoutRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryCheckoutResult> {
+    return invokeNative("checkout_git_local_branch", {
+      request,
+      expectedTransitionEpoch,
+    });
+  },
+  continueGitCherryPick(
+    request: GitRepositoryCherryPickContinueRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryCherryPickContinueResult> {
+    return invokeNative("continue_git_cherry_pick", {
+      request,
+      expectedTransitionEpoch,
+    });
+  },
+  continueGitRebase(
+    request: GitRepositoryRebaseContinueRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryRebaseContinueResult> {
+    return invokeNative("continue_git_rebase", {
+      request,
+      expectedTransitionEpoch,
+    });
+  },
+  continueGitRevert(
+    request: GitRepositoryRevertContinueRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryRevertContinueResult> {
+    return invokeNative("continue_git_revert", {
+      request,
+      expectedTransitionEpoch,
+    });
+  },
+  createGitLocalBranch(
+    request: GitRepositoryCheckoutRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryCheckoutResult> {
+    return invokeNative("create_git_local_branch", {
+      request,
+      expectedTransitionEpoch,
+    });
+  },
+  deleteGitLocalBranch(
+    request: GitRepositoryCheckoutRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryCheckoutResult> {
+    return invokeNative("delete_git_local_branch", {
+      request,
+      expectedTransitionEpoch,
+    });
+  },
+  fetchGitRemote(
+    request: GitRepositoryRemoteTransportRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryRemoteTransportResult> {
+    return invokeNative("fetch_git_remote", {
       request,
       expectedTransitionEpoch,
     });
@@ -218,16 +309,36 @@ const repository: RepositoryPort = {
   ): Promise<NestedRepositoryFileDiffResult> {
     return invokeNative("get_repository_ref_file_diff", { request });
   },
+  pushGitRemote(
+    request: GitRepositoryRemoteTransportRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryRemoteTransportResult> {
+    return invokeNative("push_git_remote", {
+      request,
+      expectedTransitionEpoch,
+    });
+  },
+  renameGitLocalBranch(
+    request: GitRepositoryBranchRenameRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryCheckoutResult> {
+    return invokeNative("rename_git_local_branch", {
+      request,
+      expectedTransitionEpoch,
+    });
+  },
 };
 
 const chat: ChatPort = {
   createChat(
     currentLayout: ProjectLayoutRequest,
     expectedTransitionEpoch: number,
+    projectId?: string,
   ): Promise<ProjectTransitionResult> {
     return invokeNative("create_chat", {
       currentLayout,
       expectedTransitionEpoch,
+      ...(projectId ? { projectId } : {}),
     });
   },
   activateChat(
@@ -256,6 +367,18 @@ const chat: ChatPort = {
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
     return invokeNative("restore_chat", { request, expectedTransitionEpoch });
+  },
+  moveChat(
+    request: MoveChatRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    return invokeNative("move_chat", { request, expectedTransitionEpoch });
+  },
+  pinChat(
+    request: PinChatRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    return invokeNative("pin_chat", { request, expectedTransitionEpoch });
   },
 };
 

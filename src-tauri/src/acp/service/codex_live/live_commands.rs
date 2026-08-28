@@ -30,8 +30,21 @@ impl AcpService {
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
         let owner = intent.owner.clone();
         let turn_id = intent.turn_id.clone();
-        let host = self.runtime.for_owner(&owner).map_err(map_slot_error)?;
+        let host = match self.runtime.for_owner(&owner) {
+            Ok(host) => host,
+            Err(super::super::runtime_slot::RuntimeSlotError::Recovery) => {
+                let deadline = Instant::now()
+                    + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+                let _ = self.shutdown_codex_recovery(deadline);
+                return Err(CodexSessionError::Recovery);
+            }
+            Err(error) => return Err(map_slot_error(error)),
+        };
         match host.cancel(intent) {
+            // Dispatching cancellation durably marks this exact turn as
+            // Cancelling. The native terminal arrives asynchronously; waiting
+            // for it here incorrectly turns an admitted owner's cancellation
+            // into recovery solely because the runner has not replied yet.
             Ok(outcome) => self.finish_cancelled_shutdown(owner, turn_id, host, outcome),
             Err(error) => Err(self.retain_live_host_error(
                 owner,
@@ -57,13 +70,7 @@ impl AcpService {
             if Instant::now() >= deadline {
                 #[cfg(test)]
                 self.record_cancel_stage("durable-timeout");
-                let _ = self.runtime.mark_recovery(&owner);
-                self.retain_live_recovery(LiveHostRecovery {
-                    owner,
-                    host,
-                    phase: LiveHostRecoveryPhase::CancelEffect,
-                });
-                return Err(CodexSessionError::Recovery);
+                return Ok(outcome);
             }
             std::thread::sleep(Duration::from_millis(5));
         }
@@ -332,6 +339,11 @@ impl AcpService {
         phase: LiveHostRecoveryPhase,
         error: crate::acp::runtime::HostError,
     ) -> CodexSessionError {
+        tracing::warn!(
+            recovery_checkpoint = "codex_live.send_or_cancel.host_operation",
+            host_error = ?error,
+            "Codex live host operation failed"
+        );
         if requires_live_recovery(&error) {
             let _ = self.runtime.mark_recovery(&owner);
             self.retain_live_recovery(LiveHostRecovery { owner, host, phase });

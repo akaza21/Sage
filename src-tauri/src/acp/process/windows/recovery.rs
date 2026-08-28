@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -113,7 +114,11 @@ impl LaunchRecovery {
         Ok(())
     }
 
-    pub(super) fn verify_artifact(&self, spec: &LaunchSpec) -> Result<(), LaunchError> {
+    pub(super) fn verify_artifact(
+        &self,
+        spec: &LaunchSpec,
+        running_image: &Path,
+    ) -> Result<(), LaunchError> {
         let RecoveryState::Started(started) = &self.state else {
             return Err(LaunchError::ContainmentFailure);
         };
@@ -128,6 +133,7 @@ impl LaunchRecovery {
                     .ok_or(LaunchError::ContainmentFailure)?
                     .raw(),
                 spec,
+                running_image,
             )
     }
 

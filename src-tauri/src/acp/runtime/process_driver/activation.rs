@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+mod diagnostic;
 mod handoff;
 
 use crate::acp::{
@@ -7,6 +8,7 @@ use crate::acp::{
     runtime::{ActivationFlush, ActivationJournal, ActivationPump, ActivationPumpError},
     scheduler::RuntimeOwner,
 };
+use diagnostic::safe_frame_diagnostic;
 
 use super::types::tree_exit;
 use super::{
@@ -35,6 +37,15 @@ pub(crate) enum ActivationDriverError {
     NotReusable,
     #[error("zero-process convergence is not yet proven")]
     Tree,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActivationStartupStep {
+    Initialize,
+    SessionNew,
+    SessionResume,
+    SessionLoad,
+    ReadyHandoff,
 }
 
 pub(crate) struct ActivationProcessDriver<A, J, R, T, C>
@@ -128,6 +139,30 @@ where
         Ok(progress)
     }
 
+    pub(crate) fn startup_step(&self) -> ActivationStartupStep {
+        match self.pump.startup_phase() {
+            "initialize" => ActivationStartupStep::Initialize,
+            "session/new" => ActivationStartupStep::SessionNew,
+            "session/resume" => ActivationStartupStep::SessionResume,
+            "session/load" => ActivationStartupStep::SessionLoad,
+            _ => ActivationStartupStep::ReadyHandoff,
+        }
+    }
+
+    pub(crate) fn log_startup_failure(
+        &self,
+        checkpoint: &'static str,
+        error: &ActivationDriverError,
+    ) {
+        tracing::warn!(
+            activation_checkpoint = checkpoint,
+            activation_stage = "activation",
+            activation_phase = self.pump.startup_phase(),
+            ?error,
+            "ACP activation failed closed"
+        );
+    }
+
     pub(crate) async fn run_next(
         &mut self,
         mailbox: &DriverMailbox,
@@ -174,12 +209,26 @@ where
             }
             ControlMessage::ReaderTerminal(ReaderTerminal::Eof) => {
                 self.finish_stdout(now_millis).await?;
+                self.log_startup_failure(
+                    "activation.dispatch.reader_eof",
+                    &ActivationDriverError::TeardownRequired(TeardownCause::ReaderEof),
+                );
                 Err(self.latch(TeardownCause::ReaderEof))
             }
             ControlMessage::ReaderTerminal(ReaderTerminal::Io) => {
+                self.log_startup_failure(
+                    "activation.dispatch.reader_io",
+                    &ActivationDriverError::TeardownRequired(TeardownCause::ReaderIo),
+                );
                 Err(self.latch(TeardownCause::ReaderIo))
             }
-            ControlMessage::ProcessExit => Err(self.latch(TeardownCause::ProcessExit)),
+            ControlMessage::ProcessExit(_) => {
+                self.log_startup_failure(
+                    "activation.dispatch.process_exit",
+                    &ActivationDriverError::TeardownRequired(TeardownCause::ProcessExit),
+                );
+                Err(self.latch(TeardownCause::ProcessExit))
+            }
         }
     }
 
@@ -190,22 +239,27 @@ where
         now_millis: i64,
     ) -> Result<DriverProgress, ActivationDriverError> {
         let mut progress = DriverProgress::default();
-        let mut produced = self
-            .pump
-            .push_stdout_chunk(chunk, now_millis)
-            .await
-            .map_err(|error| self.pump_error(error))?;
+        let mut produced = match self.pump.push_stdout_chunk(chunk, now_millis).await {
+            Ok(produced) => produced,
+            Err(error) => {
+                self.log_frame_failure("activation.accept_chunk", chunk, &error);
+                return Err(self.pump_error(error));
+            }
+        };
         loop {
             if produced {
                 progress.accepted_frames += 1;
                 self.flush_all(&mut progress)?;
             }
             self.dispatch_urgent(mailbox, &mut progress)?;
-            produced = self
-                .pump
-                .drain_stdout(now_millis)
-                .await
-                .map_err(|error| self.pump_error(error))?;
+            produced = match self.pump.drain_stdout(now_millis).await {
+                Ok(produced) => produced,
+                Err(error) => {
+                    let driver_error = self.pump_error(error);
+                    self.log_startup_failure("activation.accept_chunk.drain_stdout", &driver_error);
+                    return Err(driver_error);
+                }
+            };
             if !produced {
                 return Ok(progress);
             }
@@ -235,7 +289,7 @@ where
         while let Some(control) = mailbox.try_pop_control() {
             match control {
                 ControlMessage::Cancel(_) => progress.rejected_controls += 1,
-                ControlMessage::ProcessExit => {
+                ControlMessage::ProcessExit(_) => {
                     return Err(self.latch(TeardownCause::ProcessExit));
                 }
                 ControlMessage::ReaderTerminal(_) | ControlMessage::StdoutChunk(_) => {
@@ -288,6 +342,25 @@ where
             ) => TeardownCause::MandatoryDenyFailure,
             _ => TeardownCause::PumpFailure,
         })
+    }
+
+    fn log_frame_failure(
+        &self,
+        checkpoint: &'static str,
+        chunk: &[u8],
+        error: &ActivationPumpError,
+    ) {
+        let (json_rpc_method, frame_json, frame_hex) = safe_frame_diagnostic(chunk);
+        tracing::warn!(
+            activation_checkpoint = checkpoint,
+            activation_stage = "activation",
+            activation_phase = self.pump.startup_phase(),
+            ?error,
+            ?json_rpc_method,
+            %frame_json,
+            %frame_hex,
+            "ACP activation rejected inbound frame"
+        );
     }
 
     fn ensure_running(&self) -> Result<(), ActivationDriverError> {

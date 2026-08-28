@@ -55,9 +55,9 @@
   },
   "environment": {
     "inheritAmbient": false,
-    "allowedKeys": ["CODEX_HOME", "SystemRoot", "TEMP", "TMP", "WINDIR"],
+    "allowedKeys": ["CODEX_HOME", "PATH", "SystemRoot", "TEMP", "TMP", "WINDIR"],
     "allowedSecretKeys": [],
-    "maximumEntries": 5,
+    "maximumEntries": 6,
     "maximumKeyBytes": 256,
     "maximumValueBytes": 8192,
     "maximumTotalBytes": 32768
@@ -65,16 +65,16 @@
   "requestPolicy": {
     "threadStart": {
       "approvalPolicy": "never",
-      "sandbox": "readOnly"
+      "sandbox": "read-only"
     },
     "threadResume": {
       "approvalPolicy": "never",
-      "sandbox": "readOnly"
+      "sandbox": "read-only"
     },
     "turnStart": {
       "approvalPolicy": "never",
       "sandboxPolicy": {
-        "type": "readOnly",
+        "type": "read-only",
         "networkAccess": false
       }
     }

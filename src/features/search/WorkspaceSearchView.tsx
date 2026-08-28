@@ -10,7 +10,8 @@ import {
 import { WORKSPACE_SEARCH_LIMITS } from "./workspaceSearchLimits";
 import { workspaceSearchDesktop } from "./workspaceSearchDesktop";
 import { useWorkspaceSearch } from "./useWorkspaceSearch";
-import "./workspace-search.css";
+import { searchResultFileName } from "./searchResultCard";
+import { FileKindIcon } from "../files/FileKindIcon";
 
 interface WorkspaceSearchViewProps {
   projectId: string | null;
@@ -200,14 +201,25 @@ export function WorkspaceSearchView({
                       onClick={() => openMatch(match)}
                       onKeyDown={(event) => handleMatchKeyDown(event, match)}
                     >
-                      <span className="workspace-search__path">
-                        <strong>{match.resource.relativePath}</strong>
-                        <span>
-                          {rootNames.get(match.resource.rootId) ?? "Root"}
+                      <FileKindIcon
+                        path={match.resource.relativePath}
+                        entryKind="file"
+                      />
+                      <span className="workspace-search__copy">
+                        <span className="workspace-search__path">
+                          <strong>
+                            {searchResultFileName(
+                              match.resource.relativePath,
+                            ) || match.resource.relativePath}
+                          </strong>
+                          <span>{match.resource.relativePath}</span>
+                          <span>
+                            {rootNames.get(match.resource.rootId) ?? "Root"}
+                          </span>
                         </span>
-                      </span>
-                      <span className="workspace-search__preview">
-                        {match.preview || "(empty line)"}
+                        <span className="workspace-search__preview">
+                          {match.preview || "(empty line)"}
+                        </span>
                       </span>
                       <span className="workspace-search__position">
                         {match.lineNumber}:{match.columnNumber}

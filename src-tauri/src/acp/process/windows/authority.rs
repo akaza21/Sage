@@ -3,13 +3,14 @@ use std::time::{Duration, Instant};
 
 use windows_sys::Win32::System::Threading::{GetExitCodeProcess, GetProcessId, GetProcessTimes};
 
-use crate::acp::redaction::SafeDiagnostic;
+use crate::acp::redaction::{SafeDiagnostic, SafeStderrDiagnostic};
 
 use super::artifact::VerifiedArtifact;
+use super::artifact::process_image_path;
 use super::io::StderrDrain;
 use super::job::JobBoundary;
 use super::native::NativeHandle;
-use super::{observe_exit, wait_until};
+use super::{observe_exit, try_observe_exit, wait_until};
 use crate::acp::process::capacity::TreeCapacityLease;
 use crate::acp::process::supervisor::{LaunchError, TreeExit, ZeroProcessToken};
 use crate::acp::process::{ProcessIdentityReceipt, SpawnTimingReceipt};
@@ -48,6 +49,34 @@ impl RunningTree {
 pub(crate) struct TreeControl(Arc<TreeAuthority>);
 
 impl TreeControl {
+    pub(crate) fn log_wait_handle_observation(&self, checkpoint: &'static str) {
+        match self.wait_handle_observation() {
+            Ok(observation) => tracing::info!(
+                checkpoint,
+                wait_handle_pid = observation.process_id,
+                wait_handle_image = ?observation.image,
+                job_active_processes = observation.job_active_processes,
+                job_total_processes = observation.job_total_processes,
+                "ACP wait handle and job membership observed"
+            ),
+            Err(error) => tracing::warn!(checkpoint, ?error, "ACP wait-handle observation failed"),
+        }
+    }
+
+    fn wait_handle_observation(&self) -> Result<WaitHandleObservation, LaunchError> {
+        let process = self.0.process.raw();
+        let process_id = unsafe { GetProcessId(process) };
+        if process_id == 0 {
+            return Err(LaunchError::ContainmentFailure);
+        }
+        Ok(WaitHandleObservation {
+            process_id,
+            image: process_image_path(process)?,
+            job_active_processes: self.0.job.active_processes(self.0.active_process_limit)?,
+            job_total_processes: self.0.job.total_processes()?,
+        })
+    }
+
     pub(crate) fn spawn_timing_receipt(&self) -> SpawnTimingReceipt {
         self.0.spawn_timing
     }
@@ -210,10 +239,32 @@ impl TreeControl {
         self.0.stderr.summary()
     }
 
+    pub(crate) fn stderr_diagnostic(&self) -> Result<SafeStderrDiagnostic, LaunchError> {
+        self.0.stderr.diagnostic()
+    }
+
+    /// Captures an already-observed native exit before any Sage-requested
+    /// termination can replace its diagnostic classification.
+    pub(crate) fn native_exit_code_if_exited(&self) -> Result<Option<i32>, LaunchError> {
+        if !try_observe_exit(self.0.process.raw())? {
+            return Ok(None);
+        }
+        self.native_exit_code().map(Some)
+    }
+
     fn wait_until(&self, deadline: Instant) -> Result<TreeExit, LaunchError> {
         let exit = self.wait_root_exit_until(deadline)?;
         self.0.converge_until(deadline)?;
         Ok(exit)
+    }
+
+    fn native_exit_code(&self) -> Result<i32, LaunchError> {
+        let mut code = 0_u32;
+        // SAFETY: the retained process handle is live and code is writable.
+        if unsafe { GetExitCodeProcess(self.0.process.raw(), &mut code) } == 0 {
+            return Err(LaunchError::ContainmentFailure);
+        }
+        Ok(code as i32)
     }
 
     #[cfg(test)]
@@ -225,6 +276,14 @@ impl TreeControl {
     pub(crate) fn total_processes(&self) -> Result<u32, LaunchError> {
         self.0.job.total_processes()
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct WaitHandleObservation {
+    pub(crate) process_id: u32,
+    pub(crate) image: std::path::PathBuf,
+    pub(crate) job_active_processes: u32,
+    pub(crate) job_total_processes: u32,
 }
 
 pub(super) struct TreeAuthority {

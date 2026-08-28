@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
 import { useWorkbenchStore } from "../app/store";
 import { Workbench } from "./Workbench";
 
@@ -25,6 +26,12 @@ vi.mock("./useCompactWorkbenchLayout", () => ({
 
 const initialState = useWorkbenchStore.getState();
 const project = { id: "project-a", name: "A", roots: [] };
+const projectListItem = {
+  id: project.id,
+  name: project.name,
+  rootCount: 0,
+  lastOpenedAt: 1,
+};
 
 async function failProjectTransition(label: string) {
   useWorkbenchStore.setState({ projectTransitioning: true });
@@ -49,11 +56,12 @@ async function pumpTransitionResets(times: number) {
 afterEach(() => {
   cleanup();
   compactViewport = false;
+  useAgentArtifactAdmissionStore.getState().clear();
   useWorkbenchStore.setState(initialState, true);
 });
 
 describe("Agent center workbench window mode seam", () => {
-  it("activates an existing Chat tab as the center when Agent mode takes over a File canvas", async () => {
+  it("shows Chat in the Agent center without leaking an Editor-opened File into artifacts", async () => {
     const activateTab = vi.fn(async (tabId: string) => {
       useWorkbenchStore.setState({ activeTabId: tabId });
     });
@@ -98,7 +106,11 @@ describe("Agent center workbench window mode seam", () => {
       ).toBeInTheDocument();
     });
     expect(screen.queryByText("Loading src/current.ts…")).toBeNull();
-    expect(activateTab).toHaveBeenCalledWith("chat:b");
+    expect(
+      screen.getByRole("complementary", { name: "Agent artifacts" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /current\.ts/ })).toBeNull();
+    expect(activateTab).not.toHaveBeenCalled();
   });
 
   it("creates a Chat for the Agent center when no Chat tab exists to activate", async () => {
@@ -134,7 +146,7 @@ describe("Agent center workbench window mode seam", () => {
     });
   });
 
-  it("returns the center to Chat when a File or Diff tab is activated while Agent stays selected", async () => {
+  it("keeps Chat in the Agent center when a Diff or File artifact tab is selected", async () => {
     const activateTab = vi.fn(async (tabId: string) => {
       useWorkbenchStore.setState({ activeTabId: tabId });
     });
@@ -173,6 +185,8 @@ describe("Agent center workbench window mode seam", () => {
       loadDiff: vi.fn(async () => undefined),
       activateTab,
     });
+    useAgentArtifactAdmissionStore.getState().admit("file:a");
+    useAgentArtifactAdmissionStore.getState().admit("diff:d");
     render(createElement(Workbench));
 
     const modeToggle = screen.getByRole("radiogroup", { name: "Window mode" });
@@ -182,34 +196,29 @@ describe("Agent center workbench window mode seam", () => {
     fireEvent.click(agentControl);
 
     await vi.waitFor(() => {
-      expect(activateTab).toHaveBeenCalledWith("chat:b");
-    });
-    await vi.waitFor(() => {
       expect(screen.getByRole("region", { name: "Agent chat" }));
     });
+    expect(activateTab).not.toHaveBeenCalled();
 
-    const tabStrip = within(
-      screen.getByRole("navigation", { name: "Open tabs" }),
+    const artifactStrip = within(
+      screen.getByRole("navigation", { name: "Agent artifact tabs" }),
     );
-    fireEvent.click(tabStrip.getByRole("tab", { name: /changed\.ts/ }));
+    fireEvent.click(artifactStrip.getByRole("tab", { name: /changed\.ts/ }));
 
     await vi.waitFor(() => {
-      expect(activateTab).toHaveBeenLastCalledWith("chat:b");
+      expect(activateTab).toHaveBeenLastCalledWith("diff:d");
     });
-    expect(activateTab).toHaveBeenNthCalledWith(2, "diff:d");
     expect(agentControl).toBeChecked();
     expect(screen.getByRole("region", { name: "Agent chat" }));
 
-    fireEvent.click(tabStrip.getByRole("tab", { name: /current\.ts/ }));
+    fireEvent.click(artifactStrip.getByRole("tab", { name: /current\.ts/ }));
 
     await vi.waitFor(() => {
-      expect(activateTab).toHaveBeenCalledTimes(5);
+      expect(activateTab).toHaveBeenLastCalledWith("file:a");
     });
-    expect(activateTab).toHaveBeenNthCalledWith(2, "diff:d");
-    expect(activateTab).toHaveBeenNthCalledWith(4, "file:a");
-    expect(activateTab).toHaveBeenLastCalledWith("chat:b");
+    expect(activateTab).toHaveBeenCalledTimes(2);
     expect(agentControl).toBeChecked();
-    expect(screen.queryByText("Loading src/current.ts…")).toBeNull();
+    expect(screen.getByText("Loading src/current.ts…")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Agent chat" }));
   });
 
@@ -282,7 +291,9 @@ describe("Agent center workbench window mode seam", () => {
 
     expect(activateTab).not.toHaveBeenCalled();
     expect(useWorkbenchStore.getState().activeTabId).toBe("file:b");
-    expect(screen.queryByRole("region", { name: "Agent chat" })).toBeNull();
+    expect(
+      screen.getByRole("region", { name: "Agent chat" }),
+    ).toBeInTheDocument();
 
     await act(async () => {
       useWorkbenchStore.setState({
@@ -292,12 +303,12 @@ describe("Agent center workbench window mode seam", () => {
     });
 
     await vi.waitFor(() => {
-      expect(activateTab).toHaveBeenLastCalledWith("chat:b");
-      expect(useWorkbenchStore.getState().activeTabId).toBe("chat:b");
       expect(
         screen.getByRole("region", { name: "Agent chat" }),
       ).toBeInTheDocument();
     });
+    expect(useWorkbenchStore.getState().activeTabId).toBe("file:b");
+    expect(activateTab).not.toHaveBeenCalled();
     expect(createChat).not.toHaveBeenCalled();
   });
 
@@ -337,12 +348,126 @@ describe("Agent center workbench window mode seam", () => {
     expect(createChat).toHaveBeenCalledTimes(1);
   });
 
-  it("does not re-activate a failed Chat when the transition flag resets", async () => {
-    const activateTab = vi.fn((tabId: string) => {
-      if (tabId !== "chat:b") {
-        return Promise.resolve();
-      }
-      return failProjectTransition("Chat activation");
+  it("opens two Agent chats side by side", async () => {
+    useWorkbenchStore.setState({
+      project,
+      tabs: [
+        {
+          id: "chat:a",
+          kind: "chat",
+          title: "Chat: A",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+        {
+          id: "chat:b",
+          kind: "chat",
+          title: "Chat: B",
+          position: 1,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat:a",
+    });
+    render(createElement(Workbench));
+
+    fireEvent.click(
+      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
+        "radio",
+        { name: "Agent" },
+      ),
+    );
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("region", { name: "Chat pane A" }),
+      ).toBeInTheDocument();
+    });
+    const paneA = screen.getByRole("region", { name: "Chat pane A" });
+    const paneB = screen.getByRole("region", { name: "Chat pane B" });
+    expect(
+      within(paneA).getByRole("region", { name: "Agent chat" }),
+    ).toBeInTheDocument();
+    expect(
+      within(paneB).getByRole("region", { name: "Agent chat" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/stays open beside the focused chat/i),
+    ).toBeNull();
+    expect(
+      within(paneB)
+        .getAllByRole("status")
+        .map((node) => node.textContent),
+    ).toEqual(["Idle"]);
+    expect(screen.queryByText("Turn continues in the background.")).toBeNull();
+  });
+
+  it("keeps the Agent file open when toggling back to Editor", async () => {
+    const activateTab = vi.fn(async (tabId: string) => {
+      useWorkbenchStore.setState({ activeTabId: tabId });
+    });
+    useWorkbenchStore.setState({
+      project,
+      projects: [projectListItem],
+      tabs: [
+        {
+          id: "file:a",
+          kind: "file",
+          title: "current.ts",
+          position: 0,
+          pinned: false,
+          dirty: false,
+          resource: { rootId: "root-a", relativePath: "src/current.ts" },
+        },
+        {
+          id: "chat:b",
+          kind: "chat",
+          title: "Chat: B",
+          position: 1,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "file:a",
+      loadEditor: vi.fn(async () => undefined),
+      activateTab,
+    });
+    render(createElement(Workbench));
+    expect(screen.getByText("Loading src/current.ts…")).toBeInTheDocument();
+
+    fireEvent.click(
+      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
+        "radio",
+        { name: "Agent" },
+      ),
+    );
+    await vi.waitFor(() => {
+      expect(screen.getByRole("region", { name: "Agent chat" }));
+    });
+
+    fireEvent.click(screen.getByTitle("Open chat B"));
+    await vi.waitFor(() => {
+      expect(activateTab).toHaveBeenCalledWith("chat:b");
+    });
+
+    fireEvent.click(
+      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
+        "radio",
+        { name: "Editor" },
+      ),
+    );
+
+    await vi.waitFor(() => {
+      expect(activateTab).toHaveBeenLastCalledWith("file:a");
+    });
+    expect(screen.getByText("Loading src/current.ts…")).toBeInTheDocument();
+  });
+
+  it("does not steal an active File artifact after a transition flag reset", async () => {
+    const activateTab = vi.fn(async (tabId: string) => {
+      useWorkbenchStore.setState({ activeTabId: tabId });
     });
     useWorkbenchStore.setState({
       project,
@@ -379,10 +504,11 @@ describe("Agent center workbench window mode seam", () => {
     );
 
     await vi.waitFor(() => {
-      expect(activateTab).toHaveBeenCalledTimes(1);
-      expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+      expect(screen.getByRole("region", { name: "Agent chat" }));
     });
+    expect(activateTab).not.toHaveBeenCalled();
     await pumpTransitionResets(3);
-    expect(activateTab).toHaveBeenCalledTimes(1);
+    expect(activateTab).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().activeTabId).toBe("file:a");
   });
 });

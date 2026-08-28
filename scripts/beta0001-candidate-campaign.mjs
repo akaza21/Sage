@@ -70,6 +70,7 @@ function validateReceipt(value) {
       "packageReceiptSha256",
       "installerSha256",
       "campaignKind",
+      "rendererPairingReceiptSha256",
       "journeyEvidence",
     ]) ||
     value.schemaVersion !== 1 ||
@@ -77,6 +78,7 @@ function validateReceipt(value) {
     !validCommit(value.sourceCommit) ||
     !validHash(value.packageReceiptSha256) ||
     !validHash(value.installerSha256) ||
+    !validHash(value.rendererPairingReceiptSha256) ||
     value.campaignKind !== campaignKind ||
     !validateJourneyEvidence(value.journeyEvidence)
   ) {
@@ -157,6 +159,29 @@ async function bindJourneyBytes({
   }
 }
 
+async function bindRendererPairingReceipt({
+  evidenceRoot,
+  rendererPairingReceiptSha256,
+  onAfterCampaignOpen,
+}) {
+  const first = await readEvidenceFile(
+    evidenceRoot,
+    "acp05-renderer-pairing-receipt",
+    campaignSidecarMaximumBytes,
+    onAfterCampaignOpen,
+  );
+  if (receiptSha256(first) !== rendererPairingReceiptSha256)
+    reject("campaign-substituted");
+  const second = await readEvidenceFile(
+    evidenceRoot,
+    "acp05-renderer-pairing-receipt",
+    campaignSidecarMaximumBytes,
+    onAfterCampaignOpen,
+  );
+  if (receiptSha256(second) !== receiptSha256(first))
+    reject("evidence-identity-changed");
+}
+
 export async function validateBetaCandidateCampaignAdmission({
   resultBytes,
   evidenceRoot,
@@ -222,6 +247,11 @@ export async function validateBetaCandidateCampaignAdmission({
     reject("contract-drift");
   }
   if (typeof onAfterCampaignOpen === "function") await onAfterCampaignOpen();
+  await bindRendererPairingReceipt({
+    evidenceRoot,
+    rendererPairingReceiptSha256: receipt.rendererPairingReceiptSha256,
+    onAfterCampaignOpen,
+  });
   await bindJourneyBytes({
     evidenceRoot,
     journeyEvidence: receipt.journeyEvidence,

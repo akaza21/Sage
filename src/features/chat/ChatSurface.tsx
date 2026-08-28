@@ -1,7 +1,11 @@
 import { ArrowUp, Check } from "lucide-react";
 import { type FormEvent, useEffect, useRef } from "react";
 
+import { pinnedAgentChatOwner } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
+import { titleBarSessionTitle } from "../../workbench/titleBarCenter";
+import { ChatSessionStrip } from "./ChatSessionStrip";
+import { SessionWorkingPill } from "./SessionWorkingPill";
 import type {
   AcpChatPage,
   CuratedBindingId,
@@ -13,6 +17,12 @@ import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { EditSummary } from "./EditSummary";
 import { ChatHandoffControl } from "./ChatHandoffControl";
 import { ChatHarnessControls } from "./ChatHarnessControls";
+import {
+  composerPromptPlaceholder,
+  composerShortcutLabel,
+  useComposerFocusHotkey,
+} from "./composerChrome";
+import { ComposerContext } from "./ComposerContext";
 import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
 import {
   AcpChatProjection,
@@ -24,6 +34,7 @@ import {
   useAcpRetentionIncomplete,
   useRendererRecreationFocus,
 } from "./acp";
+import { useBoundChatComposer } from "./useBoundChatComposer";
 
 function currentNonterminalTurn(
   page: AcpChatPage | null,
@@ -40,7 +51,7 @@ function currentNonterminalTurn(
   return current;
 }
 
-export function ChatSurface() {
+export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const messages = useWorkbenchStore((state) => state.messages);
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const selectedHarnessId = useWorkbenchStore(
@@ -50,33 +61,40 @@ export function ChatSurface() {
   const harnessDiscoveryPhase = useWorkbenchStore(
     (state) => state.harnessDiscoveryPhase,
   );
-  const composerText = useWorkbenchStore((state) => state.composerText);
-  const sending = useWorkbenchStore((state) => state.sending);
+  const { composerText, sending, chatError, setComposerText, sendPrompt } =
+    useBoundChatComposer(chatId);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
   const project = useWorkbenchStore((state) => state.project);
+  const tabs = useWorkbenchStore((state) => state.tabs);
+  const sessionTitle = titleBarSessionTitle(
+    chatId
+      ? (tabs.find((tab) => tab.id === chatId && tab.kind === "chat")?.title ??
+          null)
+      : null,
+  );
   const error = useWorkbenchStore((state) => state.error);
-  const chatError = useWorkbenchStore((state) => state.chatError);
-  const setComposerText = useWorkbenchStore((state) => state.setComposerText);
-  const sendPrompt = useWorkbenchStore((state) => state.sendPrompt);
   const openDiff = useWorkbenchStore((state) => state.openDiff);
   const openFile = useWorkbenchStore((state) => state.openFile);
   const selectedHarness = harnesses.find(
     (harness) => harness.id === selectedHarnessId,
   );
   const useNativeAcp = selectedHarness?.transport === "acp";
-  const acpPage = useAcpChatProjection(useNativeAcp);
-  const acpRetentionIncomplete = useAcpRetentionIncomplete();
-  const acpActions = useAcpChatActions();
+  const acpPage = useAcpChatProjection(useNativeAcp, chatId);
+  const acpRetentionIncomplete = useAcpRetentionIncomplete(chatId);
+  const acpActions = useAcpChatActions(chatId);
   const foregroundError = acpActions.error ?? chatError;
-  const acpHistory = useAcpChatHistory();
+  const acpHistory = useAcpChatHistory(chatId);
   const surfaceRef = useRef<HTMLElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const priorActiveTurnId = useRef<TurnProjection["id"] | null>(null);
   const terminalFocusTurnId = useRef<TurnProjection["id"] | null>(null);
-  useRendererRecreationFocus(surfaceRef, acpPage);
+  const composerFieldId = chatId ? `prompt-${chatId}` : "prompt";
+  const composerDescriptionId = `${composerFieldId}-description`;
+  const focused = chatId == null || pinnedAgentChatOwner() === chatId;
+  useRendererRecreationFocus(surfaceRef, focused ? acpPage : null);
 
   const harnessAvailable = selectedHarness?.installState === "available";
   const selectedAcpBindingId =
@@ -120,6 +138,10 @@ export function ChatSurface() {
                       : "Ready";
   const actionBusy = useNativeAcp ? acpActions.busy : sending;
   const activeAcpTurn = useNativeAcp ? currentNonterminalTurn(acpPage) : null;
+  const workingTurnCount = useNativeAcp
+    ? (acpPage?.turns.filter((turn) => !terminalTurnStates.has(turn.state))
+        .length ?? 0)
+    : 0;
   const canCloseSession = Boolean(
     useNativeAcp &&
     currentAcpSession?.runtimeEpoch &&
@@ -136,10 +158,13 @@ export function ChatSurface() {
       )
     : harnessAvailable;
   const composerEnabled = canPrompt && !activeAcpTurn;
+  const composerHotkeyEnabled =
+    focused && composerEnabled && !actionBusy && !projectTransitioning;
+  useComposerFocusHotkey(composerRef, composerHotkeyEnabled);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length]);
+  }, [messages.length, acpPage?.projectionRevision]);
 
   useEffect(() => {
     const priorId = priorActiveTurnId.current;
@@ -184,16 +209,19 @@ export function ChatSurface() {
   }
 
   function openAcpResource(resource: ResourceRef, target: OpenResourceTarget) {
-    void (target === "file" ? openFile(resource) : openDiff(resource));
+    void (target === "file"
+      ? openFile(resource, "agent")
+      : openDiff(resource, undefined, "agent"));
   }
 
   return (
     <section ref={surfaceRef} className="chat-surface" aria-label="Agent chat">
       <header className="surface-header">
-        <div>
-          <p className="eyebrow">Persistent agent session</p>
-          <h1>Sage workbench</h1>
-        </div>
+        <ChatSessionStrip title={sessionTitle} />
+        <SessionWorkingPill
+          count={workingTurnCount}
+          hidden={projectTransitioning}
+        />
         <div className="session-controls">
           <ChatHandoffControl
             acpPage={useNativeAcp ? acpPage : null}
@@ -237,6 +265,7 @@ export function ChatSurface() {
               <AcpChatProjection
                 page={acpPage}
                 active
+                focused={focused}
                 projectRoots={project?.roots ?? []}
                 retentionIncomplete={acpRetentionIncomplete}
                 onOpenResource={openAcpResource}
@@ -296,7 +325,13 @@ export function ChatSurface() {
           </div>
         ) : null}
         <HarnessDiscoveryNotice />
-        {!canPrompt &&
+        {workingTurnCount > 0 && !projectTransitioning ? (
+          <div className="composer__notice" role="status">
+            {workingTurnCount} {workingTurnCount === 1 ? "turn" : "turns"}{" "}
+            working
+          </div>
+        ) : null}
+        {!availableBinding &&
         !["checking", "signInRequired", "consent", "waiting", "error"].includes(
           harnessDiscoveryPhase,
         ) ? (
@@ -304,24 +339,23 @@ export function ChatSurface() {
             No reviewed local binding is available for this harness.
           </div>
         ) : null}
-        <label className="sr-only" htmlFor="prompt">
+        <label className="sr-only" htmlFor={composerFieldId}>
           Message agent
         </label>
-        <span className="sr-only" id="prompt-description">
+        <span className="sr-only" id={composerDescriptionId}>
           Send a message to the selected harness and model
         </span>
         <textarea
           ref={composerRef}
-          id="prompt"
-          aria-describedby="prompt-description"
+          id={composerFieldId}
+          aria-describedby={composerDescriptionId}
           value={composerText}
           maxLength={MAX_CHAT_COMPOSER_BYTES}
           rows={3}
-          placeholder={
-            canPrompt
-              ? "Ask Sage to do anything"
-              : "Choose an available harness before starting a session"
-          }
+          placeholder={composerPromptPlaceholder(
+            canPrompt,
+            composerShortcutLabel(/mac/i.test(navigator.platform)),
+          )}
           disabled={!composerEnabled || actionBusy || projectTransitioning}
           onChange={(event) => setComposerText(event.target.value)}
           onKeyDown={(event) => {
@@ -336,6 +370,11 @@ export function ChatSurface() {
             availableBinding={availableBinding}
             canPrompt={canPrompt}
           />
+          {workingTurnCount > 0 && !projectTransitioning ? (
+            <span className="composer__working-pill">
+              {workingTurnCount} Working
+            </span>
+          ) : null}
           {useNativeAcp && acpActions.cancellableTurnId ? (
             <button
               className="send-button"
@@ -364,6 +403,7 @@ export function ChatSurface() {
             </button>
           )}
         </div>
+        <ComposerContext project={project} />
       </form>
     </section>
   );

@@ -1,14 +1,26 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { useEditorAppearanceStore } from "../app/editorAppearanceStore";
+import { useEditorCaretStore } from "../app/editorCaretStore";
 import { useWorkbenchStore } from "../app/store";
 import { StatusBar } from "./StatusBar";
 
 const initialState = useWorkbenchStore.getState();
+const initialAppearance = useEditorAppearanceStore.getState();
+const initialCaret = useEditorCaretStore.getState();
 
 afterEach(() => {
   cleanup();
   useWorkbenchStore.setState(initialState, true);
+  useEditorAppearanceStore.setState(initialAppearance, true);
+  useEditorCaretStore.setState(initialCaret, true);
 });
 
 describe("StatusBar repository truth", () => {
@@ -38,6 +50,18 @@ describe("StatusBar repository truth", () => {
     expect(screen.queryByText("0 problems")).toBeNull();
     expect(screen.queryByText("1 session")).toBeNull();
     expect(screen.queryByText("Trusted project")).toBeNull();
+    expect(
+      screen.getByRole("group", { name: "Editor appearance" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Cycle editor font size")).toHaveTextContent(
+      "Font: 13px",
+    );
+    expect(screen.getByLabelText("Cycle editor tab size")).toHaveTextContent(
+      "Tabs: 2 spaces",
+    );
+    expect(screen.getByLabelText("Toggle editor word wrap")).toHaveTextContent(
+      "Word wrap: Off",
+    );
   });
 
   it("summarizes repositories across multiple roots without choosing one branch", () => {
@@ -85,5 +109,91 @@ describe("StatusBar repository truth", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "Recovered the last Project layout.",
     );
+  });
+
+  it("cycles admitted editor font, tab, and wrap from the status bar", () => {
+    render(<StatusBar />);
+    fireEvent.click(screen.getByLabelText("Cycle editor font size"));
+    expect(screen.getByLabelText("Cycle editor font size")).toHaveTextContent(
+      "Font: 14px",
+    );
+    fireEvent.click(screen.getByLabelText("Cycle editor tab size"));
+    expect(screen.getByLabelText("Cycle editor tab size")).toHaveTextContent(
+      "Tabs: 4 spaces",
+    );
+    fireEvent.click(screen.getByLabelText("Toggle editor word wrap"));
+    expect(screen.getByLabelText("Toggle editor word wrap")).toHaveTextContent(
+      "Word wrap: On",
+    );
+  });
+
+  it("names the Editor tool rail as the left sidebar", () => {
+    render(<StatusBar railLeading />);
+    expect(screen.getByLabelText("Hide left sidebar")).toBeInTheDocument();
+  });
+
+  it("shows an admitted File language and hides Diff or plain paths", () => {
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: "file:app",
+          kind: "file",
+          title: "app.ts",
+          position: 0,
+          pinned: false,
+          dirty: false,
+          resource: { rootId: "root-a", relativePath: "src/app.ts" },
+        },
+        {
+          id: "diff:other",
+          kind: "diff",
+          title: "other.ts",
+          position: 1,
+          pinned: false,
+          dirty: false,
+          resource: { rootId: "root-a", relativePath: "src/other.ts" },
+        },
+        {
+          id: "file:license",
+          kind: "file",
+          title: "LICENSE",
+          position: 2,
+          pinned: false,
+          dirty: false,
+          resource: { rootId: "root-a", relativePath: "LICENSE" },
+        },
+      ],
+      activeTabId: "file:app",
+    });
+    const { rerender } = render(<StatusBar />);
+    expect(screen.getByTitle("Editor language")).toHaveTextContent(
+      "TypeScript",
+    );
+
+    useWorkbenchStore.setState({ activeTabId: "diff:other" });
+    rerender(<StatusBar />);
+    expect(screen.queryByTitle("Editor language")).toBeNull();
+
+    useWorkbenchStore.setState({ activeTabId: "file:license" });
+    rerender(<StatusBar />);
+    expect(screen.queryByTitle("Editor language")).toBeNull();
+  });
+
+  it("shows an admitted caret and hides a missing one", () => {
+    render(<StatusBar />);
+    expect(screen.queryByTitle("Caret position")).toBeNull();
+    expect(screen.queryByText("Ln 12, Col 4")).toBeNull();
+
+    act(() => {
+      useEditorCaretStore.getState().publish("one\ntwo\nthree", 9);
+    });
+    expect(screen.getByTitle("Caret position")).toHaveTextContent(
+      "Ln 3, Col 2",
+    );
+
+    act(() => {
+      useEditorCaretStore.getState().publish("one\ntwo\nthree", -1);
+    });
+    expect(screen.queryByTitle("Caret position")).toBeNull();
   });
 });

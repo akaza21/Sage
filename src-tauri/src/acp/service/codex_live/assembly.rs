@@ -14,6 +14,11 @@ impl AcpService {
         let abort = ActivationAbortIntent::from_prepared(&prepared);
         let resources = NativeResourceMapper::new([root]).map_err(|_| CodexSessionError::Intent)?;
         let (operation_deadline, cleanup_deadline) = deadlines()?;
+        // A failed runner can retain the runtime slot after its native tree
+        // has already reached zero. Reclaim only that proven-zero authority;
+        // a live tree stays fail-closed in its recovery slot.
+        self.reclaim_zero_process_runner_capacity(cleanup_deadline)
+            .map_err(|_| CodexSessionError::Recovery)?;
         self.runtime
             .reserve_start(prepared.owner.clone())
             .map_err(map_slot_error)?;
@@ -63,6 +68,11 @@ impl AcpService {
         let tree = match PlatformSupervisor::launch(&spec, process_lease) {
             Ok(tree) => tree,
             Err(failure) => {
+                tracing::warn!(
+                    launch_error = ?failure.error(),
+                    runtime_epoch = prepared.owner.runtime_epoch.get(),
+                    "Codex live session process launch failed"
+                );
                 return self
                     .abort_failed_launch(
                         &abort,
@@ -85,6 +95,7 @@ impl AcpService {
                         &control,
                         cleanup_deadline,
                         ActivationAbortCategory::AssemblyFailure,
+                        super::super::CodexLaunchSetupError::ActiveOperation,
                         None,
                     )
                     .await;
@@ -99,6 +110,7 @@ impl AcpService {
                     &control,
                     cleanup_deadline,
                     ActivationAbortCategory::AssemblyFailure,
+                    super::super::CodexLaunchSetupError::ControlRegistration,
                     Some(active),
                 )
                 .await;
@@ -114,6 +126,7 @@ impl AcpService {
                         &control,
                         cleanup_deadline,
                         ActivationAbortCategory::AssemblyFailure,
+                        super::super::CodexLaunchSetupError::Mailbox,
                         Some(active),
                     )
                     .await;
@@ -139,6 +152,7 @@ impl AcpService {
                         &control,
                         cleanup_deadline,
                         ActivationAbortCategory::AssemblyFailure,
+                        super::super::CodexLaunchSetupError::PumpAssembly,
                         Some(active),
                     )
                     .await;
@@ -172,6 +186,7 @@ impl AcpService {
                         &control,
                         cleanup_deadline,
                         ActivationAbortCategory::AssemblyFailure,
+                        super::super::CodexLaunchSetupError::DriverAssembly,
                         Some(active),
                     )
                     .await;
@@ -193,6 +208,7 @@ impl AcpService {
                         activation,
                         cleanup_deadline,
                         ActivationAbortCategory::AssemblyFailure,
+                        super::super::CodexLaunchSetupError::HostAssembly,
                         None,
                         Some(active),
                     )
@@ -206,6 +222,7 @@ impl AcpService {
                     activation,
                     cleanup_deadline,
                     ActivationAbortCategory::AssemblyFailure,
+                    super::super::CodexLaunchSetupError::HostActivation,
                     Some((Arc::clone(&host), false)),
                     Some(active),
                 )
@@ -222,6 +239,7 @@ impl AcpService {
                     activation,
                     cleanup_deadline,
                     ActivationAbortCategory::AssemblyFailure,
+                    super::super::CodexLaunchSetupError::RuntimeSlot,
                     Some((Arc::clone(&host), false)),
                     Some(active),
                 )

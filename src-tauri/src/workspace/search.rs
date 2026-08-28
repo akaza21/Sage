@@ -395,4 +395,36 @@ mod tests {
         fs::remove_dir_all(root_path).unwrap();
         fs::remove_dir_all(outside).unwrap();
     }
+
+    #[test]
+    fn production_file_walk_admits_200k_and_fail_closes_one_over() {
+        use super::types::{MAX_SEARCH_ENTRIES, MAX_SEARCH_FILES, MAX_SEARCH_RESULTS};
+        use crate::workspace::file_walk::{
+            WalkBufferAdmit, admit_queued_directory, admit_walk_dirent, walk_over_cap,
+        };
+        use std::ffi::OsStr;
+
+        assert_eq!(MAX_SEARCH_FILES, 200_000);
+        assert_eq!(MAX_SEARCH_ENTRIES, 200_000);
+        assert_eq!(MAX_SEARCH_RESULTS, 500);
+        assert_eq!(crate::workspace::MAX_DIRECTORY_ENTRIES, 500);
+        assert!(!walk_over_cap(200_000, MAX_SEARCH_FILES));
+        assert!(walk_over_cap(200_001, MAX_SEARCH_FILES));
+        assert!(!walk_over_cap(200_000, MAX_SEARCH_ENTRIES));
+        assert!(walk_over_cap(200_001, MAX_SEARCH_ENTRIES));
+        assert_eq!(
+            admit_walk_dirent(OsStr::new(".git"), 0, 8),
+            WalkBufferAdmit::Skip
+        );
+        assert_eq!(
+            admit_walk_dirent(OsStr::new("node_modules"), 0, 8),
+            WalkBufferAdmit::Skip
+        );
+        assert_eq!(
+            admit_walk_dirent(OsStr::new("src"), 8, 8),
+            WalkBufferAdmit::Cap
+        );
+        assert!(admit_queued_directory(4_095, 4_096));
+        assert!(!admit_queued_directory(4_096, 4_096));
+    }
 }

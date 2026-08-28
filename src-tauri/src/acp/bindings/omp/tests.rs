@@ -216,6 +216,45 @@ fn artifact_paths_addons_and_bun_are_mechanically_bounded() {
 }
 
 #[test]
+fn initialize_stays_deny_only_and_incoming_sage_browse_fails_closed() {
+    let mut translator = translator(11);
+    let request = translator.begin(Operation::Initialize).unwrap().remove(0);
+    let value: Value = serde_json::from_str(request.line.trim()).expect("initialize");
+    assert_eq!(
+        value["params"]["clientCapabilities"]["fs"]["readTextFile"],
+        false
+    );
+    assert_eq!(
+        value["params"]["clientCapabilities"]["fs"]["writeTextFile"],
+        false
+    );
+    assert_eq!(value["params"]["clientCapabilities"]["terminal"], false);
+    assert!(
+        value["params"]["clientCapabilities"]
+            .get("availableTools")
+            .is_none()
+    );
+    translator
+        .ingest(
+            &rpc_result(
+                request.request_id.as_deref().unwrap(),
+                json!({"protocolVersion":1,"agentCapabilities":{"loadSession":false}}),
+            ),
+            &FixtureResources,
+        )
+        .unwrap();
+    new_session(&mut translator);
+    begin_prompt(&mut translator);
+    assert!(matches!(
+        translator.ingest(
+            br#"{"jsonrpc":"2.0","id":"browse-1","method":"sage.browse","params":{"url":"http://127.0.0.1:5173/"}}"#,
+            &FixtureResources,
+        ),
+        Err(TranslationError::UnexpectedMethod)
+    ));
+}
+
+#[test]
 fn initialize_new_load_and_model_discovery_follow_negotiated_capabilities() {
     let mut adapter = translator(1);
     initialize(&mut adapter, true);

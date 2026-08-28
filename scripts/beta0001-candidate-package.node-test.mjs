@@ -39,6 +39,13 @@ const ids = [
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
+function fixtureAuthenticodeCatalog() {
+  const admittedThumbprints = new Set([signerThumbprint]);
+  return {
+    verify: (thumbprint) => admittedThumbprints.has(thumbprint),
+  };
+}
+
 async function packageAdmission() {
   return import("./beta0001-candidate-package.mjs");
 }
@@ -163,6 +170,7 @@ async function fixture() {
     root,
     contractSha256,
     resultBytes: Buffer.from(JSON.stringify(result)),
+    authenticodeCatalog: fixtureAuthenticodeCatalog(),
   };
 }
 
@@ -220,7 +228,8 @@ async function validate(value, options = {}) {
     expectedPackageReceiptSha256:
       options.expectedPackageReceiptSha256 ?? "e".repeat(64),
     expectedInstallerSha256: installerSha256,
-    authenticodeCatalog: options.authenticodeCatalog ?? { verify: () => true },
+    authenticodeCatalog:
+      options.authenticodeCatalog ?? value.authenticodeCatalog,
   });
 }
 
@@ -246,6 +255,23 @@ test("signed package admission returns the matrix verdict", async () => {
         })
       ).verdict,
       "passed",
+    );
+  } finally {
+    await close(value);
+  }
+});
+
+test("missing authenticode fixture catalog is package-unsigned", async () => {
+  const value = await fixture();
+  try {
+    const { receiptBytes } = await writeSidecars(value);
+    value.authenticodeCatalog = undefined;
+    await rejectsCode(
+      () =>
+        validate(value, {
+          expectedPackageReceiptSha256: sha256(receiptBytes),
+        }),
+      "package-unsigned",
     );
   } finally {
     await close(value);

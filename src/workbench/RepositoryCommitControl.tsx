@@ -2,10 +2,17 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import { useWorkbenchStore } from "../app/store";
 import {
+  canAbortGitSequence,
+  canCommitRepository,
+  canCompleteMerge,
+  canContinueCherryPick,
+  canContinueRebase,
+  canContinueRevert,
+  exclusiveGitSequence,
   gitCommitMessageError,
-  hasStagedChanges,
   MAX_GIT_COMMIT_MESSAGE_BYTES,
 } from "../domain/gitCommit";
+import { isConflictedChange } from "../domain/gitMutation";
 import type { RootRepositoryStatus } from "../domain/workbench";
 
 interface RepositoryCommitControlProps {
@@ -27,6 +34,12 @@ export function RepositoryCommitControl({
   const validationId = useId();
   const errorId = useId();
   const commitRepository = useWorkbenchStore((state) => state.commitRepository);
+  const continueCherryPick = useWorkbenchStore(
+    (state) => state.continueCherryPick,
+  );
+  const continueRebase = useWorkbenchStore((state) => state.continueRebase);
+  const continueRevert = useWorkbenchStore((state) => state.continueRevert);
+  const abortInProgress = useWorkbenchStore((state) => state.abortInProgress);
   const clearError = useWorkbenchStore(
     (state) => state.clearRepositoryCommitError,
   );
@@ -35,7 +48,25 @@ export function RepositoryCommitControl({
       ? state.repositoryCommitError
       : null,
   );
-  const staged = hasStagedChanges(repository);
+  const completingMerge = canCompleteMerge(repository);
+  const historyFlags = [
+    repository.rebaseInProgress === true ? "rebase" : null,
+    repository.cherryPickInProgress === true ? "cherryPick" : null,
+    repository.revertInProgress === true ? "revert" : null,
+  ].filter(
+    (value): value is "rebase" | "cherryPick" | "revert" => value !== null,
+  );
+  const historyContinue = historyFlags.length === 1 ? historyFlags[0] : null;
+  const historyContinuable =
+    historyContinue === "rebase"
+      ? canContinueRebase(repository)
+      : historyContinue === "cherryPick"
+        ? canContinueCherryPick(repository)
+        : historyContinue === "revert"
+          ? canContinueRevert(repository)
+          : false;
+  const committable = canCommitRepository(repository);
+  const hasConflicts = repository.changes.some(isConflictedChange);
   const editorUnavailable = repository.state !== "repository";
   const repositoryUnavailable = editorUnavailable || repository.truncated;
   const validationError = message ? gitCommitMessageError(message) : null;
@@ -43,8 +74,35 @@ export function RepositoryCommitControl({
     controlsDisabled ||
     submitting ||
     repositoryUnavailable ||
-    !staged ||
+    historyContinue !== null ||
+    !committable ||
     gitCommitMessageError(message) !== null;
+  const continueDisabled =
+    controlsDisabled ||
+    submitting ||
+    repositoryUnavailable ||
+    !historyContinuable;
+  const sequence = exclusiveGitSequence(repository);
+  const abortable = canAbortGitSequence(repository);
+  const abortDisabled =
+    controlsDisabled || submitting || repositoryUnavailable || !abortable;
+  const abortAction =
+    sequence === "cherryPick"
+      ? `Abort cherry-pick in ${rootLabel}`
+      : sequence === "revert"
+        ? `Abort revert in ${rootLabel}`
+        : sequence === "merge"
+          ? `Abort merge in ${rootLabel}`
+          : `Abort rebase in ${rootLabel}`;
+  const commitAction = completingMerge
+    ? `Commit merge in ${rootLabel}`
+    : `Commit staged changes in ${rootLabel}`;
+  const continueAction =
+    historyContinue === "cherryPick"
+      ? `Continue cherry-pick in ${rootLabel}`
+      : historyContinue === "revert"
+        ? `Continue revert in ${rootLabel}`
+        : `Continue rebase in ${rootLabel}`;
   const description = [
     helpId,
     validationError ? validationId : null,
@@ -74,10 +132,32 @@ export function RepositoryCommitControl({
     void submitCommit();
   };
 
+  const submitAbort = async () => {
+    if (abortDisabled) return;
+    setSubmitting(true);
+    await abortInProgress(repository.rootId);
+    focusAfterSubmit.current = true;
+    setSubmitting(false);
+  };
+
+  const submitHistoryContinue = async () => {
+    if (continueDisabled) return;
+    setSubmitting(true);
+    if (historyContinue === "cherryPick") {
+      await continueCherryPick(repository.rootId);
+    } else if (historyContinue === "revert") {
+      await continueRevert(repository.rootId);
+    } else {
+      await continueRebase(repository.rootId);
+    }
+    focusAfterSubmit.current = true;
+    setSubmitting(false);
+  };
+
   return (
     <form
       className="repository-commit"
-      aria-label={`Commit staged changes in ${rootLabel}`}
+      aria-label={historyContinue ? continueAction : commitAction}
       onSubmit={submit}
     >
       <label className="repository-commit__label">
@@ -90,7 +170,12 @@ export function RepositoryCommitControl({
           placeholder="Commit message"
           aria-describedby={description}
           aria-invalid={validationError || error ? "true" : undefined}
-          disabled={controlsDisabled || submitting || editorUnavailable}
+          disabled={
+            controlsDisabled ||
+            submitting ||
+            editorUnavailable ||
+            historyContinue !== null
+          }
           onChange={(event) => {
             setMessage(event.target.value);
             clearError(repository.rootId);
@@ -107,17 +192,84 @@ export function RepositoryCommitControl({
         <span id={helpId} className="repository-commit__help">
           {repositoryUnavailable
             ? "Repository status must be complete before committing."
-            : staged
-              ? "Only staged changes will be committed. Ctrl/Command+Enter to commit."
-              : "Stage changes to enable commit."}
+            : historyContinue && hasConflicts
+              ? historyContinue === "cherryPick"
+                ? "Resolve remaining conflicts to continue cherry-pick."
+                : historyContinue === "revert"
+                  ? "Resolve remaining conflicts to continue revert."
+                  : "Resolve remaining conflicts to continue rebase."
+              : historyContinue === "cherryPick"
+                ? "This continues the in-progress cherry-pick."
+                : historyContinue === "revert"
+                  ? "This continues the in-progress revert."
+                  : historyContinue === "rebase"
+                    ? "This continues the in-progress rebase."
+                    : completingMerge
+                      ? "This completes the in-progress merge."
+                      : hasConflicts && repository.mergeInProgress
+                        ? "Resolve remaining conflicts to enable commit."
+                        : committable
+                          ? "Only staged changes will be committed. Ctrl/Command+Enter to commit."
+                          : "Stage changes to enable commit."}
         </span>
-        <button
-          type="submit"
-          aria-label={`Commit staged changes in ${rootLabel}`}
-          disabled={commitDisabled}
-        >
-          {submitting ? "Committing…" : "Commit"}
-        </button>
+        <span className="repository-commit__actions">
+          {abortable ? (
+            <button
+              type="button"
+              aria-label={abortAction}
+              disabled={abortDisabled}
+              onClick={() => void submitAbort()}
+            >
+              {submitting
+                ? sequence === "cherryPick"
+                  ? "Aborting cherry-pick…"
+                  : sequence === "revert"
+                    ? "Aborting revert…"
+                    : sequence === "merge"
+                      ? "Aborting merge…"
+                      : "Aborting rebase…"
+                : sequence === "cherryPick"
+                  ? "Abort cherry-pick"
+                  : sequence === "revert"
+                    ? "Abort revert"
+                    : sequence === "merge"
+                      ? "Abort merge"
+                      : "Abort rebase"}
+            </button>
+          ) : null}
+          {historyContinue ? (
+            <button
+              type="button"
+              aria-label={continueAction}
+              disabled={continueDisabled}
+              onClick={() => void submitHistoryContinue()}
+            >
+              {submitting
+                ? historyContinue === "cherryPick"
+                  ? "Continuing cherry-pick…"
+                  : historyContinue === "revert"
+                    ? "Continuing revert…"
+                    : "Continuing rebase…"
+                : historyContinue === "cherryPick"
+                  ? "Continue cherry-pick"
+                  : historyContinue === "revert"
+                    ? "Continue revert"
+                    : "Continue rebase"}
+            </button>
+          ) : (
+            <button
+              type="submit"
+              aria-label={commitAction}
+              disabled={commitDisabled}
+            >
+              {submitting
+                ? "Committing…"
+                : completingMerge
+                  ? "Commit merge"
+                  : "Commit"}
+            </button>
+          )}
+        </span>
       </div>
       {validationError ? (
         <p
@@ -134,7 +286,15 @@ export function RepositoryCommitControl({
           id={errorId}
           className="repository-commit__error"
           role="alert"
-          aria-label={`${rootLabel} commit failed`}
+          aria-label={
+            historyContinue === "cherryPick"
+              ? `${rootLabel} continue cherry-pick failed`
+              : historyContinue === "revert"
+                ? `${rootLabel} continue revert failed`
+                : historyContinue === "rebase"
+                  ? `${rootLabel} continue rebase failed`
+                  : `${rootLabel} commit failed`
+          }
         >
           {error.message}
         </p>

@@ -8,13 +8,13 @@ use windows::{
             CoCreateInstance, CoInitializeEx, CoUninitialize,
         },
         UI::Shell::{
-            FILEOPERATION_FLAGS, FOF_NO_UI, FOF_NOCONFIRMATION, FOF_NORECURSION,
+            FILEOPERATION_FLAGS, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT,
             FOFX_ADDUNDORECORD, FOFX_EARLYFAILURE, FOFX_RECYCLEONDELETE, FileOperation,
             IFileOperation, IFileOperationProgressSink, IFileOperationProgressSink_Impl,
-            IShellItem, SHCreateItemFromParsingName,
+            IShellItem, SHCreateItemFromIDList, SHParseDisplayName, SICHINT_CANONICAL,
         },
     },
-    core::{HRESULT, IUnknown, Interface, PCWSTR, Ref, implement},
+    core::{HRESULT, PCWSTR, Ref, implement},
 };
 
 use crate::error::{AppError, AppResult};
@@ -71,20 +71,20 @@ impl ProgressState {
 #[implement(IFileOperationProgressSink)]
 struct TrashProgressSink {
     authority: Arc<ResourceTrashAuthority>,
-    queued_item_identity: IUnknown,
+    queued_item: IShellItem,
     state: Arc<Mutex<ProgressState>>,
 }
 
 impl TrashProgressSink {
     fn item_matches(&self, item: &Ref<'_, IShellItem>) -> bool {
-        same_shell_item_identity(&self.queued_item_identity, item)
+        same_shell_item_identity(&self.queued_item, item)
     }
 }
 
-fn same_shell_item_identity(queued_identity: &IUnknown, item: &Ref<'_, IShellItem>) -> bool {
+fn same_shell_item_identity(queued_item: &IShellItem, item: &Ref<'_, IShellItem>) -> bool {
     item.as_ref()
-        .and_then(|item| item.cast::<IUnknown>().ok())
-        .is_some_and(|identity| identity.as_raw() == queued_identity.as_raw())
+        .and_then(|item| unsafe { queued_item.Compare(item, SICHINT_CANONICAL.0 as u32).ok() })
+        .is_some_and(|comparison| comparison == 0)
 }
 
 #[allow(non_snake_case)]
@@ -217,9 +217,10 @@ fn operation_flags() -> FILEOPERATION_FLAGS {
         FOFX_RECYCLEONDELETE.0
             | FOFX_EARLYFAILURE.0
             | FOFX_ADDUNDORECORD.0
-            | FOF_NO_UI.0
+            | FOF_ALLOWUNDO.0
             | FOF_NOCONFIRMATION.0
-            | FOF_NORECURSION.0,
+            | FOF_NOERRORUI.0
+            | FOF_SILENT.0,
     )
 }
 
@@ -248,16 +249,24 @@ where
             })?;
     }
     let _apartment = ComApartment;
-    let path = authority
-        .source_path
-        .as_os_str()
-        .encode_wide()
+    let canonical = std::fs::canonicalize(&authority.source_path).map_err(AppError::Io)?;
+    let shell_path = canonical
+        .to_string_lossy()
+        .strip_prefix(r"\\?\")
+        .map_or_else(|| canonical.to_string_lossy().into_owned(), str::to_owned);
+    let path = shell_path
+        .encode_utf16()
         .chain(std::iter::once(0))
         .collect::<Vec<_>>();
-    let item: IShellItem = unsafe { SHCreateItemFromParsingName(PCWSTR(path.as_ptr()), None) }
-        .map_err(|error| {
-            AppError::InvalidRequest(format!("Recycle Bin Shell item creation failed: {error}"))
-        })?;
+    let mut pidl = std::ptr::null_mut();
+    unsafe { SHParseDisplayName(PCWSTR(path.as_ptr()), None, &mut pidl, 0, None) }.map_err(
+        |error| {
+            AppError::InvalidRequest(format!("Recycle Bin Shell PIDL creation failed: {error}"))
+        },
+    )?;
+    let item: IShellItem = unsafe { SHCreateItemFromIDList(pidl) }.map_err(|error| {
+        AppError::InvalidRequest(format!("Recycle Bin Shell item creation failed: {error}"))
+    })?;
     let operation: IFileOperation =
         unsafe { CoCreateInstance(&FileOperation, None, CLSCTX_INPROC_SERVER) }.map_err(
             |error| {
@@ -268,12 +277,9 @@ where
         AppError::InvalidRequest(format!("Recycle Bin flags were rejected: {error}"))
     })?;
     let state = Arc::new(Mutex::new(ProgressState::default()));
-    let queued_item_identity = item.cast::<IUnknown>().map_err(|error| {
-        AppError::InvalidRequest(format!("Recycle Bin item identity binding failed: {error}"))
-    })?;
     let sink: IFileOperationProgressSink = TrashProgressSink {
         authority: Arc::clone(&authority),
-        queued_item_identity,
+        queued_item: item.clone(),
         state: Arc::clone(&state),
     }
     .into();
@@ -336,11 +342,12 @@ where
         .map_err(|_| AppError::InvalidRequest("Recycle Bin STA thread panicked".into()))?
 }
 
-use std::os::windows::ffi::OsStrExt;
-
 #[cfg(test)]
 mod tests {
+    use std::os::windows::ffi::OsStrExt;
+
     use super::*;
+    use windows::Win32::UI::Shell::SHCreateItemFromParsingName;
 
     fn shell_item(path: &std::path::Path) -> windows::core::Result<IShellItem> {
         let wide_path = path
@@ -352,15 +359,16 @@ mod tests {
     }
 
     #[test]
-    fn operation_flags_require_recycling_no_ui_no_recursion_and_undo() {
+    fn operation_flags_require_recycling_no_ui_and_undo() {
         let flags = operation_flags().0;
         for required in [
             FOFX_RECYCLEONDELETE.0,
             FOFX_EARLYFAILURE.0,
             FOFX_ADDUNDORECORD.0,
-            FOF_NO_UI.0,
+            FOF_ALLOWUNDO.0,
             FOF_NOCONFIRMATION.0,
-            FOF_NORECURSION.0,
+            FOF_NOERRORUI.0,
+            FOF_SILENT.0,
         ] {
             assert_eq!(flags & required, required);
         }
@@ -412,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn shell_item_identity_accepts_only_the_same_non_null_com_object() {
+    fn shell_item_identity_uses_canonical_item_comparison() {
         let root =
             std::env::temp_dir().join(format!("sage-trash-com-identity-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
@@ -427,23 +435,12 @@ mod tests {
             let _apartment = ComApartment;
             let first = shell_item(&sta_root.join("first.rs"))?;
             let second = shell_item(&sta_root.join("second.rs"))?;
-            let queued_identity = first.cast::<IUnknown>()?;
-
-            let same = Some(first);
+            let same = Some(shell_item(&sta_root.join("first.rs"))?);
             let distinct = Some(second);
             let null: Option<IShellItem> = None;
-            assert!(same_shell_item_identity(
-                &queued_identity,
-                &Ref::from(&same)
-            ));
-            assert!(!same_shell_item_identity(
-                &queued_identity,
-                &Ref::from(&distinct)
-            ));
-            assert!(!same_shell_item_identity(
-                &queued_identity,
-                &Ref::from(&null)
-            ));
+            assert!(same_shell_item_identity(&first, &Ref::from(&same)));
+            assert!(!same_shell_item_identity(&first, &Ref::from(&distinct)));
+            assert!(!same_shell_item_identity(&first, &Ref::from(&null)));
             Ok(())
         })
         .join();

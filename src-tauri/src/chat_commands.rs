@@ -1,7 +1,10 @@
 use tauri::State;
 
 use crate::{
-    domain::{ProjectLayoutRequest, ProjectTransitionResult, RenameChatRequest},
+    domain::{
+        MoveChatRequest, PinChatRequest, ProjectLayoutRequest, ProjectTransitionResult,
+        RenameChatRequest,
+    },
     error::{AppError, AppResult},
     persistence::Database,
     preview_lifecycle::on_committed_project_transition_epoch,
@@ -16,8 +19,15 @@ pub async fn create_chat(
     state: State<'_, AppState>,
     current_layout: ProjectLayoutRequest,
     expected_transition_epoch: u64,
+    project_id: Option<String>,
 ) -> Result<ProjectTransitionResult, String> {
-    Ok(create_chat_inner(&state, current_layout, expected_transition_epoch).await)
+    Ok(create_chat_inner(
+        &state,
+        current_layout,
+        expected_transition_epoch,
+        project_id,
+    )
+    .await)
 }
 
 #[tauri::command]
@@ -38,16 +48,50 @@ pub async fn rename_chat(
     Ok(rename_chat_inner(&state, request, expected_transition_epoch).await)
 }
 
+#[tauri::command]
+pub async fn pin_chat(
+    state: State<'_, AppState>,
+    request: PinChatRequest,
+    expected_transition_epoch: u64,
+) -> Result<ProjectTransitionResult, String> {
+    Ok(execute_chat_transition(
+        &state,
+        expected_transition_epoch,
+        "project changed before the requested Chat pin",
+        move |database| database.pin_chat(&request),
+    )
+    .await)
+}
+
+#[tauri::command]
+pub async fn move_chat(
+    state: State<'_, AppState>,
+    request: MoveChatRequest,
+    expected_transition_epoch: u64,
+) -> Result<ProjectTransitionResult, String> {
+    Ok(execute_chat_transition(
+        &state,
+        expected_transition_epoch,
+        "project changed before the requested Chat move",
+        move |database| database.move_chat(&request),
+    )
+    .await)
+}
+
 async fn create_chat_inner(
     state: &AppState,
     current_layout: ProjectLayoutRequest,
     expected_transition_epoch: u64,
+    project_id: Option<String>,
 ) -> ProjectTransitionResult {
     execute_chat_transition(
         state,
         expected_transition_epoch,
         "project changed before the requested Chat creation",
-        move |database| database.create_chat(&current_layout).map(drop),
+        move |database| {
+            let target = project_id.unwrap_or_else(|| current_layout.project_id.clone());
+            database.create_chat_on(&target, &current_layout).map(drop)
+        },
     )
     .await
 }
@@ -175,7 +219,7 @@ mod tests {
             };
             let state = AppState::new(database);
 
-            let created = create_chat_inner(&state, layout.clone(), 0).await;
+            let created = create_chat_inner(&state, layout.clone(), 0, None).await;
             assert!(created.committed);
             assert_eq!(created.transition_epoch, 1);
             let snapshot = created.snapshot.unwrap();
@@ -221,6 +265,7 @@ mod tests {
                 pinned: false,
                 dirty: true,
                 status: None,
+                updated_at: None,
                 resource: Some(selected_resource.clone()),
                 repository: None,
             };
@@ -300,7 +345,7 @@ mod tests {
                 "Chat: Inactive renamed"
             );
 
-            let stale = create_chat_inner(&state, layout, 0).await;
+            let stale = create_chat_inner(&state, layout, 0, None).await;
             assert!(!stale.committed);
             assert_eq!(stale.transition_epoch, 3);
             assert!(stale.recovery_error.unwrap().contains("project changed"));

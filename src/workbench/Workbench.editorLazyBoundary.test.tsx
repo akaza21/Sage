@@ -117,7 +117,7 @@ it("loads editor runtime only for an active File and destroys it on return to Ch
   render(<Workbench />);
 
   await act(async () => Promise.resolve());
-  expect(screen.getByText("Active chat")).toBeVisible();
+  expect(screen.getByText("No open files")).toBeVisible();
   expect(runtimeProbe.moduleLoaded).not.toHaveBeenCalled();
   expect(runtimeProbe.create).not.toHaveBeenCalled();
 

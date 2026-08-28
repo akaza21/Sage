@@ -1,3 +1,8 @@
+use crate::acp::{
+    bindings::adapter::{AdapterBatch, AdapterRuntimeError, HarnessAdapter, ResourceMapper},
+    transport::Frame,
+};
+
 use super::ActivatedSession;
 
 pub(crate) struct IdleActivationParts<A, J, R> {
@@ -51,5 +56,14 @@ impl<A, J, R> IdleActivationParts<A, J, R> {
 
     pub(crate) fn journal(&self) -> &J {
         &self.journal
+    }
+}
+
+impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
+    pub(crate) fn ingest_idle_frame(
+        &mut self,
+        frame: &Frame,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        self.adapter.ingest(frame, &self.resources)
     }
 }

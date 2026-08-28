@@ -7,7 +7,9 @@ use crate::acp::{
 };
 
 use super::manifest::Platform;
-use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_NETWORK_ACCESS, SANDBOX_READ_ONLY};
+use super::policy::{
+    APPROVAL_POLICY_NEVER, SANDBOX_NETWORK_ACCESS, SANDBOX_POLICY_READ_ONLY, SANDBOX_READ_ONLY,
+};
 
 // The shared writer owns the single LF delimiter. Keeping the payload one
 // byte below the wire ceiling makes the eventual payload + LF write fit the
@@ -181,7 +183,7 @@ impl OutgoingRequest {
                 "input": [{"type": "text", "text": prompt.as_str()}],
                 "approvalPolicy": APPROVAL_POLICY_NEVER,
                 "sandboxPolicy": {
-                    "type": SANDBOX_READ_ONLY,
+                    "type": SANDBOX_POLICY_READ_ONLY,
                     "networkAccess": SANDBOX_NETWORK_ACCESS
                 }
             }),

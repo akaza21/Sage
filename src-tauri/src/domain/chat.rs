@@ -12,6 +12,8 @@ pub struct WorkbenchTab {
     pub pinned: bool,
     pub dirty: bool,
     pub status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<i64>,
     pub resource: Option<ResourceRef>,
     #[serde(default)]
     pub repository: Option<RepositoryRef>,
@@ -41,6 +43,22 @@ pub struct RenameChatRequest {
 pub struct ChatLifecycleRequest {
     pub project_id: String,
     pub chat_id: String,
+    pub current_layout: ProjectLayoutRequest,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PinChatRequest {
+    pub project_id: String,
+    pub chat_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveChatRequest {
+    pub project_id: String,
+    pub chat_id: String,
+    pub target_project_id: String,
     pub current_layout: ProjectLayoutRequest,
 }
 

@@ -54,6 +54,13 @@ export function renderRegisteredCanvas(
   return Surface ? createElement(Surface, { tab }) : null;
 }
 
+export function renderFileOrDiffCanvas(tab: WorkbenchTab): ReactNode {
+  if (tab.kind !== "file" && tab.kind !== "diff") {
+    return null;
+  }
+  return renderRegisteredCanvas(tab.kind, tab);
+}
+
 export function renderRegisteredTool(id: ToolSurfaceId): ReactNode {
   const Surface = toolSurfaces.get(id);
   return Surface ? createElement(Surface) : null;

@@ -1,0 +1,97 @@
+.agent-rail-status {
+  padding: 4px 0 8px;
+}
+
+.agent-rail-status__header {
+  display: flex;
+  width: 100%;
+  min-height: var(--control-target);
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  font-size: var(--type-size-caption);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.agent-rail-filter {
+  position: relative;
+}
+
+.agent-rail-filter__trigger {
+  display: grid;
+  width: var(--control-target);
+  height: var(--control-target);
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.agent-rail-filter__trigger:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.agent-rail-filter__menu {
+  position: absolute;
+  top: 26px;
+  right: 0;
+  z-index: 8;
+  display: grid;
+  min-width: 168px;
+  max-height: 280px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+}
+
+.agent-rail-filter__heading {
+  margin: 6px 6px 2px;
+  color: var(--muted);
+  font-size: var(--type-size-caption);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.agent-rail-filter__menu button,
+.agent-rail-filter__select {
+  display: flex;
+  width: 100%;
+  min-height: var(--control-target);
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--text-soft);
+  background: transparent;
+  font-size: var(--type-size-chrome);
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-rail-filter__menu button[aria-checked="true"] {
+  color: var(--text);
+  background: var(--surface-active);
+}
+
+.agent-rail-filter__select select {
+  max-width: 96px;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}

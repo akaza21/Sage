@@ -136,14 +136,30 @@ impl CodexAuthProtocol {
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,
     ) -> Self {
+        Self::with_adapter(CodexAdapter::from_metadata_packet(
+            packet,
+            binding_digest,
+            runtime_epoch,
+            SageAgentSessionId::parse(format!("session-codex-auth-{}", runtime_epoch.get()))
+                .expect("bounded auth identity"),
+        ))
+    }
+
+    pub(crate) fn from_admitted_binding(
+        binding: &crate::acp::bindings::codex::AdmittedCodexBinding,
+        runtime_epoch: RuntimeEpoch,
+    ) -> Self {
+        Self::with_adapter(CodexAdapter::from_admitted_binding(
+            binding,
+            runtime_epoch,
+            SageAgentSessionId::parse(format!("session-codex-auth-{}", runtime_epoch.get()))
+                .expect("bounded auth identity"),
+        ))
+    }
+
+    fn with_adapter(adapter: CodexAdapter) -> Self {
         Self {
-            adapter: CodexAdapter::from_metadata_packet(
-                packet,
-                binding_digest,
-                runtime_epoch,
-                SageAgentSessionId::parse(format!("session-codex-auth-{}", runtime_epoch.get()))
-                    .expect("bounded auth identity"),
-            ),
+            adapter,
             next_request_id: 0,
         }
     }

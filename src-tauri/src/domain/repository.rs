@@ -20,6 +20,13 @@ pub struct FileChange {
     pub deletions: Option<u64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRecentCommit {
+    pub sha: String,
+    pub subject: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RootRepositoryStatus {
@@ -30,6 +37,22 @@ pub struct RootRepositoryStatus {
     pub branches: Vec<String>,
     #[serde(default)]
     pub branches_truncated: bool,
+    #[serde(default)]
+    pub recent_commits: Vec<GitRecentCommit>,
+    #[serde(default)]
+    pub recent_commits_truncated: bool,
+    #[serde(default)]
+    pub remotes: Vec<String>,
+    #[serde(default)]
+    pub remotes_truncated: bool,
+    #[serde(default)]
+    pub merge_in_progress: bool,
+    #[serde(default)]
+    pub rebase_in_progress: bool,
+    #[serde(default)]
+    pub cherry_pick_in_progress: bool,
+    #[serde(default)]
+    pub revert_in_progress: bool,
     pub changes: Vec<FileChange>,
     pub truncated: bool,
     pub elapsed_ms: u64,
@@ -44,6 +67,14 @@ impl RootRepositoryStatus {
             branch: None,
             branches: Vec::new(),
             branches_truncated: false,
+            recent_commits: Vec::new(),
+            recent_commits_truncated: false,
+            remotes: Vec::new(),
+            remotes_truncated: false,
+            merge_in_progress: false,
+            rebase_in_progress: false,
+            cherry_pick_in_progress: false,
+            revert_in_progress: false,
             changes: Vec::new(),
             truncated: false,
             elapsed_ms: 0,
@@ -58,6 +89,14 @@ impl RootRepositoryStatus {
             branch: None,
             branches: Vec::new(),
             branches_truncated: false,
+            recent_commits: Vec::new(),
+            recent_commits_truncated: false,
+            remotes: Vec::new(),
+            remotes_truncated: false,
+            merge_in_progress: false,
+            rebase_in_progress: false,
+            cherry_pick_in_progress: false,
+            revert_in_progress: false,
             changes: Vec::new(),
             truncated: false,
             elapsed_ms,
@@ -72,6 +111,14 @@ impl RootRepositoryStatus {
             branch: None,
             branches: Vec::new(),
             branches_truncated: false,
+            recent_commits: Vec::new(),
+            recent_commits_truncated: false,
+            remotes: Vec::new(),
+            remotes_truncated: false,
+            merge_in_progress: false,
+            rebase_in_progress: false,
+            cherry_pick_in_progress: false,
+            revert_in_progress: false,
             changes: Vec::new(),
             truncated: false,
             elapsed_ms,

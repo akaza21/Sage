@@ -71,20 +71,18 @@ where
         WorkerCommand::BeginClose(command) => {
             super::reusable::begin(ReusableCloseBeginState::new(parts, command), responder).await
         }
-        WorkerCommand::BeginPark => {
-            match ReusableCloseBeginState::begin_park(parts).await {
-                Ok(closing) => {
-                    responder.respond(Ok(WorkerReply::Unit));
-                    FirstTurnWorkerState::ReusableDraining(closing)
-                }
-                Err(failure) => {
-                    responder.respond(Err(super::map_close(&failure.error)));
-                    FirstTurnWorkerState::Recovery(Box::new(
-                        FirstTurnWorkerRecovery::ReusableBegin(failure),
-                    ))
-                }
+        WorkerCommand::BeginPark => match ReusableCloseBeginState::begin_park(parts).await {
+            Ok(closing) => {
+                responder.respond(Ok(WorkerReply::Unit));
+                FirstTurnWorkerState::ReusableDraining(closing)
             }
-        }
+            Err(failure) => {
+                responder.respond(Err(super::map_close(&failure.error)));
+                FirstTurnWorkerState::Recovery(Box::new(FirstTurnWorkerRecovery::ReusableBegin(
+                    failure,
+                )))
+            }
+        },
         _ => {
             responder.respond(Err(HostError::State));
             FirstTurnWorkerState::Reusable(parts)

@@ -132,7 +132,41 @@ function Invoke-C0BPlanAction {
   } else {
     [void](Wait-C0BSelector $Context $Action.resultSelector)
   }
-  return [ordered]@{ startedTick = $started; completedTick = (Get-FootprintMonotonicClock).tick }
+  return [ordered]@{
+    operation = [string]$Action.operation
+    startedTick = $started
+    completedTick = (Get-FootprintMonotonicClock).tick
+  }
+}
+
+function New-C0BPaintReceipt {
+  param(
+    [Parameter(Mandatory)][string]$Operation,
+    [Parameter(Mandatory)][long]$StartedTick,
+    [Parameter(Mandatory)][long]$CompletedTick,
+    [Parameter(Mandatory)][long]$FrequencyHz
+  )
+  if ($Operation -notmatch '^(focus|invoke|select|set-value|toggle)$') {
+    throw "Paint receipt operation is invalid."
+  }
+  $duration = Get-FootprintMonotonicDurationUs $StartedTick $CompletedTick $FrequencyHz
+  $canonical = '{"completedTick":' + $CompletedTick.ToString([Globalization.CultureInfo]::InvariantCulture) +
+    ',"durationUs":' + $duration.ToString([Globalization.CultureInfo]::InvariantCulture) +
+    ',"operation":"' + $Operation +
+    '","startedTick":' + $StartedTick.ToString([Globalization.CultureInfo]::InvariantCulture) + '}'
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    $digest = ([BitConverter]::ToString($hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace("-", "").ToLowerInvariant()
+  } finally {
+    $hasher.Dispose()
+  }
+  return [ordered]@{
+    completedTick = $CompletedTick
+    durationUs = $duration
+    operation = $Operation
+    sha256 = $digest
+    startedTick = $StartedTick
+  }
 }
 
 function Assert-C0BExecutable {
@@ -253,9 +287,12 @@ function Invoke-C0BLaunchCore {
       spawnToWindowReadyUs = Get-FootprintMonotonicDurationUs $launch.spawnTick $windowReadyTick $clock.frequencyHz
       inputToPaintUs = Get-FootprintMonotonicDurationUs $inputSpan.startedTick $inputSpan.completedTick $clock.frequencyHz
       tabSwitchUs = Get-FootprintMonotonicDurationUs $tabSpan.startedTick $tabSpan.completedTick $clock.frequencyHz
+      inputPaintReceipt = New-C0BPaintReceipt ([string]$inputSpan.operation) ([long]$inputSpan.startedTick) ([long]$inputSpan.completedTick) ([long]$clock.frequencyHz)
+      tabPaintReceipt = New-C0BPaintReceipt ([string]$tabSpan.operation) ([long]$tabSpan.startedTick) ([long]$tabSpan.completedTick) ([long]$clock.frequencyHz)
       snapshots = $snapshots
       closeRequestedTick = [long]$cleanup.closeRequestedTick
       zeroDescendantsTick = [long]$cleanup.zeroDescendantsTick
+      orphanCheckCompletedTick = [long]$cleanup.orphanCheckCompletedTick
       normalSageDataMutations = 0
       orphanProcessesAfterClose = [int]$cleanup.orphanProcessesAfterClose
     }
@@ -305,4 +342,36 @@ function Invoke-C0BObservationRequest {
   return [ordered]@{ status = "passed"; stateId = [string]$request.stateId; participant = [string]$request.participant; launchOrdinal = [int]$request.launchOrdinal }
 }
 
-Export-ModuleMember -Function "Invoke-C0BObservationRequest"
+function Invoke-C0BCampaignObservationRequest {
+  param(
+    [Parameter(Mandatory)][string]$RequestPath,
+    [Parameter(Mandatory)][string]$LaunchPath,
+    [string]$NodePath = "node.exe"
+  )
+  if (-not [IO.Path]::IsPathRooted($RequestPath)) { throw "Observation request path must be absolute." }
+  if (-not [IO.Path]::IsPathRooted($LaunchPath)) { throw "Campaign launch path must be absolute." }
+  $node = (Get-Command $NodePath -CommandType Application -ErrorAction Stop).Source
+  $binder = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\ade0006a-c0b-campaign-launch.mjs"))
+  if (-not (Test-Path -LiteralPath $binder -PathType Leaf)) { throw "Campaign observation binder is missing." }
+  $previousErrorAction = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $output = & $node $binder bind $RequestPath $LaunchPath 2>&1
+    $exitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorAction
+  }
+  if ($exitCode -ne 0) {
+    $message = (@($output) | ForEach-Object { "$_" }) -join "`n"
+    if ($message -match "packaged-observation-executable-mismatch") {
+      throw "packaged-observation-executable-mismatch"
+    }
+    throw "Campaign observation bind failed: $message"
+  }
+  return Invoke-C0BObservationRequest $RequestPath
+}
+
+Export-ModuleMember -Function @(
+  "Invoke-C0BObservationRequest",
+  "Invoke-C0BCampaignObservationRequest"
+)

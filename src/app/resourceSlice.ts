@@ -24,7 +24,19 @@ import {
   errorMessage,
 } from "./resourceStateHelpers";
 import { resourceTabUpdate } from "./resourceTabs";
+import { useAgentArtifactAdmissionStore } from "./agentArtifactAdmissionStore";
 import type { ResourceState, WorkbenchState } from "./store";
+
+export type ResourceOpenOrigin = "agent" | "editor";
+
+function admitAgentOpenedTab(
+  origin: ResourceOpenOrigin | undefined,
+  tabId: string | null,
+) {
+  if (origin === "agent" && tabId) {
+    useAgentArtifactAdmissionStore.getState().admit(tabId);
+  }
+}
 
 export interface ResourceSlice {
   directoryListings: Record<string, ResourceState<DirectoryListing>>;
@@ -35,8 +47,12 @@ export interface ResourceSlice {
   openDiff: (
     resource: ResourceRef,
     repository?: RepositoryRef,
+    origin?: ResourceOpenOrigin,
   ) => Promise<void>;
-  openFile: (resource: ResourceRef) => Promise<void>;
+  openFile: (
+    resource: ResourceRef,
+    origin?: ResourceOpenOrigin,
+  ) => Promise<void>;
   loadDirectory: (resource: ResourceRef, refresh?: boolean) => Promise<void>;
   toggleDirectory: (resource: ResourceRef) => void;
   selectDirectory: (resource: ResourceRef) => void;
@@ -61,7 +77,7 @@ export const createResourceSlice: StateCreator<
   requestGenerations: {},
   requestIntentSequence: 0,
 
-  openDiff: async (resource, repository) => {
+  openDiff: async (resource, repository, origin) => {
     const generation = get().projectGeneration;
     const projectId = get().project?.id;
     if (
@@ -94,12 +110,13 @@ export const createResourceSlice: StateCreator<
     if (tab?.kind !== "diff" || !sameResource(tab.resource, resource)) {
       return;
     }
+    admitAgentOpenedTab(origin, tab.id);
     set({ activeEditor: null });
     void get().loadDiff(resource, tab.repository ?? repository);
     void get().revealFile(resource);
   },
 
-  openFile: async (resource) => {
+  openFile: async (resource, origin) => {
     const generation = get().projectGeneration;
     const projectId = get().project?.id;
     if (
@@ -118,6 +135,7 @@ export const createResourceSlice: StateCreator<
     );
     if (existing) {
       await get().activateTab(existing.id);
+      admitAgentOpenedTab(origin, existing.id);
       return;
     }
     try {
@@ -139,6 +157,7 @@ export const createResourceSlice: StateCreator<
     if (tab?.kind !== "file" || !sameResource(tab.resource, resource)) {
       return;
     }
+    admitAgentOpenedTab(origin, tab.id);
     set({ activeEditor: null });
     await get().loadEditor(resource);
     void get().revealFile(resource);

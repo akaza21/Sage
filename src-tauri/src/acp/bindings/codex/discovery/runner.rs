@@ -1,5 +1,7 @@
 use std::time::{Duration, Instant};
 
+use serde_json::Value;
+
 use crate::acp::{
     process::ZeroProcessToken,
     transport::{Frame, FrameWriteOutcome, OutboundFrame},
@@ -8,6 +10,7 @@ use crate::acp::{
 use super::{CodexDiscoveryContent, CodexDiscoveryError, CodexDiscoveryProtocol, ProtocolProgress};
 
 const DISCOVERY_MODEL_PAGE_LIMIT: u32 = 4;
+const DISCOVERY_INTERLEAVED_NOTIFICATION_LIMIT: usize = 4;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CodexDiscoveryDeadline {
@@ -118,6 +121,18 @@ pub(crate) enum CodexDiscoveryRunError {
     Eof,
     #[error("Codex discovery transport failed")]
     Transport,
+    #[error("Codex discovery stdout framing failed")]
+    Framing,
+    #[error("Codex discovery stdout reader overflowed")]
+    Overflow,
+    #[error("Codex discovery stdout reader disconnected")]
+    ReaderDisconnected,
+    #[error("Codex discovery stdin write failed")]
+    Write,
+    #[error("Codex discovery process launch failed")]
+    Launch,
+    #[error("Codex discovery launch identity verification failed")]
+    LaunchIdentity,
     #[error("Codex discovery is unavailable on this platform")]
     Unavailable,
     #[error("Codex discovery binding is not admitted")]
@@ -240,10 +255,43 @@ fn read(
     deadline: CodexDiscoveryDeadline,
     timeout_ms: u64,
 ) -> Result<Frame, CodexDiscoveryRunError> {
-    let timeout = deadline.operation_remaining(Duration::from_millis(timeout_ms))?;
-    transport
-        .read_frame(timeout)?
-        .ok_or(CodexDiscoveryRunError::Eof)
+    for _ in 0..DISCOVERY_INTERLEAVED_NOTIFICATION_LIMIT {
+        let timeout = deadline.operation_remaining(Duration::from_millis(timeout_ms))?;
+        let frame = transport
+            .read_frame(timeout)?
+            .ok_or(CodexDiscoveryRunError::Eof)?;
+        if is_interleaved_account_notification(&frame) {
+            continue;
+        }
+        return Ok(frame);
+    }
+    Err(CodexDiscoveryRunError::Protocol)
+}
+
+fn is_interleaved_account_notification(frame: &Frame) -> bool {
+    let Ok(value) = serde_json::from_slice::<Value>(frame.as_bytes()) else {
+        return false;
+    };
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    let notification = (object.len() == 2 || object.len() == 3)
+        && matches!(
+            object.get("method").and_then(Value::as_str),
+            Some("account/updated" | "remoteControl/status/changed")
+        )
+        && object.get("params").is_some_and(Value::is_object)
+        && object
+            .get("emittedAtMs")
+            .is_none_or(|emitted_at| emitted_at.as_u64().is_some());
+    if notification {
+        tracing::info!(
+            json_rpc_method = ?object.get("method"),
+            json_rpc_params = ?object.get("params"),
+            "Codex discovery ignored an interleaved Codex notification"
+        );
+    }
+    notification
 }
 
 fn write(
@@ -252,12 +300,30 @@ fn write(
     deadline: CodexDiscoveryDeadline,
 ) -> Result<(), CodexDiscoveryRunError> {
     deadline.ensure_operation()?;
+    log_request(&frame);
     match transport.write(&frame) {
         FrameWriteOutcome::Complete => Ok(()),
         FrameWriteOutcome::ZeroByteFailure | FrameWriteOutcome::DeliveryUnknown { .. } => {
-            Err(CodexDiscoveryRunError::Transport)
+            Err(CodexDiscoveryRunError::Write)
         }
     }
+}
+
+fn log_request(frame: &OutboundFrame) {
+    let Ok(value) = serde_json::from_slice::<Value>(frame.payload()) else {
+        tracing::warn!("Codex discovery refused to log a non-JSON outbound frame");
+        return;
+    };
+    let Some(object) = value.as_object() else {
+        tracing::warn!("Codex discovery refused to log a non-object outbound frame");
+        return;
+    };
+    tracing::info!(
+        json_rpc_id = ?object.get("id"),
+        json_rpc_method = ?object.get("method"),
+        json_rpc_params = ?object.get("params"),
+        "Codex discovery request sent"
+    );
 }
 
 #[cfg(test)]

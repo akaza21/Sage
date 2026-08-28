@@ -509,12 +509,7 @@ fn rejects_detached_and_unfinished_history_workflows_before_commit() {
         detached_head
     );
 
-    for marker in [
-        "MERGE_HEAD",
-        "CHERRY_PICK_HEAD",
-        "REVERT_HEAD",
-        "REBASE_HEAD",
-    ] {
+    for marker in ["CHERRY_PICK_HEAD", "REVERT_HEAD", "REBASE_HEAD"] {
         let repository = TestRepository::new();
         let head = seed_then_stage(&repository);
         fs::write(
@@ -535,6 +530,112 @@ fn rejects_detached_and_unfinished_history_workflows_before_commit() {
             head
         );
     }
+
+    let duplicate = TestRepository::new();
+    let head = seed_then_stage(&duplicate);
+    fs::write(
+        duplicate.root.join(".git").join("MERGE_HEAD"),
+        format!("{head}\n"),
+    )
+    .unwrap();
+    let error = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(commit_staged(&duplicate.workspace(), "must fail"))
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("distinct"),
+        "MERGE_HEAD: {error}"
+    );
+    assert_eq!(
+        git_stdout(&duplicate.root, &["rev-parse", "HEAD"]).trim(),
+        head
+    );
+}
+
+#[test]
+fn completes_a_resolved_merge_as_a_two_parent_commit() {
+    let repository = TestRepository::new();
+    fs::write(repository.root.join("conflict.txt"), "base\n").unwrap();
+    git(&repository.root, &["add", "--", "conflict.txt"]);
+    git(&repository.root, &["commit", "-q", "-m", "base"]);
+    git(&repository.root, &["checkout", "-q", "-b", "other"]);
+    fs::write(repository.root.join("conflict.txt"), "theirs\n").unwrap();
+    git(&repository.root, &["commit", "-q", "-am", "theirs"]);
+    git(&repository.root, &["checkout", "-q", "-"]);
+    fs::write(repository.root.join("conflict.txt"), "ours\n").unwrap();
+    git(&repository.root, &["commit", "-q", "-am", "ours"]);
+    let merge = Command::new("git")
+        .arg("-C")
+        .arg(&repository.root)
+        .args(["merge", "other"])
+        .output()
+        .unwrap();
+    assert!(!merge.status.success());
+    let theirs = git_stdout(&repository.root, &["rev-parse", "MERGE_HEAD"])
+        .trim()
+        .to_owned();
+    let ours = git_stdout(&repository.root, &["rev-parse", "HEAD"])
+        .trim()
+        .to_owned();
+    git(
+        &repository.root,
+        &["checkout", "--ours", "--", "conflict.txt"],
+    );
+    git(&repository.root, &["add", "--", "conflict.txt"]);
+    assert!(git_stdout(&repository.root, &["ls-files", "--unmerged"]).is_empty());
+
+    tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(commit_staged(&repository.workspace(), "Merge other"))
+        .unwrap();
+
+    let parents = git_stdout(
+        &repository.root,
+        &["rev-list", "--parents", "-n", "1", "HEAD"],
+    );
+    let words: Vec<&str> = parents.split_whitespace().collect();
+    assert_eq!(words.len(), 3, "{parents}");
+    assert_eq!(words[1], ours);
+    assert_eq!(words[2], theirs);
+    assert_eq!(
+        git_stdout(&repository.root, &["show", "HEAD:conflict.txt"]),
+        "ours\n"
+    );
+    assert!(!git_path(&repository.root, "MERGE_HEAD").exists());
+    assert_eq!(
+        git_stdout(&repository.root, &["log", "-1", "--format=%s"]),
+        "Merge other\n"
+    );
+}
+
+#[test]
+fn rejects_a_merge_commit_while_unmerged_paths_remain() {
+    let repository = TestRepository::new();
+    fs::write(repository.root.join("conflict.txt"), "base\n").unwrap();
+    git(&repository.root, &["add", "--", "conflict.txt"]);
+    git(&repository.root, &["commit", "-q", "-m", "base"]);
+    git(&repository.root, &["checkout", "-q", "-b", "other"]);
+    fs::write(repository.root.join("conflict.txt"), "theirs\n").unwrap();
+    git(&repository.root, &["commit", "-q", "-am", "theirs"]);
+    git(&repository.root, &["checkout", "-q", "-"]);
+    fs::write(repository.root.join("conflict.txt"), "ours\n").unwrap();
+    git(&repository.root, &["commit", "-q", "-am", "ours"]);
+    let merge = Command::new("git")
+        .arg("-C")
+        .arg(&repository.root)
+        .args(["merge", "other"])
+        .output()
+        .unwrap();
+    assert!(!merge.status.success());
+    let head = git_stdout(&repository.root, &["rev-parse", "HEAD"]);
+
+    let error = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(commit_staged(&repository.workspace(), "must fail"))
+        .unwrap_err();
+    assert!(error.to_string().contains("conflicted"));
+    assert_eq!(git_stdout(&repository.root, &["rev-parse", "HEAD"]), head);
+    assert!(git_path(&repository.root, "MERGE_HEAD").exists());
 }
 
 #[test]
@@ -581,7 +682,7 @@ fn rejects_worktree_git_path_files_and_directories() {
     let workspace = Workspace::open("project-a", "root-a", &linked).unwrap();
     let head = git_stdout(&linked, &["rev-parse", "HEAD"]);
 
-    for marker in ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD"] {
+    for marker in ["CHERRY_PICK_HEAD", "REVERT_HEAD"] {
         let path = git_path(&linked, marker);
         fs::write(&path, &head).unwrap();
         let error = tokio::runtime::Runtime::new()
@@ -594,6 +695,17 @@ fn rejects_worktree_git_path_files_and_directories() {
         );
         fs::remove_file(path).unwrap();
     }
+    let merge_head = git_path(&linked, "MERGE_HEAD");
+    fs::write(&merge_head, &head).unwrap();
+    let merge_error = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(commit_staged(&workspace, "must fail"))
+        .unwrap_err();
+    assert!(
+        merge_error.to_string().contains("distinct"),
+        "MERGE_HEAD: {merge_error}"
+    );
+    fs::remove_file(merge_head).unwrap();
     for marker in ["rebase-merge", "rebase-apply"] {
         let path = git_path(&linked, marker);
         fs::create_dir(&path).unwrap();

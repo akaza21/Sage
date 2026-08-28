@@ -5,6 +5,7 @@ use crate::{
     },
     domain::{HarnessDefinition, HarnessTransport, ModelOption},
     error::{AppError, AppResult},
+    harness_discovery::{InstalledHarness, discover_installed_harnesses},
 };
 
 pub const SIMULATOR_ID: &str = "sage-simulator";
@@ -14,6 +15,7 @@ pub const SIMULATOR_DEEP_MODEL_ID: &str = "sim-deep";
 #[derive(Debug)]
 pub struct HarnessCatalog {
     codex: CodexBindingRegistration,
+    discovered: Vec<InstalledHarness>,
     #[cfg(test)]
     presence_override: Option<CodexHostPresence>,
     #[cfg(all(windows, feature = "acp-fixture"))]
@@ -30,6 +32,7 @@ impl HarnessCatalog {
     pub(crate) fn with_codex_registration(codex: CodexBindingRegistration) -> Self {
         Self {
             codex,
+            discovered: discover_installed_harnesses(),
             #[cfg(test)]
             presence_override: None,
             #[cfg(all(windows, feature = "acp-fixture"))]
@@ -44,6 +47,7 @@ impl HarnessCatalog {
     ) -> Self {
         Self {
             codex,
+            discovered: Vec::new(),
             presence_override: Some(presence),
             #[cfg(all(windows, feature = "acp-fixture"))]
             characterization_available: false,
@@ -72,6 +76,7 @@ impl HarnessCatalog {
     ) -> Self {
         Self {
             codex,
+            discovered: discover_installed_harnesses(),
             #[cfg(test)]
             presence_override: None,
             characterization_available: true,
@@ -89,11 +94,25 @@ impl HarnessCatalog {
     fn codex_install_state(&self) -> &'static str {
         if self.codex.is_available() {
             "available"
-        } else if self.observed_presence().is_present() {
+        } else if self.discovered("codex").is_some() || self.observed_presence().is_present() {
             "unavailable"
         } else {
             "notInstalled"
         }
+    }
+
+    fn install_state(&self, harness_id: &str) -> &'static str {
+        if self.discovered(harness_id).is_some() {
+            "unavailable"
+        } else {
+            "notInstalled"
+        }
+    }
+
+    fn discovered(&self, harness_id: &str) -> Option<&InstalledHarness> {
+        self.discovered
+            .iter()
+            .find(|candidate| candidate.id == harness_id)
     }
 
     pub fn definitions(&self) -> Vec<HarnessDefinition> {
@@ -101,7 +120,7 @@ impl HarnessCatalog {
             definition(
                 "codex",
                 "Codex",
-                "Curated ACP adapter, installed only when requested.",
+                "Launches the discovered local CLI through curated ACP integration.",
                 self.codex_install_state(),
                 "builtIn",
                 CuratedProtocol::account_models("codex-app-server"),
@@ -109,24 +128,24 @@ impl HarnessCatalog {
             definition(
                 "pi",
                 "Pi",
-                "Curated ACP adapter, installed only when requested.",
-                "notInstalled",
+                "Local CLI discovery; launch integration remains pending.",
+                self.install_state("pi"),
                 "builtIn",
                 CuratedProtocol::acp(None),
             ),
             definition(
                 "claude-code",
                 "Claude Code",
-                "Curated ACP adapter, installed only when requested.",
-                "notInstalled",
+                "Local CLI discovery; launch integration remains pending.",
+                self.install_state("claude-code"),
                 "builtIn",
                 CuratedProtocol::acp(None),
             ),
             definition(
                 "oh-my-pi",
                 "Oh My Pi",
-                "Curated native ACP binding, admitted last.",
-                "notInstalled",
+                "Local CLI discovery; launch integration remains pending.",
+                self.install_state("oh-my-pi"),
                 "builtIn",
                 CuratedProtocol::acp(None),
             ),
@@ -153,7 +172,21 @@ impl HarnessCatalog {
                     CuratedProtocol::acp(Some(crate::acp::service::CHARACTERIZATION_BINDING_ID)),
                 ),
             );
-            return definitions;
+            return self.annotate_discovery(definitions);
+        }
+        self.annotate_discovery(definitions)
+    }
+
+    fn annotate_discovery(
+        &self,
+        mut definitions: Vec<HarnessDefinition>,
+    ) -> Vec<HarnessDefinition> {
+        for definition in &mut definitions {
+            if let Some(discovered) = self.discovered(&definition.id) {
+                definition.executable_path =
+                    Some(discovered.executable.to_string_lossy().into_owned());
+                definition.version = Some(discovered.version.clone());
+            }
         }
         definitions
     }
@@ -259,6 +292,8 @@ fn definition(
         transport: protocol.transport,
         binding_id: protocol.binding_id.map(str::to_owned),
         account_model_discovery: protocol.account_model_discovery,
+        executable_path: None,
+        version: None,
     };
     definition
         .validate_transport_contract()

@@ -6,11 +6,12 @@ mod adapter_store_journal;
 mod bounded_thread;
 mod coordinator;
 pub(crate) mod file_ops;
+pub(crate) mod host_browse;
 mod journal;
 mod journal_support;
+pub(crate) mod later_permission;
 mod live_capacity;
 mod live_engine;
-pub(crate) mod later_permission;
 mod mailbox;
 mod normalizer;
 mod notifier;
@@ -80,8 +81,8 @@ pub(crate) use process_driver::{
     PrepareDriverTurnFailure, PreparedActivationTurn, PreparedDriverTurn, PreparedProcessWrite,
     PreparedWriteError, PreparedWriteFailure, ProcessAdapterDriver, ProcessExitWatcher,
     ProcessLivePort, ProcessTreeControl, PromptIntent, ReaderTerminal, RebindFailure,
-    RecoveryActivationDriverParts, RetainedActivationDriverConstruction, StdinTransport,
-    SystemDriverClock, TeardownCause, TreeLeaseOwner, ZeroProcessHandoff,
+    RecoveryActivationDriverParts, RetainedActivationDriverConstruction, RunnerStartSubstep,
+    StdinTransport, SystemDriverClock, TeardownCause, TreeLeaseOwner, ZeroProcessHandoff,
 };
 #[allow(unused_imports)]
 pub(crate) use projection_publisher::{

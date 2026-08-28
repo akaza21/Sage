@@ -90,6 +90,18 @@ function writeEnvelope(surface: HTMLElement, page: AcpChatPage) {
   }
 }
 
+export const RENDERER_RECREATION_FOCUS_OUTCOMES = [
+  "exact-sage-id",
+  "activity-summary-fallback",
+  "no-restoration-when-no-valid-envelope",
+] as const;
+
+export type RendererRecreationFocusOutcome =
+  (typeof RENDERER_RECREATION_FOCUS_OUTCOMES)[number];
+
+let pagehideListenerCount = 0;
+let lastFocusOutcome: RendererRecreationFocusOutcome | null = null;
+
 function matchingElement(
   root: HTMLElement,
   attribute: "sageId" | "sageActivityId",
@@ -100,6 +112,18 @@ function matchingElement(
   return [...root.querySelectorAll<HTMLElement>(selector)].find(
     (element) => element.dataset[attribute] === value,
   );
+}
+
+export function rendererRecreationPagehideListenerCount(): number {
+  return pagehideListenerCount;
+}
+
+export function lastRendererRecreationFocusOutcome(): RendererRecreationFocusOutcome | null {
+  return lastFocusOutcome;
+}
+
+export function resetRendererRecreationFocusEvidence(): void {
+  lastFocusOutcome = null;
 }
 
 export function useRendererRecreationFocus(
@@ -114,22 +138,34 @@ export function useRendererRecreationFocus(
     pageRef.current = page;
   }, [page]);
 
+  const listenForPagehide = page !== null;
   useEffect(() => {
+    if (!listenForPagehide) return;
     function preserveFocus() {
       const surface = surfaceRef.current;
       const currentPage = pageRef.current;
       if (surface && currentPage) writeEnvelope(surface, currentPage);
     }
     window.addEventListener("pagehide", preserveFocus);
-    return () => window.removeEventListener("pagehide", preserveFocus);
-  }, [surfaceRef]);
+    pagehideListenerCount += 1;
+    return () => {
+      window.removeEventListener("pagehide", preserveFocus);
+      pagehideListenerCount -= 1;
+    };
+  }, [listenForPagehide, surfaceRef]);
 
   useEffect(() => {
-    if (!pending || consumedRef.current || !page || !surfaceRef.current) return;
+    if (consumedRef.current || !page || !surfaceRef.current) return;
+    if (!pending) {
+      lastFocusOutcome = "no-restoration-when-no-valid-envelope";
+      consumedRef.current = true;
+      return;
+    }
     if (
       pending.projectId !== page.projectId ||
       pending.chatId !== page.chatId
     ) {
+      lastFocusOutcome = "no-restoration-when-no-valid-envelope";
       consumedRef.current = true;
       return;
     }
@@ -138,6 +174,7 @@ export function useRendererRecreationFocus(
       pending.projectionRevision,
     );
     if (revision === null) {
+      lastFocusOutcome = "no-restoration-when-no-valid-envelope";
       consumedRef.current = true;
       return;
     }
@@ -148,7 +185,10 @@ export function useRendererRecreationFocus(
     const target = matchingElement(surface, "sageId", pending.sageId);
     if (target && !target.closest("details:not([open])")) {
       target.focus();
-      if (document.activeElement === target) return;
+      if (document.activeElement === target) {
+        lastFocusOutcome = "exact-sage-id";
+        return;
+      }
     }
     const activity = matchingElement(
       surface,
@@ -160,5 +200,9 @@ export function useRendererRecreationFocus(
         element instanceof HTMLElement && element.tagName === "SUMMARY",
     );
     summary?.focus();
+    lastFocusOutcome =
+      summary && document.activeElement === summary
+        ? "activity-summary-fallback"
+        : "no-restoration-when-no-valid-envelope";
   }, [page, pending, surfaceRef]);
 }

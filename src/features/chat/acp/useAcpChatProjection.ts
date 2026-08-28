@@ -1,6 +1,10 @@
 import { useEffect } from "react";
+import { useStore } from "zustand";
 
-import { useAcpProjectionStore } from "../../../app/acpProjectionStore";
+import {
+  acpProjectionStoreFor,
+  releaseAcpProjectionStore,
+} from "../../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../../app/store";
 import type {
   ProjectGeneration,
@@ -9,11 +13,17 @@ import type {
 } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";
 
-export function useAcpRetentionIncomplete() {
-  return useAcpProjectionStore((state) => state.retentionIncomplete);
+export function useAcpRetentionIncomplete(boundChatId?: string | null) {
+  return useStore(
+    acpProjectionStoreFor(boundChatId),
+    (state) => state.retentionIncomplete,
+  );
 }
 
-export function useAcpChatProjection(enabled = true) {
+export function useAcpChatProjection(
+  enabled = true,
+  boundChatId?: string | null,
+) {
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   const projectGeneration = useWorkbenchStore(
     (state) => state.projectGeneration,
@@ -29,30 +39,32 @@ export function useAcpChatProjection(enabled = true) {
     (state) =>
       state.tabs.find((tab) => tab.id === state.activeTabId)?.kind ?? null,
   );
-  const page = useAcpProjectionStore((state) => state.page);
-  const projectionScope = useAcpProjectionStore((state) => state.scope);
-  const activateScope = useAcpProjectionStore((state) => state.activateScope);
-  const beginPageLoad = useAcpProjectionStore((state) => state.beginPageLoad);
-  const completePageLoad = useAcpProjectionStore(
-    (state) => state.completePageLoad,
-  );
-  const failPageLoad = useAcpProjectionStore((state) => state.failPageLoad);
-  const clear = useAcpProjectionStore((state) => state.clear);
-  const enqueueProjectionChange = useAcpProjectionStore(
+  const resolvedChatId =
+    boundChatId ?? (activeTabKind === "chat" ? activeTabId : null);
+  const store = acpProjectionStoreFor(boundChatId);
+  const page = useStore(store, (state) => state.page);
+  const projectionScope = useStore(store, (state) => state.scope);
+  const activateScope = useStore(store, (state) => state.activateScope);
+  const beginPageLoad = useStore(store, (state) => state.beginPageLoad);
+  const completePageLoad = useStore(store, (state) => state.completePageLoad);
+  const failPageLoad = useStore(store, (state) => state.failPageLoad);
+  const clear = useStore(store, (state) => state.clear);
+  const enqueueProjectionChange = useStore(
+    store,
     (state) => state.enqueueProjectionChange,
   );
-  const takeProjectionChange = useAcpProjectionStore(
+  const takeProjectionChange = useStore(
+    store,
     (state) => state.takeProjectionChange,
   );
 
   useEffect(() => {
-    if (
-      !enabled ||
-      !projectId ||
-      !activeTabId ||
-      activeTabKind !== "chat" ||
-      projectTransitioning
-    ) {
+    if (!boundChatId) return;
+    return () => releaseAcpProjectionStore(boundChatId);
+  }, [boundChatId]);
+
+  useEffect(() => {
+    if (!enabled || !projectId || !resolvedChatId || projectTransitioning) {
       clear();
       return;
     }
@@ -60,7 +72,7 @@ export function useAcpChatProjection(enabled = true) {
     const scope = {
       projectId: projectId as SageProjectId,
       projectGeneration: String(projectGeneration) as ProjectGeneration,
-      chatId: activeTabId as SageChatId,
+      chatId: resolvedChatId as SageChatId,
     };
     activateScope(scope);
     let disposed = false;
@@ -120,8 +132,7 @@ export function useAcpChatProjection(enabled = true) {
     };
   }, [
     activateScope,
-    activeTabId,
-    activeTabKind,
+    resolvedChatId,
     beginPageLoad,
     clear,
     completePageLoad,
@@ -139,11 +150,10 @@ export function useAcpChatProjection(enabled = true) {
     !enabled ||
     projectTransitioning ||
     !projectId ||
-    !activeTabId ||
-    activeTabKind !== "chat" ||
+    !resolvedChatId ||
     projectionScope?.projectId !== projectId ||
     projectionScope.projectGeneration !== String(projectGeneration) ||
-    projectionScope.chatId !== activeTabId
+    projectionScope.chatId !== resolvedChatId
   ) {
     return null;
   }

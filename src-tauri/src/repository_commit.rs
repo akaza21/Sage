@@ -1,4 +1,4 @@
-use std::{path::PathBuf, time::Duration};
+use std::time::Duration;
 
 use crate::{
     error::{AppError, AppResult},
@@ -8,7 +8,6 @@ use crate::{
 
 pub(crate) const MAX_GIT_COMMIT_MESSAGE_BYTES: usize = 8 * 1024;
 const MAX_GIT_IDENTITY_BYTES: usize = 512;
-const MAX_GIT_ADMIN_PATH_BYTES: usize = 32 * 1024;
 const MAX_GIT_CONNECTIVITY_BYTES: usize = 4 * 1024 * 1024;
 const MAX_GIT_OID_BYTES: usize = 128;
 const MAX_GIT_REF_BYTES: usize = 4 * 1024;
@@ -69,7 +68,14 @@ pub(crate) async fn commit_staged_with_policy(
             "conflicted changes require the later conflict workflow".into(),
         ));
     }
-    let prepared = prepare_index(workspace, head_ref, pre_ref_policy.clone()).await?;
+    let merge_parent = crate::repository_merge_commit::admit_merge_parent_oid(workspace).await?;
+    let prepared = prepare_index(
+        workspace,
+        head_ref,
+        pre_ref_policy.clone(),
+        merge_parent.is_some(),
+    )
+    .await?;
 
     let name = local_identity_value(workspace, "user.name").await?;
     let email = local_identity_value(workspace, "user.email").await?;
@@ -89,6 +95,9 @@ pub(crate) async fn commit_staged_with_policy(
     ];
     if let Some(parent_oid) = prepared.parent_oid.as_deref() {
         commit_arguments.extend(["-p", parent_oid]);
+    }
+    if let Some(merge_oid) = merge_parent.as_deref() {
+        commit_arguments.extend(["-p", merge_oid]);
     }
     commit_arguments.extend(["-m", message.as_str()]);
     let commit = crate::repository_workspace::run_git_with_policy(
@@ -117,7 +126,11 @@ pub(crate) async fn commit_staged_with_policy(
         process_policy,
     )
     .await?;
-    repository::ensure_success(&output)
+    repository::ensure_success(&output)?;
+    if merge_parent.is_some() {
+        crate::repository_merge_commit::clear_merge_state(workspace).await?;
+    }
+    Ok(())
 }
 
 async fn symbolic_head_ref(workspace: &Workspace) -> AppResult<String> {
@@ -156,6 +169,7 @@ async fn prepare_index(
     workspace: &Workspace,
     head_ref: String,
     pre_ref_policy: repository::GitProcessPolicy,
+    allow_empty_tree: bool,
 ) -> AppResult<PreparedCommit> {
     let tree = crate::repository_workspace::run_git_with_policy(
         workspace,
@@ -215,7 +229,7 @@ async fn prepare_index(
         )
         .await?;
         repository::ensure_success(&parent_tree)?;
-        if bounded_oid(&parent_tree, "parent tree")? == tree_oid {
+        if !allow_empty_tree && bounded_oid(&parent_tree, "parent tree")? == tree_oid {
             return Err(AppError::InvalidRequest(
                 "Git commit requires at least one staged change".into(),
             ));
@@ -308,48 +322,17 @@ async fn local_identity_value(workspace: &Workspace, key: &str) -> AppResult<Str
 
 async fn reject_unfinished_history(workspace: &Workspace) -> AppResult<()> {
     for marker in [
-        "MERGE_HEAD",
         "CHERRY_PICK_HEAD",
         "REVERT_HEAD",
         "REBASE_HEAD",
         "rebase-merge",
         "rebase-apply",
     ] {
-        let output = crate::repository_workspace::run_git(
-            workspace,
-            &["rev-parse", "--path-format=absolute", "--git-path", marker],
-            MAX_GIT_ADMIN_PATH_BYTES + 2,
-        )
-        .await?;
-        repository::ensure_success(&output)?;
-        if output.stdout_truncated {
-            return Err(AppError::ResourceLimit(
-                "Git administrative path exceeds its bounded contract".into(),
+        if crate::repository_conflict::admin_marker_exists(workspace, marker).await? {
+            return Err(AppError::InvalidRequest(
+                "unfinished merge, cherry-pick, revert, or rebase requires the later Git workflow"
+                    .into(),
             ));
-        }
-        let path = std::str::from_utf8(&output.stdout)
-            .map_err(|_| AppError::Git("Git administrative path is not UTF-8".into()))?
-            .trim_end_matches(['\r', '\n']);
-        if path.is_empty() || path.contains(['\r', '\n', '\0']) {
-            return Err(AppError::Git(
-                "Git returned an invalid administrative path".into(),
-            ));
-        }
-        let path = PathBuf::from(path);
-        if !path.is_absolute() {
-            return Err(AppError::Git(
-                "Git returned a non-absolute administrative path".into(),
-            ));
-        }
-        match std::fs::symlink_metadata(path) {
-            Ok(_) => {
-                return Err(AppError::InvalidRequest(
-                    "unfinished merge, cherry-pick, revert, or rebase requires the later Git workflow"
-                        .into(),
-                ));
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error.into()),
         }
     }
     Ok(())

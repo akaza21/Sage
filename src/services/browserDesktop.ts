@@ -2,11 +2,11 @@ import type {
   ArchivedChatSummary,
   ChatLifecycleRequest,
   ChatMessage,
+  MoveChatRequest,
+  PinChatRequest,
   CreateProjectFileRequest,
   CreateProjectFolderRequest,
   FileDiff,
-  GitFileMutationRequest,
-  GitRepositoryCommitRequest,
   ProjectLayoutRequest,
   RenameChatRequest,
   ProjectSwitchRequest,
@@ -31,12 +31,19 @@ import {
   renamedBrowserChatLayout,
   type BrowserPromptRequest,
 } from "./browserChat";
+import {
+  ensureBrowserLocalProject,
+  moveBrowserChat,
+  pinBrowserChat,
+  switchBrowserProject,
+} from "./browserLocalChat";
 import { browserEditor } from "./browserEditor";
 import {
   createBrowserProjectFile,
   createBrowserProjectFolder,
   resetBrowserFileCreate,
 } from "./browserFileCreate";
+import { browserGitUnavailable } from "./browserGitUnavailable";
 import { assertBrowserProjectLayout } from "./browserLayout";
 import {
   renameBrowserProjectFile,
@@ -50,14 +57,11 @@ import {
 } from "./browserWorkspaceFixture";
 
 export { appendBrowserSimulatorTurn } from "./browserChat";
+export { BrowserGitMutationUnavailableError } from "./browserGitUnavailable";
 export {
   BrowserFileRenameUnavailableError,
   BrowserResourceTrashUnavailableError,
 } from "./browserResourceMutations";
-
-export class BrowserGitMutationUnavailableError extends Error {
-  override name = "BrowserGitMutationUnavailableError";
-}
 
 const initialTabs = structuredClone(snapshot.tabs);
 const initialMessages = structuredClone(snapshot.messages);
@@ -138,22 +142,7 @@ export const browserDesktop = {
   async getFileDiff(resource: ResourceRef): Promise<FileDiff> {
     return { resource, binary: false, truncated: false, hunks: [] };
   },
-  async mutateGitFile(
-    _request: GitFileMutationRequest,
-    _expectedTransitionEpoch: number,
-  ): Promise<never> {
-    throw new BrowserGitMutationUnavailableError(
-      "Git stage, unstage, and discard require the native Sage desktop",
-    );
-  },
-  async commitGitRepository(
-    _request: GitRepositoryCommitRequest,
-    _expectedTransitionEpoch: number,
-  ): Promise<never> {
-    throw new BrowserGitMutationUnavailableError(
-      "Git commits require the native Sage desktop",
-    );
-  },
+  ...browserGitUnavailable,
   async persistProjectLayout(
     request: ProjectLayoutRequest,
     expectedTransitionEpoch: number,
@@ -173,6 +162,7 @@ export const browserDesktop = {
   async createChat(
     currentLayout: ProjectLayoutRequest,
     expectedTransitionEpoch: number,
+    projectId?: string,
   ): Promise<ProjectTransitionResult> {
     assertBrowserChatCreation(
       currentLayout,
@@ -180,6 +170,7 @@ export const browserDesktop = {
       snapshot.transitionEpoch,
       snapshot.project?.id,
       durableChatIds.size,
+      projectId,
     );
     await this.persistProjectLayout(currentLayout, expectedTransitionEpoch);
     const chatCount = durableChatIds.size;
@@ -315,27 +306,44 @@ export const browserDesktop = {
       recoveryError: null,
     };
   },
+  async ensureLocalProject(expectedTransitionEpoch: number) {
+    return ensureBrowserLocalProject({
+      snapshot,
+      expectedTransitionEpoch,
+      durableChatIds,
+      chatTitles,
+      messagesByChat,
+      activeMessages,
+    });
+  },
+  async pinChat(request: PinChatRequest, expectedTransitionEpoch: number) {
+    return pinBrowserChat({
+      snapshot,
+      request,
+      expectedTransitionEpoch,
+      activeMessages,
+    });
+  },
+  async moveChat(request: MoveChatRequest, expectedTransitionEpoch: number) {
+    return moveBrowserChat({
+      snapshot,
+      request,
+      expectedTransitionEpoch,
+      activeMessages,
+    });
+  },
   async switchProject(
     request: ProjectSwitchRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
-    if (expectedTransitionEpoch !== snapshot.transitionEpoch) {
-      throw new Error("project changed before the requested transition");
-    }
-    await this.persistProjectLayout(
-      request.currentLayout,
+    return switchBrowserProject({
+      snapshot,
+      request,
       expectedTransitionEpoch,
-    );
-    if (request.targetProjectId !== snapshot.project?.id) {
-      throw new Error("Browser fixture has one project.");
-    }
-    snapshot.transitionEpoch += 1;
-    return {
-      committed: true,
-      transitionEpoch: snapshot.transitionEpoch,
-      snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
-      recoveryError: null,
-    };
+      persist: (currentLayout, epoch) =>
+        this.persistProjectLayout(currentLayout, epoch),
+      activeMessages,
+    });
   },
   async listHarnessModels(harnessId: string) {
     return harnessId === "sage-simulator"

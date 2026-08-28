@@ -221,7 +221,8 @@ impl HarnessAdapter for CodexRuntime {
         if self.poisoned {
             return Err(AdapterRuntimeError::Operation);
         }
-        match command {
+        let method = command_method(&command);
+        let result = match command {
             AdapterCommand::Initialize => self.request(CodexAdapter::initialize),
             AdapterCommand::ModelPage { cursor } => {
                 self.request(|adapter, id| adapter.models(id, cursor.as_ref()))
@@ -288,7 +289,15 @@ impl HarnessAdapter for CodexRuntime {
                     _ => Err(AdapterRuntimeError::Operation),
                 }
             }
+        };
+        if let Ok(egress) = result.as_ref() {
+            tracing::info!(
+                jsonrpc_method = method,
+                jsonrpc_request_id = ?egress.token().request_id(),
+                "Codex ACP outbound request queued"
+            );
         }
+        result
     }
 
     fn ingest(
@@ -388,6 +397,20 @@ impl HarnessAdapter for CodexRuntime {
         self.inner
             .advance_permission(request_id, next)
             .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)
+    }
+}
+
+fn command_method(command: &AdapterCommand) -> &'static str {
+    match command {
+        AdapterCommand::Initialize => "initialize",
+        AdapterCommand::ModelPage { .. } => "model/list",
+        AdapterCommand::NewSession { .. } => "thread/start",
+        AdapterCommand::ResumeSession { .. } => "thread/resume",
+        AdapterCommand::LoadSession { .. } => "thread/read",
+        AdapterCommand::CloseSession => "thread/archive",
+        AdapterCommand::Prompt { .. } => "turn/start",
+        AdapterCommand::Cancel => "turn/interrupt",
+        AdapterCommand::ResolvePermission { .. } => "requestPermission",
     }
 }
 

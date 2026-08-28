@@ -91,7 +91,7 @@ fn shutdown_failure_reinserts_exact_recovery_and_retry_releases_capacity() {
 }
 
 #[test]
-fn observer_failure_shutdown_recovers_durable_runtime_then_releases_slot() {
+fn cancel_after_runner_failure_recovers_durable_runtime_then_releases_slot() {
     tauri::async_runtime::block_on(async {
         let (service, owner) = ready_runtime_fixture("observer").await;
 
@@ -118,20 +118,15 @@ fn observer_failure_shutdown_recovers_durable_runtime_then_releases_slot() {
         ));
         assert!(service.scheduler.active().is_some());
         assert!(service.codex_recovery.lock().unwrap().is_some());
-        service
-            .codex_runtime_release_fail_once
-            .store(true, std::sync::atomic::Ordering::Release);
-        assert!(service.shutdown_blocking().is_err());
-        assert!(service.codex_recovery.lock().unwrap().is_some());
         assert!(matches!(
-            service.runtime.for_owner(&owner),
-            Err(super::super::super::runtime_slot::RuntimeSlotError::Recovery)
+            service.cancel_codex_turn(crate::acp::runtime::HostCancelIntent {
+                owner: owner.clone(),
+                turn_id: crate::acp::contract::SageTurnId::parse("turn-runner-recovery").unwrap(),
+                client_intent_id: ClientIntentId::new(),
+                now_millis: crate::persistence::now_millis(),
+            }),
+            Err(CodexSessionError::Recovery)
         ));
-        assert!(
-            service
-                .shutdown_codex_recovery(Instant::now() + Duration::from_secs(3))
-                .unwrap()
-        );
         assert!(service.scheduler.active().is_none());
         assert!(matches!(
             service.runtime.for_owner(&owner),
@@ -148,6 +143,77 @@ fn observer_failure_shutdown_recovers_durable_runtime_then_releases_slot() {
             .unwrap();
         assert_eq!(session.state, crate::acp::lifecycle::SessionState::Failed);
         assert_eq!(session.residency, crate::acp::lifecycle::Residency::Cold);
+        service.shutdown_blocking().unwrap();
+    });
+}
+
+#[test]
+fn zero_process_runner_failure_is_reclaimed_before_another_live_admission() {
+    tauri::async_runtime::block_on(async {
+        let (service, owner) = ready_runtime_fixture("zero-process-reclaim").await;
+        let running = crate::acp::process::launch_fixture_for_test(owner.runtime_epoch.get());
+        let (_, _, control) = running.into_parts();
+        control
+            .terminate_zero(crate::acp::process::TreeExit::ProtocolFailure)
+            .expect("fixture tree reaches zero");
+        let runner = LiveRunnerHandle::new(Arc::new(DriverMailbox::new().unwrap()), control);
+        let host =
+            Arc::new(crate::acp::runtime::RuntimeHost::start(TestRuntime::default()).unwrap());
+        host.activate(owner.clone()).unwrap();
+        service.install_runtime_for_test(owner.clone(), host);
+        let prepared = service.codex_gate.prepare_live().unwrap();
+        let active = service.codex_gate.begin(&prepared).unwrap();
+        super::super::observe_runner_failure_for_test(
+            &service.runtime,
+            &owner,
+            &runner,
+            &service.codex_recovery,
+            Arc::new(std::sync::Mutex::new(Some(active))),
+        );
+
+        assert!(
+            service
+                .reclaim_zero_process_runner_capacity(Instant::now() + Duration::from_secs(1))
+                .unwrap()
+        );
+        assert!(service.codex_recovery.lock().unwrap().is_none());
+        assert!(service.scheduler.active().is_none());
+        assert!(matches!(
+            service.runtime.for_owner(&owner),
+            Err(super::super::super::runtime_slot::RuntimeSlotError::Foreign)
+        ));
+        service.shutdown_blocking().unwrap();
+    });
+}
+
+#[test]
+fn live_process_runner_failure_remains_capacity_blocked() {
+    tauri::async_runtime::block_on(async {
+        let (service, owner) = ready_runtime_fixture("live-process-retain").await;
+        let running = crate::acp::process::launch_fixture_for_test(owner.runtime_epoch.get());
+        let (_, _, control) = running.into_parts();
+        let runner = LiveRunnerHandle::new(Arc::new(DriverMailbox::new().unwrap()), control);
+        let host =
+            Arc::new(crate::acp::runtime::RuntimeHost::start(TestRuntime::default()).unwrap());
+        host.activate(owner.clone()).unwrap();
+        service.install_runtime_for_test(owner.clone(), host);
+        let prepared = service.codex_gate.prepare_live().unwrap();
+        let active = service.codex_gate.begin(&prepared).unwrap();
+        super::super::observe_runner_failure_for_test(
+            &service.runtime,
+            &owner,
+            &runner,
+            &service.codex_recovery,
+            Arc::new(std::sync::Mutex::new(Some(active))),
+        );
+
+        assert!(matches!(
+            service
+                .reclaim_zero_process_runner_capacity(Instant::now() + Duration::from_millis(50)),
+            Err(crate::acp::runtime::HostError::RecoveryRequired)
+        ));
+        assert!(service.codex_recovery.lock().unwrap().is_some());
+        assert!(service.scheduler.active().is_some());
         service.shutdown_blocking().unwrap();
     });
 }

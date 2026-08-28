@@ -45,8 +45,8 @@ impl AcpService {
                 *retained = Some(PendingCodexRecovery::LiveHost(recovery));
             }
             Some(
-                recovery @ (PendingCodexRecovery::Runner { .. }
-                | PendingCodexRecovery::LiveHost(_)),
+                recovery
+                @ (PendingCodexRecovery::Runner { .. } | PendingCodexRecovery::LiveHost(_)),
             ) => {
                 drop(recovery);
             }

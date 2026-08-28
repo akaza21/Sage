@@ -21,6 +21,95 @@ pub(super) fn command_line(executable: &Path, args: &[OsString]) -> Result<Vec<u
     Ok(result)
 }
 
+pub(super) fn batch_command_line(
+    launcher: &Path,
+    args: &[OsString],
+) -> Result<String, LaunchError> {
+    let mut command = String::new();
+    append_batch_quoted(&mut command, &cmd_path(launcher)?)?;
+    for argument in args {
+        command.push(' ');
+        append_batch_quoted(&mut command, argument)?;
+    }
+    if command.encode_utf16().count() >= MAX_WINDOWS_WIDE {
+        return Err(LaunchError::ArgumentLimit);
+    }
+    Ok(command)
+}
+
+pub(super) fn cmd_batch_launcher_command_line(
+    cmd: &Path,
+    launcher: &Path,
+    args: &[OsString],
+) -> Result<Vec<u16>, LaunchError> {
+    let command = batch_command_line(launcher, args)?;
+    let mut result = Vec::new();
+    append_quoted(&mut result, cmd.as_os_str());
+    result.extend(" /d /s /c \"".encode_utf16());
+    result.extend(command.encode_utf16());
+    result.push(b'"' as u16);
+    result.push(0);
+    if result.len() > MAX_WINDOWS_WIDE {
+        return Err(LaunchError::ArgumentLimit);
+    }
+    Ok(result)
+}
+
+fn cmd_path(path: &Path) -> Result<OsString, LaunchError> {
+    let path = path.to_str().ok_or(LaunchError::InvalidArgument)?;
+    let path = path
+        .strip_prefix(r"\\?\UNC\")
+        .map(|path| format!(r"\\{path}"))
+        .or_else(|| path.strip_prefix(r"\\?\").map(str::to_owned))
+        .unwrap_or_else(|| path.to_owned());
+    if path.starts_with(r"\\.\") {
+        return Err(LaunchError::InvalidArgument);
+    }
+    Ok(OsString::from(path))
+}
+
+/// `cmd.exe` treats both ordinary and verbatim UNC working directories as
+/// unsupported and silently falls back to the Windows directory. A local
+/// verbatim path is safe once converted to its normal DOS spelling.
+pub(super) fn cmd_working_directory(path: &Path) -> Result<OsString, LaunchError> {
+    let path = path.to_str().ok_or(LaunchError::InvalidAbsolutePath)?;
+    if let Some(path) = path.strip_prefix(r"\\?\") {
+        if path.starts_with("UNC\\") {
+            return Err(LaunchError::InvalidAbsolutePath);
+        }
+        return local_dos_directory(path);
+    }
+    local_dos_directory(path)
+}
+
+fn local_dos_directory(path: &str) -> Result<OsString, LaunchError> {
+    let bytes = path.as_bytes();
+    if path.starts_with(r"\\")
+        || bytes.len() < 3
+        || !bytes[0].is_ascii_alphabetic()
+        || bytes[1] != b':'
+        || !matches!(bytes[2], b'\\' | b'/')
+    {
+        return Err(LaunchError::InvalidAbsolutePath);
+    }
+    Ok(OsString::from(path))
+}
+
+fn append_batch_quoted(target: &mut String, value: &OsStr) -> Result<(), LaunchError> {
+    let value = value.to_str().ok_or(LaunchError::InvalidArgument)?;
+    if value.is_empty()
+        || value.contains([
+            '\0', '\r', '\n', '"', '%', '!', '^', '&', '|', '<', '>', '(', ')',
+        ])
+    {
+        return Err(LaunchError::InvalidArgument);
+    }
+    target.push('"');
+    target.push_str(value);
+    target.push('"');
+    Ok(())
+}
+
 fn append_quoted(target: &mut Vec<u16>, value: &OsStr) {
     let units: Vec<u16> = value.encode_wide().collect();
     let quote = units.is_empty() || units.iter().any(|unit| matches!(*unit, 9 | 32 | 34));
@@ -104,5 +193,63 @@ mod tests {
             "A=1\0z=2\0\0"
         );
         assert_eq!(environment_block(&[]).unwrap(), [0, 0]);
+    }
+
+    #[test]
+    fn batch_command_quotes_the_observed_launcher_and_rejects_shell_metacharacters() {
+        assert_eq!(
+            batch_command_line(
+                Path::new(r"C:\Users\name\AppData\Roaming\npm\codex.cmd"),
+                &[OsString::from("app-server")]
+            )
+            .unwrap(),
+            r#""C:\Users\name\AppData\Roaming\npm\codex.cmd" "app-server""#
+        );
+        assert_eq!(
+            batch_command_line(Path::new(r"C:\bad&name\codex.cmd"), &[]).err(),
+            Some(LaunchError::InvalidArgument)
+        );
+    }
+
+    #[test]
+    fn cmd_batch_launcher_command_keeps_the_launcher_as_one_quoted_command() {
+        let command = cmd_batch_launcher_command_line(
+            Path::new(r"C:\Windows\System32\cmd.exe"),
+            Path::new(r"C:\Users\name\AppData\Roaming\npm\codex.cmd"),
+            &[OsString::from("app-server")],
+        )
+        .unwrap();
+        assert_eq!(
+            String::from_utf16(&command[..command.len() - 1]).unwrap(),
+            r##"C:\Windows\System32\cmd.exe /d /s /c ""C:\Users\name\AppData\Roaming\npm\codex.cmd" "app-server"""##
+        );
+    }
+
+    #[test]
+    fn batch_command_converts_verbatim_launcher_paths_for_cmd() {
+        assert_eq!(
+            batch_command_line(
+                Path::new(r"\\?\C:\Users\name\AppData\Roaming\npm\codex.cmd"),
+                &[]
+            )
+            .unwrap(),
+            r#""C:\Users\name\AppData\Roaming\npm\codex.cmd""#
+        );
+    }
+
+    #[test]
+    fn cmd_working_directory_converts_local_verbatim_paths_and_rejects_unc_paths() {
+        assert_eq!(
+            cmd_working_directory(Path::new(r"\\?\C:\Users\name\Sage")).unwrap(),
+            OsString::from(r"C:\Users\name\Sage")
+        );
+        assert_eq!(
+            cmd_working_directory(Path::new(r"\\?\UNC\server\share\Sage")),
+            Err(LaunchError::InvalidAbsolutePath)
+        );
+        assert_eq!(
+            cmd_working_directory(Path::new(r"\\server\share\Sage")),
+            Err(LaunchError::InvalidAbsolutePath)
+        );
     }
 }

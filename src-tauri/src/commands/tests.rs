@@ -1,16 +1,19 @@
 use std::{
     fs,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use uuid::Uuid;
 
 use super::{
     acp::{
-        activate_acp_session_inner, cancel_acp_turn_inner, close_acp_session_inner,
-        get_acp_chat_page_inner, get_codex_discovery_inner, get_codex_discovery_with_deadline,
-        send_acp_turn_inner, start_acp_session_inner,
+        activate_acp_session_inner, await_codex_discovery, cancel_acp_turn_inner,
+        close_acp_session_inner, get_acp_chat_page_inner, get_codex_discovery_inner,
+        get_codex_discovery_with_deadline, send_acp_turn_inner, start_acp_session_inner,
     },
     *,
 };
@@ -54,6 +57,31 @@ fn state_with_project() -> (AppState, String, String, std::path::PathBuf) {
         .active_tab_id
         .unwrap();
     (AppState::new(database), project.id, chat_id, root)
+}
+
+fn state_with_unavailable_codex_project() -> (AppState, String, String, std::path::PathBuf) {
+    let root = std::env::temp_dir().join(format!("sage-acp-command-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let database = Database::open(Path::new(":memory:")).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let chat_id = database
+        .bootstrap_snapshot()
+        .unwrap()
+        .active_tab_id
+        .unwrap();
+    let codex = crate::acp::bindings::codex::CodexBindingRegistration::unavailable_for_test();
+    let acp =
+        crate::acp::service::AcpService::new_with_codex_for_test(database.clone(), codex.clone())
+            .unwrap();
+    let state = AppState {
+        database,
+        acp,
+        harnesses: crate::harnesses::HarnessCatalog::with_codex_registration(codex),
+        editor_operations: crate::editor_coordination::EditorOperationCoordinator::default(),
+        project_transitions: tokio::sync::Mutex::new(0),
+        startup_recovery_notice: None,
+    };
+    (state, project.id, chat_id, root)
 }
 
 #[cfg(windows)]
@@ -402,7 +430,7 @@ async fn start_admitted_command_session(
 #[test]
 fn dark_codex_discovery_is_typed_and_does_not_mutate_sqlite() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let (state, project, chat, root) = state_with_project();
+        let (state, project, chat, root) = state_with_unavailable_codex_project();
         let project = SageProjectId::parse(project).unwrap();
         let before: (i64, i64, i64) = state
             .database
@@ -426,13 +454,16 @@ fn dark_codex_discovery_is_typed_and_does_not_mutate_sqlite() {
         )
         .await;
 
-        assert!(matches!(
-            result,
-            Err(AcpIpcError::Unavailable {
-                reason: AcpUnavailableReason::BindingUnavailable,
-                ..
-            })
-        ));
+        // A discovered executable is not an ACP binding. With no independently
+        // admitted binding, discovery must remain typed and fail closed.
+        let expected_reason = AcpUnavailableReason::BindingUnavailable;
+        assert!(
+            matches!(
+                result,
+                Err(AcpIpcError::Unavailable { reason, .. }) if reason == expected_reason
+            ),
+            "{result:?}"
+        );
         let after: (i64, i64, i64) = state
             .database
             .connection()
@@ -453,7 +484,7 @@ fn dark_codex_discovery_is_typed_and_does_not_mutate_sqlite() {
 #[test]
 fn codex_discovery_deadline_bounds_the_project_transition_wait() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let (state, project, _chat, root) = state_with_project();
+        let (state, project, _chat, root) = state_with_unavailable_codex_project();
         let project = SageProjectId::parse(project).unwrap();
         let held_transition = state.project_transitions.lock().await;
         let request = GetCodexDiscoveryRequest {
@@ -461,6 +492,8 @@ fn codex_discovery_deadline_bounds_the_project_transition_wait() {
             project_generation: ProjectGeneration::ZERO,
             binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
         };
+        // The test state deliberately has no independently admitted binding.
+        let expected_reason = AcpUnavailableReason::BindingUnavailable;
         let started = std::time::Instant::now();
 
         let result = get_codex_discovery_with_deadline(
@@ -484,13 +517,43 @@ fn codex_discovery_deadline_bounds_the_project_transition_wait() {
         drop(held_transition);
         assert!(matches!(
             get_codex_discovery_inner(&state, request).await,
-            Err(AcpIpcError::Unavailable {
-                reason: AcpUnavailableReason::BindingUnavailable,
-                ..
-            })
+            Err(AcpIpcError::Unavailable { reason, .. }) if reason == expected_reason
         ));
         drop(state);
         fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[test]
+fn codex_discovery_cleanup_deadline_requests_teardown_without_waiting_for_worker_exit() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let timed_out = Arc::new(AtomicBool::new(false));
+        let timeout_signal = Arc::clone(&timed_out);
+        let started = std::time::Instant::now();
+        let task = tauri::async_runtime::spawn_blocking(|| {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            Err(crate::acp::bindings::codex::CodexDiscoveryRunError::Timeout)
+        });
+
+        let result = await_codex_discovery(
+            task,
+            CodexDiscoveryDeadline::for_test(
+                std::time::Duration::from_millis(1),
+                std::time::Duration::from_millis(10),
+            ),
+            move || timeout_signal.store(true, Ordering::Release),
+        )
+        .await;
+
+        assert!(started.elapsed() < std::time::Duration::from_millis(75));
+        assert!(timed_out.load(Ordering::Acquire));
+        assert!(matches!(
+            result,
+            Err(AcpIpcError::Unavailable {
+                reason: AcpUnavailableReason::CapabilityUnavailable,
+                ..
+            })
+        ));
     });
 }
 
@@ -584,7 +647,7 @@ fn unavailable_binding_is_typed_and_never_mutates_durable_history() {
 #[test]
 fn unavailable_registration_rejects_the_codex_name_without_routing_by_name() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let (state, project, chat, root) = state_with_project();
+        let (state, project, chat, root) = state_with_unavailable_codex_project();
         let project = SageProjectId::parse(project).unwrap();
         let chat = SageChatId::parse(chat).unwrap();
         let page = state

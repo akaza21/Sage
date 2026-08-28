@@ -21,20 +21,36 @@ impl CodexRuntime {
         #[cfg(all(test, windows))]
         let entrypoint = binding.journey_test_entrypoint().unwrap_or(entrypoint);
         let environment = binding
-            .environment()
-            .entries()
+            .launch_environment()
             .iter()
             .map(|(key, value)| (OsString::from(key), OsString::from(value)))
             .collect();
         let binding_id = digest_identity(binding.binding_digest());
         let runtime_epoch = self.inner.runtime_epoch().get();
+        #[cfg(windows)]
+        let artifact = if is_batch_launcher(&entrypoint.path) {
+            ArtifactExpectation::windows_batch_launcher(
+                digest_identity(entrypoint.sha256),
+                entrypoint.path.clone(),
+                entrypoint.sha256,
+                entrypoint.byte_len,
+            )
+        } else {
+            ArtifactExpectation::new(
+                digest_identity(entrypoint.sha256),
+                entrypoint.path.clone(),
+                entrypoint.sha256,
+                entrypoint.byte_len,
+            )
+        };
+        #[cfg(not(windows))]
         let artifact = ArtifactExpectation::new(
             digest_identity(entrypoint.sha256),
             entrypoint.path.clone(),
             entrypoint.sha256,
             entrypoint.byte_len,
-        )
-        .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        );
+        let artifact = artifact.map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         #[cfg(all(test, windows))]
         let fixed_args = if binding.journey_test_entrypoint().is_some() {
             let case_id = binding
@@ -71,6 +87,17 @@ impl CodexRuntime {
             test_after_artifact_verified: None,
         })
     }
+}
+
+#[cfg(windows)]
+fn is_batch_launcher(path: &std::path::Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("cmd" | "bat")
+    )
 }
 
 fn digest_identity(digest: [u8; 32]) -> Uuid {

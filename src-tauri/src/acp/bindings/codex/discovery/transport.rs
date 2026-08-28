@@ -19,7 +19,7 @@ use crate::acp::{
         LaunchError, LaunchFailure, PlatformSupervisor, StdinEndpoint, TreeCapacityPool,
         TreeControl, TreeExit,
     },
-    transport::{Frame, FrameWriteOutcome, OutboundFrame},
+    transport::{Frame, FrameError, FrameWriteOutcome, OutboundFrame},
 };
 
 use super::{
@@ -33,8 +33,13 @@ use super::{
 enum ReaderEvent {
     Frame(Frame),
     Eof,
-    Failed,
+    FramingFailed(FrameError),
 }
+
+// Codex may emit initialized and capability notifications immediately after
+// the initialize response. Keep a bounded burst buffer so that valid output
+// cannot race the synchronous discovery protocol into a false transport error.
+const DISCOVERY_READER_SLOTS: usize = 4;
 
 pub(crate) struct ProcessLaunchPolicy {
     pub(crate) session_kind: &'static str,
@@ -85,8 +90,7 @@ pub(crate) fn discover_admitted(
     deadline: CodexDiscoveryDeadline,
     on_launch: impl FnOnce(TreeControl) -> Result<(), CodexDiscoveryRunError>,
 ) -> Result<AdmittedDiscovery, CodexDiscoveryRunError> {
-    let mut protocol =
-        CodexDiscoveryProtocol::new(binding.packet(), binding.binding_digest(), runtime_epoch);
+    let mut protocol = CodexDiscoveryProtocol::from_admitted_binding(&binding, runtime_epoch);
     let spawn_timeout = deadline.operation_remaining(Duration::from_millis(
         crate::acp::limits::LIMITS.deadlines_ms.spawn,
     ))?;
@@ -98,7 +102,7 @@ pub(crate) fn discover_admitted(
             session_kind: "discovery",
             spawn_timeout,
             cleanup_end: deadline.cleanup_end(),
-            reader_slots: 1,
+            reader_slots: DISCOVERY_READER_SLOTS,
         },
         on_launch,
     )?;
@@ -208,7 +212,14 @@ impl CodexProcessTransport {
     }
 
     pub(crate) fn write(&mut self, frame: &OutboundFrame) -> FrameWriteOutcome {
-        self.stdin.write_frame(frame)
+        let outcome = self.stdin.write_frame(frame);
+        if !matches!(outcome, FrameWriteOutcome::Complete) {
+            tracing::warn!(
+                ?outcome,
+                "Codex discovery transport classified stdin write failure"
+            );
+        }
+        outcome
     }
 
     pub(crate) fn read_frame(
@@ -216,21 +227,35 @@ impl CodexProcessTransport {
         timeout: Duration,
     ) -> Result<Option<Frame>, CodexDiscoveryRunError> {
         if self.reader.overflowed() {
-            return Err(CodexDiscoveryRunError::Transport);
+            return Err(CodexDiscoveryRunError::Overflow);
         }
         match self.reader.events.recv_timeout(timeout) {
             Ok(ReaderEvent::Frame(frame)) => Ok(Some(frame)),
-            Ok(ReaderEvent::Eof) => Ok(None),
-            Ok(ReaderEvent::Failed) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                Err(CodexDiscoveryRunError::Transport)
+            Ok(ReaderEvent::Eof) => {
+                tracing::warn!("Codex discovery transport classified stdout EOF");
+                Ok(None)
             }
-            Err(mpsc::RecvTimeoutError::Timeout) => Err(CodexDiscoveryRunError::Timeout),
+            Ok(ReaderEvent::FramingFailed(error)) => {
+                tracing::warn!(
+                    ?error,
+                    "Codex discovery transport classified stdout framing failure"
+                );
+                Err(CodexDiscoveryRunError::Framing)
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                tracing::warn!("Codex discovery transport classified stdout reader disconnection");
+                Err(CodexDiscoveryRunError::ReaderDisconnected)
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                tracing::warn!("Codex discovery transport classified read timeout");
+                Err(CodexDiscoveryRunError::Timeout)
+            }
         }
     }
 
     pub(crate) fn revalidate(&self) -> Result<(), CodexDiscoveryRunError> {
         if self.reader.overflowed() {
-            return Err(CodexDiscoveryRunError::Transport);
+            return Err(CodexDiscoveryRunError::Overflow);
         }
         self.binding
             .revalidate()
@@ -302,6 +327,7 @@ impl ReaderThread {
         let (send_completion, completion) = mpsc::sync_channel(1);
         let overflowed = Arc::new(AtomicBool::new(false));
         let reader_overflowed = Arc::clone(&overflowed);
+        let session_kind = session_kind.to_owned();
         let handle = thread::Builder::new()
             .name(format!("sage-codex-{session_kind}-stdout"))
             .spawn(move || {
@@ -309,11 +335,24 @@ impl ReaderThread {
                     let event = match stdout.read_frame() {
                         Ok(Some(frame)) => ReaderEvent::Frame(frame),
                         Ok(None) => ReaderEvent::Eof,
-                        Err(_) => ReaderEvent::Failed,
+                        Err(error) => {
+                            tracing::warn!(
+                                ?error,
+                                session_kind,
+                                "Codex discovery stdout framing failed"
+                            );
+                            ReaderEvent::FramingFailed(error)
+                        }
                     };
                     if let Some(completion) =
                         enqueue_reader_event(&send_event, event, &reader_overflowed)
                     {
+                        if completion == ReaderCompletion::Overflow {
+                            tracing::warn!(
+                                session_kind,
+                                "Codex discovery stdout reader exceeded its bounded buffer"
+                            );
+                        }
                         break completion;
                     }
                 };
@@ -349,7 +388,7 @@ impl ReaderThread {
         handle.join().map_err(|_| CodexDiscoveryRunError::Cleanup)?;
         match completion {
             ReaderCompletion::Clean => Ok(()),
-            ReaderCompletion::Overflow => Err(CodexDiscoveryRunError::Transport),
+            ReaderCompletion::Overflow => Err(CodexDiscoveryRunError::Overflow),
         }
     }
 }
@@ -373,6 +412,11 @@ fn enqueue_reader_event(
 
 fn settle_launch_failure(failure: LaunchFailure, runtime_epoch: u64) -> CodexDiscoveryRunError {
     let launch_error = failure.error();
+    tracing::warn!(
+        ?launch_error,
+        runtime_epoch,
+        "Codex discovery process launch failed"
+    );
     let token = match failure.into_zero_process() {
         Ok(token) => Ok(token),
         Err(failure) => match failure.into_recovery() {
@@ -395,8 +439,18 @@ fn map_runtime(_: AdapterRuntimeError) -> CodexDiscoveryRunError {
 fn map_launch(error: LaunchError) -> CodexDiscoveryRunError {
     if error == LaunchError::PlatformUnavailable {
         CodexDiscoveryRunError::Unavailable
+    } else if error == LaunchError::IdentityMismatch {
+        tracing::warn!(
+            ?error,
+            "Codex discovery transport classified launch identity mismatch"
+        );
+        CodexDiscoveryRunError::LaunchIdentity
     } else {
-        CodexDiscoveryRunError::Transport
+        tracing::warn!(
+            ?error,
+            "Codex discovery transport classified process launch failure"
+        );
+        CodexDiscoveryRunError::Launch
     }
 }
 
@@ -418,6 +472,22 @@ mod tests {
             Some(ReaderCompletion::Overflow)
         );
         assert!(overflowed.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn discovery_reader_keeps_the_initialize_response_and_follow_up_notifications() {
+        let (sender, _receiver) = mpsc::sync_channel(DISCOVERY_READER_SLOTS);
+        let overflowed = AtomicBool::new(false);
+
+        for _ in 0..DISCOVERY_READER_SLOTS {
+            assert_eq!(
+                enqueue_reader_event(&sender, ReaderEvent::Frame(frame()), &overflowed),
+                None
+            );
+        }
+
+        assert!(!overflowed.load(Ordering::Acquire));
+        assert_eq!(DISCOVERY_READER_SLOTS, 4);
     }
 
     fn frame() -> Frame {

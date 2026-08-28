@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
 import { useWorkbenchStore } from "../app/store";
 import { Workbench } from "./Workbench";
 
@@ -28,6 +29,7 @@ const project = { id: "project-a", name: "A", roots: [] };
 afterEach(() => {
   cleanup();
   compactViewport = false;
+  useAgentArtifactAdmissionStore.getState().clear();
   useWorkbenchStore.setState(initialState, true);
 });
 
@@ -115,6 +117,7 @@ describe("compact workbench window mode seam", () => {
       loadEditor: vi.fn(async () => undefined),
       activateTab,
     });
+    useAgentArtifactAdmissionStore.getState().admit("file:a");
     const { container } = render(createElement(Workbench));
     const center = container.querySelector(".center-region");
     expect(center).toHaveAttribute("inert");
@@ -134,14 +137,13 @@ describe("compact workbench window mode seam", () => {
     expect(center).not.toHaveAttribute("aria-hidden");
 
     fireEvent.click(
-      within(screen.getByRole("navigation", { name: "Open tabs" })).getByRole(
-        "tab",
-        { name: /current\.ts/ },
-      ),
+      within(
+        screen.getByRole("navigation", { name: "Agent artifact tabs" }),
+      ).getByRole("tab", { name: /current\.ts/ }),
     );
 
     await vi.waitFor(() => {
-      expect(activateTab).toHaveBeenLastCalledWith("chat:b");
+      expect(activateTab).toHaveBeenLastCalledWith("file:a");
     });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(center).not.toHaveAttribute("inert");

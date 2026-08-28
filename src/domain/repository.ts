@@ -71,12 +71,25 @@ export interface FileChange {
 export type RepositoryRootState =
   "repository" | "notRepository" | "unavailable";
 
+export interface GitRecentCommit {
+  sha: string;
+  subject: string;
+}
+
 export interface RootRepositoryStatus {
   rootId: string;
   state: RepositoryRootState;
   branch: string | null;
   branches?: string[];
   branchesTruncated?: boolean;
+  recentCommits?: GitRecentCommit[];
+  recentCommitsTruncated?: boolean;
+  remotes?: string[];
+  remotesTruncated?: boolean;
+  mergeInProgress?: boolean;
+  rebaseInProgress?: boolean;
+  cherryPickInProgress?: boolean;
+  revertInProgress?: boolean;
   changes: FileChange[];
   truncated: boolean;
   elapsedMs: number;
@@ -89,7 +102,8 @@ export interface ProjectRepositoryStatus {
   elapsedMs: number;
 }
 
-export type GitFileMutationAction = "stage" | "unstage" | "discard";
+export type GitFileMutationAction =
+  "stage" | "unstage" | "discard" | "keepOurs" | "keepTheirs";
 
 export interface GitFileMutationRequest {
   projectId: string;
@@ -125,6 +139,61 @@ export interface GitRepositoryCommitResult {
   repositories: ProjectRepositoryStatus;
   error: GitFileMutationError | null;
 }
+
+export interface GitRepositoryCheckoutRequest {
+  projectId: string;
+  rootId: string;
+  branch: string;
+}
+
+export interface GitRepositoryBranchRenameRequest {
+  projectId: string;
+  rootId: string;
+  from: string;
+  to: string;
+}
+
+export interface GitRepositoryCheckoutResult {
+  projectId: string;
+  rootId: string;
+  transitionEpoch: number;
+  repositories: ProjectRepositoryStatus;
+  error: GitFileMutationError | null;
+}
+
+export interface GitRepositoryRebaseContinueRequest {
+  projectId: string;
+  rootId: string;
+}
+
+export type GitRepositoryRebaseContinueResult = GitRepositoryCheckoutResult;
+
+export interface GitRepositoryCherryPickContinueRequest {
+  projectId: string;
+  rootId: string;
+}
+
+export type GitRepositoryCherryPickContinueResult = GitRepositoryCheckoutResult;
+
+export interface GitRepositoryRevertContinueRequest {
+  projectId: string;
+  rootId: string;
+}
+
+export interface GitRepositorySequenceAbortRequest {
+  projectId: string;
+  rootId: string;
+}
+
+export type GitRepositoryRevertContinueResult = GitRepositoryCheckoutResult;
+
+export interface GitRepositoryRemoteTransportRequest {
+  projectId: string;
+  rootId: string;
+  remote: string;
+}
+
+export type GitRepositoryRemoteTransportResult = GitRepositoryCheckoutResult;
 
 export type GitProcessState = "terminatedUnreaped" | "potentiallyRunning";
 

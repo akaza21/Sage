@@ -4,10 +4,10 @@ use crate::workspace::Workspace;
 
 use super::{
     contained_file::open_contained_file,
-    engine::{RootCounters, SearchBudget, SearchEngine, push_reason},
+    engine::{RootCounters, SearchBudget, SearchEngine},
     types::{
         ContinuationCursor, SearchLimitReason, SearchRootReport, SearchRootState,
-        WorkspaceSearchMatch,
+        WorkspaceSearchMatch, push_reason,
     },
 };
 

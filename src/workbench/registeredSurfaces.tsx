@@ -10,8 +10,8 @@ import { SearchSurface } from "../features/search/SearchSurface";
 import { SourceControlView } from "./SourceControlView";
 import { registerCanvasSurface, registerToolSurface } from "./surfaceRegistry";
 
-function ChatCanvas({ tab: _tab }: { tab: WorkbenchTab }) {
-  return <ChatSurface />;
+function ChatCanvas({ tab }: { tab: WorkbenchTab }) {
+  return <ChatSurface chatId={tab.id} />;
 }
 
 let registered = false;

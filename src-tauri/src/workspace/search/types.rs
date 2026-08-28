@@ -7,6 +7,7 @@ use crate::{
     domain::ResourceRef,
     error::{AppError, AppResult},
     workspace::Workspace,
+    workspace::file_walk::MAX_WORKSPACE_FILES,
 };
 
 pub const MAX_QUERY_BYTES: usize = 512;
@@ -14,10 +15,10 @@ pub const MAX_REQUEST_ID_BYTES: usize = 128;
 pub const MAX_PROJECT_ID_BYTES: usize = 512;
 pub const MAX_PROJECT_ROOTS: usize = 8;
 pub const MAX_SEARCH_RESULTS: usize = 500;
-pub const MAX_SEARCH_FILES: u64 = 20_000;
+pub const MAX_SEARCH_FILES: u64 = MAX_WORKSPACE_FILES;
 pub const MAX_SEARCH_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_SEARCH_FILE_BYTES: u64 = 2 * 1024 * 1024;
-pub const MAX_SEARCH_ENTRIES: u64 = 50_000;
+pub const MAX_SEARCH_ENTRIES: u64 = MAX_WORKSPACE_FILES;
 pub const MAX_SEARCH_DEPTH: usize = 32;
 pub const MAX_SEARCH_PREVIEW_CHARS: usize = 240;
 pub const MAX_RESOURCE_PATH_BYTES: usize = 16 * 1024;
@@ -153,10 +154,6 @@ fn read_continuation_token(value: &str) -> AppResult<ContinuationToken> {
         return Err(invalid_continuation());
     }
     Ok(token)
-}
-
-pub fn parse_continuation_token(value: &str) -> AppResult<ContinuationCursor> {
-    Ok(continuation_cursor(read_continuation_token(value)?))
 }
 
 pub fn validate_continuation_stamp(
@@ -313,4 +310,36 @@ pub struct SearchRoot {
     pub root_id: String,
     pub root_name: String,
     pub source: SearchRootSource,
+}
+
+pub(super) fn unavailable_report(
+    root_id: String,
+    root_name: String,
+    message: String,
+) -> SearchRootReport {
+    SearchRootReport {
+        root_id,
+        root_name,
+        state: SearchRootState::Unavailable,
+        files_scanned: 0,
+        bytes_scanned: 0,
+        entries_visited: 0,
+        skipped_files: 0,
+        error_count: 1,
+        message: Some(message),
+    }
+}
+
+pub(super) fn contract_join(parent: &str, name: &str) -> String {
+    if parent.is_empty() {
+        name.into()
+    } else {
+        format!("{parent}/{name}")
+    }
+}
+
+pub(super) fn push_reason(reasons: &mut Vec<SearchLimitReason>, reason: SearchLimitReason) {
+    if !reasons.contains(&reason) {
+        reasons.push(reason);
+    }
 }

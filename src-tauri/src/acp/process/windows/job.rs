@@ -69,7 +69,6 @@ impl JobBoundary {
         Ok(accounting.ActiveProcesses)
     }
 
-    #[cfg(test)]
     pub(super) fn total_processes(&self) -> Result<u32, LaunchError> {
         Ok(self.accounting()?.TotalProcesses)
     }

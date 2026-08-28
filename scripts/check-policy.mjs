@@ -79,6 +79,32 @@ if (
 ) {
   fail("BETA-0001 candidate matrix or one-way threshold authority drifted.");
 }
+const betaSourceFunctionalRelativePath =
+  "docs/work-items/BETA-0001-primary-beta-path/contracts/beta-source-functional-evidence-v1.json";
+const betaSourceFunctionalBytes = await readFile(
+  path.join(root, betaSourceFunctionalRelativePath),
+);
+const betaSourceFunctional = JSON.parse(
+  betaSourceFunctionalBytes.toString("utf8"),
+);
+const betaSourceFunctionalSha256 = createHash("sha256")
+  .update(betaSourceFunctionalBytes)
+  .digest("hex");
+if (
+  betaSourceFunctionalSha256 !==
+    "77566a9ea122ad47e89e928ab2276eceb2408837021c4d171e6d7e47afe8d22e" ||
+  betaSourceFunctional.schemaVersion !== 1 ||
+  betaSourceFunctional.status !== "frozen-source-functional-verdict-profile" ||
+  betaSourceFunctional.workItem !== "BETA-0001" ||
+  betaSourceFunctional.acceptance !== "local-green-only" ||
+  betaSourceFunctional.evidenceBindingRequired !== true ||
+  betaSourceFunctional.deferredEvidence?.join("\0") !==
+    "windows.source-package\0windows.installed-lifecycle" ||
+  betaSourceFunctional.requiredEvidence?.includes("windows.source-package") ||
+  betaSourceFunctional.requiredEvidence?.includes("windows.installed-lifecycle")
+) {
+  fail("BETA-0001 source-functional evidence profile drifted.");
+}
 const betaContractDirectory = path.dirname(
   path.join(root, betaAcceptanceRelativePath),
 );

@@ -34,7 +34,7 @@ pub(super) fn seed_project(
     project_id: &str,
     tab_id: &str,
     session_id: &str,
-    root_id: &str,
+    root_id: Option<&str>,
     now: i64,
 ) -> AppResult<()> {
     transaction.execute(

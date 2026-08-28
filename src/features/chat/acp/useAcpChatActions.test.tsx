@@ -1,6 +1,10 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  acpProjectionStoreFor,
+  clearAcpProjectionRegistry,
+} from "../../../app/acpProjectionRegistry";
 import { useAcpProjectionStore } from "../../../app/acpProjectionStore";
 import { useWorkbenchStore } from "../../../app/store";
 import type {
@@ -92,6 +96,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   useAcpProjectionStore.getState().clear();
+  clearAcpProjectionRegistry();
   useWorkbenchStore.setState(initialWorkbench, true);
 });
 
@@ -278,5 +283,34 @@ describe("useAcpChatActions per-Chat ownership", () => {
       chatError: null,
       chatUiById: { "chat-a": { error: null } },
     });
+  });
+
+  it("submits a bound Chat that is not the active tab", async () => {
+    const send = vi.spyOn(acpDesktop, "sendTurn").mockResolvedValue({
+      projection: {
+        ...page(),
+        chatId: "chat-b",
+        projectionRevision: "2",
+      } as AcpChatPage,
+    });
+    const scopeB = {
+      projectId: "project-a" as SageProjectId,
+      projectGeneration: "0" as ProjectGeneration,
+      chatId: "chat-b" as SageChatId,
+    };
+    const storeB = acpProjectionStoreFor("chat-b");
+    storeB.getState().activateScope(scopeB);
+    const intent = storeB.getState().beginPageLoad(null);
+    storeB.getState().completePageLoad(intent, {
+      ...page(),
+      chatId: "chat-b",
+    } as AcpChatPage);
+    const { result } = renderHook(() => useAcpChatActions("chat-b"));
+    await act(async () => {
+      await result.current.submit("From B", bindingId, null);
+    });
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ chatId: "chat-b", prompt: "From B" }),
+    );
   });
 });

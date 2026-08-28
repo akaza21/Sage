@@ -8,30 +8,30 @@ import {
 } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
-import {
-  MAX_CHAT_SEARCH_QUERY_BYTES,
-  validateProjectChatSearchRequest,
-  type ProjectChatSearchResponse,
-  type ProjectChatSearchResult,
-} from "./chatSearchDomain";
+import { MAX_CHAT_SEARCH_QUERY_BYTES } from "./chatSearchDomain";
 import { projectChatSearchDesktop } from "./chatSearchDesktop";
-
-interface SearchScope {
-  projectId: string;
-  projectGeneration: number;
-  transitionEpoch: number;
-}
+import {
+  chatSearchResultFolderName,
+  isChatSearchFanout,
+  runScopedChatSearch,
+  type ChatSearchFanoutPick,
+  type ChatSearchFanoutView,
+} from "./chatSearchFanout";
+import {
+  admitChatSearchFolder,
+  chatSearchAttachment,
+  chatSearchFolderOptions,
+  matchesChatSearchScope,
+  subscribeChatSearchFolderRequest,
+  takeChatSearchFocusReturn,
+  takeChatSearchFolderRequest,
+  type ChatSearchScope,
+} from "./chatSearchScope";
 
 type SearchPhase = "idle" | "searching" | "results" | "error";
 
-function matchesScope(scope: SearchScope) {
-  const state = useWorkbenchStore.getState();
-  return (
-    !state.projectTransitioning &&
-    state.project?.id === scope.projectId &&
-    state.projectGeneration === scope.projectGeneration &&
-    state.nativeTransitionEpoch === scope.transitionEpoch
-  );
+function matchesScope(scope: ChatSearchScope) {
+  return matchesChatSearchScope(useWorkbenchStore.getState(), scope);
 }
 
 function boundedError(error: unknown): string {
@@ -45,27 +45,22 @@ function boundedError(error: unknown): string {
 
 export function ChatSearchControl() {
   const project = useWorkbenchStore((state) => state.project);
-  const projectGeneration = useWorkbenchStore(
-    (state) => state.projectGeneration,
-  );
-  const transitionEpoch = useWorkbenchStore(
-    (state) => state.nativeTransitionEpoch,
-  );
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
   const activateChat = useWorkbenchStore((state) => state.activateChat);
+  const openRailChat = useWorkbenchStore((state) => state.openRailChat);
   const restoreChat = useWorkbenchStore((state) => state.restoreChat);
+  const projects = useWorkbenchStore((state) => state.projects);
   const [open, setOpen] = useState(false);
-  const [scope, setScope] = useState<SearchScope | null>(null);
+  const [scope, setScope] = useState<ChatSearchScope | null>(null);
   const [query, setQuery] = useState("");
   const [phase, setPhase] = useState<SearchPhase>("idle");
-  const [response, setResponse] = useState<ProjectChatSearchResponse | null>(
-    null,
-  );
+  const [response, setResponse] = useState<ChatSearchFanoutView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestGeneration = useRef(0);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const focusReturnRef = useRef<(() => void) | null>(null);
   const dialogRef = useRef<HTMLDialogElement | null>(null);
 
   const close = (restoreFocus = true) => {
@@ -76,18 +71,20 @@ export function ChatSearchControl() {
     setPhase("idle");
     setResponse(null);
     setError(null);
-    if (restoreFocus) queueMicrotask(() => triggerRef.current?.focus());
+    if (restoreFocus) {
+      const focusReturn = focusReturnRef.current;
+      focusReturnRef.current = null;
+      setTimeout(() => {
+        if (focusReturn) focusReturn();
+        else triggerRef.current?.focus();
+      }, 0);
+    }
   };
 
   useEffect(() => {
     if (!open || !scope) return;
     return useWorkbenchStore.subscribe((state) => {
-      if (
-        state.projectTransitioning ||
-        state.project?.id !== scope.projectId ||
-        state.projectGeneration !== scope.projectGeneration ||
-        state.nativeTransitionEpoch !== scope.transitionEpoch
-      ) {
+      if (!matchesChatSearchScope(state, scope)) {
         close(false);
       }
     });
@@ -110,12 +107,18 @@ export function ChatSearchControl() {
     };
   }, [open]);
 
-  const openSearch = () => {
-    if (!project || projectTransitioning) return;
+  const openSearch = (searchProjectId?: string) => {
+    const state = useWorkbenchStore.getState();
+    if (!state.project || state.projectTransitioning) return;
     setScope({
-      projectId: project.id,
-      projectGeneration,
-      transitionEpoch,
+      activeProjectId: state.project.id,
+      searchProjectId: admitChatSearchFolder(
+        chatSearchFolderOptions(state.projects),
+        searchProjectId,
+        state.project.id,
+      ),
+      projectGeneration: state.projectGeneration,
+      transitionEpoch: state.nativeTransitionEpoch,
     });
     setQuery("");
     setPhase("idle");
@@ -123,6 +126,16 @@ export function ChatSearchControl() {
     setError(null);
     setOpen(true);
   };
+
+  useEffect(() => {
+    return subscribeChatSearchFolderRequest(() => {
+      const folderId = takeChatSearchFolderRequest();
+      if (folderId) {
+        focusReturnRef.current = takeChatSearchFocusReturn();
+        openSearch(folderId);
+      }
+    });
+  }, []);
 
   const editQuery = (value: string) => {
     requestGeneration.current += 1;
@@ -141,19 +154,6 @@ export function ChatSearchControl() {
       setError("Enter text to search for.");
       return;
     }
-    const request = {
-      projectId: scope.projectId,
-      projectGeneration: scope.projectGeneration,
-      expectedTransitionEpoch: scope.transitionEpoch,
-      query: normalized,
-    };
-    try {
-      validateProjectChatSearchRequest(request);
-    } catch (validationError) {
-      setPhase("error");
-      setError(boundedError(validationError));
-      return;
-    }
     if (!matchesScope(scope)) {
       close(false);
       return;
@@ -165,7 +165,14 @@ export function ChatSearchControl() {
     setResponse(null);
     setError(null);
     try {
-      const result = await projectChatSearchDesktop.search(request);
+      const result = await runScopedChatSearch({
+        searchProjectId: scope.searchProjectId,
+        folders: chatSearchFolderOptions(useWorkbenchStore.getState().projects),
+        projectGeneration: scope.projectGeneration,
+        expectedTransitionEpoch: scope.transitionEpoch,
+        query: normalized,
+        search: (request) => projectChatSearchDesktop.search(request),
+      });
       if (requestGeneration.current !== intent || !matchesScope(scope)) return;
       setResponse(result);
       setPhase("results");
@@ -176,17 +183,16 @@ export function ChatSearchControl() {
     }
   };
 
-  const selectResult = async (result: ProjectChatSearchResult) => {
+  const selectResult = async (result: ChatSearchFanoutPick) => {
     if (!scope || !matchesScope(scope)) {
       close(false);
       return;
     }
     const state = useWorkbenchStore.getState();
-    const attached = state.tabs.some(
-      (tab) => tab.kind === "chat" && tab.id === result.chatId,
-    );
-    const archived = state.archivedChats.some(
-      (chat) => chat.id === result.chatId,
+    const { attached, archived } = chatSearchAttachment(
+      state,
+      result.projectId,
+      result.chatId,
     );
     if (result.attached !== attached || (!attached && !archived)) {
       requestGeneration.current += 1;
@@ -197,10 +203,23 @@ export function ChatSearchControl() {
     }
     close();
     if (attached) {
-      await activateChat(result.chatId);
-    } else {
-      await restoreChat(result.chatId);
+      if (result.projectId === state.project?.id) {
+        await activateChat(result.chatId);
+      } else {
+        await openRailChat(result.projectId, result.chatId);
+      }
+      return;
     }
+    await restoreChat(result.chatId, result.projectId);
+  };
+
+  const chooseFolder = (searchProjectId: string) => {
+    if (!scope || searchProjectId === scope.searchProjectId) return;
+    requestGeneration.current += 1;
+    setScope({ ...scope, searchProjectId });
+    setPhase("idle");
+    setResponse(null);
+    setError(null);
   };
 
   const containFocus = (event: KeyboardEvent<HTMLDialogElement>) => {
@@ -212,7 +231,7 @@ export function ChatSearchControl() {
     if (event.key !== "Tab") return;
     const focusable = Array.from(
       event.currentTarget.querySelectorAll<HTMLElement>(
-        'input:not([disabled]), button:not([disabled]), [role="option"]:not([aria-disabled="true"])',
+        'input:not([disabled]), select:not([disabled]), button:not([disabled]), [role="option"]:not([aria-disabled="true"])',
       ),
     );
     const first = focusable[0];
@@ -232,6 +251,8 @@ export function ChatSearchControl() {
     }
   };
 
+  const folders = chatSearchFolderOptions(projects);
+
   return (
     <>
       <button
@@ -241,7 +262,7 @@ export function ChatSearchControl() {
         title="Search chats"
         aria-label="Search chats"
         disabled={!project || projectTransitioning}
-        onClick={openSearch}
+        onClick={() => openSearch()}
       >
         <Search size={16} aria-hidden="true" />
         Search chats
@@ -261,9 +282,24 @@ export function ChatSearchControl() {
           <form className="chat-search-dialog__form" onSubmit={submit}>
             <h2 id="chat-search-title">Search Chats</h2>
             <p>
-              Search durable titles and primary conversation text in this
-              Project.
+              Search durable titles and primary conversation text in the
+              selected folder, or across listed folders.
             </p>
+            <label className="chat-search-dialog__query">
+              <span>Search in</span>
+              <select
+                aria-label="Search in"
+                disabled={phase === "searching" || projectTransitioning}
+                value={scope.searchProjectId}
+                onChange={(event) => chooseFolder(event.currentTarget.value)}
+              >
+                {folders.map((folder) => (
+                  <option key={folder.id} value={folder.id}>
+                    {folder.name}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="chat-search-dialog__query">
               <span>Search Chats</span>
               <input
@@ -302,25 +338,38 @@ export function ChatSearchControl() {
                   </p>
                 ) : (
                   <div role="listbox" aria-label="Chat search results">
-                    {response.results.map((result) => (
-                      <button
-                        className="chat-search-result"
-                        key={result.chatId}
-                        type="button"
-                        role="option"
-                        aria-selected="false"
-                        aria-label={`${result.title} — ${result.attached ? "Attached" : "Archived"}`}
-                        onClick={() => void selectResult(result)}
-                      >
-                        <span className="chat-search-result__heading">
-                          <strong>{result.title}</strong>
-                          <span>
-                            {result.attached ? "Attached" : "Archived"}
+                    {response.results.map((result) => {
+                      const folderName = chatSearchResultFolderName(
+                        folders,
+                        result.projectId,
+                      );
+                      const showFolder =
+                        Boolean(folderName) &&
+                        (isChatSearchFanout(scope.searchProjectId) ||
+                          result.projectId !== scope.activeProjectId);
+                      return (
+                        <button
+                          className="chat-search-result"
+                          key={`${result.projectId}:${result.chatId}`}
+                          type="button"
+                          role="option"
+                          aria-selected="false"
+                          aria-label={`${result.title} — ${result.attached ? "Attached" : "Archived"}`}
+                          onClick={() => void selectResult(result)}
+                        >
+                          <span className="chat-search-result__heading">
+                            <strong>{result.title}</strong>
+                            <span>
+                              {result.attached ? "Attached" : "Archived"}
+                              {showFolder ? ` · ${folderName}` : ""}
+                            </span>
                           </span>
-                        </span>
-                        {result.snippet ? <span>{result.snippet}</span> : null}
-                      </button>
-                    ))}
+                          {result.snippet ? (
+                            <span>{result.snippet}</span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
                 {response.hasMore ? (

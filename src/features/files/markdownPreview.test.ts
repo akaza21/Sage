@@ -4,6 +4,7 @@ import {
   MAX_MARKDOWN_PREVIEW_BLOCKS,
   MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
   MAX_MARKDOWN_PREVIEW_SOURCE_BYTES,
+  canPreviewDiagram,
   canPreviewMarkdown,
   renderMarkdownPreview,
 } from "./markdownPreview";
@@ -14,6 +15,15 @@ describe("canPreviewMarkdown", () => {
     expect(canPreviewMarkdown("NOTES.markdown")).toBe(true);
     expect(canPreviewMarkdown("src/app.ts")).toBe(false);
     expect(canPreviewMarkdown("")).toBe(false);
+  });
+});
+
+describe("canPreviewDiagram", () => {
+  it("accepts standalone mermaid paths only", () => {
+    expect(canPreviewDiagram("docs/flow.mmd")).toBe(true);
+    expect(canPreviewDiagram("docs/flow.mermaid")).toBe(true);
+    expect(canPreviewDiagram("docs/readme.md")).toBe(false);
+    expect(canPreviewDiagram("src/app.ts")).toBe(false);
   });
 });
 
@@ -46,11 +56,20 @@ describe("renderMarkdownPreview", () => {
       { kind: "paragraph", text: "Hello world and docs." },
       { kind: "list", items: ["one", "two"] },
       { kind: "quote", text: "quoted" },
-      { kind: "code", text: "code <em>line</em>" },
+      { kind: "code", text: "code <em>line</em>", language: "" },
       { kind: "paragraph", text: "diagram" },
     ]);
     expect(JSON.stringify(document)).not.toContain("https://example.test");
     expect(JSON.stringify(document)).not.toContain("alert(1)");
+  });
+
+  it("retains fenced code languages for mermaid projection", () => {
+    const document = renderMarkdownPreview(
+      ["```mermaid", "graph TD", "A --> B", "```"].join("\n"),
+    );
+    expect(document.blocks).toEqual([
+      { kind: "code", text: "graph TD\nA --> B", language: "mermaid" },
+    ]);
   });
 
   it("treats CRLF the same as LF", () => {

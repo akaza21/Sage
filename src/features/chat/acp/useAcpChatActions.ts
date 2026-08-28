@@ -1,6 +1,7 @@
 import { useMemo } from "react";
+import { useStore } from "zustand";
 
-import { useAcpProjectionStore } from "../../../app/acpProjectionStore";
+import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../../app/store";
 import type {
   CuratedBindingId,
@@ -16,8 +17,8 @@ import {
   createAcpActionController,
 } from "./acpActionController";
 
-function currentContext(): AcpActionContext | null {
-  const projection = useAcpProjectionStore.getState();
+function currentContext(boundChatId?: string | null): AcpActionContext | null {
+  const projection = acpProjectionStoreFor(boundChatId).getState();
   const workbench = useWorkbenchStore.getState();
   if (
     !projection.scope ||
@@ -26,7 +27,9 @@ function currentContext(): AcpActionContext | null {
     workbench.project?.id !== projection.scope.projectId ||
     String(workbench.projectGeneration) !==
       projection.scope.projectGeneration ||
-    workbench.activeTabId !== projection.scope.chatId
+    (boundChatId
+      ? projection.scope.chatId !== boundChatId
+      : workbench.activeTabId !== projection.scope.chatId)
   ) {
     return null;
   }
@@ -52,23 +55,39 @@ function ownershipIntent(context: AcpActionContext): ChatOwnershipIntent {
   };
 }
 
-export function useAcpChatActions() {
-  const projectionRevision = useAcpProjectionStore(
+export function useAcpChatActions(boundChatId?: string | null) {
+  const store = acpProjectionStoreFor(boundChatId);
+  const projectionRevision = useStore(
+    store,
     (projection) => projection.page?.projectionRevision ?? null,
   );
-  const page = useAcpProjectionStore((projection) => projection.page);
-  const sending = useWorkbenchStore((state) => state.sending);
-  const chatError = useWorkbenchStore((state) => state.chatError);
+  const page = useStore(store, (projection) => projection.page);
+  const sending = useWorkbenchStore((state) =>
+    boundChatId
+      ? (state.chatUiById[boundChatId]?.sending ?? false)
+      : state.sending,
+  );
+  const chatError = useWorkbenchStore((state) =>
+    boundChatId
+      ? (state.chatUiById[boundChatId]?.error ?? null)
+      : state.chatError,
+  );
   const clearActiveChatError = useWorkbenchStore(
     (state) => state.clearActiveChatError,
+  );
+  const captureChatOwnership = useWorkbenchStore(
+    (state) => state.captureChatOwnership,
+  );
+  const setChatActionState = useWorkbenchStore(
+    (state) => state.setChatActionState,
   );
 
   const controller = useMemo(
     () =>
       createAcpActionController({
-        getContext: currentContext,
+        getContext: () => currentContext(boundChatId),
         applyAuthoritativePage: (scope, authoritativePage) => {
-          return useAcpProjectionStore
+          return acpProjectionStoreFor(boundChatId)
             .getState()
             .applyAuthoritativePage(scope, authoritativePage);
         },
@@ -100,7 +119,7 @@ export function useAcpChatActions() {
           workbench.restoreChatComposer(ownershipIntent(context), prompt);
         },
       }),
-    [],
+    [boundChatId],
   );
 
   // Reading the revision makes authoritative mutation responses re-evaluate the
@@ -118,7 +137,19 @@ export function useAcpChatActions() {
     ) => controller.submit(prompt, bindingId, modelId),
     cancel: (turnId: SageTurnId) => controller.cancel(turnId),
     close: () => controller.close(),
-    clearError: clearActiveChatError,
+    clearError: () => {
+      if (boundChatId) {
+        const ownership = captureChatOwnership(boundChatId);
+        if (!ownership) return;
+        const entry = useWorkbenchStore.getState().chatUiById[boundChatId];
+        setChatActionState(ownership, {
+          sending: entry?.sending ?? false,
+          error: null,
+        });
+        return;
+      }
+      clearActiveChatError();
+    },
   } satisfies {
     busy: boolean;
     error: string | null;

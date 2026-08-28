@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "status": "frozen-source-functional-verdict-profile",
+  "workItem": "BETA-0001",
+  "acceptance": "local-green-only",
+  "evidenceBindingRequired": true,
+  "deferredEvidence": ["windows.source-package", "windows.installed-lifecycle"],
+  "requiredEvidence": [
+    "projects.workbench-multiroot",
+    "resources.explorer",
+    "editor.file-diff-recovery-find",
+    "search.workspace",
+    "git.basic",
+    "chat.lifecycle-handoff",
+    "acp.durable-edit-summary",
+    "codex.account-models",
+    "codex.multichat-turn-restart-cancel",
+    "codex.process-convergence",
+    "renderer.a11y-reload-focus",
+    "security.authority-secrets",
+    "recovery.crash-cleanup",
+    "performance.resource-storage",
+    "macos.shared-contract-ci",
+    "review.standards",
+    "review.spec",
+    "test.independent"
+  ]
+}

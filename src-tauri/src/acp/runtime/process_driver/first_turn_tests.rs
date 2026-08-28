@@ -18,6 +18,7 @@ use crate::{
             AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity,
             AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
         },
+        bindings::codex::{CodexRuntime, Platform},
         contract::{
             ClientIntentId, ProjectGeneration, ProjectionRevision, RequiredText, RuntimeEpoch,
             SageChatId, SageProjectId, SchemaVersionV1,
@@ -52,6 +53,8 @@ struct MutableAuthority(Arc<Mutex<IntentSnapshot>>);
 struct Adapter {
     cancel_count: Arc<AtomicUsize>,
 }
+
+struct LateFrameAdapter;
 
 struct SequencedAdapter {
     binding_digest: [u8; 32],
@@ -90,6 +93,36 @@ impl HarnessAdapter for Adapter {
         _: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         Err(AdapterRuntimeError::Operation)
+    }
+
+    fn commit_mandatory_egress(&mut self, _: &EgressToken) -> Result<(), AdapterRuntimeError> {
+        Ok(())
+    }
+
+    fn resolve_egress(
+        &mut self,
+        _: EgressToken,
+        _: EgressResolution,
+    ) -> Result<(), AdapterRuntimeError> {
+        Ok(())
+    }
+}
+
+impl HarnessAdapter for LateFrameAdapter {
+    fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
+        None
+    }
+
+    fn command(&mut self, _: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::Operation)
+    }
+
+    fn ingest(
+        &mut self,
+        _: &Frame,
+        _: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        AdapterBatch::new(vec![AdapterEvent::IgnoredLate], vec![])
     }
 
     fn commit_mandatory_egress(&mut self, _: &EgressToken) -> Result<(), AdapterRuntimeError> {
@@ -633,6 +666,7 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
                         next_model_cursor: None,
                     },
                 ),
+                idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
                 transport: CancelTransport {
                     writes: Arc::clone(&writes),
                 },
@@ -920,6 +954,7 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
                     next_model_cursor: None,
                 },
             ),
+            idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
             transport: Transport(Mutex::new(VecDeque::from([
                 FrameWriteOutcome::ZeroByteFailure,
                 FrameWriteOutcome::Complete,
@@ -956,10 +991,11 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
         let caller_mailbox = Arc::clone(&mailbox);
         let caller_owner = owner.clone();
         let caller = std::thread::spawn(move || {
-            let mut port = ProcessLivePort::new(
+            let mut port = ProcessLivePort::new_with_timeout(
                 caller_owner.clone(),
                 caller_mailbox,
                 Arc::new(|_| {}),
+                1_000,
             );
             let turn_id = port
                 .prepare_prompt(&HostPromptIntent {
@@ -976,69 +1012,16 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
                     },
                 })
                 .unwrap();
+            let started = Instant::now();
             assert_eq!(
                 port.dispatch_prompt(&caller_owner, &turn_id),
                 Err(HostError::RecoveryRequired)
             );
-            let first = port.dispatch_prompt(&caller_owner, &turn_id).unwrap();
-            port.observe_send(
-                &caller_owner,
-                &turn_id,
-                crate::acp::store::SendObservation::ZeroBytes,
-            )
-            .unwrap();
-            let retry = port.dispatch_prompt(&caller_owner, &turn_id).unwrap();
             assert_eq!(
-                port.observe_send(
-                    &caller_owner,
-                    &turn_id,
-                    crate::acp::store::SendObservation::CompleteBytes,
-                ),
+                port.dispatch_prompt(&caller_owner, &turn_id),
                 Err(HostError::RecoveryRequired)
             );
-            port.observe_send(
-                &caller_owner,
-                &turn_id,
-                crate::acp::store::SendObservation::CompleteBytes,
-            )
-            .unwrap();
-            let cancel = HostCancelIntent {
-                owner: caller_owner.clone(),
-                turn_id: turn_id.clone(),
-                client_intent_id: ClientIntentId::parse("intent-cancel-turn").unwrap(),
-                now_millis: now + 4,
-            };
-            assert_eq!(
-                port.begin_cancel(&cancel),
-                Err(HostError::RecoveryRequired)
-            );
-            port.begin_cancel(&cancel).unwrap();
-            port.dispatch_cancel(&cancel).unwrap();
-            let close = crate::acp::store::CloseSessionCommand {
-                project_id: caller_owner.project_id.clone(),
-                chat_id: caller_owner.chat_id.clone(),
-                expected_projection_revision: ProjectionRevision::new(9).unwrap(),
-                client_intent_id: ClientIntentId::parse("intent-close-turn").unwrap(),
-                session_id: caller_owner.session_id.clone(),
-                runtime_epoch: caller_owner.runtime_epoch,
-                now_millis: now + 5,
-            };
-            assert_eq!(
-                port.begin_close(&close),
-                Err(HostError::RecoveryRequired)
-            );
-            port.begin_close(&close).unwrap();
-            assert_eq!(
-                port.wait_zero(&caller_owner),
-                Err(HostError::RecoveryRequired)
-            );
-            let proof = port.wait_zero(&caller_owner).unwrap();
-            let (error, proof) = port
-                .finalize_close(&close, proof)
-                .expect_err("the injected projection conflict requires recovery");
-            assert_eq!(error, HostError::RecoveryRequired);
-            port.finalize_close(&close, proof).unwrap();
-            (turn_id, first, retry)
+            (turn_id, started.elapsed())
         });
 
         let first = mailbox
@@ -1061,89 +1044,59 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
         );
         assert_eq!(turn.parts.owner, owner);
 
-        for command_index in 0..15 {
+        // A foreign projection makes the exact prompt handoff unrecoverable.
+        // The retry keeps the original owner and turn identity, but must remain
+        // fail-closed rather than replaying the prompt against a foreign view.
+        while publisher.take().is_some() {}
+        publisher
+            .publish_committed(crate::acp::intent::ProjectionChangedV1 {
+                project_id: project_id.clone(),
+                chat_id: SageChatId::parse("chat-foreign").unwrap(),
+                session_id: started.session_id.clone(),
+                projection_revision: ProjectionRevision::new(1).unwrap(),
+            })
+            .unwrap();
+        for _ in 0..2 {
             let command = mailbox
-                .wait_next_until(None, context.clock.as_ref())
+                .wait_next_until(
+                    Some(mailbox_deadline(context.clock.as_ref(), 1_000)),
+                    context.clock.as_ref(),
+                )
                 .unwrap()
-                .expect("worker command");
+                .expect("worker command before recovery-test deadline");
             let ControlMessage::Worker(command) = command else {
                 panic!("worker command")
             };
-            if matches!(command_index, 0 | 4 | 6 | 9 | 11 | 13) {
-                while publisher.take().is_some() {}
-                publisher
-                    .publish_committed(crate::acp::intent::ProjectionChangedV1 {
-                        project_id: project_id.clone(),
-                        chat_id: SageChatId::parse("chat-foreign").unwrap(),
-                        session_id: started.session_id.clone(),
-                        projection_revision: ProjectionRevision::new(1).unwrap(),
-                    })
-                    .unwrap();
-            }
             state = state.handle(&context, command).await;
-            if matches!(command_index, 0 | 4 | 6 | 9 | 11 | 13) {
-                assert!(matches!(state, FirstTurnWorkerState::Recovery(_)));
-                assert!(publisher.take().is_some());
-            }
+            assert!(matches!(
+                &state,
+                FirstTurnWorkerState::Recovery(recovery)
+                    if matches!(recovery.as_ref(), FirstTurnWorkerRecovery::BeginSend { .. })
+            ));
         }
-        let (turn_id, first, retry) = caller.join().unwrap();
-        assert!(matches!(state, FirstTurnWorkerState::Closed));
-        assert_eq!(first, LiveWrite::ZeroBytes);
-        assert_eq!(retry, LiveWrite::Complete);
-        assert_eq!(cancel_count.load(Ordering::SeqCst), 1);
-        assert_eq!(zero_waits.load(Ordering::SeqCst), 1);
-        assert!(scheduler.active().is_none());
-        let durable_state: (String, String, Option<i64>) = database
+        let (turn_id, elapsed) = caller.join().unwrap();
+        assert!(elapsed < Duration::from_secs(1));
+        assert_eq!(cancel_count.load(Ordering::SeqCst), 0);
+        assert_eq!(zero_waits.load(Ordering::SeqCst), 0);
+        assert!(scheduler.active().is_some());
+        let turn_count: i64 = database
             .connection()
             .query_row(
-                "SELECT state,delivery_state,terminal_at FROM turns WHERE id=?1",
+                "SELECT COUNT(*) FROM turns WHERE id=?1",
                 rusqlite::params![turn_id.as_str()],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .unwrap();
-        assert_eq!(
-            (durable_state.0.as_str(), durable_state.1.as_str()),
-            ("deliveryUnknown", "completeBytes")
-        );
-        assert!(durable_state.2.is_some());
-        let session_state: String = database
-            .connection()
-            .query_row(
-                "SELECT state FROM agent_sessions WHERE id=?1",
-                [started.session_id.as_str()],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(session_state, "closed");
-        let cancel_facts: i64 = database
+        assert_eq!(turn_count, 1);
+        let send_facts: i64 = database
             .connection()
             .query_row(
-                "SELECT COUNT(*) FROM session_facts WHERE turn_id=?1 AND kind='turnCancelIntent'",
+                "SELECT COUNT(*) FROM session_facts WHERE turn_id=?1 AND kind='sendStarted'",
                 [turn_id.as_str()],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(cancel_facts, 1);
-        let send_facts: (i64, i64) = database
-            .connection()
-            .query_row(
-                "SELECT
-                   (SELECT COUNT(*) FROM session_facts WHERE turn_id=?1 AND kind='sendStarted'),
-                   (SELECT COUNT(*) FROM session_facts WHERE turn_id=?1 AND kind='sendCompleteBytes')",
-                [turn_id.as_str()],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap();
-        assert_eq!(send_facts, (2, 1));
-        let close_facts: i64 = database
-            .connection()
-            .query_row(
-                "SELECT COUNT(*) FROM session_facts WHERE session_id=?1 AND kind='sessionCloseIntent'",
-                [started.session_id.as_str()],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(close_facts, 1);
+        assert_eq!(send_facts, 1);
 
         drop(journal);
         drop(database);
@@ -1269,6 +1222,7 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
                     next_model_cursor: None,
                 },
             ),
+            idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
             transport: Transport(Mutex::new(VecDeque::from([
                 FrameWriteOutcome::Complete,
                 FrameWriteOutcome::Complete,
@@ -1690,6 +1644,7 @@ fn close_before_first_write(case: CloseBeforeWriteCase) {
                     next_model_cursor: None,
                 },
             ),
+            idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
             transport: Transport(Mutex::new(VecDeque::new())),
             control: Control {
                 zero_waits: Arc::clone(&zero_waits),
@@ -1955,6 +1910,61 @@ fn close_before_first_write(case: CloseBeforeWriteCase) {
         task.await.unwrap();
         drop(database);
         fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[test]
+fn idle_handoff_consumes_validated_late_stdout_before_the_first_turn() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+    let FirstTurnFixture {
+        project_id,
+        chat_id,
+        started,
+        epoch,
+        activation_journal,
+        capabilities,
+        external_session,
+        owner,
+        ..
+    } = prepare_first_turn_fixture().await;
+    let mut completed = CompletedActivationDriverParts {
+        parts: IdleActivationParts::new(
+            CodexRuntime::fixture(Platform::WindowsX86_64),
+            activation_journal,
+            Mapper,
+            ActivatedSession {
+                binding_digest: [0x11; 32],
+                project_id,
+                chat_id,
+                session_id: started.session_id,
+                external_session_id: external_session,
+                runtime_epoch: epoch,
+                capabilities,
+                models: Vec::new(),
+                next_model_cursor: None,
+            },
+        ),
+        idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
+        transport: Transport(Mutex::new(VecDeque::new())),
+        control: Control {
+            zero_waits: Arc::new(AtomicUsize::new(0)),
+        },
+        owner,
+        clock: Arc::new(SystemDriverClock),
+    };
+
+    assert!(completed
+        .accept_idle_stdout_chunk(
+            br#"{"emittedAtMs":1787930996883,"method":"mcpServer/startupStatus/updated","params":{"error":null,"failureReason":null,"name":"developer","status":"ready","threadId":"f12d7062-15e0-4d7b-94a2-8a52382a4611"}}"#,
+        )
+        .is_ok());
+    assert!(completed.accept_idle_stdout_chunk(b"\n").is_ok());
+    assert!(completed
+        .accept_idle_stdout_chunk(
+            b"{\"emittedAtMs\":1787930996883,\"method\":\"mcpServer/startupStatus/updated\",\"params\":{\"error\":null,\"failureReason\":null,\"name\":\"developer\",\"status\":\"unknown\",\"threadId\":\"f12d7062-15e0-4d7b-94a2-8a52382a4611\"}}\n",
+        )
+        .is_err());
+    assert!(completed.accept_idle_stdout_chunk(b"[]\n").is_err());
     });
 }
 

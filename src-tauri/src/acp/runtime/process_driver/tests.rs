@@ -689,12 +689,14 @@ fn malformed_pump_input_process_exit_and_mandatory_failure_all_request_teardown(
             ))
         );
 
-        let (mut exited, shared, _, _) = build_driver(
+        let (mut exited, _shared, _, _) = build_driver(
             vec![owned(vec![item(identity_one("must-not-run"))])],
             VecDeque::new(),
         );
         let mailbox = DriverMailbox::new().expect("mailbox");
-        mailbox.signal_process_exit().expect("exit");
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .expect("exit");
         assert_eq!(
             exited.run_next(&mailbox).await,
             Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
@@ -724,7 +726,9 @@ fn process_exit_does_not_outrank_queued_stdout() {
     mailbox
         .try_push_chunk(b"{\"result\":\"interrupted\"}\n".to_vec())
         .expect("chunk");
-    mailbox.signal_process_exit().expect("exit");
+    mailbox
+        .signal_process_exit(TreeExit::Exited { code: Some(17) })
+        .expect("exit");
     let message = mailbox
         .wait_next_until(None, &SystemDriverClock)
         .expect("pop")
@@ -738,7 +742,9 @@ fn process_exit_does_not_outrank_queued_stdout() {
 #[test]
 fn process_exit_does_not_starve_later_worker_control() {
     let mailbox = DriverMailbox::new().expect("mailbox");
-    mailbox.signal_process_exit().expect("exit");
+    mailbox
+        .signal_process_exit(TreeExit::Exited { code: Some(17) })
+        .expect("exit");
     let _shutdown = mailbox
         .submit_worker(WorkerCommand::Shutdown)
         .expect("shutdown");
@@ -842,7 +848,9 @@ fn zero_process_handoff_never_releases_without_convergence_proof() {
     runtime().block_on(async {
         let (mut driver, _, _, control) = build_driver(Vec::new(), VecDeque::new());
         let mailbox = DriverMailbox::new().expect("mailbox");
-        mailbox.signal_process_exit().expect("exit");
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .expect("exit");
         let _ = driver.run_next(&mailbox).await;
         assert!(matches!(
             driver.take_zero_process_handoff(),
@@ -916,7 +924,9 @@ fn passive_root_exit_watcher_signals_without_consuming_zero_proof() {
         mailbox
             .wait_next_until(None, &FakeClock::default())
             .expect("process exit"),
-        Some(ControlMessage::ProcessExit)
+        Some(ControlMessage::ProcessExit(TreeExit::Exited {
+            code: Some(0)
+        }))
     ));
     assert_eq!(
         control.lock().expect("control").waits,

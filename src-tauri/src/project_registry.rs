@@ -1,4 +1,6 @@
 mod launch_root;
+mod local;
+mod rail;
 mod seed;
 
 use std::path::{Path, PathBuf};
@@ -17,6 +19,7 @@ use crate::{
 
 pub(crate) use launch_root::ProjectRootAuthority;
 
+use self::rail::load_project_list;
 use self::seed::{active_project_in, insert_root, seed_project};
 
 pub const MAX_PROJECTS: i64 = 64;
@@ -109,25 +112,7 @@ impl Database {
     }
 
     pub fn project_list(&self) -> AppResult<Vec<ProjectListItem>> {
-        let connection = self.connection();
-        let mut statement = connection.prepare(
-            "SELECT p.id, p.name, COUNT(r.id), p.last_opened_at
-             FROM projects p
-             LEFT JOIN project_roots r ON r.project_id = p.id
-             GROUP BY p.id
-             ORDER BY p.last_opened_at DESC, p.name
-             LIMIT ?1",
-        )?;
-        Ok(statement
-            .query_map([MAX_PROJECTS + 1], |row| {
-                Ok(ProjectListItem {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    root_count: row.get::<_, i64>(2)? as u32,
-                    last_opened_at: row.get(3)?,
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()?)
+        load_project_list(&self.connection())
     }
 
     pub fn active_project_id(&self) -> AppResult<Option<String>> {
@@ -156,14 +141,7 @@ impl Database {
         let configured_exists = configured.as_ref().is_some_and(|project_id| {
             transaction
                 .query_row(
-                    "SELECT EXISTS(
-                       SELECT 1 FROM projects p
-                       WHERE p.id = ?1
-                         AND EXISTS(
-                           SELECT 1 FROM project_roots r
-                           WHERE r.project_id = p.id
-                         )
-                     )",
+                    "SELECT EXISTS(SELECT 1 FROM projects p WHERE p.id = ?1)",
                     [project_id],
                     |row| row.get::<_, bool>(0),
                 )
@@ -175,9 +153,6 @@ impl Database {
             transaction
                 .query_row(
                     "SELECT p.id FROM projects p
-                     WHERE EXISTS(
-                       SELECT 1 FROM project_roots r WHERE r.project_id = p.id
-                     )
                      ORDER BY p.last_opened_at DESC, p.id
                      LIMIT 1",
                     [],
@@ -288,12 +263,16 @@ impl Database {
             &project_id,
             &tab_id,
             &session_id,
-            &root_id,
+            Some(root_id.as_str()),
             now,
         )?;
         let summary = project_summary_in(&transaction, &project_id)?;
         transaction.commit()?;
         Ok(summary)
+    }
+
+    pub fn ensure_local_project(&self) -> AppResult<ProjectSummary> {
+        local::ensure_local_project(self)
     }
 
     pub fn add_project_root(&self, project_id: &str, root: &Path) -> AppResult<ProjectSummary> {
@@ -342,7 +321,10 @@ impl Database {
     }
 }
 
-fn project_summary_in(connection: &Connection, project_id: &str) -> AppResult<ProjectSummary> {
+pub(super) fn project_summary_in(
+    connection: &Connection,
+    project_id: &str,
+) -> AppResult<ProjectSummary> {
     let name = connection.query_row(
         "SELECT name FROM projects WHERE id = ?1",
         [project_id],

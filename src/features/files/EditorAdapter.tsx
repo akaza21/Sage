@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 
+import { useEditorAppearanceStore } from "../../app/editorAppearanceStore";
 import type { CodeMirrorEditorRuntime } from "./CodeMirrorEditorRuntime";
 
 export interface EditorSelection {
@@ -26,6 +27,7 @@ interface EditorAdapterProps {
   disabled: boolean;
   maxContentLength: number;
   onChange: (content: string) => void;
+  onCaretOffset?: (offset: number) => void;
 }
 
 export const EditorAdapter = forwardRef<
@@ -40,6 +42,9 @@ export const EditorAdapter = forwardRef<
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(
     "loading",
   );
+  const fontSize = useEditorAppearanceStore((state) => state.fontSize);
+  const tabSize = useEditorAppearanceStore((state) => state.tabSize);
+  const wordWrap = useEditorAppearanceStore((state) => state.wordWrap);
   latestPropsRef.current = props;
 
   useLayoutEffect(() => {
@@ -56,6 +61,11 @@ export const EditorAdapter = forwardRef<
         const runtime = createCodeMirrorEditorRuntime({
           parent,
           ...latestPropsRef.current,
+          appearance: {
+            fontSize: useEditorAppearanceStore.getState().fontSize,
+            tabSize: useEditorAppearanceStore.getState().tabSize,
+            wordWrap: useEditorAppearanceStore.getState().wordWrap,
+          },
         });
         runtimeRef.current = runtime;
         const selection = pendingSelectionRef.current;
@@ -82,15 +92,22 @@ export const EditorAdapter = forwardRef<
   useLayoutEffect(() => {
     const runtime = runtimeRef.current;
     if (runtime) {
-      runtime.update(latestPropsRef.current);
+      runtime.update({
+        ...latestPropsRef.current,
+        appearance: { fontSize, tabSize, wordWrap },
+      });
     }
   }, [
+    fontSize,
     props.ariaLabel,
     props.content,
     props.disabled,
     props.maxContentLength,
     props.onChange,
+    props.onCaretOffset,
     props.path,
+    tabSize,
+    wordWrap,
   ]);
 
   useImperativeHandle(

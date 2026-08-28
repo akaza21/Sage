@@ -1,4 +1,4 @@
-use super::{finalize, AuthenticatedHelperRequest, ElevatedHelperError, HelperTransactionPlatform};
+use super::{AuthenticatedHelperRequest, ElevatedHelperError, HelperTransactionPlatform, finalize};
 
 pub(in super::super) fn execute_boundary_update<P: HelperTransactionPlatform>(
     request: &AuthenticatedHelperRequest,

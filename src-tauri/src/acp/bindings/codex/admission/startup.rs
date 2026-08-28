@@ -1,21 +1,36 @@
 use super::*;
 
 pub(crate) fn startup_codex_binding_registration() -> CodexBindingRegistration {
-    let unavailable = if cfg!(windows) {
-        CodexAdmissionUnavailable::IndependentAdmission
-    } else {
-        CodexAdmissionUnavailable::Platform
-    };
     let registration = CodexBindingRegistration {
         authority: Arc::new(CodexRegistrationAuthority {
-            state: Mutex::new(CodexRegistrationState::Unavailable(unavailable)),
+            state: Mutex::new(CodexRegistrationState::Unavailable(
+                CodexAdmissionUnavailable::IndependentAdmission,
+            )),
         }),
     };
-    #[cfg(windows)]
-    {
-        let _ = authenticate_startup_signed_installed_role(&registration);
+    if !admit_discovered_codex(
+        &registration,
+        crate::harness_discovery::discover_installed_harnesses()
+            .into_iter()
+            .find(|candidate| candidate.id == "codex"),
+    ) {
+        #[cfg(windows)]
+        {
+            let _ = authenticate_startup_signed_installed_role(&registration);
+        }
     }
     registration
+}
+
+fn admit_discovered_codex(
+    registration: &CodexBindingRegistration,
+    candidate: Option<crate::harness_discovery::InstalledHarness>,
+) -> bool {
+    candidate.is_some_and(|candidate| {
+        registration
+            .authenticate_observed(candidate.executable, candidate.version)
+            .is_ok()
+    })
 }
 
 #[cfg(windows)]
@@ -72,4 +87,38 @@ fn authenticate_startup_signed_installed_role(
         authority,
         environment,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use super::*;
+
+    #[test]
+    fn startup_promotes_a_runnable_discovered_codex_cli() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let executable = std::env::temp_dir().join(format!("sage-discovered-codex-{nonce}.bin"));
+        fs::write(&executable, b"observed Codex CLI").unwrap();
+        let registration = CodexBindingRegistration::unavailable_for_test();
+
+        assert!(admit_discovered_codex(
+            &registration,
+            Some(crate::harness_discovery::InstalledHarness {
+                id: "codex",
+                executable: executable.clone(),
+                version: "codex 0.146.0".into(),
+            }),
+        ));
+        let binding = registration.refresh().unwrap();
+        assert!(binding.is_observed());
+        assert_eq!(binding.entrypoint().path, executable);
+        fs::remove_file(executable).unwrap();
+    }
 }

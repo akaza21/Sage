@@ -1,0 +1,244 @@
+.dialog-backdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 0.52);
+}
+
+.dirty-dialog {
+  width: min(440px, 100%);
+  padding: 20px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: 0 20px 70px rgb(0 0 0 / 0.45);
+}
+
+.dirty-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.dirty-dialog p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dirty-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.new-file-dialog {
+  width: min(480px, calc(100vw - 32px));
+  color: var(--text);
+}
+
+.new-file-dialog::backdrop {
+  background: rgb(0 0 0 / 52%);
+}
+
+.new-file-dialog__form,
+.new-file-dialog__field {
+  display: grid;
+  gap: 8px;
+}
+
+.new-file-dialog__form > h2 {
+  margin: 0;
+}
+
+.new-file-dialog__field {
+  margin-top: 12px;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.new-file-dialog__field input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text);
+  outline: none;
+  background: var(--surface-raised);
+}
+
+.new-file-dialog__field input:focus {
+  border-color: var(--accent);
+}
+
+.new-file-dialog .new-file-dialog__preview {
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+}
+
+.new-file-dialog .new-file-dialog__error {
+  min-height: 18px;
+  color: var(--danger);
+}
+
+.handoff-control {
+  position: relative;
+  display: flex;
+}
+
+.handoff-control__error {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 6px);
+  right: 0;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 8px 10px;
+  border: 1px solid #7f3434;
+  border-radius: 6px;
+  color: #ffd6d6;
+  background: #3a2020;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.handoff-dialog {
+  width: min(560px, calc(100vw - 32px));
+  margin: auto;
+  color: var(--text);
+}
+
+.handoff-dialog::backdrop {
+  background: rgb(0 0 0 / 0.52);
+}
+
+.handoff-dialog__form {
+  display: grid;
+  gap: 14px;
+}
+
+.handoff-dialog__field {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.handoff-dialog__field select,
+.handoff-dialog__field textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  outline: none;
+  background: var(--surface-active);
+  font: inherit;
+}
+
+.handoff-dialog__field textarea {
+  resize: vertical;
+}
+
+.handoff-dialog__field select:focus,
+.handoff-dialog__field textarea:focus {
+  border-color: var(--accent);
+}
+
+.chat-search-dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 32px));
+}
+
+.chat-search-dialog::backdrop {
+  background: rgb(0 0 0 / 48%);
+}
+
+.chat-search-dialog__form {
+  display: grid;
+  gap: 12px;
+}
+
+.chat-search-dialog__form > h2,
+.chat-search-dialog__form > p {
+  margin: 0;
+}
+
+.chat-search-dialog__query {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.chat-search-dialog__query input,
+.chat-search-dialog__query select {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--text);
+  padding: 8px 10px;
+}
+
+.chat-search-dialog__query input:focus,
+.chat-search-dialog__query select:focus {
+  outline: 1px solid var(--accent);
+  border-color: var(--accent);
+}
+
+.chat-search-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.chat-search-dialog__results {
+  min-height: 48px;
+  max-height: 420px;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.chat-search-dialog__results [role="listbox"] {
+  display: grid;
+  gap: 4px;
+}
+
+.chat-search-result {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  padding: 8px;
+  text-align: left;
+}
+
+.chat-search-result:hover,
+.chat-search-result:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+  outline: none;
+}
+
+.chat-search-result__heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chat-search-result__heading > span,
+.chat-search-result > span:last-child,
+.chat-search-dialog__more,
+.chat-search-dialog__empty {
+  color: var(--muted);
+  font-size: 12px;
+}

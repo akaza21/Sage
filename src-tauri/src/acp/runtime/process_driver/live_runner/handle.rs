@@ -15,8 +15,11 @@ use crate::acp::{
 
 use super::{RetainedRunnerRecovery, RunOutcome, cleanup_budget, run};
 use crate::acp::runtime::process_driver::{
-    DriverMailbox, FirstTurnWorkerContext, StdinTransport, worker_command::WorkerDeadlineAbort,
+    ActivationStartupStep, DriverMailbox, FirstTurnWorkerContext, StdinTransport,
+    worker_command::WorkerDeadlineAbort,
 };
+
+const LIVE_RUNNER_STACK_BYTES: usize = 8 * 1024 * 1024;
 
 pub(crate) struct LiveRunnerHandle {
     mailbox: Arc<DriverMailbox>,
@@ -24,6 +27,34 @@ pub(crate) struct LiveRunnerHandle {
     thread: Mutex<Option<BoundedThread>>,
     exit: Mutex<ExitState>,
     recovery: Mutex<Option<RetainedRunnerRecovery>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RunnerStartSubstep {
+    Spawn,
+    StdoutReader,
+    ProcessExitWatcher,
+    Initialize,
+    SessionNew,
+    SessionResume,
+    SessionLoad,
+    Permission,
+    ReadyHandoff,
+    Timeout,
+    UnexpectedMethod,
+    Unexpected,
+}
+
+impl From<ActivationStartupStep> for RunnerStartSubstep {
+    fn from(value: ActivationStartupStep) -> Self {
+        match value {
+            ActivationStartupStep::Initialize => Self::Initialize,
+            ActivationStartupStep::SessionNew => Self::SessionNew,
+            ActivationStartupStep::SessionResume => Self::SessionResume,
+            ActivationStartupStep::SessionLoad => Self::SessionLoad,
+            ActivationStartupStep::ReadyHandoff => Self::ReadyHandoff,
+        }
+    }
 }
 
 // Recovery variants deliberately retain their unique driver/handoff by value;
@@ -43,6 +74,7 @@ where
             crate::acp::process::ZeroProcessToken,
         >,
         error: HostError,
+        substep: RunnerStartSubstep,
     },
     Projection {
         handoff: ActivationProjectionRecoveryHandoff<
@@ -52,12 +84,17 @@ where
             crate::acp::process::ZeroProcessToken,
         >,
         error: HostError,
+        substep: RunnerStartSubstep,
     },
     Retained {
         driver: ActivationProcessDriver<A, CoordinatorActivationJournal, R, T, TreeControl>,
         error: HostError,
+        substep: RunnerStartSubstep,
     },
-    OwnedByRunner(HostError),
+    OwnedByRunner {
+        error: HostError,
+        substep: RunnerStartSubstep,
+    },
 }
 
 pub(super) struct RunInput<A, R, T, Auth>
@@ -130,10 +167,12 @@ impl LiveRunnerHandle {
                     Ok(handoff) => ActivationStartFailure::Teardown {
                         handoff,
                         error: HostError::Deadline,
+                        substep: RunnerStartSubstep::Timeout,
                     },
                     Err(failure) => ActivationStartFailure::Retained {
                         driver: failure.driver,
                         error: HostError::Deadline,
+                        substep: RunnerStartSubstep::Timeout,
                     },
                 },
             );
@@ -143,6 +182,7 @@ impl LiveRunnerHandle {
             return Err(ActivationStartFailure::Retained {
                 driver: activation,
                 error: HostError::State,
+                substep: RunnerStartSubstep::Spawn,
             });
         }
         let (ready, startup) = mpsc::sync_channel(1);
@@ -151,28 +191,32 @@ impl LiveRunnerHandle {
         let runner = Arc::downgrade(self);
         let activation = Arc::new(Mutex::new(Some(activation)));
         let worker_activation = Arc::clone(&activation);
-        let worker = BoundedThread::spawn("sage-acp-live-runner", move || {
-            let activation = worker_activation
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .take()
-                .expect("live activation is taken exactly once");
-            let outcome = run(
-                activation,
-                RunInput {
-                    context,
-                    stdout,
-                    host,
-                    mailbox,
-                    control,
-                    ready,
-                    cleanup_deadline,
-                },
-            );
-            if let Some(runner) = runner.upgrade() {
-                runner.record_outcome(outcome);
-            }
-        })
+        let worker = BoundedThread::spawn_with_stack(
+            "sage-acp-live-runner",
+            Some(LIVE_RUNNER_STACK_BYTES),
+            move || {
+                let activation = worker_activation
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .take()
+                    .expect("live activation is taken exactly once");
+                let outcome = run(
+                    activation,
+                    RunInput {
+                        context,
+                        stdout,
+                        host,
+                        mailbox,
+                        control,
+                        ready,
+                        cleanup_deadline,
+                    },
+                );
+                if let Some(runner) = runner.upgrade() {
+                    runner.record_outcome(outcome);
+                }
+            },
+        )
         .map_err(|_| {
             let mut driver = activation
                 .lock()
@@ -184,10 +228,12 @@ impl LiveRunnerHandle {
                 Ok(handoff) => ActivationStartFailure::Teardown {
                     handoff,
                     error: HostError::Unavailable,
+                    substep: RunnerStartSubstep::Spawn,
                 },
                 Err(failure) => ActivationStartFailure::Retained {
                     driver: failure.driver,
                     error: HostError::Unavailable,
+                    substep: RunnerStartSubstep::Spawn,
                 },
             }
         })?;
@@ -199,23 +245,35 @@ impl LiveRunnerHandle {
                 Err(error)
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
+                tracing::warn!(
+                    activation_checkpoint = "live_runner.start_activation.startup_timeout",
+                    activation_abort = "timeout",
+                    "ACP activation startup receiver timed out; requesting tree termination"
+                );
                 self.abort(TreeExit::Deadline);
                 finish_failed_start(&mut retained, cleanup_deadline);
                 match startup
                     .recv_timeout(cleanup_deadline.saturating_duration_since(Instant::now()))
                 {
                     Ok(Err(failure)) => Err(failure),
-                    Ok(Ok(())) | Err(_) => {
-                        Err(ActivationStartFailure::OwnedByRunner(HostError::Deadline))
-                    }
+                    Ok(Ok(())) | Err(_) => Err(ActivationStartFailure::OwnedByRunner {
+                        error: HostError::Deadline,
+                        substep: RunnerStartSubstep::Timeout,
+                    }),
                 }
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
+                tracing::warn!(
+                    activation_checkpoint = "live_runner.start_activation.startup_disconnected",
+                    activation_abort = "unexpected",
+                    "ACP activation startup runner disconnected; requesting tree termination"
+                );
                 self.abort(TreeExit::ParentShutdown);
                 finish_failed_start(&mut retained, cleanup_deadline);
-                Err(ActivationStartFailure::OwnedByRunner(
-                    HostError::Unavailable,
-                ))
+                Err(ActivationStartFailure::OwnedByRunner {
+                    error: HostError::Unavailable,
+                    substep: RunnerStartSubstep::Unexpected,
+                })
             }
         }
     }
@@ -256,6 +314,25 @@ impl LiveRunnerHandle {
             .control
             .wait_zero_before(deadline)
             .map_err(|_| HostError::RecoveryRequired)?;
+        self.recovery
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        Ok(token)
+    }
+
+    /// Reclaims a failed runner only when native supervision has already
+    /// proven the entire process tree is gone. Unlike explicit shutdown, this
+    /// never requests termination and therefore leaves a live tree fail-closed.
+    pub(crate) fn reclaim_if_zero_before(
+        &self,
+        deadline: Instant,
+    ) -> Result<crate::acp::process::ZeroProcessToken, HostError> {
+        let (_, token) = self
+            .control
+            .wait_zero_before(Instant::now())
+            .map_err(|_| HostError::RecoveryRequired)?;
+        self.join_before(deadline)?;
         self.recovery
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

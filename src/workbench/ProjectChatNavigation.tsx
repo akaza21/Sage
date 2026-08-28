@@ -3,38 +3,95 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  FolderPlus,
+  GitBranch,
   MessageSquare,
   Pencil,
+  Pin,
   RotateCcw,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import type { AgentRailChat, ArchivedChatSummary } from "../domain/workbench";
+import { agentChatMoveDestinations } from "./agentChatRail";
+import { MoveChatButton, MoveChatPopover } from "./MoveChatPopover";
 
 import { useWorkbenchStore } from "../app/store";
 import { MAX_CHAT_TITLE_BYTES, chatDisplayTitle } from "../domain/chatTitle";
+import {
+  ackSessionRailUnread,
+  seenSessionRailFingerprint,
+  sessionRailFingerprint,
+  sessionRailGitLabel,
+  sessionRailLive,
+  sessionRailStatusLabel,
+  sessionRailUnreadVisible,
+} from "../features/chat/acp/sessionRail";
+import {
+  agentRailAgeStamp,
+  classifyAgentRailSection,
+} from "./agentRailStatusView";
+import { agentRailClockMs } from "./agentRailViewPrefs";
+import { ProjectChatRailGlyph } from "./ProjectChatRailGlyph";
 
-export function ProjectChatNavigation() {
+export function ProjectChatNavigation({
+  projectId,
+  chats,
+  archived,
+  truncated = false,
+  selected,
+  onShowMore,
+  workspaceLabel,
+  showUpdated = true,
+  showBranch = true,
+  hideArchived = false,
+  attentionMark = false,
+}: {
+  projectId: string;
+  chats: AgentRailChat[];
+  archived?: ArchivedChatSummary[];
+  truncated?: boolean;
+  selected: boolean;
+  onShowMore?: (projectId: string) => void;
+  workspaceLabel?: string;
+  showUpdated?: boolean;
+  showBranch?: boolean;
+  hideArchived?: boolean;
+  attentionMark?: boolean;
+}) {
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [renameSaving, setRenameSaving] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [archivedOpen, setArchivedOpen] = useState(false);
+  const [movingChatId, setMovingChatId] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const renameTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocusChatId = useRef<string | null>(null);
-  const tabs = useWorkbenchStore((state) => state.tabs);
-  const archivedChats = useWorkbenchStore((state) => state.archivedChats);
+  const storeArchivedChats = useWorkbenchStore((state) => state.archivedChats);
+  const archivedChats = selected ? storeArchivedChats : (archived ?? []);
+  const archivedListId = `archived-chat-list-${projectId}`;
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const activateTab = useWorkbenchStore((state) => state.activateTab);
+  const openRailChat = useWorkbenchStore((state) => state.openRailChat);
   const renameChat = useWorkbenchStore((state) => state.renameChat);
   const archiveChat = useWorkbenchStore((state) => state.archiveChat);
   const restoreChat = useWorkbenchStore((state) => state.restoreChat);
-  const addProjectRoot = useWorkbenchStore((state) => state.addProjectRoot);
+  const pinChat = useWorkbenchStore((state) => state.pinChat);
+  const moveChat = useWorkbenchStore((state) => state.moveChat);
+  const projects = useWorkbenchStore((state) => state.projects);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
-  const chatTabs = tabs.filter((tab) => tab.kind === "chat");
+  const gitLabel = sessionRailGitLabel(
+    useWorkbenchStore((state) =>
+      selected
+        ? (state.repositories.roots.find((root) => root.branch)?.branch ??
+          state.selectedRepositoryStatus?.branch)
+        : undefined,
+    ),
+  );
+  const chatTabs = chats;
+  const moveDestinations = agentChatMoveDestinations(projects, projectId);
 
   useEffect(() => {
     if (renamingChatId !== null || pendingFocusChatId.current === null) return;
@@ -59,7 +116,7 @@ export function ProjectChatNavigation() {
     event.preventDefault();
     setRenameError(null);
     setRenameSaving(true);
-    const committed = await renameChat(chatId, renameDraft);
+    const committed = await renameChat(chatId, renameDraft, projectId);
     setRenameSaving(false);
     if (committed) {
       closeRename(chatId);
@@ -129,22 +186,130 @@ export function ProjectChatNavigation() {
             </form>
           );
         }
+        const focused = selected && tab.id === activeTabId;
+        const statusLabel = sessionRailStatusLabel(tab.status);
+        const fingerprint = sessionRailFingerprint(tab.status);
+        if (focused && fingerprint.length > 0) {
+          ackSessionRailUnread(tab.id, fingerprint);
+        }
+        const unread = sessionRailUnreadVisible({
+          focused,
+          status: tab.status,
+          seenFingerprint: seenSessionRailFingerprint(tab.id),
+        });
+        const railSection = classifyAgentRailSection({
+          status: tab.status,
+          unread,
+        });
+        const working = railSection === "working";
+        const attention =
+          tab.status === "waiting" ||
+          (railSection === "attention" && attentionMark);
+        const branchLabel = showBranch ? gitLabel : "";
+        const stamp = showUpdated
+          ? agentRailAgeStamp({
+              updatedAt: tab.updatedAt,
+              live: sessionRailLive(tab.status),
+              nowMs: agentRailClockMs(),
+            })
+          : "";
         return (
-          <div className="project-chat-row" key={tab.id}>
+          <div
+            className={`project-chat-row${selected ? "" : " project-chat-row--foreign"}`}
+            key={tab.id}
+          >
             <button
               className={`project-chat ${
-                tab.id === activeTabId ? "project-chat--active" : ""
+                focused ? "project-chat--active" : ""
               }`}
               type="button"
               title={`Open chat ${displayTitle}`}
-              onClick={() => void activateTab(tab.id)}
+              aria-current={focused ? "page" : undefined}
+              onClick={() => {
+                ackSessionRailUnread(tab.id, fingerprint);
+                if (selected) {
+                  void activateTab(tab.id);
+                  return;
+                }
+                void openRailChat(projectId, tab.id);
+              }}
             >
-              <MessageSquare size={14} aria-hidden="true" />
-              <span>{displayTitle}</span>
-              {tab.status === "working" ? (
-                <span className="project-chat__working" title="Working" />
+              <ProjectChatRailGlyph
+                working={working}
+                unread={unread}
+                attention={attention}
+              />
+              <span className="project-chat__copy">
+                <span className="project-chat__title">{displayTitle}</span>
+                {statusLabel ? (
+                  <span
+                    className={`project-chat__status project-chat__status--${tab.status ?? "idle"}`}
+                  >
+                    {statusLabel}
+                  </span>
+                ) : null}
+                {stamp || branchLabel || workspaceLabel ? (
+                  <span className="project-chat__meta">
+                    {workspaceLabel ? (
+                      <span className="project-chat__workspace">
+                        {workspaceLabel}
+                      </span>
+                    ) : null}
+                    {branchLabel ? (
+                      <span className="project-chat__git">
+                        <GitBranch size={10} aria-hidden="true" />
+                        {branchLabel}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
+              </span>
+              {stamp ? (
+                <time
+                  className="project-chat__age"
+                  dateTime={
+                    tab.updatedAt && Number.isFinite(tab.updatedAt)
+                      ? new Date(tab.updatedAt).toISOString()
+                      : undefined
+                  }
+                >
+                  {stamp}
+                </time>
               ) : null}
             </button>
+            <button
+              className={`project-chat__pin${tab.pinned ? " project-chat__pin--on" : ""}`}
+              type="button"
+              aria-label={
+                tab.pinned
+                  ? `Unpin chat ${displayTitle}`
+                  : `Pin chat ${displayTitle}`
+              }
+              title={tab.pinned ? "Unpin chat" : "Pin chat"}
+              disabled={projectTransitioning}
+              onClick={() => void pinChat(tab.id, projectId)}
+            >
+              <Pin size={12} aria-hidden="true" />
+            </button>
+            <MoveChatButton
+              open={movingChatId === tab.id}
+              onToggle={() =>
+                setMovingChatId((current) =>
+                  current === tab.id ? null : tab.id,
+                )
+              }
+            />
+            {movingChatId === tab.id ? (
+              <MoveChatPopover
+                chatTitle={displayTitle}
+                destinations={moveDestinations}
+                onClose={() => setMovingChatId(null)}
+                onMove={(targetProjectId) => {
+                  setMovingChatId(null);
+                  void moveChat(tab.id, targetProjectId, projectId);
+                }}
+              />
+            ) : null}
             <button
               ref={(node) => {
                 if (node) renameTriggerRefs.current.set(tab.id, node);
@@ -169,7 +334,7 @@ export function ProjectChatNavigation() {
               aria-label={`Archive chat ${displayTitle}`}
               title={`Archive chat ${displayTitle}`}
               disabled={projectTransitioning || chatTabs.length <= 1}
-              onClick={() => void archiveChat(tab.id)}
+              onClick={() => void archiveChat(tab.id, projectId)}
             >
               <Archive size={12} aria-hidden="true" />
             </button>
@@ -177,24 +342,25 @@ export function ProjectChatNavigation() {
         );
       })}
 
-      <button
-        className="project-chat project-chat--utility"
-        type="button"
-        title="Add folder root"
-        onClick={() => void addProjectRoot()}
-      >
-        <FolderPlus size={14} aria-hidden="true" />
-        <span>Add folder root</span>
-      </button>
+      {truncated ? (
+        <button
+          className="project-chat-more"
+          type="button"
+          title="Show more"
+          onClick={() => onShowMore?.(projectId)}
+        >
+          Show more
+        </button>
+      ) : null}
 
-      {archivedChats.length > 0 ? (
+      {!hideArchived && archivedChats.length > 0 ? (
         <div className="archived-chats">
           <button
             className="archived-chats__disclosure"
             type="button"
             aria-label="Archived chats"
             aria-expanded={archivedOpen}
-            aria-controls="archived-chat-list"
+            aria-controls={archivedListId}
             onClick={() => setArchivedOpen((open) => !open)}
           >
             {archivedOpen ? (
@@ -208,7 +374,7 @@ export function ProjectChatNavigation() {
           {archivedOpen ? (
             <div
               className="archived-chat-list"
-              id="archived-chat-list"
+              id={archivedListId}
               role="region"
               aria-label="Archived chats"
             >
@@ -223,7 +389,7 @@ export function ProjectChatNavigation() {
                       aria-label={`Restore chat ${displayTitle}`}
                       title={`Restore chat ${displayTitle}`}
                       disabled={projectTransitioning}
-                      onClick={() => void restoreChat(chat.id)}
+                      onClick={() => void restoreChat(chat.id, projectId)}
                     >
                       <RotateCcw size={12} aria-hidden="true" />
                     </button>

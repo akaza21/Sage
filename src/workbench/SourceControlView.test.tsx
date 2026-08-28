@@ -25,6 +25,19 @@ const rootStatus: RootRepositoryStatus = {
   branch: "main",
   branches: ["main", "topic"],
   branchesTruncated: false,
+  recentCommits: [
+    {
+      sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      subject: "second",
+    },
+    {
+      sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      subject: "first",
+    },
+  ],
+  recentCommitsTruncated: false,
+  remotes: ["origin", "upstream"],
+  remotesTruncated: false,
   changes: [],
   truncated: false,
   elapsedMs: 1,
@@ -346,6 +359,620 @@ it("lists local branches and marks the current named branch", () => {
   expect(list).not.toHaveTextContent("topic (current)");
 });
 
+it("lists recent commits newest first with a shortened SHA", () => {
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [rootStatus], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: rootStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+
+  render(<SourceControlView />);
+
+  const list = screen.getByRole("list", { name: "Recent commits in Root A" });
+  expect(list.querySelectorAll(".source-commit__sha")[0]).toHaveTextContent(
+    "aaaaaaa",
+  );
+  expect(list.querySelectorAll(".source-commit__subject")[0]).toHaveTextContent(
+    "second",
+  );
+  expect(list.querySelectorAll(".source-commit__sha")[1]).toHaveTextContent(
+    "bbbbbbb",
+  );
+  expect(list).not.toHaveTextContent(
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  );
+  const remotes = screen.getByRole("list", { name: "Remotes in Root A" });
+  expect(remotes).toHaveTextContent("origin");
+  expect(remotes).toHaveTextContent("upstream");
+  expect(remotes).not.toHaveTextContent("http");
+  expect(remotes).not.toHaveTextContent(".git");
+});
+
+it("lists conflicted files under a Conflicts heading with a Conflict chip", () => {
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: {
+      roots: [
+        {
+          ...rootStatus,
+          changes: [
+            {
+              resource: { rootId: "root-a", relativePath: "ok.ts" },
+              indexStatus: "modified",
+              worktreeStatus: "unchanged",
+              additions: 1,
+              deletions: 0,
+            },
+            {
+              resource: { rootId: "root-a", relativePath: "bad.ts" },
+              indexStatus: "conflicted",
+              worktreeStatus: "conflicted",
+              additions: null,
+              deletions: null,
+            },
+          ],
+        },
+      ],
+      truncated: false,
+      elapsedMs: 1,
+    },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: {
+      ...rootStatus,
+      changes: [
+        {
+          resource: { rootId: "root-a", relativePath: "ok.ts" },
+          indexStatus: "modified",
+          worktreeStatus: "unchanged",
+          additions: 1,
+          deletions: 0,
+        },
+        {
+          resource: { rootId: "root-a", relativePath: "bad.ts" },
+          indexStatus: "conflicted",
+          worktreeStatus: "conflicted",
+          additions: null,
+          deletions: null,
+        },
+      ],
+    },
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+
+  render(<SourceControlView />);
+
+  expect(screen.getByText("Conflicts")).toBeInTheDocument();
+  expect(screen.getByText("Conflict")).toBeInTheDocument();
+  const bad = screen.getByText("bad.ts");
+  const ok = screen.getByText("ok.ts");
+  expect(
+    bad.compareDocumentPosition(ok) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    screen.getByRole("button", { name: "Keep ours for bad.ts in Root A" }),
+  ).toBeInTheDocument();
+});
+
+it("lists rebase conflicts under a Rebase heading", () => {
+  const rebasing: RootRepositoryStatus = {
+    ...rootStatus,
+    rebaseInProgress: true,
+    changes: [
+      {
+        resource: { rootId: "root-a", relativePath: "bad.ts" },
+        indexStatus: "conflicted",
+        worktreeStatus: "conflicted",
+        additions: null,
+        deletions: null,
+      },
+    ],
+  };
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [rebasing], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: rebasing,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+
+  render(<SourceControlView />);
+
+  expect(screen.getByText("Rebase")).toBeInTheDocument();
+  expect(screen.queryByText("Conflicts")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Keep ours for bad.ts in Root A" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("Commit merge")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Continue rebase in Root A" }),
+  ).toBeDisabled();
+  expect(screen.queryByText("Continue rebase stays later.")).toBeNull();
+});
+
+it("lists cherry-pick conflicts under a Cherry-pick heading", () => {
+  const cherryPicking: RootRepositoryStatus = {
+    ...rootStatus,
+    cherryPickInProgress: true,
+    changes: [
+      {
+        resource: { rootId: "root-a", relativePath: "bad.ts" },
+        indexStatus: "conflicted",
+        worktreeStatus: "conflicted",
+        additions: null,
+        deletions: null,
+      },
+    ],
+  };
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [cherryPicking], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: cherryPicking,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+
+  render(<SourceControlView />);
+
+  expect(screen.getByText("Cherry-pick")).toBeInTheDocument();
+  expect(screen.queryByText("Conflicts")).toBeNull();
+  expect(screen.queryByText("Rebase")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Keep ours for bad.ts in Root A" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("Commit merge")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Continue cherry-pick in Root A" }),
+  ).toBeDisabled();
+});
+
+it("lists revert conflicts under a Revert heading", () => {
+  const reverting: RootRepositoryStatus = {
+    ...rootStatus,
+    revertInProgress: true,
+    changes: [
+      {
+        resource: { rootId: "root-a", relativePath: "bad.ts" },
+        indexStatus: "conflicted",
+        worktreeStatus: "conflicted",
+        additions: null,
+        deletions: null,
+      },
+    ],
+  };
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [reverting], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: reverting,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+
+  render(<SourceControlView />);
+
+  expect(screen.getByText("Revert")).toBeInTheDocument();
+  expect(screen.queryByText("Conflicts")).toBeNull();
+  expect(screen.queryByText("Cherry-pick")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Keep ours for bad.ts in Root A" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("Commit merge")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Continue revert in Root A" }),
+  ).toBeDisabled();
+});
+
+it("keeps ours for a conflicted file through the mutation port", async () => {
+  const mutateRepositoryFile = vi.fn(async () => true);
+  const conflicted: RootRepositoryStatus = {
+    ...rootStatus,
+    changes: [
+      {
+        resource: { rootId: "root-a", relativePath: "bad.ts" },
+        indexStatus: "conflicted",
+        worktreeStatus: "conflicted",
+        additions: null,
+        deletions: null,
+      },
+    ],
+  };
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [conflicted], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: conflicted,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    mutateRepositoryFile,
+  });
+
+  render(<SourceControlView />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Keep ours for bad.ts in Root A" }),
+  );
+  await waitFor(() =>
+    expect(mutateRepositoryFile).toHaveBeenCalledWith(
+      conflicted.changes[0].resource,
+      "keepOurs",
+    ),
+  );
+});
+
+it("offers a switch control for a listed non-current local branch", async () => {
+  const checkoutLocalBranch = vi.fn(async () => true);
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [rootStatus], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: rootStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    checkoutLocalBranch,
+  });
+
+  render(<SourceControlView />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Switch to topic" }));
+  await waitFor(() => {
+    expect(checkoutLocalBranch).toHaveBeenCalledWith("root-a", "topic");
+  });
+  expect(
+    screen.queryByRole("button", { name: "Switch to main" }),
+  ).not.toBeInTheDocument();
+});
+
+it("offers a New branch form that creates an unlisted valid name without switching", async () => {
+  const createLocalBranch = vi.fn(async () => true);
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [rootStatus], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: rootStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    createLocalBranch,
+  });
+
+  render(<SourceControlView />);
+
+  fireEvent.change(screen.getByRole("textbox", { name: "New branch name" }), {
+    target: { value: "feature" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create branch" }));
+  await waitFor(() => {
+    expect(createLocalBranch).toHaveBeenCalledWith("root-a", "feature");
+  });
+  expect(createLocalBranch).toHaveBeenCalledTimes(1);
+});
+
+it("refuses Create branch for a listed or unsafe name", () => {
+  const createLocalBranch = vi.fn(async () => true);
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [rootStatus], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: rootStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    createLocalBranch,
+  });
+
+  render(<SourceControlView />);
+
+  const create = screen.getByRole("button", { name: "Create branch" });
+  expect(create).toBeDisabled();
+  fireEvent.change(screen.getByRole("textbox", { name: "New branch name" }), {
+    target: { value: "main" },
+  });
+  expect(create).toBeDisabled();
+  fireEvent.change(screen.getByRole("textbox", { name: "New branch name" }), {
+    target: { value: "-bad" },
+  });
+  expect(create).toBeDisabled();
+  fireEvent.click(create);
+  expect(createLocalBranch).not.toHaveBeenCalled();
+});
+
+it("offers Delete for a listed non-current local branch and hides it for current", async () => {
+  const deleteLocalBranch = vi.fn(async () => true);
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [rootStatus], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: rootStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    deleteLocalBranch,
+  });
+
+  render(<SourceControlView />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Delete topic" }));
+  await waitFor(() => {
+    expect(deleteLocalBranch).toHaveBeenCalledWith("root-a", "topic");
+  });
+  expect(
+    screen.queryByRole("button", { name: "Delete main" }),
+  ).not.toBeInTheDocument();
+});
+
+it("offers Rename branch for a listed name to a valid unlisted name", async () => {
+  const renameLocalBranch = vi.fn(async () => true);
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [rootStatus], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: rootStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    renameLocalBranch,
+  });
+
+  render(<SourceControlView />);
+
+  fireEvent.change(screen.getByRole("combobox", { name: "Branch to rename" }), {
+    target: { value: "topic" },
+  });
+  fireEvent.change(
+    screen.getByRole("textbox", { name: "Renamed branch name" }),
+    { target: { value: "feature" } },
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Rename branch" }));
+  await waitFor(() => {
+    expect(renameLocalBranch).toHaveBeenCalledWith(
+      "root-a",
+      "topic",
+      "feature",
+    );
+  });
+  expect(renameLocalBranch).toHaveBeenCalledTimes(1);
+});
+
+it("refuses Rename branch for a listed or unsafe destination", () => {
+  const renameLocalBranch = vi.fn(async () => true);
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [rootStatus], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: rootStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    renameLocalBranch,
+  });
+
+  render(<SourceControlView />);
+
+  const rename = screen.getByRole("button", { name: "Rename branch" });
+  expect(rename).toBeDisabled();
+  fireEvent.change(
+    screen.getByRole("textbox", { name: "Renamed branch name" }),
+    { target: { value: "main" } },
+  );
+  expect(rename).toBeDisabled();
+  fireEvent.change(
+    screen.getByRole("textbox", { name: "Renamed branch name" }),
+    { target: { value: "-bad" } },
+  );
+  expect(rename).toBeDisabled();
+  fireEvent.click(rename);
+  expect(renameLocalBranch).not.toHaveBeenCalled();
+});
+
+it("offers fetch and push on listed remote names without URLs", async () => {
+  const fetchRemote = vi.fn(async () => true);
+  const pushRemote = vi.fn(async () => true);
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [rootStatus], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: rootStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    fetchRemote,
+    pushRemote,
+  });
+
+  render(<SourceControlView />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Fetch origin" }));
+  await waitFor(() => {
+    expect(fetchRemote).toHaveBeenCalledWith("root-a", "origin");
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Push upstream" }));
+  await waitFor(() => {
+    expect(pushRemote).toHaveBeenCalledWith("root-a", "upstream");
+  });
+  expect(screen.queryByText(/https?:\/\//)).not.toBeInTheDocument();
+});
+
 it("uses the live selected root status after staging a selected root file", async () => {
   const unstagedStatus: RootRepositoryStatus = {
     ...rootStatus,
@@ -434,4 +1061,292 @@ it("uses the live selected root status after staging a selected root file", asyn
   expect(
     screen.getByRole("button", { name: "Commit staged changes in Root A" }),
   ).toBeEnabled();
+});
+
+it("enables Commit merge after a resolved merge with no leftover staged delta", () => {
+  const resolvedMerge: RootRepositoryStatus = {
+    ...rootStatus,
+    mergeInProgress: true,
+    changes: [],
+  };
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [resolvedMerge], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: resolvedMerge,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+
+  render(<SourceControlView />);
+
+  fireEvent.change(screen.getByLabelText("Commit message for Root A"), {
+    target: { value: "Merge other" },
+  });
+  expect(
+    screen.getByRole("button", { name: "Commit merge in Root A" }),
+  ).toBeEnabled();
+  expect(
+    screen.getByText("This completes the in-progress merge."),
+  ).toBeInTheDocument();
+});
+
+it("enables Continue rebase after a resolved rebase with no leftover conflicts", () => {
+  const resolvedRebase: RootRepositoryStatus = {
+    ...rootStatus,
+    rebaseInProgress: true,
+    changes: [],
+  };
+  const continueRebase = vi.fn(async () => true);
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [resolvedRebase], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: resolvedRebase,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    continueRebase,
+  });
+
+  render(<SourceControlView />);
+
+  expect(screen.queryByText("Commit merge")).toBeNull();
+  expect(screen.queryByText("Continue rebase stays later.")).toBeNull();
+  expect(screen.getByText("Conflicts are resolved.")).toBeInTheDocument();
+  expect(
+    screen.getByText("This continues the in-progress rebase."),
+  ).toBeInTheDocument();
+  const continueButton = screen.getByRole("button", {
+    name: "Continue rebase in Root A",
+  });
+  expect(continueButton).toBeEnabled();
+  fireEvent.click(continueButton);
+  expect(continueRebase).toHaveBeenCalledWith("root-a");
+});
+
+it("offers Abort rebase while conflicts remain and Continue rebase is disabled", () => {
+  const conflictedRebase: RootRepositoryStatus = {
+    ...rootStatus,
+    rebaseInProgress: true,
+    changes: [
+      {
+        resource: { rootId: "root-a", relativePath: "conflict.txt" },
+        indexStatus: "conflicted",
+        worktreeStatus: "conflicted",
+        additions: null,
+        deletions: null,
+      },
+    ],
+  };
+  const abortInProgress = vi.fn(async () => true);
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [conflictedRebase], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: conflictedRebase,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    abortInProgress,
+  });
+
+  render(<SourceControlView />);
+
+  expect(
+    screen.getByRole("button", { name: "Continue rebase in Root A" }),
+  ).toBeDisabled();
+  const abort = screen.getByRole("button", {
+    name: "Abort rebase in Root A",
+  });
+  expect(abort).toBeEnabled();
+  fireEvent.click(abort);
+  expect(abortInProgress).toHaveBeenCalledWith("root-a");
+});
+
+it("offers Abort merge during an exclusive merge even with leftover conflicts", () => {
+  const conflictedMerge: RootRepositoryStatus = {
+    ...rootStatus,
+    mergeInProgress: true,
+    changes: [
+      {
+        resource: { rootId: "root-a", relativePath: "conflict.txt" },
+        indexStatus: "conflicted",
+        worktreeStatus: "conflicted",
+        additions: null,
+        deletions: null,
+      },
+    ],
+  };
+  const abortInProgress = vi.fn(async () => true);
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [conflictedMerge], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: conflictedMerge,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    abortInProgress,
+  });
+
+  render(<SourceControlView />);
+
+  const abort = screen.getByRole("button", {
+    name: "Abort merge in Root A",
+  });
+  expect(abort).toBeEnabled();
+  fireEvent.click(abort);
+  expect(abortInProgress).toHaveBeenCalledWith("root-a");
+});
+
+it("enables Continue cherry-pick after a resolved cherry-pick with no leftover conflicts", () => {
+  const resolvedCherryPick: RootRepositoryStatus = {
+    ...rootStatus,
+    cherryPickInProgress: true,
+    changes: [],
+  };
+  const continueCherryPick = vi.fn(async () => true);
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: {
+      roots: [resolvedCherryPick],
+      truncated: false,
+      elapsedMs: 1,
+    },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: resolvedCherryPick,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    continueCherryPick,
+  });
+
+  render(<SourceControlView />);
+
+  expect(screen.queryByText("Commit merge")).toBeNull();
+  expect(screen.queryByText("Continue rebase")).toBeNull();
+  expect(screen.getByText("Conflicts are resolved.")).toBeInTheDocument();
+  expect(
+    screen.getByText("This continues the in-progress cherry-pick."),
+  ).toBeInTheDocument();
+  const continueButton = screen.getByRole("button", {
+    name: "Continue cherry-pick in Root A",
+  });
+  expect(continueButton).toBeEnabled();
+  fireEvent.click(continueButton);
+  expect(continueCherryPick).toHaveBeenCalledWith("root-a");
+});
+
+it("enables Continue revert after a resolved revert with no leftover conflicts", () => {
+  const resolvedRevert: RootRepositoryStatus = {
+    ...rootStatus,
+    revertInProgress: true,
+    changes: [],
+  };
+  const continueRevert = vi.fn(async () => true);
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [resolvedRevert], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: resolvedRevert,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    continueRevert,
+  });
+
+  render(<SourceControlView />);
+
+  expect(screen.queryByText("Commit merge")).toBeNull();
+  expect(screen.queryByText("Continue cherry-pick")).toBeNull();
+  expect(screen.getByText("Conflicts are resolved.")).toBeInTheDocument();
+  expect(
+    screen.getByText("This continues the in-progress revert."),
+  ).toBeInTheDocument();
+  const continueButton = screen.getByRole("button", {
+    name: "Continue revert in Root A",
+  });
+  expect(continueButton).toBeEnabled();
+  fireEvent.click(continueButton);
+  expect(continueRevert).toHaveBeenCalledWith("root-a");
 });

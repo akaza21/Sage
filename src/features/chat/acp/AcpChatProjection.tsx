@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../../domain/acp";
 import type {
   ProjectRootSummary,
@@ -5,19 +7,91 @@ import type {
 } from "../../../domain/workbench";
 
 import { AcpAnnouncementRegions } from "./AcpAnnouncementRegions";
+import { dispatchBrowseFromAcpPage } from "./dispatchBrowse";
+import { ChatMarkdown } from "./ChatMarkdown";
 import { TurnEditSummary } from "./TurnEditSummary";
 import { recordAgentEditDisposition } from "./agentEditDisposition";
 import { CollaborationItem } from "./CollaborationItem";
 import { HarnessActivity } from "./HarnessActivity";
 import { PermissionItem } from "./PermissionItem";
 import { ToolItem, type OpenResourceTarget } from "./ToolItem";
+import { ImageItem } from "./ImageItem";
 import { UnknownItem } from "./UnknownItem";
 import { turnStateLabels } from "./statusSemantics";
+import {
+  agentRailClockMs,
+  useAgentRailViewPrefs,
+} from "../../../workbench/agentRailViewPrefs";
 import "./acp-chat.css";
+
+const MAX_THOUGHT_WORKING_ROWS = 64;
+
+function thoughtLabel(createdAt: number, nowMs: number) {
+  if (
+    !Number.isFinite(createdAt) ||
+    !Number.isFinite(nowMs) ||
+    nowMs <= createdAt
+  )
+    return "Thought briefly";
+  const seconds = Math.floor((nowMs - createdAt) / 1_000);
+  return seconds > 0 ? `Thought ${seconds}s` : "Thought briefly";
+}
+
+function isWorkingTool(
+  item: AcpItem,
+): item is Extract<AcpItem, { kind: "toolCall" | "toolUpdateResult" }> {
+  return (
+    (item.kind === "toolCall" || item.kind === "toolUpdateResult") &&
+    item.toolState === "inProgress"
+  );
+}
+
+function workingToolStatus(
+  item: Extract<AcpItem, { kind: "toolCall" | "toolUpdateResult" }>,
+) {
+  const presentation = item.payload.presentation;
+  if (presentation.kind === "search") {
+    return `Searching… ${presentation.querySummary}`;
+  }
+  const detail =
+    item.kind === "toolCall"
+      ? item.payload.inputSummary
+      : item.payload.outputSummary;
+  return detail || "Working…";
+}
+
+function ThoughtBlock({ turn }: { turn: TurnProjection }) {
+  useAgentRailViewPrefs();
+  const thought = turn.items.find((item) => item.kind === "thoughtSummary");
+  if (!thought) return null;
+  const working = turn.items
+    .filter(isWorkingTool)
+    .slice(0, MAX_THOUGHT_WORKING_ROWS);
+  return (
+    <details className="acp-details acp-thought">
+      <summary>{thoughtLabel(thought.createdAt, agentRailClockMs())}</summary>
+      <ChatMarkdown text={thought.payload.summary} />
+      {working.length > 0 ? (
+        <ul className="acp-thought__working" aria-label="Working tools">
+          {working.map((item) => (
+            <li key={item.id}>
+              <span className="acp-thought__pulse" aria-hidden="true" />
+              <span className="acp-thought__working-copy">
+                <span>{item.payload.presentation.label}</span>
+                <span>{workingToolStatus(item)}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </details>
+  );
+}
 
 interface AcpChatProjectionProps {
   page: AcpChatPage;
   active: boolean;
+  focused?: boolean;
   onOpenResource?: (resource: ResourceRef, target: OpenResourceTarget) => void;
   hasEarlier?: boolean;
   loadingEarlier?: boolean;
@@ -62,14 +136,14 @@ function ItemView({
                 ? "You"
                 : "System"}
           </span>
-          <p>{item.payload.text}</p>
+          <ChatMarkdown text={item.payload.text} />
         </article>
       );
     case "thoughtSummary":
       return (
         <details className="acp-details acp-thought">
           <summary>Thought summary</summary>
-          <p>{item.payload.summary}</p>
+          <ChatMarkdown text={item.payload.summary} />
         </details>
       );
     case "plan":
@@ -95,6 +169,8 @@ function ItemView({
           Edit included in the Turn changed-file summary
         </p>
       );
+    case "image":
+      return <ImageItem item={item} />;
     case "usage":
       return (
         <p className="acp-usage">
@@ -132,7 +208,10 @@ function Turn({
   onOpenResource?: AcpChatProjectionProps["onOpenResource"];
 }) {
   const primaryItems = turn.items.filter(
-    (item) => item.origin === "primary" && item.kind !== "fileChangeDiff",
+    (item) =>
+      item.origin === "primary" &&
+      item.kind !== "fileChangeDiff" &&
+      item.kind !== "thoughtSummary",
   );
   const activityIds = new Set(turn.activities.map((activity) => activity.id));
   const itemActivities = new Map(
@@ -161,6 +240,7 @@ function Turn({
         </span>
       </header>
       <div className="acp-turn__items">
+        <ThoughtBlock turn={turn} />
         {primaryItems.map((item) => (
           <ItemView key={item.id} item={item} onOpenResource={onOpenResource} />
         ))}
@@ -195,6 +275,7 @@ function Turn({
 export function AcpChatProjection({
   page,
   active,
+  focused = true,
   onOpenResource,
   hasEarlier = false,
   loadingEarlier = false,
@@ -203,6 +284,10 @@ export function AcpChatProjection({
   projectRoots = [],
   retentionIncomplete = false,
 }: AcpChatProjectionProps) {
+  useEffect(() => {
+    if (!active || !focused) return;
+    dispatchBrowseFromAcpPage(page);
+  }, [active, focused, page]);
   if (!active) return null;
   const earlierHistoryIncomplete = page.nextCursor !== null;
   const countIncomplete = earlierHistoryIncomplete || retentionIncomplete;
@@ -213,7 +298,7 @@ export function AcpChatProjection({
       aria-label={`Agent chat ${page.title}`}
       data-projection-revision={page.projectionRevision}
     >
-      <AcpAnnouncementRegions page={page} />
+      {focused ? <AcpAnnouncementRegions page={page} /> : null}
       <h2 className="acp-chat-projection__title">{page.title}</h2>
       {hasEarlier && onLoadEarlier ? (
         <button

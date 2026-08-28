@@ -38,7 +38,7 @@ describe("RightSidebar beta tool rail", () => {
     expect(
       screen.getByRole("button", { name: "Source Control" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Preview" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Preview" })).toBeNull();
     expect(
       screen.getByRole("button", { name: "Problems" }),
     ).toBeInTheDocument();
@@ -768,6 +768,18 @@ describe("RightSidebar Source Control mutations", () => {
     expect(
       screen.queryByRole("button", { name: /^(Stage|Unstage|Discard) / }),
     ).toBeNull();
+    expect(screen.getByText("Conflicts")).toBeInTheDocument();
+    expect(screen.getByText("Conflict")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Keep ours for conflict.txt in Alpha",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Keep theirs for conflict.txt in Alpha",
+      }),
+    ).toBeInTheDocument();
   });
 });
 

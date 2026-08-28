@@ -1,7 +1,7 @@
 use std::time::Instant;
 
-use super::Actor;
 use super::super::types::{HostError, HostOutcome, HostReply, HostState, RuntimeEngine};
+use super::Actor;
 
 impl<E: RuntimeEngine> Actor<E> {
     pub(super) fn accept_durable_completed(&mut self) -> Result<HostReply, HostError> {

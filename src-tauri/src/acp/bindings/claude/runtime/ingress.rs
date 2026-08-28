@@ -137,6 +137,9 @@ impl ClaudeRuntime {
         if method == "session/request_permission" {
             return self.permission_request(value, request_digest);
         }
+        if method == crate::acp::runtime::host_browse::CURATED_BROWSE_TOOL_NAME {
+            return self.ingest_browse_host(value);
+        }
         if method != "session/update" {
             if value.get("id").is_some() {
                 return Err(AdapterRuntimeError::MandatoryDenyTeardown);
@@ -315,7 +318,7 @@ impl ClaudeRuntime {
         ))
     }
 
-    fn item_identity(
+    pub(super) fn item_identity(
         &self,
         active: &ActiveSession,
         external_id: ExternalId,
@@ -378,7 +381,10 @@ fn permission_allow_once_option(value: &Value) -> Result<String, AdapterRuntimeE
             if kind == "allow_once" {
                 return Some(option_id);
             }
-            let name = option.get("name").and_then(Value::as_str).unwrap_or_default();
+            let name = option
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             if name.len() > 64 {
                 return None;
             }

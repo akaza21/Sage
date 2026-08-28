@@ -536,14 +536,20 @@ fn permission_request_ignores_an_unpaired_mandatory_deny_egress() {
 
         pump.push_stdout_chunk(b"{}\n", 20).await.unwrap();
 
-        let state = shared.0.lock().unwrap();
-        assert!(matches!(
-            state.durable_batches[0].as_slice(),
-            [DurableAdapterEvent::PermissionRequest { .. }]
-        ));
-        assert_eq!(state.log, ["journal", "publish"]);
-        assert!(state.resolutions.is_empty());
-        drop(state);
+        let (persisted_request, journaled, no_resolutions) = {
+            let state = shared.0.lock().unwrap();
+            (
+                matches!(
+                    state.durable_batches[0].as_slice(),
+                    [DurableAdapterEvent::PermissionRequest { .. }]
+                ),
+                state.log == ["journal", "publish"],
+                state.resolutions.is_empty(),
+            )
+        };
+        assert!(persisted_request);
+        assert!(journaled);
+        assert!(no_resolutions);
         pump.enqueue(AdapterEgress::new(
             OutboundFrame::new(br#"{\"result\":{\"decision\":\"decline\"}}"#.to_vec()).unwrap(),
             EgressToken::mandatory_deny(
@@ -710,14 +716,20 @@ fn paired_deny_ingress_does_not_tear_down_the_common_pump() {
         );
         let (mut pump, shared) = build_pump(vec![owned(vec![permission_event], vec![paired_deny])]);
         pump.push_stdout_chunk(b"{}\n", 1).await.unwrap();
-        let state = shared.0.lock().unwrap();
-        assert!(matches!(
-            state.durable_batches[0].as_slice(),
-            [DurableAdapterEvent::PermissionRequest { .. }]
-        ));
-        assert_eq!(state.log, ["journal", "publish"]);
-        assert!(state.resolutions.is_empty());
-        drop(state);
+        let (persisted_request, journaled, no_resolutions) = {
+            let state = shared.0.lock().unwrap();
+            (
+                matches!(
+                    state.durable_batches[0].as_slice(),
+                    [DurableAdapterEvent::PermissionRequest { .. }]
+                ),
+                state.log == ["journal", "publish"],
+                state.resolutions.is_empty(),
+            )
+        };
+        assert!(persisted_request);
+        assert!(journaled);
+        assert!(no_resolutions);
         pump.enqueue(AdapterEgress::new(
             OutboundFrame::new(br#"{\"result\":{\"decision\":\"decline\"}}"#.to_vec()).unwrap(),
             EgressToken::mandatory_deny(

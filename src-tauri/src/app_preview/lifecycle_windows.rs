@@ -1,4 +1,4 @@
-use std::{os::windows::io::AsRawHandle, process::Child};
+use std::{os::windows::io::AsRawHandle, process::Child, time::Duration};
 
 use windows_sys::Win32::{
     Foundation::CloseHandle,
@@ -7,9 +7,11 @@ use windows_sys::Win32::{
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
         SetInformationJobObject, TerminateJobObject,
     },
+    System::Threading::WaitForSingleObject,
 };
 
 pub(crate) struct PreviewJob(windows_sys::Win32::Foundation::HANDLE);
+const CHILD_EXIT_WAIT: Duration = Duration::from_secs(5);
 
 // SAFETY: The HANDLE is an owned Windows job object used only while the registry mutex is held.
 // The OS handle may be signaled from any thread, and we never share the raw pointer without
@@ -19,7 +21,7 @@ unsafe impl Send for PreviewJob {}
 impl PreviewJob {
     pub(crate) fn new(child: &Child) -> Result<Self, ()> {
         let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
-        if job == std::ptr::null_mut() {
+        if job.is_null() {
             return Err(());
         }
         let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
@@ -46,7 +48,10 @@ impl PreviewJob {
     }
 
     pub(crate) fn terminate(&self) {
-        unsafe { TerminateJobObject(self.0, 1) };
+        unsafe {
+            TerminateJobObject(self.0, 1);
+            WaitForSingleObject(self.0, CHILD_EXIT_WAIT.as_millis() as u32);
+        }
     }
 }
 

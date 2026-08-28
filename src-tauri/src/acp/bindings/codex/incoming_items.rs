@@ -2,6 +2,7 @@ use serde_json::{Map, Value};
 
 use crate::acp::{
     contract::{BoundedVec, SafeText},
+    image_admit::{ImageAdmitError, admit_image_data_url},
     intent::{NormalizedPayload, ToolCategory},
     lifecycle::{ItemLifecycle, ToolState},
     limits::LIMITS,
@@ -18,36 +19,36 @@ pub(super) fn normalize_item<M: ResourceMapper>(
     item: &Map<String, Value>,
     lifecycle: ItemLifecycle,
     mapper: &M,
-) -> Result<ItemNormalization, IngressError> {
+) -> Result<Option<ItemNormalization>, IngressError> {
     let kind = text(item, "type", 128)?;
     match kind {
-        "agentMessage" => Ok((
+        "agentMessage" => Ok(Some((
             NormalizedPayload::Text {
                 text: safe_text(item.get("text"), 262_144, "text")?,
             },
             None,
             None,
-        )),
-        "plan" => Ok((
+        ))),
+        "plan" => Ok(Some((
             NormalizedPayload::Plan {
                 summary: safe_text(item.get("text"), 262_144, "plan")?,
             },
             None,
             None,
-        )),
-        "reasoning" => Ok((
+        ))),
+        "reasoning" => Ok(Some((
             NormalizedPayload::ThoughtSummary {
                 summary: SafeText::new("summary", "Reasoning summary available")
                     .map_err(content)?,
             },
             None,
             None,
-        )),
-        "commandExecution" => tool(item, lifecycle, ToolCategory::Command, "Command"),
-        "mcpToolCall" => tool(item, lifecycle, ToolCategory::Mcp, "MCP tool"),
-        "dynamicToolCall" => tool(item, lifecycle, ToolCategory::Other, "Tool"),
-        "webSearch" => tool(item, lifecycle, ToolCategory::Web, "Web search"),
-        "collabAgentToolCall" | "subAgentActivity" => Ok((
+        ))),
+        "commandExecution" => tool(item, lifecycle, ToolCategory::Command, "Command").map(Some),
+        "mcpToolCall" => tool(item, lifecycle, ToolCategory::Mcp, "MCP tool").map(Some),
+        "dynamicToolCall" => tool(item, lifecycle, ToolCategory::Other, "Tool").map(Some),
+        "webSearch" => tool(item, lifecycle, ToolCategory::Web, "Web search").map(Some),
+        "collabAgentToolCall" | "subAgentActivity" => Ok(Some((
             NormalizedPayload::Collaboration {
                 label: SafeText::new("activityLabel", "Harness-owned child activity")
                     .map_err(content)?,
@@ -56,14 +57,43 @@ pub(super) fn normalize_item<M: ResourceMapper>(
             },
             None,
             None,
-        )),
-        "fileChange" => file_change(item, mapper),
-        other => Ok((
+        ))),
+        "fileChange" => file_change(item, mapper).map(Some),
+        "imageGeneration" => image_generation(item, lifecycle),
+        other => Ok(Some((
             unsupported(other, "Unsupported Codex item")?,
             None,
             Some(ItemLifecycle::Unsupported),
-        )),
+        ))),
     }
+}
+
+fn image_generation(
+    item: &Map<String, Value>,
+    lifecycle: ItemLifecycle,
+) -> Result<Option<ItemNormalization>, IngressError> {
+    match item.get("result") {
+        None | Some(Value::Null) if !lifecycle.is_terminal() => Ok(None),
+        None | Some(Value::Null) => {
+            rejected_image("imageGeneration", ImageAdmitError::MissingBytes)
+        }
+        Some(Value::String(url)) => match admit_image_data_url(url) {
+            Ok(payload) => Ok(Some((payload, None, Some(ItemLifecycle::Completed)))),
+            Err(reason) => rejected_image("imageGeneration", reason),
+        },
+        Some(_) => rejected_image("imageGeneration", ImageAdmitError::InvalidBase64),
+    }
+}
+
+fn rejected_image(
+    kind: &str,
+    reason: ImageAdmitError,
+) -> Result<Option<ItemNormalization>, IngressError> {
+    Ok(Some((
+        unsupported(kind, reason.unsupported_summary())?,
+        None,
+        Some(ItemLifecycle::Unsupported),
+    )))
 }
 
 fn tool(
@@ -142,4 +172,144 @@ fn file_change<M: ResourceMapper>(
         Some(ToolState::Completed),
         Some(ItemLifecycle::Completed),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use crate::acp::intent::{
+        IMAGE_BASE64_MAX, ImageMediaType, SafeResourceRef, UnavailableResourceReason,
+    };
+
+    use super::*;
+
+    const PNG_1X1: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
+
+    struct UnusedMapper;
+
+    impl ResourceMapper for UnusedMapper {
+        fn map_existing(&self, _: &str) -> Result<SafeResourceRef, UnavailableResourceReason> {
+            Err(UnavailableResourceReason::Unsupported)
+        }
+    }
+
+    fn item(value: Value) -> Map<String, Value> {
+        value.as_object().cloned().expect("object item")
+    }
+
+    #[test]
+    fn image_generation_admits_png_data_url() {
+        let item = item(json!({
+            "type": "imageGeneration",
+            "id": "img-1",
+            "status": "completed",
+            "result": format!("data:image/png;base64,{PNG_1X1}")
+        }));
+        let (payload, tool_state, lifecycle) =
+            normalize_item(&item, ItemLifecycle::Completed, &UnusedMapper)
+                .unwrap()
+                .expect("admitted image");
+        assert!(tool_state.is_none());
+        assert_eq!(lifecycle, Some(ItemLifecycle::Completed));
+        let NormalizedPayload::Image { media_type, data } = payload else {
+            panic!("expected image payload");
+        };
+        assert_eq!(media_type, ImageMediaType::Png);
+        assert_eq!(data.as_str(), PNG_1X1);
+    }
+
+    #[test]
+    fn image_generation_rejects_svg_as_unsupported() {
+        let item = item(json!({
+            "type": "imageGeneration",
+            "id": "img-svg",
+            "result": "data:image/svg+xml;base64,PHN2Zy8+"
+        }));
+        let (payload, _, lifecycle) =
+            normalize_item(&item, ItemLifecycle::Completed, &UnusedMapper)
+                .unwrap()
+                .expect("rejected image");
+        assert_eq!(lifecycle, Some(ItemLifecycle::Unsupported));
+        let NormalizedPayload::Unsupported {
+            external_kind,
+            summary,
+        } = payload
+        else {
+            panic!("expected unsupported");
+        };
+        assert_eq!(external_kind.as_str(), "imageGeneration");
+        assert_eq!(summary.as_str(), "Image media type is not admitted");
+    }
+
+    #[test]
+    fn image_generation_rejects_oversize_without_partial_bytes() {
+        let item = item(json!({
+            "type": "imageGeneration",
+            "id": "img-big",
+            "result": format!("data:image/png;base64,{}", "A".repeat(IMAGE_BASE64_MAX))
+        }));
+        let (payload, _, lifecycle) =
+            normalize_item(&item, ItemLifecycle::Completed, &UnusedMapper)
+                .unwrap()
+                .expect("rejected image");
+        assert_eq!(lifecycle, Some(ItemLifecycle::Unsupported));
+        assert!(matches!(
+            payload,
+            NormalizedPayload::Unsupported { ref summary, .. }
+                if summary.as_str() == "Image exceeds the bounded size cap"
+        ));
+    }
+
+    #[test]
+    fn image_generation_rejects_missing_bytes_on_completed() {
+        let item = item(json!({
+            "type": "imageGeneration",
+            "id": "img-empty",
+            "status": "completed"
+        }));
+        let (payload, _, lifecycle) =
+            normalize_item(&item, ItemLifecycle::Completed, &UnusedMapper)
+                .unwrap()
+                .expect("rejected image");
+        assert_eq!(lifecycle, Some(ItemLifecycle::Unsupported));
+        assert!(matches!(
+            payload,
+            NormalizedPayload::Unsupported { ref summary, .. }
+                if summary.as_str() == "Image payload is missing"
+        ));
+    }
+
+    #[test]
+    fn image_generation_skips_in_progress_without_bytes() {
+        let item = item(json!({
+            "type": "imageGeneration",
+            "id": "img-pending",
+            "status": "inProgress"
+        }));
+        assert!(
+            normalize_item(&item, ItemLifecycle::Started, &UnusedMapper)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn unknown_codex_item_stays_unsupported() {
+        let item = item(json!({
+            "type": "imageView",
+            "id": "view-1",
+            "path": r"C:\tmp\x.png"
+        }));
+        let (payload, _, lifecycle) =
+            normalize_item(&item, ItemLifecycle::Completed, &UnusedMapper)
+                .unwrap()
+                .expect("unsupported view");
+        assert_eq!(lifecycle, Some(ItemLifecycle::Unsupported));
+        assert!(matches!(
+            payload,
+            NormalizedPayload::Unsupported { ref external_kind, .. }
+                if external_kind.as_str() == "imageView"
+        ));
+    }
 }

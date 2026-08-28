@@ -10,6 +10,8 @@ pub enum GitFileMutationAction {
     Stage,
     Unstage,
     Discard,
+    KeepOurs,
+    KeepTheirs,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,6 +85,79 @@ pub struct GitRepositoryCommitResult {
     pub repositories: ProjectRepositoryStatus,
     pub error: Option<GitFileMutationError>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GitRepositoryCheckoutRequest {
+    pub project_id: String,
+    pub root_id: String,
+    pub branch: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GitRepositoryBranchRenameRequest {
+    pub project_id: String,
+    pub root_id: String,
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRepositoryCheckoutResult {
+    pub project_id: String,
+    pub root_id: String,
+    pub transition_epoch: u64,
+    pub repositories: ProjectRepositoryStatus,
+    pub error: Option<GitFileMutationError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GitRepositoryRebaseContinueRequest {
+    pub project_id: String,
+    pub root_id: String,
+}
+
+pub type GitRepositoryRebaseContinueResult = GitRepositoryCheckoutResult;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GitRepositoryCherryPickContinueRequest {
+    pub project_id: String,
+    pub root_id: String,
+}
+
+pub type GitRepositoryCherryPickContinueResult = GitRepositoryCheckoutResult;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GitRepositoryRevertContinueRequest {
+    pub project_id: String,
+    pub root_id: String,
+}
+
+pub type GitRepositoryRevertContinueResult = GitRepositoryCheckoutResult;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GitRepositorySequenceAbortRequest {
+    pub project_id: String,
+    pub root_id: String,
+}
+
+pub type GitRepositorySequenceAbortResult = GitRepositoryCheckoutResult;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GitRepositoryRemoteTransportRequest {
+    pub project_id: String,
+    pub root_id: String,
+    pub remote: String,
+}
+
+pub type GitRepositoryRemoteTransportResult = GitRepositoryCheckoutResult;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -1,6 +1,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { clearAcpProjectionRegistry } from "../../../app/acpProjectionRegistry";
 import { useAcpProjectionStore } from "../../../app/acpProjectionStore";
 import { useWorkbenchStore } from "../../../app/store";
 import type {
@@ -38,6 +39,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   useAcpProjectionStore.getState().clear();
+  clearAcpProjectionRegistry();
 });
 
 describe("useAcpChatProjection", () => {
@@ -124,6 +126,72 @@ describe("useAcpChatProjection", () => {
 
     expect(result.current).toBeNull();
     expect(load).not.toHaveBeenCalled();
+  });
+
+  it("keeps a bound chat live when the active tab is a file", async () => {
+    useWorkbenchStore.setState({
+      activeTabId: "file:a",
+      tabs: [
+        { id: "file:a", kind: "file" },
+        { id: "chat-1", kind: "chat" },
+      ] as never,
+    });
+    const load = vi
+      .spyOn(acpDesktop, "getChatPage")
+      .mockResolvedValue(projection);
+    vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockResolvedValue(
+      () => undefined,
+    );
+    const { result } = renderHook(() => useAcpChatProjection(true, "chat-1"));
+    await waitFor(() => expect(result.current).toEqual(projection));
+    expect(load).toHaveBeenCalledWith({
+      projectId: "project-1",
+      projectGeneration: "3",
+      chatId: "chat-1",
+      cursor: null,
+    });
+  });
+
+  it("keeps two bound Chat pages from stealing each other's stream", async () => {
+    const chatB = {
+      ...projection,
+      chatId: "chat-2",
+      title: "Second chat",
+      projectionRevision: "2",
+    } as AcpChatPage;
+    const load = vi
+      .spyOn(acpDesktop, "getChatPage")
+      .mockImplementation(async (request) =>
+        request.chatId === "chat-2" ? chatB : projection,
+      );
+    vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockResolvedValue(
+      () => undefined,
+    );
+    useWorkbenchStore.setState({
+      tabs: [
+        { id: "chat-1", kind: "chat" },
+        { id: "chat-2", kind: "chat" },
+      ] as never,
+      activeTabId: "chat-1",
+    });
+    const first = renderHook(() => useAcpChatProjection(true, "chat-1"));
+    const second = renderHook(() => useAcpChatProjection(true, "chat-2"));
+    await waitFor(() => expect(first.result.current?.chatId).toBe("chat-1"));
+    await waitFor(() => expect(second.result.current?.chatId).toBe("chat-2"));
+    expect(first.result.current?.projectionRevision).toBe("4");
+    expect(second.result.current?.projectionRevision).toBe("2");
+    expect(load).toHaveBeenCalledWith({
+      projectId: "project-1",
+      projectGeneration: "3",
+      chatId: "chat-1",
+      cursor: null,
+    });
+    expect(load).toHaveBeenCalledWith({
+      projectId: "project-1",
+      projectGeneration: "3",
+      chatId: "chat-2",
+      cursor: null,
+    });
   });
 
   it("does not load or retain a listener for a non-ACP harness", () => {

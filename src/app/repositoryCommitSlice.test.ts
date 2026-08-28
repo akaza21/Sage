@@ -282,4 +282,322 @@ describe("repository commit store", () => {
     ).resolves.toBe(true);
     expect(commit).toHaveBeenCalledTimes(1);
   });
+
+  it("commits a resolved merge when the index matches HEAD", async () => {
+    const commit = vi.spyOn(desktop, "commitGitRepository").mockResolvedValue({
+      projectId: "project-a",
+      rootId: "root-a",
+      transitionEpoch: 7,
+      repositories: afterRepositories,
+      error: null,
+    });
+    useWorkbenchStore.setState({
+      repositories: {
+        ...beforeRepositories,
+        roots: [
+          {
+            ...beforeRepositories.roots[0],
+            changes: [],
+            mergeInProgress: true,
+          },
+          beforeRepositories.roots[1],
+        ],
+      },
+    });
+
+    await expect(
+      useWorkbenchStore.getState().commitRepository("root-a", "Merge other"),
+    ).resolves.toBe(true);
+    expect(commit).toHaveBeenCalledWith(
+      {
+        projectId: "project-a",
+        rootId: "root-a",
+        message: "Merge other",
+      },
+      7,
+    );
+  });
+
+  it("continues a resolved rebase without inventing a commit message", async () => {
+    const continueRebase = vi
+      .spyOn(desktop, "continueGitRebase")
+      .mockResolvedValue({
+        projectId: "project-a",
+        rootId: "root-a",
+        transitionEpoch: 7,
+        repositories: afterRepositories,
+        error: null,
+      });
+    useWorkbenchStore.setState({
+      repositories: {
+        ...beforeRepositories,
+        roots: [
+          {
+            ...beforeRepositories.roots[0],
+            changes: [],
+            rebaseInProgress: true,
+          },
+          beforeRepositories.roots[1],
+        ],
+      },
+    });
+
+    await expect(
+      useWorkbenchStore.getState().continueRebase("root-a"),
+    ).resolves.toBe(true);
+    expect(continueRebase).toHaveBeenCalledWith(
+      {
+        projectId: "project-a",
+        rootId: "root-a",
+      },
+      7,
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      repositories: afterRepositories,
+      repositoryCommit: null,
+      repositoryCommitError: null,
+    });
+  });
+
+  it("refuses continue rebase while conflicts remain", async () => {
+    const continueRebase = vi.spyOn(desktop, "continueGitRebase");
+    useWorkbenchStore.setState({
+      repositories: {
+        ...beforeRepositories,
+        roots: [
+          {
+            ...beforeRepositories.roots[0],
+            rebaseInProgress: true,
+            changes: [
+              {
+                resource: { rootId: "root-a", relativePath: "conflict.txt" },
+                indexStatus: "conflicted",
+                worktreeStatus: "conflicted",
+                additions: null,
+                deletions: null,
+              },
+            ],
+          },
+          beforeRepositories.roots[1],
+        ],
+      },
+    });
+
+    await expect(
+      useWorkbenchStore.getState().continueRebase("root-a"),
+    ).resolves.toBe(false);
+    expect(continueRebase).not.toHaveBeenCalled();
+  });
+
+  it("continues a resolved cherry-pick without inventing a commit message", async () => {
+    const continueCherryPick = vi
+      .spyOn(desktop, "continueGitCherryPick")
+      .mockResolvedValue({
+        projectId: "project-a",
+        rootId: "root-a",
+        transitionEpoch: 7,
+        repositories: afterRepositories,
+        error: null,
+      });
+    useWorkbenchStore.setState({
+      repositories: {
+        ...beforeRepositories,
+        roots: [
+          {
+            ...beforeRepositories.roots[0],
+            changes: [],
+            cherryPickInProgress: true,
+          },
+          beforeRepositories.roots[1],
+        ],
+      },
+    });
+
+    await expect(
+      useWorkbenchStore.getState().continueCherryPick("root-a"),
+    ).resolves.toBe(true);
+    expect(continueCherryPick).toHaveBeenCalledWith(
+      {
+        projectId: "project-a",
+        rootId: "root-a",
+      },
+      7,
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      repositories: afterRepositories,
+      repositoryCommit: null,
+      repositoryCommitError: null,
+    });
+  });
+
+  it("refuses continue cherry-pick while conflicts remain", async () => {
+    const continueCherryPick = vi.spyOn(desktop, "continueGitCherryPick");
+    useWorkbenchStore.setState({
+      repositories: {
+        ...beforeRepositories,
+        roots: [
+          {
+            ...beforeRepositories.roots[0],
+            cherryPickInProgress: true,
+            changes: [
+              {
+                resource: { rootId: "root-a", relativePath: "conflict.txt" },
+                indexStatus: "conflicted",
+                worktreeStatus: "conflicted",
+                additions: null,
+                deletions: null,
+              },
+            ],
+          },
+          beforeRepositories.roots[1],
+        ],
+      },
+    });
+
+    await expect(
+      useWorkbenchStore.getState().continueCherryPick("root-a"),
+    ).resolves.toBe(false);
+    expect(continueCherryPick).not.toHaveBeenCalled();
+  });
+
+  it("continues a resolved revert without inventing a commit message", async () => {
+    const continueRevert = vi
+      .spyOn(desktop, "continueGitRevert")
+      .mockResolvedValue({
+        projectId: "project-a",
+        rootId: "root-a",
+        transitionEpoch: 7,
+        repositories: afterRepositories,
+        error: null,
+      });
+    useWorkbenchStore.setState({
+      repositories: {
+        ...beforeRepositories,
+        roots: [
+          {
+            ...beforeRepositories.roots[0],
+            changes: [],
+            revertInProgress: true,
+          },
+          beforeRepositories.roots[1],
+        ],
+      },
+    });
+
+    await expect(
+      useWorkbenchStore.getState().continueRevert("root-a"),
+    ).resolves.toBe(true);
+    expect(continueRevert).toHaveBeenCalledWith(
+      {
+        projectId: "project-a",
+        rootId: "root-a",
+      },
+      7,
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      repositories: afterRepositories,
+      repositoryCommit: null,
+      repositoryCommitError: null,
+    });
+  });
+
+  it("refuses continue revert while conflicts remain", async () => {
+    const continueRevert = vi.spyOn(desktop, "continueGitRevert");
+    useWorkbenchStore.setState({
+      repositories: {
+        ...beforeRepositories,
+        roots: [
+          {
+            ...beforeRepositories.roots[0],
+            revertInProgress: true,
+            changes: [
+              {
+                resource: { rootId: "root-a", relativePath: "conflict.txt" },
+                indexStatus: "conflicted",
+                worktreeStatus: "conflicted",
+                additions: null,
+                deletions: null,
+              },
+            ],
+          },
+          beforeRepositories.roots[1],
+        ],
+      },
+    });
+
+    await expect(
+      useWorkbenchStore.getState().continueRevert("root-a"),
+    ).resolves.toBe(false);
+    expect(continueRevert).not.toHaveBeenCalled();
+  });
+
+  it("aborts an exclusive in-progress rebase even while conflicts remain", async () => {
+    const abort = vi.spyOn(desktop, "abortGitInProgress").mockResolvedValue({
+      projectId: "project-a",
+      rootId: "root-a",
+      transitionEpoch: 7,
+      repositories: afterRepositories,
+      error: null,
+    });
+    useWorkbenchStore.setState({
+      repositories: {
+        ...beforeRepositories,
+        roots: [
+          {
+            ...beforeRepositories.roots[0],
+            rebaseInProgress: true,
+            changes: [
+              {
+                resource: { rootId: "root-a", relativePath: "conflict.txt" },
+                indexStatus: "conflicted",
+                worktreeStatus: "conflicted",
+                additions: null,
+                deletions: null,
+              },
+            ],
+          },
+          beforeRepositories.roots[1],
+        ],
+      },
+    });
+
+    await expect(
+      useWorkbenchStore.getState().abortInProgress("root-a"),
+    ).resolves.toBe(true);
+    expect(abort).toHaveBeenCalledWith(
+      {
+        projectId: "project-a",
+        rootId: "root-a",
+      },
+      7,
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      repositories: afterRepositories,
+      repositoryCommit: null,
+      repositoryCommitError: null,
+    });
+  });
+
+  it("does not abort while continue is in flight", async () => {
+    const abort = vi.spyOn(desktop, "abortGitInProgress");
+    useWorkbenchStore.setState({
+      repositoryCommit: { rootId: "root-a" },
+      repositories: {
+        ...beforeRepositories,
+        roots: [
+          {
+            ...beforeRepositories.roots[0],
+            rebaseInProgress: true,
+            changes: [],
+          },
+          beforeRepositories.roots[1],
+        ],
+      },
+    });
+
+    await expect(
+      useWorkbenchStore.getState().abortInProgress("root-a"),
+    ).resolves.toBe(false);
+    expect(abort).not.toHaveBeenCalled();
+  });
 });

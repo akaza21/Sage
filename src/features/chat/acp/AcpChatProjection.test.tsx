@@ -13,10 +13,17 @@ import type {
   HarnessActivityProjection,
   TurnProjection,
 } from "../../../domain/acp";
+import {
+  browseSessionForChat,
+  clearBrowseSessions,
+} from "../../preview/harnessBrowse";
 import { MAX_AGENT_EDIT_SUMMARY_FILES } from "./agentEditSummary";
 import { AcpChatProjection } from "./AcpChatProjection";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  clearBrowseSessions();
+});
 
 function textItem(): Extract<AcpItem, { kind: "text" }> {
   return {
@@ -166,6 +173,159 @@ describe("AcpChatProjection", () => {
     expect(screen.getByText("Normalized answer")).toBeInTheDocument();
   });
 
+  it("renders an admitted png image item", () => {
+    const next = page("completed");
+    const png =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
+    next.turns[0].items = [
+      {
+        id: "item-image",
+        projectId: "project-1",
+        chatId: "chat-1",
+        sessionId: "session-1",
+        turnId: "turn-1",
+        runtimeEpoch: "2",
+        ordinal: 2,
+        origin: "primary",
+        activityId: null,
+        lifecycle: "completed",
+        revision: "1",
+        createdAt: 2,
+        updatedAt: 2,
+        terminalAt: 2,
+        kind: "image",
+        toolState: null,
+        payload: {
+          mediaType: "image/png",
+          dataUrl: `data:image/png;base64,${png}`,
+        },
+      } as AcpItem,
+    ];
+    const { container } = render(<AcpChatProjection page={next} active />);
+    const image = container.querySelector("img.acp-image__src");
+    expect(image).toHaveAttribute("src", `data:image/png;base64,${png}`);
+    expect(image).toHaveAttribute("alt", "");
+  });
+
+  it("does not render an img for svg, oversize, or http image payloads", () => {
+    for (const payload of [
+      {
+        mediaType: "image/svg+xml",
+        dataUrl: "data:image/svg+xml;base64,PHN2Zy8+",
+      },
+      {
+        mediaType: "image/png",
+        dataUrl: `data:image/png;base64,${"A".repeat(262_144)}`,
+      },
+      {
+        mediaType: "image/png",
+        dataUrl: "https://example.com/x.png",
+      },
+    ]) {
+      const next = page("completed");
+      next.turns[0].items = [
+        {
+          id: "item-rejected-image",
+          kind: "image",
+          origin: "primary",
+          toolState: null,
+          payload,
+        } as AcpItem,
+      ];
+      const { container, unmount } = render(
+        <AcpChatProjection page={next} active />,
+      );
+      expect(container.querySelector("img.acp-image__src")).toBeNull();
+      unmount();
+    }
+  });
+
+  it("renders mermaid fences as a copyable diagram instead of a raw fence only", () => {
+    const next = page("completed");
+    const item = textItem();
+    item.payload.text = "```mermaid\ngraph TD\nA --> B\n```";
+    next.turns[0].items = [item];
+    render(<AcpChatProjection page={next} active />);
+    expect(
+      screen.getByRole("img", { name: "Mermaid diagram" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Copy diagram source" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/```mermaid/)).toBeNull();
+  });
+
+  it("opens an admitted harness browse URL without a click", () => {
+    const next = page("running");
+    next.turns[0].items = [
+      {
+        id: "item-browse",
+        projectId: "project-1",
+        chatId: "chat-1",
+        sessionId: "session-1",
+        turnId: "turn-1",
+        runtimeEpoch: "2",
+        ordinal: 2,
+        origin: "primary",
+        activityId: null,
+        lifecycle: "streaming",
+        revision: "1",
+        createdAt: 2,
+        updatedAt: 2,
+        terminalAt: null,
+        kind: "toolCall",
+        toolState: "inProgress",
+        payload: {
+          presentation: {
+            kind: "web",
+            label: "sage.browse",
+            summary: "http://127.0.0.1:5173/app",
+          },
+          inputSummary: null,
+        },
+      } as AcpItem,
+    ];
+    render(<AcpChatProjection page={next} active />);
+    expect(browseSessionForChat("chat-1")?.href).toBe(
+      "http://127.0.0.1:5173/app",
+    );
+  });
+
+  it("does not open Preview from a non-curated web tool", () => {
+    const next = page("running");
+    next.turns[0].items = [
+      {
+        id: "item-web-search",
+        projectId: "project-1",
+        chatId: "chat-1",
+        sessionId: "session-1",
+        turnId: "turn-1",
+        runtimeEpoch: "2",
+        ordinal: 2,
+        origin: "primary",
+        activityId: null,
+        lifecycle: "completed",
+        revision: "1",
+        createdAt: 2,
+        updatedAt: 2,
+        terminalAt: 2,
+        kind: "toolUpdateResult",
+        toolState: "completed",
+        payload: {
+          callItemId: "item-web-search" as AcpItem["id"],
+          presentation: {
+            kind: "web",
+            label: "Web search",
+            summary: "http://127.0.0.1:5173/returned-by-search",
+          },
+          outputSummary: null,
+        },
+      } as AcpItem,
+    ];
+    render(<AcpChatProjection page={next} active />);
+    expect(browseSessionForChat("chat-1")).toBeNull();
+  });
+
   it("keeps cancellation out of the transcript projection", () => {
     render(<AcpChatProjection page={page("completed")} active />);
     expect(screen.getByRole("status", { name: "Completed" })).toHaveTextContent(
@@ -179,6 +339,73 @@ describe("AcpChatProjection", () => {
       <AcpChatProjection page={page("running")} active={false} />,
     );
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("keeps one announcement pair when two projections are mounted", () => {
+    const focusedPage = page("completed");
+    focusedPage.title = "Focused chat";
+    const unfocusedPage = page("completed");
+    unfocusedPage.chatId = "chat-2" as AcpChatPage["chatId"];
+    unfocusedPage.title = "Unfocused chat";
+    unfocusedPage.turns[0].items = [
+      {
+        ...textItem(),
+        payload: { role: "assistant", text: "Unfocused answer" },
+      },
+    ];
+    render(
+      <>
+        <AcpChatProjection page={focusedPage} active focused />
+        <AcpChatProjection page={unfocusedPage} active focused={false} />
+      </>,
+    );
+    expect(document.querySelectorAll("[data-acp-announcement]")).toHaveLength(
+      2,
+    );
+    expect(
+      document.querySelectorAll('[data-acp-announcement="polite"]'),
+    ).toHaveLength(1);
+    expect(
+      document.querySelectorAll('[data-acp-announcement="assertive"]'),
+    ).toHaveLength(1);
+    expect(screen.getByText("Normalized answer")).toBeInTheDocument();
+    expect(screen.getByText("Unfocused answer")).toBeInTheDocument();
+  });
+
+  it("does not dispatch browse from an unfocused projection", () => {
+    const next = page("running");
+    next.turns[0].items = [
+      textItem(),
+      {
+        id: "item-browse",
+        projectId: "project-1",
+        chatId: "chat-1",
+        sessionId: "session-1",
+        turnId: "turn-1",
+        runtimeEpoch: "2",
+        ordinal: 2,
+        origin: "primary",
+        activityId: null,
+        lifecycle: "streaming",
+        revision: "1",
+        createdAt: 2,
+        updatedAt: 2,
+        terminalAt: null,
+        kind: "toolCall",
+        toolState: "inProgress",
+        payload: {
+          presentation: {
+            kind: "web",
+            label: "sage.browse",
+            summary: "http://127.0.0.1:5173/app",
+          },
+          inputSummary: null,
+        },
+      } as AcpItem,
+    ];
+    render(<AcpChatProjection page={next} active focused={false} />);
+    expect(browseSessionForChat("chat-1")).toBeNull();
+    expect(screen.getByText("Normalized answer")).toBeInTheDocument();
   });
 
   it("exposes earlier history only as an explicit accessible action", () => {
@@ -261,6 +488,8 @@ describe("AcpChatProjection", () => {
     const summary = screen.getByRole("region", {
       name: "Files edited in turn 1",
     });
+    expect(within(summary).getAllByText("main.ts")).toHaveLength(2);
+    expect(summary.querySelector(".file-kind-icon--typescript")).not.toBeNull();
     expect(within(summary).getAllByText("+2")).toHaveLength(2);
     expect(within(summary).getAllByText("-1")).toHaveLength(2);
     expect(within(summary).getAllByText("—")).toHaveLength(2);
@@ -627,5 +856,94 @@ describe("AcpChatProjection", () => {
       <AcpChatProjection page={nested} active onOpenResource={openResource} />,
     );
     expect(activityDisclosure).toHaveFocus();
+  });
+
+  it("renders a collapsible Thought only from thoughtSummary using the session clock", async () => {
+    const { syncAgentRailClock } =
+      await import("../../../workbench/agentRailViewPrefs");
+    syncAgentRailClock(19_000);
+    const next = page("running");
+    next.turns[0].items = [
+      {
+        id: "thought",
+        kind: "thoughtSummary",
+        origin: "primary",
+        createdAt: 1_000,
+        payload: { summary: "Checking the workspace" },
+      } as AcpItem,
+    ];
+    render(<AcpChatProjection page={next} active />);
+    const thought = screen.getByText("Thought 18s");
+    expect(thought.closest("details")).not.toHaveAttribute("open");
+    fireEvent.click(thought);
+    expect(screen.getByText("Checking the workspace")).toBeVisible();
+  });
+
+  it("does not synthesize a Thought for tool-only turns and caps working rows", () => {
+    const next = page("running");
+    const tools = Array.from({ length: 65 }, (_, index) =>
+      activityItem(`tool-${index}`, "activity", {
+        kind: "toolCall",
+        toolState: "inProgress",
+        payload: {
+          presentation: {
+            kind: "command",
+            label: `Tool ${index}`,
+            summary: null,
+          },
+          inputSummary: null,
+        },
+      }),
+    );
+    next.turns[0].items = tools;
+    const { container, rerender } = render(
+      <AcpChatProjection page={next} active />,
+    );
+    expect(screen.queryByText(/^Thought/)).toBeNull();
+
+    next.turns[0].items = [
+      {
+        id: "thought",
+        kind: "thoughtSummary",
+        origin: "primary",
+        createdAt: 0,
+        payload: { summary: "Working" },
+      } as AcpItem,
+      ...tools,
+    ];
+    rerender(<AcpChatProjection page={next} active />);
+    expect(container.querySelectorAll(".acp-thought__working li")).toHaveLength(
+      64,
+    );
+  });
+
+  it("shows an existing search summary as a nested working status line", () => {
+    const next = page("running");
+    next.turns[0].items = [
+      {
+        id: "thought",
+        kind: "thoughtSummary",
+        origin: "primary",
+        createdAt: 0,
+        payload: { summary: "Looking" },
+      } as AcpItem,
+      activityItem("search", "activity", {
+        kind: "toolCall",
+        toolState: "inProgress",
+        payload: {
+          presentation: {
+            kind: "search",
+            label: "Search workspace",
+            querySummary: "needle",
+            resources: [],
+          },
+          inputSummary: null,
+        },
+      }),
+    ];
+    render(<AcpChatProjection page={next} active />);
+    fireEvent.click(screen.getByText(/^Thought/));
+    expect(screen.getByText("Search workspace")).toBeVisible();
+    expect(screen.getByText("Searching… needle")).toBeVisible();
   });
 });

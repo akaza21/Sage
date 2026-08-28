@@ -12,6 +12,7 @@ use crate::{
 pub(crate) mod directory_skip;
 pub(crate) mod file_create;
 pub(crate) mod file_rename;
+pub(crate) mod file_walk;
 mod git_resource;
 pub(crate) mod notify;
 pub(crate) mod resource_trash;

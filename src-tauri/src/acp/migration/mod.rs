@@ -40,7 +40,9 @@ use self::{
     paths::MigrationPaths,
     platform::{MigrationLock, sync_file, sync_parent},
     publish::recover_or_publish,
-    schema_upgrade::{apply_through_v8, apply_v6_and_v7_atomically, apply_v7, apply_v8, build_fresh_v8},
+    schema_upgrade::{
+        apply_through_v8, apply_v6_and_v7_atomically, apply_v7, apply_v8, build_fresh_v8,
+    },
 };
 
 #[cfg(test)]

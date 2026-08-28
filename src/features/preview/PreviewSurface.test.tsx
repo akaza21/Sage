@@ -1,5 +1,6 @@
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -8,6 +9,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
+import { browseSessionForChat, clearBrowseSessions } from "./harnessBrowse";
 import { PreviewSurface } from "./PreviewSurface";
 import type { PreviewTargetRef } from "./previewDesktop";
 
@@ -67,7 +69,9 @@ vi.mock("./previewDesktop", () => ({
 
 describe("PreviewSurface", () => {
   afterEach(() => {
+    cleanup();
     vi.clearAllMocks();
+    clearBrowseSessions();
     useWorkbenchStore.setState({
       project: null,
       projectGeneration: 0,
@@ -176,6 +180,23 @@ describe("PreviewSurface", () => {
     fireEvent.click(nextStart);
     await waitFor(() =>
       expect(startPreviewTarget).toHaveBeenLastCalledWith(nextTarget),
+    );
+  });
+
+  it("publishes a started loopback origin to the Sage browser for that chat", async () => {
+    useWorkbenchStore.setState({
+      project: { id: target.projectId, name: "Preview", roots: [] },
+      projectGeneration: target.projectGeneration,
+      nativeTransitionEpoch: target.expectedTransitionEpoch,
+      projectTransitioning: false,
+    });
+    render(<PreviewSurface browseChatId="chat:preview" />);
+    await screen.findByRole("button", { name: "Start" });
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() =>
+      expect(browseSessionForChat("chat:preview")?.href).toBe(
+        "http://127.0.0.1:5173/",
+      ),
     );
   });
 });

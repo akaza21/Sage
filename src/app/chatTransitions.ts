@@ -247,3 +247,45 @@ export function createChatTransitionContext(
 
   return { applyProjection, loadAuthoritativeProjection, runChatTransition };
 }
+
+export async function commitIdentityChatResult(input: {
+  set: StoreApi<WorkbenchState>["setState"];
+  get: StoreApi<WorkbenchState>["getState"];
+  applyProjection: (
+    snapshot: BootstrapSnapshot,
+    generation: number,
+  ) => Promise<void>;
+  loadAuthoritativeProjection: (
+    generation: number,
+    classify: (snapshot: BootstrapSnapshot) => ProjectionOutcome,
+  ) => Promise<ProjectionOutcome>;
+  invoke: () => Promise<ProjectTransitionResult>;
+  failedMessage: string;
+}): Promise<boolean> {
+  const expectedTransitionEpoch = input.get().nativeTransitionEpoch;
+  try {
+    const result = await input.invoke();
+    validateTransitionIntent(result, expectedTransitionEpoch);
+    if (!result.committed) {
+      input.set({
+        projectTransitioning: false,
+        error: result.recoveryError ?? input.failedMessage,
+      });
+      return false;
+    }
+    const generation = nextProjectGeneration(input.get().projectGeneration);
+    input.set({ projectGeneration: generation, repositoryRefreshing: false });
+    if (result.snapshot) {
+      await input.applyProjection(result.snapshot, generation);
+    } else {
+      await input.loadAuthoritativeProjection(generation, () => "committed");
+    }
+    return true;
+  } catch (error) {
+    input.set({
+      projectTransitioning: false,
+      error: errorMessage(error),
+    });
+    return false;
+  }
+}

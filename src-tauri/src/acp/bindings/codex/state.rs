@@ -1,4 +1,4 @@
-mod capabilities;
+pub(crate) mod capabilities;
 mod permissions;
 mod turn_starts;
 mod turns;
@@ -13,6 +13,7 @@ use crate::acp::{
 };
 
 use super::{
+    admission::AdmittedCodexBinding,
     incoming::{IncomingEvent, IngressDisposition, ResourceMapper, ingest},
     manifest::{CuratedCapabilityCeiling, MetadataValidatedPacket, Platform},
     request::{
@@ -139,6 +140,25 @@ impl CodexAdapter {
             previous_turn: None,
             permission_requests: Vec::new(),
         }
+    }
+
+    pub(crate) fn from_admitted_binding(
+        binding: &AdmittedCodexBinding,
+        runtime_epoch: RuntimeEpoch,
+        session_id: SageAgentSessionId,
+    ) -> Self {
+        let mut adapter = Self::from_metadata_packet(
+            binding.packet(),
+            binding.binding_digest(),
+            runtime_epoch,
+            session_id,
+        );
+        if binding.is_observed() {
+            adapter.runtime_version = binding.harness_version().to_owned();
+            adapter.codex_home.clear();
+            adapter.platform = observed_platform();
+        }
+        adapter
     }
 
     pub(crate) fn effective_capabilities(&self) -> Result<CapabilitySnapshotV1, AdapterError> {
@@ -381,6 +401,21 @@ impl CodexAdapter {
             kind,
             external_id,
         }
+    }
+}
+
+fn observed_platform() -> Platform {
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    {
+        Platform::MacosAarch64
+    }
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    {
+        Platform::MacosX86_64
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Platform::WindowsX86_64
     }
 }
 

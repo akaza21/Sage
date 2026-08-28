@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   editorLanguageForPath,
+  editorLanguageStatusLabel,
   MAX_EDITOR_LANGUAGE_PATH_LENGTH,
 } from "./editorLanguage";
 
@@ -30,5 +31,18 @@ describe("editorLanguageForPath", () => {
         `${"a".repeat(MAX_EDITOR_LANGUAGE_PATH_LENGTH)}.ts`,
       ),
     ).toBe("plain");
+  });
+});
+
+describe("editorLanguageStatusLabel", () => {
+  it("maps admitted File languages and hides plain or missing paths", () => {
+    expect(editorLanguageStatusLabel("src/app.ts")).toBe("TypeScript");
+    expect(editorLanguageStatusLabel("src/view.tsx")).toBe("TypeScript");
+    expect(editorLanguageStatusLabel("scripts/build.mjs")).toBe("JavaScript");
+    expect(editorLanguageStatusLabel("package.json")).toBe("JSON");
+    expect(editorLanguageStatusLabel("docs/readme.md")).toBe("Markdown");
+    expect(editorLanguageStatusLabel("LICENSE")).toBeNull();
+    expect(editorLanguageStatusLabel("")).toBeNull();
+    expect(editorLanguageStatusLabel(null)).toBeNull();
   });
 });

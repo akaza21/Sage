@@ -1,6 +1,6 @@
+use std::path::Path;
 #[cfg(not(windows))]
 use std::sync::Arc;
-use std::{fs::File, path::Path};
 
 #[cfg(not(windows))]
 use crate::error::AppError;
@@ -54,8 +54,6 @@ struct TrashIdentityProof {
 #[derive(Debug)]
 pub(super) struct ResourceTrashAuthority {
     proof: TrashIdentityProof,
-    _directories: Vec<File>,
-    _source: File,
     source_path: std::path::PathBuf,
 }
 

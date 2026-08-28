@@ -1,4 +1,4 @@
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageRootId},
@@ -244,7 +244,7 @@ fn security_policy_accepts_only_the_pinned_isolated_state_and_environment() {
         ),
         (
             "/environment/maximumEntries",
-            json!(6),
+            json!(7),
             SecurityPolicyError::Environment,
         ),
         (
@@ -388,7 +388,7 @@ fn exact_codex_config_is_required_byte_for_byte() {
 
 #[cfg(windows)]
 #[test]
-fn launch_environment_is_exactly_five_keys_with_state_local_temp() {
+fn launch_environment_derives_required_windows_values_and_node_from_the_live_machine() {
     let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
     let policy = parse_security_policy(SECURITY_POLICY_FIXTURE, &packet).unwrap();
     let config = verify_codex_config(CONFIG_FIXTURE, &policy).unwrap();
@@ -404,33 +404,46 @@ fn launch_environment_is_exactly_five_keys_with_state_local_temp() {
     )
     .unwrap();
     let entries = environment.entries();
-    assert_eq!(entries.len(), 5);
+    assert_eq!(entries.len(), 10);
     assert_eq!(
         entries[0],
         ("CODEX_HOME".into(), ISOLATED_CODEX_HOME.into())
     );
-    assert_eq!(entries[1].0, "SystemRoot");
+    assert_eq!(entries[1].0, "PATH");
+    assert!(
+        std::path::Path::new(&entries[1].1)
+            .join("node.exe")
+            .is_file()
+    );
+    assert_eq!(entries[2].0, "ComSpec");
+    assert!(std::path::Path::new(&entries[2].1).is_file());
+    assert_eq!(entries[3].0, "PATHEXT");
+    assert!(!entries[3].1.is_empty());
+    assert_eq!(entries[4].0, "SystemRoot");
     assert_eq!(
-        entries[2],
+        entries[5],
         (
             "TEMP".into(),
             r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167\tmp".into(),
         )
     );
     assert_eq!(
-        entries[3],
+        entries[6],
         (
             "TMP".into(),
             r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167\tmp".into(),
         )
     );
-    assert_eq!(entries[4].0, "WINDIR");
-    assert_eq!(entries[1].1, system_windows.to_str().unwrap());
-    assert!(entries[1].1.eq_ignore_ascii_case(&entries[4].1));
-    assert!(std::path::Path::new(&entries[1].1).is_dir());
+    for (index, key) in [(7, "USERPROFILE"), (8, "APPDATA"), (9, "WINDIR")] {
+        assert_eq!(entries[index].0, key);
+        assert!(!entries[index].1.is_empty());
+    }
+    assert_eq!(entries[4].1, system_windows.to_str().unwrap());
+    assert!(entries[4].1.eq_ignore_ascii_case(&entries[9].1));
+    assert!(std::path::Path::new(&entries[4].1).is_dir());
     assert!(environment.entries().iter().all(|(key, _)| !matches!(
         key.as_str(),
-        "PATH" | "OPENAI_API_KEY" | "HTTP_PROXY" | "HTTPS_PROXY" | "SSL_CERT_FILE"
+        "OPENAI_API_KEY" | "HTTP_PROXY" | "HTTPS_PROXY" | "SSL_CERT_FILE"
     )));
 
     let private_windows = system_windows.join("per-user-private-windows");
@@ -828,15 +841,16 @@ fn exact_registry_package_and_state_satisfy_managed_prerequisite_without_launch_
 }
 
 #[test]
-fn builds_only_fixed_read_only_requests_and_single_root_ceiling() {
+fn codex_0146_uses_captured_read_only_spellings_per_request_shape() {
     let mut candidate = adapter();
     negotiate(&mut candidate);
     let root = candidate.project_root(r"C:\repo".into()).unwrap();
     let start = candidate.start(1, &root, None).unwrap();
     let value: Value = serde_json::from_slice(&start.bytes).unwrap();
     assert_eq!(value["method"], "thread/start");
-    assert_eq!(value["params"]["sandbox"], "readOnly");
+    assert_eq!(value["params"]["sandbox"], "read-only");
     assert_eq!(value["params"]["approvalPolicy"], "never");
+    assert_eq!(value["params"]["ephemeral"], false);
     assert!(value["params"].get("runtimeWorkspaceRoots").is_none());
     candidate
         .ingest(
@@ -858,7 +872,7 @@ fn builds_only_fixed_read_only_requests_and_single_root_ceiling() {
     let resume = resume_adapter.resume(3, &thread, &root, None).unwrap();
     let resume: Value = serde_json::from_slice(&resume.bytes).unwrap();
     assert_eq!(resume["params"]["approvalPolicy"], "never");
-    assert_eq!(resume["params"]["sandbox"], "readOnly");
+    assert_eq!(resume["params"]["sandbox"], "read-only");
     let caps = candidate.effective_capabilities().unwrap();
     assert!(caps.new_session && caps.resume_session && caps.prompt && caps.cancel);
     assert!(caps.multi_root_extension_schema_id.is_none());
@@ -934,6 +948,36 @@ fn initialize_requires_the_exact_runtime_home_and_windows_identity() {
     assert!(matches!(
         extra.ingest(&serde_json::to_vec(&response).unwrap(), &Mapper),
         Err(AdapterError::Ingress(IngressError::CapabilityUnavailable))
+    ));
+}
+
+#[test]
+fn observed_codex_0146_initialize_accepts_its_cli_identity_and_home() {
+    let mut result = Map::from_iter([
+        (
+            "userAgent".into(),
+            json!("sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"),
+        ),
+        ("codexHome".into(), json!(r"C:\Users\Username\.codex")),
+        ("platformFamily".into(), json!("windows")),
+        ("platformOs".into(), json!("windows")),
+    ]);
+
+    assert!(super::state::capabilities::valid_initialize_result(
+        &result,
+        "codex-cli 0.146.0",
+        "",
+        true,
+    ));
+    result.insert(
+        "userAgent".into(),
+        json!("sage/0.145.0 (Windows 10.0; x86_64)"),
+    );
+    assert!(!super::state::capabilities::valid_initialize_result(
+        &result,
+        "codex-cli 0.146.0",
+        "",
+        true,
     ));
 }
 
@@ -1334,7 +1378,8 @@ fn turn_completed_keeps_the_active_turn_correlation() {
         .ingest(
             &serde_json::to_vec(&json!({"method":"turn/started","params":{
                 "threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}
-            }})).unwrap(),
+            }}))
+            .unwrap(),
             &Mapper,
         )
         .unwrap();
@@ -1342,7 +1387,8 @@ fn turn_completed_keeps_the_active_turn_correlation() {
         .ingest(
             &serde_json::to_vec(&json!({"method":"turn/completed","params":{
                 "threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}
-            }})).unwrap(),
+            }}))
+            .unwrap(),
             &Mapper,
         )
         .unwrap();

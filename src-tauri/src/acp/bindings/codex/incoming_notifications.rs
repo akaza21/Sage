@@ -20,6 +20,41 @@ pub(super) fn notification<M: ResourceMapper>(
     mapper: &M,
 ) -> Result<IngressDisposition, IngressError> {
     match method {
+        "thread/started" => {
+            let thread = params
+                .get("thread")
+                .and_then(Value::as_object)
+                .ok_or(IngressError::Malformed)?;
+            match adapter
+                .accept_thread_started(text(thread, "id", 512)?)
+                .map_err(identity)?
+            {
+                Some(id) => Ok(IncomingEvent::SessionReady { id }.into()),
+                None => Ok(IngressDisposition::IgnoredLate),
+            }
+        }
+        "remoteControl/status/changed" => {
+            let _installation = text(params, "installationId", 512)?;
+            let _server = text(params, "serverName", 512)?;
+            match text(params, "status", 32)? {
+                "disabled" | "enabled" => Ok(IngressDisposition::IgnoredLate),
+                _ => Err(IngressError::Malformed),
+            }
+        }
+        "mcpServer/startupStatus/updated" => {
+            let _name = text(params, "name", 512)?;
+            let _thread = text(params, "threadId", 512)?;
+            if !params.get("error").is_some_and(Value::is_null)
+                || !params.get("failureReason").is_some_and(Value::is_null)
+            {
+                return Err(IngressError::Malformed);
+            }
+            match text(params, "status", 32)? {
+                "starting" | "ready" | "cancelled" => {}
+                _ => return Err(IngressError::Malformed),
+            }
+            Ok(IngressDisposition::IgnoredLate)
+        }
         "turn/started" => {
             adapter
                 .expect_thread(text(params, "threadId", 512)?)
@@ -128,7 +163,9 @@ fn item_event<M: ResourceMapper>(
     if adapter.turn_is_terminal(turn) && !adapter.item_is_terminal(turn, external) {
         return Ok(IngressDisposition::IgnoredLate);
     }
-    let (payload, tool_state, terminal) = normalize_item(item, requested, mapper)?;
+    let Some((payload, tool_state, terminal)) = normalize_item(item, requested, mapper)? else {
+        return Ok(IngressDisposition::Events(vec![]));
+    };
     let lifecycle = terminal.unwrap_or(requested);
     if lifecycle.is_terminal() {
         match adapter

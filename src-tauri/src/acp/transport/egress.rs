@@ -221,6 +221,11 @@ impl<T> ReservedQueue<T> {
         (self.control.len(), self.control_bytes)
     }
 
+    pub(crate) fn all_items_match(&self, mut predicate: impl FnMut(&T) -> bool) -> bool {
+        self.data.entries.iter().all(|(item, _)| predicate(item))
+            && self.control.iter().all(|entry| predicate(&entry.item))
+    }
+
     #[cfg(test)]
     pub(super) fn allocated_capacities(&self) -> (usize, usize) {
         (self.data.allocated_capacity(), self.control.capacity())

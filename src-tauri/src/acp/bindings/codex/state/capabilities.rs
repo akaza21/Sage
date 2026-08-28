@@ -17,24 +17,23 @@ impl CodexAdapter {
         &mut self,
         result: &Map<String, Value>,
     ) -> Result<CapabilitySnapshotV1, AdapterError> {
-        if result.len() != INITIALIZE_RESULT_FIELDS.len()
-            || INITIALIZE_RESULT_FIELDS
-                .iter()
-                .any(|field| !result.contains_key(*field))
-        {
-            return Err(AdapterError::CapabilityUnavailable);
-        }
-        let text = |name: &str| {
-            result
-                .get(name)
-                .and_then(Value::as_str)
-                .ok_or(AdapterError::CapabilityUnavailable)
-        };
-        if !valid_user_agent(text("userAgent")?, &self.runtime_version)
-            || text("codexHome")? != self.codex_home
-            || text("platformFamily")? != "windows"
-            || text("platformOs")? != "windows"
-        {
+        let valid = valid_initialize_result(
+            result,
+            &self.runtime_version,
+            &self.codex_home,
+            self.codex_home.is_empty(),
+        );
+        if !valid {
+            tracing::warn!(
+                runtime_version = self.runtime_version,
+                observed = self.codex_home.is_empty(),
+                result_fields = ?result.keys().collect::<Vec<_>>(),
+                user_agent = ?result.get("userAgent"),
+                codex_home = ?result.get("codexHome"),
+                platform_family = ?result.get("platformFamily"),
+                platform_os = ?result.get("platformOs"),
+                "Codex discovery initialize identity validation failed"
+            );
             return Err(AdapterError::CapabilityUnavailable);
         }
 
@@ -68,12 +67,69 @@ impl CodexAdapter {
     }
 }
 
+pub(crate) fn valid_initialize_result(
+    result: &Map<String, Value>,
+    runtime_version: &str,
+    codex_home: &str,
+    observed: bool,
+) -> bool {
+    let text = |name: &str| result.get(name).and_then(Value::as_str);
+    let (Some(user_agent), Some(observed_home)) = (text("userAgent"), text("codexHome")) else {
+        return false;
+    };
+    if observed {
+        return result.len() == INITIALIZE_RESULT_FIELDS.len()
+            && INITIALIZE_RESULT_FIELDS
+                .iter()
+                .all(|field| result.contains_key(*field))
+            && valid_user_agent(user_agent, runtime_version)
+            && valid_observed_codex_home(observed_home)
+            && valid_platform_identity(
+                text("platformFamily").unwrap_or_default(),
+                text("platformOs").unwrap_or_default(),
+                true,
+            );
+    }
+    result.len() == INITIALIZE_RESULT_FIELDS.len()
+        && INITIALIZE_RESULT_FIELDS
+            .iter()
+            .all(|field| result.contains_key(*field))
+        && valid_user_agent(user_agent, runtime_version)
+        && observed_home == codex_home
+        && valid_platform_identity(
+            text("platformFamily").unwrap_or_default(),
+            text("platformOs").unwrap_or_default(),
+            false,
+        )
+}
+
+fn valid_observed_codex_home(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 32 * 1024
+        && !value.chars().any(char::is_control)
+        && std::path::Path::new(value).is_absolute()
+}
+
+fn valid_platform_identity(family: &str, os: &str, observed: bool) -> bool {
+    if !observed {
+        return family == "windows" && os == "windows";
+    }
+    matches!(
+        (family, os),
+        ("windows", "windows") | ("macos", "macos") | ("macOS", "macOS")
+    )
+}
+
 fn valid_user_agent(value: &str, runtime_version: &str) -> bool {
     if value.is_empty() || value.len() > USER_AGENT_BYTES_MAX || value.chars().any(char::is_control)
     {
         return false;
     }
     let client = APP_SERVER_CLIENT_IDENTITY;
+    let runtime_version = runtime_version
+        .split_ascii_whitespace()
+        .last()
+        .unwrap_or(runtime_version);
     let prefix = format!("{}/{runtime_version} (Windows ", client.name);
     let suffix = format!(" ({}; {})", client.name, client.version);
     let Some(middle) = value

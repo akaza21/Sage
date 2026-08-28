@@ -278,6 +278,7 @@ where
     }
     let CompletedActivationDriverParts {
         parts,
+        idle_decoder,
         transport,
         control,
         owner,
@@ -289,6 +290,7 @@ where
         Err(journal) => {
             let parts = CompletedActivationDriverParts {
                 parts: IdleActivationParts::new(adapter, *journal, resources, session),
+                idle_decoder,
                 transport,
                 control,
                 owner,

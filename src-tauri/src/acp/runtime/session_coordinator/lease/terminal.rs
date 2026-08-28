@@ -16,10 +16,12 @@ impl SessionTreeLease {
             .commit(JournalLane::Control, StoreMutation::CloseSession(command))
             .await?;
         validate_mutation(&self.owner, &mutation)?;
-        self.tree
-            .as_ref()
-            .ok_or(SessionCoordinatorError::Converged)?
-            .begin_draining()?;
+        if mutation.disposition == crate::acp::store::MutationDisposition::Applied {
+            self.tree
+                .as_ref()
+                .ok_or(SessionCoordinatorError::Converged)?
+                .begin_draining()?;
+        }
         self.coordinator
             .publish(&self.owner.project_id, &self.owner.chat_id, &mutation)?;
         Ok(mutation)

@@ -106,6 +106,74 @@ fn success_is_returned_only_after_stdin_close_and_matching_zero_process_proof() 
 }
 
 #[test]
+fn codex_0146_notification_between_initialize_and_account_response_is_ignored() {
+    let mut protocol = protocol();
+    let mut transport = ScriptTransport::happy();
+    transport.reads.insert(
+        1,
+        Ok(Some(frame(json!({
+            "method": "remoteControl/status/changed",
+            "emittedAtMs": 0,
+            "params": {"environmentId": null, "status": "disabled"}
+        })))),
+    );
+
+    let content = run_discovery_protocol(&mut protocol, &mut transport, 71, deadline()).unwrap();
+
+    assert_eq!(content.models[0].id.as_str(), "gpt-a");
+    assert_eq!(transport.terminated, Some(false));
+}
+
+#[test]
+fn recognized_codex_notifications_are_skipped_before_the_model_response() {
+    let mut protocol = protocol();
+    let mut transport = ScriptTransport::happy();
+    transport.reads.insert(
+        2,
+        Ok(Some(frame(json!({
+            "method": "account/updated",
+            "params": {"authMode": "chatgpt", "planType": "plus"}
+        })))),
+    );
+    transport.reads.insert(
+        3,
+        Ok(Some(frame(json!({
+            "method": "remoteControl/status/changed",
+            "emittedAtMs": 0,
+            "params": {"environmentId": null, "status": "disabled"}
+        })))),
+    );
+
+    let content = run_discovery_protocol(&mut protocol, &mut transport, 71, deadline()).unwrap();
+
+    assert_eq!(content.models[0].id.as_str(), "gpt-a");
+    assert_eq!(transport.terminated, Some(false));
+}
+
+#[test]
+fn four_recognized_notifications_before_a_response_fails_closed() {
+    let mut protocol = protocol();
+    let mut transport = ScriptTransport::happy();
+    for index in 0..4 {
+        transport.reads.insert(
+            0,
+            Ok(Some(frame(json!({
+                "method": "remoteControl/status/changed",
+                "emittedAtMs": index,
+                "params": {"environmentId": null, "status": "disabled"}
+            })))),
+        );
+    }
+
+    assert_eq!(
+        run_discovery_protocol(&mut protocol, &mut transport, 71, deadline()),
+        Err(CodexDiscoveryRunError::Protocol)
+    );
+    assert!(transport.closed);
+    assert_eq!(transport.terminated, Some(true));
+}
+
+#[test]
 fn every_transport_protocol_eof_timeout_and_drift_failure_tears_down() {
     let cases = [
         CodexDiscoveryRunError::Eof,

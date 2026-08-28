@@ -1,5 +1,4 @@
 import {
-  FileCode2,
   GitCompareArrows,
   MessageSquare,
   Plus,
@@ -10,19 +9,28 @@ import {
 import type { TabKind } from "../domain/workbench";
 import { orderedTabs } from "../app/tabState";
 import { useWorkbenchStore } from "../app/store";
+import { FileKindIcon } from "../features/files/FileKindIcon";
 
 const icons: Record<TabKind, typeof MessageSquare> = {
   chat: MessageSquare,
-  file: FileCode2,
+  file: MessageSquare,
   diff: GitCompareArrows,
   terminal: TerminalSquare,
-  search: FileCode2,
-  problems: FileCode2,
+  search: MessageSquare,
+  problems: MessageSquare,
   output: TerminalSquare,
-  settings: FileCode2,
+  settings: MessageSquare,
 };
 
-export function TabStrip() {
+export function TabStrip({
+  kinds,
+  showNewChat = true,
+  label = "Open tabs",
+}: {
+  kinds?: ReadonlyArray<TabKind>;
+  showNewChat?: boolean;
+  label?: string;
+} = {}) {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const activateTab = useWorkbenchStore((state) => state.activateTab);
@@ -30,11 +38,14 @@ export function TabStrip() {
   const createChat = useWorkbenchStore((state) => state.createChat);
   const project = useWorkbenchStore((state) => state.project);
   const attachedChatCount = tabs.filter((tab) => tab.kind === "chat").length;
+  const visibleTabs = kinds
+    ? orderedTabs(tabs).filter((tab) => kinds.includes(tab.kind))
+    : orderedTabs(tabs);
 
   return (
-    <nav className="tab-strip" aria-label="Open tabs">
+    <nav className="tab-strip" aria-label={label}>
       <div className="tab-strip__scroll">
-        {orderedTabs(tabs).map((tab) => {
+        {visibleTabs.map((tab) => {
           const Icon = icons[tab.kind];
           const active = tab.id === activeTabId;
 
@@ -51,7 +62,14 @@ export function TabStrip() {
                 aria-selected={active}
                 onClick={() => void activateTab(tab.id)}
               >
-                <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
+                {tab.kind === "file" ? (
+                  <FileKindIcon
+                    path={tab.resource?.relativePath ?? tab.title}
+                    size={15}
+                  />
+                ) : (
+                  <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
+                )}
                 <span>{tab.title}</span>
                 {tab.status === "working" ? (
                   <span className="tab__status" title="Working" />
@@ -75,16 +93,18 @@ export function TabStrip() {
           );
         })}
       </div>
-      <button
-        className="icon-button tab-strip__new"
-        type="button"
-        aria-label="New chat"
-        title="New chat"
-        disabled={!project}
-        onClick={() => void createChat()}
-      >
-        <Plus size={17} aria-hidden="true" />
-      </button>
+      {showNewChat ? (
+        <button
+          className="icon-button tab-strip__new"
+          type="button"
+          aria-label="New chat"
+          title="New chat"
+          disabled={!project}
+          onClick={() => void createChat()}
+        >
+          <Plus size={17} aria-hidden="true" />
+        </button>
+      ) : null}
     </nav>
   );
 }

@@ -28,6 +28,8 @@ const TABLES: [&str; 14] = [
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct RendererRecreationNativeSnapshot {
     schema_version: u8,
+    project_id: SageProjectId,
+    chat_id: SageChatId,
     tables: Vec<TableSnapshot>,
     chat_projection_revision: i64,
     runtime_slot_active: u8,
@@ -68,6 +70,8 @@ impl RendererRecreationNativeSnapshot {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {
             schema_version: 1,
+            project_id: project_id.clone(),
+            chat_id: chat_id.clone(),
             tables,
             chat_projection_revision,
             runtime_slot_active,
@@ -94,7 +98,14 @@ impl RendererRecreationNativeSnapshot {
             .map(|table| table.rows)
     }
 
-    #[cfg(test)]
+    pub(crate) fn project_id(&self) -> &SageProjectId {
+        &self.project_id
+    }
+
+    pub(crate) fn chat_id(&self) -> &SageChatId {
+        &self.chat_id
+    }
+
     pub(crate) fn chat_projection_revision(&self) -> i64 {
         self.chat_projection_revision
     }

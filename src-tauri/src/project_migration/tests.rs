@@ -98,7 +98,7 @@ fn migrates_legacy_root_tabs_session_and_dirty_buffer() {
         .unwrap()
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
-    assert_eq!(versions, [1, 2, 3, 4, 5, 6, 7]);
+    assert_eq!(versions, [1, 2, 3, 4, 5, 6, 7, 8]);
     let abort_trigger: String = connection
         .query_row(
             "SELECT name FROM sqlite_master WHERE type='trigger' AND name=?1",

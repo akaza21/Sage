@@ -552,6 +552,310 @@ describe("workbench resource and project navigation", () => {
     });
   });
 
+  it("creates a chat on a foreign folder without switching the active Project", async () => {
+    const created = {
+      id: "chat:cross-new",
+      title: "Chat: New chat 2",
+      pinned: false,
+      position: 1,
+    };
+    const create = vi
+      .spyOn(getWorkbenchPorts().chat, "createChat")
+      .mockResolvedValue({
+        committed: true,
+        transitionEpoch: 1,
+        snapshot: {
+          ...chatProjection([chatTab], chatTab.id, 1, null, []),
+          projects: [
+            { id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 },
+            {
+              id: "cross",
+              name: "Cross",
+              rootCount: 1,
+              lastOpenedAt: 2,
+              railChats: [
+                {
+                  id: "chat:seeded",
+                  title: "Chat: New project",
+                  pinned: true,
+                  position: 0,
+                },
+                created,
+              ],
+            },
+          ],
+        },
+        recoveryError: null,
+      });
+
+    await useWorkbenchStore.getState().createChat("cross");
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "project-a",
+        tabs: [chatTab],
+        activeTabId: chatTab.id,
+      }),
+      0,
+      "cross",
+    );
+    expect(useWorkbenchStore.getState().project?.id).toBe("project-a");
+    expect(useWorkbenchStore.getState().activeTabId).toBe(chatTab.id);
+    expect(
+      useWorkbenchStore
+        .getState()
+        .projects.find((item) => item.id === "cross")
+        ?.railChats?.map((chat) => chat.id),
+    ).toEqual(["chat:seeded", "chat:cross-new"]);
+  });
+
+  it("pins a foreign-folder chat without switching the active Project", async () => {
+    const pin = vi
+      .spyOn(getWorkbenchPorts().chat, "pinChat")
+      .mockResolvedValue({
+        committed: true,
+        transitionEpoch: 1,
+        snapshot: {
+          ...chatProjection([chatTab], chatTab.id, 1, null, []),
+          projects: [
+            { id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 },
+            {
+              id: "cross",
+              name: "Cross",
+              rootCount: 1,
+              lastOpenedAt: 2,
+              railChats: [
+                {
+                  id: "chat:cross",
+                  title: "Research",
+                  pinned: true,
+                  position: 0,
+                },
+              ],
+            },
+          ],
+        },
+        recoveryError: null,
+      });
+
+    await useWorkbenchStore.getState().pinChat("chat:cross", "cross");
+
+    expect(pin).toHaveBeenCalledWith(
+      { projectId: "cross", chatId: "chat:cross" },
+      0,
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      nativeTransitionEpoch: 1,
+      project: { id: "project-a" },
+      projectTransitioning: false,
+    });
+    expect(
+      useWorkbenchStore.getState().projects.find((item) => item.id === "cross")
+        ?.railChats?.[0],
+    ).toMatchObject({ id: "chat:cross", pinned: true });
+  });
+
+  it("renames a foreign-folder chat without switching the active Project", async () => {
+    const rename = vi
+      .spyOn(getWorkbenchPorts().chat, "renameChat")
+      .mockResolvedValue({
+        committed: true,
+        transitionEpoch: 1,
+        snapshot: {
+          ...chatProjection([chatTab], chatTab.id, 1, null, []),
+          projects: [
+            { id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 },
+            {
+              id: "cross",
+              name: "Cross",
+              rootCount: 1,
+              lastOpenedAt: 2,
+              railChats: [
+                {
+                  id: "chat:cross",
+                  title: "Chat: Research",
+                  pinned: false,
+                  position: 0,
+                },
+              ],
+            },
+          ],
+        },
+        recoveryError: null,
+      });
+
+    expect(
+      await useWorkbenchStore
+        .getState()
+        .renameChat("chat:cross", "Research", "cross"),
+    ).toBe(true);
+    expect(rename).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "cross",
+        chatId: "chat:cross",
+        title: "Research",
+      }),
+      0,
+    );
+    expect(useWorkbenchStore.getState().project?.id).toBe("project-a");
+    expect(
+      useWorkbenchStore.getState().projects.find((item) => item.id === "cross")
+        ?.railChats?.[0],
+    ).toMatchObject({ id: "chat:cross", title: "Chat: Research" });
+  });
+
+  it("archives a foreign-folder chat without switching the active Project", async () => {
+    useWorkbenchStore.setState({
+      projects: [
+        { id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 },
+        {
+          id: "cross",
+          name: "Cross",
+          rootCount: 1,
+          lastOpenedAt: 2,
+          railChats: [
+            {
+              id: "chat:seeded",
+              title: "Chat: New project",
+              pinned: true,
+              position: 0,
+            },
+            {
+              id: "chat:cross",
+              title: "Research",
+              pinned: false,
+              position: 1,
+            },
+          ],
+        },
+      ],
+    });
+    const archive = vi
+      .spyOn(getWorkbenchPorts().chat, "archiveChat")
+      .mockResolvedValue({
+        committed: true,
+        transitionEpoch: 1,
+        snapshot: {
+          ...chatProjection([chatTab], chatTab.id, 1, null, []),
+          projects: [
+            { id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 },
+            {
+              id: "cross",
+              name: "Cross",
+              rootCount: 1,
+              lastOpenedAt: 2,
+              railChats: [
+                {
+                  id: "chat:seeded",
+                  title: "Chat: New project",
+                  pinned: true,
+                  position: 0,
+                },
+              ],
+            },
+          ],
+        },
+        recoveryError: null,
+      });
+
+    expect(
+      await useWorkbenchStore.getState().archiveChat("chat:cross", "cross"),
+    ).toBe(true);
+    expect(archive).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "cross",
+        chatId: "chat:cross",
+      }),
+      0,
+    );
+    expect(useWorkbenchStore.getState().project?.id).toBe("project-a");
+    expect(
+      useWorkbenchStore
+        .getState()
+        .projects.find((item) => item.id === "cross")
+        ?.railChats?.map((chat) => chat.id),
+    ).toEqual(["chat:seeded"]);
+  });
+
+  it("restores a foreign-folder chat without switching the active Project", async () => {
+    useWorkbenchStore.setState({
+      projects: [
+        { id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 },
+        {
+          id: "cross",
+          name: "Cross",
+          rootCount: 1,
+          lastOpenedAt: 2,
+          railChats: [
+            {
+              id: "chat:seeded",
+              title: "Chat: New project",
+              pinned: true,
+              position: 0,
+            },
+          ],
+          railArchived: [{ id: "chat:cross", title: "Research" }],
+        },
+      ],
+    });
+    const restore = vi
+      .spyOn(getWorkbenchPorts().chat, "restoreChat")
+      .mockResolvedValue({
+        committed: true,
+        transitionEpoch: 1,
+        snapshot: {
+          ...chatProjection([chatTab], chatTab.id, 1, null, []),
+          projects: [
+            { id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 },
+            {
+              id: "cross",
+              name: "Cross",
+              rootCount: 1,
+              lastOpenedAt: 2,
+              railChats: [
+                {
+                  id: "chat:seeded",
+                  title: "Chat: New project",
+                  pinned: true,
+                  position: 0,
+                },
+                {
+                  id: "chat:cross",
+                  title: "Research",
+                  pinned: false,
+                  position: 1,
+                },
+              ],
+              railArchived: [],
+            },
+          ],
+        },
+        recoveryError: null,
+      });
+
+    expect(
+      await useWorkbenchStore.getState().restoreChat("chat:cross", "cross"),
+    ).toBe(true);
+    expect(restore).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "cross",
+        chatId: "chat:cross",
+      }),
+      0,
+    );
+    expect(useWorkbenchStore.getState().project?.id).toBe("project-a");
+    expect(
+      useWorkbenchStore
+        .getState()
+        .projects.find((item) => item.id === "cross")
+        ?.railChats?.map((chat) => chat.id),
+    ).toEqual(["chat:seeded", "chat:cross"]);
+    expect(
+      useWorkbenchStore.getState().projects.find((item) => item.id === "cross")
+        ?.railArchived,
+    ).toEqual([]);
+  });
+
   it("renames an inactive Chat from its authoritative projection", async () => {
     const renamedTab = { ...chatTabB, title: "Chat: Focus" };
     const selectedResource = resource("src/current.ts", "root-b");

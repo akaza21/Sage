@@ -264,6 +264,20 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             && self.egress.control_usage().0 == 0
     }
 
+    pub(crate) fn startup_phase(&self) -> &'static str {
+        match self.phase {
+            Phase::Dormant | Phase::InitializeQueued | Phase::AwaitingInitialized => "initialize",
+            Phase::Initialized | Phase::SessionQueued | Phase::AwaitingSession => {
+                match self.intent.mode {
+                    ActivationMode::New { .. } => "session/new",
+                    ActivationMode::Resume { .. } => "session/resume",
+                    ActivationMode::Load { .. } => "session/load",
+                }
+            }
+            Phase::Ready | Phase::RecoveryRequired | Phase::Teardown => "ready-handoff",
+        }
+    }
+
     pub(crate) fn try_into_idle_parts(
         mut self,
     ) -> ActivationHandoff<IdleActivationParts<A, J, R>, A, J, R> {

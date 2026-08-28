@@ -47,10 +47,7 @@ impl PiRuntime {
                 let body = match pending.method.as_str() {
                     "select" => {
                         let Some(value) = pending.options.iter().find(|option| {
-                            matches!(
-                                option.to_ascii_lowercase().as_str(),
-                                "allow" | "allow once"
-                            )
+                            matches!(option.to_ascii_lowercase().as_str(), "allow" | "allow once")
                         }) else {
                             self.translator.remember_pending_ui(pending);
                             return Err(AdapterRuntimeError::LaterPermissionMiss);
@@ -72,8 +69,7 @@ impl PiRuntime {
                     }
                 };
                 self.translator.release_permission_wait();
-                let bytes =
-                    serde_json::to_vec(&body).map_err(|_| AdapterRuntimeError::Frame)?;
+                let bytes = serde_json::to_vec(&body).map_err(|_| AdapterRuntimeError::Frame)?;
                 let frame = crate::acp::transport::OutboundFrame::new(bytes)
                     .map_err(|_| AdapterRuntimeError::Frame)?;
                 AdapterEgress::new(frame, EgressToken::protocol_notification())

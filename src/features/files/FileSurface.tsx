@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useEditorCaretPublisher } from "../../app/editorCaretStore";
 import { useWorkbenchStore } from "../../app/store";
 import { resourceKey, sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
@@ -11,7 +12,7 @@ import { FileGoToLineBar } from "./FileGoToLineBar";
 import { FileMarkdownPreview } from "./FileMarkdownPreview";
 import { handleFileSurfaceCommandKey } from "./fileSurfaceCommands";
 import { goToLineSelection } from "./goToLine";
-import { canPreviewMarkdown } from "./markdownPreview";
+import { canPreviewDiagram, canPreviewMarkdown } from "./markdownPreview";
 import {
   getFileEditorController,
   useFileEditorLifecycle,
@@ -130,6 +131,14 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
   });
   useEditorExternalWatch(watchedResource, editorWatchBridge);
   useLanguageSession(watchedResource, findContent);
+  const onCaretOffset = useEditorCaretPublisher(
+    !previewing &&
+      editor?.phase === "ready" &&
+      resource &&
+      sameResource(editor.resource, resource)
+      ? editor.content
+      : null,
+  );
 
   useEffect(() => {
     if (findOpen) {
@@ -323,7 +332,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
         dirty={tab.dirty}
         saving={editor.saving}
         transitioning={projectTransitioning}
-        canPreview={canPreviewMarkdown(path)}
+        canPreview={canPreviewMarkdown(path) || canPreviewDiagram(path)}
         previewing={previewing}
         onTogglePreview={() => {
           setFindOpen(false);
@@ -369,7 +378,10 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
         />
       ) : null}
       {previewing ? (
-        <FileMarkdownPreview source={editor.content} />
+        <FileMarkdownPreview
+          source={editor.content}
+          asDiagram={canPreviewDiagram(path) && !canPreviewMarkdown(path)}
+        />
       ) : (
         <EditorAdapter
           key={activeResourceKey}
@@ -380,6 +392,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
           maxContentLength={MAX_EDITABLE_CONTENT_BYTES}
           disabled={editor.saving || projectTransitioning}
           onChange={updateEditorContent}
+          onCaretOffset={onCaretOffset}
         />
       )}
     </section>

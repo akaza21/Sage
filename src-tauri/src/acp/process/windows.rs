@@ -1,5 +1,6 @@
 mod artifact;
 mod authority;
+mod batch;
 mod encoding;
 mod io;
 mod job;
@@ -19,6 +20,7 @@ use windows_sys::Win32::System::Threading::{
 
 use self::artifact::VerifiedArtifact;
 pub(crate) use self::authority::{RunningTree, TreeControl};
+use self::batch::parse_npm_codex_launcher;
 use self::encoding::{command_line, environment_block, wide_z};
 pub(crate) use self::io::{StdinEndpoint, StdoutEndpoint};
 use self::job::JobBoundary;
@@ -28,7 +30,7 @@ use self::recovery::{classify_started_failure, fail_pre_spawn};
 use super::capacity::TreeCapacityLease;
 use super::identity::SpawnTimingReceipt;
 use super::platform::LaunchFailure;
-use super::supervisor::{LaunchError, LaunchSpec, RequiredContainment};
+use super::supervisor::{EntryPointKind, LaunchError, LaunchSpec, RequiredContainment};
 
 const MAX_WINDOWS_WIDE: usize = 32_767;
 
@@ -70,13 +72,31 @@ pub(crate) fn launch(
     let stdio = pre_spawn!(StdioSet::create());
     let child_handles = stdio.child_handles();
     let attributes = pre_spawn!(AttributeList::handles(&child_handles));
-    let mut command_line = pre_spawn!(command_line(
-        &artifact.canonical_path,
-        spec.fixed_args.as_slice()
-    ));
+    let (application_path, mut command_line, cwd_path) = match spec.artifact.entrypoint_kind {
+        EntryPointKind::NativeExecutable => (
+            artifact.canonical_path.clone(),
+            pre_spawn!(command_line(
+                &artifact.canonical_path,
+                spec.fixed_args.as_slice()
+            )),
+            spec.project_root.as_path().as_os_str().to_owned(),
+        ),
+        EntryPointKind::WindowsBatchLauncher => {
+            let plan = pre_spawn!(parse_npm_codex_launcher(
+                &artifact,
+                &spec.environment,
+                &spec.fixed_args
+            ));
+            (
+                plan.node.clone(),
+                pre_spawn!(command_line(&plan.node, &plan.args)),
+                spec.project_root.as_path().as_os_str().to_owned(),
+            )
+        }
+    };
     let environment = pre_spawn!(environment_block(spec.environment.as_slice()));
-    let application = pre_spawn!(wide_z(artifact.canonical_path.as_os_str()));
-    let cwd = pre_spawn!(wide_z(spec.project_root.as_path().as_os_str()));
+    let application = pre_spawn!(wide_z(application_path.as_os_str()));
+    let cwd = pre_spawn!(wide_z(&cwd_path));
     let mut startup = STARTUPINFOEXW::default();
     startup.StartupInfo.cb = pre_spawn!(
         u32::try_from(size_of::<STARTUPINFOEXW>()).map_err(|_| LaunchError::ContainmentFailure)
@@ -87,6 +107,10 @@ pub(crate) fn launch(
     startup.StartupInfo.hStdError = child_handles[2];
     startup.lpAttributeList = attributes.pointer;
     let mut info = PROCESS_INFORMATION::default();
+    // Batch launchers remain writable because npm may update them concurrently.
+    // Ensure the exact discovered launcher has not drifted after parsing it and
+    // before node receives the derived Codex script path.
+    pre_spawn!(artifact.revalidate(spec, "pre-spawn .cmd"));
     let (frequency_hz, spawn_started_tick) = pre_spawn!(performance_clock());
     // SAFETY: pointers are valid and the attribute list restricts inheritance.
     if unsafe {
@@ -168,7 +192,7 @@ pub(crate) fn launch(
     if let Err(error) = recovery.assign_job() {
         return Err(classify_started_failure(error, recovery));
     }
-    if let Err(error) = recovery.verify_artifact(spec) {
+    if let Err(error) = recovery.verify_artifact(spec, &application_path) {
         return Err(classify_started_failure(error, recovery));
     }
     if let Err(error) = recovery.start_stderr(parent_stderr) {
@@ -229,6 +253,15 @@ fn observe_exit(handle: HANDLE) -> Result<(), LaunchError> {
     // SAFETY: the process handle remains live through the shared authority.
     match unsafe { WaitForSingleObject(handle, INFINITE) } {
         WAIT_OBJECT_0 => Ok(()),
+        _ => Err(LaunchError::ContainmentFailure),
+    }
+}
+
+fn try_observe_exit(handle: HANDLE) -> Result<bool, LaunchError> {
+    // SAFETY: handle is live and the zero timeout only observes its state.
+    match unsafe { WaitForSingleObject(handle, 0) } {
+        WAIT_OBJECT_0 => Ok(true),
+        WAIT_TIMEOUT => Ok(false),
         _ => Err(LaunchError::ContainmentFailure),
     }
 }

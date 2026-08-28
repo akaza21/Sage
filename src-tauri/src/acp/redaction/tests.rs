@@ -41,3 +41,32 @@ fn stderr_ring_allocates_lazily_and_never_retains_over_its_limit() {
     assert_eq!(ring.bytes.len(), 8);
     assert!(ring.safe_summary().truncated);
 }
+
+#[test]
+fn stderr_diagnostic_extracts_a_redacted_json_rpc_error() {
+    let mut ring = StderrRing::new(512, 512);
+    ring.ingest(
+        br#"{"method":"thread/start","error":{"code":-32601,"message":"Bearer secret-token at C:\\private\\file"}}"#,
+    );
+
+    let diagnostic = ring.safe_diagnostic();
+
+    assert_eq!(diagnostic.method.as_deref(), Some("thread/start"));
+    assert_eq!(diagnostic.error_code.as_deref(), Some("-32601"));
+    assert_eq!(
+        diagnostic.error_message.as_deref(),
+        Some("Bearer [redacted] at [path]")
+    );
+}
+
+#[test]
+fn stderr_diagnostic_redacts_unstructured_secret_text() {
+    let mut ring = StderrRing::new(512, 512);
+    ring.ingest(b"token=never-log-this");
+
+    let diagnostic = ring.safe_diagnostic();
+
+    assert_eq!(diagnostic.method, None);
+    assert_eq!(diagnostic.error_code.as_deref(), Some("child-stderr"));
+    assert_eq!(diagnostic.error_message.as_deref(), Some("[redacted]"));
+}

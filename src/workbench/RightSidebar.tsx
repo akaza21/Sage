@@ -1,6 +1,5 @@
 import {
   CircleAlert,
-  Eye,
   FileSearch,
   Files,
   GitBranch,
@@ -23,7 +22,6 @@ const views: Array<{
   { id: "explorer", label: "Explorer", icon: Files },
   { id: "search", label: "Search", icon: FileSearch },
   { id: "sourceControl", label: "Source Control", icon: GitBranch },
-  { id: "preview", label: "Preview", icon: Eye },
   { id: "problems", label: "Problems", icon: CircleAlert },
   { id: "outline", label: "Outline", icon: ListTree },
 ];
@@ -34,7 +32,13 @@ function SidebarContent({ view }: { view: SidebarView }) {
   return renderRegisteredTool(view);
 }
 
-export function RightSidebar({ compact }: { compact: boolean }) {
+export function RightSidebar({
+  compact,
+  railFirst = false,
+}: {
+  compact: boolean;
+  railFirst?: boolean;
+}) {
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const sidebarView = useWorkbenchStore((state) => state.sidebarView);
   const setSidebarView = useWorkbenchStore((state) => state.setSidebarView);
@@ -79,48 +83,64 @@ export function RightSidebar({ compact }: { compact: boolean }) {
     toggleSidebar();
   }
 
+  const panel = sidebarOpen ? (
+    <section
+      ref={panelRef}
+      id={sidebarPanelId}
+      className="sidebar"
+      role={compact ? "dialog" : undefined}
+      aria-label={`${activeLabel} project tools`}
+      tabIndex={compact ? -1 : undefined}
+    >
+      <SidebarContent view={sidebarView} />
+    </section>
+  ) : null;
+  const rail = (
+    <nav className="activity-rail" aria-label="Activity">
+      {views.map(({ id, label, icon: Icon }) => (
+        <button
+          className={`activity-rail__button ${
+            sidebarOpen && sidebarView === id
+              ? "activity-rail__button--active"
+              : ""
+          }`}
+          key={id}
+          ref={(element) => {
+            if (element) railButtonRefs.current.set(id, element);
+            else railButtonRefs.current.delete(id);
+          }}
+          type="button"
+          aria-label={label}
+          aria-controls={sidebarPanelId}
+          aria-expanded={sidebarOpen && sidebarView === id}
+          title={label}
+          onClick={() => selectView(id)}
+        >
+          <Icon size={19} strokeWidth={1.7} aria-hidden="true" />
+        </button>
+      ))}
+    </nav>
+  );
+
   return (
     <aside
-      className={`right-region ${sidebarOpen ? "" : "right-region--collapsed"}`}
+      className={`right-region ${sidebarOpen ? "" : "right-region--collapsed"}${
+        railFirst ? " right-region--leading" : ""
+      }`}
       aria-label="Project tools"
       onKeyDown={handleDrawerKeyDown}
     >
-      {sidebarOpen ? (
-        <section
-          ref={panelRef}
-          id={sidebarPanelId}
-          className="sidebar"
-          role={compact ? "dialog" : undefined}
-          aria-label={`${activeLabel} project tools`}
-          tabIndex={compact ? -1 : undefined}
-        >
-          <SidebarContent view={sidebarView} />
-        </section>
-      ) : null}
-      <nav className="activity-rail" aria-label="Activity">
-        {views.map(({ id, label, icon: Icon }) => (
-          <button
-            className={`activity-rail__button ${
-              sidebarOpen && sidebarView === id
-                ? "activity-rail__button--active"
-                : ""
-            }`}
-            key={id}
-            ref={(element) => {
-              if (element) railButtonRefs.current.set(id, element);
-              else railButtonRefs.current.delete(id);
-            }}
-            type="button"
-            aria-label={label}
-            aria-controls={sidebarPanelId}
-            aria-expanded={sidebarOpen && sidebarView === id}
-            title={label}
-            onClick={() => selectView(id)}
-          >
-            <Icon size={19} strokeWidth={1.7} aria-hidden="true" />
-          </button>
-        ))}
-      </nav>
+      {railFirst ? (
+        <>
+          {rail}
+          {panel}
+        </>
+      ) : (
+        <>
+          {panel}
+          {rail}
+        </>
+      )}
     </aside>
   );
 }

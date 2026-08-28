@@ -28,7 +28,12 @@ where
     let mut notified = None;
     let mut pending = None;
     loop {
-        if terminal::queue(&state, &host, &notified, &mut pending).is_err() {
+        if let Err(error) = terminal::queue(&state, &host, &notified, &mut pending) {
+            tracing::warn!(
+                activation_checkpoint = "live_runner.drive.terminal_notification",
+                ?error,
+                "ACP live runner failed before receiving a worker command"
+            );
             return failed(state);
         }
         let (action, terminal_callback) = match state {
@@ -66,7 +71,14 @@ where
                             _ => return failed(FirstTurnWorkerState::Active(active)),
                         }
                     }
-                    Err(_) => return failed(FirstTurnWorkerState::Active(active)),
+                    Err(error) => {
+                        tracing::warn!(
+                            activation_checkpoint = "live_runner.drive.active_stdout",
+                            ?error,
+                            "ACP live runner failed while awaiting stdout"
+                        );
+                        return failed(FirstTurnWorkerState::Active(active));
+                    }
                 }
             }
             FirstTurnWorkerState::Active(active) if active.ready_for_write() => {
@@ -85,7 +97,18 @@ where
                             None,
                         )
                     }
-                    _ => return failed(FirstTurnWorkerState::Active(active)),
+                    result => {
+                        tracing::warn!(
+                            activation_checkpoint = "live_runner.drive.active_write",
+                            outcome = ?result
+                                .as_ref()
+                                .ok()
+                                .and_then(|message| message.as_ref())
+                                .map(control_kind),
+                            "ACP live runner rejected an unexpected activation mailbox message"
+                        );
+                        return failed(FirstTurnWorkerState::Active(active));
+                    }
                 }
             }
             FirstTurnWorkerState::Active(active) => {
@@ -104,9 +127,48 @@ where
                             None,
                         )
                     }
-                    _ => return failed(FirstTurnWorkerState::Active(active)),
+                    result => {
+                        tracing::warn!(
+                            activation_checkpoint = "live_runner.drive.active_control",
+                            outcome = ?result
+                                .as_ref()
+                                .ok()
+                                .and_then(|message| message.as_ref())
+                                .map(control_kind),
+                            "ACP live runner rejected an unexpected control mailbox message"
+                        );
+                        return failed(FirstTurnWorkerState::Active(active));
+                    }
                 }
             }
+            FirstTurnWorkerState::Idle(mut idle) => match context
+                .mailbox
+                .wait_next_until(None, context.clock.as_ref())
+            {
+                Ok(Some(ControlMessage::StdoutChunk(chunk)))
+                    if idle.accept_idle_stdout_chunk(&chunk).is_ok() =>
+                {
+                    (
+                        RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
+                        None,
+                    )
+                }
+                Ok(Some(ControlMessage::Worker(envelope))) => {
+                    handle_worker(FirstTurnWorkerState::Idle(idle), context, envelope).await
+                }
+                result => {
+                    tracing::warn!(
+                        activation_checkpoint = "live_runner.drive.idle",
+                        outcome = ?result
+                            .as_ref()
+                            .ok()
+                            .and_then(|message| message.as_ref())
+                            .map(control_kind),
+                        "ACP idle runner rejected an unexpected mailbox message"
+                    );
+                    return failed(FirstTurnWorkerState::Idle(idle));
+                }
+            },
             retained => match context
                 .mailbox
                 .wait_next_until(None, context.clock.as_ref())
@@ -117,7 +179,18 @@ where
                 Ok(Some(message)) if closing(&retained) && process_tail(&message) => {
                     (RunnerAction::Continue(retained), None)
                 }
-                _ => return failed(retained),
+                result => {
+                    tracing::warn!(
+                        activation_checkpoint = "live_runner.drive.retained",
+                        outcome = ?result
+                            .as_ref()
+                            .ok()
+                            .and_then(|message| message.as_ref())
+                            .map(control_kind),
+                        "ACP retained runner rejected an unexpected mailbox message"
+                    );
+                    return failed(retained);
+                }
             },
         };
         match action {
@@ -145,6 +218,18 @@ where
                 };
             }
         }
+    }
+}
+
+fn control_kind(message: &ControlMessage) -> &'static str {
+    match message {
+        ControlMessage::StdoutChunk(_) => "stdout",
+        ControlMessage::Prompt(_) => "prompt",
+        ControlMessage::Cancel(_) => "cancel",
+        ControlMessage::Worker(_) => "worker",
+        ControlMessage::ReaderTerminal(crate::acp::runtime::ReaderTerminal::Eof) => "reader-eof",
+        ControlMessage::ReaderTerminal(crate::acp::runtime::ReaderTerminal::Io) => "reader-io",
+        ControlMessage::ProcessExit(_) => "process-exit",
     }
 }
 

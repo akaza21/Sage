@@ -5,8 +5,8 @@ use crate::acp::{
 };
 
 use super::{
-    AdapterError, CodexAdapter, CorrelationMatch, ExternalKind, ItemTerminal, ScopedExternalId,
-    TERMINAL_ID_BYTES, TurnBinding, TurnTombstone,
+    AdapterError, CodexAdapter, CorrelationMatch, ExternalKind, ItemTerminal, RequestKind,
+    ScopedExternalId, TERMINAL_ID_BYTES, TurnBinding, TurnTombstone,
 };
 
 impl CodexAdapter {
@@ -19,6 +19,29 @@ impl CodexAdapter {
         }
         self.external_thread_id = Some(id.clone());
         Ok(self.scoped(ExternalKind::Session, id))
+    }
+
+    pub(crate) fn accept_thread_started(
+        &mut self,
+        value: &str,
+    ) -> Result<Option<ScopedExternalId>, AdapterError> {
+        let mut pending = self.pending.iter().filter_map(|(id, kind)| {
+            matches!(kind, RequestKind::Start | RequestKind::Resume).then_some(*id)
+        });
+        let Some(request_id) = pending.next() else {
+            self.expect_thread(value)?;
+            return Ok(None);
+        };
+        if pending.next().is_some() {
+            return Err(AdapterError::ForeignRequest);
+        }
+        let session = self.bind_thread(value)?;
+        let removed = self.remove_pending(request_id);
+        debug_assert!(matches!(
+            removed,
+            Some(RequestKind::Start | RequestKind::Resume)
+        ));
+        Ok(Some(session))
     }
 
     pub(crate) fn expect_thread(&self, value: &str) -> Result<(), AdapterError> {

@@ -9,6 +9,7 @@ import {
 import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { useEditorCaretStore } from "../../app/editorCaretStore";
 import { useWorkbenchStore } from "../../app/store";
 import type { EditorDocument, WorkbenchTab } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
@@ -43,6 +44,7 @@ const tab: WorkbenchTab = {
   resource,
 };
 const initialState = useWorkbenchStore.getState();
+const initialCaret = useEditorCaretStore.getState();
 const editorPort = getWorkbenchPorts().editor;
 
 function viewForEditor(editor: HTMLElement) {
@@ -97,6 +99,7 @@ function setReadyEditor(
 afterEach(() => {
   cleanup();
   useWorkbenchStore.setState(initialState, true);
+  useEditorCaretStore.setState(initialCaret, true);
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -576,6 +579,10 @@ describe("FileSurface Go-to Line", () => {
     fireEvent.change(input, { target: { value: "2:2" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(editorSelection(editor)).toEqual({ start: 5, end: 5 });
+    expect(useEditorCaretStore.getState().caret).toEqual({
+      line: 2,
+      column: 2,
+    });
     expect(editor).toHaveFocus();
     expect(screen.queryByRole("search", { name: "Go to line" })).toBeNull();
 
@@ -671,5 +678,36 @@ describe("FileSurface Markdown Preview", () => {
       await screen.findByRole("textbox", { name: "Edit docs/readme.md" }),
     ).toBeVisible();
     expect(editor).not.toBeInTheDocument();
+  });
+
+  it("draws mermaid fences in the live markdown preview", async () => {
+    setReadyEditor(
+      markdownTab,
+      ["```mermaid", "graph TD", "A --> B", "```"].join("\n"),
+    );
+    render(<FileSurface tab={markdownTab} />);
+    await screen.findByRole("textbox", { name: "Edit docs/readme.md" });
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(screen.getByRole("img", { name: "Mermaid diagram" })).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Copy diagram source" }),
+    ).toBeVisible();
+  });
+
+  it("previews standalone mermaid files as diagrams", async () => {
+    const mermaidTab: WorkbenchTab = {
+      ...tab,
+      id: "file:docs/flow.mmd",
+      title: "flow.mmd",
+      resource: { rootId: "root-a", relativePath: "docs/flow.mmd" },
+    };
+    setReadyEditor(mermaidTab, "graph TD\nA --> B");
+    render(<FileSurface tab={mermaidTab} />);
+    await screen.findByRole("textbox", { name: "Edit docs/flow.mmd" });
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(
+      screen.getByRole("article", { name: "Diagram preview" }),
+    ).toBeVisible();
+    expect(screen.getByRole("img", { name: "Mermaid diagram" })).toBeVisible();
   });
 });

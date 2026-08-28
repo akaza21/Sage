@@ -20,13 +20,24 @@ impl BoundedThread {
         name: impl Into<String>,
         task: impl FnOnce() + Send + 'static,
     ) -> std::io::Result<Self> {
+        Self::spawn_with_stack(name, None, task)
+    }
+
+    pub(crate) fn spawn_with_stack(
+        name: impl Into<String>,
+        stack_size: Option<usize>,
+        task: impl FnOnce() + Send + 'static,
+    ) -> std::io::Result<Self> {
         let (completed, completion) = mpsc::sync_channel(1);
-        let handle = std::thread::Builder::new()
-            .name(name.into())
-            .spawn(move || {
-                let clean = catch_unwind(AssertUnwindSafe(task)).is_ok();
-                let _ = completed.send(clean);
-            })?;
+        let mut builder = std::thread::Builder::new();
+        builder = builder.name(name.into());
+        if let Some(stack_size) = stack_size {
+            builder = builder.stack_size(stack_size);
+        }
+        let handle = builder.spawn(move || {
+            let clean = catch_unwind(AssertUnwindSafe(task)).is_ok();
+            let _ = completed.send(clean);
+        })?;
         Ok(Self {
             handle: Some(handle),
             completion,

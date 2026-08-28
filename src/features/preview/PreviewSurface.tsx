@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
+import { applyBrowseIntent, harnessBrowseOwner } from "./harnessBrowse";
 import {
   discoverPreviewTargets,
   getPreviewHealth,
@@ -9,7 +10,11 @@ import {
   type PreviewTargetRef,
 } from "./previewDesktop";
 
-export function PreviewSurface() {
+export function PreviewSurface({
+  browseChatId,
+}: {
+  browseChatId?: string | null;
+} = {}) {
   const project = useWorkbenchStore((state) => state.project);
   const projectGeneration = useWorkbenchStore(
     (state) => state.projectGeneration,
@@ -26,6 +31,7 @@ export function PreviewSurface() {
       projectGeneration={projectGeneration}
       epoch={epoch}
       transitioning={transitioning}
+      browseChatId={browseChatId ?? harnessBrowseOwner()}
     />
   );
 }
@@ -35,6 +41,7 @@ type PreviewSessionProps = {
   projectGeneration: number;
   epoch: number;
   transitioning: boolean;
+  browseChatId: string | null;
 };
 
 function matchesPreviewTarget(
@@ -69,6 +76,7 @@ function PreviewSession({
   projectGeneration,
   epoch,
   transitioning,
+  browseChatId,
 }: PreviewSessionProps) {
   const [targets, setTargets] = useState<PreviewTargetRef[]>([]);
   const [active, setActive] = useState<PreviewTargetRef | null>(null);
@@ -184,6 +192,12 @@ function PreviewSession({
                     startingTargetRef.current = null;
                     setStarting(false);
                     setActive(started.ref);
+                    if (browseChatId) {
+                      applyBrowseIntent({
+                        chatId: browseChatId,
+                        url: started.origin,
+                      });
+                    }
                   })
                   .catch((error) => {
                     if (!mountedRef.current) return;

@@ -3,13 +3,21 @@
 ## Product invariants
 
 - Chat is a workbench tab.
-- Version 1 has one primary tab strip and no automatic splits.
+- Agent mode allows a bounded pair of side-by-side visible chats (max 2).
+  That owner restatement supersedes “one primary tab strip and no automatic
+  splits” for Agent chat panes only.
+- Editor mode keeps one File / Diff tab strip and no automatic splits.
 - The title bar owns a two-mode Agent / Editor window toggle (Devin-style
   D0). Do not reopen this decision.
 - Agent view: project and persistent chat navigation live on the left; the
-  center is Chat.
-- Editor view: Explorer, Search, Git, Problems, and Outline live in the
-  Editor-view tool rail; the center is the File / Diff / Chat tab strip.
+  center is one or two concurrent Chat panes. The right pane shows only that
+  chat’s files, diffs, and in-app browser Preview. There is no Explorer /
+  Search / Git / Problems / Outline chrome in Agent mode.
+- Editor view is a pure editor: Explorer, Search, Git, Problems, and Outline
+  live on the left tool rail; the center is the File / Diff tab strip. There
+  is no project/chat navigation and no persistent chat-as-primary.
+- Files, diffs, and previews opened in Agent are the same workbench
+  resources as Editor mode.
 - Agent edits appear inside the originating Chat as a bounded file summary.
 - Selecting a changed file opens a per-file Diff tab; there is no dedicated
   Review tab.
@@ -20,6 +28,10 @@
 - Rust and SQLite own durable truth.
 - The WebView owns disposable rendering state only.
 - Git CLI will be the sole production Git backend.
+- Workspace and Git file walks admit at most 200k files. WebView lists stay
+  capped (Explorer 500, Search 500 matches, Git changes 300). Skip `.git`
+  and `node_modules`. Native walks stream and fail closed; they do not ship
+  200k paths to the WebView.
 - Worktrees are optional and never the project model.
 - Heavy inactive views must unmount or sleep.
 

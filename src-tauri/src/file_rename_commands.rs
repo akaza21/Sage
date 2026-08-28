@@ -88,6 +88,7 @@ where
     execute_with_hooks(state, request, after_rename, || Ok(()), || Ok(())).await
 }
 
+#[cfg(test)]
 async fn execute_with_hooks<F, R, S>(
     state: &AppState,
     request: RenameProjectFileRequest,

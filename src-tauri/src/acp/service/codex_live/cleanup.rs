@@ -64,6 +64,7 @@ impl AcpService {
         failure: crate::acp::process::LaunchFailure,
         category: ActivationAbortCategory,
     ) -> Result<(), CodexSessionError> {
+        let launch_error = failure.error();
         let token = match failure.into_zero_process() {
             Ok(token) => token,
             Err(failure) => {
@@ -104,7 +105,7 @@ impl AcpService {
                 self.runtime
                     .abort_start(&abort.owner)
                     .map_err(map_slot_error)?;
-                Err(CodexSessionError::Launch)
+                Err(CodexSessionError::LaunchFailure(launch_error))
             }
             Err((_error, proof)) => {
                 let _ = self.runtime.mark_recovery(&abort.owner);
@@ -128,6 +129,7 @@ impl AcpService {
         control: &TreeControl,
         cleanup_deadline: Instant,
         category: ActivationAbortCategory,
+        launch_setup: super::super::CodexLaunchSetupError,
         active: Option<ActiveCodexOperation>,
     ) -> Result<(), CodexSessionError> {
         stdin.close();
@@ -201,7 +203,7 @@ impl AcpService {
         if let Some(active) = active {
             active.settle(Ok(()));
         }
-        Err(CodexSessionError::Launch)
+        Err(CodexSessionError::LaunchSetup(launch_setup))
     }
 
     pub(super) async fn abort_driver_before_runner(
@@ -210,6 +212,7 @@ impl AcpService {
         mut driver: CodexActivationDriver,
         cleanup_deadline: Instant,
         category: ActivationAbortCategory,
+        launch_setup: super::super::CodexLaunchSetupError,
         host: Option<(Arc<RuntimeHost>, bool)>,
         active: Option<ActiveCodexOperation>,
     ) -> Result<(), CodexSessionError> {
@@ -231,7 +234,7 @@ impl AcpService {
                 return Err(CodexSessionError::Recovery);
             }
         };
-        self.finish_driver_abort(abort, handoff, category, host, active)
+        self.finish_driver_abort(abort, handoff, category, launch_setup, host, active)
             .await
     }
 
@@ -245,6 +248,7 @@ impl AcpService {
             crate::acp::process::ZeroProcessToken,
         >,
         category: ActivationAbortCategory,
+        launch_setup: super::super::CodexLaunchSetupError,
         host: Option<(Arc<RuntimeHost>, bool)>,
         active: Option<ActiveCodexOperation>,
     ) -> Result<(), CodexSessionError> {
@@ -316,7 +320,7 @@ impl AcpService {
         if let Some(active) = active {
             active.settle(Ok(()));
         }
-        Err(CodexSessionError::Launch)
+        Err(CodexSessionError::LaunchSetup(launch_setup))
     }
 
     pub(super) async fn recover_runner_start(
@@ -328,21 +332,31 @@ impl AcpService {
         active: Option<ActiveCodexOperation>,
     ) -> Result<(), CodexSessionError> {
         match failure {
-            ActivationStartFailure::Teardown { handoff, .. } => {
+            ActivationStartFailure::Teardown {
+                handoff, substep, ..
+            } => {
+                tracing::warn!(runner_start_substep = ?substep, "Codex live runner activation failed");
                 self.finish_driver_abort(
                     abort,
                     handoff,
                     ActivationAbortCategory::RuntimeHandoffFailure,
+                    substep.into(),
                     Some((host, true)),
                     active,
                 )
                 .await
             }
-            ActivationStartFailure::Projection { handoff, .. } => {
+            ActivationStartFailure::Projection {
+                handoff, substep, ..
+            } => {
+                tracing::warn!(runner_start_substep = ?substep, "Codex live runner activation failed");
                 let (_, journal, _) = handoff.parts.into_parts();
                 self.recover_projection_authorities(abort, journal, handoff.proof, host, active)
             }
-            ActivationStartFailure::Retained { driver, .. } => {
+            ActivationStartFailure::Retained {
+                driver, substep, ..
+            } => {
+                tracing::warn!(runner_start_substep = ?substep, "Codex live runner activation failed");
                 if let Some(active) = active {
                     active.settle(Err(
                         crate::acp::bindings::codex::CodexDiscoveryRunError::Cleanup,
@@ -357,7 +371,8 @@ impl AcpService {
                 });
                 Err(CodexSessionError::Recovery)
             }
-            ActivationStartFailure::OwnedByRunner(_) => {
+            ActivationStartFailure::OwnedByRunner { substep, .. } => {
+                tracing::warn!(runner_start_substep = ?substep, "Codex live runner activation failed");
                 if let Some(active) = active {
                     active.settle(Err(
                         crate::acp::bindings::codex::CodexDiscoveryRunError::Cleanup,

@@ -23,7 +23,7 @@ fn allow_once_replaces_the_adapter_token_without_a_mandatory_deny() {
     let result = resolve_later_permission(&request(), PermissionDecision::AllowOnce, Some(reply()))
         .expect("pending request")
         .expect("allow has wire reply");
-    assert!(matches!(result.token().deny_request(), None));
+    assert!(result.token().deny_request().is_none());
 }
 
 #[test]

@@ -1,6 +1,7 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
   defaultHighlightStyle,
+  indentUnit,
   syntaxHighlighting,
 } from "@codemirror/language";
 import {
@@ -18,6 +19,10 @@ import {
   lineNumbers,
 } from "@codemirror/view";
 
+import {
+  DEFAULT_EDITOR_APPEARANCE,
+  type EditorAppearance,
+} from "./editorAppearance";
 import { editorLanguageForPath, loadEditorLanguage } from "./editorLanguage";
 
 interface RuntimeProps {
@@ -26,7 +31,9 @@ interface RuntimeProps {
   content: string;
   disabled: boolean;
   maxContentLength: number;
+  appearance?: EditorAppearance;
   onChange: (content: string) => void;
+  onCaretOffset?: (offset: number) => void;
 }
 
 interface RuntimeOptions extends RuntimeProps {
@@ -53,6 +60,17 @@ function withinUtf8Limit(document: Text, limit: number) {
   return textEncoder.encode(document.toString()).byteLength <= limit;
 }
 
+function appearanceExtensions(appearance: EditorAppearance): Extension {
+  return [
+    EditorState.tabSize.of(appearance.tabSize),
+    indentUnit.of(" ".repeat(appearance.tabSize)),
+    appearance.wordWrap ? EditorView.lineWrapping : [],
+    EditorView.theme({
+      ".cm-scroller": { fontSize: `${appearance.fontSize}px` },
+    }),
+  ];
+}
+
 function editableExtensions(props: RuntimeProps): Extension {
   return [
     EditorState.readOnly.of(props.disabled),
@@ -72,7 +90,11 @@ export function createCodeMirrorEditorRuntime(
 ): CodeMirrorEditorRuntime {
   const editableCompartment = new Compartment();
   const languageCompartment = new Compartment();
-  let current: RuntimeProps = options;
+  const appearanceCompartment = new Compartment();
+  let current: RuntimeProps = {
+    ...options,
+    appearance: options.appearance ?? DEFAULT_EDITOR_APPEARANCE,
+  };
   let applyingControlledContent = false;
   let languageGeneration = 0;
   let destroyed = false;
@@ -87,8 +109,11 @@ export function createCodeMirrorEditorRuntime(
         history(),
         keymap.of([...historyKeymap, ...defaultKeymap]),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        editableCompartment.of(editableExtensions(options)),
+        editableCompartment.of(editableExtensions(current)),
         languageCompartment.of([]),
+        appearanceCompartment.of(
+          appearanceExtensions(current.appearance ?? DEFAULT_EDITOR_APPEARANCE),
+        ),
         EditorState.transactionFilter.of((transaction) =>
           !transaction.docChanged ||
           withinUtf8Limit(transaction.newDoc, current.maxContentLength)
@@ -98,6 +123,12 @@ export function createCodeMirrorEditorRuntime(
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !applyingControlledContent) {
             current.onChange(update.state.doc.toString());
+          }
+          if (
+            current.onCaretOffset &&
+            (update.selectionSet || update.docChanged)
+          ) {
+            current.onCaretOffset(update.state.selection.main.head);
           }
         }),
       ],
@@ -123,6 +154,7 @@ export function createCodeMirrorEditorRuntime(
   }
 
   selectLanguage(options.path);
+  current.onCaretOffset?.(view.state.selection.main.head);
 
   return {
     destroy: () => {
@@ -145,9 +177,19 @@ export function createCodeMirrorEditorRuntime(
     },
     update: (props) => {
       const previousPath = current.path;
-      current = props;
+      current = {
+        ...props,
+        appearance: props.appearance ?? DEFAULT_EDITOR_APPEARANCE,
+      };
       view.dispatch({
-        effects: editableCompartment.reconfigure(editableExtensions(props)),
+        effects: [
+          editableCompartment.reconfigure(editableExtensions(current)),
+          appearanceCompartment.reconfigure(
+            appearanceExtensions(
+              current.appearance ?? DEFAULT_EDITOR_APPEARANCE,
+            ),
+          ),
+        ],
       });
       if (view.state.doc.toString() !== props.content) {
         applyingControlledContent = true;

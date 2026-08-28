@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const editorStyles = readFileSync(
-  resolve(process.cwd(), "src/styles/global.css"),
+  resolve(process.cwd(), "src/styles/file-editor-surface.css"),
   "utf8",
 );
 

@@ -73,6 +73,24 @@ pub async fn add_project_root_from_picker(
 }
 
 #[tauri::command]
+pub async fn ensure_local_project(
+    state: State<'_, AppState>,
+    expected_transition_epoch: u64,
+) -> Result<ProjectTransitionResult, String> {
+    let database = state.database.clone();
+    let operations = state.editor_operations.clone();
+    let ticket = operations
+        .issue_ticket()
+        .map_err(|error| error.to_string())?;
+    Ok(
+        execute_committed_transition(&state, expected_transition_epoch, move || {
+            operations.execute_project_transition(ticket, || database.ensure_local_project())
+        })
+        .await,
+    )
+}
+
+#[tauri::command]
 pub async fn persist_project_layout(
     state: State<'_, AppState>,
     request: ProjectLayoutRequest,

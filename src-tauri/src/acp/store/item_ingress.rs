@@ -372,17 +372,5 @@ fn duplicate(
     })
 }
 fn kind_text(value: crate::acp::contract::ItemKind) -> &'static str {
-    match value {
-        crate::acp::contract::ItemKind::Text => "text",
-        crate::acp::contract::ItemKind::ThoughtSummary => "thoughtSummary",
-        crate::acp::contract::ItemKind::Plan => "plan",
-        crate::acp::contract::ItemKind::ToolCall => "toolCall",
-        crate::acp::contract::ItemKind::ToolUpdateResult => "toolUpdateResult",
-        crate::acp::contract::ItemKind::FileChangeDiff => "fileChangeDiff",
-        crate::acp::contract::ItemKind::Usage => "usage",
-        crate::acp::contract::ItemKind::PermissionRequest => "permissionRequest",
-        crate::acp::contract::ItemKind::Error => "error",
-        crate::acp::contract::ItemKind::Unsupported => "unsupported",
-        crate::acp::contract::ItemKind::Collaboration => "collaboration",
-    }
+    value.as_str()
 }

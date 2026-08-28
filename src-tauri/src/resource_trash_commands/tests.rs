@@ -99,6 +99,7 @@ impl Fixture {
             pinned: false,
             dirty: false,
             status: None,
+            updated_at: None,
             resource: Some(ResourceRef {
                 root_id: self.root_id.clone(),
                 relative_path: "src/empty/ghost.rs".into(),

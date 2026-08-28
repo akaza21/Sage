@@ -133,6 +133,10 @@ pub enum ItemContent {
         changes: BoundedVec<FileChangeProjection, 256>,
         truncated: bool,
     },
+    Image {
+        media_type: crate::acp::intent::ImageMediaType,
+        data_url: SafeText<262144>,
+    },
     Usage {
         input_tokens: Option<u64>,
         output_tokens: Option<u64>,

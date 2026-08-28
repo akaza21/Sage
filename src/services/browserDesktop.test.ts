@@ -99,6 +99,130 @@ describe("browser repository mutations", () => {
       ),
     ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
   });
+
+  it("reports the same native-only failure for local branch checkout", async () => {
+    await expect(
+      browserDesktop.checkoutGitLocalBranch(
+        {
+          projectId: "project-a",
+          rootId: "root-a",
+          branch: "topic",
+        },
+        0,
+      ),
+    ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
+  });
+
+  it("reports the same native-only failure for local branch delete", async () => {
+    await expect(
+      browserDesktop.deleteGitLocalBranch(
+        {
+          projectId: "project-a",
+          rootId: "root-a",
+          branch: "topic",
+        },
+        0,
+      ),
+    ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
+  });
+
+  it("reports the same native-only failure for local branch rename", async () => {
+    await expect(
+      browserDesktop.renameGitLocalBranch(
+        {
+          projectId: "project-a",
+          rootId: "root-a",
+          from: "topic",
+          to: "feature",
+        },
+        0,
+      ),
+    ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
+  });
+
+  it("reports the same native-only failure for local branch create", async () => {
+    await expect(
+      browserDesktop.createGitLocalBranch(
+        {
+          projectId: "project-a",
+          rootId: "root-a",
+          branch: "feature",
+        },
+        0,
+      ),
+    ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
+  });
+
+  it("reports the same native-only failure for continue cherry-pick", async () => {
+    await expect(
+      browserDesktop.continueGitCherryPick(
+        {
+          projectId: "project-a",
+          rootId: "root-a",
+        },
+        0,
+      ),
+    ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
+  });
+
+  it("reports the same native-only failure for continue revert", async () => {
+    await expect(
+      browserDesktop.continueGitRevert(
+        {
+          projectId: "project-a",
+          rootId: "root-a",
+        },
+        0,
+      ),
+    ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
+  });
+
+  it("reports the same native-only failure for fetch and push", async () => {
+    await expect(
+      browserDesktop.fetchGitRemote(
+        {
+          projectId: "project-a",
+          rootId: "root-a",
+          remote: "origin",
+        },
+        0,
+      ),
+    ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
+    await expect(
+      browserDesktop.pushGitRemote(
+        {
+          projectId: "project-a",
+          rootId: "root-a",
+          remote: "origin",
+        },
+        0,
+      ),
+    ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
+  });
+
+  it("reports the same native-only failure for abort in-progress sequence", async () => {
+    await expect(
+      browserDesktop.abortGitInProgress(
+        {
+          projectId: "project-a",
+          rootId: "root-a",
+        },
+        0,
+      ),
+    ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
+  });
+
+  it("reports the same native-only failure for continue rebase", async () => {
+    await expect(
+      browserDesktop.continueGitRebase(
+        {
+          projectId: "project-a",
+          rootId: "root-a",
+        },
+        0,
+      ),
+    ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
+  });
 });
 
 describe("browser simulator history bounds", () => {

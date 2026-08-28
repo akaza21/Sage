@@ -27,7 +27,7 @@
 }
 
 .workspace-search__input:focus-within {
-  border-color: #526354;
+  border-color: var(--accent);
 }
 
 .workspace-search__input input {
@@ -144,17 +144,24 @@
   animation: workspace-search-spin 900ms linear infinite;
 }
 
+.workspace-search__results {
+  display: grid;
+  gap: 6px;
+  padding: 0 8px 10px;
+}
+
 .workspace-search__result {
   display: grid;
   width: 100%;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 3px 8px;
-  padding: 7px 9px;
-  border: 0;
-  border-top: 1px solid var(--border);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   color: var(--text-soft);
-  background: transparent;
+  background: var(--surface-raised);
   text-align: left;
   cursor: pointer;
 }
@@ -162,6 +169,12 @@
 .workspace-search__result:hover {
   color: var(--text);
   background: var(--surface-hover);
+}
+
+.workspace-search__copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
 }
 
 .workspace-search__path {
@@ -192,16 +205,19 @@
 }
 
 .workspace-search__preview {
-  grid-column: 1 / 2;
   color: var(--muted);
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
   font-size: 10px;
 }
 
 .workspace-search__position {
-  grid-column: 2;
-  grid-row: 1 / 3;
-  align-self: center;
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface-active);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 @keyframes workspace-search-spin {

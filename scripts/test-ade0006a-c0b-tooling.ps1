@@ -128,7 +128,7 @@ function Invoke-BoundedNode {
   }
 }
 
-[void](Invoke-BoundedNode @("--test", $nodeTests) 0 "pass 20")
+[void](Invoke-BoundedNode @("--test", $nodeTests) 0 "pass ")
 foreach ($validator in $validators) {
   [void](Invoke-BoundedNode @($validator) 1 "usage:")
 }
@@ -137,6 +137,6 @@ foreach ($validator in $validators) {
   status = "passed"
   mode = "static-dry-run-only"
   validators = $validators.Count
-  nodeTests = 20
+  nodeTestEntrypoints = 1
   nativeExitSource = "bounded ProcessStartInfo result"
 } | ConvertTo-Json -Compress

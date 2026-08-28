@@ -3,8 +3,8 @@ use std::{
     os::windows::{fs::OpenOptionsExt, io::AsRawHandle},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -18,7 +18,7 @@ use windows_sys::Win32::{
     System::Threading::WaitForSingleObject,
 };
 
-use super::{emit_if_active, notice_kind_for_path, EditorExternalWatchKind, ResourceRef};
+use super::{EditorExternalWatchKind, ResourceRef, emit_if_active, notice_kind_for_path};
 use crate::error::{AppError, AppResult};
 
 const WAIT_OBJECT_0: u32 = 0;

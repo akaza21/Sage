@@ -100,6 +100,40 @@ impl SafeResourceLocation {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ImageMediaType {
+    #[serde(rename = "image/png")]
+    Png,
+    #[serde(rename = "image/jpeg")]
+    Jpeg,
+    #[serde(rename = "image/webp")]
+    Webp,
+}
+
+impl ImageMediaType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Png => "image/png",
+            Self::Jpeg => "image/jpeg",
+            Self::Webp => "image/webp",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "image/png" => Some(Self::Png),
+            "image/jpeg" => Some(Self::Jpeg),
+            "image/webp" => Some(Self::Webp),
+            _ => None,
+        }
+    }
+}
+
+/// Decoded raster cap. Stored JSON must also fit `LIMITS.wire.normalized_item_bytes`.
+pub const IMAGE_DECODED_BYTES_MAX: usize = 262_144;
+/// Standard base64 length for `IMAGE_DECODED_BYTES_MAX` (256 KiB * 4/3).
+pub const IMAGE_BASE64_MAX: usize = 349_544;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ToolCategory {
     File,
@@ -146,6 +180,10 @@ pub enum NormalizedPayload {
         additions: Option<u64>,
         deletions: Option<u64>,
     },
+    Image {
+        media_type: ImageMediaType,
+        data: SafeText<349544>,
+    },
     Usage {
         input_tokens: u64,
         output_tokens: u64,
@@ -179,6 +217,7 @@ impl NormalizedPayload {
             Self::ToolCall { .. } => ItemKind::ToolCall,
             Self::ToolUpdateResult { .. } => ItemKind::ToolUpdateResult,
             Self::FileChangeDiff { .. } => ItemKind::FileChangeDiff,
+            Self::Image { .. } => ItemKind::Image,
             Self::Usage { .. } => ItemKind::Usage,
             Self::PermissionRequest { .. } => ItemKind::PermissionRequest,
             Self::Error { .. } => ItemKind::Error,

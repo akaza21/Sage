@@ -195,6 +195,62 @@ fn ready(runtime: &mut CodexRuntime) {
         .expect("session response");
 }
 
+#[test]
+fn thread_started_notification_completes_the_pending_new_session() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    let _request = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: None,
+        })
+        .expect("new session");
+
+    let batch = runtime
+        .ingest(
+            &frame(json!({"method":"thread/started","params":{
+                "thread":{"id":"thread-0146"}
+            }})),
+            &Mapper,
+        )
+        .expect("Codex 0.146 thread-started notification");
+
+    assert!(matches!(
+        batch.events(),
+        [AdapterEvent::SessionReady { .. }]
+    ));
+}
+
+#[test]
+fn thread_started_notification_after_start_response_is_ignored_late() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    let request = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: None,
+        })
+        .expect("new session");
+    let id = request_id(&request);
+    runtime
+        .ingest(
+            &frame(json!({"id":id,"result":{"thread":{"id":"thread-0146"}}})),
+            &Mapper,
+        )
+        .expect("thread-start response");
+
+    let late = runtime
+        .ingest(
+            &frame(json!({"method":"thread/started","params":{
+                "thread":{"id":"thread-0146"}
+            }})),
+            &Mapper,
+        )
+        .expect("late Codex 0.146 thread-started notification");
+
+    assert!(matches!(late.events(), [AdapterEvent::IgnoredLate]));
+}
+
 fn running_turn(runtime: &mut CodexRuntime) {
     let egress = runtime
         .command(AdapterCommand::Prompt {
@@ -361,6 +417,165 @@ fn admitted_binding_is_the_only_constructor_that_crosses_the_launch_gate() {
 
 #[cfg(windows)]
 #[test]
+fn observed_cli_binding_accepts_its_own_initialize_identity() {
+    use std::{fs, sync::Arc};
+
+    let path = std::env::temp_dir().join(format!(
+        "sage-observed-codex-runtime-{}.cmd",
+        uuid::Uuid::new_v4()
+    ));
+    fs::write(&path, "@echo off\r\n").unwrap();
+    let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed(
+        path.clone(),
+        "codex 0.146.0".into(),
+    )
+    .unwrap();
+    assert_ne!(binding.binding_digest_hex(), binding.artifact_digest());
+    let mut runtime = CodexRuntime::from_admitted_binding(
+        Arc::new(binding),
+        launch_root(
+            launch_project_id(),
+            ProjectGeneration::ZERO,
+            launch_root_id(),
+        ),
+        RuntimeEpoch::new(22).unwrap(),
+        SageAgentSessionId::parse("session-observed-cli").unwrap(),
+    )
+    .unwrap();
+    let egress = runtime.command(AdapterCommand::Initialize).unwrap();
+    let id = request_id(&egress);
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Queued)
+        .unwrap();
+
+    let initialized = runtime.ingest(
+        &frame(json!({"id": id, "result": {
+            "userAgent": "sage/0.146.0 (Windows 10.0.26200; x86_64) terminal (sage; 0.1.0)",
+            "codexHome": r"C:\Users\test\.codex",
+            "platformFamily": "windows",
+            "platformOs": "windows"
+        }})),
+        &Mapper,
+    );
+
+    assert!(matches!(
+        initialized.unwrap().events(),
+        [AdapterEvent::Initialized { .. }]
+    ));
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn observed_remote_control_status_notification_is_ignored_during_initialization() {
+    let mut runtime = fixture_runtime();
+    let notification = runtime
+        .ingest(
+            &frame(json!({
+                "method": "remoteControl/status/changed",
+                "params": {
+                    "environmentId": null,
+                    "installationId": "installation-observed",
+                    "serverName": "windows-host",
+                    "status": "disabled"
+                }
+            })),
+            &Mapper,
+        )
+        .expect("recognized operational notification");
+
+    assert!(matches!(notification.events(), [AdapterEvent::IgnoredLate]));
+}
+
+#[test]
+fn observed_mcp_startup_status_notification_is_ignored_during_activation() {
+    let mut runtime = fixture_runtime();
+    let notification = runtime
+        .ingest(
+            &frame(json!({
+                "method": "mcpServer/startupStatus/updated",
+                "params": {
+                    "error": null,
+                    "failureReason": null,
+                    "name": "developer",
+                    "status": "starting",
+                    "threadId": "thread-observed"
+                }
+            })),
+            &Mapper,
+        )
+        .expect("recognized operational notification");
+
+    assert!(matches!(notification.events(), [AdapterEvent::IgnoredLate]));
+}
+
+#[test]
+fn observed_mcp_ready_status_notification_is_ignored_during_turn_start() {
+    let mut runtime = fixture_runtime();
+    let notification = runtime
+        .ingest(
+            &frame(json!({
+                "emittedAtMs": 1_787_930_996_883_u64,
+                "method": "mcpServer/startupStatus/updated",
+                "params": {
+                    "error": null,
+                    "failureReason": null,
+                    "name": "developer",
+                    "status": "ready",
+                    "threadId": "f12d7062-15e0-4d7b-94a2-8a52382a4611"
+                }
+            })),
+            &Mapper,
+        )
+        .expect("observed operational ready notification");
+
+    assert!(matches!(notification.events(), [AdapterEvent::IgnoredLate]));
+}
+
+#[test]
+fn observed_mcp_cancelled_status_notification_is_ignored_during_activation() {
+    let mut runtime = fixture_runtime();
+    let notification = runtime.ingest(
+        &frame(json!({
+            "method": "mcpServer/startupStatus/updated",
+            "params": {
+                "error": null,
+                "failureReason": null,
+                "name": "developer",
+                "status": "cancelled",
+                "threadId": "thread-observed"
+            }
+        })),
+        &Mapper,
+    );
+
+    assert!(notification.is_ok());
+}
+
+#[test]
+fn unknown_mcp_startup_status_fails_closed() {
+    let mut runtime = fixture_runtime();
+
+    assert!(
+        runtime
+            .ingest(
+                &frame(json!({
+                    "method": "mcpServer/startupStatus/updated",
+                    "params": {
+                        "error": null,
+                        "failureReason": null,
+                        "name": "developer",
+                        "status": "unknown",
+                        "threadId": "thread-observed"
+                    }
+                })),
+                &Mapper,
+            )
+            .is_err()
+    );
+}
+
+#[cfg(windows)]
+#[test]
 fn runtime_retains_admission_authority_and_frozen_environment_until_teardown() {
     let registration = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
     let binding = registration.refresh().unwrap();
@@ -440,9 +655,31 @@ fn admitted_runtime_builds_the_exact_contained_app_server_launch_contract() {
             .iter()
             .map(|(key, _)| key.to_string_lossy().into_owned())
             .collect::<Vec<_>>(),
-        ["CODEX_HOME", "SystemRoot", "TEMP", "TMP", "WINDIR"]
+        [
+            "CODEX_HOME",
+            "PATH",
+            "ComSpec",
+            "PATHEXT",
+            "SystemRoot",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+            "APPDATA",
+            "WINDIR",
+        ]
     );
-    for inherited in ["HOME", "USERPROFILE", "PATH", "OPENAI_API_KEY"] {
+    let path = spec
+        .environment
+        .as_slice()
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case(OsStr::new("PATH")))
+        .map(|(_, value)| value)
+        .expect("the npm Codex launcher needs an explicit node PATH");
+    assert!(
+        std::path::Path::new(path).join("node.exe").is_file(),
+        "the isolated environment admits the node runtime resolved from the launcher"
+    );
+    for inherited in ["HOME", "OPENAI_API_KEY"] {
         assert!(
             spec.environment
                 .as_slice()

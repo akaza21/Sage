@@ -196,7 +196,8 @@ where
         let owner = self.candidate.parts.owner.clone();
         let proof = match retained {
             ReusableProof::Validated(proof) => proof,
-            ReusableProof::Native(native) => match native.try_into_coordinator_proof(owner.clone()) {
+            ReusableProof::Native(native) => match native.try_into_coordinator_proof(owner.clone())
+            {
                 Ok(proof) => proof,
                 Err((native, error)) => {
                     self.proof = Some(ReusableProof::Native(native));

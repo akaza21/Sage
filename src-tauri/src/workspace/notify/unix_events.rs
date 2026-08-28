@@ -248,7 +248,7 @@ mod tests {
     fn inotify_record(mask: u32, name: &str) -> Vec<u8> {
         let mut name_bytes = name.as_bytes().to_vec();
         name_bytes.push(0);
-        while name_bytes.len() % 4 != 0 {
+        while !name_bytes.len().is_multiple_of(4) {
             name_bytes.push(0);
         }
         let mut bytes = vec![0_u8; INOTIFY_EVENT_BYTES];
@@ -341,11 +341,11 @@ mod tests {
 
         assert!(!truncated);
         assert_eq!(directories.len(), 3);
-        assert!(names.iter().any(|name| *name == "src"));
-        assert!(names.iter().any(|name| *name == "vendor"));
-        assert!(!names.iter().any(|name| *name == ".git"));
-        assert!(!names.iter().any(|name| *name == "node_modules"));
-        assert!(!names.iter().any(|name| *name == "pkg"));
+        assert!(names.contains(&"src"));
+        assert!(names.contains(&"vendor"));
+        assert!(!names.contains(&".git"));
+        assert!(!names.contains(&"node_modules"));
+        assert!(!names.contains(&"pkg"));
         std::fs::remove_dir_all(root).expect("cleanup");
     }
 }

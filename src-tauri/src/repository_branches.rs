@@ -4,7 +4,7 @@ use crate::{
 };
 
 pub const MAX_LOCAL_BRANCHES: usize = 64;
-const MAX_BRANCH_NAME_BYTES: usize = 255;
+pub(crate) const MAX_BRANCH_NAME_BYTES: usize = 255;
 const MAX_BRANCH_LIST_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +83,7 @@ pub(crate) async fn list_local_branches(workspace: &Workspace) -> AppResult<Loca
     parse_local_branches(&output.stdout, output.stdout_truncated)
 }
 
-fn valid_branch_name(name: &str) -> bool {
+pub(crate) fn valid_branch_name(name: &str) -> bool {
     if name.is_empty() || name.len() > MAX_BRANCH_NAME_BYTES {
         return false;
     }

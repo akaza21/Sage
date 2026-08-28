@@ -376,3 +376,117 @@ fn rename_is_atomic_for_active_and_inactive_chats_and_survives_restart() {
     drop(reopened);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn renames_a_chat_on_a_non_active_project_without_switching() {
+    let base = std::env::temp_dir().join(format!("sage-chat-rename-foreign-{}", Uuid::new_v4()));
+    let first_root = base.join("cross");
+    let second_root = base.join("sage");
+    fs::create_dir_all(&first_root).unwrap();
+    fs::create_dir_all(&second_root).unwrap();
+    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let cross = database.create_project_from_root(&first_root).unwrap();
+    let cross_chat = database
+        .bootstrap_snapshot()
+        .unwrap()
+        .active_tab_id
+        .unwrap();
+    let sessions_before: i64 = database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM agent_sessions WHERE project_id=?1 AND chat_id=?2",
+            rusqlite::params![cross.id, cross_chat],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(sessions_before > 0);
+    let sage = database.create_project_from_root(&second_root).unwrap();
+    let before = database.bootstrap_snapshot().unwrap();
+    database
+        .rename_chat(&RenameChatRequest {
+            project_id: cross.id.clone(),
+            chat_id: cross_chat.clone(),
+            title: "Research memory".into(),
+            current_layout: layout(&before),
+        })
+        .unwrap();
+    let after = database.bootstrap_snapshot().unwrap();
+    assert_eq!(after.project.as_ref().unwrap().id, sage.id);
+    let renamed = after
+        .projects
+        .iter()
+        .find(|item| item.id == cross.id)
+        .unwrap()
+        .rail_chats
+        .iter()
+        .find(|chat| chat.id == cross_chat)
+        .unwrap();
+    assert_eq!(renamed.title, "Chat: Research memory");
+    let sessions_after: i64 = database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM agent_sessions WHERE project_id=?1 AND chat_id=?2",
+            rusqlite::params![cross.id, cross_chat],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(sessions_after, sessions_before);
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn creates_a_chat_on_a_non_active_project_without_switching() {
+    let base = std::env::temp_dir().join(format!("sage-chat-create-foreign-{}", Uuid::new_v4()));
+    let first_root = base.join("cross");
+    let second_root = base.join("sage");
+    fs::create_dir_all(&first_root).unwrap();
+    fs::create_dir_all(&second_root).unwrap();
+    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let cross = database.create_project_from_root(&first_root).unwrap();
+    let seeded = database
+        .bootstrap_snapshot()
+        .unwrap()
+        .active_tab_id
+        .unwrap();
+    let sage = database.create_project_from_root(&second_root).unwrap();
+    let before = database.bootstrap_snapshot().unwrap();
+    let sage_layout = layout(&before);
+    let created = database.create_chat_on(&cross.id, &sage_layout).unwrap();
+    let after = database.bootstrap_snapshot().unwrap();
+    assert_eq!(after.project.as_ref().unwrap().id, sage.id);
+    assert_eq!(after.active_tab_id, before.active_tab_id);
+    assert_eq!(
+        after
+            .tabs
+            .iter()
+            .map(|tab| tab.id.as_str())
+            .collect::<Vec<_>>(),
+        before
+            .tabs
+            .iter()
+            .map(|tab| tab.id.as_str())
+            .collect::<Vec<_>>()
+    );
+    let cross_item = after
+        .projects
+        .iter()
+        .find(|item| item.id == cross.id)
+        .unwrap();
+    assert!(cross_item.rail_chats.iter().any(|chat| chat.id == seeded));
+    let created_chat = cross_item
+        .rail_chats
+        .iter()
+        .find(|chat| chat.id == created)
+        .unwrap();
+    assert_eq!(created_chat.title, "Chat: New chat 2");
+    let sessions: i64 = database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM agent_sessions WHERE project_id=?1 AND chat_id=?2",
+            rusqlite::params![cross.id, created],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(sessions, 0);
+    fs::remove_dir_all(base).unwrap();
+}

@@ -53,6 +53,13 @@ const quartet = [
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
+function fixtureAuthenticodeCatalog() {
+  const admittedThumbprints = new Set([signerThumbprint]);
+  return {
+    verify: (thumbprint) => admittedThumbprints.has(thumbprint),
+  };
+}
+
 async function campaignAdmission() {
   return import("./beta0001-candidate-campaign.mjs");
 }
@@ -183,6 +190,7 @@ async function fixture({ statuses = {}, omit = [], aggregate = {} } = {}) {
     root,
     contractSha256,
     resultBytes: Buffer.from(JSON.stringify(result)),
+    authenticodeCatalog: fixtureAuthenticodeCatalog(),
   };
 }
 
@@ -241,6 +249,20 @@ async function writeCampaignSidecars(
     journeyEvidence,
   } = {},
 ) {
+  const rendererPairingReceiptBytes = Buffer.from(
+    JSON.stringify({
+      schemaVersion: 1,
+      workItem: "BETA-0001",
+      status: "observed",
+      campaignBinding: "package-receipt-required",
+      evidenceDocumentSha256: "e".repeat(64),
+      artifacts: [],
+    }),
+  );
+  await writeFile(
+    path.join(value.root, "acp05-renderer-pairing-receipt.json"),
+    rendererPairingReceiptBytes,
+  );
   const receiptValue = {
     schemaVersion: 1,
     workItem: "BETA-0001",
@@ -248,6 +270,7 @@ async function writeCampaignSidecars(
     packageReceiptSha256: value.packageReceiptSha256,
     installerSha256,
     campaignKind: "security-a11y-performance-recovery",
+    rendererPairingReceiptSha256: sha256(rendererPairingReceiptBytes),
     journeyEvidence: journeyEvidence ?? (await journeyEvidenceFor(value.root)),
     ...receipt,
   };
@@ -274,7 +297,7 @@ async function writeCampaignSidecars(
     path.join(value.root, "campaign-admission.json"),
     admissionBytes,
   );
-  return { receiptBytes, admissionBytes };
+  return { receiptBytes, admissionBytes, rendererPairingReceiptBytes };
 }
 
 async function bound(value, options = {}) {
@@ -285,6 +308,7 @@ async function bound(value, options = {}) {
     campaignReceiptSha256: sha256(campaign.receiptBytes),
     receiptBytes: campaign.receiptBytes,
     admissionBytes: campaign.admissionBytes,
+    rendererPairingReceiptBytes: campaign.rendererPairingReceiptBytes,
   };
 }
 
@@ -297,7 +321,8 @@ async function validate(value, options = {}) {
     expectedPackageReceiptSha256:
       options.expectedPackageReceiptSha256 ?? value.packageReceiptSha256,
     expectedInstallerSha256: options.expectedInstallerSha256 ?? installerSha256,
-    authenticodeCatalog: options.authenticodeCatalog ?? { verify: () => true },
+    authenticodeCatalog:
+      options.authenticodeCatalog ?? value.authenticodeCatalog,
     expectedCampaignReceiptSha256: options.expectedCampaignReceiptSha256,
     onAfterCampaignOpen: options.onAfterCampaignOpen,
     onAfterJourneyOpen: options.onAfterJourneyOpen,
@@ -327,6 +352,23 @@ test("signed campaign admission returns the matrix verdict", async () => {
         })
       ).verdict,
       "passed",
+    );
+  } finally {
+    await close(value);
+  }
+});
+
+test("missing authenticode fixture catalog is package-unsigned", async () => {
+  const value = await fixture();
+  try {
+    const boundValue = await bound(value);
+    value.authenticodeCatalog = undefined;
+    await rejectsCode(
+      () =>
+        validate(value, {
+          expectedCampaignReceiptSha256: boundValue.campaignReceiptSha256,
+        }),
+      "package-unsigned",
     );
   } finally {
     await close(value);
@@ -566,6 +608,17 @@ test("journey file bytes that disagree with declared sha256 are campaign-substit
       );
       await writeFile(file, bytes);
     }
+    await writeFile(
+      path.join(value.root, "acp05-renderer-pairing-receipt.json"),
+      Buffer.concat([boundValue.rendererPairingReceiptBytes, Buffer.from(" ")]),
+    );
+    await rejectsCode(
+      () =>
+        validate(value, {
+          expectedCampaignReceiptSha256: boundValue.campaignReceiptSha256,
+        }),
+      "campaign-substituted",
+    );
   } finally {
     await close(value);
   }
@@ -802,6 +855,7 @@ test("wrong-shaped commit or hash on every sidecar field is schema-invalid", asy
       { receipt: { packageReceiptSha256: "c".repeat(63) } },
       { admission: { installerSha256: "c".repeat(63) } },
       { receipt: { installerSha256: "c".repeat(63) } },
+      { receipt: { rendererPairingReceiptSha256: "c".repeat(63) } },
       { admission: { contractSha256: "c".repeat(63) } },
       { admission: { campaignReceiptSha256: "c".repeat(63) } },
     ];

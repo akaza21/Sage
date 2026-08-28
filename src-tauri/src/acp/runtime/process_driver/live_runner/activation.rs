@@ -7,7 +7,9 @@ use crate::acp::{
 };
 
 use super::WorkerState;
-use crate::acp::runtime::process_driver::{DriverMailbox, FirstTurnWorkerState, StdinTransport};
+use crate::acp::runtime::process_driver::{
+    DriverMailbox, FirstTurnWorkerState, RunnerStartSubstep, StdinTransport,
+};
 
 pub(super) struct ActivationCompletionFailure<A, R, T>
 where
@@ -17,6 +19,7 @@ where
 {
     pub(super) driver: ActivationProcessDriver<A, CoordinatorActivationJournal, R, T, TreeControl>,
     pub(super) error: HostError,
+    pub(super) substep: RunnerStartSubstep,
 }
 
 pub(super) async fn complete<A, R, T>(
@@ -28,8 +31,10 @@ where
     R: ResourceMapper,
     T: StdinTransport + ActivationTransport,
 {
-    if driver.begin().is_err() {
+    if let Err(error) = driver.begin() {
+        driver.log_startup_failure("live_runner.activation.begin", &error);
         return Err(Box::new(ActivationCompletionFailure {
+            substep: driver.startup_step().into(),
             driver,
             error: HostError::Unavailable,
         }));
@@ -38,14 +43,16 @@ where
         if driver.completion_ready(mailbox) {
             return match driver.try_into_idle_parts(mailbox) {
                 Ok(parts) => Ok(FirstTurnWorkerState::Idle(parts)),
-                Err(failure) => Err(Box::new(ActivationCompletionFailure {
-                    driver: failure.driver,
-                    error: HostError::RecoveryRequired,
-                })),
+                Err(failure) => {
+                    driver = failure.driver;
+                    continue;
+                }
             };
         }
-        if driver.run_next(mailbox).await.is_err() {
+        if let Err(error) = driver.run_next(mailbox).await {
+            driver.log_startup_failure("live_runner.activation.run_next", &error);
             return Err(Box::new(ActivationCompletionFailure {
+                substep: driver.startup_step().into(),
                 driver,
                 error: HostError::RecoveryRequired,
             }));

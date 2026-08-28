@@ -239,10 +239,10 @@ server.listen(0, "127.0.0.1", () => {
     let port_file = root.join("preview-port");
     let deadline = Instant::now() + Duration::from_secs(5);
     let port = loop {
-        if let Ok(value) = fs::read_to_string(&port_file) {
-            if let Ok(port) = value.parse() {
-                break port;
-            }
+        if let Ok(value) = fs::read_to_string(&port_file)
+            && let Ok(port) = value.parse()
+        {
+            break port;
         }
         assert!(
             Instant::now() < deadline,

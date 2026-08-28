@@ -1,12 +1,12 @@
 use std::{
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
-use super::{editor_notice_kind_from_unix_delivery, emit_if_active, ResourceRef};
+use super::{ResourceRef, editor_notice_kind_from_unix_delivery, emit_if_active};
 use crate::{
     error::{AppError, AppResult},
     workspace::notify::unix::{prepare_watch, run_prepared},

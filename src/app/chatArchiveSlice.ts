@@ -7,6 +7,7 @@ import type {
 } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import {
+  commitIdentityChatResult,
   createChatTransitionContext,
   errorMessage,
   matchesExactLayout,
@@ -16,8 +17,8 @@ import { currentProjectLayout } from "./projectProjection";
 import type { WorkbenchState } from "./store";
 
 export interface ChatArchiveSlice {
-  archiveChat: (chatId: string) => Promise<boolean>;
-  restoreChat: (chatId: string) => Promise<boolean>;
+  archiveChat: (chatId: string, projectId?: string) => Promise<boolean>;
+  restoreChat: (chatId: string, projectId?: string) => Promise<boolean>;
 }
 
 export const createChatArchiveSlice: StateCreator<
@@ -27,19 +28,35 @@ export const createChatArchiveSlice: StateCreator<
   ChatArchiveSlice
 > = (set, get) => {
   const { chat } = getWorkbenchPorts();
-  const { runChatTransition } = createChatTransitionContext(set, get);
+  const { applyProjection, loadAuthoritativeProjection, runChatTransition } =
+    createChatTransitionContext(set, get);
 
   return {
-    archiveChat: async (chatId) => {
+    archiveChat: async (chatId, projectId) => {
       const initial = currentProjectLayout(get());
+      const sourceProjectId = projectId ?? initial?.projectId;
       const attachedChats = initial?.tabs.filter((tab) => tab.kind === "chat");
+      const foreign =
+        typeof sourceProjectId === "string" &&
+        sourceProjectId !== initial?.projectId;
+      const foreignChats =
+        get().projects.find((item) => item.id === sourceProjectId)?.railChats ??
+        [];
       if (
         !initial ||
-        !attachedChats?.some((tab) => tab.id === chatId) ||
-        attachedChats.length <= 1 ||
-        get().projectTransitioning
+        !sourceProjectId ||
+        get().projectTransitioning ||
+        (!foreign &&
+          (!attachedChats?.some((tab) => tab.id === chatId) ||
+            attachedChats.length <= 1)) ||
+        (foreign &&
+          (!foreignChats.some((chat) => chat.id === chatId) ||
+            foreignChats.length <= 1))
       ) {
-        if (attachedChats?.length === 1) {
+        if (
+          (!foreign && attachedChats?.length === 1) ||
+          (foreign && foreignChats.length === 1)
+        ) {
           set({ error: "The last attached Chat cannot be archived" });
         }
         return false;
@@ -55,12 +72,34 @@ export const createChatArchiveSlice: StateCreator<
         return false;
       }
       const current = currentProjectLayout(get());
-      if (!current || !current.tabs.some((tab) => tab.id === chatId)) {
+      if (
+        !current ||
+        (!foreign && !current.tabs.some((tab) => tab.id === chatId))
+      ) {
         set({
           projectTransitioning: false,
           error: "Chat archive target disappeared before mutation",
         });
         return false;
+      }
+      if (foreign) {
+        const expectedTransitionEpoch = get().nativeTransitionEpoch;
+        return commitIdentityChatResult({
+          set,
+          get,
+          applyProjection,
+          loadAuthoritativeProjection,
+          failedMessage: "native Chat archive did not commit",
+          invoke: () =>
+            chat.archiveChat(
+              {
+                projectId: sourceProjectId,
+                chatId,
+                currentLayout: current,
+              },
+              expectedTransitionEpoch,
+            ),
+        });
       }
       let requested: ProjectLayoutRequest;
       try {
@@ -95,10 +134,25 @@ export const createChatArchiveSlice: StateCreator<
       return outcome === "committed";
     },
 
-    restoreChat: async (chatId) => {
+    restoreChat: async (chatId, projectId) => {
       const initial = currentProjectLayout(get());
-      const archived = get().archivedChats.find((chat) => chat.id === chatId);
-      if (!initial || !archived || get().projectTransitioning) return false;
+      const sourceProjectId = projectId ?? initial?.projectId;
+      const foreign =
+        typeof sourceProjectId === "string" &&
+        sourceProjectId !== initial?.projectId;
+      const archived = foreign
+        ? get()
+            .projects.find((item) => item.id === sourceProjectId)
+            ?.railArchived?.find((chat) => chat.id === chatId)
+        : get().archivedChats.find((chat) => chat.id === chatId);
+      if (
+        !initial ||
+        !sourceProjectId ||
+        !archived ||
+        get().projectTransitioning
+      ) {
+        return false;
+      }
       set({ projectTransitioning: true, error: null });
       try {
         await get().flushActiveEditor();
@@ -110,15 +164,36 @@ export const createChatArchiveSlice: StateCreator<
         return false;
       }
       const current = currentProjectLayout(get());
-      const currentArchived = get().archivedChats.find(
-        (chat) => chat.id === chatId,
-      );
+      const currentArchived = foreign
+        ? get()
+            .projects.find((item) => item.id === sourceProjectId)
+            ?.railArchived?.find((chat) => chat.id === chatId)
+        : get().archivedChats.find((chat) => chat.id === chatId);
       if (!current || !currentArchived) {
         set({
           projectTransitioning: false,
           error: "Archived Chat disappeared before restore",
         });
         return false;
+      }
+      if (foreign) {
+        const expectedTransitionEpoch = get().nativeTransitionEpoch;
+        return commitIdentityChatResult({
+          set,
+          get,
+          applyProjection,
+          loadAuthoritativeProjection,
+          failedMessage: "native Chat restore did not commit",
+          invoke: () =>
+            chat.restoreChat(
+              {
+                projectId: sourceProjectId,
+                chatId,
+                currentLayout: current,
+              },
+              expectedTransitionEpoch,
+            ),
+        });
       }
       let requested: ProjectLayoutRequest;
       try {

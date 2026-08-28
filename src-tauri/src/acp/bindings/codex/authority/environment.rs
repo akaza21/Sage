@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::acp::{
     bindings::codex::{
@@ -54,24 +54,39 @@ impl CodexLaunchEnvironment {
             .codex_home()
             .to_str()
             .ok_or(EnvironmentAuthorityError::Binding)?;
-        let state_temp = format!(r"{codex_home}\tmp");
-        let expected_keys = ["CODEX_HOME", "SystemRoot", "TEMP", "TMP", "WINDIR"];
+        let expected_keys = [
+            "CODEX_HOME",
+            "PATH",
+            "ComSpec",
+            "PATHEXT",
+            "SystemRoot",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+            "APPDATA",
+            "WINDIR",
+        ];
         if self.entries.len() != expected_keys.len()
             || self
                 .entries
                 .iter()
                 .zip(expected_keys)
                 .any(|((key, _), expected)| key != expected)
-            || self.entries[0].1 != codex_home
-            || self.entries[2].1 != state_temp
-            || self.entries[3].1 != state_temp
-            || !self.entries[1].1.eq_ignore_ascii_case(&self.entries[4].1)
         {
+            return Err(EnvironmentAuthorityError::Binding);
+        }
+        let expected = build_entries(
+            packet,
+            codex_home.to_owned(),
+            &self.entries[4].1,
+            &self.entries[9].1,
+        )?;
+        if self.entries != expected {
             return Err(EnvironmentAuthorityError::Binding);
         }
         validate_limits(&self.entries)?;
         #[cfg(windows)]
-        windows::revalidate(&self._windows_directory, &self.entries[1].1)?;
+        windows::revalidate(&self._windows_directory, &self.entries[4].1)?;
         Ok(())
     }
 }
@@ -116,21 +131,74 @@ pub(crate) fn build_codex_launch_environment(
     }
     #[cfg(windows)]
     let (system_root, windows_directory) = windows::inspect(&system_root, &windir)?;
-    let codex_home = policy.codex_home().to_owned();
-    let state_temp = format!(r"{codex_home}\tmp");
-    let entries = vec![
-        ("CODEX_HOME".into(), codex_home),
-        ("SystemRoot".into(), system_root.clone()),
-        ("TEMP".into(), state_temp.clone()),
-        ("TMP".into(), state_temp),
-        ("WINDIR".into(), system_root),
-    ];
+    let entries = build_entries(
+        packet,
+        policy.codex_home().to_owned(),
+        &system_root,
+        &system_root,
+    )?;
     validate_limits(&entries)?;
     Ok(CodexLaunchEnvironment {
         entries,
         #[cfg(windows)]
         _windows_directory: windows_directory,
     })
+}
+
+fn build_entries(
+    packet: &MetadataValidatedPacket,
+    codex_home: String,
+    system_root: &str,
+    windir: &str,
+) -> Result<Vec<(String, String)>, EnvironmentAuthorityError> {
+    #[cfg(windows)]
+    {
+        let state_temp = format!(r"{codex_home}\tmp");
+        Ok(vec![
+            ("CODEX_HOME".into(), codex_home),
+            (
+                "PATH".into(),
+                node_runtime_directory(&packet.metadata().entrypoint.path)?,
+            ),
+            ("ComSpec".into(), required_process_value("ComSpec")?),
+            ("PATHEXT".into(), required_process_value("PATHEXT")?),
+            ("SystemRoot".into(), system_root.to_owned()),
+            ("TEMP".into(), state_temp.clone()),
+            ("TMP".into(), state_temp),
+            ("USERPROFILE".into(), required_process_value("USERPROFILE")?),
+            ("APPDATA".into(), required_process_value("APPDATA")?),
+            ("WINDIR".into(), windir.to_owned()),
+        ])
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (packet, codex_home, system_root, windir);
+        Err(EnvironmentAuthorityError::PlatformUnavailable)
+    }
+}
+
+#[cfg(windows)]
+fn required_process_value(key: &str) -> Result<String, EnvironmentAuthorityError> {
+    std::env::var(key)
+        .ok()
+        .filter(|value| !value.is_empty())
+        .ok_or(EnvironmentAuthorityError::Binding)
+}
+
+#[cfg(windows)]
+fn node_runtime_directory(entrypoint: &Path) -> Result<String, EnvironmentAuthorityError> {
+    let adjacent = entrypoint.parent().map(Path::to_path_buf);
+    let path = required_process_value("PATH")?;
+    let path_directories = path
+        .split(';')
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    adjacent
+        .into_iter()
+        .chain(path_directories)
+        .find(|directory| directory.join("node.exe").is_file())
+        .and_then(|directory| directory.to_str().map(str::to_owned))
+        .ok_or(EnvironmentAuthorityError::Binding)
 }
 
 fn windows_path(path: &Path) -> Option<String> {
@@ -154,7 +222,7 @@ fn windows_path(path: &Path) -> Option<String> {
 }
 
 fn validate_limits(entries: &[(String, String)]) -> Result<(), EnvironmentAuthorityError> {
-    if entries.len() != 5 || entries.len() as u64 > LIMITS.process.environment_entries {
+    if entries.len() != 10 || entries.len() as u64 > LIMITS.process.environment_entries {
         return Err(EnvironmentAuthorityError::Limit);
     }
     let mut total = 0_u64;

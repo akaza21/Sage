@@ -21,6 +21,7 @@ use super::{
     negotiate_capabilities, validate_research_candidate, wire::decode_frame,
 };
 
+mod browse_host;
 mod commands;
 mod egress;
 mod ingress;

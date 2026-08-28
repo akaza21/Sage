@@ -2,8 +2,8 @@ use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -76,6 +76,7 @@ fn generations() -> std::sync::MutexGuard<'static, HashMap<WatchKey, u32>> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+#[cfg(test)]
 pub fn watch_event_name() -> &'static str {
     EDITOR_EXTERNAL_WATCH_EVENT
 }

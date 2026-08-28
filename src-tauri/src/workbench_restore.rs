@@ -168,9 +168,16 @@ fn load_tabs(
         ));
     }
     let mut statement = connection.prepare(
-        "SELECT id, kind, title, position, pinned, dirty, status, metadata_json
-         FROM workbench_tabs WHERE project_id = ?1
-         ORDER BY position LIMIT ?2",
+        "SELECT w.id, w.kind, w.title, w.position, w.pinned, w.dirty, w.status, w.metadata_json,
+                CASE
+                  WHEN w.kind = 'chat' THEN COALESCE(c.updated_at, w.updated_at)
+                  ELSE w.updated_at
+                END
+         FROM workbench_tabs w
+         LEFT JOIN chat_tabs ct ON ct.project_id = w.project_id AND ct.tab_id = w.id
+         LEFT JOIN chats c ON c.project_id = ct.project_id AND c.id = ct.chat_id
+         WHERE w.project_id = ?1
+         ORDER BY w.position LIMIT ?2",
     )?;
     let rows = statement
         .query_map(params![project_id, MAX_RESTORED_TABS as i64 + 1], |row| {
@@ -183,6 +190,7 @@ fn load_tabs(
                 row.get::<_, i64>(5)? != 0,
                 row.get::<_, Option<String>>(6)?,
                 row.get::<_, String>(7)?,
+                row.get::<_, Option<i64>>(8)?,
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -196,7 +204,7 @@ fn load_tabs(
     let tabs = rows
         .into_iter()
         .map(
-            |(id, kind, title, position, pinned, dirty, status, metadata)| {
+            |(id, kind, title, position, pinned, dirty, status, metadata, updated_at)| {
                 if !ids.insert(id.clone()) || !positions.insert(position) {
                     return Err(AppError::InvalidRequest(
                         "persisted layout contains duplicate tab identity or position".into(),
@@ -271,6 +279,7 @@ fn load_tabs(
                     pinned,
                     dirty,
                     status,
+                    updated_at: admit_tab_updated_at(updated_at),
                     resource,
                     repository,
                 })
@@ -313,6 +322,10 @@ pub fn validate_tab_projection(tabs: &[WorkbenchTab]) -> AppResult<()> {
         ));
     }
     Ok(())
+}
+
+fn admit_tab_updated_at(value: Option<i64>) -> Option<i64> {
+    value.filter(|stamp| *stamp > 0)
 }
 
 pub fn tab_projection_bytes(tab: &WorkbenchTab) -> i64 {
@@ -510,6 +523,7 @@ mod tests {
             pinned: false,
             dirty: false,
             status: None,
+            updated_at: None,
             resource: Some(resource.clone()),
             repository: None,
         });
@@ -539,6 +553,7 @@ mod tests {
             pinned: false,
             dirty: false,
             status: None,
+            updated_at: None,
             resource: Some(ResourceRef {
                 root_id: fixture.root_id.clone(),
                 relative_path: "main.rs".into(),
@@ -606,6 +621,7 @@ mod tests {
             pinned: false,
             dirty: false,
             status: None,
+            updated_at: None,
             resource: Some(ResourceRef {
                 root_id: resource_root.into(),
                 relative_path: "main.rs".into(),
@@ -844,6 +860,48 @@ mod tests {
                 .as_ref()
                 .map(|repository| repository.relative_path.as_str()),
             Some("")
+        );
+    }
+
+    #[test]
+    fn restored_chat_tabs_project_durable_chat_updated_at() {
+        let fixture = Fixture::new();
+        let snapshot = fixture.database.bootstrap_snapshot().unwrap();
+        let chat = snapshot
+            .tabs
+            .iter()
+            .find(|tab| tab.kind == "chat")
+            .expect("default chat tab");
+        let durable = 1_724_630_400_000_i64;
+        fixture
+            .database
+            .connection()
+            .execute(
+                "UPDATE chats SET updated_at = ?2 WHERE project_id = ?1 AND id = ?3",
+                params![fixture.project_id, durable, chat.id],
+            )
+            .unwrap();
+        fixture
+            .database
+            .connection()
+            .execute(
+                "UPDATE workbench_tabs SET updated_at = 99 WHERE id = ?1",
+                [&chat.id],
+            )
+            .unwrap();
+        let restored = fixture.database.bootstrap_snapshot().unwrap();
+        let restored_chat = restored
+            .tabs
+            .iter()
+            .find(|tab| tab.id == chat.id)
+            .expect("restored chat tab");
+        assert_eq!(restored_chat.updated_at, Some(durable));
+        assert!(
+            restored
+                .tabs
+                .iter()
+                .filter(|tab| tab.kind != "chat")
+                .all(|tab| tab.updated_at != Some(durable))
         );
     }
 }

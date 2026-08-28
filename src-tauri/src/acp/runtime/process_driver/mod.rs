@@ -22,7 +22,9 @@ pub(crate) use driver::{DriverAdmission, DriverStep, ProcessAdapterDriver};
 pub(crate) use idle_close::{
     IdleCloseBeginState, IdleCloseError, IdleCloseFailure, IdleClosingState, IdleZeroState,
 };
-pub(crate) use live_runner::{ActivationStartFailure, LiveRunnerExit, LiveRunnerHandle};
+pub(crate) use live_runner::{
+    ActivationStartFailure, LiveRunnerExit, LiveRunnerHandle, RunnerStartSubstep,
+};
 pub(crate) use live_worker::{
     FirstTurnWorkerContext, FirstTurnWorkerRecovery, FirstTurnWorkerState,
 };
@@ -66,7 +68,8 @@ mod tests;
 #[cfg(test)]
 mod worker_tests;
 pub(crate) use activation::{
-    ActivationDriverError, ActivationProcessDriver, RetainedActivationDriverConstruction,
+    ActivationDriverError, ActivationProcessDriver, ActivationStartupStep,
+    RetainedActivationDriverConstruction,
 };
 pub(crate) use activation_parts::{
     ActivationProjectionRecoveryHandoff, ActivationZeroProcessHandoff,
