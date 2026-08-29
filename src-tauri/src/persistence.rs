@@ -82,6 +82,11 @@ impl Database {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    #[cfg(test)]
+    pub(crate) fn connection_ownership_probe(&self) -> std::sync::Weak<Mutex<Connection>> {
+        Arc::downgrade(&self.connection)
+    }
+
     pub(crate) fn write_connection(&self) -> AppResult<WriteConnection<'_>> {
         let connection = self.connection();
         self.physical_storage.admit_write(&connection)?;

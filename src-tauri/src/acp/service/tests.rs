@@ -761,6 +761,9 @@ fn codex_start_command(
 
 #[test]
 fn renderer_recreation_snapshot_covers_the_exact_native_invariance_boundary() {
+    #[cfg(windows)]
+    let _journey = super::codex_live::journey_test_lock();
+
     let database = Database::open(std::path::Path::new(":memory:")).unwrap();
     database
         .connection()

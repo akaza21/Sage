@@ -105,6 +105,12 @@ impl OneTimeHelperSecret {
     }
 }
 
+impl Drop for OneTimeHelperSecret {
+    fn drop(&mut self) {
+        self.0.fill(0);
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct HelperRequestPayload {

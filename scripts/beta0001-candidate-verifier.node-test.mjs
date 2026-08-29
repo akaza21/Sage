@@ -7,6 +7,7 @@ import {
   rm,
   symlink,
   unlink,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
@@ -548,7 +549,7 @@ test("identity replacement during read is evidence-identity-changed", async () =
   }
 });
 
-test("evidence root identity change during read is rejected", async () => {
+test("evidence root metadata change during read is rejected", async () => {
   const root = await mkdtemp(
     path.join(os.tmpdir(), "beta0001-candidate-root-read-"),
   );
@@ -562,7 +563,7 @@ test("evidence root identity change during read is rejected", async () => {
           id,
           maximumBytes: 2,
           onAfterOpen: async () => {
-            await writeFile(path.join(root, "root-identity-marker"), "changed");
+            await utimes(root, new Date(0), new Date(0));
           },
         }),
       "evidence-identity-changed",

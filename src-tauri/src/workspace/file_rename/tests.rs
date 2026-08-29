@@ -4,14 +4,6 @@ use uuid::Uuid;
 
 use crate::workspace::Workspace;
 
-#[cfg(windows)]
-use {
-    std::{fs::OpenOptions, os::windows::fs::OpenOptionsExt},
-    windows_sys::Win32::Storage::FileSystem::{
-        FILE_FLAG_BACKUP_SEMANTICS, FILE_LIST_DIRECTORY, FILE_SHARE_READ, FILE_SHARE_WRITE,
-    },
-};
-
 struct Fixture {
     root: PathBuf,
     workspace: Workspace,
@@ -115,115 +107,17 @@ fn directories_and_non_portable_targets_fail_before_mutation() {
 
 #[cfg(windows)]
 #[test]
-fn renames_one_empty_folder_without_reclassifying_its_parent_listing() {
+fn windows_empty_folder_rename_is_explicitly_refused_without_mutation() {
     let fixture = Fixture::new();
     fs::create_dir(fixture.root.join("src/empty")).unwrap();
     let source = fixture.workspace.resource("src/empty").unwrap();
 
-    let result = fixture
-        .workspace
-        .rename_empty_folder(&source, "renamed")
-        .unwrap();
-
-    assert_eq!(result.source, source);
-    assert_eq!(result.target.relative_path, "src/renamed");
-    assert!(result.resource_confirmed);
-    assert!(!fixture.root.join("src/empty").exists());
-    assert!(fixture.root.join("src/renamed").is_dir());
-    assert!(result.parent_listing.unwrap().entries.iter().any(|entry| {
-        entry.resource == result.target && entry.kind == "directory" && entry.byte_len.is_none()
-    }));
-}
-
-#[cfg(windows)]
-#[test]
-fn non_empty_and_non_directory_folder_sources_fail_closed() {
-    let fixture = Fixture::new();
-    fs::create_dir(fixture.root.join("src/non-empty")).unwrap();
-    fs::write(fixture.root.join("src/non-empty/child.txt"), "child").unwrap();
-    let non_empty = fixture.workspace.resource("src/non-empty").unwrap();
-    let file = fixture.workspace.resource("src/old.rs").unwrap();
+    let result = fixture.workspace.rename_empty_folder(&source, "renamed");
 
     assert!(
-        fixture
-            .workspace
-            .rename_empty_folder(&non_empty, "renamed")
-            .is_err()
+        matches!(result, Err(crate::error::AppError::Unsupported(message)) if message.contains("identity-scoped directory-mutation guard"))
     );
-    assert!(
-        fixture
-            .workspace
-            .rename_empty_folder(&file, "renamed")
-            .is_err()
-    );
-    assert!(fixture.root.join("src/non-empty/child.txt").is_file());
-    assert!(fixture.root.join("src/old.rs").is_file());
-    assert!(!fixture.root.join("src/renamed").exists());
-}
-
-#[cfg(windows)]
-#[test]
-fn dot_git_only_folder_sources_fail_closed() {
-    let fixture = Fixture::new();
-    fs::create_dir(fixture.root.join("src/repository")).unwrap();
-    fs::create_dir(fixture.root.join("src/repository/.git")).unwrap();
-    let source = fixture.workspace.resource("src/repository").unwrap();
-
-    assert!(
-        fixture
-            .workspace
-            .rename_empty_folder(&source, "renamed")
-            .is_err()
-    );
-    assert!(fixture.root.join("src/repository/.git").is_dir());
-    assert!(!fixture.root.join("src/renamed").exists());
-}
-
-#[cfg(windows)]
-#[test]
-fn held_empty_folder_closes_child_creation_and_source_replacement_before_rename() {
-    let fixture = Fixture::new();
-    fs::create_dir(fixture.root.join("src/empty")).unwrap();
-    let source = fixture.workspace.resource("src/empty").unwrap();
-    let source_path = fixture.root.join("src/empty");
-    let replacement_path = fixture.root.join("src/replacement");
-
-    let result = fixture
-        .workspace
-        .rename_empty_folder_with_hook(&source, "renamed", || {
-            assert!(fs::create_dir(source_path.join("child")).is_err());
-            assert!(fs::rename(&source_path, &replacement_path).is_err());
-            Ok(())
-        })
-        .unwrap();
-
-    assert_eq!(result.target.relative_path, "src/renamed");
-    assert!(fixture.root.join("src/renamed").is_dir());
-    assert!(!source_path.exists());
-    assert!(!replacement_path.exists());
-}
-
-#[cfg(windows)]
-#[test]
-fn held_empty_folder_fails_closed() {
-    let fixture = Fixture::new();
-    fs::create_dir(fixture.root.join("src/held")).unwrap();
-    let source = fixture.workspace.resource("src/held").unwrap();
-    let held = OpenOptions::new()
-        .access_mode(FILE_LIST_DIRECTORY)
-        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
-        .open(fixture.root.join("src/held"))
-        .unwrap();
-
-    assert!(
-        fixture
-            .workspace
-            .rename_empty_folder(&source, "renamed")
-            .is_err()
-    );
-    drop(held);
-    assert!(fixture.root.join("src/held").is_dir());
+    assert!(fixture.root.join("src/empty").is_dir());
     assert!(!fixture.root.join("src/renamed").exists());
 }
 

@@ -632,7 +632,7 @@ fn assert_completed_turns(setup: &FixtureSetup, owner: &RuntimeOwner, expected: 
 }
 
 #[cfg(windows)]
-fn journey_test_lock() -> MutexGuard<'static, ()> {
+pub(crate) fn journey_test_lock() -> MutexGuard<'static, ()> {
     JOURNEY_TEST_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)

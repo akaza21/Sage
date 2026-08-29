@@ -9,4 +9,6 @@ work
 local-evidence
 # Retained evidence is byte-authenticated and must remain immutable.
 docs/work-items/ADE-0006A-acp-session-foundation/evidence/
+docs/work-items/BETA-0001-primary-beta-path/evidence/
+src-tauri/testdata/acp/codex/security-policy-v1.json
 tools/footprint-control/gen

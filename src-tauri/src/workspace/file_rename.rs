@@ -50,13 +50,6 @@ impl FileRenameMarker {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
     }
 
-    pub(crate) fn mark_committed(&self) {
-        *self
-            .committed
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
-    }
-
     pub(crate) fn committed(&self) -> bool {
         *self
             .committed

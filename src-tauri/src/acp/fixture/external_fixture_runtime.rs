@@ -189,6 +189,7 @@ pub(super) async fn prepare_external_case(
         control,
         owner,
         clock: Arc::new(SystemDriverClock) as Arc<dyn DriverClock>,
+        idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
     };
     let sends = SendCoordinator::new(
         Arc::new(Authority(IntentSnapshot {

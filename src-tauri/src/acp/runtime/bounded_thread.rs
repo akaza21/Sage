@@ -65,6 +65,49 @@ impl BoundedThread {
             Err(ThreadWaitError::Panicked)
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn wait_and_join(&mut self, timeout: Duration) -> Result<(), ThreadWaitError> {
+        if self.handle.is_none() {
+            return Ok(());
+        }
+        let started = std::time::Instant::now();
+        let clean = self
+            .completion
+            .recv_timeout(timeout)
+            .map_err(|error| match error {
+                mpsc::RecvTimeoutError::Timeout => ThreadWaitError::Timeout,
+                mpsc::RecvTimeoutError::Disconnected => ThreadWaitError::Panicked,
+            })?;
+
+        // The completion message is emitted at the end of the worker body, but
+        // a destructor can still run before the thread itself exits. Observe
+        // that exit within the same deadline before joining. Once
+        // `is_finished` is true, `join` cannot wait on a running thread.
+        while !self
+            .handle
+            .as_ref()
+            .expect("bounded thread handle retained")
+            .is_finished()
+        {
+            let remaining = timeout.saturating_sub(started.elapsed());
+            if remaining.is_zero() {
+                return Err(ThreadWaitError::Timeout);
+            }
+            std::thread::park_timeout(remaining.min(Duration::from_millis(1)));
+        }
+        let joined = self
+            .handle
+            .take()
+            .expect("bounded thread handle retained")
+            .join()
+            .is_ok();
+        if clean && joined {
+            Ok(())
+        } else {
+            Err(ThreadWaitError::Panicked)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -100,5 +143,13 @@ mod tests {
         *state.lock().unwrap() = true;
         ready.notify_all();
         assert_eq!(thread.wait(Duration::from_secs(1)), Ok(()));
+    }
+
+    #[test]
+    fn wait_and_join_observes_thread_exit_inside_the_caller_deadline() {
+        let mut thread = BoundedThread::spawn("bounded-thread-join-test", || {}).unwrap();
+
+        assert_eq!(thread.wait_and_join(Duration::from_secs(1)), Ok(()));
+        assert!(thread.handle.is_none());
     }
 }

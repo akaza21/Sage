@@ -7,12 +7,16 @@ use crate::{
             SageServerRequestId, SageTurnId,
         },
         intent::ExternalId,
+        lifecycle::ServerRequestState,
         recovery::{RecoveryReport, recover_after_restart},
         runtime::permissions::{
             DeclineTransport, PermissionDisposition, PermissionError, PermissionIntent,
             decline_permission,
         },
-        store::{DatabaseAcpStore, DenyOnlyPermissionJournal},
+        store::{
+            AcpStore, DatabaseAcpStore, DenyOnlyPermissionJournal, RequestStateCommand,
+            StoreMutation,
+        },
     },
     persistence::Database,
 };
@@ -98,6 +102,22 @@ impl PermissionStoreFixture {
             "SELECT COUNT(*) FROM chat_session_heads
              WHERE session_id='session-permission'",
         )
+    }
+
+    pub(super) fn record_deny_decision(&self, now_millis: i64) {
+        let mut store = self.database_store();
+        store
+            .commit(&[StoreMutation::RequestState(RequestStateCommand {
+                project_id: self.project_id(),
+                chat_id: self.chat_id(),
+                session_id: self.session_id(),
+                turn_id: self.turn_id(),
+                runtime_epoch: self.runtime_epoch(),
+                request_id: SageServerRequestId::parse("permission-a").unwrap(),
+                state: ServerRequestState::DeclinePending,
+                now_millis,
+            })])
+            .unwrap();
     }
 
     pub(in crate::acp::fixture) fn session_count(&self) -> i64 {

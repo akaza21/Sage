@@ -25,6 +25,8 @@ Thumbs.db
 diagnostics/
 work/
 local-evidence/
+/.playwright-cli/
+/output/playwright/
 
 # Environment and secrets
 .env

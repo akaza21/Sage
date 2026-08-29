@@ -242,7 +242,7 @@ where
             workspace.rename_file_observed(&request.source, &request.basename, marker)?
         }
         RenameKind::Folder => {
-            workspace.rename_empty_folder_observed(&request.source, &request.basename, marker)?
+            workspace.rename_empty_folder_unavailable(&request.source, &request.basename)?
         }
     };
     if commit.resource_confirmed {

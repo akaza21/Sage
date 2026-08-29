@@ -3,12 +3,13 @@ use std::sync::{Arc, Mutex};
 use serde_json::{Value, json};
 
 use crate::acp::{
+    contract::SageServerRequestId,
     fixture::{generated_cases::FrozenCase, wire},
     process::{LaunchError, TreeExit},
     runtime::{
         AdapterPump, DriverError, DriverMailbox, EgressTransport, JournalHandle,
         ProcessAdapterDriver, ProcessTreeControl, ProjectionMailbox, SqliteAdapterBatchJournal,
-        StdinTransport, TeardownCause, TreeLeaseOwner,
+        StdinTransport, TeardownCause, TreeLeaseOwner, permissions::PermissionDecision,
     },
     scheduler::RuntimeOwner,
     transport::{FrameWriteOutcome, OutboundFrame},
@@ -81,7 +82,13 @@ async fn observe(case: &FrozenCase) -> Value {
     let mailbox = DriverMailbox::new().unwrap();
     let mut failure = tokio::time::timeout(
         deadline.operation_before_cleanup(),
-        drive_stdout(&mut driver, &mailbox, &stdout),
+        drive_stdout(
+            &mut driver,
+            &mailbox,
+            &stdout,
+            &fixture,
+            case.id != "permission-payload-bytes-65537",
+        ),
     )
     .await
     .expect("permission fixture driver timed out");
@@ -212,11 +219,27 @@ async fn drive_stdout(
     >,
     mailbox: &DriverMailbox,
     stdout: &[u8],
+    fixture: &PermissionStoreFixture,
+    resolve_first_permission: bool,
 ) -> Option<DriverError> {
-    for chunk in stdout.chunks(8 * 1024) {
-        mailbox.try_push_chunk(chunk.to_vec()).unwrap();
-        if let Err(error) = driver.run_next(mailbox).await {
-            return Some(error);
+    let mut permission_resolved = false;
+    for frame in stdout.split_inclusive(|byte| *byte == b'\n') {
+        for chunk in frame.chunks(8 * 1024) {
+            mailbox.try_push_chunk(chunk.to_vec()).unwrap();
+            if let Err(error) = driver.run_next(mailbox).await {
+                return Some(error);
+            }
+        }
+        if resolve_first_permission && !permission_resolved {
+            fixture.record_deny_decision(11);
+            let request_id = SageServerRequestId::parse("permission-a").unwrap();
+            if let Err(error) = driver
+                .resolve_permission(&request_id, PermissionDecision::Deny)
+                .await
+            {
+                return Some(error);
+            }
+            permission_resolved = true;
         }
     }
     None

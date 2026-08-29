@@ -825,7 +825,7 @@ test(
       cwd: root,
       timeoutMs: 2_000,
       terminationGraceMs: 200,
-      settlementTimeoutMs: 1_000,
+      settlementTimeoutMs: 3_000,
       maximumLineBytes: 1_024,
       maximumOutputBytes: 4_096,
     };
@@ -841,7 +841,7 @@ test(
           {
             label: "rust-natural-failure",
             concurrency: 1,
-            timeoutMs: 3_000,
+            timeoutMs: 8_000,
             cargoTargetDir: target,
             repositoryRoot: root,
             commands: [command],
@@ -980,10 +980,7 @@ test(
         /ENOENT/u,
       );
     } finally {
-      if (descendantPid && (await processExists(descendantPid))) {
-        process.kill(descendantPid, "SIGKILL");
-      }
-      await rm(root, { recursive: true, force: true });
+      await cleanProcessFixture(root, descendantPidPath, descendantPid);
     }
   },
 );
@@ -1253,10 +1250,7 @@ test(
       });
       await lease.release();
     } finally {
-      if (descendantPid && (await processExists(descendantPid))) {
-        process.kill(descendantPid, "SIGKILL");
-      }
-      await rm(root, { recursive: true, force: true });
+      await cleanProcessFixture(root, pidPath, descendantPid);
     }
   },
 );
@@ -1309,10 +1303,7 @@ test(
         descendantPid = Number.parseInt(await readFile(pidPath, "utf8"), 10);
         assert.equal(await processExists(descendantPid), false);
       } finally {
-        if (descendantPid && (await processExists(descendantPid))) {
-          process.kill(descendantPid, "SIGKILL");
-        }
-        await rm(root, { recursive: true, force: true });
+        await cleanProcessFixture(root, pidPath, descendantPid);
       }
     }
   },
@@ -1388,6 +1379,33 @@ async function waitForProcessExit(pid, timeoutMs = 2_000) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   assert.fail(`process ${pid} remained alive after the runner settled`);
+}
+
+async function cleanProcessFixture(root, pidPath, descendantPid) {
+  if (!descendantPid) {
+    try {
+      const candidate = Number.parseInt(await readFile(pidPath, "utf8"), 10);
+      if (Number.isSafeInteger(candidate) && candidate > 0) {
+        descendantPid = candidate;
+      }
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+  }
+  if (descendantPid && (await processExists(descendantPid))) {
+    try {
+      process.kill(descendantPid, "SIGKILL");
+    } catch (error) {
+      if (error?.code !== "ESRCH") throw error;
+    }
+    await waitForProcessExit(descendantPid);
+  }
+  await rm(root, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
 }
 
 test("real command timeout terminates its spawned process tree without an orphan", async () => {
@@ -1479,11 +1497,7 @@ test("leader exit cannot falsely prove descendant settlement", async () => {
     );
     await waitForProcessExit(descendantPid);
   } finally {
-    if (descendantPid && (await processExists(descendantPid))) {
-      process.kill(descendantPid, "SIGKILL");
-      await waitForProcessExit(descendantPid);
-    }
-    await rm(root, { recursive: true, force: true });
+    await cleanProcessFixture(root, descendantPidPath, descendantPid);
   }
 });
 

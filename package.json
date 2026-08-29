@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
-    "test:budgets": "node --test scripts/*.node-test.mjs",
+    "test:budgets": "node --test --test-concurrency=1 scripts/*.node-test.mjs",
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",

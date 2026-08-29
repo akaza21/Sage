@@ -194,7 +194,7 @@ fn commits_exact_file_and_migrates_only_the_selected_resource() {
 
 #[cfg(windows)]
 #[test]
-fn commits_an_empty_folder_and_rejects_a_non_empty_folder() {
+fn refuses_empty_folder_rename_without_mutation() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let fixture = Fixture::new();
         fs::create_dir(fixture.root.join("src/empty")).unwrap();
@@ -202,25 +202,14 @@ fn commits_an_empty_folder_and_rejects_a_non_empty_folder() {
         request.source.relative_path = "src/empty".into();
         request.current_layout.selected_resource = Some(request.source.clone());
 
-        let result = execute_folder(&fixture.state, request).await.unwrap();
+        let error = execute_folder(&fixture.state, request).await.unwrap_err();
 
-        assert_eq!(result.outcome, FileRenameOutcome::Committed);
-        assert!(result.resource_confirmed);
-        assert!(fixture.root.join("src/renamed").is_dir());
-        assert!(!fixture.root.join("src/empty").exists());
-        assert!(result.parent_listing.unwrap().entries.iter().any(|entry| {
-            entry.resource == result.target && entry.kind == "directory" && entry.byte_len.is_none()
-        }));
-
-        let fixture = Fixture::new();
-        fs::create_dir(fixture.root.join("src/non-empty")).unwrap();
-        fs::write(fixture.root.join("src/non-empty/child.txt"), "child").unwrap();
-        let mut request = fixture.request("renamed");
-        request.source.relative_path = "src/non-empty".into();
-        request.current_layout.selected_resource = Some(request.source.clone());
-
-        assert!(execute_folder(&fixture.state, request).await.is_err());
-        assert!(fixture.root.join("src/non-empty/child.txt").is_file());
+        assert!(
+            error
+                .to_string()
+                .contains("identity-scoped directory-mutation guard")
+        );
+        assert!(fixture.root.join("src/empty").is_dir());
         assert!(!fixture.root.join("src/renamed").exists());
     });
 }

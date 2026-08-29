@@ -250,8 +250,10 @@ impl StdinTransport for Transport {
     fn close(&mut self) {}
 }
 
-struct Control {
-    zero_waits: Arc<AtomicUsize>,
+/// This test control never launches or owns an OS child. Its zero check proves
+/// only that the driver crossed the required no-child-process boundary.
+struct NoChildProcessControl {
+    zero_checks: Arc<AtomicUsize>,
 }
 
 struct CommitUnknownOnceStore {
@@ -299,7 +301,7 @@ impl CloseBeforeWriteCase {
     }
 }
 
-impl ProcessTreeControl for Control {
+impl ProcessTreeControl for NoChildProcessControl {
     type ZeroProof = ();
 
     fn request_termination(&self, _: TreeExit) -> Result<(), LaunchError> {
@@ -311,7 +313,7 @@ impl ProcessTreeControl for Control {
     }
 
     fn wait_zero(&self) -> Result<(TreeExit, Self::ZeroProof), LaunchError> {
-        self.zero_waits.fetch_add(1, Ordering::SeqCst);
+        self.zero_checks.fetch_add(1, Ordering::SeqCst);
         Ok((TreeExit::Cancelled, ()))
     }
 }
@@ -372,15 +374,22 @@ struct JournalThreadCleanup {
 }
 
 impl JournalThreadCleanup {
-    fn finish(mut self) {
+    fn finish(self) {
+        let deadline = Instant::now()
+            + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.wal_convergence);
+        self.finish_before(deadline);
+    }
+
+    fn finish_before(mut self, deadline: Instant) {
         self.journal.close_when_drained();
-        let deadline =
+        let wait_limit =
             Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.wal_convergence);
+        let remaining = remaining_before(deadline).min(wait_limit);
         let result = self
             .thread
             .as_mut()
             .expect("journal thread retained")
-            .wait(deadline);
+            .wait_and_join(remaining);
         if result.is_ok() {
             self.thread.take();
         }
@@ -435,6 +444,17 @@ fn mailbox_deadline(clock: &dyn DriverClock, timeout_millis: u64) -> i64 {
     clock
         .now_millis()
         .saturating_add(i64::try_from(timeout_millis).unwrap_or(i64::MAX))
+}
+
+fn remaining_before(deadline: Instant) -> Duration {
+    deadline
+        .checked_duration_since(Instant::now())
+        .expect("recovery test exceeded its whole-test deadline")
+}
+
+fn mailbox_deadline_before(clock: &dyn DriverClock, deadline: Instant) -> i64 {
+    let timeout_millis = u64::try_from(remaining_before(deadline).as_millis()).unwrap_or(u64::MAX);
+    mailbox_deadline(clock, timeout_millis)
 }
 
 fn wait_for_queued_control(mailbox: &DriverMailbox) {
@@ -646,7 +666,7 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
             } = prepare_first_turn_fixture().await;
             let cancel_count = Arc::new(AtomicUsize::new(0));
             let writes = Arc::new(AtomicUsize::new(0));
-            let zero_waits = Arc::new(AtomicUsize::new(0));
+            let zero_checks = Arc::new(AtomicUsize::new(0));
             let completed = CompletedActivationDriverParts {
                 parts: IdleActivationParts::new(
                     Adapter {
@@ -670,8 +690,8 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
                 transport: CancelTransport {
                     writes: Arc::clone(&writes),
                 },
-                control: Control {
-                    zero_waits: Arc::clone(&zero_waits),
+                control: NoChildProcessControl {
+                    zero_checks: Arc::clone(&zero_checks),
                 },
                 owner: owner.clone(),
                 clock: Arc::new(SystemDriverClock) as Arc<dyn DriverClock>,
@@ -844,7 +864,7 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
             assert!(matches!(state, FirstTurnWorkerState::Active(_)));
             assert_eq!(cancel_count.load(Ordering::SeqCst), 1);
             assert_eq!(writes.load(Ordering::SeqCst), 2);
-            assert_eq!(zero_waits.load(Ordering::SeqCst), 0);
+            assert_eq!(zero_checks.load(Ordering::SeqCst), 0);
             assert_eq!(mailbox.retained_usage(), ((256, 256), (0, 0)));
             let saturated_after =
                 matches!(mailbox.try_push_chunk(vec![b'x']), Err(MailboxError::Full));
@@ -912,85 +932,104 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
 
 #[test]
 fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
-    tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let FirstTurnFixture {
-            database,
-            project_id,
-            chat_id,
-            now_millis: now,
-            publisher,
-            journal,
-            journal_task,
-            scheduler,
-            sessions: _sessions,
-            started,
-            epoch,
-            activation_journal,
-            capabilities,
-            external_session,
-            owner,
-            ready_projection_revision,
-            root,
-        } = prepare_first_turn_fixture().await;
-        let clock: Arc<dyn DriverClock> = Arc::new(SystemDriverClock);
-        let zero_waits = Arc::new(AtomicUsize::new(0));
-        let cancel_count = Arc::new(AtomicUsize::new(0));
-        let completed = CompletedActivationDriverParts {
-            parts: IdleActivationParts::new(
-                Adapter {
-                    cancel_count: Arc::clone(&cancel_count),
-                },
-                activation_journal,
-                Mapper,
-                ActivatedSession {
-                    binding_digest: [0x11; 32],
-                    project_id: project_id.clone(),
-                    chat_id: chat_id.clone(),
-                    session_id: started.session_id.clone(),
-                    external_session_id: external_session,
-                    runtime_epoch: epoch,
-                    capabilities,
-                    models: Vec::new(),
-                    next_model_cursor: None,
-                },
-            ),
-            idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
-            transport: Transport(Mutex::new(VecDeque::from([
-                FrameWriteOutcome::ZeroByteFailure,
-                FrameWriteOutcome::Complete,
-                FrameWriteOutcome::DeliveryUnknown { bytes_written: 1 },
-            ]))),
-            control: Control {
-                zero_waits: Arc::clone(&zero_waits),
+    let whole_test_deadline = Instant::now() + Duration::from_secs(10);
+    tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .unwrap()
+        .block_on(async {
+            tokio::time::timeout(
+                remaining_before(whole_test_deadline),
+                first_turn_retry_cancel_and_close_recovery_scenario(whole_test_deadline),
+            )
+            .await
+            .expect("recovery scenario exceeded its whole-test deadline");
+        });
+}
+
+async fn first_turn_retry_cancel_and_close_recovery_scenario(whole_test_deadline: Instant) {
+    let FirstTurnFixture {
+        database,
+        project_id,
+        chat_id,
+        now_millis: now,
+        publisher,
+        journal,
+        journal_task,
+        scheduler,
+        sessions: _sessions,
+        started,
+        epoch,
+        activation_journal,
+        capabilities,
+        external_session,
+        owner,
+        ready_projection_revision,
+        root,
+    } = prepare_first_turn_fixture().await;
+    let database_ownership = database.connection_ownership_probe();
+    let clock: Arc<dyn DriverClock> = Arc::new(SystemDriverClock);
+    let zero_checks = Arc::new(AtomicUsize::new(0));
+    let cancel_count = Arc::new(AtomicUsize::new(0));
+    let completed = CompletedActivationDriverParts {
+        parts: IdleActivationParts::new(
+            Adapter {
+                cancel_count: Arc::clone(&cancel_count),
             },
-            owner: owner.clone(),
-            clock: Arc::clone(&clock),
-        };
-        let authority = Arc::new(Authority(IntentSnapshot {
-            project_id: project_id.clone(),
-            project_generation: ProjectGeneration::ZERO,
-            chat_id: chat_id.clone(),
-            projection_revision: ready_projection_revision,
-            session_id: Some(started.session_id.clone()),
-            runtime_epoch: Some(epoch),
-            turn_id: None,
-            turn_state: None,
-            turn_revision: None,
-        }));
-        let sends = SendCoordinator::new(authority, journal.clone(), publisher.clone());
-        let mailbox = Arc::new(DriverMailbox::new().unwrap());
-        let context = FirstTurnWorkerContext {
-            owner: owner.clone(),
-            coordinator: sends,
-            journal: journal.clone(),
-            publisher: publisher.clone(),
-            clock,
-            mailbox: Arc::clone(&mailbox),
-            zero_sequence: std::sync::atomic::AtomicU64::new(0),
-        };
-        let caller_mailbox = Arc::clone(&mailbox);
-        let caller_owner = owner.clone();
-        let caller = std::thread::spawn(move || {
+            activation_journal,
+            Mapper,
+            ActivatedSession {
+                binding_digest: [0x11; 32],
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                session_id: started.session_id.clone(),
+                external_session_id: external_session,
+                runtime_epoch: epoch,
+                capabilities,
+                models: Vec::new(),
+                next_model_cursor: None,
+            },
+        ),
+        idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
+        transport: Transport(Mutex::new(VecDeque::from([
+            FrameWriteOutcome::ZeroByteFailure,
+            FrameWriteOutcome::Complete,
+            FrameWriteOutcome::DeliveryUnknown { bytes_written: 1 },
+        ]))),
+        control: NoChildProcessControl {
+            zero_checks: Arc::clone(&zero_checks),
+        },
+        owner: owner.clone(),
+        clock: Arc::clone(&clock),
+    };
+    let authority = Arc::new(Authority(IntentSnapshot {
+        project_id: project_id.clone(),
+        project_generation: ProjectGeneration::ZERO,
+        chat_id: chat_id.clone(),
+        projection_revision: ready_projection_revision,
+        session_id: Some(started.session_id.clone()),
+        runtime_epoch: Some(epoch),
+        turn_id: None,
+        turn_state: None,
+        turn_revision: None,
+    }));
+    let sends = SendCoordinator::new(authority, journal.clone(), publisher.clone());
+    let mailbox = Arc::new(DriverMailbox::new().unwrap());
+    let context = FirstTurnWorkerContext {
+        owner: owner.clone(),
+        coordinator: sends,
+        journal: journal.clone(),
+        publisher: publisher.clone(),
+        clock,
+        mailbox: Arc::clone(&mailbox),
+        zero_sequence: std::sync::atomic::AtomicU64::new(0),
+    };
+    let caller_mailbox = Arc::clone(&mailbox);
+    let caller_owner = owner.clone();
+    let (caller_finished, caller_completion) = mpsc::sync_channel(1);
+    let caller = std::thread::Builder::new()
+        .name("first-turn-recovery-caller".into())
+        .spawn(move || {
             let mut port = ProcessLivePort::new_with_timeout(
                 caller_owner.clone(),
                 caller_mailbox,
@@ -1044,10 +1083,7 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
                 client_intent_id: ClientIntentId::parse("intent-cancel-turn").unwrap(),
                 now_millis: now + 4,
             };
-            assert_eq!(
-                port.begin_cancel(&cancel),
-                Err(HostError::RecoveryRequired)
-            );
+            assert_eq!(port.begin_cancel(&cancel), Err(HostError::RecoveryRequired));
             port.begin_cancel(&cancel).unwrap();
             assert_eq!(
                 port.dispatch_cancel(&cancel),
@@ -1062,10 +1098,7 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
                 runtime_epoch: caller_owner.runtime_epoch,
                 now_millis: now + 5,
             };
-            assert_eq!(
-                port.begin_close(&close),
-                Err(HostError::RecoveryRequired)
-            );
+            assert_eq!(port.begin_close(&close), Err(HostError::RecoveryRequired));
             port.begin_close(&close).unwrap();
             assert_eq!(
                 port.wait_zero(&caller_owner),
@@ -1077,99 +1110,120 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
                 .expect_err("the injected projection conflict requires recovery");
             assert_eq!(error, HostError::RecoveryRequired);
             port.finalize_close(&close, proof).unwrap();
-            (turn_id, first, retry)
-        });
+            let result = (turn_id, first, retry);
+            drop(port);
+            drop(caller_owner);
+            caller_finished
+                .send(())
+                .expect("recovery caller completion receiver retained");
+            result
+        })
+        .expect("spawn recovery caller");
 
-        let first = mailbox
-            .wait_next_until(None, context.clock.as_ref())
+    let first = mailbox
+        .wait_next_until(
+            Some(mailbox_deadline_before(
+                context.clock.as_ref(),
+                whole_test_deadline,
+            )),
+            context.clock.as_ref(),
+        )
+        .unwrap()
+        .expect("prepare command");
+    let ControlMessage::Worker(first) = first else {
+        panic!("worker command")
+    };
+    let mut state = FirstTurnWorkerState::Idle(completed)
+        .handle(&context, first)
+        .await;
+    let FirstTurnWorkerState::Prepared { turn, .. } = &state else {
+        panic!("prepared worker state")
+    };
+    assert_eq!(turn.active_turn.external_turn_id, None);
+    assert_eq!(
+        turn.active_turn.client_message_id.as_str(),
+        turn.dispatch.turn_id().as_str()
+    );
+    assert_eq!(turn.parts.owner, owner);
+
+    // The prepare command is handled above. Pump each of the following
+    // fifteen commands so the final successful `FinalizeClose` can answer
+    // its synchronous caller before this test joins that thread.
+    for command_index in 0..15 {
+        let command = mailbox
+            .wait_next_until(
+                Some(mailbox_deadline_before(
+                    context.clock.as_ref(),
+                    whole_test_deadline,
+                )),
+                context.clock.as_ref(),
+            )
             .unwrap()
-            .expect("prepare command");
-        let ControlMessage::Worker(first) = first else {
+            .expect("worker command before recovery-test deadline");
+        let ControlMessage::Worker(command) = command else {
             panic!("worker command")
         };
-        let mut state = FirstTurnWorkerState::Idle(completed)
-            .handle(&context, first)
-            .await;
-        let FirstTurnWorkerState::Prepared { turn, .. } = &state else {
-            panic!("prepared worker state")
-        };
-        assert_eq!(turn.active_turn.external_turn_id, None);
-        assert_eq!(
-            turn.active_turn.client_message_id.as_str(),
-            turn.dispatch.turn_id().as_str()
-        );
-        assert_eq!(turn.parts.owner, owner);
-
-        // The prepare command is handled above. Pump each of the following
-        // fifteen commands so the final successful `FinalizeClose` can answer
-        // its synchronous caller before this test joins that thread.
-        for command_index in 0..15 {
-            let command = mailbox
-                .wait_next_until(
-                    Some(mailbox_deadline(context.clock.as_ref(), 1_000)),
-                    context.clock.as_ref(),
-                )
-                .unwrap()
-                .expect("worker command before recovery-test deadline");
-            let ControlMessage::Worker(command) = command else {
-                panic!("worker command")
-            };
-            if matches!(command_index, 0 | 4 | 6 | 9 | 11 | 13) {
-                while publisher.take().is_some() {}
-                publisher
-                    .publish_committed(crate::acp::intent::ProjectionChangedV1 {
-                        project_id: project_id.clone(),
-                        chat_id: SageChatId::parse("chat-foreign").unwrap(),
-                        session_id: started.session_id.clone(),
-                        projection_revision: ProjectionRevision::new(1).unwrap(),
-                    })
-                    .unwrap();
-            }
-            state = state.handle(&context, command).await;
-            if matches!(command_index, 0 | 4 | 6 | 9 | 11 | 13) {
-                assert!(matches!(state, FirstTurnWorkerState::Recovery(_)));
-                assert!(publisher.take().is_some());
-            }
+        if matches!(command_index, 0 | 4 | 6 | 9 | 11 | 13) {
+            while publisher.take().is_some() {}
+            publisher
+                .publish_committed(crate::acp::intent::ProjectionChangedV1 {
+                    project_id: project_id.clone(),
+                    chat_id: SageChatId::parse("chat-foreign").unwrap(),
+                    session_id: started.session_id.clone(),
+                    projection_revision: ProjectionRevision::new(1).unwrap(),
+                })
+                .unwrap();
         }
-        let (turn_id, first, retry) = caller.join().unwrap();
-        assert!(matches!(state, FirstTurnWorkerState::Closed));
-        assert_eq!(first, LiveWrite::ZeroBytes);
-        assert_eq!(retry, LiveWrite::Complete);
-        assert_eq!(cancel_count.load(Ordering::SeqCst), 1);
-        assert_eq!(zero_waits.load(Ordering::SeqCst), 1);
-        assert!(scheduler.active().is_none());
-        let durable_state: (String, String, Option<i64>) = database
-            .connection()
-            .query_row(
-                "SELECT state,delivery_state,terminal_at FROM turns WHERE id=?1",
-                rusqlite::params![turn_id.as_str()],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .unwrap();
-        assert_eq!(
-            (durable_state.0.as_str(), durable_state.1.as_str()),
-            ("deliveryUnknown", "completeBytes")
-        );
-        assert!(durable_state.2.is_some());
-        let session_state: String = database
-            .connection()
-            .query_row(
-                "SELECT state FROM agent_sessions WHERE id=?1",
-                [started.session_id.as_str()],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(session_state, "closed");
-        let cancel_facts: i64 = database
-            .connection()
-            .query_row(
-                "SELECT COUNT(*) FROM session_facts WHERE turn_id=?1 AND kind='turnCancelIntent'",
-                [turn_id.as_str()],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(cancel_facts, 1);
-        let send_facts: (i64, i64) = database
+        state = state.handle(&context, command).await;
+        if matches!(command_index, 0 | 4 | 6 | 9 | 11 | 13) {
+            assert!(matches!(state, FirstTurnWorkerState::Recovery(_)));
+            assert!(publisher.take().is_some());
+        }
+    }
+    caller_completion
+        .recv_timeout(remaining_before(whole_test_deadline))
+        .expect("recovery caller exceeded the whole-test deadline");
+    let (turn_id, first, retry) = caller.join().expect("recovery caller thread joined");
+    assert!(matches!(state, FirstTurnWorkerState::Closed));
+    assert_eq!(first, LiveWrite::ZeroBytes);
+    assert_eq!(retry, LiveWrite::Complete);
+    assert_eq!(cancel_count.load(Ordering::SeqCst), 1);
+    // NoChildProcessControl does not launch a child. This is a protocol-boundary
+    // check, not evidence about a real Windows process tree.
+    assert_eq!(zero_checks.load(Ordering::SeqCst), 1);
+    assert!(scheduler.active().is_none());
+    let durable_state: (String, String, Option<i64>) = database
+        .connection()
+        .query_row(
+            "SELECT state,delivery_state,terminal_at FROM turns WHERE id=?1",
+            rusqlite::params![turn_id.as_str()],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        (durable_state.0.as_str(), durable_state.1.as_str()),
+        ("deliveryUnknown", "completeBytes")
+    );
+    assert!(durable_state.2.is_some());
+    let session_state: String = database
+        .connection()
+        .query_row(
+            "SELECT state FROM agent_sessions WHERE id=?1",
+            [started.session_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(session_state, "closed");
+    let cancel_facts: i64 = database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM session_facts WHERE turn_id=?1 AND kind='turnCancelIntent'",
+            [turn_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(cancel_facts, 1);
+    let send_facts: (i64, i64) = database
             .connection()
             .query_row(
                 "SELECT
@@ -1179,22 +1233,28 @@ fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
-        assert_eq!(send_facts, (2, 1));
-        let close_facts: i64 = database
-            .connection()
-            .query_row(
-                "SELECT COUNT(*) FROM session_facts WHERE session_id=?1 AND kind='sessionCloseIntent'",
-                [started.session_id.as_str()],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(close_facts, 1);
+    assert_eq!(send_facts, (2, 1));
+    let close_facts: i64 = database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM session_facts WHERE session_id=?1 AND kind='sessionCloseIntent'",
+            [started.session_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(close_facts, 1);
 
-        drop(journal);
-        drop(database);
-        journal_task.finish();
-        drop(root);
-    });
+    drop(state);
+    drop(context);
+    drop(_sessions);
+    drop(scheduler);
+    drop(journal);
+    journal_task.finish_before(whole_test_deadline);
+    assert_eq!(database_ownership.strong_count(), 1);
+    drop(database);
+    assert_eq!(database_ownership.strong_count(), 0);
+    assert!(database_ownership.upgrade().is_none());
+    drop(root);
 }
 
 #[test]
@@ -1282,7 +1342,7 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
         };
         let prompt_ids = Arc::new(Mutex::new(Vec::new()));
         let cancel_count = Arc::new(AtomicUsize::new(0));
-        let zero_waits = Arc::new(AtomicUsize::new(0));
+        let zero_checks = Arc::new(AtomicUsize::new(0));
         let completed = CompletedActivationDriverParts {
             parts: IdleActivationParts::new(
                 SequencedAdapter {
@@ -1319,8 +1379,8 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
                 FrameWriteOutcome::Complete,
                 FrameWriteOutcome::Complete,
             ]))),
-            control: Control {
-                zero_waits: Arc::clone(&zero_waits),
+            control: NoChildProcessControl {
+                zero_checks: Arc::clone(&zero_checks),
             },
             owner: owner.clone(),
             clock: Arc::new(SystemDriverClock),
@@ -1547,7 +1607,7 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
             *prompt_ids.lock().unwrap(),
             [turn_one.as_str().to_owned(), turn_two.as_str().to_owned()]
         );
-        assert_eq!(zero_waits.load(Ordering::SeqCst), 1);
+        assert_eq!(zero_checks.load(Ordering::SeqCst), 1);
         assert!(scheduler.active().is_none());
         {
             let connection = database.connection();
@@ -1709,7 +1769,7 @@ fn close_before_first_write(case: CloseBeforeWriteCase) {
             session_id: started.session_id.clone(),
             runtime_epoch: epoch,
         };
-        let zero_waits = Arc::new(AtomicUsize::new(0));
+        let zero_checks = Arc::new(AtomicUsize::new(0));
         let cancel_count = Arc::new(AtomicUsize::new(0));
         let completed = CompletedActivationDriverParts {
             parts: IdleActivationParts::new(
@@ -1738,8 +1798,8 @@ fn close_before_first_write(case: CloseBeforeWriteCase) {
             ),
             idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
             transport: Transport(Mutex::new(VecDeque::new())),
-            control: Control {
-                zero_waits: Arc::clone(&zero_waits),
+            control: NoChildProcessControl {
+                zero_checks: Arc::clone(&zero_checks),
             },
             owner: owner.clone(),
             clock: Arc::new(SystemDriverClock),
@@ -1933,7 +1993,7 @@ fn close_before_first_write(case: CloseBeforeWriteCase) {
             _ => panic!("finalize close reply"),
         }
         assert!(matches!(state, FirstTurnWorkerState::Closed));
-        assert_eq!(zero_waits.load(Ordering::SeqCst), 1);
+        assert_eq!(zero_checks.load(Ordering::SeqCst), 1);
         assert_eq!(cancel_count.load(Ordering::SeqCst), 0);
         assert!(scheduler.active().is_none());
         let session: (String, String) = database
@@ -2038,8 +2098,8 @@ fn idle_handoff_consumes_validated_late_stdout_before_the_first_turn() {
         ),
         idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
         transport: Transport(Mutex::new(VecDeque::new())),
-        control: Control {
-            zero_waits: Arc::new(AtomicUsize::new(0)),
+        control: NoChildProcessControl {
+            zero_checks: Arc::new(AtomicUsize::new(0)),
         },
         owner,
         clock: Arc::new(SystemDriverClock),

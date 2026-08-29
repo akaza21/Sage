@@ -53,6 +53,9 @@ mod recovery;
 #[path = "codex_live/journey_tests.rs"]
 mod journey_tests;
 
+#[cfg(all(test, windows))]
+pub(super) use journey_tests::journey_test_lock;
+
 pub(super) use recovery::PendingCodexRecovery;
 
 impl ActivationAbortIntent {

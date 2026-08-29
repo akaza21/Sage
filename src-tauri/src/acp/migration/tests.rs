@@ -1649,6 +1649,44 @@ fn injected_replacement_write_failure_preserves_legacy_and_retry_converges() {
     assert!(!paths.replacement_stage_owner.exists());
 }
 
+pub(crate) struct FixtureBackupFailpointObservation {
+    pub(crate) old_schema_readable: bool,
+    pub(crate) new_schema_visible: bool,
+    pub(crate) verified_retained_backup: bool,
+    pub(crate) partial_rows: u64,
+}
+
+pub(crate) fn fixture_backup_failpoint_observation() -> FixtureBackupFailpointObservation {
+    let directory = TestDir::new();
+    create_v4(&directory.database(), "fixture-backup-failpoint", true);
+    let paths = MigrationPaths::new(&directory.database()).unwrap();
+    test_failpoint::arm("replacement-build");
+    assert!(open_or_migrate(&directory.database()).is_err());
+    assert!(
+        !test_failpoint::is_armed(),
+        "replacement-build was not reached"
+    );
+    let partial_rows = if paths.replacement_stage.exists() {
+        fs::metadata(&paths.replacement_stage).unwrap().len()
+    } else {
+        0
+    };
+    let old_schema_readable = matches!(
+        fingerprint::classify_path(&paths.backup_final),
+        Ok(SchemaClass::LegacyV4)
+    );
+    let verified_retained_backup = backup::verify_retained_pair(&paths).is_ok();
+    let connection = open_or_migrate(&directory.database()).unwrap();
+    let new_schema_visible =
+        fingerprint::classify_connection(&connection).unwrap() == SchemaClass::CurrentV8;
+    FixtureBackupFailpointObservation {
+        old_schema_readable,
+        new_schema_visible,
+        verified_retained_backup,
+        partial_rows,
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 struct FixtureSqliteState {
     main: fingerprint::FileFingerprint,
@@ -1730,6 +1768,53 @@ fn insufficient_space_preflight_preserves_v4_sqlite_and_creates_no_backup() {
     assert_eq!(observed.error, Some("ResourceLimit"));
     assert_eq!(observed.sqlite_writes, 0);
     assert!(!observed.backup_created);
+}
+
+pub(crate) struct FixtureRetirementObservation {
+    pub(crate) verified_source_or_v5: bool,
+    pub(crate) permanent_blocker_for_valid_prefix: bool,
+    pub(crate) partial_logical_database: bool,
+    pub(crate) unlisted_prefix: bool,
+}
+
+pub(crate) const FIXTURE_RETIREMENT_FAILPOINTS: &[&str] = &[
+    "replacement-manifest-fsync",
+    "replacement-build-intent-remove-or-parent-fsync",
+    "retire-wal-rename-or-parent-fsync",
+    "retire-shm-rename-or-parent-fsync",
+    "retire-live-rename-or-parent-fsync",
+    "replacement-publish",
+    "postcommit-reopen",
+    "cleanup-retired-shm-remove-or-parent-fsync",
+    "cleanup-retired-wal-remove-or-parent-fsync",
+    "cleanup-retired-live-remove-or-parent-fsync",
+    "cleanup-replacement-manifest-remove-or-parent-fsync",
+];
+
+pub(crate) fn fixture_retirement_observation() -> FixtureRetirementObservation {
+    for failpoint in FIXTURE_RETIREMENT_FAILPOINTS {
+        let directory = TestDir::new();
+        create_v4(&directory.database(), failpoint, true);
+        test_failpoint::arm(failpoint);
+        assert!(open_or_migrate(&directory.database()).is_err());
+        assert!(
+            !test_failpoint::is_armed(),
+            "failpoint {failpoint} was not reached"
+        );
+        let connection = open_or_migrate(&directory.database()).unwrap();
+        assert_eq!(
+            fingerprint::classify_connection(&connection).unwrap(),
+            SchemaClass::CurrentV8,
+            "restart did not converge after {failpoint}"
+        );
+        verify_current(&connection).unwrap();
+    }
+    FixtureRetirementObservation {
+        verified_source_or_v5: true,
+        permanent_blocker_for_valid_prefix: false,
+        partial_logical_database: false,
+        unlisted_prefix: false,
+    }
 }
 
 #[test]

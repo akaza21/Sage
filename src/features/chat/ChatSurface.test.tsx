@@ -25,7 +25,7 @@ const hooks = vi.hoisted(() => ({
   page: null as AcpChatPage | null,
   actions: {
     busy: false,
-    error: null,
+    error: null as string | null,
     cancellableTurnId: null as string | null,
     submit: vi.fn(),
     cancel: vi.fn(),
