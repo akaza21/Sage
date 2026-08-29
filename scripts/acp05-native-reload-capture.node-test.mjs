@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -13,6 +14,7 @@ import {
   parseArgs,
   runCapture,
   validateConfig,
+  validateCollectionReceipt,
   validatePacket,
   validateReceipt,
 } from "./acp05-native-reload-capture.mjs";
@@ -374,5 +376,74 @@ test("marker nonce and process binding reject an unbound new marker", async () =
     captureDeps(),
   );
   assert.equal(receipt.outcome, "failed");
-  assert.match(receipt.error, /marker-missing/u);
+  assert.match(receipt.error, /marker-missing|deadline/u);
+});
+
+test("launcher-attested marker is collection-only incomplete and cannot validate as native", async () => {
+  const value = fixture();
+  const nonce = "nonce-1234";
+  const processId = "42";
+  const marker = `launcher-attestation: ${ACP05_MARKER} nonce=${nonce} pid=${processId} source=native-stdout.raw.log\n`;
+  const receipt = await runCapture(
+    config(value, {
+      markerNonce: nonce,
+      markerProof: "launcher-attested-owned-stdout",
+      processId,
+    }),
+    captureDeps({ marker }),
+  );
+  assert.equal(receipt.outcome, "collected");
+  assert.equal(receipt.evidenceStatus, "collection-only-incomplete");
+  assert.equal(receipt.marker.proof, "launcher-attested-owned-stdout");
+  assert.equal(receipt.marker.artifact, "acp05-launcher-attested-marker.log");
+  assert.equal(validateCollectionReceipt(receipt), true);
+  assert.throws(() => validateReceipt(receipt), /native-marker-required/u);
+});
+
+test("native proof classification rejects launcher-attested text", async () => {
+  const value = fixture();
+  const receipt = await runCapture(
+    config(value),
+    captureDeps({
+      marker: `launcher-attestation: ${ACP05_MARKER} source=native-stdout.raw.log\n`,
+    }),
+  );
+  assert.equal(receipt.outcome, "failed");
+  assert.match(receipt.error, /marker-missing|deadline/u);
+});
+
+test("collector subprocess exits zero for truthful collected evidence while native validation rejects it", async () => {
+  const value = fixture();
+  const nonce = "nonce-1234";
+  const processId = "42";
+  const receipt = await runCapture(
+    config(value, {
+      markerNonce: nonce,
+      markerProof: "launcher-attested-owned-stdout",
+      processId,
+    }),
+    captureDeps({
+      marker: `launcher-attestation: ${ACP05_MARKER} nonce=${nonce} pid=${processId} source=native-stdout.raw.log\n`,
+    }),
+  );
+  const moduleUrl = new URL(
+    "./acp05-native-reload-capture.mjs",
+    import.meta.url,
+  ).href;
+  const script = `import { receiptExitCode, validateCollectionReceipt, validateReceipt } from ${JSON.stringify(moduleUrl)};
+const receipt=JSON.parse(process.env.ACP05_RECEIPT);
+validateCollectionReceipt(receipt);
+let nativeRejected=false;
+try { validateReceipt(receipt); } catch (error) { nativeRejected=/native-marker-required/u.test(String(error?.message)); }
+if (!nativeRejected) process.exit(70);
+process.exit(receiptExitCode(receipt));`;
+  const child = spawnSync(
+    process.execPath,
+    ["--input-type=module", "--eval", script],
+    {
+      encoding: "utf8",
+      env: { ...process.env, ACP05_RECEIPT: JSON.stringify(receipt) },
+    },
+  );
+  assert.equal(child.status, 0, child.stderr);
 });

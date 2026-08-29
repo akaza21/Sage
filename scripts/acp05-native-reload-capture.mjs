@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 export const ACP05_MARKER = "ACP renderer recreation pairing passed";
 export const RENDERER_RECREATION_PACKET_EVAL =
   '(function(){try{var collect=window.__SAGE_COLLECT_RENDERER_RECREATION_PACKET__;if(typeof collect!=="function")return null;return collect();}catch(_error){return null;}})()';
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const KIND = "acp05-native-reload-capture";
 export const LIMITS = Object.freeze({
   deadlineMs: 60_000,
@@ -30,6 +30,10 @@ const FOCUS_OUTCOMES = new Set([
   "exact-sage-id",
   "activity-summary-fallback",
   "no-restoration-when-no-valid-envelope",
+]);
+const MARKER_PROOFS = new Set([
+  "native-pairing-marker",
+  "launcher-attested-owned-stdout",
 ]);
 
 export class Acp05Error extends Error {
@@ -190,6 +194,7 @@ export function parseArgs(argv) {
     ["--cdp-endpoint", "cdpEndpoint"],
     ["--evidence-root", "evidenceRoot"],
     ["--marker-log", "markerLog"],
+    ["--marker-proof", "markerProof"],
     ["--marker-nonce", "markerNonce"],
     ["--process-id", "processId"],
     ["--receipt", "receipt"],
@@ -274,6 +279,14 @@ export function validateConfig(raw, fsImpl = fs) {
     throw new Acp05Error("config", "marker nonce");
   if (raw.processId !== undefined && !/^[1-9][0-9]{0,9}$/u.test(raw.processId))
     throw new Acp05Error("config", "process id");
+  const markerProof = raw.markerProof ?? "native-pairing-marker";
+  if (!MARKER_PROOFS.has(markerProof))
+    throw new Acp05Error("config", "marker proof");
+  if (
+    markerProof === "launcher-attested-owned-stdout" &&
+    (raw.markerNonce === undefined || raw.processId === undefined)
+  )
+    throw new Acp05Error("config", "launcher proof needs nonce and process id");
   return Object.freeze({
     repoRoot: path.resolve(raw.repoRoot),
     sourceCommit: raw.sourceCommit,
@@ -283,6 +296,7 @@ export function validateConfig(raw, fsImpl = fs) {
     cdpPort: cdp.port,
     evidenceRoot,
     markerLog: path.resolve(raw.markerLog),
+    markerProof,
     markerNonce: raw.markerNonce ?? null,
     processId: raw.processId ?? null,
     receipt: path.resolve(receipt),
@@ -590,6 +604,14 @@ function fileMarkerSource(logPath, fsImpl) {
 
 function markerMatches(text, config) {
   if (!text.includes(ACP05_MARKER)) return false;
+  const hasLauncherAttestation = text.includes("launcher-attestation:");
+  if (config.markerProof === "native-pairing-marker" && hasLauncherAttestation)
+    return false;
+  if (config.markerProof === "launcher-attested-owned-stdout")
+    return (
+      text.trim() ===
+      `launcher-attestation: ${ACP05_MARKER} nonce=${config.markerNonce} pid=${config.processId} source=native-stdout.raw.log`
+    );
   if (config.markerNonce && !text.includes(`nonce=${config.markerNonce}`))
     return false;
   if (config.processId && !text.includes(`pid=${config.processId}`))
@@ -633,7 +655,7 @@ async function waitForMarker(source, offset, config, gate, sleepFn) {
           sha256: hash(retained.content),
           nonceBound: Boolean(config.markerNonce),
           processBound: Boolean(config.processId),
-          proof: "native-pairing-marker",
+          proof: config.markerProof,
         },
       };
     }
@@ -675,10 +697,15 @@ function writeOutput(fsImpl, root, target, content) {
 }
 
 export function buildReceipt(config, fields) {
+  const launcherAttested =
+    config.markerProof === "launcher-attested-owned-stdout";
   return {
     schemaVersion: SCHEMA_VERSION,
     kind: KIND,
     outcome: fields.outcome,
+    evidenceStatus: launcherAttested
+      ? "collection-only-incomplete"
+      : "native-complete",
     source: {
       commit: config.sourceCommit,
       executable: {
@@ -696,12 +723,13 @@ export function buildReceipt(config, fields) {
   };
 }
 
-export function validateReceipt(receipt) {
+export function validateCollectionReceipt(receipt) {
   if (
     !exactKeys(receipt, [
       "schemaVersion",
       "kind",
       "outcome",
+      "evidenceStatus",
       "source",
       "cdp",
       "marker",
@@ -712,7 +740,7 @@ export function validateReceipt(receipt) {
     ]) ||
     receipt.schemaVersion !== SCHEMA_VERSION ||
     receipt.kind !== KIND ||
-    receipt.outcome !== "passed" ||
+    !["passed", "collected"].includes(receipt.outcome) ||
     receipt.error !== null ||
     !exactKeys(receipt.source, ["commit", "executable"]) ||
     !HEX40.test(receipt.source.commit) ||
@@ -756,14 +784,46 @@ export function validateReceipt(receipt) {
     (artifact) => artifact.name === receipt.marker.artifact,
   );
   if (
-    receipt.marker.proof !== "native-pairing-marker" ||
-    receipt.marker.artifact !== "acp05-native-marker.log" ||
+    !MARKER_PROOFS.has(receipt.marker.proof) ||
+    receipt.evidenceStatus !==
+      (receipt.marker.proof === "native-pairing-marker"
+        ? "native-complete"
+        : "collection-only-incomplete") ||
+    receipt.outcome !==
+      (receipt.marker.proof === "native-pairing-marker"
+        ? "passed"
+        : "collected") ||
+    receipt.marker.artifact !==
+      (receipt.marker.proof === "native-pairing-marker"
+        ? "acp05-native-marker.log"
+        : "acp05-launcher-attested-marker.log") ||
     !retainedMarker ||
     retainedMarker.sha256 !== receipt.marker.sha256 ||
     retainedMarker.bytes !== receipt.marker.bytes
   )
     throw new Acp05Error("receipt-invalid", "marker artifact");
   return true;
+}
+
+export function validateReceipt(receipt) {
+  validateCollectionReceipt(receipt);
+  if (
+    receipt.evidenceStatus !== "native-complete" ||
+    receipt.marker.proof !== "native-pairing-marker"
+  )
+    throw new Acp05Error("receipt-invalid", "native-marker-required");
+  return true;
+}
+
+export function receiptExitCode(receipt) {
+  if (receipt?.outcome === "passed") return 0;
+  if (
+    receipt?.outcome === "collected" &&
+    receipt.evidenceStatus === "collection-only-incomplete" &&
+    receipt.marker?.proof === "launcher-attested-owned-stdout"
+  )
+    return 0;
+  return 1;
 }
 
 export async function runCapture(rawConfig, deps = {}) {
@@ -832,10 +892,14 @@ export async function runCapture(rawConfig, deps = {}) {
     const screenshot = decodeBase64(
       (await client.call("Page.captureScreenshot", { format: "png" }))?.data,
     );
+    const markerArtifactName =
+      config.markerProof === "native-pairing-marker"
+        ? "acp05-native-marker.log"
+        : "acp05-launcher-attested-marker.log";
     const markerArtifact = writeOutput(
       fsImpl,
       config.evidenceRoot,
-      path.join(config.evidenceRoot, "acp05-native-marker.log"),
+      path.join(config.evidenceRoot, markerArtifactName),
       retainedMarker.content,
     );
     marker = { ...retainedMarker.record, artifact: markerArtifact.name };
@@ -872,7 +936,11 @@ export async function runCapture(rawConfig, deps = {}) {
     transport?.close();
   }
   const receipt = buildReceipt(config, {
-    outcome: error ? "failed" : "passed",
+    outcome: error
+      ? "failed"
+      : config.markerProof === "native-pairing-marker"
+        ? "passed"
+        : "collected",
     cdp,
     marker,
     before,
@@ -900,7 +968,7 @@ if (
   try {
     const receipt = await runCapture(parseArgs(process.argv.slice(2)));
     process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
-    process.exitCode = receipt.outcome === "passed" ? 0 : 1;
+    process.exitCode = receiptExitCode(receipt);
   } catch (error) {
     process.stderr.write(`${String(error?.message ?? error)}\n`);
     process.exitCode = 64;
