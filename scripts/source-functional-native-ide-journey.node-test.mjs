@@ -31,6 +31,7 @@ import {
   hashExecutable,
   parseJourneyArguments,
   performUiAction,
+  performUiMilestone,
   processIdentityHelper,
   revalidateControlledCdpTarget,
   resolvePlaywrightTransport,
@@ -437,7 +438,7 @@ test("native IDE search result contract opens the exact fixture match", () => {
     true,
   );
   assert.equal(
-    evaluateBrowserExpression(uiAction("edit-diagnostic").expression, {
+    evaluateBrowserExpression(UI_PROBES.openExactSearchResult, {
       document,
     }),
     true,
@@ -445,37 +446,86 @@ test("native IDE search result contract opens the exact fixture match", () => {
   assert.equal(result.clicks, 1);
 });
 
-test("native IDE edit readiness waits for one editable CodeMirror surface", () => {
-  let editable = [];
+test("native IDE File and edit-diagnostic preparations are strictly ordered", async () => {
+  const fileCalls = [];
+  await performUiMilestone(
+    {
+      evaluate: async (expression) => {
+        fileCalls.push(expression);
+        return true;
+      },
+    },
+    uiAction("File"),
+    Date.now() + 1_000,
+  );
+  assert.deepEqual(fileCalls, [
+    uiAction("File").expression,
+    verificationFor("File"),
+    UI_PROBES.openExactSearchResult,
+    UI_PROBES.editableEditor,
+  ]);
+
+  const editCalls = [];
+  const messages = await performUiMilestone(
+    {
+      evaluate: async (expression) => {
+        editCalls.push(expression);
+        return expression === UI_PROBES.diagnosticMessages
+          ? JSON.stringify(["TypeScript fixture diagnostic"])
+          : true;
+      },
+    },
+    uiAction("edit-diagnostic"),
+    Date.now() + 1_000,
+  );
+  assert.deepEqual(editCalls, [
+    UI_PROBES.openProblems,
+    UI_PROBES.problemsMounted,
+    UI_PROBES.insertEditorEdit,
+    UI_PROBES.problemsReady,
+    UI_PROBES.diagnosticMessages,
+  ]);
+  assert.equal(messages, JSON.stringify(["TypeScript fixture diagnostic"]));
+});
+
+test("native IDE edit inserts the admitted diagnostic marker once", () => {
+  const calls = [];
+  const editor = { focus: () => calls.push(["focus"]) };
   const document = {
-    querySelectorAll: (selector) => {
-      if (selector === '[aria-label="File editor journey.ts"]') return [{}];
-      if (
-        selector ===
-        'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]'
-      )
-        return editable;
-      return [];
+    querySelectorAll: () => [editor],
+    execCommand: (...arguments_) => {
+      calls.push(arguments_);
+      return true;
     },
   };
   assert.equal(
-    evaluateBrowserExpression(verificationFor("edit-diagnostic"), {
-      document,
-    }),
-    false,
-  );
-  editable = [{}];
-  assert.equal(
-    evaluateBrowserExpression(verificationFor("edit-diagnostic"), {
+    evaluateBrowserExpression(UI_PROBES.insertEditorEdit, {
       document,
     }),
     true,
   );
+  assert.deepEqual(calls, [
+    ["focus"],
+    [
+      "insertText",
+      false,
+      "\n// SAGE_TS_DIAGNOSTIC journey edited through native CDP\n",
+    ],
+  ]);
 });
 
 test("native IDE Problems probes bind one exact panel and diagnostic surface", () => {
+  const problemsButton = {
+    clicks: 0,
+    click() {
+      this.clicks += 1;
+    },
+  };
   const card = { innerText: "Error missing semicolon journey.ts:1" };
+  let listenerReady = true;
   const problems = {
+    getAttribute: (name) =>
+      name === "data-diagnostic-listener-ready" ? String(listenerReady) : null,
     querySelectorAll: (selector) =>
       selector === "button.problem-card" ? [card] : [],
   };
@@ -484,11 +534,30 @@ test("native IDE Problems probes bind one exact panel and diagnostic surface", (
       selector === 'section[aria-label="Problems"]' ? [problems] : [],
   };
   const document = {
-    querySelectorAll: (selector) =>
-      selector === 'section[aria-label="Problems project tools"]'
+    querySelectorAll: (selector) => {
+      if (selector === 'button[aria-label="Problems"]') return [problemsButton];
+      return selector === 'section[aria-label="Problems project tools"]'
         ? [panel]
-        : [],
+        : [];
+    },
   };
+  assert.equal(
+    evaluateBrowserExpression(uiAction("edit-diagnostic").expression, {
+      document,
+    }),
+    true,
+  );
+  assert.equal(problemsButton.clicks, 1);
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.problemsMounted, { document }),
+    true,
+  );
+  listenerReady = false;
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.problemsMounted, { document }),
+    false,
+  );
+  listenerReady = true;
   assert.equal(
     evaluateBrowserExpression(UI_PROBES.problemsReady, { document }),
     true,
@@ -616,7 +685,8 @@ test("native IDE Source Control and Diff readiness wait for the exact ready chan
     evaluateBrowserExpression(verificationFor("Diff"), { document }),
     false,
   );
-  diffEditor.textContent = "+// journey edited through native CDP";
+  diffEditor.textContent =
+    "+// SAGE_TS_DIAGNOSTIC journey edited through native CDP";
   diffEditor.innerText = diffEditor.textContent;
   diffSurface.innerText = `journey.ts\n${diffEditor.innerText}`;
   assert.equal(

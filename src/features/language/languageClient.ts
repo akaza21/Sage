@@ -236,9 +236,10 @@ function acceptsOutlineReport(
   );
 }
 
-export function useDiagnosticProjection(
-  resource: ResourceRef | undefined,
-): LanguageDiagnosticReport | null {
+export function useDiagnosticProjection(resource: ResourceRef | undefined): {
+  report: LanguageDiagnosticReport | null;
+  listenerReady: boolean;
+} {
   return useLanguageProjection(
     resource,
     languageDesktop.subscribeDiagnostics,
@@ -253,7 +254,7 @@ export function useOutlineProjection(
     resource,
     languageDesktop.subscribeOutline,
     boundOutlineReport,
-  );
+  ).report;
 }
 
 function boundDiagnosticReport(
@@ -285,8 +286,9 @@ function useLanguageProjection<
   resource: ResourceRef | undefined,
   subscribe: (onReport: (report: T) => void) => Promise<() => void>,
   bound: (report: T) => T,
-): T | null {
+): { report: T | null; listenerReady: boolean } {
   const [report, setReport] = useState<T | null>(null);
+  const [listenerReady, setListenerReady] = useState(false);
   const rootId = resource?.rootId;
   const relativePath = resource?.relativePath;
   const resourceIdentity = `${rootId ?? ""}:${relativePath ?? ""}`;
@@ -294,6 +296,7 @@ function useLanguageProjection<
   if (seenIdentity !== resourceIdentity) {
     setSeenIdentity(resourceIdentity);
     setReport(null);
+    setListenerReady(false);
   }
 
   useEffect(() => {
@@ -339,14 +342,17 @@ function useLanguageProjection<
           nextUnsubscribe();
         } else {
           unsubscribe = nextUnsubscribe;
+          setListenerReady(true);
         }
       },
-      () => undefined,
+      () => {
+        if (!sleeping) setListenerReady(false);
+      },
     );
     return () => {
       delivery.stop();
     };
   }, [bound, relativePath, rootId, subscribe]);
 
-  return report;
+  return { report, listenerReady };
 }

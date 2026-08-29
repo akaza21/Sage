@@ -765,8 +765,8 @@ export const UI_ACTIONS = Object.freeze([
   ),
   action(
     "edit-diagnostic",
-    '(()=>{const x=[...document.querySelectorAll(\'.workspace-search__results[role="list"] [role="listitem"] > button.workspace-search__result[aria-label="Open journey.ts at line 1, column 14"]\')];if(x.length!==1)return false;x[0].click();return true})()',
-    "Search result was not unique",
+    "(()=>{const x=[...document.querySelectorAll('button[aria-label=\"Problems\"]')];if(x.length!==1)return false;x[0].click();return true})()",
+    "Problems control is ambiguous",
   ),
   action(
     "save",
@@ -840,23 +840,27 @@ export function verificationFor(step) {
   if (step === "File")
     return 'document.querySelectorAll(\'.workspace-search__results[role="list"] [role="listitem"] > button.workspace-search__result[aria-label="Open journey.ts at line 1, column 14"]\').length===1';
   if (step === "edit-diagnostic")
-    return 'document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\').length===1';
+    return "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Problems project tools\"]')];if(panels.length!==1)return false;const surfaces=[...panels[0].querySelectorAll('section[aria-label=\"Problems\"]')];return surfaces.length===1&&surfaces[0].getAttribute('data-diagnostic-listener-ready')==='true'})()";
   if (step === "save")
     return "document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]').length===1";
   if (step === "Source Control")
     return "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Source Control project tools\"]')];return panels.length===1&&panels[0].querySelectorAll('button[aria-label=\"Open diff for journey.ts\"]').length===1})()";
   if (step === "Diff")
-    return "(()=>{const surfaces=[...document.querySelectorAll('section.diff-surface[aria-label=\"Diff for journey.ts\"]')];if(surfaces.length!==1)return false;const ready=[...surfaces[0].querySelectorAll('.diff-editor[role=\"table\"][aria-label=\"Unified file diff\"]')];return ready.length===1&&ready[0].textContent.includes('journey edited through native CDP')})()";
+    return "(()=>{const surfaces=[...document.querySelectorAll('section.diff-surface[aria-label=\"Diff for journey.ts\"]')];if(surfaces.length!==1)return false;const ready=[...surfaces[0].querySelectorAll('.diff-editor[role=\"table\"][aria-label=\"Unified file diff\"]')];return ready.length===1&&ready[0].textContent.includes('// SAGE_TS_DIAGNOSTIC journey edited through native CDP')})()";
   return UI_ACTIONS[0].expression;
 }
 
 export const UI_PROBES = Object.freeze({
+  openExactSearchResult:
+    '(()=>{const x=[...document.querySelectorAll(\'.workspace-search__results[role="list"] [role="listitem"] > button.workspace-search__result[aria-label="Open journey.ts at line 1, column 14"]\')];if(x.length!==1)return false;x[0].click();return true})()',
   editableEditor:
     'document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\').length===1',
   insertEditorEdit:
-    '(()=>{const x=[...document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\')];if(x.length!==1)return false;x[0].focus();return document.execCommand("insertText",false,"\\n// journey edited through native CDP\\n")})()',
+    '(()=>{const x=[...document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\')];if(x.length!==1)return false;x[0].focus();return document.execCommand("insertText",false,"\\n// SAGE_TS_DIAGNOSTIC journey edited through native CDP\\n")})()',
   openProblems:
     "(()=>{const x=[...document.querySelectorAll('button[aria-label=\"Problems\"]')];if(x.length!==1)return false;x[0].click();return true})()",
+  problemsMounted:
+    "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Problems project tools\"]')];if(panels.length!==1)return false;const surfaces=[...panels[0].querySelectorAll('section[aria-label=\"Problems\"]')];return surfaces.length===1&&surfaces[0].getAttribute('data-diagnostic-listener-ready')==='true'})()",
   problemsReady:
     "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Problems project tools\"]')];if(panels.length!==1)return false;const surfaces=[...panels[0].querySelectorAll('section[aria-label=\"Problems\"]')];return surfaces.length===1&&surfaces[0].querySelectorAll('button.problem-card').length>=1})()",
   diagnosticMessages:
@@ -868,6 +872,45 @@ export const UI_PROBES = Object.freeze({
   diffContent:
     "(()=>{const surfaces=[...document.querySelectorAll('section.diff-surface[aria-label=\"Diff for journey.ts\"]')];return surfaces.length===1?surfaces[0].innerText:null})()",
 });
+
+export async function performUiMilestone(cdp, current, deadline) {
+  await performUiAction(cdp, current, deadline);
+  if (current.label === "File") {
+    if (
+      (await cdp.evaluate(
+        UI_PROBES.openExactSearchResult,
+        operationDeadline(deadline),
+      )) !== true
+    )
+      throw new Error("Search result was not unique");
+    await waitFor(
+      cdp,
+      UI_PROBES.editableEditor,
+      deadline,
+      "journey.ts editor did not become editable",
+    );
+  }
+  if (current.label === "edit-diagnostic") {
+    if (
+      (await cdp.evaluate(
+        UI_PROBES.insertEditorEdit,
+        operationDeadline(deadline),
+      )) !== true
+    )
+      throw new Error("editor did not accept native text insertion");
+    await waitFor(
+      cdp,
+      UI_PROBES.problemsReady,
+      deadline,
+      "language diagnostic did not arrive",
+    );
+    return cdp.evaluate(
+      UI_PROBES.diagnosticMessages,
+      operationDeadline(deadline),
+    );
+  }
+  return null;
+}
 
 export function assertEvidenceRoot(sourceRoot, output) {
   const evidenceParent = path.join(realpathSync(sourceRoot), "local-evidence");
@@ -964,42 +1007,13 @@ async function execute(options) {
     await revalidateAttachedPage(options, cdp, admittedTarget, deadline);
     for (let index = 0; index < UI_ACTIONS.length; index += 1) {
       const current = UI_ACTIONS[index];
-      await performUiAction(cdp, current, deadline);
-      if (current.label === "edit-diagnostic") {
-        if (
-          !(await cdp.evaluate(
-            UI_PROBES.editableEditor,
-            operationDeadline(deadline),
-          ))
-        )
-          throw new Error(
-            "editor did not expose one editable CodeMirror surface",
-          );
-        if (
-          (await cdp.evaluate(
-            UI_PROBES.insertEditorEdit,
-            operationDeadline(deadline),
-          )) !== true
-        )
-          throw new Error("editor did not accept native text insertion");
-        if (
-          (await cdp.evaluate(
-            UI_PROBES.openProblems,
-            operationDeadline(deadline),
-          )) !== true
-        )
-          throw new Error("Problems control is ambiguous");
-        await waitFor(
-          cdp,
-          UI_PROBES.problemsReady,
-          deadline,
-          "language diagnostic did not arrive",
-        );
-        diagnosticMessages = await cdp.evaluate(
-          UI_PROBES.diagnosticMessages,
-          operationDeadline(deadline),
-        );
-      }
+      const milestoneObservation = await performUiMilestone(
+        cdp,
+        current,
+        deadline,
+      );
+      if (current.label === "edit-diagnostic")
+        diagnosticMessages = milestoneObservation;
       if (current.label === "save") {
         await waitFor(
           cdp,
@@ -1053,12 +1067,21 @@ async function execute(options) {
     const disk = readFileSync(path.join(options.fixture, "journey.ts"), "utf8");
     if (
       savedContent !== disk ||
-      !disk.includes("journey edited through native CDP") ||
+      !disk.includes(
+        "// SAGE_TS_DIAGNOSTIC journey edited through native CDP",
+      ) ||
       !Array.isArray(diagnostics) ||
       diagnostics.length < 1 ||
+      !diagnostics.some(
+        (message) =>
+          typeof message === "string" &&
+          message.includes("TypeScript fixture diagnostic"),
+      ) ||
       typeof diffContent !== "string" ||
       !diffContent.includes("journey.ts") ||
-      !diffContent.includes("journey edited through native CDP")
+      !diffContent.includes(
+        "// SAGE_TS_DIAGNOSTIC journey edited through native CDP",
+      )
     )
       fail("observations-invalid");
     const digest = (value) => createHash("sha256").update(value).digest("hex");

@@ -10,14 +10,19 @@ export function ProblemsSurface() {
   const resource = useWorkbenchStore(
     (state) => state.tabs.find((tab) => tab.id === state.activeTabId)?.resource,
   );
-  const report = useDiagnosticProjection(resource);
+  const { report, listenerReady } = useDiagnosticProjection(resource);
   const counts = countProblemKinds(
     report?.diagnostics.map((diagnostic) => diagnostic.severity) ?? [],
   );
   const summary = problemSummaryTitle(counts);
 
   return (
-    <section className="problems-surface" aria-label="Problems">
+    <section
+      className="problems-surface"
+      aria-label="Problems"
+      aria-busy={!listenerReady}
+      data-diagnostic-listener-ready={listenerReady ? "true" : "false"}
+    >
       <header className="problems-surface__header">
         <h1>{summary}</h1>
         <span>{report?.diagnostics.length ?? 0}</span>

@@ -17,6 +17,14 @@ import { ProblemsSurface } from "./ProblemsSurface";
 const resource = { rootId: "root-a", relativePath: "src/example.ts" };
 const initialState = useWorkbenchStore.getState();
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 function report(generation: number, count: number): LanguageDiagnosticReport {
   return {
     resource,
@@ -33,17 +41,17 @@ function report(generation: number, count: number): LanguageDiagnosticReport {
   };
 }
 
-function activateResource() {
+function activateResource(activeResource = resource) {
   useWorkbenchStore.setState({
     tabs: [
       {
         id: "file:example",
         kind: "file",
-        title: "example.ts",
+        title: activeResource.relativePath,
         position: 1,
         pinned: false,
         dirty: false,
-        resource,
+        resource: activeResource,
       },
     ],
     activeTabId: "file:example",
@@ -57,6 +65,56 @@ afterEach(() => {
 });
 
 describe("ProblemsSurface", () => {
+  it("exposes listener readiness only for the current resolved subscription", async () => {
+    const secondResource = {
+      rootId: "root-a",
+      relativePath: "src/second.ts",
+    };
+    const thirdResource = {
+      rootId: "root-a",
+      relativePath: "src/third.ts",
+    };
+    const first = deferred<() => void>();
+    const second = deferred<() => void>();
+    const third = deferred<() => void>();
+    const firstUnsubscribe = vi.fn();
+    const secondUnsubscribe = vi.fn();
+    const thirdUnsubscribe = vi.fn();
+    vi.spyOn(languageDesktop, "subscribeDiagnostics")
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+      .mockReturnValueOnce(third.promise);
+    activateResource();
+    const rendered = render(<ProblemsSurface />);
+    const surface = screen.getByLabelText("Problems");
+
+    expect(surface).toHaveAttribute("data-diagnostic-listener-ready", "false");
+    expect(surface).toHaveAttribute("aria-busy", "true");
+    act(() => activateResource(secondResource));
+    await waitFor(() =>
+      expect(languageDesktop.subscribeDiagnostics).toHaveBeenCalledTimes(2),
+    );
+    await act(async () => first.resolve(firstUnsubscribe));
+    expect(firstUnsubscribe).toHaveBeenCalledOnce();
+    expect(surface).toHaveAttribute("data-diagnostic-listener-ready", "false");
+
+    await act(async () => second.resolve(secondUnsubscribe));
+    await waitFor(() =>
+      expect(surface).toHaveAttribute("data-diagnostic-listener-ready", "true"),
+    );
+    expect(surface).toHaveAttribute("aria-busy", "false");
+
+    act(() => activateResource(thirdResource));
+    await waitFor(() =>
+      expect(languageDesktop.subscribeDiagnostics).toHaveBeenCalledTimes(3),
+    );
+    expect(surface).toHaveAttribute("data-diagnostic-listener-ready", "false");
+    rendered.unmount();
+    await act(async () => third.resolve(thirdUnsubscribe));
+    expect(thirdUnsubscribe).toHaveBeenCalledOnce();
+    expect(secondUnsubscribe).toHaveBeenCalledOnce();
+  });
+
   it("problems_surface_bounds_diagnostics_at_64_and_replaces_by_generation", async () => {
     let deliver!: (value: LanguageDiagnosticReport) => void;
     activateResource();
