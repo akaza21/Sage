@@ -30,6 +30,7 @@ import {
   decodeBoundedScreenshot,
   hashExecutable,
   parseJourneyArguments,
+  performUiAction,
   processIdentityHelper,
   revalidateControlledCdpTarget,
   resolvePlaywrightTransport,
@@ -158,6 +159,65 @@ test("native IDE Project readiness scopes the retained file to its admitted tree
     evaluateBrowserExpression(verificationFor("Explorer"), { document }),
     false,
   );
+});
+
+test("native IDE Project waits for pure readiness within one fixed deadline", async () => {
+  const project = uiAction("Project");
+  const calls = [];
+  const deadline = Date.now() + 1_000;
+  await performUiAction(
+    {
+      evaluate: async (expression, actualDeadline) => {
+        calls.push({ expression, actualDeadline });
+        return calls.length === 2;
+      },
+    },
+    project,
+    deadline,
+  );
+  assert.deepEqual(
+    calls.map(({ expression }) => expression),
+    [project.expression, project.expression],
+  );
+  assert.deepEqual(
+    new Set(calls.map(({ actualDeadline }) => actualDeadline)),
+    new Set([deadline]),
+  );
+});
+
+test("native IDE Project times out truthfully without retrying click actions", async () => {
+  const projectCalls = [];
+  await assert.rejects(
+    performUiAction(
+      {
+        evaluate: async (expression) => {
+          projectCalls.push(expression);
+          return false;
+        },
+      },
+      uiAction("Project"),
+      Date.now() + 20,
+    ),
+    /Project readiness timed out/u,
+  );
+  assert.ok(projectCalls.length >= 1);
+
+  const search = uiAction("Search");
+  const clickCalls = [];
+  await assert.rejects(
+    performUiAction(
+      {
+        evaluate: async (expression) => {
+          clickCalls.push(expression);
+          return false;
+        },
+      },
+      search,
+      Date.now() + 1_000,
+    ),
+    /Search control is ambiguous/u,
+  );
+  assert.deepEqual(clickCalls, [search.expression]);
 });
 
 test("native IDE Explorer action leaves the retained expanded panel open", () => {

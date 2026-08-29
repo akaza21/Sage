@@ -799,6 +799,29 @@ async function waitFor(cdp, expression, deadline, message) {
   throw new Error(message);
 }
 
+export async function performUiAction(cdp, current, deadline) {
+  if (current.label === "Project") {
+    await waitFor(
+      cdp,
+      current.expression,
+      operationDeadline(deadline),
+      "Project readiness timed out",
+    );
+    return;
+  }
+  if (
+    (await cdp.evaluate(current.expression, operationDeadline(deadline))) !==
+    true
+  )
+    throw new Error(current.assertion);
+  await waitFor(
+    cdp,
+    verificationFor(current.label),
+    deadline,
+    `${current.label} verification timed out`,
+  );
+}
+
 export function attachCdp(admittedTarget, deadline, deps = {}) {
   const connect = deps.connectCdp ?? connectCdp;
   return connect({
@@ -941,19 +964,7 @@ async function execute(options) {
     await revalidateAttachedPage(options, cdp, admittedTarget, deadline);
     for (let index = 0; index < UI_ACTIONS.length; index += 1) {
       const current = UI_ACTIONS[index];
-      if (
-        (await cdp.evaluate(
-          current.expression,
-          operationDeadline(deadline),
-        )) !== true
-      )
-        throw new Error(current.assertion);
-      await waitFor(
-        cdp,
-        verificationFor(current.label),
-        deadline,
-        `${current.label} verification timed out`,
-      );
+      await performUiAction(cdp, current, deadline);
       if (current.label === "edit-diagnostic") {
         if (
           !(await cdp.evaluate(

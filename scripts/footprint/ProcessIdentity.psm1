@@ -367,16 +367,22 @@ function Get-FootprintForceKillCandidates {
   return @(Get-FootprintDescendants ([int]$RootIdentity.processId) $ProcessRows)
 }
 
-function Stop-FootprintTree {
+function Invoke-FootprintTreeCore {
   param(
     [Parameter(Mandatory)][Collections.IDictionary]$RootIdentity,
     [Parameter(Mandatory)][Collections.Generic.Dictionary[string, object]]$KnownProcessIdentities,
-    [ValidateRange(1, 30)][int]$GraceSeconds = 1
+    [ValidateRange(1, 30)][int]$GraceSeconds = 1,
+    [Parameter(Mandatory)][scriptblock]$SnapshotProvider,
+    [Parameter(Mandatory)][scriptblock]$StopProcessById,
+    [Parameter(Mandatory)][scriptblock]$UtcNow,
+    [Parameter(Mandatory)][scriptblock]$Delay
   )
   $rootPid = [int]$RootIdentity.processId
   [void](Add-FootprintRememberedIdentity $KnownProcessIdentities ([pscustomobject]@{ ProcessId = $rootPid; ExecutablePath = $RootIdentity.executablePath; CreationDate = $RootIdentity.creationDate }))
-  $initialRows = @(Get-FootprintProcessSnapshot)
+  $reusedProcessIds = [Collections.Generic.HashSet[int]]::new()
+  $initialRows = @(& $SnapshotProvider)
   $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities $initialRows
+  foreach ($reusedProcessId in @($plan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
   $identityLost = [bool]$plan.identityLost
   if ($plan.rootState -eq "matching") {
     foreach ($row in @(Get-FootprintDescendants $rootPid $initialRows)) { [void](Add-FootprintRememberedIdentity $KnownProcessIdentities $row) }
@@ -384,39 +390,61 @@ function Stop-FootprintTree {
     $root = Get-Process -Id $rootPid -ErrorAction SilentlyContinue
     if ($null -ne $root -and $root.MainWindowHandle -ne [IntPtr]::Zero) { [void]$root.CloseMainWindow() }
   }
-  $deadline = [DateTime]::UtcNow.AddSeconds($GraceSeconds)
+  $deadline = ([DateTime](& $UtcNow)).AddSeconds($GraceSeconds)
   do {
-    $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(Get-FootprintProcessSnapshot)
+    $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
+    foreach ($reusedProcessId in @($plan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
     $identityLost = $identityLost -or $plan.identityLost
-    if ($plan.candidates.Count -eq 0) { return [ordered]@{ forced = $false; identityLost = $identityLost; candidates = @(); remaining = @(); reusedProcessIds = $plan.reusedProcessIds } }
-    Start-Sleep -Milliseconds 100
-  } while ([DateTime]::UtcNow -lt $deadline)
-  $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(Get-FootprintProcessSnapshot)
+    if ($plan.candidates.Count -eq 0) { return [ordered]@{ forced = $false; identityLost = $identityLost; candidates = @(); remaining = @(); reusedProcessIds = @($reusedProcessIds | Sort-Object) } }
+    & $Delay 100
+  } while ([DateTime](& $UtcNow) -lt $deadline)
+  $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
+  foreach ($reusedProcessId in @($plan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
   $identityLost = $identityLost -or $plan.identityLost
   $candidates = @($plan.candidates | Sort-Object @{ Expression = { [int]$_.ProcessId -eq $rootPid } }, @{ Expression = { [int]$_.ProcessId }; Descending = $true })
   $killed = @()
+  $exactRootTerminationIssued = $false
   foreach ($candidate in $candidates) {
-    $currentPlan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(Get-FootprintProcessSnapshot)
+    $currentPlan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
+    foreach ($reusedProcessId in @($currentPlan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
     $identityLost = $identityLost -or $currentPlan.identityLost
     $current = @($currentPlan.candidates | Where-Object { [int]$_.ProcessId -eq [int]$candidate.ProcessId }) | Select-Object -First 1
     if ($null -eq $current -or -not (Test-FootprintProcessIdentity $current $candidate.ExecutablePath (ConvertTo-FootprintCreationIdentity $candidate.CreationDate))) { continue }
-    Stop-Process -Id ([int]$current.ProcessId) -Force -ErrorAction SilentlyContinue
+    & $StopProcessById ([int]$current.ProcessId)
     $killed += ConvertTo-FootprintProcessIdentity $current
+    if ([int]$current.ProcessId -eq $rootPid) { $exactRootTerminationIssued = $true }
   }
-  $postKillDeadline = [DateTime]::UtcNow.AddSeconds($script:PostKillWaitSeconds)
+  $postKillDeadline = ([DateTime](& $UtcNow)).AddSeconds($script:PostKillWaitSeconds)
   do {
-    $remainingPlan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(Get-FootprintProcessSnapshot)
-    $identityLost = $identityLost -or $remainingPlan.identityLost
+    $remainingPlan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
+    foreach ($reusedProcessId in @($remainingPlan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
+    if (-not $exactRootTerminationIssued) { $identityLost = $identityLost -or $remainingPlan.identityLost }
     if ($remainingPlan.candidates.Count -eq 0) { break }
-    Start-Sleep -Milliseconds 100
-  } while ([DateTime]::UtcNow -lt $postKillDeadline)
+    & $Delay 100
+  } while ([DateTime](& $UtcNow) -lt $postKillDeadline)
   return [ordered]@{
     forced = $killed.Count -gt 0
     identityLost = $identityLost
     candidates = @($candidates | ForEach-Object ProcessId)
     remaining = @($remainingPlan.candidates | ForEach-Object ProcessId)
-    reusedProcessIds = $remainingPlan.reusedProcessIds
+    reusedProcessIds = @($reusedProcessIds | Sort-Object)
   }
+}
+
+function Stop-FootprintTree {
+  param(
+    [Parameter(Mandatory)][Collections.IDictionary]$RootIdentity,
+    [Parameter(Mandatory)][Collections.Generic.Dictionary[string, object]]$KnownProcessIdentities,
+    [ValidateRange(1, 30)][int]$GraceSeconds = 1
+  )
+  return Invoke-FootprintTreeCore `
+    $RootIdentity `
+    $KnownProcessIdentities `
+    $GraceSeconds `
+    { Get-FootprintProcessSnapshot } `
+    { param([int]$ProcessId) Stop-Process -Id $ProcessId -Force -ErrorAction Stop } `
+    { [DateTime]::UtcNow } `
+    { param([int]$Milliseconds) Start-Sleep -Milliseconds $Milliseconds }
 }
 
 Export-ModuleMember -Function @(
