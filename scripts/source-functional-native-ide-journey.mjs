@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { spawn, spawnSync } from "node:child_process";
 import {
   closeSync,
   existsSync,
@@ -14,6 +13,24 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { runBoundedTool } from "./source-functional-native-ide-bounded-tool.mjs";
+import {
+  createPlaywrightTransportReceipt,
+  resolvePlaywrightTransport,
+  runPlaywrightTool,
+  validatePlaywrightTransportReceipt,
+  validatePlaywrightTransport,
+} from "./source-functional-native-ide-transport.mjs";
+
+export {
+  processIdentityHelper,
+  runBoundedTool,
+} from "./source-functional-native-ide-bounded-tool.mjs";
+export {
+  resolvePlaywrightTransport,
+  runPlaywrightTool,
+  validatePlaywrightTransport,
+} from "./source-functional-native-ide-transport.mjs";
 
 export const JOURNEY_STEPS = Object.freeze([
   "Project",
@@ -226,6 +243,7 @@ function isWithin(root, candidate) {
 export function createJourneyReceipt({
   source,
   executable,
+  playwrightTransport,
   fixture,
   cdp,
   expectedOrigin,
@@ -235,6 +253,13 @@ export function createJourneyReceipt({
   observations,
   evidenceRoot,
 }) {
+  let admittedPlaywrightTransport;
+  try {
+    admittedPlaywrightTransport =
+      validatePlaywrightTransportReceipt(playwrightTransport);
+  } catch {
+    fail("receipt-invalid");
+  }
   if (
     !exactKeys(source, ["commit", "tree"]) ||
     !GIT_OBJECT.test(source.commit) ||
@@ -324,7 +349,7 @@ export function createJourneyReceipt({
     return { name, ...hashFile(artifact) };
   });
   return Object.freeze({
-    schemaVersion: 1,
+    schemaVersion: 3,
     completed: true,
     source: Object.freeze({ ...source }),
     sourceBinding: "collection-only",
@@ -333,6 +358,7 @@ export function createJourneyReceipt({
       bytes: executable.bytes,
       sha256: executable.sha256,
     }),
+    playwrightTransport: admittedPlaywrightTransport,
     fixture: Object.freeze({ sha256: fixture.sha256 }),
     cdp: Object.freeze({ ...cdp }),
     observations: Object.freeze({
@@ -471,155 +497,6 @@ export function decodeBoundedScreenshot(encoded) {
   return bytes;
 }
 
-export function processIdentityHelper(action, value) {
-  const helper = fileURLToPath(
-    new URL("./run-source-functional-native-ide-journey.ps1", import.meta.url),
-  );
-  const powershell = path.join(
-    process.env.SystemRoot ?? "C:\\Windows",
-    "System32",
-    "WindowsPowerShell",
-    "v1.0",
-    "powershell.exe",
-  );
-  const args = [
-    "-NoProfile",
-    "-NonInteractive",
-    "-File",
-    helper,
-    "-ToolIdentityAction",
-    action,
-  ];
-  if (action === "capture") args.push("-ToolProcessId", String(value));
-  else
-    args.push(
-      "-ToolIdentityJson",
-      Buffer.from(JSON.stringify(value), "utf8").toString("base64"),
-    );
-  const result = spawnSync(powershell, args, {
-    windowsHide: true,
-    encoding: "utf8",
-    timeout: 5000,
-    maxBuffer: 64 * 1024,
-  });
-  if (result.error || result.status !== 0) fail("tool-cleanup-unproven");
-  try {
-    return JSON.parse(result.stdout.trim());
-  } catch {
-    fail("tool-cleanup-unproven");
-  }
-}
-
-export function runBoundedTool(executable, args, deadline, cwd, deps = {}) {
-  const spawnTool = deps.spawn ?? spawn;
-  const maximumOutputBytes = deps.maxOutputBytes ?? 64 * 1024;
-  const remaining = deadline - Date.now();
-  if (remaining <= 0) fail("deadline-exhausted");
-  return new Promise((resolve, reject) => {
-    const child = spawnTool(executable, args, {
-      cwd,
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const chunks = [];
-    let bytes = 0;
-    let terminal = null;
-    let identity;
-    let settled = false;
-    let settlementTimer = null;
-    const quarantine = (category, cleanup = null) => {
-      const record = {
-        schemaVersion: 1,
-        observedPid: child.pid ?? null,
-        commandRole: String(deps.commandRole ?? "playwright-helper").slice(
-          0,
-          64,
-        ),
-        category,
-        capturedAtUtc: new Date().toISOString(),
-        deadlineUtc: new Date(deadline).toISOString(),
-        cleanup: cleanup
-          ? {
-              identityLost: Boolean(cleanup.identityLost),
-              remainingCount: Array.isArray(cleanup.remaining)
-                ? cleanup.remaining.length
-                : null,
-            }
-          : null,
-      };
-      if (deps.quarantine) deps.quarantine(record);
-      else if (existsSync(cwd) && !lstatSync(cwd).isSymbolicLink()) {
-        const target = path.join(
-          cwd,
-          `tool-cleanup-quarantine-${child.pid ?? "unknown"}-${Date.now()}.json`,
-        );
-        const encoded = `${JSON.stringify(record, null, 2)}\n`;
-        if (Buffer.byteLength(encoded, "utf8") > 4096)
-          fail("tool-cleanup-unproven");
-        writeFileSync(target, encoded, { flag: "wx" });
-      }
-    };
-    const finish = (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (settlementTimer) clearTimeout(settlementTimer);
-      child.stdout.removeListener("data", take);
-      child.stderr.removeListener("data", take);
-      if (terminal || code !== 0)
-        reject(new Error(`playwright-cli-${terminal ?? `exit-${code}`}`));
-      else resolve(Buffer.concat(chunks).toString("utf8"));
-    };
-    const terminate = (reason) => {
-      if (terminal) return;
-      terminal = reason;
-      let cleanup;
-      try {
-        cleanup = (
-          deps.cleanupIdentity ??
-          ((owned) => processIdentityHelper("cleanup", owned))
-        )(identity);
-      } catch {
-        cleanup = null;
-      }
-      if (!cleanup || cleanup.identityLost || cleanup.remaining?.length !== 0) {
-        terminal = "cleanup-unproven";
-        quarantine(reason, cleanup);
-      }
-      settlementTimer = setTimeout(() => finish(null), 250);
-    };
-    const take = (chunk) => {
-      if (terminal) return;
-      bytes += chunk.length;
-      if (bytes > maximumOutputBytes) {
-        terminate("output-oversize");
-        return;
-      }
-      chunks.push(Buffer.from(chunk));
-    };
-    child.stdout.on("data", take);
-    child.stderr.on("data", take);
-    try {
-      identity = (
-        deps.captureIdentity ?? ((pid) => processIdentityHelper("capture", pid))
-      )(child.pid);
-      if (!identity?.processId || !identity?.creationDate)
-        fail("tool-cleanup-unproven");
-    } catch {
-      terminal = "cleanup-unproven";
-      quarantine("identity-capture-failed");
-      settlementTimer = setTimeout(() => finish(null), 250);
-    }
-    child.on("error", (error) => {
-      terminate(`spawn-${error.code ?? "failed"}`);
-    });
-    const timer = setTimeout(() => {
-      terminate("timeout");
-    }, remaining);
-    child.on("close", finish);
-  });
-}
-
 function parsePlaywrightValue(output) {
   const trimmed = output.trim();
   try {
@@ -643,48 +520,46 @@ function parsePlaywrightValue(output) {
 
 export async function attachPlaywright(options, deadline, deps = {}) {
   const runTool = deps.runTool ?? runBoundedTool;
+  const transport =
+    deps.transport ?? resolvePlaywrightTransport(options.playwrightCli);
+  const invoke = (args, callDeadline, toolDeps = {}) =>
+    runPlaywrightTool(transport, args, callDeadline, options.output, {
+      runTool,
+      validateTransport: deps.validateTransport,
+      ...toolDeps,
+    });
   const session = `sage-ide-${process.pid}-${Date.now()}`;
   const base = ["--session", session];
-  await runTool(
-    options.playwrightCli,
+  await invoke(
     [...base, "attach", "--cdp", `http://127.0.0.1:${options.port}`],
     deadline,
-    options.output,
   );
   return {
+    transport,
     evaluate: async (expression) =>
       parsePlaywrightValue(
-        await runTool(
-          options.playwrightCli,
-          [...base, "eval", expression],
-          deadline,
-          options.output,
-        ),
+        await invoke([...base, "eval", expression], deadline),
       ),
     inspectTarget: async () =>
       parsePlaywrightValue(
-        await runTool(
-          options.playwrightCli,
+        await invoke(
           [
             ...base,
             "run-code",
             'async page => { const session = await page.context().newCDPSession(page); try { const { targetInfo } = await session.send("Target.getTargetInfo"); return { id: targetInfo.targetId, type: targetInfo.type, title: targetInfo.title, url: targetInfo.url }; } finally { await session.detach(); } }',
           ],
           deadline,
-          options.output,
         ),
       ),
     screenshot: async (name) => {
       const encoded = parsePlaywrightValue(
-        await runTool(
-          options.playwrightCli,
+        await invoke(
           [
             ...base,
             "run-code",
             "async page => (await page.screenshot()).toString('base64')",
           ],
           deadline,
-          options.output,
           { maxOutputBytes: Math.ceil((MAX_ARTIFACT_BYTES * 4) / 3) + 4096 },
         ),
       );
@@ -694,12 +569,7 @@ export async function attachPlaywright(options, deadline, deps = {}) {
       return target;
     },
     close: async () => {
-      await runTool(
-        options.playwrightCli,
-        [...base, "close"],
-        Date.now() + 5000,
-        options.output,
-      );
+      await invoke([...base, "close"], Date.now() + 5000);
     },
   };
 }
@@ -872,14 +742,9 @@ async function execute(options) {
   let diagnosticMessages = null;
   let savedContent = null;
   let diffContent = null;
-  let controlledTarget = null;
+  let controlledTarget;
   try {
-    controlledTarget = await revalidateAttachedPage(
-      options,
-      cdp,
-      admittedTarget,
-      deadline,
-    );
+    await revalidateAttachedPage(options, cdp, admittedTarget, deadline);
     for (let index = 0; index < UI_ACTIONS.length; index += 1) {
       const current = UI_ACTIONS[index];
       if ((await cdp.evaluate(current.expression)) !== true)
@@ -995,12 +860,14 @@ async function execute(options) {
         contentSha256: digest(diffContent),
       },
     };
+    validatePlaywrightTransport(cdp.transport);
     const receipt = createJourneyReceipt({
       source: { commit: options.sourceCommit, tree: options.sourceTree },
       executable: {
         path: options.executable,
         ...validateExecutableBinding(options.executable, executableBinding),
       },
+      playwrightTransport: createPlaywrightTransportReceipt(cdp.transport),
       fixture: { path: options.fixture, sha256: hashFixture(options.fixture) },
       cdp: {
         port: options.port,

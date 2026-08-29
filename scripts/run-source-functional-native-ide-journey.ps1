@@ -555,6 +555,64 @@ function Publish-PendingJourneyReceipt(
   [IO.File]::Move($PendingReceipt, $FinalReceipt)
 }
 
+function Invoke-ControlledNodeCollector(
+  [string]$Node,
+  [string[]]$Arguments
+) {
+  $codeLoadingNames = [Collections.Generic.HashSet[string]]::new(
+    [StringComparer]::OrdinalIgnoreCase
+  )
+  foreach ($name in @(
+    "NODE_OPTIONS",
+    "NODE_PATH",
+    "NODE_PRESERVE_SYMLINKS",
+    "NODE_PRESERVE_SYMLINKS_MAIN",
+    "NODE_REPL_EXTERNAL_MODULE"
+  )) { [void]$codeLoadingNames.Add($name) }
+  $snapshot = [Collections.Generic.List[object]]::new()
+  $snapshotBytes = 0
+  foreach ($entry in [Environment]::GetEnvironmentVariables("Process").GetEnumerator()) {
+    $name = [string]$entry.Key
+    if (-not ($name.StartsWith("NODE_", [StringComparison]::OrdinalIgnoreCase) -or
+              $name.StartsWith("PLAYWRIGHT_", [StringComparison]::OrdinalIgnoreCase) -or
+              $name.StartsWith("PW_", [StringComparison]::OrdinalIgnoreCase))) { continue }
+    $value = [string]$entry.Value
+    $snapshotBytes += [Text.Encoding]::UTF8.GetByteCount($name)
+    $snapshotBytes += [Text.Encoding]::UTF8.GetByteCount($value)
+    if ($snapshot.Count -ge 256 -or $name.Length -gt 256 -or
+        $value.Length -gt 32767 -or $snapshotBytes -gt 1MB) {
+      throw "Collector environment snapshot exceeds its bound."
+    }
+    [void]$snapshot.Add([pscustomobject]@{ name = $name; value = $value })
+    if ($codeLoadingNames.Contains($name) -and $value.Length -ne 0) {
+      throw "Collector code-loading environment is not allowed."
+    }
+  }
+  $exitCode = -1
+  try {
+    foreach ($entry in $snapshot) {
+      [Environment]::SetEnvironmentVariable($entry.name, $null, "Process")
+    }
+    & $Node @Arguments
+    $exitCode = $LASTEXITCODE
+  } finally {
+    foreach ($entry in [Environment]::GetEnvironmentVariables("Process").GetEnumerator()) {
+      $name = [string]$entry.Key
+      if ($name.StartsWith("NODE_", [StringComparison]::OrdinalIgnoreCase) -or
+          $name.StartsWith("PLAYWRIGHT_", [StringComparison]::OrdinalIgnoreCase) -or
+          $name.StartsWith("PW_", [StringComparison]::OrdinalIgnoreCase)) {
+        [Environment]::SetEnvironmentVariable($name, $null, "Process")
+      }
+    }
+    foreach ($entry in $snapshot) {
+      [Environment]::SetEnvironmentVariable($entry.name, $entry.value, "Process")
+    }
+  }
+  if ($exitCode -ne 0) {
+    throw "Native IDE journey runner failed; inspect machine-failure.json under EvidenceRoot."
+  }
+}
+
 if ($ToolIdentityAction) {
   Import-Module (Join-Path $PSScriptRoot "footprint/ProcessIdentity.psm1") -Force
   if ($ToolIdentityAction -eq "capture") {
@@ -659,8 +717,7 @@ try {
     "--receipt-name", (Split-Path -Leaf $pendingReceipt),
     "--deadline-ms", "$DeadlineMs"
   )
-  & $node @arguments
-  if ($LASTEXITCODE -ne 0) { throw "Native IDE journey runner failed; inspect machine-failure.json under EvidenceRoot." }
+  Invoke-ControlledNodeCollector $node $arguments
   if (-not (Test-Path -LiteralPath $pendingReceipt -PathType Leaf)) { throw "Native IDE journey did not retain its pending machine receipt." }
 } catch {
   $journeyFailure = $_

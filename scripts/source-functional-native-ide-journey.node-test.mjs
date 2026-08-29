@@ -10,7 +10,9 @@ import {
   renameSync,
   readdirSync,
   readFileSync,
+  symlinkSync,
   truncateSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,8 +31,11 @@ import {
   parseJourneyArguments,
   processIdentityHelper,
   revalidateControlledCdpTarget,
+  resolvePlaywrightTransport,
   runBoundedTool,
+  runPlaywrightTool,
   validateExecutableBinding,
+  validatePlaywrightTransport,
   validateCdpTarget,
   writePendingJourneyReceipt,
 } from "./source-functional-native-ide-journey.mjs";
@@ -102,6 +107,7 @@ test("native IDE receipt binds a completed ordered journey and artifact hashes",
       },
       expectedOrigin: "http://127.0.0.1:1420/",
       runtime: runtimeReceipt(),
+      playwrightTransport: playwrightTransportReceipt(),
       observations: observed(),
       milestones: JOURNEY_STEPS.map((step, index) => ({
         step,
@@ -110,6 +116,7 @@ test("native IDE receipt binds a completed ordered journey and artifact hashes",
       artifacts: [screenshot, log],
     });
     assert.equal(receipt.completed, true);
+    assert.equal(receipt.schemaVersion, 3);
     assert.deepEqual(
       receipt.milestones.map(({ step }) => step),
       JOURNEY_STEPS,
@@ -119,10 +126,47 @@ test("native IDE receipt binds a completed ordered journey and artifact hashes",
     assert.equal("path" in receipt.artifacts[0], false);
     assert.equal(receipt.sourceBinding, "collection-only");
     assert.deepEqual(receipt.runtime, runtimeReceipt());
+    assert.deepEqual(receipt.playwrightTransport, playwrightTransportReceipt());
     assert.deepEqual(Object.keys(receipt.runtime).sort(), [
       "frontendReady",
       "mode",
     ]);
+    assert.throws(
+      () =>
+        createJourneyReceipt({
+          source: { commit: "a".repeat(40), tree: "b".repeat(40) },
+          executable: {
+            path: "C:\\candidate\\sage.exe",
+            bytes: 123,
+            sha256: "c".repeat(64),
+          },
+          playwrightTransport: {
+            ...playwrightTransportReceipt(),
+            packages: {
+              ...playwrightTransportReceipt().packages,
+              cli: {
+                ...playwrightTransportReceipt().packages.cli,
+                fileCount: 0,
+              },
+            },
+          },
+          fixture: { path: "C:\\fixture", sha256: "d".repeat(64) },
+          cdp: {
+            port: 9229,
+            targetId: "page-1",
+            origin: "http://127.0.0.1:1420/",
+          },
+          expectedOrigin: "http://127.0.0.1:1420/",
+          runtime: runtimeReceipt(),
+          observations: observed(),
+          milestones: JOURNEY_STEPS.map((step, index) => ({
+            step,
+            ordinal: index + 1,
+          })),
+          artifacts: [screenshot, log],
+        }),
+      /journey-receipt-invalid/u,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -148,6 +192,7 @@ test("native IDE receipt refuses reordered milestones and evidence outside its r
       },
       expectedOrigin: "http://127.0.0.1:1420/",
       runtime: runtimeReceipt(),
+      playwrightTransport: playwrightTransportReceipt(),
       artifacts: [artifact],
       evidenceRoot: root,
       observations: observed(),
@@ -204,6 +249,7 @@ test("native IDE receipt refuses unobserved save, diagnostic, and Diff claims", 
           },
           expectedOrigin: "http://127.0.0.1:1420/",
           runtime: runtimeReceipt(),
+          playwrightTransport: playwrightTransportReceipt(),
           milestones: JOURNEY_STEPS.map((step, index) => ({
             step,
             ordinal: index + 1,
@@ -331,6 +377,8 @@ test("native IDE journey binds the Playwright-controlled page to the stable admi
     url: "http://127.0.0.1:1420/",
   };
   const screenshotBytes = Buffer.from("native-ide-screenshot");
+  const transport = playwrightExecutionTransport();
+  let validations = 0;
   const page = {
     context: () => ({
       newCDPSession: async (actualPage) => {
@@ -363,10 +411,20 @@ test("native IDE journey binds the Playwright-controlled page to the stable admi
       },
       Date.now() + 5000,
       {
-        runTool: async (_tool, args) => {
-          calls.push(args);
-          if (!args.includes("run-code")) return "";
-          const payload = args.at(-1);
+        transport,
+        validateTransport: (actual) => {
+          assert.equal(actual, transport);
+          validations += 1;
+          return actual;
+        },
+        runTool: async (tool, args, _deadline, _cwd, toolOptions) => {
+          assert.equal(tool, transport.node.path);
+          assert.equal(args[0], transport.entryPath);
+          assert.equal(toolOptions.shell, undefined);
+          const playwrightArgs = args.slice(1);
+          calls.push(playwrightArgs);
+          if (!playwrightArgs.includes("run-code")) return "";
+          const payload = playwrightArgs.at(-1);
           assert.match(payload, /^async page =>/u);
           const callback = Function(`"use strict"; return (${payload});`)();
           assert.equal(typeof callback, "function");
@@ -383,6 +441,7 @@ test("native IDE journey binds the Playwright-controlled page to the stable admi
     assert.match(runCodeCalls[0].at(-1), /newCDPSession\(page\)/u);
     assert.match(runCodeCalls[0].at(-1), /Target\.getTargetInfo/u);
     assert.match(runCodeCalls[1].at(-1), /page\.screenshot\(\)/u);
+    assert.equal(validations, 4);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -589,6 +648,468 @@ test("bounded Playwright helper fails and quarantines when descendant cleanup is
   }
 });
 
+test("Windows npm Playwright transport invokes the authenticated JS entry byte-exactly through Node", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-playwright-transport-"));
+  const environmentKeys = [
+    "NoDe_BeNiGn_PrElOaD",
+    "PlAyWrIgHt_PrElOaD",
+    "pW_pReLoAd",
+  ];
+  const previousEnvironment = new Map(
+    environmentKeys.map((name) => [name, process.env[name]]),
+  );
+  try {
+    const fixture = writeNpmPlaywrightFixture(
+      path.join(root, "npm graph with spaces"),
+    );
+    let directCaptureCalls = 0;
+    let directCleanupCalls = 0;
+    await assert.rejects(
+      runBoundedTool(
+        fixture.shim,
+        ["direct-cmd-must-not-run"],
+        Date.now() + 5000,
+        root,
+        {
+          captureIdentity: () => {
+            directCaptureCalls += 1;
+          },
+          cleanupIdentity: () => {
+            directCleanupCalls += 1;
+          },
+        },
+      ),
+      /playwright-cli-spawn-(?:EINVAL-before-pid|without-pid)/u,
+    );
+    assert.equal(
+      readdirSync(root).some((name) =>
+        name.startsWith("tool-cleanup-quarantine-"),
+      ),
+      false,
+    );
+    assert.equal(directCaptureCalls, 0);
+    assert.equal(directCleanupCalls, 0);
+
+    const transport = resolvePlaywrightTransport(fixture.shim);
+    assert.deepEqual(Object.keys(transport.packages), [
+      "cli",
+      "playwright",
+      "playwrightCore",
+    ]);
+    for (const packageIdentity of Object.values(transport.packages)) {
+      assert.ok(packageIdentity.fileCount >= 2);
+      assert.ok(packageIdentity.bytes > 0);
+      assert.match(packageIdentity.treeSha256, /^[a-f0-9]{64}$/u);
+    }
+    const expected = [
+      "space value",
+      "&|<>^%!",
+      "double \"quote\" and single 'quote'",
+    ];
+    const sentinel = path.join(root, "controlled-env-sentinel.txt");
+    const preload = path.join(root, "benign-preload.cjs");
+    writeFileSync(
+      preload,
+      `require("node:fs").writeFileSync(${JSON.stringify(sentinel)}, "loaded");\n`,
+    );
+    for (const name of environmentKeys) process.env[name] = preload;
+    let capturedIdentity;
+    let spawned;
+    const output = await runPlaywrightTool(
+      transport,
+      expected,
+      Date.now() + 5000,
+      root,
+      {
+        spawn: (executable, args, options) => {
+          spawned = { executable, args, options };
+          return spawn(executable, args, options);
+        },
+        captureIdentity: (pid) => {
+          capturedIdentity = processIdentityHelper("capture", pid);
+          return capturedIdentity;
+        },
+      },
+    );
+    assert.equal(spawned.executable, process.execPath);
+    assert.deepEqual(spawned.args, [fixture.entry, ...expected]);
+    assert.equal(spawned.options.shell, false);
+    assert.ok(spawned.options.env);
+    assert.equal(
+      Object.keys(spawned.options.env).some((name) =>
+        /^(?:NODE_|PLAYWRIGHT_|PW_)/iu.test(name),
+      ),
+      false,
+    );
+    assert.equal(spawned.options.env.SYSTEMROOT, process.env.SystemRoot);
+    assert.deepEqual(JSON.parse(output), expected);
+    assert.equal(existsSync(sentinel), false);
+    assert.equal(capturedIdentity.executablePath, process.execPath);
+    const cleanup = processIdentityHelper("cleanup", capturedIdentity);
+    assert.equal(cleanup.identityLost, false);
+    assert.deepEqual(cleanup.remaining, []);
+  } finally {
+    for (const [name, value] of previousEnvironment) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Windows Playwright launch rejects mixed-case Node preload configuration before spawn", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-playwright-env-red-"));
+  const poisonKey = "NoDe_OpTiOnS";
+  const previous = process.env[poisonKey];
+  try {
+    const fixture = writeNpmPlaywrightFixture(path.join(root, "graph"));
+    const transport = resolvePlaywrightTransport(fixture.shim);
+    const sentinel = path.join(root, "preload-sentinel.txt");
+    const preload = path.join(root, "valid-preload.cjs");
+    writeFileSync(
+      preload,
+      `require("node:fs").writeFileSync(${JSON.stringify(sentinel)}, "loaded");\n`,
+    );
+    process.env[poisonKey] = `--require=${preload}`;
+    let spawnCalls = 0;
+    await assert.rejects(
+      async () =>
+        runPlaywrightTool(
+          transport,
+          ["must-not-launch"],
+          Date.now() + 5000,
+          root,
+          {
+            spawn: () => {
+              spawnCalls += 1;
+              throw Object.assign(new Error("unexpected spawn"), {
+                code: "UNEXPECTED",
+              });
+            },
+          },
+        ),
+      /journey-tool-environment-invalid/u,
+    );
+    assert.equal(spawnCalls, 0);
+    assert.equal(existsSync(sentinel), false);
+  } finally {
+    if (previous === undefined) delete process.env[poisonKey];
+    else process.env[poisonKey] = previous;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Windows npm Playwright transport revalidates an imported CLI sibling", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-playwright-sibling-"));
+  try {
+    const fixture = writeNpmPlaywrightFixture(path.join(root, "graph"));
+    const admitted = resolvePlaywrightTransport(fixture.shim);
+    writeFileSync(fixture.skillCheck, "export const admitted = false;\n");
+    assert.throws(
+      () => validatePlaywrightTransport(admitted),
+      /journey-playwright-transport-mutated/u,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Windows npm Playwright transport revalidates playwright-core runtime files", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-playwright-core-"));
+  try {
+    const fixture = writeNpmPlaywrightFixture(path.join(root, "graph"));
+    const admitted = resolvePlaywrightTransport(fixture.shim);
+    writeFileSync(
+      fixture.coreRuntime,
+      "module.exports = { tampered: true };\n",
+    );
+    assert.throws(
+      () => validatePlaywrightTransport(admitted),
+      /journey-playwright-transport-mutated/u,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Windows npm Playwright transport rejects post-admission add, delete, and reparse changes", () => {
+  const changes = [
+    {
+      name: "empty-directory",
+      mutate: ({ packageRoot }) =>
+        mkdirSync(path.join(packageRoot, "empty-added")),
+    },
+    {
+      name: "add",
+      mutate: ({ packageRoot }) =>
+        writeFileSync(path.join(packageRoot, "added.js"), "export {};\n"),
+    },
+    {
+      name: "delete",
+      mutate: ({ skillCheck }) => unlinkSync(skillCheck),
+    },
+    {
+      name: "reparse",
+      mutate: ({ playwrightRoot }) => {
+        const external = `${playwrightRoot}-outside`;
+        renameSync(playwrightRoot, external);
+        symlinkSync(external, playwrightRoot, "junction");
+      },
+    },
+  ];
+  for (const change of changes) {
+    const root = mkdtempSync(
+      path.join(tmpdir(), `sage-playwright-${change.name}-`),
+    );
+    try {
+      const fixture = writeNpmPlaywrightFixture(path.join(root, "graph"));
+      const admitted = resolvePlaywrightTransport(fixture.shim);
+      change.mutate(fixture);
+      assert.throws(
+        () => validatePlaywrightTransport(admitted),
+        /journey-playwright-transport-(?:invalid|mutated)/u,
+        change.name,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("Windows npm Playwright transport rejects an in-flight package-tree addition", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-playwright-in-flight-"));
+  try {
+    const fixture = writeNpmPlaywrightFixture(path.join(root, "graph"));
+    let added = false;
+    assert.throws(
+      () =>
+        resolvePlaywrightTransport(fixture.shim, {
+          afterRead: ({ packageName, relativePath }) => {
+            if (
+              packageName === "playwright-core" &&
+              relativePath === "package.json" &&
+              !added
+            ) {
+              added = true;
+              writeFileSync(
+                path.join(fixture.packageRoot, "in-flight.js"),
+                "export {};\n",
+              );
+            }
+          },
+        }),
+      /journey-playwright-transport-mutated/u,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Windows npm Playwright transport rejects depth, entry-count, and relative-path budget overflow", () => {
+  const limits = [
+    ["depth", { maxDepth: 1 }],
+    ["entries", { maxEntries: 2 }],
+    ["relative-path", { maxRelativePathBytes: 8 }],
+    ["total-relative-paths", { maxTotalRelativePathBytes: 16 }],
+  ];
+  for (const [name, treeLimits] of limits) {
+    const root = mkdtempSync(path.join(tmpdir(), `sage-playwright-${name}-`));
+    try {
+      const fixture = writeNpmPlaywrightFixture(path.join(root, "graph"));
+      if (name === "depth")
+        mkdirSync(path.join(fixture.packageRoot, "deep", "deeper"), {
+          recursive: true,
+        });
+      assert.throws(
+        () => resolvePlaywrightTransport(fixture.shim, { limits: treeLimits }),
+        /journey-playwright-transport-invalid/u,
+        name,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("Windows npm Playwright transport stops an oversized directory at budget plus one reads", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-playwright-iterator-"));
+  try {
+    const fixture = writeNpmPlaywrightFixture(path.join(root, "graph"));
+    let reads = 0;
+    let closes = 0;
+    assert.throws(
+      () =>
+        resolvePlaywrightTransport(fixture.shim, {
+          limits: { maxEntries: 3 },
+          openDirectory: () => ({
+            readSync: () => {
+              reads += 1;
+              return { name: "package.json" };
+            },
+            closeSync: () => {
+              closes += 1;
+            },
+          }),
+        }),
+      /journey-playwright-transport-invalid/u,
+    );
+    assert.ok(reads <= 4, `directory read ${reads} entries`);
+    assert.equal(reads, 4);
+    assert.equal(closes, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Windows npm Playwright transport rejects graph tampering, escape, reparse, oversize, and mutation", () => {
+  const cases = [
+    {
+      name: "shim",
+      mutate: ({ shim }) => writeFileSync(shim, "@echo off\r\nnode %*\r\n"),
+      error: /journey-playwright-transport-invalid/u,
+    },
+    {
+      name: "package-name",
+      mutate: ({ manifest }) =>
+        mutateJsonFile(manifest, (value) => ({
+          ...value,
+          name: "not-playwright",
+        })),
+      error: /journey-playwright-transport-invalid/u,
+    },
+    {
+      name: "package-bin",
+      mutate: ({ manifest }) =>
+        mutateJsonFile(manifest, (value) => ({
+          ...value,
+          bin: { "playwright-cli": "../escape.js" },
+        })),
+      error: /journey-playwright-transport-invalid/u,
+    },
+    {
+      name: "cli-dependency-version",
+      mutate: ({ manifest }) =>
+        mutateJsonFile(manifest, (value) => ({
+          ...value,
+          dependencies: { ...value.dependencies, playwright: "9.9.9" },
+        })),
+      error: /journey-playwright-transport-invalid/u,
+    },
+    {
+      name: "core-dependency-version",
+      mutate: ({ playwrightManifest }) =>
+        mutateJsonFile(playwrightManifest, (value) => ({
+          ...value,
+          dependencies: { "playwright-core": "9.9.9" },
+        })),
+      error: /journey-playwright-transport-invalid/u,
+    },
+    {
+      name: "unbound-windows-dependency",
+      mutate: ({ manifest }) =>
+        mutateJsonFile(manifest, (value) => ({
+          ...value,
+          dependencies: { ...value.dependencies, unbound: "1.0.0" },
+        })),
+      error: /journey-playwright-transport-invalid/u,
+    },
+    {
+      name: "bundled-windows-dependency",
+      mutate: ({ manifest }) =>
+        mutateJsonFile(manifest, (value) => ({
+          ...value,
+          bundledDependencies: ["unbound"],
+        })),
+      error: /journey-playwright-transport-invalid/u,
+    },
+    {
+      name: "entry-oversize",
+      mutate: ({ entry }) => truncateSync(entry, 8 * 1024 * 1024 + 1),
+      error: /journey-playwright-transport-invalid/u,
+    },
+    {
+      name: "package-reparse",
+      mutate: ({ entry }) => {
+        const packageRoot = path.dirname(entry);
+        const external = path.join(
+          path.dirname(path.dirname(packageRoot)),
+          "outside-cli",
+        );
+        renameSync(packageRoot, external);
+        symlinkSync(external, packageRoot, "junction");
+      },
+      error: /journey-playwright-transport-invalid/u,
+    },
+  ];
+  for (const current of cases) {
+    const root = mkdtempSync(
+      path.join(tmpdir(), `sage-playwright-${current.name}-`),
+    );
+    try {
+      const fixture = writeNpmPlaywrightFixture(path.join(root, "graph"));
+      current.mutate(fixture);
+      assert.throws(
+        () => resolvePlaywrightTransport(fixture.shim),
+        current.error,
+        current.name,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  const root = mkdtempSync(path.join(tmpdir(), "sage-playwright-mutation-"));
+  try {
+    const fixture = writeNpmPlaywrightFixture(path.join(root, "graph"));
+    let mutated = false;
+    assert.throws(
+      () =>
+        resolvePlaywrightTransport(fixture.shim, {
+          afterRead: ({ role }) => {
+            if (role === "entry" && !mutated) {
+              mutated = true;
+              truncateSync(fixture.entry, 1);
+            }
+          },
+        }),
+      /journey-playwright-transport-mutated/u,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+
+  const revalidationRoot = mkdtempSync(
+    path.join(tmpdir(), "sage-playwright-revalidation-"),
+  );
+  try {
+    const fixture = writeNpmPlaywrightFixture(
+      path.join(revalidationRoot, "graph"),
+    );
+    const transport = resolvePlaywrightTransport(fixture.shim);
+    writeFileSync(fixture.entry, "process.exit(9);\n");
+    let spawnCalls = 0;
+    assert.throws(
+      () =>
+        runPlaywrightTool(
+          transport,
+          ["must-not-spawn"],
+          Date.now() + 5000,
+          revalidationRoot,
+          {
+            spawn: () => {
+              spawnCalls += 1;
+              throw new Error("must not spawn");
+            },
+          },
+        ),
+      /journey-playwright-transport-mutated/u,
+    );
+    assert.equal(spawnCalls, 0);
+  } finally {
+    rmSync(revalidationRoot, { recursive: true, force: true });
+  }
+});
+
 test("Windows ProcessIdentity bridge cleans an authenticated disposable root and descendant to zero", async () => {
   const powershell = path.join(
     process.env.SystemRoot,
@@ -689,6 +1210,123 @@ test("Windows PowerShell 5.1 normal wrapper accepts canonical SourceRoot and rej
   }
   assert.equal(processSnapshot(), before);
   assert.equal(existsSync(evidence), false);
+});
+
+test("Windows wrapper rejects a mixed-case Node preload before invoking the collector", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-wrapper-env-poison-"));
+  const powershell = path.join(
+    process.env.SystemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  const wrapper = path.resolve(
+    "scripts",
+    "run-source-functional-native-ide-journey.ps1",
+  );
+  try {
+    const preloadSentinel = path.join(root, "preload-sentinel.txt");
+    const collectorSentinel = path.join(root, "collector-sentinel.txt");
+    const preload = path.join(root, "preload.cjs");
+    const collector = path.join(root, "collector.mjs");
+    writeFileSync(
+      preload,
+      `require("node:fs").writeFileSync(${JSON.stringify(preloadSentinel)}, "loaded");\n`,
+    );
+    writeFileSync(
+      collector,
+      `import {writeFileSync} from "node:fs";writeFileSync(${JSON.stringify(collectorSentinel)},"ran");\n`,
+    );
+    const quote = (value) => `'${value.replaceAll("'", "''")}'`;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-ControlledNodeCollector'},$true);if($null-eq$fn){throw 'collector environment helper missing'};Invoke-Expression $fn.Extent.Text;$failure=$null;try{Invoke-ControlledNodeCollector ${quote(process.execPath)} @(${quote(collector)})}catch{$failure=$_.Exception.Message};[ordered]@{failure=$failure;restored=[Environment]::GetEnvironmentVariable('NODE_OPTIONS','Process');preload=(Test-Path -LiteralPath ${quote(preloadSentinel)});collector=(Test-Path -LiteralPath ${quote(collectorSentinel)})}|ConvertTo-Json -Compress`;
+    const poison = `--require=${preload}`;
+    const result = spawnSync(
+      powershell,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        Buffer.from(source, "utf16le").toString("base64"),
+      ],
+      {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 10000,
+        env: { ...process.env, NoDe_OpTiOnS: poison },
+      },
+    );
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.deepEqual(JSON.parse(result.stdout.trim()), {
+      failure: "Collector code-loading environment is not allowed.",
+      restored: poison,
+      preload: false,
+      collector: false,
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Windows wrapper excludes benign Node and Playwright variables and restores them after collector failure", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-wrapper-env-restore-"));
+  const powershell = path.join(
+    process.env.SystemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  const wrapper = path.resolve(
+    "scripts",
+    "run-source-functional-native-ide-journey.ps1",
+  );
+  try {
+    const observation = path.join(root, "collector-environment.json");
+    const collector = path.join(root, "collector.mjs");
+    writeFileSync(
+      collector,
+      `import {writeFileSync} from "node:fs";const excluded=Object.fromEntries(Object.entries(process.env).filter(([name])=>/^(?:NODE_|PLAYWRIGHT_|PW_)/iu.test(name)));writeFileSync(${JSON.stringify(observation)},JSON.stringify({excluded,sage:process.env.SAGE_PROJECT_ROOT??null}));process.exit(7);\n`,
+    );
+    const quote = (value) => `'${value.replaceAll("'", "''")}'`;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-ControlledNodeCollector'},$true);if($null-eq$fn){throw 'collector environment helper missing'};Invoke-Expression $fn.Extent.Text;$failure=$null;try{Invoke-ControlledNodeCollector ${quote(process.execPath)} @(${quote(collector)})}catch{$failure=$_.Exception.Message};[ordered]@{failure=$failure;node=[Environment]::GetEnvironmentVariable('NODE_BENIGN_VALUE','Process');playwright=[Environment]::GetEnvironmentVariable('PLAYWRIGHT_BENIGN_VALUE','Process');pw=[Environment]::GetEnvironmentVariable('PW_BENIGN_VALUE','Process');sage=[Environment]::GetEnvironmentVariable('SAGE_PROJECT_ROOT','Process')}|ConvertTo-Json -Compress`;
+    const result = spawnSync(
+      powershell,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        Buffer.from(source, "utf16le").toString("base64"),
+      ],
+      {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 10000,
+        env: {
+          ...process.env,
+          NoDe_BeNiGn_VaLuE: "node-value",
+          PlAyWrIgHt_BeNiGn_VaLuE: "playwright-value",
+          pW_BeNiGn_VaLuE: "pw-value",
+          SAGE_PROJECT_ROOT: "sage-project-root",
+        },
+      },
+    );
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.deepEqual(JSON.parse(readFileSync(observation, "utf8")), {
+      excluded: {},
+      sage: "sage-project-root",
+    });
+    assert.deepEqual(JSON.parse(result.stdout.trim()), {
+      failure:
+        "Native IDE journey runner failed; inspect machine-failure.json under EvidenceRoot.",
+      node: "node-value",
+      playwright: "playwright-value",
+      pw: "pw-value",
+      sage: "sage-project-root",
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("Windows PowerShell Invoke-Git preserves clean empty stdout, dirty status, and command failure", () => {
@@ -1298,6 +1936,7 @@ test("Windows Vite port preoccupation is rejected before ownership", async () =>
     { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
   );
   let occupiedIdentity;
+  let cleanupFailure;
   try {
     await waitForText(occupied.stdout, "ready", 5000);
     occupiedIdentity = processIdentityHelper("capture", occupied.pid);
@@ -1327,8 +1966,9 @@ test("Windows Vite port preoccupation is rejected before ownership", async () =>
       failures.push(error);
     }
     if (failures.length)
-      throw new AggregateError(failures, "fixture cleanup failed");
+      cleanupFailure = new AggregateError(failures, "fixture cleanup failed");
   }
+  if (cleanupFailure) throw cleanupFailure;
 });
 
 test("Windows frontend readiness rejects an ambient listener race outside the owned tree", async () => {
@@ -1358,6 +1998,7 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
     { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
   );
   let ambientIdentity;
+  let cleanupFailure;
   try {
     await waitForText(ambient.stdout, "ready", 5000);
     ambientIdentity = processIdentityHelper("capture", ambient.pid);
@@ -1405,8 +2046,9 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
     }
     rmSync(root, { recursive: true, force: true });
     if (failures.length)
-      throw new AggregateError(failures, "fixture cleanup failed");
+      cleanupFailure = new AggregateError(failures, "fixture cleanup failed");
   }
+  if (cleanupFailure) throw cleanupFailure;
 });
 
 test("Windows Vite cleanup quarantines identity loss without killing the mismatched PID", () => {
@@ -1626,6 +2268,121 @@ test("capture failure and identity-loss responses fail with bounded quarantine r
     }
   }
 });
+
+function writeNpmPlaywrightFixture(root) {
+  const nodeModules = path.join(root, "node_modules");
+  const bin = path.join(nodeModules, ".bin");
+  const packageRoot = path.join(nodeModules, "@playwright", "cli");
+  const playwrightRoot = path.join(nodeModules, "playwright");
+  const coreRoot = path.join(nodeModules, "playwright-core");
+  mkdirSync(bin, { recursive: true });
+  mkdirSync(packageRoot, { recursive: true });
+  mkdirSync(playwrightRoot, { recursive: true });
+  mkdirSync(coreRoot, { recursive: true });
+  const shim = path.join(bin, "playwright-cli.cmd");
+  const manifest = path.join(packageRoot, "package.json");
+  const entry = path.join(packageRoot, "playwright-cli.js");
+  const skillCheck = path.join(packageRoot, "skillCheck.js");
+  const playwrightManifest = path.join(playwrightRoot, "package.json");
+  const playwrightRuntime = path.join(playwrightRoot, "index.js");
+  const coreManifest = path.join(coreRoot, "package.json");
+  const coreRuntime = path.join(coreRoot, "index.js");
+  writeFileSync(
+    shim,
+    '@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\r\nIF EXIST "%dp0%\\node.exe" (\r\n  SET "_prog=%dp0%\\node.exe"\r\n) ELSE (\r\n  SET "_prog=node"\r\n  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n)\r\n\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\..\\@playwright\\cli\\playwright-cli.js" %*\r\n',
+  );
+  writeFileSync(
+    manifest,
+    `${JSON.stringify(
+      {
+        name: "@playwright/cli",
+        version: "1.2.3",
+        bin: { "playwright-cli": "playwright-cli.js" },
+        dependencies: { playwright: "1.2.3", "playwright-core": "1.2.3" },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  writeFileSync(
+    entry,
+    "const preload=process.env.NODE_BENIGN_PRELOAD??process.env.PLAYWRIGHT_PRELOAD??process.env.PW_PRELOAD;if(preload)require(preload);process.stdout.write(JSON.stringify(process.argv.slice(2)));setTimeout(()=>{},2000);\n",
+  );
+  writeFileSync(skillCheck, "export const admitted = true;\n");
+  writeFileSync(
+    playwrightManifest,
+    `${JSON.stringify(
+      {
+        name: "playwright",
+        version: "1.2.3",
+        dependencies: { "playwright-core": "1.2.3" },
+        optionalDependencies: { fsevents: "2.3.2" },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  writeFileSync(playwrightRuntime, "module.exports = {};\n");
+  writeFileSync(
+    coreManifest,
+    `${JSON.stringify({ name: "playwright-core", version: "1.2.3" }, null, 2)}\n`,
+  );
+  writeFileSync(coreRuntime, "module.exports = {};\n");
+  return {
+    nodeModules,
+    packageRoot,
+    playwrightRoot,
+    coreRoot,
+    shim,
+    manifest,
+    entry,
+    skillCheck,
+    playwrightManifest,
+    playwrightRuntime,
+    coreManifest,
+    coreRuntime,
+  };
+}
+
+function mutateJsonFile(file, mutate) {
+  const value = JSON.parse(readFileSync(file, "utf8"));
+  writeFileSync(file, `${JSON.stringify(mutate(value), null, 2)}\n`);
+}
+
+function playwrightTransportReceipt() {
+  const identity = (name, digest) => ({
+    path: `C:\\tools\\${name}`,
+    bytes: 100 + digest.charCodeAt(0),
+    sha256: digest.repeat(64),
+  });
+  return {
+    node: identity("node.exe", "a"),
+    shim: identity("playwright-cli.cmd", "b"),
+    packages: {
+      cli: packageTree("@playwright/cli", "cli", "c"),
+      playwright: packageTree("playwright", "playwright", "d"),
+      playwrightCore: packageTree("playwright-core", "playwright-core", "e"),
+    },
+  };
+}
+
+function packageTree(name, directory, digest) {
+  return {
+    root: `C:\\tools\\node_modules\\${directory}`,
+    name,
+    version: "1.2.3",
+    fileCount: 3,
+    bytes: 300 + digest.charCodeAt(0),
+    treeSha256: digest.repeat(64),
+  };
+}
+
+function playwrightExecutionTransport() {
+  return {
+    ...playwrightTransportReceipt(),
+    entryPath: "C:\\tools\\node_modules\\@playwright\\cli\\playwright-cli.js",
+  };
+}
 
 function observed() {
   return {
