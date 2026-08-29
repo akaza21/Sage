@@ -204,9 +204,6 @@ function Stop-FootprintLaunchedProcessObject {
   } catch {
     $boundaryError = $_.Exception.Message
   }
-  if ($initiallyExited) {
-    return [ordered]@{ forced = $false; exited = $true; treeBoundaryVerified = $false }
-  }
   $expectedCreationDate = $null
   try {
     $expectedCreationDate = ConvertTo-FootprintCreationIdentity $Process.StartTime
@@ -216,6 +213,16 @@ function Stop-FootprintLaunchedProcessObject {
   $rootIdentity = $null
   $snapshotMatched = $false
   $identityConflict = $false
+  $processObjectPathMatched = $false
+  try {
+    $processObjectPathMatched = [string]::Equals(
+      [IO.Path]::GetFullPath([string]$Process.Path),
+      [IO.Path]::GetFullPath($ExpectedExecutablePath),
+      [StringComparison]::OrdinalIgnoreCase
+    )
+  } catch {
+    $boundaryError = $_.Exception.Message
+  }
   try {
     if ($null -eq $ProcessRows) { $ProcessRows = @(Get-FootprintProcessSnapshot) }
     if ($ProcessRows.Count -gt $script:MaxProcessSnapshotRows) {
@@ -226,11 +233,36 @@ function Stop-FootprintLaunchedProcessObject {
         (Test-FootprintProcessIdentity $rootRows[0] $ExpectedExecutablePath $expectedCreationDate)) {
       $rootIdentity = ConvertTo-FootprintProcessIdentity $rootRows[0]
       $snapshotMatched = $true
+    } elseif ($expectedCreationDate -and $rootRows.Count -gt 0) {
+      $identityConflict = $true
+    } elseif ($initiallyExited -and $expectedCreationDate) {
+      $rememberedRoot = @($KnownProcessIdentities.Values | Where-Object {
+          [int]$_.processId -eq [int]$Process.Id -and
+          (Test-FootprintProcessIdentity `
+            ([pscustomobject]@{
+              ProcessId = $_.processId
+              ExecutablePath = $_.executablePath
+              CreationDate = $_.creationDate
+            }) `
+            $ExpectedExecutablePath `
+            $expectedCreationDate)
+        }) | Select-Object -First 1
+      if ($null -ne $rememberedRoot) {
+        $rootIdentity = $rememberedRoot
+        $snapshotMatched = $true
+      } elseif ($processObjectPathMatched) {
+        $rootIdentity = ConvertTo-FootprintProcessIdentity ([pscustomobject]@{
+            ProcessId = $Process.Id
+            ExecutablePath = $ExpectedExecutablePath
+            CreationDate = $expectedCreationDate
+          })
+        $snapshotMatched = $true
+      }
+    }
+    if ($null -ne $rootIdentity) {
       foreach ($row in @(Get-FootprintDescendants ([int]$rootIdentity.processId) $ProcessRows)) {
         [void](Add-FootprintRememberedIdentity $KnownProcessIdentities $row)
       }
-    } elseif ($expectedCreationDate -and $rootRows.Count -gt 0) {
-      $identityConflict = $true
     }
   } catch {
     $boundaryError = $_.Exception.Message

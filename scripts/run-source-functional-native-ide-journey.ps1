@@ -117,45 +117,260 @@ function Assert-FrontendPortAvailable([Collections.IDictionary]$Contract) {
   }
 }
 
-function New-OwnedRuntime([System.Diagnostics.Process]$Process, [string]$ExecutablePath) {
-  $identity = Get-FootprintLaunchIdentity $Process $ExecutablePath
+function New-OwnedRuntime(
+  [System.Diagnostics.Process]$Process,
+  [string]$ExecutablePath,
+  [object]$Identity
+) {
+  foreach ($property in @("processId", "executablePath", "creationDate")) {
+    $hasProperty = $null -ne $Identity -and (
+      ($Identity -is [Collections.IDictionary] -and $Identity.Contains($property)) -or
+      ($null -ne $Identity.PSObject.Properties[$property])
+    )
+    if (-not $hasProperty) {
+      throw "The launched process identity is incomplete."
+    }
+  }
+  $expectedPath = [IO.Path]::GetFullPath($ExecutablePath)
+  $expectedCreation = $Process.StartTime.ToUniversalTime().ToString(
+    "yyyy-MM-ddTHH:mm:ss.fff'Z'",
+    [Globalization.CultureInfo]::InvariantCulture
+  )
+  if ([int]$Identity.processId -ne [int]$Process.Id -or
+      -not [string]::Equals(
+        [IO.Path]::GetFullPath([string]$Identity.executablePath),
+        $expectedPath,
+        [StringComparison]::OrdinalIgnoreCase
+      ) -or [string]$Identity.creationDate -ne $expectedCreation) {
+    throw "The launched process identity does not match its exact process object."
+  }
   $store = New-FootprintIdentityStore
   [void](Add-FootprintRememberedIdentity $store ([pscustomobject]@{
-    ProcessId = $identity.processId
-    ExecutablePath = $identity.executablePath
-    CreationDate = $identity.creationDate
+    ProcessId = $Identity.processId
+    ExecutablePath = $Identity.executablePath
+    CreationDate = $Identity.creationDate
   }))
-  return [ordered]@{ process = $Process; identity = $identity; store = $store }
+  return [ordered]@{ process = $Process; identity = $Identity; store = $store }
 }
 
 function Write-LaunchIdentityQuarantine(
   [ValidateSet("sage", "vite")][string]$Role,
   [string]$EvidenceRoot,
-  [int]$ObservedPid
+  [int]$ObservedPid,
+  [ValidateSet(
+    "identity-unavailable",
+    "path-mismatch",
+    "process-exited",
+    "resolver-pid-mismatch",
+    "resolver-creation-mismatch"
+  )][string]$FailureCategory,
+  [ValidateRange(0, 100)][int]$AttemptCount
 ) {
   if (-not $EvidenceRoot -or -not (Test-Path -LiteralPath $EvidenceRoot -PathType Container)) { return }
   [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     runtimeRole = $Role
     category = "identity-capture-failed"
+    failureCategory = $FailureCategory
     observedPid = $ObservedPid
+    attemptCount = $AttemptCount
   } | ConvertTo-Json -Compress | Set-Content `
       -LiteralPath (Join-Path $EvidenceRoot ("runtime-launch-quarantine-{0}.json" -f $Role)) `
       -NoNewline -Encoding utf8
+}
+
+function Stop-UnadmittedOwnedRuntime(
+  [System.Diagnostics.Process]$Process,
+  [string]$ExecutablePath,
+  [ValidateSet("sage", "vite")][string]$Role,
+  [string]$EvidenceRoot,
+  [AllowNull()][Collections.Generic.Dictionary[string, object]]$RememberedIdentities,
+  [AllowNull()][object[]]$ProcessRows
+) {
+  if ($null -eq $RememberedIdentities) {
+    $RememberedIdentities = New-FootprintIdentityStore
+  }
+  try {
+    $ProcessRows = @(Get-FootprintProcessSnapshot)
+    foreach ($row in @(Get-FootprintDescendants ([int]$Process.Id) $ProcessRows)) {
+      [void](Add-FootprintRememberedIdentity $RememberedIdentities $row)
+    }
+  } catch {
+    $ProcessRows = $null
+  }
+  $cleanup = Stop-FootprintLaunchedProcessObject `
+    -Process $Process `
+    -ExpectedExecutablePath $ExecutablePath `
+    -KnownProcessIdentities $RememberedIdentities `
+    -ProcessRows $ProcessRows `
+    -GraceMilliseconds 0 `
+    -ForceWaitMilliseconds 5000
+  return [ordered]@{
+    terminalZero = [bool]$cleanup.exited -and [bool]$cleanup.treeBoundaryVerified
+  }
 }
 
 function Capture-OwnedRuntimeOrQuarantine(
   [System.Diagnostics.Process]$Process,
   [string]$ExecutablePath,
   [ValidateSet("sage", "vite")][string]$Role,
-  [string]$EvidenceRoot
+  [string]$EvidenceRoot,
+  [Parameter(Mandatory)][long]$AbsoluteDeadlineMilliseconds,
+  [scriptblock]$IdentityResolver,
+  [scriptblock]$Delay,
+  [Parameter(Mandatory)][scriptblock]$MonotonicMilliseconds,
+  [scriptblock]$CleanupUnadmitted
 ) {
-  try {
-    return New-OwnedRuntime $Process $ExecutablePath
-  } catch {
-    Write-LaunchIdentityQuarantine $Role $EvidenceRoot ([int]$Process.Id)
-    throw "The $Role runtime identity could not be captured."
+  if ($AbsoluteDeadlineMilliseconds -lt 0) {
+    throw "The absolute launch-identity deadline is invalid."
   }
+  if ($null -eq $IdentityResolver) {
+    $IdentityResolver = { param($Candidate, $ExpectedPath) Get-FootprintLaunchIdentity $Candidate $ExpectedPath }
+  }
+  if ($null -eq $Delay) {
+    $Delay = { param($Milliseconds) Start-Sleep -Milliseconds $Milliseconds }
+  }
+  if ($null -eq $CleanupUnadmitted) {
+    $CleanupUnadmitted = {
+      param($Candidate, $ExpectedPath, $RuntimeRole, $Root, $Remembered, $Rows)
+      Stop-UnadmittedOwnedRuntime $Candidate $ExpectedPath $RuntimeRole $Root $Remembered $Rows
+    }
+  }
+  $captureDeadline = [long][Math]::Min(
+    $AbsoluteDeadlineMilliseconds,
+    [long](& $MonotonicMilliseconds) + 2000
+  )
+  $pollMilliseconds = 40
+  $attemptCount = 0
+  $failureCategory = "identity-unavailable"
+  $cleanupPath = [IO.Path]::GetFullPath($ExecutablePath)
+  $remembered = New-FootprintIdentityStore
+  $lastSnapshot = $null
+  while ([long](& $MonotonicMilliseconds) -lt $captureDeadline) {
+    $attemptCount++
+    $refreshSucceeded = $false
+    try {
+      $Process.Refresh()
+      $refreshSucceeded = $true
+    } catch {
+      # A temporarily unavailable process object remains unadmitted and bounded.
+    }
+    if ($refreshSucceeded) {
+      try {
+        $snapshot = @(Get-FootprintProcessSnapshot)
+        foreach ($row in @(Get-FootprintDescendants ([int]$Process.Id) $snapshot)) {
+          [void](Add-FootprintRememberedIdentity $remembered $row)
+        }
+        $lastSnapshot = $snapshot
+      } catch {
+        # Cleanup retains any identities remembered by an earlier attempt.
+      }
+      $hasExited = $false
+      try {
+        $hasExited = [bool]$Process.HasExited
+      } catch {
+        $refreshSucceeded = $false
+      }
+      if ($refreshSucceeded -and $hasExited) {
+        $failureCategory = "process-exited"
+        break
+      }
+    }
+    if ($refreshSucceeded) {
+      try {
+        $observedPath = [IO.Path]::GetFullPath([string]$Process.Path)
+        if (-not [string]::Equals(
+            $observedPath,
+            [IO.Path]::GetFullPath($ExecutablePath),
+            [StringComparison]::OrdinalIgnoreCase
+          )) {
+          $failureCategory = "path-mismatch"
+          $cleanupPath = $observedPath
+          break
+        }
+        $cleanupPath = $observedPath
+      } catch {
+        # Get-FootprintLaunchIdentity remains the sole admission authority.
+      }
+      $identity = $null
+      try {
+        $identity = & $IdentityResolver $Process $ExecutablePath
+      } catch {
+        # Property visibility failures are retried inside the absolute window.
+      }
+      if ($null -ne $identity) {
+        $identityComplete = $true
+        foreach ($property in @("processId", "executablePath", "creationDate")) {
+          $hasProperty = (
+            ($identity -is [Collections.IDictionary] -and $identity.Contains($property)) -or
+            ($null -ne $identity.PSObject.Properties[$property])
+          )
+          if (-not $hasProperty) { $identityComplete = $false }
+        }
+        if ($identityComplete) {
+          $resolvedPid = $null
+          try { $resolvedPid = [int]$identity.processId } catch { }
+          if ($null -eq $resolvedPid -or $resolvedPid -ne [int]$Process.Id) {
+            $failureCategory = "resolver-pid-mismatch"
+            break
+          }
+          $resolverPath = $null
+          try {
+            $resolverPath = [IO.Path]::GetFullPath([string]$identity.executablePath)
+          } catch { }
+          if ($null -eq $resolverPath -or -not [string]::Equals(
+              $resolverPath,
+              [IO.Path]::GetFullPath($ExecutablePath),
+              [StringComparison]::OrdinalIgnoreCase
+            )) {
+            $failureCategory = "path-mismatch"
+            break
+          }
+          $expectedCreation = $null
+          try {
+            $expectedCreation = $Process.StartTime.ToUniversalTime().ToString(
+              "yyyy-MM-ddTHH:mm:ss.fff'Z'",
+              [Globalization.CultureInfo]::InvariantCulture
+            )
+          } catch { }
+          if ($null -ne $expectedCreation) {
+            if ([string]$identity.creationDate -ne $expectedCreation) {
+              $failureCategory = "resolver-creation-mismatch"
+              break
+            }
+            return New-OwnedRuntime $Process $ExecutablePath $identity
+          }
+        }
+      }
+    }
+    $remaining = $captureDeadline - [long](& $MonotonicMilliseconds)
+    if ($remaining -le 0) { break }
+    & $Delay ([int][Math]::Min($pollMilliseconds, $remaining))
+  }
+  $launchQuarantineRetained = $true
+  try {
+    Write-LaunchIdentityQuarantine $Role $EvidenceRoot ([int]$Process.Id) $failureCategory $attemptCount
+  } catch {
+    $launchQuarantineRetained = $false
+  }
+  try {
+    $cleanup = & $CleanupUnadmitted `
+      $Process $cleanupPath $Role $EvidenceRoot $remembered $lastSnapshot
+    $hasTerminalZero = $null -ne $cleanup -and (
+      ($cleanup -is [Collections.IDictionary] -and $cleanup.Contains("terminalZero")) -or
+      ($null -ne $cleanup.PSObject.Properties["terminalZero"])
+    )
+    if (-not $hasTerminalZero -or -not [bool]$cleanup.terminalZero) {
+      throw "cleanup did not prove terminal zero"
+    }
+  } catch {
+    try { Write-RuntimeCleanupQuarantine $Role $EvidenceRoot $null $null } catch { }
+    throw "The $Role runtime identity could not be captured and cleanup could not be proven."
+  }
+  if (-not $launchQuarantineRetained) {
+    throw "The $Role runtime reached terminal zero, but its launch quarantine could not be retained."
+  }
+  throw "The $Role runtime identity could not be captured; the launched runtime reached terminal zero."
 }
 
 function Update-OwnedRuntimeTree([Collections.IDictionary]$Runtime) {
@@ -268,7 +483,9 @@ function Wait-OwnedFrontendReady(
 function Start-OwnedVite(
   [string]$SourceRoot,
   [Collections.IDictionary]$Contract,
-  [string]$EvidenceRoot
+  [string]$EvidenceRoot,
+  [long]$StartupDeadlineMilliseconds,
+  [scriptblock]$MonotonicMilliseconds
 ) {
   Assert-FrontendPortAvailable $Contract
   $npm = @(Get-Command npm.cmd -CommandType Application -ErrorAction Stop) | Select-Object -First 1
@@ -277,7 +494,9 @@ function Start-OwnedVite(
   $commandPath = Require-AbsoluteFile $command.Source "command interpreter"
   $commandLine = '/d /s /c ""{0}" run dev -- --host 127.0.0.1 --port {1}"' -f $npmPath, $Contract.port
   $process = Start-Process -FilePath $commandPath -ArgumentList $commandLine -WorkingDirectory $SourceRoot -WindowStyle Hidden -PassThru
-  return Capture-OwnedRuntimeOrQuarantine $process $commandPath "vite" $EvidenceRoot
+  return Capture-OwnedRuntimeOrQuarantine `
+    $process $commandPath "vite" $EvidenceRoot `
+    $StartupDeadlineMilliseconds $null $null $MonotonicMilliseconds
 }
 
 function Write-RuntimeCleanupQuarantine(
@@ -404,7 +623,11 @@ $previous = @{
   project = [Environment]::GetEnvironmentVariable("SAGE_PROJECT_ROOT", "Process")
   webview = [Environment]::GetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "Process")
 }
-$startupDeadline = [DateTime]::UtcNow.AddMilliseconds([Math]::Min(30000, $DeadlineMs))
+$startupWindowMilliseconds = [int][Math]::Min(30000, $DeadlineMs)
+$startupDeadline = [DateTime]::UtcNow.AddMilliseconds($startupWindowMilliseconds)
+$startupClock = [Diagnostics.Stopwatch]::StartNew()
+$monotonicMilliseconds = { return [long]$startupClock.ElapsedMilliseconds }.GetNewClosure()
+$startupDeadlineMilliseconds = [long](& $monotonicMilliseconds) + $startupWindowMilliseconds
 $viteRuntime = $null
 $sageRuntime = $null
 $runtimeReceipt = $null
@@ -414,13 +637,17 @@ $pendingReceipt = Join-Path $EvidenceRoot "machine-receipt.pending.json"
 $sageCleanup = $null
 $viteCleanup = $null
 try {
-  $viteRuntime = Start-OwnedVite $resolvedSource $frontendContract $EvidenceRoot
+  $viteRuntime = Start-OwnedVite `
+    $resolvedSource $frontendContract $EvidenceRoot `
+    $startupDeadlineMilliseconds $monotonicMilliseconds
   $runtimeReceipt = Wait-OwnedFrontendReady $viteRuntime $frontendContract $startupDeadline
   [Environment]::SetEnvironmentVariable("SAGE_DISPOSABLE_PROFILE_ROOT", $profile, "Process")
   [Environment]::SetEnvironmentVariable("SAGE_PROJECT_ROOT", $fixture, "Process")
   [Environment]::SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--remote-debugging-port=$port", "Process")
   $process = Start-Process -FilePath $resolvedExecutable -WorkingDirectory (Split-Path -Parent $resolvedExecutable) -PassThru
-  $sageRuntime = Capture-OwnedRuntimeOrQuarantine $process $resolvedExecutable "sage" $EvidenceRoot
+  $sageRuntime = Capture-OwnedRuntimeOrQuarantine `
+    $process $resolvedExecutable "sage" $EvidenceRoot `
+    $startupDeadlineMilliseconds $null $null $monotonicMilliseconds
   $arguments = @(
     $runner, "--port", "$port", "--output", $EvidenceRoot,
     "--source-commit", $commit, "--source-tree", $tree,
