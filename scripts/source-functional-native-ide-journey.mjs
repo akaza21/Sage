@@ -48,6 +48,14 @@ const GIT_OBJECT = /^[a-f0-9]{40,64}$/u;
 const LOOPBACK_HTTP_ORIGIN = /^http:\/\/127\.0\.0\.1:(?<port>\d{4,5})\/?$/u;
 const MAX_ARTIFACT_BYTES = 8 * 1024 * 1024;
 const MAX_EXECUTABLE_BYTES = 256 * 1024 * 1024;
+const MAX_PLAYWRIGHT_RESULT_BYTES = 64 * 1024;
+const MAX_PLAYWRIGHT_ENVELOPE_OVERHEAD_BYTES = 4096;
+const MAX_SCREENSHOT_BASE64_CHARACTERS = 4 * Math.ceil(MAX_ARTIFACT_BYTES / 3);
+const MAX_SCREENSHOT_RESULT_BYTES = MAX_SCREENSHOT_BASE64_CHARACTERS + 2;
+const MAX_SCREENSHOT_OUTPUT_BYTES =
+  MAX_SCREENSHOT_RESULT_BYTES + MAX_PLAYWRIGHT_ENVELOPE_OVERHEAD_BYTES;
+const PLAYWRIGHT_RESULT_MARKER = "### Result\n";
+const PLAYWRIGHT_CODE_MARKER = "\n### Ran Playwright code\n";
 const PENDING_RECEIPT_NAME =
   /^machine-receipt\.pending(?:-[a-z0-9-]{1,32})?\.json$/u;
 
@@ -486,36 +494,98 @@ export function validateCdpTarget(target, port) {
 }
 
 export function decodeBoundedScreenshot(encoded) {
-  if (
-    typeof encoded !== "string" ||
-    Buffer.byteLength(encoded, "ascii") >
-      Math.ceil((MAX_ARTIFACT_BYTES * 4) / 3)
-  )
+  if (typeof encoded !== "string") fail("screenshot-invalid");
+  if (encoded.length > MAX_SCREENSHOT_BASE64_CHARACTERS)
     fail("screenshot-oversize");
+  if (encoded.length === 0 || encoded.length % 4 !== 0)
+    fail("screenshot-invalid");
+  const padding = encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0;
+  const alphabetLength = encoded.length - padding;
+  for (let index = 0; index < alphabetLength; index += 1) {
+    const code = encoded.charCodeAt(index);
+    if (!(
+      (code >= 65 && code <= 90) ||
+      (code >= 97 && code <= 122) ||
+      (code >= 48 && code <= 57) ||
+      code === 43 ||
+      code === 47
+    ))
+      fail("screenshot-invalid");
+  }
+  for (let index = alphabetLength; index < encoded.length; index += 1)
+    if (encoded[index] !== "=") fail("screenshot-invalid");
   const bytes = Buffer.from(encoded, "base64");
+  if (bytes.toString("base64") !== encoded) fail("screenshot-invalid");
   if (bytes.byteLength > MAX_ARTIFACT_BYTES) fail("screenshot-oversize");
   return bytes;
 }
 
-function parsePlaywrightValue(output) {
-  const trimmed = output.trim();
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    // CLI diagnostics may precede the final JSON value.
-  }
-  if (trimmed === "true") return true;
-  if (trimmed === "false") return false;
-  const start = Math.max(
-    trimmed.lastIndexOf("\n{"),
-    trimmed.lastIndexOf("\n["),
-    0,
+function parsePlaywrightValue(
+  output,
+  maximumResultBytes = MAX_PLAYWRIGHT_RESULT_BYTES,
+) {
+  if (
+    typeof output !== "string" ||
+    Buffer.byteLength(output, "utf8") >
+      maximumResultBytes + MAX_PLAYWRIGHT_ENVELOPE_OVERHEAD_BYTES
+  )
+    fail("playwright-output-invalid");
+  const headerLines = output
+    .split("\n")
+    .map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
+  const resultHeaderLines = headerLines.flatMap((line, index) =>
+    line === "### Result" ? [index] : [],
   );
+  const codeHeaderLines = headerLines.flatMap((line, index) =>
+    line === "### Ran Playwright code" ? [index] : [],
+  );
+  if (
+    resultHeaderLines.length !== 1 ||
+    codeHeaderLines.length !== 1 ||
+    resultHeaderLines[0] >= codeHeaderLines[0]
+  )
+    fail("playwright-output-invalid");
+  const resultStart = output.indexOf(PLAYWRIGHT_RESULT_MARKER);
+  const codeStart = output.indexOf(PLAYWRIGHT_CODE_MARKER);
+  if (
+    resultStart < 0 ||
+    codeStart < resultStart + PLAYWRIGHT_RESULT_MARKER.length ||
+    output.indexOf(
+      PLAYWRIGHT_RESULT_MARKER,
+      resultStart + PLAYWRIGHT_RESULT_MARKER.length,
+    ) !== -1 ||
+    output.indexOf(
+      PLAYWRIGHT_CODE_MARKER,
+      codeStart + PLAYWRIGHT_CODE_MARKER.length,
+    ) !== -1
+  )
+    fail("playwright-output-invalid");
+  const payload = output.slice(
+    resultStart + PLAYWRIGHT_RESULT_MARKER.length,
+    codeStart,
+  );
+  const ranCode = output.slice(codeStart + PLAYWRIGHT_CODE_MARKER.length);
+  if (
+    payload.length === 0 ||
+    ranCode.trim().length === 0 ||
+    Buffer.byteLength(payload, "utf8") > maximumResultBytes ||
+    ranCode.includes(PLAYWRIGHT_RESULT_MARKER) ||
+    ranCode.includes(PLAYWRIGHT_CODE_MARKER)
+  )
+    fail("playwright-output-invalid");
+  let value;
   try {
-    return JSON.parse(trimmed.slice(start).trim());
+    value = JSON.parse(payload);
   } catch {
-    return trimmed;
+    fail("playwright-output-invalid");
   }
+  if (
+    typeof value !== "string" &&
+    typeof value !== "boolean" &&
+    (!value || typeof value !== "object" || Array.isArray(value))
+  )
+    fail("playwright-output-invalid");
+  return value;
 }
 
 export async function attachPlaywright(options, deadline, deps = {}) {
@@ -560,10 +630,11 @@ export async function attachPlaywright(options, deadline, deps = {}) {
             "async page => (await page.screenshot()).toString('base64')",
           ],
           deadline,
-          { maxOutputBytes: Math.ceil((MAX_ARTIFACT_BYTES * 4) / 3) + 4096 },
+          { maxOutputBytes: MAX_SCREENSHOT_OUTPUT_BYTES },
         ),
+        MAX_SCREENSHOT_RESULT_BYTES,
       );
-      const bytes = decodeBoundedScreenshot(String(encoded));
+      const bytes = decodeBoundedScreenshot(encoded);
       const target = path.join(options.output, name);
       writeContainedBytes(options.sourceRoot, options.output, name, bytes);
       return target;

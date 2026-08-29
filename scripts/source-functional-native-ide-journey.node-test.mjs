@@ -268,9 +268,51 @@ test("native IDE receipt refuses unobserved save, diagnostic, and Diff claims", 
   }
 });
 
+test("native IDE screenshot decoding rejects non-string results without coercion", () => {
+  for (const value of [{ encoded: "Zm9v" }, true, null, ["Zm9v"]]) {
+    assert.throws(
+      () => decodeBoundedScreenshot(value),
+      /journey-screenshot-invalid/,
+    );
+  }
+});
+
+test("native IDE screenshot decoding admits only nonempty canonical base64", () => {
+  for (const encoded of [
+    "",
+    "Zm 9v",
+    "Zm9v\n",
+    "Zm9*",
+    "Zg=",
+    "Zg===",
+    "Zh==",
+    "Zm9=",
+  ]) {
+    assert.throws(
+      () => decodeBoundedScreenshot(encoded),
+      /journey-screenshot-invalid/,
+      encoded,
+    );
+  }
+  assert.deepEqual(decodeBoundedScreenshot("Zm9v"), Buffer.from("foo"));
+});
+
 test("native IDE screenshot decoding refuses encoded payloads beyond the byte bound", () => {
   assert.throws(
     () => decodeBoundedScreenshot("A".repeat(12 * 1024 * 1024)),
+    /journey-screenshot-oversize/,
+  );
+});
+
+test("native IDE screenshot decoding accepts exactly 8 MiB and rejects one decoded byte more", () => {
+  const boundary = Buffer.alloc(8 * 1024 * 1024, 0xa5);
+  const encodedBoundary = boundary.toString("base64");
+  assert.equal(encodedBoundary.length, 4 * Math.ceil(boundary.length / 3));
+  assert.deepEqual(decodeBoundedScreenshot(encodedBoundary), boundary);
+
+  const overflow = Buffer.alloc(8 * 1024 * 1024 + 1, 0xa5).toString("base64");
+  assert.throws(
+    () => decodeBoundedScreenshot(overflow),
     /journey-screenshot-oversize/,
   );
 });
@@ -365,7 +407,7 @@ test("native IDE journey admits exactly one page at the derived development orig
   );
 });
 
-test("native IDE journey binds the Playwright-controlled page to the stable admitted target", async () => {
+test("native IDE journey decodes decorated Playwright results and binds the stable target", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-ide-playwright-"));
   const output = path.join(root, "local-evidence", "journey");
   mkdirSync(output, { recursive: true });
@@ -423,15 +465,19 @@ test("native IDE journey binds the Playwright-controlled page to the stable admi
           assert.equal(toolOptions.shell, undefined);
           const playwrightArgs = args.slice(1);
           calls.push(playwrightArgs);
+          if (playwrightArgs.includes("eval")) {
+            return "### Result\ntrue\n### Ran Playwright code\ntrue";
+          }
           if (!playwrightArgs.includes("run-code")) return "";
           const payload = playwrightArgs.at(-1);
           assert.match(payload, /^async page =>/u);
           const callback = Function(`"use strict"; return (${payload});`)();
           assert.equal(typeof callback, "function");
-          return JSON.stringify(await callback(page));
+          return `### Result\n${JSON.stringify(await callback(page))}\n### Ran Playwright code\n${payload}`;
         },
       },
     );
+    assert.equal(await playwright.evaluate("true"), true);
     assert.deepEqual(await playwright.inspectTarget(), controlled);
     const screenshot = await playwright.screenshot("command-contract.png");
     assert.deepEqual(readFileSync(screenshot), screenshotBytes);
@@ -441,7 +487,7 @@ test("native IDE journey binds the Playwright-controlled page to the stable admi
     assert.match(runCodeCalls[0].at(-1), /newCDPSession\(page\)/u);
     assert.match(runCodeCalls[0].at(-1), /Target\.getTargetInfo/u);
     assert.match(runCodeCalls[1].at(-1), /page\.screenshot\(\)/u);
-    assert.equal(validations, 4);
+    assert.equal(validations, 5);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -503,6 +549,87 @@ test("native IDE journey binds the Playwright-controlled page to the stable admi
       ),
     /journey-cdp-target-churn/,
   );
+});
+
+test("native IDE screenshot capture does not coerce parsed non-string results", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-ide-screenshot-value-"));
+  try {
+    for (const value of [{ encoded: "Zm9v" }, true]) {
+      const playwright = await attachPlaywright(
+        {
+          playwrightCli: "C:\\tools\\playwright-cli.cmd",
+          output: root,
+          sourceRoot: root,
+          port: 9229,
+        },
+        Date.now() + 5000,
+        {
+          transport: playwrightExecutionTransport(),
+          validateTransport: (transport) => transport,
+          runTool: async (_tool, args) =>
+            args.includes("run-code")
+              ? `### Result\n${JSON.stringify(value)}\n### Ran Playwright code\nasync page => page.screenshot()`
+              : "",
+        },
+      );
+      await assert.rejects(
+        playwright.screenshot("must-not-exist.png"),
+        /journey-screenshot-invalid/u,
+      );
+      assert.equal(existsSync(path.join(root, "must-not-exist.png")), false);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("native IDE journey rejects ambiguous or unbounded Playwright result envelopes", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-ide-output-envelope-"));
+  const cases = [
+    ["missing", "true"],
+    [
+      "duplicate",
+      "### Result\ntrue\n### Result\nfalse\n### Ran Playwright code\ntrue",
+    ],
+    [
+      "misordered",
+      "### Ran Playwright code\ntrue\n### Result\ntrue\n### Ran Playwright code\ntrue",
+    ],
+    [
+      "oversize",
+      `### Result\n${JSON.stringify("x".repeat(64 * 1024))}\n### Ran Playwright code\ntrue`,
+    ],
+    [
+      "trailing ambiguous result",
+      "### Result\ntrue\n### Ran Playwright code\ntrue\n### Result",
+    ],
+    ["raw fallback", 'diagnostic\n{"id":"page-1"}'],
+  ];
+  try {
+    for (const [name, output] of cases) {
+      const playwright = await attachPlaywright(
+        {
+          playwrightCli: "C:\\tools\\playwright-cli.cmd",
+          output: root,
+          sourceRoot: root,
+          port: 9229,
+        },
+        Date.now() + 5000,
+        {
+          transport: playwrightExecutionTransport(),
+          validateTransport: (transport) => transport,
+          runTool: async (_tool, args) => (args.includes("eval") ? output : ""),
+        },
+      );
+      await assert.rejects(
+        playwright.evaluate("true"),
+        /journey-playwright-output-invalid/u,
+        name,
+      );
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("native IDE evidence is limited to a plain local-evidence descendant", () => {
