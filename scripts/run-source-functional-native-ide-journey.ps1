@@ -71,9 +71,11 @@ function Invoke-Git([string[]]$Arguments) {
 function Initialize-JourneyFixture([string]$Fixture) {
   # The fixture deliberately begins with one tracked TypeScript diagnostic. The
   # CDP runner makes a further real editor edit before saving and opening Diff.
-  @'
-export const SAGE_JOURNEY_SENTINEL: number = "diagnostic";
-'@ | Set-Content -LiteralPath (Join-Path $Fixture "journey.ts") -NoNewline -Encoding utf8
+  [IO.File]::WriteAllText(
+    (Join-Path $Fixture "journey.ts"),
+    'export const SAGE_JOURNEY_SENTINEL: number = "diagnostic";',
+    [Text.UTF8Encoding]::new($false)
+  )
   [void](Invoke-GitAt -Repository $Fixture -Arguments @("init", "--quiet"))
   [void](Invoke-GitAt -Repository $Fixture -Arguments @("config", "user.name", "Sage journey fixture"))
   [void](Invoke-GitAt -Repository $Fixture -Arguments @("config", "user.email", "sage-journey-fixture@localhost"))

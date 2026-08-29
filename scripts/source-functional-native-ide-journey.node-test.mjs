@@ -34,11 +34,538 @@ import {
   resolvePlaywrightTransport,
   runBoundedTool,
   runPlaywrightTool,
+  UI_ACTIONS,
+  UI_PROBES,
   validateExecutableBinding,
   validatePlaywrightTransport,
   validateCdpTarget,
+  verificationFor,
   writePendingJourneyReceipt,
 } from "./source-functional-native-ide-journey.mjs";
+
+function evaluateBrowserExpression(expression, globals) {
+  const names = Object.keys(globals);
+  return Function(
+    ...names,
+    `"use strict";return (${expression});`,
+  )(...names.map((name) => globals[name]));
+}
+
+function uiAction(label) {
+  return UI_ACTIONS.find((current) => current.label === label);
+}
+
+test("Windows journey fixture is BOM-free UTF-8 with the searched sentinel at column 14", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-native-ide-fixture-"));
+  const powershell = path.join(
+    process.env.SystemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  const wrapper = path.resolve(
+    "scripts",
+    "run-source-functional-native-ide-journey.ps1",
+  );
+  try {
+    const quote = (value) => `'${value.replaceAll("'", "''")}'`;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @('Invoke-GitAt','Initialize-JourneyFixture')){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};Initialize-JourneyFixture ${quote(root)}|ConvertTo-Json -Compress`;
+    const result = spawnSync(
+      powershell,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        Buffer.from(source, "utf16le").toString("base64"),
+      ],
+      { encoding: "utf8", windowsHide: true, timeout: 15_000 },
+    );
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+
+    const expected = Buffer.from(
+      'export const SAGE_JOURNEY_SENTINEL: number = "diagnostic";',
+      "utf8",
+    );
+    const bytes = readFileSync(path.join(root, "journey.ts"));
+    assert.deepEqual(bytes, expected);
+    assert.equal(
+      bytes.toString("utf8").indexOf("SAGE_JOURNEY_SENTINEL") + 1,
+      14,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("native IDE Project readiness scopes the retained file to its admitted tree", () => {
+  const journeyItem = {};
+  const outsideItem = {};
+  let scopedItems = [journeyItem];
+  const tree = {
+    querySelectorAll: (selector) =>
+      selector === '[role="treeitem"][aria-label="Open file journey.ts"]'
+        ? scopedItems
+        : [],
+  };
+  const outsideTree = {};
+  let scopedTrees = [tree];
+  const projectTools = {
+    querySelectorAll: (selector) =>
+      selector === '[role="tree"][aria-label="Project files"]'
+        ? scopedTrees
+        : [],
+  };
+  const document = {
+    querySelectorAll: (selector) => {
+      if (selector === 'aside[aria-label="Project tools"]')
+        return [projectTools];
+      if (selector === '[role="tree"][aria-label="Project files"]')
+        return [tree, outsideTree];
+      if (selector === '[role="treeitem"][aria-label="Open file journey.ts"]')
+        return [journeyItem, outsideItem];
+      return [];
+    },
+  };
+  assert.equal(
+    evaluateBrowserExpression(uiAction("Project").expression, { document }),
+    true,
+  );
+  assert.equal(
+    evaluateBrowserExpression(verificationFor("Explorer"), { document }),
+    true,
+  );
+
+  scopedTrees = [tree, {}];
+  assert.equal(
+    evaluateBrowserExpression(uiAction("Project").expression, { document }),
+    false,
+  );
+  assert.equal(
+    evaluateBrowserExpression(verificationFor("Explorer"), { document }),
+    false,
+  );
+
+  scopedTrees = [tree];
+  scopedItems = [];
+  assert.equal(
+    evaluateBrowserExpression(uiAction("Project").expression, { document }),
+    false,
+  );
+  assert.equal(
+    evaluateBrowserExpression(verificationFor("Explorer"), { document }),
+    false,
+  );
+});
+
+test("native IDE Explorer action leaves the retained expanded panel open", () => {
+  let clicks = 0;
+  const explorer = {
+    getAttribute: (name) => (name === "aria-expanded" ? "true" : null),
+    click: () => {
+      clicks += 1;
+    },
+  };
+  const document = {
+    querySelectorAll: (selector) =>
+      selector === 'button[aria-label="Explorer"]' ? [explorer] : [],
+  };
+  assert.equal(
+    evaluateBrowserExpression(uiAction("Explorer").expression, { document }),
+    true,
+  );
+  assert.equal(clicks, 0);
+  explorer.getAttribute = () => "false";
+  assert.equal(
+    evaluateBrowserExpression(uiAction("Explorer").expression, { document }),
+    true,
+  );
+  assert.equal(clicks, 1);
+});
+
+test("native IDE Search readiness selects the panel input and its submit control", () => {
+  const headerSearchButton = {};
+  const searchInput = {};
+  const submitButton = {};
+  const outsideSearchInput = {};
+  const outsideSubmitButton = {};
+  let scopedInputs = [searchInput];
+  let scopedSubmits = [submitButton];
+  const form = {
+    querySelectorAll: (selector) => {
+      if (selector === 'input[type="search"][aria-label="Search files"]')
+        return scopedInputs;
+      if (selector === 'button[type="submit"]') return scopedSubmits;
+      return [];
+    },
+  };
+  let forms = [form];
+  const selectorResults = new Map([
+    ['[aria-label="Search files"]', [headerSearchButton, searchInput]],
+    [
+      'input[type="search"][aria-label="Search files"]',
+      [searchInput, outsideSearchInput],
+    ],
+    [
+      '.workspace-search__form button[type="submit"]',
+      [submitButton, outsideSubmitButton],
+    ],
+  ]);
+  const document = {
+    querySelectorAll: (selector) =>
+      selector === ".workspace-search__form"
+        ? forms
+        : (selectorResults.get(selector) ?? []),
+  };
+  assert.equal(
+    evaluateBrowserExpression(verificationFor("Search"), { document }),
+    true,
+  );
+
+  forms = [form, {}];
+  assert.equal(
+    evaluateBrowserExpression(verificationFor("Search"), { document }),
+    false,
+  );
+
+  forms = [form];
+  scopedSubmits = [];
+  assert.equal(
+    evaluateBrowserExpression(verificationFor("Search"), { document }),
+    false,
+  );
+  scopedSubmits = [submitButton];
+  scopedInputs = [];
+  assert.equal(
+    evaluateBrowserExpression(verificationFor("Search"), { document }),
+    false,
+  );
+});
+
+test("native IDE File action searches through the exact panel form, not the header", () => {
+  class HTMLInputElement {
+    set value(next) {
+      this.assignedValue = next;
+    }
+
+    dispatchEvent(event) {
+      this.event = event;
+      return true;
+    }
+  }
+  class Event {
+    constructor(type, options) {
+      this.type = type;
+      this.bubbles = options?.bubbles === true;
+    }
+  }
+  const input = new HTMLInputElement();
+  const header = { textContent: "Search files", clicks: 0 };
+  const decoy = {
+    textContent: "Search",
+    clicks: 0,
+    click() {
+      this.clicks += 1;
+    },
+  };
+  const submit = {
+    textContent: "Search",
+    clicks: 0,
+    click() {
+      this.clicks += 1;
+    },
+  };
+  const outsideInput = new HTMLInputElement();
+  const outsideSubmit = {
+    textContent: "Search",
+    clicks: 0,
+    click() {
+      this.clicks += 1;
+    },
+  };
+  const form = {
+    querySelectorAll: (selector) => {
+      if (selector === 'input[type="search"][aria-label="Search files"]')
+        return [input];
+      if (selector === 'button[type="submit"]') return [submit];
+      return [];
+    },
+  };
+  const document = {
+    querySelector: (selector) =>
+      selector === '[aria-label="Search files"]' ? header : null,
+    querySelectorAll: (selector) => {
+      if (selector === ".workspace-search__form") return [form];
+      if (selector === 'input[type="search"][aria-label="Search files"]')
+        return [input, outsideInput];
+      if (selector === '.workspace-search__form button[type="submit"]')
+        return [submit, outsideSubmit];
+      if (selector === "button") return [decoy, submit, outsideSubmit];
+      return [];
+    },
+  };
+  assert.equal(
+    evaluateBrowserExpression(uiAction("File").expression, {
+      document,
+      HTMLInputElement,
+      Event,
+    }),
+    true,
+  );
+  assert.equal(input.assignedValue, "SAGE_JOURNEY_SENTINEL");
+  assert.deepEqual(
+    { type: input.event.type, bubbles: input.event.bubbles },
+    { type: "input", bubbles: true },
+  );
+  assert.equal(submit.clicks, 1);
+  assert.equal(outsideSubmit.clicks, 0);
+  assert.equal(decoy.clicks, 0);
+  assert.equal(header.clicks, 0);
+});
+
+test("native IDE File action rejects ambiguous or split Search forms", () => {
+  const input = {};
+  const outsideSubmit = {
+    clicks: 0,
+    click() {
+      this.clicks += 1;
+    },
+  };
+  const form = {
+    querySelectorAll: (selector) =>
+      selector === 'input[type="search"][aria-label="Search files"]'
+        ? [input]
+        : [],
+  };
+  let forms = [form, {}];
+  const document = {
+    querySelectorAll: (selector) => {
+      if (selector === ".workspace-search__form") return forms;
+      if (selector === 'button[type="submit"]') return [outsideSubmit];
+      return [];
+    },
+  };
+
+  assert.equal(
+    evaluateBrowserExpression(uiAction("File").expression, { document }),
+    false,
+  );
+  forms = [form];
+  assert.equal(
+    evaluateBrowserExpression(uiAction("File").expression, { document }),
+    false,
+  );
+  assert.equal(outsideSubmit.clicks, 0);
+});
+
+test("native IDE search result contract opens the exact fixture match", () => {
+  const result = {
+    clicks: 0,
+    click() {
+      this.clicks += 1;
+    },
+  };
+  const selector =
+    '.workspace-search__results[role="list"] [role="listitem"] > button.workspace-search__result[aria-label="Open journey.ts at line 1, column 14"]';
+  const document = {
+    querySelectorAll: (candidate) => (candidate === selector ? [result] : []),
+  };
+  assert.equal(
+    evaluateBrowserExpression(verificationFor("File"), { document }),
+    true,
+  );
+  assert.equal(
+    evaluateBrowserExpression(uiAction("edit-diagnostic").expression, {
+      document,
+    }),
+    true,
+  );
+  assert.equal(result.clicks, 1);
+});
+
+test("native IDE edit readiness waits for one editable CodeMirror surface", () => {
+  let editable = [];
+  const document = {
+    querySelectorAll: (selector) => {
+      if (selector === '[aria-label="File editor journey.ts"]') return [{}];
+      if (
+        selector ===
+        'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]'
+      )
+        return editable;
+      return [];
+    },
+  };
+  assert.equal(
+    evaluateBrowserExpression(verificationFor("edit-diagnostic"), {
+      document,
+    }),
+    false,
+  );
+  editable = [{}];
+  assert.equal(
+    evaluateBrowserExpression(verificationFor("edit-diagnostic"), {
+      document,
+    }),
+    true,
+  );
+});
+
+test("native IDE Problems probes bind one exact panel and diagnostic surface", () => {
+  const card = { innerText: "Error missing semicolon journey.ts:1" };
+  const problems = {
+    querySelectorAll: (selector) =>
+      selector === "button.problem-card" ? [card] : [],
+  };
+  const panel = {
+    querySelectorAll: (selector) =>
+      selector === 'section[aria-label="Problems"]' ? [problems] : [],
+  };
+  const document = {
+    querySelectorAll: (selector) =>
+      selector === 'section[aria-label="Problems project tools"]'
+        ? [panel]
+        : [],
+  };
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.problemsReady, { document }),
+    true,
+  );
+  assert.deepEqual(
+    JSON.parse(
+      evaluateBrowserExpression(UI_PROBES.diagnosticMessages, { document }),
+    ),
+    [card.innerText],
+  );
+});
+
+test("native IDE save action clicks one Save inside the admitted File editor", () => {
+  const save = {
+    textContent: "Save",
+    disabled: false,
+    clicks: 0,
+    click() {
+      this.clicks += 1;
+    },
+  };
+  const decoy = {
+    textContent: "Save",
+    disabled: false,
+    clicks: 0,
+    click() {
+      this.clicks += 1;
+    },
+  };
+  const editor = {
+    querySelectorAll: (selector) => {
+      if (selector === 'button[type="button"]') return [save];
+      if (selector === ".cm-content")
+        return [{ innerText: "saved journey content" }];
+      return [];
+    },
+  };
+  const document = {
+    querySelector: (selector) =>
+      selector === '[aria-label="File editor journey.ts"] .cm-content'
+        ? { innerText: "wrong global content" }
+        : null,
+    querySelectorAll: (selector) => {
+      if (selector === 'section[aria-label="File editor journey.ts"]')
+        return [editor];
+      if (selector === "button") return [decoy, save];
+      return [];
+    },
+  };
+  assert.equal(
+    evaluateBrowserExpression(uiAction("save").expression, { document }),
+    true,
+  );
+  assert.equal(save.clicks, 1);
+  assert.equal(decoy.clicks, 0);
+  save.disabled = true;
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.saveSettled, { document }),
+    true,
+  );
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.savedContent, { document }),
+    "saved journey content",
+  );
+});
+
+test("native IDE Source Control and Diff readiness wait for the exact ready change", () => {
+  let diffRows = [];
+  const sourcePanel = {
+    querySelectorAll: (selector) =>
+      selector === 'button[aria-label="Open diff for journey.ts"]'
+        ? diffRows
+        : [],
+  };
+  const diffEditor = { textContent: "", innerText: "" };
+  const diffSurface = {
+    innerText: "",
+    querySelectorAll: (selector) =>
+      selector === '.diff-editor[role="table"][aria-label="Unified file diff"]'
+        ? [diffEditor]
+        : [],
+  };
+  const document = {
+    querySelector: (selector) =>
+      selector === '[aria-label="Diff for journey.ts"]'
+        ? { innerText: "wrong loading surface" }
+        : null,
+    querySelectorAll: (selector) => {
+      if (
+        selector === '[aria-label="Source Control project tools"]' ||
+        selector === 'section[aria-label="Source Control project tools"]'
+      )
+        return [sourcePanel];
+      if (
+        selector === '[aria-label="Diff for journey.ts"]' ||
+        selector === 'section.diff-surface[aria-label="Diff for journey.ts"]'
+      )
+        return [diffSurface];
+      return [];
+    },
+  };
+
+  assert.equal(
+    evaluateBrowserExpression(verificationFor("Source Control"), { document }),
+    false,
+  );
+  const diffRow = {
+    clicks: 0,
+    click() {
+      this.clicks += 1;
+    },
+  };
+  diffRows = [diffRow];
+  assert.equal(
+    evaluateBrowserExpression(verificationFor("Source Control"), { document }),
+    true,
+  );
+  assert.equal(
+    evaluateBrowserExpression(uiAction("Diff").expression, { document }),
+    true,
+  );
+  assert.equal(diffRow.clicks, 1);
+
+  assert.equal(
+    evaluateBrowserExpression(verificationFor("Diff"), { document }),
+    false,
+  );
+  diffEditor.textContent = "+// journey edited through Playwright";
+  diffEditor.innerText = diffEditor.textContent;
+  diffSurface.innerText = `journey.ts\n${diffEditor.innerText}`;
+  assert.equal(
+    evaluateBrowserExpression(verificationFor("Diff"), { document }),
+    true,
+  );
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.diffContent, { document }),
+    diffSurface.innerText,
+  );
+});
 
 test("native IDE journey requires an explicit bounded CDP launch contract", () => {
   assert.throws(

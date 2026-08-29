@@ -661,15 +661,15 @@ function action(label, expression, assertion) {
   return { label, expression, assertion };
 }
 
-const UI_ACTIONS = Object.freeze([
+export const UI_ACTIONS = Object.freeze([
   action(
     "Project",
-    "document.querySelectorAll('[aria-label=\"Projects and chats\"]').length===1&&document.querySelectorAll('[aria-label=\"Project files\"]').length===1",
+    '(()=>{const tools=[...document.querySelectorAll(\'aside[aria-label="Project tools"]\')];if(tools.length!==1)return false;const trees=[...tools[0].querySelectorAll(\'[role="tree"][aria-label="Project files"]\')];return trees.length===1&&trees[0].querySelectorAll(\'[role="treeitem"][aria-label="Open file journey.ts"]\').length===1})()',
     "Project root is not visible",
   ),
   action(
     "Explorer",
-    "(()=>{const x=[...document.querySelectorAll('button[aria-label=\"Explorer\"]')];if(x.length!==1)return false;x[0].click();return true})()",
+    "(()=>{const x=[...document.querySelectorAll('button[aria-label=\"Explorer\"]')];if(x.length!==1)return false;if(x[0].getAttribute('aria-expanded')==='true')return true;x[0].click();return true})()",
     "Explorer control is ambiguous",
   ),
   action(
@@ -679,17 +679,17 @@ const UI_ACTIONS = Object.freeze([
   ),
   action(
     "File",
-    "(()=>{const input=document.querySelector('[aria-label=\"Search files\"]');if(!input)return false;const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;set.call(input,'SAGE_JOURNEY_SENTINEL');input.dispatchEvent(new Event('input',{bubbles:true}));const button=[...document.querySelectorAll('button')].find(x=>x.textContent.trim()==='Search');if(!button)return false;button.click();return true})()",
+    "(()=>{const forms=[...document.querySelectorAll('.workspace-search__form')];if(forms.length!==1)return false;const inputs=[...forms[0].querySelectorAll('input[type=\"search\"][aria-label=\"Search files\"]')];const buttons=[...forms[0].querySelectorAll('button[type=\"submit\"]')];if(inputs.length!==1||buttons.length!==1)return false;const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;set.call(inputs[0],'SAGE_JOURNEY_SENTINEL');inputs[0].dispatchEvent(new Event('input',{bubbles:true}));buttons[0].click();return true})()",
     "Search form is unavailable",
   ),
   action(
     "edit-diagnostic",
-    "(()=>{const x=[...document.querySelectorAll('[aria-label^=\"Open journey.ts at line\"]')];if(x.length!==1)return false;x[0].click();return true})()",
+    '(()=>{const x=[...document.querySelectorAll(\'.workspace-search__results[role="list"] [role="listitem"] > button.workspace-search__result[aria-label="Open journey.ts at line 1, column 14"]\')];if(x.length!==1)return false;x[0].click();return true})()',
     "Search result was not unique",
   ),
   action(
     "save",
-    "(()=>{const x=[...document.querySelectorAll('button')].find(x=>x.textContent.trim()==='Save');if(!x)return false;x.click();return true})()",
+    "(()=>{const editors=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]')];if(editors.length!==1)return false;const buttons=[...editors[0].querySelectorAll('button[type=\"button\"]')].filter(x=>x.textContent.trim()==='Save');if(buttons.length!==1)return false;buttons[0].click();return true})()",
     "Save control is unavailable",
   ),
   action(
@@ -699,7 +699,7 @@ const UI_ACTIONS = Object.freeze([
   ),
   action(
     "Diff",
-    "(()=>{const x=[...document.querySelectorAll('button[aria-label=\"Open diff for journey.ts\"]')];if(x.length!==1)return false;x[0].click();return true})()",
+    "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Source Control project tools\"]')];if(panels.length!==1)return false;const rows=[...panels[0].querySelectorAll('button[aria-label=\"Open diff for journey.ts\"]')];if(rows.length!==1)return false;rows[0].click();return true})()",
     "Diff control is unavailable",
   ),
 ]);
@@ -712,23 +712,42 @@ async function waitFor(evaluate, expression, deadline, message) {
   throw new Error(message);
 }
 
-function verificationFor(step) {
+export function verificationFor(step) {
   if (step === "Explorer")
-    return 'document.querySelectorAll(\'[role="tree"][aria-label="Project files"] [aria-label="Open file journey.ts"]\').length===1';
+    return '(()=>{const tools=[...document.querySelectorAll(\'aside[aria-label="Project tools"]\')];if(tools.length!==1)return false;const trees=[...tools[0].querySelectorAll(\'[role="tree"][aria-label="Project files"]\')];return trees.length===1&&trees[0].querySelectorAll(\'[role="treeitem"][aria-label="Open file journey.ts"]\').length===1})()';
   if (step === "Search")
-    return "document.querySelectorAll('[aria-label=\"Search files\"]').length===1";
+    return "(()=>{const forms=[...document.querySelectorAll('.workspace-search__form')];if(forms.length!==1)return false;return forms[0].querySelectorAll('input[type=\"search\"][aria-label=\"Search files\"]').length===1&&forms[0].querySelectorAll('button[type=\"submit\"]').length===1})()";
   if (step === "File")
-    return "document.querySelectorAll('[aria-label^=\"Open journey.ts at line\"]').length===1";
+    return 'document.querySelectorAll(\'.workspace-search__results[role="list"] [role="listitem"] > button.workspace-search__result[aria-label="Open journey.ts at line 1, column 14"]\').length===1';
   if (step === "edit-diagnostic")
-    return "document.querySelectorAll('[aria-label=\"File editor journey.ts\"]').length===1";
+    return 'document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\').length===1';
   if (step === "save")
-    return "document.querySelectorAll('[aria-label=\"File editor journey.ts\"]').length===1";
+    return "document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]').length===1";
   if (step === "Source Control")
-    return "document.querySelectorAll('[aria-label=\"Source Control project tools\"]').length===1";
+    return "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Source Control project tools\"]')];return panels.length===1&&panels[0].querySelectorAll('button[aria-label=\"Open diff for journey.ts\"]').length===1})()";
   if (step === "Diff")
-    return "document.querySelectorAll('[aria-label=\"Diff for journey.ts\"]').length===1";
+    return "(()=>{const surfaces=[...document.querySelectorAll('section.diff-surface[aria-label=\"Diff for journey.ts\"]')];if(surfaces.length!==1)return false;const ready=[...surfaces[0].querySelectorAll('.diff-editor[role=\"table\"][aria-label=\"Unified file diff\"]')];return ready.length===1&&ready[0].textContent.includes('journey edited through Playwright')})()";
   return UI_ACTIONS[0].expression;
 }
+
+export const UI_PROBES = Object.freeze({
+  editableEditor:
+    'document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\').length===1',
+  insertEditorEdit:
+    '(()=>{const x=[...document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\')];if(x.length!==1)return false;x[0].focus();return document.execCommand("insertText",false,"\\n// journey edited through Playwright\\n")})()',
+  openProblems:
+    "(()=>{const x=[...document.querySelectorAll('button[aria-label=\"Problems\"]')];if(x.length!==1)return false;x[0].click();return true})()",
+  problemsReady:
+    "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Problems project tools\"]')];if(panels.length!==1)return false;const surfaces=[...panels[0].querySelectorAll('section[aria-label=\"Problems\"]')];return surfaces.length===1&&surfaces[0].querySelectorAll('button.problem-card').length>=1})()",
+  diagnosticMessages:
+    "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Problems project tools\"]')];if(panels.length!==1)return null;const surfaces=[...panels[0].querySelectorAll('section[aria-label=\"Problems\"]')];if(surfaces.length!==1)return null;return JSON.stringify([...surfaces[0].querySelectorAll('button.problem-card')].map(x=>x.innerText))})()",
+  saveSettled:
+    "(()=>{const editors=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]')];if(editors.length!==1)return false;const buttons=[...editors[0].querySelectorAll('button[type=\"button\"]')].filter(x=>x.textContent.trim()==='Save');return buttons.length===1&&buttons[0].disabled===true})()",
+  savedContent:
+    "(()=>{const editors=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]')];if(editors.length!==1)return null;const contents=[...editors[0].querySelectorAll('.cm-content')];return contents.length===1?contents[0].innerText:null})()",
+  diffContent:
+    "(()=>{const surfaces=[...document.querySelectorAll('section.diff-surface[aria-label=\"Diff for journey.ts\"]')];return surfaces.length===1?surfaces[0].innerText:null})()",
+});
 
 export function assertEvidenceRoot(sourceRoot, output) {
   const evidenceParent = path.join(realpathSync(sourceRoot), "local-evidence");
@@ -827,54 +846,33 @@ async function execute(options) {
         `${current.label} verification timed out`,
       );
       if (current.label === "edit-diagnostic") {
-        if (
-          !(await cdp.evaluate(
-            'document.querySelectorAll(\'[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\').length===1',
-          ))
-        )
+        if (!(await cdp.evaluate(UI_PROBES.editableEditor)))
           throw new Error(
             "editor did not expose one editable CodeMirror surface",
           );
-        if (
-          (await cdp.evaluate(
-            '(()=>{const e=document.querySelector(\'[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\');e.focus();return document.execCommand("insertText",false,"\\n// journey edited through Playwright\\n")})()',
-          )) !== true
-        )
+        if ((await cdp.evaluate(UI_PROBES.insertEditorEdit)) !== true)
           throw new Error("editor did not accept native text insertion");
-        if (
-          (await cdp.evaluate(
-            "(()=>{const x=[...document.querySelectorAll('button[aria-label=\"Problems\"]')];if(x.length!==1)return false;x[0].click();return true})()",
-          )) !== true
-        )
+        if ((await cdp.evaluate(UI_PROBES.openProblems)) !== true)
           throw new Error("Problems control is ambiguous");
         await waitFor(
           cdp.evaluate,
-          "document.querySelectorAll('[aria-label=\"Problems\"] .problem-card').length>=1",
+          UI_PROBES.problemsReady,
           deadline,
           "language diagnostic did not arrive",
         );
-        diagnosticMessages = await cdp.evaluate(
-          "JSON.stringify([...document.querySelectorAll('[aria-label=\"Problems\"] .problem-card')].map(x=>x.innerText))",
-        );
-        await cdp.evaluate(
-          "(()=>{const x=[...document.querySelectorAll('button[aria-label=\"Search\"]')];if(x.length!==1)return false;x[0].click();return true})()",
-        );
+        diagnosticMessages = await cdp.evaluate(UI_PROBES.diagnosticMessages);
       }
       if (current.label === "save") {
         await waitFor(
           cdp.evaluate,
-          "(()=>{const x=[...document.querySelectorAll('button')].find(x=>x.textContent.trim()==='Save');return x?.disabled===true})()",
+          UI_PROBES.saveSettled,
           deadline,
           "save did not settle to a disabled control",
         );
-        savedContent = await cdp.evaluate(
-          "document.querySelector('[aria-label=\"File editor journey.ts\"] .cm-content')?.innerText??''",
-        );
+        savedContent = await cdp.evaluate(UI_PROBES.savedContent);
       }
       if (current.label === "Diff") {
-        diffContent = await cdp.evaluate(
-          "document.querySelector('[aria-label=\"Diff for journey.ts\"]')?.innerText??''",
-        );
+        diffContent = await cdp.evaluate(UI_PROBES.diffContent);
       }
       controlledTarget = await revalidateAttachedPage(
         options,
