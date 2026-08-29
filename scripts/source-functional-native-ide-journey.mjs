@@ -14,12 +14,10 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runBoundedTool } from "./source-functional-native-ide-bounded-tool.mjs";
+import { connectCdp } from "./source-functional-native-ide-cdp.mjs";
 import {
-  createPlaywrightTransportReceipt,
   resolvePlaywrightTransport,
   runPlaywrightTool,
-  validatePlaywrightTransportReceipt,
-  validatePlaywrightTransport,
 } from "./source-functional-native-ide-transport.mjs";
 
 export {
@@ -54,6 +52,9 @@ const MAX_SCREENSHOT_BASE64_CHARACTERS = 4 * Math.ceil(MAX_ARTIFACT_BYTES / 3);
 const MAX_SCREENSHOT_RESULT_BYTES = MAX_SCREENSHOT_BASE64_CHARACTERS + 2;
 const MAX_SCREENSHOT_OUTPUT_BYTES =
   MAX_SCREENSHOT_RESULT_BYTES + MAX_PLAYWRIGHT_ENVELOPE_OVERHEAD_BYTES;
+const MAX_CDP_OPERATION_MS = 10_000;
+const MIN_CDP_JOURNEY_REQUESTS = 41;
+const MAX_CDP_JOURNEY_REQUESTS = 1024;
 const PLAYWRIGHT_RESULT_MARKER = "### Result\n";
 const PLAYWRIGHT_CODE_MARKER = "\n### Ran Playwright code\n";
 const PENDING_RECEIPT_NAME =
@@ -143,6 +144,42 @@ export function validateExecutableBinding(filePath, expected, deps = {}) {
   return actual;
 }
 
+function sameCanonicalPath(left, right) {
+  const normalize =
+    process.platform === "win32"
+      ? (value) => value.toLowerCase()
+      : (value) => value;
+  return normalize(path.normalize(left)) === normalize(path.normalize(right));
+}
+
+export function validatePlainCanonicalExecutable(
+  filePath,
+  expected,
+  deps = {},
+) {
+  if (
+    typeof filePath !== "string" ||
+    !path.isAbsolute(filePath) ||
+    path.resolve(filePath) !== filePath
+  )
+    fail("executable-identity-invalid");
+  const inspect = deps.lstatSync ?? lstatSync;
+  const resolveRealPath =
+    deps.realpathSync ?? realpathSync.native ?? realpathSync;
+  let current = filePath;
+  while (true) {
+    const stats = inspect(current);
+    if (stats.isSymbolicLink()) fail("executable-identity-invalid");
+    if (!sameCanonicalPath(resolveRealPath(current), current))
+      fail("executable-identity-invalid");
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  const validate = deps.validateBinding ?? validateExecutableBinding;
+  return Object.freeze({ path: filePath, ...validate(filePath, expected) });
+}
+
 function exactKeys(value, keys) {
   return (
     value &&
@@ -175,9 +212,10 @@ export function parseJourneyArguments(argv) {
     "executable",
     "fixture",
     "source-root",
-    "playwright-cli",
     "executable-bytes",
     "executable-sha256",
+    "node-bytes",
+    "node-sha256",
     "expected-origin",
     "deadline-ms",
     "runtime-mode",
@@ -192,6 +230,7 @@ export function parseJourneyArguments(argv) {
       ? 90_000
       : Number(options["deadline-ms"]);
   const executableBytes = Number(options["executable-bytes"]);
+  const nodeBytes = Number(options["node-bytes"]);
   const expectedOrigin = canonicalExpectedOrigin(options["expected-origin"]);
   if (
     !Number.isInteger(port) ||
@@ -206,11 +245,14 @@ export function parseJourneyArguments(argv) {
     !isAbsolutePath(options.executable) ||
     !isAbsolutePath(options.fixture) ||
     !isAbsolutePath(options["source-root"]) ||
-    !isAbsolutePath(options["playwright-cli"]) ||
     !Number.isSafeInteger(executableBytes) ||
     executableBytes <= 0 ||
     executableBytes > MAX_EXECUTABLE_BYTES ||
     !SHA256.test(options["executable-sha256"] ?? "") ||
+    !Number.isSafeInteger(nodeBytes) ||
+    nodeBytes <= 0 ||
+    nodeBytes > MAX_EXECUTABLE_BYTES ||
+    !SHA256.test(options["node-sha256"] ?? "") ||
     expectedOrigin === null ||
     options["runtime-mode"] !== "tauri-dev-split" ||
     options["frontend-ready"] !== "true" ||
@@ -226,9 +268,10 @@ export function parseJourneyArguments(argv) {
     executable: options.executable,
     fixture: options.fixture,
     sourceRoot: options["source-root"],
-    playwrightCli: options["playwright-cli"],
     executableBytes,
     executableSha256: options["executable-sha256"],
+    nodeBytes,
+    nodeSha256: options["node-sha256"],
     expectedOrigin,
     deadlineMs,
     runtimeMode: options["runtime-mode"],
@@ -251,7 +294,7 @@ function isWithin(root, candidate) {
 export function createJourneyReceipt({
   source,
   executable,
-  playwrightTransport,
+  automationTransport,
   fixture,
   cdp,
   expectedOrigin,
@@ -261,13 +304,6 @@ export function createJourneyReceipt({
   observations,
   evidenceRoot,
 }) {
-  let admittedPlaywrightTransport;
-  try {
-    admittedPlaywrightTransport =
-      validatePlaywrightTransportReceipt(playwrightTransport);
-  } catch {
-    fail("receipt-invalid");
-  }
   if (
     !exactKeys(source, ["commit", "tree"]) ||
     !GIT_OBJECT.test(source.commit) ||
@@ -291,7 +327,31 @@ export function createJourneyReceipt({
     cdp.origin !== expectedOrigin ||
     !exactKeys(runtime, ["frontendReady", "mode"]) ||
     runtime.mode !== "tauri-dev-split" ||
-    runtime.frontendReady !== true
+    runtime.frontendReady !== true ||
+    !exactKeys(automationTransport, [
+      "kind",
+      "node",
+      "connectionCount",
+      "maxInFlight",
+      "requestCount",
+    ]) ||
+    automationTransport.kind !== "node-websocket-cdp-v1" ||
+    !exactKeys(automationTransport.node, ["path", "bytes", "sha256"]) ||
+    !isAbsolutePath(automationTransport.node.path) ||
+    (path.isAbsolute(automationTransport.node.path)
+      ? path.resolve(automationTransport.node.path) !==
+        automationTransport.node.path
+      : path.win32.normalize(automationTransport.node.path) !==
+        automationTransport.node.path) ||
+    !Number.isSafeInteger(automationTransport.node.bytes) ||
+    automationTransport.node.bytes <= 0 ||
+    automationTransport.node.bytes > MAX_EXECUTABLE_BYTES ||
+    !SHA256.test(automationTransport.node.sha256) ||
+    automationTransport.connectionCount !== 1 ||
+    automationTransport.maxInFlight !== 1 ||
+    !Number.isSafeInteger(automationTransport.requestCount) ||
+    automationTransport.requestCount < MIN_CDP_JOURNEY_REQUESTS ||
+    automationTransport.requestCount > MAX_CDP_JOURNEY_REQUESTS
   ) {
     fail("receipt-invalid");
   }
@@ -357,7 +417,7 @@ export function createJourneyReceipt({
     return { name, ...hashFile(artifact) };
   });
   return Object.freeze({
-    schemaVersion: 3,
+    schemaVersion: 4,
     completed: true,
     source: Object.freeze({ ...source }),
     sourceBinding: "collection-only",
@@ -366,7 +426,13 @@ export function createJourneyReceipt({
       bytes: executable.bytes,
       sha256: executable.sha256,
     }),
-    playwrightTransport: admittedPlaywrightTransport,
+    automationTransport: Object.freeze({
+      kind: automationTransport.kind,
+      node: Object.freeze({ ...automationTransport.node }),
+      connectionCount: automationTransport.connectionCount,
+      maxInFlight: automationTransport.maxInFlight,
+      requestCount: automationTransport.requestCount,
+    }),
     fixture: Object.freeze({ sha256: fixture.sha256 }),
     cdp: Object.freeze({ ...cdp }),
     observations: Object.freeze({
@@ -402,7 +468,13 @@ export function admitCdpTarget(targets, port, expectedOrigin) {
   );
   if (pages.length !== 1) fail(`cdp-page-count-${pages.length}`);
   validateCdpTarget(pages[0], port);
-  return pages[0];
+  return Object.freeze({
+    id: pages[0].id,
+    type: "page",
+    title: "Sage",
+    url: pages[0].url,
+    webSocketDebuggerUrl: pages[0].webSocketDebuggerUrl,
+  });
 }
 
 export function revalidateControlledCdpTarget(
@@ -647,7 +719,16 @@ export async function attachPlaywright(options, deadline, deps = {}) {
 
 async function revalidateAttachedPage(options, cdp, admittedTarget, deadline) {
   const currentTargets = await readCdpTargets(options.port, deadline);
-  const controlledTarget = await cdp.inspectTarget();
+  const pageIdentity = await cdp.evaluate(
+    "(()=>({title:document.title,url:location.href}))()",
+    operationDeadline(deadline),
+  );
+  const controlledTarget = {
+    id: admittedTarget.id,
+    type: "page",
+    title: pageIdentity?.title,
+    url: pageIdentity?.url,
+  };
   return revalidateControlledCdpTarget(
     admittedTarget,
     currentTargets,
@@ -704,12 +785,28 @@ export const UI_ACTIONS = Object.freeze([
   ),
 ]);
 
-async function waitFor(evaluate, expression, deadline, message) {
+function operationDeadline(journeyDeadline) {
+  const now = Date.now();
+  if (now >= journeyDeadline) throw new Error("journey deadline exhausted");
+  return Math.min(journeyDeadline, now + MAX_CDP_OPERATION_MS);
+}
+
+async function waitFor(cdp, expression, deadline, message) {
   while (Date.now() < deadline) {
-    if (await evaluate(expression)) return;
-    await sleep(100);
+    if (await cdp.evaluate(expression, operationDeadline(deadline))) return;
+    await sleep(Math.min(100, Math.max(0, deadline - Date.now())));
   }
   throw new Error(message);
+}
+
+export function attachCdp(admittedTarget, deadline, deps = {}) {
+  const connect = deps.connectCdp ?? connectCdp;
+  return connect({
+    target: admittedTarget,
+    deadline,
+    openDeadline: operationDeadline(deadline),
+    ...(deps.WebSocketImpl ? { WebSocketImpl: deps.WebSocketImpl } : {}),
+  });
 }
 
 export function verificationFor(step) {
@@ -726,7 +823,7 @@ export function verificationFor(step) {
   if (step === "Source Control")
     return "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Source Control project tools\"]')];return panels.length===1&&panels[0].querySelectorAll('button[aria-label=\"Open diff for journey.ts\"]').length===1})()";
   if (step === "Diff")
-    return "(()=>{const surfaces=[...document.querySelectorAll('section.diff-surface[aria-label=\"Diff for journey.ts\"]')];if(surfaces.length!==1)return false;const ready=[...surfaces[0].querySelectorAll('.diff-editor[role=\"table\"][aria-label=\"Unified file diff\"]')];return ready.length===1&&ready[0].textContent.includes('journey edited through Playwright')})()";
+    return "(()=>{const surfaces=[...document.querySelectorAll('section.diff-surface[aria-label=\"Diff for journey.ts\"]')];if(surfaces.length!==1)return false;const ready=[...surfaces[0].querySelectorAll('.diff-editor[role=\"table\"][aria-label=\"Unified file diff\"]')];return ready.length===1&&ready[0].textContent.includes('journey edited through native CDP')})()";
   return UI_ACTIONS[0].expression;
 }
 
@@ -734,7 +831,7 @@ export const UI_PROBES = Object.freeze({
   editableEditor:
     'document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\').length===1',
   insertEditorEdit:
-    '(()=>{const x=[...document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\')];if(x.length!==1)return false;x[0].focus();return document.execCommand("insertText",false,"\\n// journey edited through Playwright\\n")})()',
+    '(()=>{const x=[...document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\')];if(x.length!==1)return false;x[0].focus();return document.execCommand("insertText",false,"\\n// journey edited through native CDP\\n")})()',
   openProblems:
     "(()=>{const x=[...document.querySelectorAll('button[aria-label=\"Problems\"]')];if(x.length!==1)return false;x[0].click();return true})()",
   problemsReady:
@@ -812,13 +909,18 @@ async function execute(options) {
     sha256: options.executableSha256,
   };
   validateExecutableBinding(options.executable, executableBinding);
+  const nodeBinding = {
+    bytes: options.nodeBytes,
+    sha256: options.nodeSha256,
+  };
+  validatePlainCanonicalExecutable(process.execPath, nodeBinding);
   const deadline = Date.now() + options.deadlineMs;
   const admittedTarget = await discoverTarget(
     options.port,
     options.expectedOrigin,
     deadline,
   );
-  const cdp = await attachPlaywright(options, deadline);
+  const cdp = await attachCdp(admittedTarget, deadline);
   const artifacts = [];
   const milestones = [];
   const log = [
@@ -833,46 +935,77 @@ async function execute(options) {
   let savedContent = null;
   let diffContent = null;
   let controlledTarget;
+  let receipt;
+  let journeyError;
   try {
     await revalidateAttachedPage(options, cdp, admittedTarget, deadline);
     for (let index = 0; index < UI_ACTIONS.length; index += 1) {
       const current = UI_ACTIONS[index];
-      if ((await cdp.evaluate(current.expression)) !== true)
+      if (
+        (await cdp.evaluate(
+          current.expression,
+          operationDeadline(deadline),
+        )) !== true
+      )
         throw new Error(current.assertion);
       await waitFor(
-        cdp.evaluate,
+        cdp,
         verificationFor(current.label),
         deadline,
         `${current.label} verification timed out`,
       );
       if (current.label === "edit-diagnostic") {
-        if (!(await cdp.evaluate(UI_PROBES.editableEditor)))
+        if (
+          !(await cdp.evaluate(
+            UI_PROBES.editableEditor,
+            operationDeadline(deadline),
+          ))
+        )
           throw new Error(
             "editor did not expose one editable CodeMirror surface",
           );
-        if ((await cdp.evaluate(UI_PROBES.insertEditorEdit)) !== true)
+        if (
+          (await cdp.evaluate(
+            UI_PROBES.insertEditorEdit,
+            operationDeadline(deadline),
+          )) !== true
+        )
           throw new Error("editor did not accept native text insertion");
-        if ((await cdp.evaluate(UI_PROBES.openProblems)) !== true)
+        if (
+          (await cdp.evaluate(
+            UI_PROBES.openProblems,
+            operationDeadline(deadline),
+          )) !== true
+        )
           throw new Error("Problems control is ambiguous");
         await waitFor(
-          cdp.evaluate,
+          cdp,
           UI_PROBES.problemsReady,
           deadline,
           "language diagnostic did not arrive",
         );
-        diagnosticMessages = await cdp.evaluate(UI_PROBES.diagnosticMessages);
+        diagnosticMessages = await cdp.evaluate(
+          UI_PROBES.diagnosticMessages,
+          operationDeadline(deadline),
+        );
       }
       if (current.label === "save") {
         await waitFor(
-          cdp.evaluate,
+          cdp,
           UI_PROBES.saveSettled,
           deadline,
           "save did not settle to a disabled control",
         );
-        savedContent = await cdp.evaluate(UI_PROBES.savedContent);
+        savedContent = await cdp.evaluate(
+          UI_PROBES.savedContent,
+          operationDeadline(deadline),
+        );
       }
       if (current.label === "Diff") {
-        diffContent = await cdp.evaluate(UI_PROBES.diffContent);
+        diffContent = await cdp.evaluate(
+          UI_PROBES.diffContent,
+          operationDeadline(deadline),
+        );
       }
       controlledTarget = await revalidateAttachedPage(
         options,
@@ -881,7 +1014,14 @@ async function execute(options) {
         deadline,
       );
       const screenshotName = `${String(index + 1).padStart(2, "0")}-${current.label.replaceAll(/[^a-z0-9]+/giu, "-").toLowerCase()}.png`;
-      const artifact = await cdp.screenshot(screenshotName);
+      const screenshot = await cdp.screenshot(operationDeadline(deadline));
+      const artifact = path.join(options.output, screenshotName);
+      writeContainedBytes(
+        options.sourceRoot,
+        options.output,
+        screenshotName,
+        decodeBoundedScreenshot(screenshot),
+      );
       artifacts.push(artifact);
       milestones.push({ step: current.label, ordinal: index + 1 });
       log.push({
@@ -902,12 +1042,12 @@ async function execute(options) {
     const disk = readFileSync(path.join(options.fixture, "journey.ts"), "utf8");
     if (
       savedContent !== disk ||
-      !disk.includes("journey edited through Playwright") ||
+      !disk.includes("journey edited through native CDP") ||
       !Array.isArray(diagnostics) ||
       diagnostics.length < 1 ||
       typeof diffContent !== "string" ||
       !diffContent.includes("journey.ts") ||
-      !diffContent.includes("journey edited through Playwright")
+      !diffContent.includes("journey edited through native CDP")
     )
       fail("observations-invalid");
     const digest = (value) => createHash("sha256").update(value).digest("hex");
@@ -929,14 +1069,31 @@ async function execute(options) {
         contentSha256: digest(diffContent),
       },
     };
-    validatePlaywrightTransport(cdp.transport);
-    const receipt = createJourneyReceipt({
+    const finalNodeIdentity = validatePlainCanonicalExecutable(
+      process.execPath,
+      nodeBinding,
+    );
+    if (
+      cdp.stats?.connectionCount !== 1 ||
+      cdp.stats?.maxInFlight !== 1 ||
+      !Number.isSafeInteger(cdp.stats?.requestCount) ||
+      cdp.stats.requestCount < MIN_CDP_JOURNEY_REQUESTS ||
+      cdp.stats.requestCount > MAX_CDP_JOURNEY_REQUESTS
+    )
+      fail("cdp-transport-invalid");
+    receipt = createJourneyReceipt({
       source: { commit: options.sourceCommit, tree: options.sourceTree },
       executable: {
         path: options.executable,
         ...validateExecutableBinding(options.executable, executableBinding),
       },
-      playwrightTransport: createPlaywrightTransportReceipt(cdp.transport),
+      automationTransport: {
+        kind: "node-websocket-cdp-v1",
+        node: finalNodeIdentity,
+        connectionCount: cdp.stats.connectionCount,
+        maxInFlight: cdp.stats.maxInFlight,
+        requestCount: cdp.stats.requestCount,
+      },
       fixture: { path: options.fixture, sha256: hashFixture(options.fixture) },
       cdp: {
         port: options.port,
@@ -953,15 +1110,32 @@ async function execute(options) {
       evidenceRoot: options.output,
       observations,
     });
-    writePendingJourneyReceipt(
-      options.sourceRoot,
-      options.output,
-      options.receiptName,
-      receipt,
-    );
-  } finally {
-    await cdp.close();
+  } catch (error) {
+    journeyError = error;
   }
+  let cleanupError;
+  try {
+    await cdp.close(Date.now() + 5000);
+  } catch (error) {
+    cleanupError = error;
+  }
+  if (journeyError) {
+    if (cleanupError) {
+      Object.defineProperty(journeyError, "cleanupError", {
+        value: String(cleanupError?.message ?? cleanupError).slice(0, 1024),
+        enumerable: true,
+      });
+    }
+    throw journeyError;
+  }
+  if (cleanupError) throw cleanupError;
+  writePendingJourneyReceipt(
+    options.sourceRoot,
+    options.output,
+    options.receiptName,
+    receipt,
+  );
+  return receipt;
 }
 
 function hashFixture(root) {
@@ -993,7 +1167,18 @@ if (
           options.sourceRoot,
           options.output,
           "machine-failure.json",
-          `${JSON.stringify({ schemaVersion: 1, completed: false, error: String(error?.message ?? error).slice(0, 1024) }, null, 2)}\n`,
+          `${JSON.stringify(
+            {
+              schemaVersion: 1,
+              completed: false,
+              error: String(error?.message ?? error).slice(0, 1024),
+              ...(typeof error?.cleanupError === "string"
+                ? { cleanupError: error.cleanupError }
+                : {}),
+            },
+            null,
+            2,
+          )}\n`,
         );
     } catch {
       /* never write a receipt through an unsafe root */

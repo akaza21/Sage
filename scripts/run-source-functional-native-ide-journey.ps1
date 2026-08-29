@@ -33,6 +33,20 @@ function Require-AbsoluteFile([string]$Value, [string]$Label) {
   return $item.FullName
 }
 
+function Require-PlainCanonicalFile([string]$Value, [string]$Label) {
+  $resolved = Require-AbsoluteFile $Value $Label
+  $current = $resolved
+  while ($true) {
+    $item = Get-Item -LiteralPath $current -Force
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "$Label path contains a reparse point." }
+    if (-not [string]::Equals($item.FullName, $current, [StringComparison]::OrdinalIgnoreCase)) { throw "$Label path is not canonical." }
+    $parent = Split-Path -Parent $current
+    if (-not $parent -or $parent -eq $current) { break }
+    $current = $parent
+  }
+  return $resolved
+}
+
 function Get-BoundedLoopbackPort {
   $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
   try {
@@ -641,9 +655,10 @@ $preLaunchExecutableSha256 = (Get-FileHash -LiteralPath $resolvedExecutable -Alg
 if (-not (Test-FullyQualifiedPath $SourceRoot)) { throw "SourceRoot must be an absolute canonical path." }
 $resolvedSource = (Get-Item -LiteralPath $SourceRoot -Force).FullName
 if (-not (Test-Path -LiteralPath (Join-Path $resolvedSource ".git") -PathType Container)) { throw "SourceRoot must be a Git checkout." }
-$node = Require-AbsoluteFile (Get-Command node -ErrorAction Stop).Source "node"
+$node = Require-PlainCanonicalFile (Get-Command node -ErrorAction Stop).Source "node"
+$preLaunchNodeBytes = (Get-Item -LiteralPath $node -Force).Length
+$preLaunchNodeSha256 = (Get-FileHash -LiteralPath $node -Algorithm SHA256).Hash.ToLowerInvariant()
 $runner = Require-AbsoluteFile (Join-Path $PSScriptRoot "source-functional-native-ide-journey.mjs") "journey runner"
-$playwrightCli = Require-AbsoluteFile $env:SAGE_PLAYWRIGHT_CLI "SAGE_PLAYWRIGHT_CLI"
 Import-Module (Join-Path $PSScriptRoot "footprint/ProcessIdentity.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "footprint/DisposableProfile.psm1") -Force
 
@@ -712,8 +727,9 @@ try {
     $runner, "--port", "$port", "--output", $EvidenceRoot,
     "--source-commit", $commit, "--source-tree", $tree,
     "--executable", $resolvedExecutable, "--fixture", $fixture,
-    "--source-root", $resolvedSource, "--playwright-cli", $playwrightCli,
+    "--source-root", $resolvedSource,
     "--executable-bytes", "$preLaunchExecutableBytes", "--executable-sha256", $preLaunchExecutableSha256,
+    "--node-bytes", "$preLaunchNodeBytes", "--node-sha256", $preLaunchNodeSha256,
     "--expected-origin", $frontendContract.origin,
     "--runtime-mode", $runtimeReceipt.mode, "--frontend-ready", "$($runtimeReceipt.frontendReady)".ToLowerInvariant(),
     "--receipt-name", (Split-Path -Leaf $pendingReceipt),

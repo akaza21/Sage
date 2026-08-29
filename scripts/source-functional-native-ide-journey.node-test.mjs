@@ -23,6 +23,7 @@ import { PassThrough } from "node:stream";
 import {
   admitCdpTarget,
   assertEvidenceRoot,
+  attachCdp,
   attachPlaywright,
   JOURNEY_STEPS,
   createJourneyReceipt,
@@ -37,6 +38,7 @@ import {
   UI_ACTIONS,
   UI_PROBES,
   validateExecutableBinding,
+  validatePlainCanonicalExecutable,
   validatePlaywrightTransport,
   validateCdpTarget,
   verificationFor,
@@ -554,7 +556,7 @@ test("native IDE Source Control and Diff readiness wait for the exact ready chan
     evaluateBrowserExpression(verificationFor("Diff"), { document }),
     false,
   );
-  diffEditor.textContent = "+// journey edited through Playwright";
+  diffEditor.textContent = "+// journey edited through native CDP";
   diffEditor.innerText = diffEditor.textContent;
   diffSurface.innerText = `journey.ts\n${diffEditor.innerText}`;
   assert.equal(
@@ -587,12 +589,14 @@ test("native IDE journey requires an explicit bounded CDP launch contract", () =
     "C:\\fixture",
     "--source-root",
     "C:\\source",
-    "--playwright-cli",
-    "C:\\tools\\playwright-cli.cmd",
     "--executable-bytes",
     "123",
     "--executable-sha256",
     "c".repeat(64),
+    "--node-bytes",
+    "456",
+    "--node-sha256",
+    "e".repeat(64),
     "--expected-origin",
     "http://127.0.0.1:1420",
     "--runtime-mode",
@@ -605,6 +609,8 @@ test("native IDE journey requires an explicit bounded CDP launch contract", () =
   assert.equal(parsed.port, 9229);
   assert.equal(parsed.output, "C:\\evidence");
   assert.equal(parsed.deadlineMs, 90_000);
+  assert.equal(parsed.nodeBytes, 456);
+  assert.equal(parsed.nodeSha256, "e".repeat(64));
   assert.equal(parsed.expectedOrigin, "http://127.0.0.1:1420/");
   assert.equal(parsed.runtimeMode, "tauri-dev-split");
   assert.equal(parsed.frontendReady, true);
@@ -619,7 +625,7 @@ test("native IDE receipt binds a completed ordered journey and artifact hashes",
     const log = path.join(root, "cdp.json");
     writeFileSync(screenshot, "screenshot");
     writeFileSync(log, "cdp log");
-    const receipt = createJourneyReceipt({
+    const input = {
       source: { commit: "a".repeat(40), tree: "b".repeat(40) },
       executable: {
         path: "C:\\candidate\\sage.exe",
@@ -634,16 +640,17 @@ test("native IDE receipt binds a completed ordered journey and artifact hashes",
       },
       expectedOrigin: "http://127.0.0.1:1420/",
       runtime: runtimeReceipt(),
-      playwrightTransport: playwrightTransportReceipt(),
+      automationTransport: rawCdpTransportReceipt(),
       observations: observed(),
       milestones: JOURNEY_STEPS.map((step, index) => ({
         step,
         ordinal: index + 1,
       })),
       artifacts: [screenshot, log],
-    });
+    };
+    const receipt = createJourneyReceipt(input);
     assert.equal(receipt.completed, true);
-    assert.equal(receipt.schemaVersion, 3);
+    assert.equal(receipt.schemaVersion, 4);
     assert.deepEqual(
       receipt.milestones.map(({ step }) => step),
       JOURNEY_STEPS,
@@ -653,47 +660,47 @@ test("native IDE receipt binds a completed ordered journey and artifact hashes",
     assert.equal("path" in receipt.artifacts[0], false);
     assert.equal(receipt.sourceBinding, "collection-only");
     assert.deepEqual(receipt.runtime, runtimeReceipt());
-    assert.deepEqual(receipt.playwrightTransport, playwrightTransportReceipt());
+    assert.deepEqual(receipt.automationTransport, rawCdpTransportReceipt());
+    assert.deepEqual(Object.keys(receipt.automationTransport).sort(), [
+      "connectionCount",
+      "kind",
+      "maxInFlight",
+      "node",
+      "requestCount",
+    ]);
+    assert.equal(receipt.automationTransport.node.path, process.execPath);
+    assert.equal(Object.isFrozen(receipt.automationTransport), true);
+    assert.equal(Object.isFrozen(receipt.automationTransport.node), true);
     assert.deepEqual(Object.keys(receipt.runtime).sort(), [
       "frontendReady",
       "mode",
     ]);
-    assert.throws(
-      () =>
-        createJourneyReceipt({
-          source: { commit: "a".repeat(40), tree: "b".repeat(40) },
-          executable: {
-            path: "C:\\candidate\\sage.exe",
-            bytes: 123,
-            sha256: "c".repeat(64),
-          },
-          playwrightTransport: {
-            ...playwrightTransportReceipt(),
-            packages: {
-              ...playwrightTransportReceipt().packages,
-              cli: {
-                ...playwrightTransportReceipt().packages.cli,
-                fileCount: 0,
-              },
-            },
-          },
-          fixture: { path: "C:\\fixture", sha256: "d".repeat(64) },
-          cdp: {
-            port: 9229,
-            targetId: "page-1",
-            origin: "http://127.0.0.1:1420/",
-          },
-          expectedOrigin: "http://127.0.0.1:1420/",
-          runtime: runtimeReceipt(),
-          observations: observed(),
-          milestones: JOURNEY_STEPS.map((step, index) => ({
-            step,
-            ordinal: index + 1,
-          })),
-          artifacts: [screenshot, log],
-        }),
-      /journey-receipt-invalid/u,
-    );
+    for (const automationTransport of [
+      {
+        ...rawCdpTransportReceipt(),
+        node: {
+          ...rawCdpTransportReceipt().node,
+          bytes: 0,
+        },
+      },
+      { ...rawCdpTransportReceipt(), connectionCount: 2 },
+      { ...rawCdpTransportReceipt(), maxInFlight: 2 },
+      { ...rawCdpTransportReceipt(), requestCount: 40 },
+      { ...rawCdpTransportReceipt(), requestCount: 1025 },
+      {
+        ...rawCdpTransportReceipt(),
+        source: { commit: "a".repeat(40), tree: "b".repeat(40) },
+      },
+    ]) {
+      assert.throws(
+        () =>
+          createJourneyReceipt({
+            ...input,
+            automationTransport,
+          }),
+        /journey-receipt-invalid/u,
+      );
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -719,7 +726,7 @@ test("native IDE receipt refuses reordered milestones and evidence outside its r
       },
       expectedOrigin: "http://127.0.0.1:1420/",
       runtime: runtimeReceipt(),
-      playwrightTransport: playwrightTransportReceipt(),
+      automationTransport: rawCdpTransportReceipt(),
       artifacts: [artifact],
       evidenceRoot: root,
       observations: observed(),
@@ -776,7 +783,7 @@ test("native IDE receipt refuses unobserved save, diagnostic, and Diff claims", 
           },
           expectedOrigin: "http://127.0.0.1:1420/",
           runtime: runtimeReceipt(),
-          playwrightTransport: playwrightTransportReceipt(),
+          automationTransport: rawCdpTransportReceipt(),
           milestones: JOURNEY_STEPS.map((step, index) => ({
             step,
             ordinal: index + 1,
@@ -894,6 +901,24 @@ test("native IDE journey admits exactly one page at the derived development orig
       "one",
     );
   }
+  const projected = admitCdpTarget(
+    [
+      {
+        ...page("one", "http://127.0.0.1:1420/"),
+        description: "ambient CDP field",
+        devtoolsFrontendUrl: "/devtools/inspector.html",
+      },
+    ],
+    9229,
+    "http://127.0.0.1:1420/",
+  );
+  assert.deepEqual(Object.keys(projected).sort(), [
+    "id",
+    "title",
+    "type",
+    "url",
+    "webSocketDebuggerUrl",
+  ]);
   for (const wrongOrigin of [
     "http://localhost:1420/",
     "http://127.0.0.1:1421/",
@@ -932,6 +957,38 @@ test("native IDE journey admits exactly one page at the derived development orig
       ),
     /journey-cdp-page-count-2/,
   );
+});
+
+test("native IDE journey attaches one persistent raw CDP transport", async () => {
+  const admitted = {
+    id: "page-1",
+    type: "page",
+    title: "Sage",
+    url: "http://127.0.0.1:1420/",
+    webSocketDebuggerUrl: "ws://127.0.0.1:9229/devtools/page/page-1",
+  };
+  const expectedClient = {
+    evaluate: async () => true,
+    screenshot: async () => "",
+    close: async () => {},
+    stats: { connectionCount: 1, maxInFlight: 1, requestCount: 1 },
+  };
+  const connections = [];
+  const started = Date.now();
+  const deadline = started + 90_000;
+  const actual = await attachCdp(admitted, deadline, {
+    connectCdp: async (options) => {
+      connections.push(options);
+      return expectedClient;
+    },
+  });
+  assert.equal(actual, expectedClient);
+  assert.equal(connections.length, 1);
+  assert.equal(connections[0].target, admitted);
+  assert.equal(connections[0].deadline, deadline);
+  assert.ok(connections[0].openDeadline >= started);
+  assert.ok(connections[0].openDeadline <= started + 10_000);
+  assert.ok(connections[0].openDeadline < deadline);
 });
 
 test("native IDE journey decodes decorated Playwright results and binds the stable target", async () => {
@@ -1233,6 +1290,43 @@ test("executable binding rejects in-flight replacement, mutation, and prelaunch 
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("Node identity requires a canonical path with only plain ancestors", () => {
+  const expected = { bytes: 456, sha256: "e".repeat(64) };
+  const inspected = [];
+  const actual = validatePlainCanonicalExecutable(process.execPath, expected, {
+    lstatSync: (current) => {
+      inspected.push(current);
+      return { isSymbolicLink: () => false };
+    },
+    realpathSync: (current) => current,
+    validateBinding: (current, binding) => {
+      assert.equal(current, process.execPath);
+      return binding;
+    },
+  });
+  assert.deepEqual(actual, { path: process.execPath, ...expected });
+  assert.ok(inspected.includes(path.parse(process.execPath).root));
+  assert.throws(
+    () =>
+      validatePlainCanonicalExecutable(
+        `${path.dirname(process.execPath)}${path.sep}.${path.sep}${path.basename(process.execPath)}`,
+        expected,
+      ),
+    /journey-executable-identity-invalid/u,
+  );
+  assert.throws(
+    () =>
+      validatePlainCanonicalExecutable(process.execPath, expected, {
+        lstatSync: (current) => ({
+          isSymbolicLink: () => current === path.dirname(process.execPath),
+        }),
+        realpathSync: (current) => current,
+        validateBinding: () => expected,
+      }),
+    /journey-executable-identity-invalid/u,
+  );
 });
 
 test("bounded Playwright helper settles overflow and timeout when child never closes", async () => {
@@ -1789,7 +1883,7 @@ test("Windows ProcessIdentity bridge cleans an authenticated disposable root and
   }
 });
 
-test("Windows PowerShell 5.1 normal wrapper accepts canonical SourceRoot and rejects relative or traversal before launch", () => {
+test("Windows wrapper has no Playwright CLI input and rejects noncanonical SourceRoot before launch", () => {
   const powershell = path.join(
     process.env.SystemRoot,
     "System32",
@@ -1838,18 +1932,15 @@ test("Windows PowerShell 5.1 normal wrapper accepts canonical SourceRoot and rej
       ],
       {
         encoding: "utf8",
-        env: { ...process.env, SAGE_PLAYWRIGHT_CLI: "" },
         windowsHide: true,
         timeout: 5000,
       },
     );
   const before = processSnapshot();
-  const accepted = invoke(sourceRoot);
-  assert.notEqual(accepted.status, 0);
-  assert.match(
-    `${accepted.stdout}\n${accepted.stderr}`,
-    /SAGE_PLAYWRIGHT_CLI must be an absolute canonical path/,
-  );
+  const wrapperSource = readFileSync(wrapper, "utf8");
+  assert.doesNotMatch(wrapperSource, /SAGE_PLAYWRIGHT_CLI|--playwright-cli/u);
+  assert.match(wrapperSource, /--node-bytes/u);
+  assert.match(wrapperSource, /--node-sha256/u);
   for (const rejected of [
     "relative\\source",
     `${sourceRoot}\\safe\\..\\escape`,
@@ -2762,7 +2853,6 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
     "run-source-functional-native-ide-journey.ps1",
   );
   try {
-    const playwrightFixture = path.join(root, "playwright-cli-fixture.cmd");
     mkdirSync(path.join(root, "src-tauri"));
     writeFileSync(
       path.join(root, "src-tauri", "tauri.conf.json"),
@@ -2772,7 +2862,6 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
       path.join(root, "vite.config.ts"),
       "export default {\n  server: { port: 1420, strictPort: true, },\n};\n",
     );
-    writeFileSync(playwrightFixture, "@echo off\r\nexit /b 0\r\n");
     for (const args of [
       ["init", "--quiet"],
       ["config", "user.name", "Sage preflight"],
@@ -2812,7 +2901,6 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
         encoding: "utf8",
         windowsHide: true,
         timeout: 10000,
-        env: { ...process.env, SAGE_PLAYWRIGHT_CLI: playwrightFixture },
       },
     );
     assert.notEqual(result.status, 0);
@@ -3017,6 +3105,20 @@ function playwrightTransportReceipt() {
       playwright: packageTree("playwright", "playwright", "d"),
       playwrightCore: packageTree("playwright-core", "playwright-core", "e"),
     },
+  };
+}
+
+function rawCdpTransportReceipt() {
+  return {
+    kind: "node-websocket-cdp-v1",
+    node: {
+      path: process.execPath,
+      bytes: 456,
+      sha256: "e".repeat(64),
+    },
+    connectionCount: 1,
+    maxInFlight: 1,
+    requestCount: 41,
   };
 }
 
