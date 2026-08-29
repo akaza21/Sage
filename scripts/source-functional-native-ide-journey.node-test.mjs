@@ -1190,7 +1190,7 @@ test("Windows owned Vite fixture becomes ready and reaches terminal-zero cleanup
       "Write-RuntimeCleanupQuarantine",
       "Stop-OwnedRuntimeTree",
     ];
-    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${functions.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=Resolve-FrontendPortContract ${quote(path.resolve("."))};$runtime=$null;$cleanup=$null;$startupDeadline=[DateTime]::UtcNow.AddSeconds(12);$clock=[Diagnostics.Stopwatch]::StartNew();$monotonic={return [long]$clock.ElapsedMilliseconds}.GetNewClosure();$deadlineMilliseconds=[long](&$monotonic)+12000;try{$runtime=Start-OwnedVite ${quote(root)} $contract ${quote(root)} $deadlineMilliseconds $monotonic;$ready=Wait-OwnedFrontendReady $runtime $contract $startupDeadline;$ownedIds=@($runtime.store.Values|ForEach-Object {[int]$_.processId}|Sort-Object -Unique);$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};Start-Sleep -Milliseconds 200;$alive=@($ownedIds|Where-Object {Get-Process -Id $_ -ErrorAction SilentlyContinue}).Count;[ordered]@{port=$contract.port;mode=$ready.mode;frontendReady=$ready.frontendReady;identityCount=$ownedIds.Count;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount;alive=$alive}|ConvertTo-Json -Compress}finally{if($null -ne $runtime -and $null -eq $cleanup){try{[void](Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)})}catch{}}}`;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${functions.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=Resolve-FrontendPortContract ${quote(path.resolve("."))};$runtime=$null;$cleanup=$null;$startupDeadline=[DateTime]::UtcNow.AddSeconds(12);$script:ownedViteClock=[Diagnostics.Stopwatch]::StartNew();$monotonic={return [long]$script:ownedViteClock.ElapsedMilliseconds};$deadlineMilliseconds=[long](&$monotonic)+12000;try{$runtime=Start-OwnedVite ${quote(root)} $contract ${quote(root)} $deadlineMilliseconds $monotonic;$ready=Wait-OwnedFrontendReady $runtime $contract $startupDeadline;$ownedIds=@($runtime.store.Values|ForEach-Object {[int]$_.processId}|Sort-Object -Unique);$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};Start-Sleep -Milliseconds 200;$alive=@($ownedIds|Where-Object {Get-Process -Id $_ -ErrorAction SilentlyContinue}).Count;[ordered]@{port=$contract.port;mode=$ready.mode;frontendReady=$ready.frontendReady;identityCount=$ownedIds.Count;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount;alive=$alive}|ConvertTo-Json -Compress}finally{if($null -ne $runtime -and $null -eq $cleanup){try{[void](Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)})}catch{}}}`;
     const encoded = Buffer.from(source, "utf16le").toString("base64");
     const result = spawnSync(
       powershell,
@@ -1535,6 +1535,54 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
     ).stdout.trim();
     assert.equal(after, before);
     assert.equal(existsSync(path.resolve("relative-evidence")), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Windows wrapper startup clock remains absolute under validated root parameters", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-wrapper-clock-"));
+  const powershell = path.join(
+    process.env.SystemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  const wrapper = path.resolve(
+    "scripts",
+    "run-source-functional-native-ide-journey.ps1",
+  );
+  try {
+    const wrapperLines = readFileSync(wrapper, "utf8").split(/\r?\n/u);
+    const clockStart = wrapperLines.findIndex((line) =>
+      line.includes("startupClock ="),
+    );
+    assert.notEqual(clockStart, -1);
+    const clockBlock = wrapperLines
+      .slice(clockStart, clockStart + 3)
+      .join("\r\n");
+    assert.match(clockBlock, /\$startupDeadlineMilliseconds/u);
+    const contract = path.join(root, "clock-contract.ps1");
+    writeFileSync(
+      contract,
+      `[CmdletBinding()]\r\nparam([ValidateSet("capture", "cleanup")][string]$ToolIdentityAction)\r\n$ErrorActionPreference="Stop"\r\nSet-StrictMode -Version Latest\r\n$startupWindowMilliseconds=500\r\n${clockBlock}\r\n$deadlineBefore=[long]$startupDeadlineMilliseconds\r\n$first=[long](& $monotonicMilliseconds)\r\n$remainingBefore=$deadlineBefore-$first\r\nStart-Sleep -Milliseconds 80\r\n$second=[long](& $monotonicMilliseconds)\r\n$deadlineAfter=[long]$startupDeadlineMilliseconds\r\n$remainingAfter=$deadlineAfter-$second\r\n[ordered]@{toolIdentityAction=$ToolIdentityAction;first=$first;second=$second;deadlineBefore=$deadlineBefore;deadlineAfter=$deadlineAfter;remainingBefore=$remainingBefore;remainingAfter=$remainingAfter}|ConvertTo-Json -Compress\r\n`,
+    );
+    const result = spawnSync(
+      powershell,
+      ["-NoProfile", "-NonInteractive", "-File", contract],
+      { encoding: "utf8", windowsHide: true, timeout: 5000 },
+    );
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const observed = JSON.parse(result.stdout.trim());
+    assert.equal(observed.toolIdentityAction, "");
+    assert.ok(observed.first >= 0, JSON.stringify(observed));
+    assert.ok(observed.second - observed.first >= 40, JSON.stringify(observed));
+    assert.equal(observed.deadlineAfter, observed.deadlineBefore);
+    assert.ok(
+      observed.remainingAfter < observed.remainingBefore,
+      JSON.stringify(observed),
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

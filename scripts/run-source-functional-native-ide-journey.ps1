@@ -625,8 +625,8 @@ $previous = @{
 }
 $startupWindowMilliseconds = [int][Math]::Min(30000, $DeadlineMs)
 $startupDeadline = [DateTime]::UtcNow.AddMilliseconds($startupWindowMilliseconds)
-$startupClock = [Diagnostics.Stopwatch]::StartNew()
-$monotonicMilliseconds = { return [long]$startupClock.ElapsedMilliseconds }.GetNewClosure()
+$script:startupClock = [Diagnostics.Stopwatch]::StartNew()
+$monotonicMilliseconds = { return [long]$script:startupClock.ElapsedMilliseconds }
 $startupDeadlineMilliseconds = [long](& $monotonicMilliseconds) + $startupWindowMilliseconds
 $viteRuntime = $null
 $sageRuntime = $null
