@@ -46,4 +46,29 @@ describe("Project and chat navigation stylesheet seams", () => {
     expect(projectCss).toMatch(/\.project-section\s*\{[^}]*padding:\s*8px/s);
     expect(projectCss).toMatch(/\.project-row\s*\{[^}]*height:\s*28px;/s);
   });
+
+  it("keeps compact-width project and chat rules on the navigation surfaces", async () => {
+    const [shellCss, projectCss, chatCss] = await Promise.all([
+      readFile(resolve("src/styles/global.css"), "utf8"),
+      readFile(resolve("src/styles/project-navigation-surface.css"), "utf8"),
+      readFile(resolve("src/styles/chat-navigation-surface.css"), "utf8"),
+    ]);
+
+    expect(shellCss).not.toMatch(/\.project-sidebar__actions\b/);
+    expect(shellCss).not.toMatch(/\.project-chats\b/);
+    expect(shellCss).not.toMatch(/\.project-empty-action\b/);
+    expect(shellCss).not.toMatch(/\.project-sidebar__account\b/);
+    expect(projectCss).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*\.project-sidebar__actions\b/,
+    );
+    expect(projectCss).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*\.project-chats\b/,
+    );
+    expect(chatCss).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*\.project-empty-action\b/,
+    );
+    expect(chatCss).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*\.project-sidebar__account\b/,
+    );
+  });
 });

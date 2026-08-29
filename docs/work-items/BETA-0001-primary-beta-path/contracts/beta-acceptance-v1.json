@@ -64,8 +64,8 @@
     {
       "id": "codex-0145-security-policy-source",
       "relativePath": "../../../../src-tauri/src/acp/bindings/codex/policy.rs",
-      "bytes": 13217,
-      "sha256": "2095f8631af0a2194598d14e246b9b99a2f3a4fcb4d5307ce06d1a6087d10aa5"
+      "bytes": 13293,
+      "sha256": "3c38207b57a8accadcd6be00295dcf8d1f3aa48393bab0ca1dd2decb21d28833"
     }
   ],
   "measurement": {

@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const BETA_CANDIDATE_CONTRACT_SHA256 =
-  "0e02f56048c969784d9fdb43e1a8b47e47a992e1c4234c033b851f91c9336b3b";
+  "274026a28e6539ff567af6705e73f27ce011f520d7c0684527e129e0ebca1f8f";
 
 const scriptsDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.dirname(scriptsDirectory);

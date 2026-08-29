@@ -51,10 +51,7 @@ const HARNESS_SPECS: &[HarnessSpec] = &[
 /// availability. The candidate must successfully execute its own version
 /// command before it is returned.
 pub(crate) fn discover_installed_harnesses() -> Vec<InstalledHarness> {
-    HARNESS_SPECS
-        .iter()
-        .filter_map(|spec| discover(spec))
-        .collect()
+    HARNESS_SPECS.iter().filter_map(discover).collect()
 }
 
 fn discover(spec: &HarnessSpec) -> Option<InstalledHarness> {

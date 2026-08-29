@@ -5,7 +5,7 @@ use crate::acp::{
     bindings::{
         adapter::{
             AdapterCommand, AdapterEvent, AdapterIdentity, AdapterRuntimeError, EgressResolution,
-            HarnessAdapter,
+            HarnessAdapter, ResourceMapper,
         },
         codex::{
             CodexProjectRootAuthority, Platform, parse_packet_metadata, parse_security_policy,
@@ -16,7 +16,8 @@ use crate::acp::{
         SageRootId,
     },
     intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef},
-    transport::IncrementalFrameDecoder,
+    runtime::permissions::PermissionDecision,
+    transport::{Frame, IncrementalFrameDecoder},
 };
 use crate::project_registry::ProjectRootAuthority;
 use crate::{error::AppError, persistence::Database, state::AppState};

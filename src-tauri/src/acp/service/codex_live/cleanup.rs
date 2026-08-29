@@ -206,6 +206,7 @@ impl AcpService {
         Err(CodexSessionError::LaunchSetup(launch_setup))
     }
 
+    #[allow(clippy::too_many_arguments)] // Explicit ownership-bearing cleanup inputs.
     pub(super) async fn abort_driver_before_runner(
         &self,
         abort: &ActivationAbortIntent,

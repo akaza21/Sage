@@ -7,7 +7,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
 import { useWorkbenchStore } from "../app/store";
@@ -53,8 +53,13 @@ async function pumpTransitionResets(times: number) {
   }
 }
 
+beforeEach(() => {
+  localStorage.clear();
+});
+
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   compactViewport = false;
   useAgentArtifactAdmissionStore.getState().clear();
   useWorkbenchStore.setState(initialState, true);

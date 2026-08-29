@@ -4,7 +4,6 @@ use std::{
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
-    thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
 
@@ -14,12 +13,11 @@ use crate::acp::{
         codex::{AdmittedCodexBinding, CodexProjectRootAuthority, CodexRuntime},
     },
     contract::{RuntimeEpoch, SageAgentSessionId},
-    limits::LIMITS,
     process::{
         LaunchError, LaunchFailure, PlatformSupervisor, StdinEndpoint, TreeCapacityPool,
         TreeControl, TreeExit,
     },
-    transport::{Frame, FrameError, FrameWriteOutcome, OutboundFrame},
+    transport::{Frame, FrameWriteOutcome, OutboundFrame},
 };
 
 use super::{
@@ -30,11 +28,11 @@ use super::{
     },
 };
 
-enum ReaderEvent {
-    Frame(Frame),
-    Eof,
-    FramingFailed(FrameError),
-}
+#[path = "transport/reader.rs"]
+mod reader;
+#[cfg(test)]
+use reader::{ReaderCompletion, enqueue_reader_event};
+use reader::{ReaderEvent, ReaderThread};
 
 // Codex may emit initialized and capability notifications immediately after
 // the initialize response. Keep a bounded burst buffer so that valid output
@@ -46,19 +44,6 @@ pub(crate) struct ProcessLaunchPolicy {
     pub(crate) spawn_timeout: Duration,
     pub(crate) cleanup_end: Instant,
     pub(crate) reader_slots: usize,
-}
-
-struct ReaderThread {
-    events: mpsc::Receiver<ReaderEvent>,
-    completion: mpsc::Receiver<ReaderCompletion>,
-    overflowed: Arc<AtomicBool>,
-    handle: Option<JoinHandle<()>>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ReaderCompletion {
-    Clean,
-    Overflow,
 }
 
 pub(crate) struct AdmittedDiscovery {
@@ -311,102 +296,6 @@ impl DiscoveryTransport for CodexProcessTransport {
         deadline: CodexDiscoveryDeadline,
     ) -> Result<DiscoveryZeroProcess, CodexDiscoveryRunError> {
         self.terminate_zero_before(protocol_failure, deadline.cleanup_end())
-    }
-}
-
-impl ReaderThread {
-    fn spawn(
-        mut stdout: crate::acp::process::StdoutEndpoint,
-        slots: usize,
-        session_kind: &str,
-    ) -> Result<Self, CodexDiscoveryRunError> {
-        if !(1..=4).contains(&slots) {
-            return Err(CodexDiscoveryRunError::Transport);
-        }
-        let (send_event, events) = mpsc::sync_channel(slots);
-        let (send_completion, completion) = mpsc::sync_channel(1);
-        let overflowed = Arc::new(AtomicBool::new(false));
-        let reader_overflowed = Arc::clone(&overflowed);
-        let session_kind = session_kind.to_owned();
-        let handle = thread::Builder::new()
-            .name(format!("sage-codex-{session_kind}-stdout"))
-            .spawn(move || {
-                let completion = loop {
-                    let event = match stdout.read_frame() {
-                        Ok(Some(frame)) => ReaderEvent::Frame(frame),
-                        Ok(None) => ReaderEvent::Eof,
-                        Err(error) => {
-                            tracing::warn!(
-                                ?error,
-                                session_kind,
-                                "Codex discovery stdout framing failed"
-                            );
-                            ReaderEvent::FramingFailed(error)
-                        }
-                    };
-                    if let Some(completion) =
-                        enqueue_reader_event(&send_event, event, &reader_overflowed)
-                    {
-                        if completion == ReaderCompletion::Overflow {
-                            tracing::warn!(
-                                session_kind,
-                                "Codex discovery stdout reader exceeded its bounded buffer"
-                            );
-                        }
-                        break completion;
-                    }
-                };
-                let _ = send_completion.send(completion);
-            })
-            .map_err(|_| CodexDiscoveryRunError::Transport)?;
-        Ok(Self {
-            events,
-            completion,
-            overflowed,
-            handle: Some(handle),
-        })
-    }
-
-    fn overflowed(&self) -> bool {
-        self.overflowed.load(Ordering::Acquire)
-    }
-
-    fn finish_before(&mut self, deadline: Instant) -> Result<(), CodexDiscoveryRunError> {
-        let timeout = deadline
-            .saturating_duration_since(Instant::now())
-            .min(Duration::from_millis(LIMITS.deadlines_ms.explicit_close));
-        if timeout.is_zero() {
-            return Err(CodexDiscoveryRunError::Cleanup);
-        }
-        let completion = self
-            .completion
-            .recv_timeout(timeout)
-            .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
-        let Some(handle) = self.handle.take() else {
-            return Err(CodexDiscoveryRunError::Cleanup);
-        };
-        handle.join().map_err(|_| CodexDiscoveryRunError::Cleanup)?;
-        match completion {
-            ReaderCompletion::Clean => Ok(()),
-            ReaderCompletion::Overflow => Err(CodexDiscoveryRunError::Overflow),
-        }
-    }
-}
-
-fn enqueue_reader_event(
-    sender: &mpsc::SyncSender<ReaderEvent>,
-    event: ReaderEvent,
-    overflowed: &AtomicBool,
-) -> Option<ReaderCompletion> {
-    let terminal = !matches!(&event, ReaderEvent::Frame(_));
-    match sender.try_send(event) {
-        Ok(()) if terminal => Some(ReaderCompletion::Clean),
-        Ok(()) => None,
-        Err(mpsc::TrySendError::Full(_)) => {
-            overflowed.store(true, Ordering::Release);
-            Some(ReaderCompletion::Overflow)
-        }
-        Err(mpsc::TrySendError::Disconnected(_)) => Some(ReaderCompletion::Clean),
     }
 }
 

@@ -234,6 +234,57 @@
   border-radius: 0;
 }
 
+.right-region {
+  display: grid;
+  width: calc(var(--sidebar-width) + 46px);
+  min-width: 0;
+  grid-template-columns: var(--sidebar-width) 46px;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.right-region--collapsed {
+  width: 46px;
+  grid-template-columns: 46px;
+}
+
+.right-region--leading {
+  border-left: none;
+  border-right: 1px solid var(--border);
+  grid-template-columns: 46px var(--sidebar-width);
+}
+
+.right-region--leading.right-region--collapsed {
+  grid-template-columns: 46px;
+}
+
+@media (max-width: 760px) {
+  .right-region {
+    position: relative;
+    overflow: visible;
+  }
+
+  .right-region .sidebar {
+    position: absolute;
+    z-index: 10;
+    top: 0;
+    right: 46px;
+    width: min(272px, calc(100vw - 92px));
+    height: 100%;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: -12px 0 28px rgb(0 0 0 / 0.32);
+  }
+
+  .right-region--leading .sidebar {
+    right: auto;
+    left: 46px;
+    border-left: none;
+    border-right: 1px solid var(--border);
+    box-shadow: 12px 0 28px rgb(0 0 0 / 0.32);
+  }
+}
+
 @media (max-width: 640px) {
   .workbench {
     grid-template-rows: minmax(42px, auto) minmax(0, 1fr) 24px;

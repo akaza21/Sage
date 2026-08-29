@@ -69,7 +69,7 @@ impl GitProcessPolicy {
             #[cfg(test)]
             reaper_control: None,
             #[cfg(test)]
-            containment_registry: None,
+            containment_registry: Some(containment::ContainmentRegistry::isolated()),
             #[cfg(test)]
             before_spawn_hook: None,
             #[cfg(test)]
@@ -91,7 +91,7 @@ impl GitProcessPolicy {
             #[cfg(test)]
             reaper_control: None,
             #[cfg(test)]
-            containment_registry: None,
+            containment_registry: Some(containment::ContainmentRegistry::isolated()),
             #[cfg(test)]
             before_spawn_hook: None,
             #[cfg(test)]
@@ -128,6 +128,28 @@ impl GitProcessPolicy {
     #[cfg(test)]
     pub(crate) fn after_process_hook(&self) -> Option<GitProcessHook> {
         self.after_process_hook.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_test_policies_do_not_share_git_containment_capacity() {
+        let first = GitProcessPolicy::mutation(Duration::from_secs(1));
+        let second = GitProcessPolicy::read(Duration::from_secs(1));
+
+        assert!(!Arc::ptr_eq(
+            first
+                .containment_registry
+                .as_ref()
+                .expect("test mutation policy has isolated containment"),
+            second
+                .containment_registry
+                .as_ref()
+                .expect("test read policy has isolated containment"),
+        ));
     }
 }
 

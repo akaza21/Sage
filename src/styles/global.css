@@ -186,30 +186,6 @@ textarea:focus-visible {
     var(--bg);
 }
 
-.right-region {
-  display: grid;
-  width: calc(var(--sidebar-width) + 46px);
-  min-width: 0;
-  grid-template-columns: var(--sidebar-width) 46px;
-  border-left: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.right-region--collapsed {
-  width: 46px;
-  grid-template-columns: 46px;
-}
-
-.right-region--leading {
-  border-left: none;
-  border-right: 1px solid var(--border);
-  grid-template-columns: 46px var(--sidebar-width);
-}
-
-.right-region--leading.right-region--collapsed {
-  grid-template-columns: 46px;
-}
-
 @media (max-width: 920px) {
   :root {
     --sidebar-width: 225px;
@@ -234,76 +210,6 @@ textarea:focus-visible {
   :root {
     --sidebar-width: 0px;
     --project-sidebar-width: 46px;
-  }
-
-  .right-region {
-    position: relative;
-    overflow: visible;
-  }
-
-  .right-region .sidebar {
-    position: absolute;
-    z-index: 10;
-    top: 0;
-    right: 46px;
-    width: min(272px, calc(100vw - 92px));
-    height: 100%;
-    border-left: 1px solid var(--border);
-    background: var(--surface);
-    box-shadow: -12px 0 28px rgb(0 0 0 / 0.32);
-  }
-
-  .right-region--leading .sidebar {
-    right: auto;
-    left: 46px;
-    border-left: none;
-    border-right: 1px solid var(--border);
-    box-shadow: 12px 0 28px rgb(0 0 0 / 0.32);
-  }
-
-  .project-sidebar__actions {
-    padding: 7px 5px;
-  }
-
-  .project-action,
-  .project-row,
-  .project-chat,
-  .project-empty-action {
-    width: 35px;
-    height: 35px;
-    justify-content: center;
-    gap: 0;
-    padding: 0;
-    margin: 0;
-    overflow: hidden;
-    font-size: 0;
-  }
-
-  .project-section {
-    padding: 8px 5px 2px;
-  }
-
-  .project-section__title {
-    justify-content: center;
-    padding: 0;
-  }
-
-  .project-section__title > span,
-  .project-row span,
-  .project-row > svg:last-child,
-  .project-chat span,
-  .project-sidebar__account > span:not(.account-avatar) {
-    display: none;
-  }
-
-  .project-chats {
-    gap: 3px;
-  }
-
-  .project-sidebar__account {
-    grid-template-columns: 1fr;
-    justify-items: center;
-    padding: 0;
   }
 
   .surface-header,

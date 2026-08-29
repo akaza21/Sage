@@ -15,6 +15,9 @@ use crate::acp::{
 
 use super::{DriverClock, DriverError, DriverProgress};
 
+mod queue;
+use queue::{map_queue, pop_driver_message, reader_chunk_limit};
+
 pub(crate) struct PromptIntent {
     pub(crate) prompt: crate::acp::intent::Prompt,
     pub(crate) client_message_id: RequiredText<512>,
@@ -408,37 +411,4 @@ impl DriverMailbox {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
-}
-
-fn pop_driver_message(
-    queue: &mut crate::acp::transport::ReservedQueue<ControlMessage>,
-    control_only: bool,
-) -> Option<ControlMessage> {
-    if let Some(message) =
-        queue.pop_control_if(|message| !matches!(message, ControlMessage::ProcessExit(_)))
-    {
-        return Some(message);
-    }
-    if control_only {
-        return None;
-    }
-    if let Some(message) =
-        queue.pop_data_if(|message| matches!(message, ControlMessage::StdoutChunk(_)))
-    {
-        return Some(message);
-    }
-    queue.pop()
-}
-
-fn map_queue(error: QueueError) -> MailboxError {
-    match error {
-        QueueError::CountCapacity
-        | QueueError::ByteCapacity
-        | QueueError::ControlItemTooLarge
-        | QueueError::SequenceCapacity => MailboxError::Full,
-    }
-}
-
-fn reader_chunk_limit() -> usize {
-    8 * 1024
 }
