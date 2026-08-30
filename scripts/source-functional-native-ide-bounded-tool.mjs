@@ -114,6 +114,9 @@ export function runBoundedTool(executable, args, deadline, cwd, deps = {}) {
   const childEnvironment = controlledChildEnvironment();
   const remaining = deadline - Date.now();
   if (remaining <= 0) fail("deadline-exhausted");
+  const hasIdentityHandshake = typeof deps.identityHandshake === "string";
+  if (hasIdentityHandshake && deps.identityHandshake.length === 0)
+    fail("tool-cleanup-unproven");
   return new Promise((resolve, reject) => {
     let child;
     try {
@@ -122,7 +125,7 @@ export function runBoundedTool(executable, args, deadline, cwd, deps = {}) {
         env: childEnvironment,
         shell: false,
         windowsHide: true,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: [hasIdentityHandshake ? "pipe" : "ignore", "pipe", "pipe"],
       });
     } catch (error) {
       reject(
@@ -203,6 +206,12 @@ export function runBoundedTool(executable, args, deadline, cwd, deps = {}) {
       }
       settlementTimer = setTimeout(() => finish(null), 250);
     };
+    const closeIdentityHandshake = (value) => {
+      if (!hasIdentityHandshake) return;
+      if (!child.stdin || child.stdin.destroyed || !child.stdin.writable)
+        fail("tool-cleanup-unproven");
+      child.stdin.end(value);
+    };
     const take = (chunk) => {
       if (terminal) return;
       bytes += chunk.length;
@@ -223,8 +232,18 @@ export function runBoundedTool(executable, args, deadline, cwd, deps = {}) {
             !samePath(identity.executablePath, deps.expectedExecutablePath)))
       )
         fail("tool-cleanup-unproven");
+      closeIdentityHandshake(deps.identityHandshake);
     } catch {
       terminal = "cleanup-unproven";
+      try {
+        closeIdentityHandshake();
+      } catch {
+        try {
+          child.stdin?.destroy();
+        } catch {
+          // The command is already quarantined; do not hide its proof failure.
+        }
+      }
       quarantine("identity-capture-failed");
       settlementTimer = setTimeout(() => finish(null), 250);
     }

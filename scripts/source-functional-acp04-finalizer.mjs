@@ -90,10 +90,20 @@ async function runCodexVersion(options, deadline, deps = {}) {
   const command = commandInterpreter(deps);
   const output = await (deps.runTool ?? runBoundedTool)(
     command,
-    ["/d", "/s", "/c", `""${options.codex.path}" --version"`],
+    [
+      "/d",
+      "/s",
+      "/c",
+      `set /p "SAGE_ACP04_ACK=" && call "${options.codex.path}" --version`,
+    ],
     deadline,
     options.output,
-    { commandRole: "codex-version-preflight", maxOutputBytes: 4096 },
+    {
+      commandRole: "codex-version-preflight",
+      expectedExecutablePath: command,
+      identityHandshake: "captured-owner\r\n",
+      maxOutputBytes: 4096,
+    },
   );
   const display = output.trim();
   const semanticVersion = CODEX_VERSION.exec(display)?.[1];

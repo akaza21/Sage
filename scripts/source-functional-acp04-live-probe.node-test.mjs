@@ -588,7 +588,7 @@ function runtimeObservation() {
   };
 }
 
-test("Codex cmd preflight is bounded and explicitly secondary", async () => {
+test("Codex cmd preflight waits for its captured-owner acknowledgement before starting Codex", async () => {
   let invocation;
   await revalidateCodexPreflight(
     {
@@ -610,6 +610,12 @@ test("Codex cmd preflight is bounded and explicitly secondary", async () => {
   );
   assert.match(invocation[0], /cmd\.exe$/iu);
   assert.deepEqual(invocation[1].slice(0, 3), ["/d", "/s", "/c"]);
+  assert.equal(invocation[4].identityHandshake, "captured-owner\r\n");
+  assert.match(invocation[4].expectedExecutablePath, /cmd\.exe$/iu);
+  assert.equal(
+    invocation[1][3],
+    'set /p "SAGE_ACP04_ACK=" && call "C:\\Tools\\codex.cmd" --version',
+  );
   assert.equal(invocation[4].commandRole, "codex-version-preflight");
   assert.equal(invocation[4].maxOutputBytes, 4096);
 });
@@ -656,7 +662,7 @@ test("Codex preflight rejects command-expansion paths before spawning", async ()
   }
 });
 
-test("Codex preflight binds a valid spaced path before its exact cmd command", async () => {
+test("Codex preflight binds a valid spaced path before its acknowledgement-gated cmd command", async () => {
   const events = [];
   const options = {
     ...parseAcp04ProbeArguments(
@@ -669,15 +675,16 @@ test("Codex preflight binds a valid spaced path before its exact cmd command", a
       assert.equal(pathname, "C:\\Tools\\Codex CLI\\codex.cmd");
       assert.deepEqual(expected, options.codex);
     },
-    runTool: async (command, args) => {
+    runTool: async (command, args, _deadline, _output, toolOptions) => {
       events.push("spawn");
       assert.match(command, /cmd\.exe$/iu);
-      assert.deepEqual(args, [
-        "/d",
-        "/s",
-        "/c",
-        '""C:\\Tools\\Codex CLI\\codex.cmd" --version"',
-      ]);
+      assert.deepEqual(args.slice(0, 3), ["/d", "/s", "/c"]);
+      assert.equal(toolOptions.identityHandshake, "captured-owner\r\n");
+      assert.match(toolOptions.expectedExecutablePath, /cmd\.exe$/iu);
+      assert.equal(
+        args[3],
+        'set /p "SAGE_ACP04_ACK=" && call "C:\\Tools\\Codex CLI\\codex.cmd" --version',
+      );
       return CODEX_VERSION;
     },
   });

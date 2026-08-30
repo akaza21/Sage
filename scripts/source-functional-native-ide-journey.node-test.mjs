@@ -1554,6 +1554,80 @@ test("bounded Playwright helper settles overflow and timeout when child never cl
   }
 });
 
+test("bounded tool releases an identity handshake only after exact capture", async () => {
+  const child = new EventEmitter();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.pid = 63;
+  let acknowledgement;
+  child.stdin = {
+    destroyed: false,
+    writable: true,
+    end(value) {
+      acknowledgement = value;
+      this.writable = false;
+    },
+  };
+  const pending = runBoundedTool(
+    "tool",
+    [],
+    Date.now() + 5_000,
+    process.cwd(),
+    {
+      spawn: (_executable, _args, options) => {
+        assert.deepEqual(options.stdio, ["pipe", "pipe", "pipe"]);
+        return child;
+      },
+      identityHandshake: "captured-owner\r\n",
+      captureIdentity: (pid) => ({ processId: pid, creationDate: "exact" }),
+    },
+  );
+  assert.equal(acknowledgement, "captured-owner\r\n");
+  child.emit("close", 0);
+  assert.equal(await pending, "");
+});
+
+test("identity capture failure releases the handshake gate and retains quarantine", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-tool-handshake-"));
+  try {
+    const child = new EventEmitter();
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.pid = 64;
+    let acknowledgement = "unclosed";
+    child.stdin = {
+      destroyed: false,
+      writable: true,
+      end(value) {
+        acknowledgement = value;
+        this.writable = false;
+      },
+      destroy() {
+        this.destroyed = true;
+      },
+    };
+    await assert.rejects(
+      runBoundedTool("tool", [], Date.now() + 5_000, root, {
+        spawn: () => child,
+        identityHandshake: "must-not-reach-child\r\n",
+        captureIdentity: () => {
+          throw new Error("identity unavailable");
+        },
+      }),
+      /playwright-cli-cleanup-unproven/,
+    );
+    assert.equal(acknowledgement, undefined);
+    assert.equal(
+      readdirSync(root).filter((name) =>
+        name.startsWith("tool-cleanup-quarantine-"),
+      ).length,
+      1,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("bounded Playwright helper fails and quarantines when descendant cleanup is unproven", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-tool-quarantine-"));
   try {
