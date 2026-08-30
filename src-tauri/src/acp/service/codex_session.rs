@@ -17,6 +17,8 @@ pub(super) struct PreparedCodexActivation {
     pub(super) owner: RuntimeOwner,
     pub(super) runtime: CodexRuntime,
     pub(super) intent: ActivationIntent,
+    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+    pub(super) harness_version: String,
 }
 
 struct DurableSession {
@@ -122,6 +124,8 @@ impl AcpService {
             curated_ceiling: ceiling.clone(),
             sage_policy: ceiling,
         };
+        #[cfg(any(debug_assertions, feature = "diagnostics"))]
+        let harness_version = binding.harness_version().to_owned();
         let runtime = CodexRuntime::from_admitted_binding(
             binding,
             project_root,
@@ -135,6 +139,8 @@ impl AcpService {
                 owner,
                 runtime,
                 intent,
+                #[cfg(any(debug_assertions, feature = "diagnostics"))]
+                harness_version,
             },
         ))
     }

@@ -128,7 +128,11 @@ function ItemView({
   switch (item.kind) {
     case "text":
       return (
-        <article className={`acp-message acp-message--${item.payload.role}`}>
+        <article
+          className={`acp-message acp-message--${item.payload.role}`}
+          data-item-id={item.id}
+          data-message-role={item.payload.role}
+        >
           <span className="acp-message__role">
             {item.payload.role === "assistant"
               ? "Agent"
@@ -225,7 +229,14 @@ function Turn({
   );
   const status = turnStateLabels[turn.state];
   return (
-    <section className="acp-turn" aria-label={`Turn ${turn.ordinal}`}>
+    <section
+      className="acp-turn"
+      aria-label={`Turn ${turn.ordinal}`}
+      data-turn-id={turn.id}
+      data-session-id={turn.sessionId}
+      data-runtime-epoch={turn.runtimeEpoch}
+      data-turn-ordinal={turn.ordinal}
+    >
       <header className="acp-turn__header">
         <span
           className="acp-state"
@@ -297,6 +308,9 @@ export function AcpChatProjection({
       className="acp-chat-projection"
       aria-label={`Agent chat ${page.title}`}
       data-projection-revision={page.projectionRevision}
+      data-project-id={page.projectId}
+      data-chat-id={page.chatId}
+      data-current-session-id={page.currentSessionId ?? ""}
     >
       {focused ? <AcpAnnouncementRegions page={page} /> : null}
       <h2 className="acp-chat-projection__title">{page.title}</h2>

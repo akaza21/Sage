@@ -3,6 +3,7 @@ param(
   [string]$SageExecutable,
   [string]$SourceRoot,
   [string]$EvidenceRoot,
+  [ValidateSet("native-ide", "acp04-live")][string]$JourneyKind = "native-ide",
   [ValidateRange(15000, 180000)][int]$DeadlineMs = 90000,
   [ValidateSet("capture", "cleanup")][string]$ToolIdentityAction,
   [int]$ToolProcessId,
@@ -571,9 +572,36 @@ function Publish-PendingJourneyReceipt(
   [IO.File]::Move($PendingReceipt, $FinalReceipt)
 }
 
+function Assert-BoundedNativeLog([string]$Path, [string]$Label) {
+  if (-not (Test-FullyQualifiedPath $Path)) { throw "$Label path must be absolute and canonical." }
+  $item = Get-Item -LiteralPath $Path -Force
+  if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw "$Label must be a plain file."
+  }
+  if ($item.Length -gt 1MB) { throw "$Label exceeded its byte limit." }
+  return [ordered]@{
+    bytes = [long]$item.Length
+    sha256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  }
+}
+
+function Write-Acp04ProfileIdentity(
+  [string]$Path,
+  [string]$ProfileRoot,
+  [string]$ProfileIdentitySha256
+) {
+  $payload = [ordered]@{
+    schemaVersion = 1
+    profileRoot = $ProfileRoot
+    profileIdentitySha256 = $ProfileIdentitySha256
+  } | ConvertTo-Json -Compress
+  [IO.File]::WriteAllText($Path, $payload, [Text.UTF8Encoding]::new($false))
+}
+
 function Invoke-ControlledNodeCollector(
   [string]$Node,
-  [string[]]$Arguments
+  [string[]]$Arguments,
+  [ValidateSet("native-ide", "acp04-live")][string]$JourneyKind = "native-ide"
 ) {
   $codeLoadingNames = [Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase
@@ -625,6 +653,9 @@ function Invoke-ControlledNodeCollector(
     }
   }
   if ($exitCode -ne 0) {
+    if ($JourneyKind -eq "acp04-live") {
+      throw "ACP-04 collector failed; inspect machine-failure.json under EvidenceRoot."
+    }
     throw "Native IDE journey runner failed; inspect machine-failure.json under EvidenceRoot."
   }
 }
@@ -658,7 +689,25 @@ if (-not (Test-Path -LiteralPath (Join-Path $resolvedSource ".git") -PathType Co
 $node = Require-PlainCanonicalFile (Get-Command node -ErrorAction Stop).Source "node"
 $preLaunchNodeBytes = (Get-Item -LiteralPath $node -Force).Length
 $preLaunchNodeSha256 = (Get-FileHash -LiteralPath $node -Algorithm SHA256).Hash.ToLowerInvariant()
-$runner = Require-AbsoluteFile (Join-Path $PSScriptRoot "source-functional-native-ide-journey.mjs") "journey runner"
+$runnerName = if ($JourneyKind -eq "acp04-live") {
+  "source-functional-acp04-live-probe.mjs"
+} else {
+  "source-functional-native-ide-journey.mjs"
+}
+$runner = Require-AbsoluteFile (Join-Path $PSScriptRoot $runnerName) "journey runner"
+$finalizer = $null
+if ($JourneyKind -eq "acp04-live") {
+  $finalizer = Require-AbsoluteFile (Join-Path $PSScriptRoot "source-functional-acp04-finalizer.mjs") "ACP-04 finalizer"
+}
+$codex = $null
+$codexBytes = $null
+$codexSha256 = $null
+if ($JourneyKind -eq "acp04-live") {
+  $codexCommand = @(Get-Command codex.cmd -CommandType Application -ErrorAction Stop) | Select-Object -First 1
+  $codex = Require-PlainCanonicalFile $codexCommand.Source "Codex launcher"
+  $codexBytes = (Get-Item -LiteralPath $codex -Force).Length
+  $codexSha256 = (Get-FileHash -LiteralPath $codex -Algorithm SHA256).Hash.ToLowerInvariant()
+}
 Import-Module (Join-Path $PSScriptRoot "footprint/ProcessIdentity.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "footprint/DisposableProfile.psm1") -Force
 
@@ -671,7 +720,8 @@ $frontendContract = Resolve-FrontendPortContract $resolvedSource
 
 if (-not $EvidenceRoot) {
   $stamp = [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ")
-  $EvidenceRoot = Join-Path $resolvedSource "local-evidence\BETA-0001\source-functional\native-ide-$stamp"
+  $journeyLabel = if ($JourneyKind -eq "acp04-live") { "acp04-live" } else { "native-ide" }
+  $EvidenceRoot = Join-Path $resolvedSource "local-evidence\BETA-0001\source-functional\$journeyLabel-$stamp"
 }
 if (-not (Test-FullyQualifiedPath $EvidenceRoot)) { throw "EvidenceRoot must be an absolute canonical path." }
 if (Test-Path -LiteralPath $EvidenceRoot) { throw "EvidenceRoot must not already exist." }
@@ -685,8 +735,13 @@ $parent = Split-Path -Parent $EvidenceRoot
 Assert-PlainContainedDirectory $allowedEvidence $resolvedEvidence
 $fixture = Join-Path $EvidenceRoot "fixture-project"
 [void](New-Item -ItemType Directory -Path $fixture)
-$profileIdentity = New-C0BDisposableProfile $EvidenceRoot "native-ide-profile"
+$profileIdentity = New-C0BDisposableProfile $EvidenceRoot "$($JourneyKind.Replace('_', '-'))-profile"
 $profile = $profileIdentity.root
+$profileIdentityArtifact = $null
+if ($JourneyKind -eq "acp04-live") {
+  $profileIdentityArtifact = Join-Path $EvidenceRoot "acp04-profile-identity.json"
+  Write-Acp04ProfileIdentity $profileIdentityArtifact $profile $profileIdentity.identitySha256
+}
 
 $fixtureIdentity = Initialize-JourneyFixture $fixture
 $fixtureIdentity |
@@ -711,6 +766,8 @@ $cleanupFailures = @()
 $pendingReceipt = Join-Path $EvidenceRoot "machine-receipt.pending.json"
 $sageCleanup = $null
 $viteCleanup = $null
+$sageStdoutLog = Join-Path $EvidenceRoot "sage.stdout.log"
+$sageStderrLog = Join-Path $EvidenceRoot "sage.stderr.log"
 try {
   $viteRuntime = Start-OwnedVite `
     $resolvedSource $frontendContract $EvidenceRoot `
@@ -719,23 +776,51 @@ try {
   [Environment]::SetEnvironmentVariable("SAGE_DISPOSABLE_PROFILE_ROOT", $profile, "Process")
   [Environment]::SetEnvironmentVariable("SAGE_PROJECT_ROOT", $fixture, "Process")
   [Environment]::SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--remote-debugging-port=$port", "Process")
-  $process = Start-Process -FilePath $resolvedExecutable -WorkingDirectory (Split-Path -Parent $resolvedExecutable) -PassThru
+  if ($JourneyKind -eq "acp04-live") {
+    $process = Start-Process -FilePath $resolvedExecutable `
+      -WorkingDirectory (Split-Path -Parent $resolvedExecutable) `
+      -RedirectStandardOutput $sageStdoutLog `
+      -RedirectStandardError $sageStderrLog `
+      -PassThru
+  } else {
+    $process = Start-Process -FilePath $resolvedExecutable `
+      -WorkingDirectory (Split-Path -Parent $resolvedExecutable) -PassThru
+  }
   $sageRuntime = Capture-OwnedRuntimeOrQuarantine `
     $process $resolvedExecutable "sage" $EvidenceRoot `
     $startupDeadlineMilliseconds $null $null $monotonicMilliseconds
-  $arguments = @(
-    $runner, "--port", "$port", "--output", $EvidenceRoot,
-    "--source-commit", $commit, "--source-tree", $tree,
-    "--executable", $resolvedExecutable, "--fixture", $fixture,
-    "--source-root", $resolvedSource,
-    "--executable-bytes", "$preLaunchExecutableBytes", "--executable-sha256", $preLaunchExecutableSha256,
-    "--node-bytes", "$preLaunchNodeBytes", "--node-sha256", $preLaunchNodeSha256,
-    "--expected-origin", $frontendContract.origin,
-    "--runtime-mode", $runtimeReceipt.mode, "--frontend-ready", "$($runtimeReceipt.frontendReady)".ToLowerInvariant(),
-    "--receipt-name", (Split-Path -Leaf $pendingReceipt),
-    "--deadline-ms", "$DeadlineMs"
-  )
-  Invoke-ControlledNodeCollector $node $arguments
+  if ($JourneyKind -eq "acp04-live") {
+    $arguments = @(
+      $runner, "--port", "$port", "--output", $EvidenceRoot,
+      "--source-commit", $commit, "--source-tree", $tree,
+      "--executable", $resolvedExecutable, "--source-root", $resolvedSource,
+      "--executable-bytes", "$preLaunchExecutableBytes", "--executable-sha256", $preLaunchExecutableSha256,
+      "--node-bytes", "$preLaunchNodeBytes", "--node-sha256", $preLaunchNodeSha256,
+      "--codex-path", $codex, "--codex-bytes", "$codexBytes", "--codex-sha256", $codexSha256,
+      "--profile-root", $profile, "--profile-identity-artifact", $profileIdentityArtifact,
+      "--sage-stdout-log", $sageStdoutLog, "--sage-stderr-log", $sageStderrLog,
+      "--sage-process-id", "$($sageRuntime.identity.processId)",
+      "--sage-process-created", "$($sageRuntime.identity.creationDate)",
+      "--expected-origin", $frontendContract.origin,
+      "--runtime-mode", $runtimeReceipt.mode, "--frontend-ready", "$($runtimeReceipt.frontendReady)".ToLowerInvariant(),
+      "--receipt-name", (Split-Path -Leaf $pendingReceipt),
+      "--deadline-ms", "$DeadlineMs", "--mode", "two-turn"
+    )
+  } else {
+    $arguments = @(
+      $runner, "--port", "$port", "--output", $EvidenceRoot,
+      "--source-commit", $commit, "--source-tree", $tree,
+      "--executable", $resolvedExecutable, "--fixture", $fixture,
+      "--source-root", $resolvedSource,
+      "--executable-bytes", "$preLaunchExecutableBytes", "--executable-sha256", $preLaunchExecutableSha256,
+      "--node-bytes", "$preLaunchNodeBytes", "--node-sha256", $preLaunchNodeSha256,
+      "--expected-origin", $frontendContract.origin,
+      "--runtime-mode", $runtimeReceipt.mode, "--frontend-ready", "$($runtimeReceipt.frontendReady)".ToLowerInvariant(),
+      "--receipt-name", (Split-Path -Leaf $pendingReceipt),
+      "--deadline-ms", "$DeadlineMs"
+    )
+  }
+  Invoke-ControlledNodeCollector $node $arguments $JourneyKind
   if (-not (Test-Path -LiteralPath $pendingReceipt -PathType Leaf)) { throw "Native IDE journey did not retain its pending machine receipt." }
 } catch {
   $journeyFailure = $_
@@ -749,7 +834,32 @@ try {
 
 if ($cleanupFailures.Count -ne 0) { throw ($cleanupFailures -join " ") }
 if ($null -ne $journeyFailure) { throw $journeyFailure }
+if ($JourneyKind -eq "acp04-live") {
+  $nativeStdoutIdentity = Assert-BoundedNativeLog $sageStdoutLog "Sage stdout"
+  $nativeStderrIdentity = Assert-BoundedNativeLog $sageStderrLog "Sage stderr"
+}
 $receipt = Join-Path $EvidenceRoot "machine-receipt.json"
 if (-not (Test-Path -LiteralPath $pendingReceipt -PathType Leaf)) { throw "Native IDE journey cleanup completed without a pending receipt." }
-Publish-PendingJourneyReceipt $pendingReceipt $receipt $sageCleanup $viteCleanup
+if ($JourneyKind -eq "acp04-live") {
+  $sageCleanupJson = $sageCleanup | ConvertTo-Json -Compress
+  $viteCleanupJson = $viteCleanup | ConvertTo-Json -Compress
+  $finalizerArguments = @(
+    $finalizer,
+    "--pending", $pendingReceipt,
+    "--final", $receipt,
+    "--source-root", $resolvedSource,
+    "--stdout", $sageStdoutLog,
+    "--stderr", $sageStderrLog,
+    "--sage-cleanup", [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($sageCleanupJson)),
+    "--vite-cleanup", [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($viteCleanupJson)),
+    "--deadline-ms", "30000"
+  )
+  Invoke-ControlledNodeCollector $node $finalizerArguments $JourneyKind
+  if ((Test-Path -LiteralPath $pendingReceipt) -or
+      -not (Test-Path -LiteralPath $receipt -PathType Leaf)) {
+    throw "ACP-04 final receipt publication did not complete."
+  }
+} else {
+  Publish-PendingJourneyReceipt $pendingReceipt $receipt $sageCleanup $viteCleanup
+}
 Write-Output $receipt

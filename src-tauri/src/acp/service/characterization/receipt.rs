@@ -132,7 +132,10 @@ impl CharacterizationReceiptSink {
         if &active.owner != owner || owner.runtime_epoch.get() > schema::MAX_SAFE_INTEGER {
             return Err(data("receipt owner"));
         }
-        let process = active.process.ok_or_else(|| data("process receipt"))?;
+        // Keep the non-Copy receipt retained until every validation, write,
+        // flush, and sync succeeds. A failed completion remains retryable with
+        // the exact process identity originally recorded for this owner.
+        let process = process_for_completion(&active.process)?;
         let timing = active.timing.ok_or_else(|| data("timing receipt"))?;
         if process.executable_bytes() > schema::MAX_SAFE_INTEGER {
             return Err(data("process receipt"));
@@ -184,4 +187,30 @@ impl CharacterizationObservationSink for CharacterizationReceiptSink {
 
 fn data(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
+}
+
+fn process_for_completion(
+    process: &Option<ProcessIdentityReceipt>,
+) -> io::Result<&ProcessIdentityReceipt> {
+    process.as_ref().ok_or_else(|| data("process receipt"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_completion_can_reuse_the_retained_non_copy_process_receipt() {
+        let process = Some(ProcessIdentityReceipt::test_only(
+            7,
+            41,
+            77,
+            [2; 32],
+            13,
+            std::path::PathBuf::from(r"C:\Program Files\fixture.exe"),
+        ));
+
+        assert_eq!(process_for_completion(&process).unwrap().process_id(), 41);
+        assert!(process.is_some());
+    }
 }

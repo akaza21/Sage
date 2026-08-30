@@ -46,6 +46,7 @@ import {
   verificationFor,
   writePendingJourneyReceipt,
 } from "./source-functional-native-ide-journey.mjs";
+import { revalidateFreshProfile } from "./source-functional-acp04-evidence.mjs";
 
 function evaluateBrowserExpression(expression, globals) {
   const names = Object.keys(globals);
@@ -96,6 +97,62 @@ test("Windows journey fixture is BOM-free UTF-8 with the searched sentinel at co
     assert.equal(
       bytes.toString("utf8").indexOf("SAGE_JOURNEY_SENTINEL") + 1,
       14,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("PowerShell 5 ACP-04 profile identity is BOM-free and revalidates", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-acp04-profile-identity-"));
+  const profile = path.join(root, "acp04-live-profile");
+  const artifact = path.join(root, "acp04-profile-identity.json");
+  const powershell = path.join(
+    process.env.SystemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  const wrapper = path.resolve(
+    "scripts",
+    "run-source-functional-native-ide-journey.ps1",
+  );
+  try {
+    const quote = (value) => `'${value.replaceAll("'", "''")}'`;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Write-Acp04ProfileIdentity'},$true);Invoke-Expression $fn.Extent.Text;[void](New-Item -ItemType Directory -Path ${quote(profile)});[IO.File]::WriteAllText((Join-Path ${quote(profile)} '.sage-disposable-profile-v1'),"sage-disposable-profile-v1\`n",[Text.UTF8Encoding]::new($false));$identity=[Security.Cryptography.SHA256]::Create();try{$digest=([BitConverter]::ToString($identity.ComputeHash([Text.Encoding]::UTF8.GetBytes(${quote(profile.toLowerCase())}))).Replace('-','').ToLowerInvariant())}finally{$identity.Dispose()};Write-Acp04ProfileIdentity ${quote(artifact)} ${quote(profile)} $digest`;
+    const result = spawnSync(
+      powershell,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        Buffer.from(source, "utf16le").toString("base64"),
+      ],
+      { encoding: "utf8", windowsHide: true, timeout: 15_000 },
+    );
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+
+    const bytes = readFileSync(artifact);
+    assert.equal(bytes[0], 0x7b);
+    assert.notDeepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
+    assert.doesNotThrow(() => JSON.parse(bytes.toString("utf8")));
+    assert.deepEqual(
+      revalidateFreshProfile(
+        { path: profile, identityArtifact: artifact },
+        root,
+      ),
+      {
+        path: profile,
+        identityArtifact: {
+          name: "acp04-profile-identity.json",
+          bytes: bytes.length,
+          sha256: createHash("sha256").update(bytes).digest("hex"),
+        },
+        identitySha256: createHash("sha256")
+          .update(profile.toLowerCase())
+          .digest("hex"),
+      },
     );
   } finally {
     rmSync(root, { recursive: true, force: true });

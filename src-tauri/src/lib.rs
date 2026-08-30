@@ -267,6 +267,8 @@ pub fn run() {
             commands::send_simulated_prompt,
             commands::acp::get_acp_chat_page,
             commands::acp::get_codex_discovery,
+            #[cfg(any(debug_assertions, feature = "diagnostics"))]
+            commands::acp::runtime_identity::get_codex_runtime_identity,
             commands::acp::codex_auth::get_codex_auth,
             commands::acp::codex_auth::start_codex_auth,
             commands::acp::codex_auth::cancel_codex_auth,

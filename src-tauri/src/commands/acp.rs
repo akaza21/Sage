@@ -4,6 +4,8 @@ pub(crate) mod codex_auth;
 pub(crate) mod edit_disposition;
 mod errors;
 pub(crate) mod permission;
+#[cfg(any(debug_assertions, feature = "diagnostics"))]
+pub(crate) mod runtime_identity;
 mod session_routes;
 
 pub(crate) use session_routes::{activate_acp_session_inner, start_acp_session_inner};

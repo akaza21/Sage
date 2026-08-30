@@ -1,12 +1,13 @@
 /// Immutable identity observed through the retained root-process handle after
 /// the executable image has passed supervisor verification.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProcessIdentityReceipt {
     runtime_epoch: u64,
     process_id: u32,
     creation_time_filetime_100ns: u64,
     executable_sha256: [u8; 32],
     executable_bytes: u64,
+    canonical_image_path: std::path::PathBuf,
 }
 
 impl ProcessIdentityReceipt {
@@ -16,6 +17,7 @@ impl ProcessIdentityReceipt {
         creation_time_filetime_100ns: u64,
         executable_sha256: [u8; 32],
         executable_bytes: u64,
+        canonical_image_path: std::path::PathBuf,
     ) -> Self {
         Self {
             runtime_epoch,
@@ -23,6 +25,7 @@ impl ProcessIdentityReceipt {
             creation_time_filetime_100ns,
             executable_sha256,
             executable_bytes,
+            canonical_image_path,
         }
     }
 
@@ -44,6 +47,29 @@ impl ProcessIdentityReceipt {
 
     pub(crate) fn executable_bytes(&self) -> u64 {
         self.executable_bytes
+    }
+
+    pub(crate) fn canonical_image_path(&self) -> &std::path::Path {
+        &self.canonical_image_path
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_only(
+        runtime_epoch: u64,
+        process_id: u32,
+        creation_time_filetime_100ns: u64,
+        executable_sha256: [u8; 32],
+        executable_bytes: u64,
+        canonical_image_path: std::path::PathBuf,
+    ) -> Self {
+        Self::new(
+            runtime_epoch,
+            process_id,
+            creation_time_filetime_100ns,
+            executable_sha256,
+            executable_bytes,
+            canonical_image_path,
+        )
     }
 }
 

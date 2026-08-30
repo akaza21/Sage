@@ -47,6 +47,8 @@ mod renderer_recreation;
 mod renderer_recreation_orchestrator;
 #[allow(dead_code)] // Fixed packet schema; no generic observer is exposed.
 mod renderer_recreation_packet;
+#[cfg(any(debug_assertions, feature = "diagnostics"))]
+pub(crate) mod runtime_identity;
 mod runtime_slot;
 mod shutdown;
 
@@ -63,6 +65,8 @@ use configuration::ServiceConfiguration;
 use intent_snapshot::load_intent_snapshot;
 use renderer_recreation::RendererRecreationNativeSnapshot;
 pub(crate) use renderer_recreation_orchestrator::RendererRecreationReloadLifecycle;
+#[cfg(any(debug_assertions, feature = "diagnostics"))]
+use runtime_identity::CodexRuntimeIdentityLedger;
 use runtime_slot::RuntimeSlot;
 use shutdown::map_discovery_shutdown;
 
@@ -99,6 +103,8 @@ pub(crate) struct AcpService {
     codex_discovery: Arc<CodexDiscoveryManager>,
     codex_auth: Arc<CodexAuthManager>,
     codex_recovery: Arc<Mutex<Option<codex_live::PendingCodexRecovery>>>,
+    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+    codex_runtime_identity: Arc<CodexRuntimeIdentityLedger>,
     #[cfg(test)]
     codex_runtime_release_fail_once: AtomicBool,
     #[cfg(test)]
@@ -176,6 +182,8 @@ impl AcpService {
             codex_discovery,
             codex_auth,
             codex_recovery: Arc::new(Mutex::new(None)),
+            #[cfg(any(debug_assertions, feature = "diagnostics"))]
+            codex_runtime_identity: Arc::new(CodexRuntimeIdentityLedger::new()),
             #[cfg(test)]
             codex_runtime_release_fail_once: AtomicBool::new(false),
             #[cfg(test)]
@@ -248,6 +256,13 @@ impl AcpService {
 
     pub(crate) fn codex_auth_manager(&self) -> Arc<CodexAuthManager> {
         Arc::clone(&self.codex_auth)
+    }
+
+    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+    pub(crate) fn codex_runtime_identity(
+        &self,
+    ) -> Option<runtime_identity::CodexRuntimeIdentityDiagnostics> {
+        self.codex_runtime_identity.observation()
     }
 
     pub(crate) fn accepts_codex_binding(&self, requested: &BindingId) -> bool {

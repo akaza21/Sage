@@ -281,6 +281,8 @@ impl AcpService {
             &runner,
             &self.codex_recovery,
             Arc::clone(&active),
+            #[cfg(any(debug_assertions, feature = "diagnostics"))]
+            Arc::clone(&self.codex_runtime_identity),
         );
         if self.runtime.publish_start(&abort.owner).is_err() {
             let _ = self.runtime.mark_recovery(&abort.owner);
@@ -289,6 +291,24 @@ impl AcpService {
                 runner,
             });
             return Err(CodexSessionError::Recovery);
+        }
+        #[cfg(any(debug_assertions, feature = "diagnostics"))]
+        {
+            // A diagnostics failure never affects the admitted live runtime.
+            // The observation is captured after publish from its retained root
+            // handle, so a batch launcher correctly reports node.exe.
+            let _ = self.codex_runtime_identity.publish(
+                &abort.owner,
+                super::super::runtime_identity::AdmittedEntrypointInput {
+                    path: &spec.artifact.canonical_absolute_path,
+                    sha256: spec.artifact.sha256,
+                    bytes: spec.artifact.byte_len,
+                    kind: spec.artifact.entrypoint_kind,
+                    version: &prepared.harness_version,
+                    binding_digest: &abort.binding_digest,
+                },
+                &runner.control(),
+            );
         }
         Ok(())
     }

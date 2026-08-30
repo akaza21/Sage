@@ -116,12 +116,17 @@ fn observe_runner(
     runner: &Arc<LiveRunnerHandle>,
     recovery: &Arc<std::sync::Mutex<Option<PendingCodexRecovery>>>,
     active: Arc<std::sync::Mutex<Option<ActiveCodexOperation>>>,
+    #[cfg(any(debug_assertions, feature = "diagnostics"))] identity: Arc<
+        super::runtime_identity::CodexRuntimeIdentityLedger,
+    >,
 ) {
     let slot: Weak<super::RuntimeSlot> = Arc::downgrade(slot);
     let weak_runner = Arc::downgrade(runner);
     let recovery = Arc::downgrade(recovery);
     let owner = owner.clone();
     runner.observe_exit_once(move |exit| {
+        #[cfg(any(debug_assertions, feature = "diagnostics"))]
+        identity.clear_exact(&owner);
         if exit == LiveRunnerExit::Failed {
             if let Some(slot) = slot.upgrade() {
                 let _ = slot.mark_recovery(&owner);
@@ -164,7 +169,15 @@ pub(super) fn observe_runner_failure_for_test(
     recovery: &Arc<std::sync::Mutex<Option<PendingCodexRecovery>>>,
     active: Arc<std::sync::Mutex<Option<ActiveCodexOperation>>>,
 ) {
-    observe_runner(slot, owner, runner, recovery, active);
+    observe_runner(
+        slot,
+        owner,
+        runner,
+        recovery,
+        active,
+        #[cfg(any(debug_assertions, feature = "diagnostics"))]
+        Arc::new(super::runtime_identity::CodexRuntimeIdentityLedger::new()),
+    );
     runner.fail_for_test();
 }
 

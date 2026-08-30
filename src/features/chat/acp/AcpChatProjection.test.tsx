@@ -166,11 +166,31 @@ describe("AcpChatProjection", () => {
   });
 
   it("renders lifecycle state and normalized items", () => {
-    render(<AcpChatProjection page={page("waitingModel")} active />);
+    const { container } = render(
+      <AcpChatProjection page={page("waitingModel")} active />,
+    );
     expect(
       screen.getByRole("status", { name: "Waiting for model" }),
     ).toHaveTextContent("Waiting for model");
     expect(screen.getByText("Normalized answer")).toBeInTheDocument();
+    expect(container.querySelector(".acp-chat-projection")).toMatchObject({
+      dataset: {
+        projectId: "project-1",
+        chatId: "chat-1",
+        currentSessionId: "session-1",
+      },
+    });
+    expect(container.querySelector(".acp-turn")).toMatchObject({
+      dataset: {
+        turnId: "turn-1",
+        sessionId: "session-1",
+        runtimeEpoch: "2",
+        turnOrdinal: "1",
+      },
+    });
+    expect(container.querySelector(".acp-message--assistant")).toMatchObject({
+      dataset: { itemId: "item-text", messageRole: "assistant" },
+    });
   });
 
   it("renders an admitted png image item", () => {

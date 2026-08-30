@@ -80,7 +80,7 @@ function canonicalExpectedOrigin(value) {
   return value.endsWith("/") ? value : `${value}/`;
 }
 
-function hashFile(filePath, maximumBytes = MAX_ARTIFACT_BYTES) {
+export function hashFile(filePath, maximumBytes = MAX_ARTIFACT_BYTES) {
   if (lstatSync(filePath).isSymbolicLink()) fail("artifact-invalid");
   const stats = statSync(filePath);
   if (!stats.isFile() || stats.size > maximumBytes) fail("artifact-invalid");
@@ -509,7 +509,7 @@ export function revalidateControlledCdpTarget(
   });
 }
 
-async function readCdpTargets(port, deadline) {
+export async function readCdpTargets(port, deadline) {
   const remaining = deadline - Date.now();
   if (remaining <= 0) throw new Error("target discovery deadline elapsed");
   const response = await fetch(`http://127.0.0.1:${port}/json`, {
@@ -525,7 +525,7 @@ async function readCdpTargets(port, deadline) {
   return targets;
 }
 
-async function discoverTarget(port, expectedOrigin, deadline) {
+export async function discoverTarget(port, expectedOrigin, deadline) {
   let lastError = "CDP endpoint did not respond";
   while (Date.now() < deadline) {
     try {
@@ -717,7 +717,12 @@ export async function attachPlaywright(options, deadline, deps = {}) {
   };
 }
 
-async function revalidateAttachedPage(options, cdp, admittedTarget, deadline) {
+export async function revalidateAttachedPage(
+  options,
+  cdp,
+  admittedTarget,
+  deadline,
+) {
   const currentTargets = await readCdpTargets(options.port, deadline);
   const pageIdentity = await cdp.evaluate(
     "(()=>({title:document.title,url:location.href}))()",
@@ -785,13 +790,13 @@ export const UI_ACTIONS = Object.freeze([
   ),
 ]);
 
-function operationDeadline(journeyDeadline) {
+export function operationDeadline(journeyDeadline) {
   const now = Date.now();
   if (now >= journeyDeadline) throw new Error("journey deadline exhausted");
   return Math.min(journeyDeadline, now + MAX_CDP_OPERATION_MS);
 }
 
-async function waitFor(cdp, expression, deadline, message) {
+export async function waitFor(cdp, expression, deadline, message) {
   while (Date.now() < deadline) {
     if (await cdp.evaluate(expression, operationDeadline(deadline))) return;
     await sleep(Math.min(100, Math.max(0, deadline - Date.now())));
@@ -926,7 +931,7 @@ export function assertEvidenceRoot(sourceRoot, output) {
   }
 }
 
-function writeContainedText(sourceRoot, output, name, value) {
+export function writeContainedText(sourceRoot, output, name, value) {
   assertEvidenceRoot(sourceRoot, output);
   const target = path.join(output, name);
   const relative = path.relative(realpathSync(output), path.resolve(target));
@@ -957,7 +962,7 @@ export function writePendingJourneyReceipt(
   return path.join(output, receiptName);
 }
 
-function writeContainedBytes(sourceRoot, output, name, value) {
+export function writeContainedBytes(sourceRoot, output, name, value) {
   assertEvidenceRoot(sourceRoot, output);
   if (!Buffer.isBuffer(value) || value.byteLength > MAX_ARTIFACT_BYTES)
     fail("screenshot-oversize");

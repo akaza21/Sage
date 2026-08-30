@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createAcp04Ui } from "../../../scripts/source-functional-acp04-live-probe.mjs";
 import { clearAcpProjectionRegistry } from "../../app/acpProjectionRegistry";
 import {
   clearAgentChatOwner,
@@ -196,6 +197,54 @@ afterEach(() => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
+  it("satisfies the exported ACP-04 Codex-ready selector with real chat controls", async () => {
+    hooks.page = {
+      ...projection(),
+      currentSessionId: null,
+      sessions: [],
+      turns: [],
+    };
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "codex",
+          name: "Codex",
+          version: "codex 0.146.0",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: true,
+          transport: "acp",
+          bindingId: "codex-app-server",
+        },
+      ],
+      models: [{ id: "gpt-5.6", name: "gpt-5.6" }],
+      selectedModelId: "gpt-5.6",
+    });
+    render(
+      <main className="workbench workbench--agent">
+        <div role="radiogroup" aria-label="Window mode">
+          <input type="radio" name="workbench-window-mode" value="editor" />
+          <input
+            type="radio"
+            name="workbench-window-mode"
+            value="agent"
+            defaultChecked
+          />
+        </div>
+        <section className="agent-chat-pane agent-chat-pane--focused">
+          <ChatSurface />
+        </section>
+      </main>,
+    );
+
+    await waitFor(() => {
+      expect(
+        Function(`return ${createAcp04Ui("codex 0.146.0").codexReady}`)(),
+      ).toBe(true);
+    });
+  });
+
   it("follows an advancing ACP streaming projection to its latest content", () => {
     const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView);
     const { rerender } = render(<ChatSurface />);

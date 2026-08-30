@@ -1,6 +1,11 @@
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use std::{
+    fs::File,
+    io::Read,
+    sync::{Arc, Mutex},
+};
 
+use sha2::{Digest, Sha256};
 use windows_sys::Win32::System::Threading::{GetExitCodeProcess, GetProcessId, GetProcessTimes};
 
 use crate::acp::redaction::{SafeDiagnostic, SafeStderrDiagnostic};
@@ -101,12 +106,19 @@ impl TreeControl {
         if creation_time_filetime_100ns == 0 {
             return Err(LaunchError::ContainmentFailure);
         }
+        // The retained root is node.exe for a verified npm .cmd launcher.
+        // Never reuse the launcher digest here: diagnostics must describe the
+        // actual process whose handle is still owned by the supervisor.
+        let image = std::fs::canonicalize(process_image_path(process)?)
+            .map_err(|_| LaunchError::IdentityMismatch)?;
+        let (executable_sha256, executable_bytes) = bounded_image_digest(&image)?;
         Ok(ProcessIdentityReceipt::new(
             self.0.runtime_epoch,
             process_id,
             creation_time_filetime_100ns,
-            self.0.artifact.sha256(),
-            self.0.artifact.byte_len(),
+            executable_sha256,
+            executable_bytes,
+            image,
         ))
     }
 
@@ -276,6 +288,39 @@ impl TreeControl {
     pub(crate) fn total_processes(&self) -> Result<u32, LaunchError> {
         self.0.job.total_processes()
     }
+}
+
+const MAX_DIAGNOSTIC_IMAGE_BYTES: u64 = 512 * 1024 * 1024;
+
+fn bounded_image_digest(path: &std::path::Path) -> Result<([u8; 32], u64), LaunchError> {
+    let mut file = File::open(path).map_err(|_| LaunchError::IdentityMismatch)?;
+    let bytes = file
+        .metadata()
+        .map_err(|_| LaunchError::IdentityMismatch)?
+        .len();
+    if bytes == 0 || bytes > MAX_DIAGNOSTIC_IMAGE_BYTES {
+        return Err(LaunchError::IdentityMismatch);
+    }
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    let mut observed = 0_u64;
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|_| LaunchError::IdentityMismatch)?;
+        if read == 0 {
+            break;
+        }
+        observed = observed
+            .saturating_add(u64::try_from(read).map_err(|_| LaunchError::IdentityMismatch)?);
+        if observed > bytes {
+            return Err(LaunchError::IdentityMismatch);
+        }
+        hasher.update(&buffer[..read]);
+    }
+    (observed == bytes)
+        .then_some((hasher.finalize().into(), bytes))
+        .ok_or(LaunchError::IdentityMismatch)
 }
 
 #[derive(Debug)]

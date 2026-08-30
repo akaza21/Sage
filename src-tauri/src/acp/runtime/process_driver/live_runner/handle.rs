@@ -55,6 +55,13 @@ impl LiveRunnerHandle {
         Arc::clone(&self.mailbox)
     }
 
+    /// A read-only clone of the supervisor authority. It is used only to
+    /// capture the debug identity observation after this runner is published;
+    /// no diagnostics caller receives teardown authority.
+    pub(crate) fn control(&self) -> TreeControl {
+        self.control.clone()
+    }
+
     #[allow(clippy::result_large_err)]
     pub(crate) fn start_activation<A, R, T, Auth>(
         self: &Arc<Self>,
