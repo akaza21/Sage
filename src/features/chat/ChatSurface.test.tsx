@@ -496,6 +496,11 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Phase 0 has started")).toBeNull();
     expect(screen.queryByText("Read-only policy")).toBeNull();
+    expect(
+      screen.queryByText(
+        "No reviewed local binding is available for this harness.",
+      ),
+    ).toBeNull();
   });
 
   it("shows an available ACP binding as ready before a session starts", () => {

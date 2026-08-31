@@ -288,10 +288,9 @@
 
 @media (max-width: 640px) {
   .workbench {
-    grid-template-rows: minmax(var(--chrome-row-height), auto) minmax(
-        0,
-        1fr
-      ) 24px;
+    grid-template-rows:
+      minmax(var(--chrome-row-height), auto) minmax(0, 1fr)
+      24px;
   }
 
   .title-bar {

@@ -1,9 +1,11 @@
 .explorer-add-root {
   display: inline-flex;
+  width: 24px;
   height: 24px;
   align-items: center;
+  justify-content: center;
   gap: var(--space-1);
-  padding: 0 var(--space-1);
+  padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
@@ -12,10 +14,8 @@
   cursor: pointer;
 }
 
-@media (max-width: 960px) {
-  .explorer-add-root span {
-    display: none;
-  }
+.explorer-add-root span {
+  display: none;
 }
 
 .explorer-add-root:hover:not(:disabled) {

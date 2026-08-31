@@ -178,16 +178,26 @@
 
 .agent-chat-pane__focus {
   display: inline-flex;
+  height: 100%;
   flex: 1 1 auto;
   min-width: 0;
   align-items: center;
   gap: 8px;
+  padding: 0;
   overflow: hidden;
+  border: 0;
   color: var(--text-soft);
+  background: transparent;
   font-size: 12px;
   font-weight: 600;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.agent-chat-pane__focus:hover {
+  color: var(--text);
 }
 
 .agent-chat-pane__header > .agent-chat-chip {
@@ -197,6 +207,14 @@
 
 .agent-chat-panes--split .chat-surface {
   width: 100%;
+}
+
+.agent-chat-panes:not(.agent-chat-panes--split) .agent-chat-pane {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.agent-chat-panes:not(.agent-chat-panes--split) .agent-chat-pane__header {
+  display: none;
 }
 
 .agent-chat-panes--split .surface-header {

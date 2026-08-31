@@ -1,18 +1,17 @@
-import { ArrowUp, Check } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { pinnedAgentChatOwner } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
 import { SessionWorkingPill } from "./SessionWorkingPill";
 import type {
-  AcpChatPage,
   CuratedBindingId,
   CuratedModelId,
   TurnProjection,
 } from "../../domain/acp";
 import type { ResourceRef } from "../../domain/workbench";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
-import { EditSummary } from "./EditSummary";
+import { ChatLegacyTranscript } from "./ChatLegacyTranscript";
 import { ChatHandoffControl } from "./ChatHandoffControl";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 import {
@@ -21,6 +20,7 @@ import {
   useComposerFocusHotkey,
 } from "./composerChrome";
 import { ComposerContext } from "./ComposerContext";
+import { composerDisabledReason } from "./composerDisabledReason";
 import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
 import {
   AcpChatProjection,
@@ -32,32 +32,8 @@ import {
   useAcpRetentionIncomplete,
   useRendererRecreationFocus,
 } from "./acp";
+import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
 import { useBoundChatComposer } from "./useBoundChatComposer";
-
-function currentNonterminalTurn(
-  page: AcpChatPage | null,
-): TurnProjection | null {
-  let current: TurnProjection | null = null;
-  for (const turn of page?.turns ?? []) {
-    if (
-      !terminalTurnStates.has(turn.state) &&
-      (!current || turn.ordinal > current.ordinal)
-    ) {
-      current = turn;
-    }
-  }
-  return current;
-}
-
-function messageTimestamp(createdAt: number) {
-  if (!Number.isFinite(createdAt) || createdAt <= 0) return null;
-  const timestamp = new Date(createdAt);
-  if (Number.isNaN(timestamp.getTime())) return null;
-  return {
-    dateTime: timestamp.toISOString(),
-    label: timestamp.toISOString().slice(11, 16),
-  };
-}
 
 export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const messages = useWorkbenchStore((state) => state.messages);
@@ -166,27 +142,17 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     focused && composerEnabled && !actionBusy && !projectTransitioning;
   useComposerFocusHotkey(composerRef, composerHotkeyEnabled);
 
-  const composerDisabledReason = projectTransitioning
-    ? "Wait for the Project to finish loading."
-    : actionBusy
-      ? "Wait for the current action to finish."
-      : activeAcpTurn
-        ? "Wait for the active Turn to finish, or cancel it when available."
-        : !selectedHarness
-          ? "Choose an available Harness before sending."
-          : harnessDiscoveryPhase === "checking"
-            ? "Wait while Sage checks the selected Harness."
-            : harnessDiscoveryPhase === "signInRequired" ||
-                harnessDiscoveryPhase === "consent" ||
-                harnessDiscoveryPhase === "waiting"
-              ? "Finish signing in before sending."
-              : !harnessAvailable
-                ? "The selected Harness is unavailable."
-                : useNativeAcp && !availableBinding
-                  ? "No reviewed local binding is available for this Harness."
-                  : !canPrompt
-                    ? "The selected Harness cannot accept prompts in this session."
-                    : null;
+  const disabledReason = composerDisabledReason({
+    actionBusy,
+    activeTurn: Boolean(activeAcpTurn),
+    availableBinding,
+    canPrompt,
+    harnessAvailable,
+    harnessDiscoveryPhase,
+    projectTransitioning,
+    selectedHarness: Boolean(selectedHarness),
+    useNativeAcp,
+  });
 
   useEffect(() => {
     if (!followingEnd) return;
@@ -318,48 +284,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
                 onLoadEarlier={acpHistory.loadEarlier}
               />
             ) : (
-              <>
-                {selectedHarness?.source === "development" ? (
-                  <div className="project-intro">
-                    <span className="project-intro__icon">
-                      <Check size={17} aria-hidden="true" />
-                    </span>
-                    <div>
-                      <strong>Development simulator</strong>
-                      <p>
-                        This test-only harness exercises the workbench without
-                        connecting a production agent.
-                      </p>
-                    </div>
-                  </div>
-                ) : null}
-                {messages.map((message) => {
-                  const timestamp = messageTimestamp(message.createdAt);
-                  return (
-                    <article
-                      className={`message message--${message.role}`}
-                      key={message.id}
-                    >
-                      <header className="message__meta">
-                        <span className="message__role">
-                          {message.role === "user" ? "You" : "Sage"}
-                        </span>
-                        {timestamp ? (
-                          <time
-                            dateTime={timestamp.dateTime}
-                            title={timestamp.dateTime}
-                          >
-                            {timestamp.label}
-                          </time>
-                        ) : null}
-                      </header>
-                      <p>{message.text}</p>
-                    </article>
-                  );
-                })}
-              </>
+              <ChatLegacyTranscript
+                messages={messages}
+                developmentSimulator={selectedHarness?.source === "development"}
+              />
             )}
-            {!useNativeAcp ? <EditSummary /> : null}
           </>
         )}
         <div ref={endRef} />
@@ -391,7 +320,8 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
           </div>
         ) : null}
         <HarnessDiscoveryNotice />
-        {!availableBinding &&
+        {useNativeAcp &&
+        !availableBinding &&
         !["checking", "signInRequired", "consent", "waiting", "error"].includes(
           harnessDiscoveryPhase,
         ) ? (
@@ -409,7 +339,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
           ref={composerRef}
           id={composerFieldId}
           aria-describedby={`${composerDescriptionId}${
-            composerDisabledReason ? ` ${composerDisabledReasonId}` : ""
+            disabledReason ? ` ${composerDisabledReasonId}` : ""
           }`}
           value={composerText}
           maxLength={MAX_CHAT_COMPOSER_BYTES}
@@ -427,12 +357,12 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
             }
           }}
         />
-        {composerDisabledReason ? (
+        {disabledReason ? (
           <p
             className="composer__disabled-reason"
             id={composerDisabledReasonId}
           >
-            {composerDisabledReason}
+            {disabledReason}
           </p>
         ) : null}
         <div className="composer__toolbar">
@@ -445,7 +375,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
           </span>
           {useNativeAcp && acpActions.cancellableTurnId ? (
             <button
-              className="send-button"
+              className="send-button send-button--cancel"
               type="button"
               aria-label="Cancel turn"
               disabled={actionBusy || projectTransitioning}
