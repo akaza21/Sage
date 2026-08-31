@@ -1099,6 +1099,36 @@ fn completed_turn_handoff_rebinds_without_dropping_session_authority() {
     });
 }
 
+#[test]
+fn completed_turn_handoff_keeps_synthetic_item_identity_unique() {
+    runtime().block_on(async {
+        let (mut pump, shared) = build_pump(vec![
+            owned(vec![unsupported()], Vec::new()),
+            owned(vec![terminal(TurnState::Completed)], Vec::new()),
+            owned(vec![unsupported()], Vec::new()),
+        ]);
+        pump.push_stdout_chunk_deferred(b"{}\n", 1).await.unwrap();
+        pump.push_stdout_chunk_deferred(b"{}\n", 2).await.unwrap();
+        let parts = pump.try_into_completed_parts().ok().unwrap();
+        let mut next = parts.bind_turn(next_turn()).ok().unwrap();
+        next.push_stdout_chunk_deferred(b"{}\n", 3).await.unwrap();
+
+        let state = shared.0.lock().unwrap();
+        let identities = state
+            .durable_batches
+            .iter()
+            .flat_map(|batch| batch.iter())
+            .filter_map(|event| match event {
+                DurableAdapterEvent::RuntimePayload {
+                    external_item_id, ..
+                } => Some(external_item_id.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(identities, ["sage-runtime-1-1", "sage-runtime-1-2"]);
+    });
+}
+
 fn build_pump(
     batches: Vec<AdapterBatch>,
 ) -> (AdapterPump<FakeAdapter, FakeJournal, Mapper>, Shared) {
@@ -1274,6 +1304,13 @@ fn text(value: &str) -> NormalizedPayload {
     NormalizedPayload::Text {
         text: SafeText::new("text", value).unwrap(),
     }
+}
+
+fn unsupported() -> AdapterEvent {
+    AdapterEvent::Unsupported(NormalizedPayload::Unsupported {
+        external_kind: SafeText::new("externalKind", "thread/status/changed").unwrap(),
+        summary: SafeText::new("summary", "Unsupported Codex event").unwrap(),
+    })
 }
 
 fn permission() -> NormalizedPayload {
