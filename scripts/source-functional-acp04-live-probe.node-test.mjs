@@ -268,11 +268,17 @@ test("Mode A uses behavior seams for Editor to one seeded Agent chat", async () 
   let sent = 0;
   const calls = [];
   const driver = {
+    async waitForEditorReady() {
+      calls.push("editor-ready");
+    },
     async enterAgentFromEditor() {
       calls.push("enter-agent");
     },
     async waitForSeededAgentChat() {
       calls.push("seeded-chat");
+    },
+    async waitForCodexSelectable() {
+      calls.push("codex-selectable");
     },
     async selectCodex() {
       calls.push("select-codex");
@@ -307,11 +313,12 @@ test("Mode A uses behavior seams for Editor to one seeded Agent chat", async () 
     codexVersion: CODEX_VERSION,
   });
   assert.equal(result.state.phase, "complete");
-  assert.deepEqual(calls.slice(0, 4), [
+  assert.deepEqual(calls.slice(0, 5), [
+    "editor-ready",
     "enter-agent",
     "seeded-chat",
+    "codex-selectable",
     "select-codex",
-    "snapshot-0",
   ]);
   assert.equal(calls.includes("new-chat"), false);
 });
@@ -338,12 +345,24 @@ test("browser DOM contract selects the discovered Codex display and exposes exac
       },
     });
     const ui = createAcp04Ui(CODEX_VERSION);
+    assert.equal(eval(ui.editorReady), true);
     assert.equal(eval(ui.enterAgentFromEditor), true);
+    assert.equal(eval(ui.editorReady), false);
     dom.window.document.querySelector("main").className =
       "workbench workbench--agent";
     assert.equal(eval(ui.seededAgentReady), true);
+    assert.equal(eval(ui.codexSelectable), true);
     assert.equal(eval(ui.selectCodex), true);
     assert.equal(eval(ui.codexReady), true);
+    const codex = dom.window.document.querySelector("select option");
+    let changes = 0;
+    codex.parentElement.addEventListener("change", () => {
+      changes += 1;
+    });
+    codex.disabled = true;
+    assert.equal(eval(ui.codexSelectable), false);
+    assert.equal(eval(ui.selectCodex), false);
+    assert.equal(changes, 0);
     const actual = eval(ACP04_SNAPSHOT_EXPRESSION);
     assert.equal(actual.projectionRevision, "3");
     assert.deepEqual(
@@ -356,6 +375,43 @@ test("browser DOM contract selects the discovered Codex display and exposes exac
     );
   } finally {
     Object.assign(globalThis, previous);
+    dom.window.close();
+  }
+});
+
+test("browser DOM contract refuses Agent, ambiguous, and absent Editor states without clicking", () => {
+  const dom = new JSDOM(
+    `<!doctype html><main class="workbench workbench--agent"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor"><input type="radio" name="workbench-window-mode" value="agent" checked></div></main>`,
+  );
+  const previous = { document: globalThis.document };
+  globalThis.document = dom.window.document;
+  try {
+    const ui = createAcp04Ui(CODEX_VERSION);
+    const editor = dom.window.document.querySelector('[value="editor"]');
+    const agent = dom.window.document.querySelector('[value="agent"]');
+    let clicks = 0;
+    agent.addEventListener("click", () => {
+      clicks += 1;
+    });
+    assert.equal(eval(ui.editorReady), false);
+    assert.equal(eval(ui.enterAgentFromEditor), false);
+    dom.window.document.querySelector("main").className =
+      "workbench workbench--editor";
+    editor.checked = true;
+    agent.checked = false;
+    dom.window.document.body.append(
+      dom.window.document.querySelector("main").cloneNode(false),
+    );
+    assert.equal(eval(ui.editorReady), false);
+    assert.equal(eval(ui.enterAgentFromEditor), false);
+    dom.window.document
+      .querySelectorAll("main")
+      .forEach((main) => main.remove());
+    assert.equal(eval(ui.editorReady), false);
+    assert.equal(eval(ui.enterAgentFromEditor), false);
+    assert.equal(clicks, 0);
+  } finally {
+    globalThis.document = previous.document;
     dom.window.close();
   }
 });

@@ -46,10 +46,13 @@ export function createAcp04Ui(codexVersion) {
   if (!codexSemanticVersion(codexVersion)) fail("codex-version-invalid");
   const display = `Codex \u2014 ${codexVersion}`;
   return Object.freeze({
+    editorReady:
+      '(()=>{const mains=[...document.querySelectorAll(\'main.workbench.workbench--editor\')],groups=[...document.querySelectorAll(\'[role="radiogroup"][aria-label="Window mode"]\')];if(mains.length!==1||groups.length!==1)return false;const editor=[...groups[0].querySelectorAll(\'input[name="workbench-window-mode"][value="editor"]\')],agent=[...groups[0].querySelectorAll(\'input[name="workbench-window-mode"][value="agent"]\')];return editor.length===1&&agent.length===1&&editor[0].checked&&!agent[0].checked})()',
     enterAgentFromEditor:
-      '(()=>{const groups=[...document.querySelectorAll(\'[role="radiogroup"][aria-label="Window mode"]\')];if(groups.length!==1)return false;const editor=[...groups[0].querySelectorAll(\'input[name="workbench-window-mode"][value="editor"]\')];const agent=[...groups[0].querySelectorAll(\'input[name="workbench-window-mode"][value="agent"]\')];if(editor.length!==1||agent.length!==1||!editor[0].checked||agent[0].checked)return false;agent[0].click();return true})()',
+      '(()=>{const mains=[...document.querySelectorAll(\'main.workbench.workbench--editor\')],groups=[...document.querySelectorAll(\'[role="radiogroup"][aria-label="Window mode"]\')];if(mains.length!==1||groups.length!==1)return false;const editor=[...groups[0].querySelectorAll(\'input[name="workbench-window-mode"][value="editor"]\')];const agent=[...groups[0].querySelectorAll(\'input[name="workbench-window-mode"][value="agent"]\')];if(editor.length!==1||agent.length!==1||!editor[0].checked||agent[0].checked)return false;agent[0].click();return true})()',
     seededAgentReady:
       "(()=>{const groups=[...document.querySelectorAll('[role=\"radiogroup\"][aria-label=\"Window mode\"]')];const panes=[...document.querySelectorAll('section.agent-chat-pane')];const rails=[...document.querySelectorAll('.project-chat[aria-current=\"page\"]')];if(groups.length!==1||panes.length!==1||rails.length!==1||!panes[0].classList.contains('agent-chat-pane--focused'))return false;const agent=[...groups[0].querySelectorAll('input[name=\"workbench-window-mode\"][value=\"agent\"]:checked')];return agent.length===1&&document.querySelectorAll('main.workbench.workbench--agent').length===1&&panes[0].querySelectorAll('section.chat-surface[aria-label=\"Agent chat\"]').length===1})()",
+    codexSelectable: `(()=>{const groups=[...document.querySelectorAll('[role="radiogroup"][aria-label="Window mode"]')],panes=[...document.querySelectorAll('section.agent-chat-pane')],rails=[...document.querySelectorAll('.project-chat[aria-current="page"]')];if(groups.length!==1||panes.length!==1||rails.length!==1||!panes[0].classList.contains('agent-chat-pane--focused'))return false;const agent=[...groups[0].querySelectorAll('input[name="workbench-window-mode"][value="agent"]:checked')],surfaces=[...panes[0].querySelectorAll('section.chat-surface[aria-label="Agent chat"]')];if(agent.length!==1||document.querySelectorAll('main.workbench.workbench--agent').length!==1||surfaces.length!==1)return false;const selects=[...surfaces[0].querySelectorAll('.composer__controls select')],options=selects.length===2?[...selects[0].options].filter(x=>x.textContent.trim()===${JSON.stringify(display)}&&!x.disabled):[];return selects.length===2&&options.length===1})()`,
     selectCodex: `(()=>{const panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];if(panes.length!==1)return false;const selects=[...panes[0].querySelectorAll('.composer__controls select')];if(selects.length!==2)return false;const options=[...selects[0].options].filter(x=>x.textContent.trim()===${JSON.stringify(display)});if(options.length!==1||options[0].disabled)return false;const set=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;set.call(selects[0],options[0].value);selects[0].dispatchEvent(new Event('change',{bubbles:true}));return true})()`,
     codexReady: `(()=>{const panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];if(panes.length!==1)return false;const s=panes[0].querySelector('section.chat-surface[aria-label="Agent chat"]');if(!s)return false;const p=s.querySelectorAll('section.acp-chat-projection[aria-label^="Agent chat "]');const selects=s.querySelectorAll('.composer__controls select');const status=s.querySelector('.session-state')?.textContent.trim();return p.length===1&&selects.length===2&&selects[0].selectedOptions.length===1&&selects[0].selectedOptions[0].textContent.trim()===${JSON.stringify(display)}&&selects[1].value!==''&&(status==='Ready'||status==='Live')&&s.querySelectorAll('textarea#prompt:not(:disabled)').length===1})()`,
     sendEnabled:
@@ -282,6 +285,12 @@ function defaultDriver(cdp, deadline, codexVersion, guard = () => {}) {
     return cdp.evaluate(expression, operationDeadline(deadline));
   };
   return {
+    waitForEditorReady: () =>
+      waitUntil(
+        () => readiness(ui.editorReady),
+        deadline,
+        "acp04-editor-ready-timeout",
+      ),
     enterAgentFromEditor: () =>
       exactAction(ui.enterAgentFromEditor, "window-mode-invalid"),
     waitForSeededAgentChat: () =>
@@ -289,6 +298,12 @@ function defaultDriver(cdp, deadline, codexVersion, guard = () => {}) {
         () => readiness(ui.seededAgentReady),
         deadline,
         "acp04-seeded-chat-timeout",
+      ),
+    waitForCodexSelectable: () =>
+      waitUntil(
+        () => readiness(ui.codexSelectable),
+        deadline,
+        "acp04-codex-selectable-timeout",
       ),
     selectCodex: () => exactAction(ui.selectCodex, "codex-selector-invalid"),
     waitForCodexReady: () =>
@@ -330,8 +345,10 @@ export async function runAcp04ModeA(
   const driver =
     deps.driver ?? defaultDriver(cdp, deadline, deps.codexVersion, deps.guard);
   const startedAt = new Date().toISOString();
+  await driver.waitForEditorReady();
   await driver.enterAgentFromEditor();
   await driver.waitForSeededAgentChat();
+  await driver.waitForCodexSelectable();
   await driver.selectCodex();
   await driver.waitForCodexReady?.();
   const initial = await driver.snapshot();
