@@ -208,6 +208,10 @@ pub(super) fn store_error(error: StoreError) -> AcpIpcError {
 }
 
 pub(super) fn intent_error(error: IntentError) -> AcpIpcError {
+    tracing::info!(
+        intent_error = ?error,
+        "ACP intent rejected by bounded guard"
+    );
     let resource = match error {
         IntentError::ForeignProject | IntentError::StaleProjectGeneration => {
             AcpConflictResource::ProjectGeneration
