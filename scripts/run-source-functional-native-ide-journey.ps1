@@ -804,7 +804,7 @@ try {
       "--expected-origin", $frontendContract.origin,
       "--runtime-mode", $runtimeReceipt.mode, "--frontend-ready", "$($runtimeReceipt.frontendReady)".ToLowerInvariant(),
       "--receipt-name", (Split-Path -Leaf $pendingReceipt),
-      "--deadline-ms", "$DeadlineMs", "--mode", "two-turn"
+      "--deadline-ms", "$DeadlineMs", "--mode", "two-turn-cancel-restart"
     )
   } else {
     $arguments = @(

@@ -6,6 +6,7 @@ import { hashFile } from "./source-functional-native-ide-journey.mjs";
 import { revalidateFreshProfile } from "./source-functional-acp04-evidence.mjs";
 
 export const ACP04_MODE_A = "two-turn";
+export const ACP04_MODE_B = "two-turn-cancel-restart";
 export const ACP04_ECHOES = Object.freeze([
   "SAGE_ACP04_A_TURN_1",
   "SAGE_ACP04_A_TURN_2",
@@ -13,6 +14,7 @@ export const ACP04_ECHOES = Object.freeze([
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_OBJECT = /^[a-f0-9]{40,64}$/u;
+const DECIMAL_REVISION = /^(?:0|[1-9]\d*)$/u;
 const RECEIPT_NAME = /^machine-receipt\.pending(?:-[a-z0-9-]{1,32})?\.json$/u;
 
 function fail(code) {
@@ -93,7 +95,7 @@ export function parseAcp04ProbeArguments(argv) {
     Object.keys(raw).some((key) => !known.has(key)) ||
     port < 1024 ||
     deadlineMs < 15_000 ||
-    raw.mode !== ACP04_MODE_A ||
+    raw.mode !== ACP04_MODE_B ||
     !GIT_OBJECT.test(raw["source-commit"] ?? "") ||
     !GIT_OBJECT.test(raw["source-tree"] ?? "") ||
     ![
@@ -174,9 +176,27 @@ export function createAcp04Receipt(
   cdpStats,
 ) {
   const profile = revalidateFreshProfile(options?.profile, options?.output);
+  const modeAState = result?.modeA?.state;
+  const modeBState = result?.modeB?.state;
   if (
     !result ||
     result.state?.phase !== "complete" ||
+    modeAState?.phase !== "complete" ||
+    modeBState !== result.state ||
+    !DECIMAL_REVISION.test(result.state.cancelRuntimeEpoch ?? "") ||
+    !DECIMAL_REVISION.test(result.state.runtimeEpoch ?? "") ||
+    BigInt(result.state.runtimeEpoch) <=
+      BigInt(result.state.cancelRuntimeEpoch) ||
+    result.state.cancelledTurnId !== result.state.turnIds?.[2] ||
+    !["Cancelled", "Interrupted"].includes(result.state.cancelledState) ||
+    result.state.turnIds?.length !== 4 ||
+    result.state.turnOrdinals?.length !== 4 ||
+    result.state.itemIds?.length < 7 ||
+    result.state.itemIds?.length > 256 ||
+    modeAState.sessionId !== result.state.sessionId ||
+    modeAState.runtimeEpoch !== result.state.cancelRuntimeEpoch ||
+    modeAState.turnIds?.join("\0") !==
+      result.state.turnIds.slice(0, 2).join("\0") ||
     !result.runtimeObservation ||
     !positiveInteger(options?.sageProcess?.processId, 0x7fffffff) ||
     typeof options?.sageProcess?.creationDate !== "string" ||
@@ -184,8 +204,8 @@ export function createAcp04Receipt(
     target.id.length < 1 ||
     !Array.isArray(artifacts) ||
     artifacts.length !== 2 ||
-    path.basename(artifacts[0] ?? "") !== "acp04-mode-a-observations.json" ||
-    path.basename(artifacts[1] ?? "") !== "acp04-mode-a-complete.png" ||
+    path.basename(artifacts[0] ?? "") !== "acp04-mode-b-observations.json" ||
+    path.basename(artifacts[1] ?? "") !== "acp04-mode-b-complete.png" ||
     !artifacts.every(
       (artifact) => absolute(artifact) && existsSync(artifact),
     ) ||
@@ -243,9 +263,13 @@ export function createAcp04Receipt(
       itemIds: result.state.itemIds,
       projectionRevision: result.state.projectionRevision,
       runtimeEpoch: result.state.runtimeEpoch,
+      cancelRuntimeEpoch: result.state.cancelRuntimeEpoch,
+      cancelledTurnId: result.state.cancelledTurnId,
+      cancelledState: result.state.cancelledState,
       harness: result.state.harness,
       model: result.state.model,
       echoes: result.state.echoes,
+      recoveryEcho: result.state.recoveryEcho,
     },
     runtimeObservation: result.runtimeObservation,
     artifacts: artifacts.map((artifact) => ({

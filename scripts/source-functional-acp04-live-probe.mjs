@@ -39,6 +39,7 @@ import {
 export {
   ACP04_ECHOES,
   ACP04_MODE_A,
+  ACP04_MODE_B,
   createAcp04Receipt,
   parseAcp04ProbeArguments,
 } from "./source-functional-acp04-live-contract.mjs";
@@ -393,32 +394,45 @@ async function execute(options) {
   let collectionError;
   try {
     await revalidateAttachedPage(options, cdp, admitted, deadline);
-    const result = await runAcp04ModeA(cdp, deadline, ACP04_ECHOES, {
+    const guard = () => {
+      for (const logPath of [
+        options.nativeLogs.stdout,
+        options.nativeLogs.stderr,
+      ]) {
+        const item = existsSync(logPath) ? lstatSync(logPath) : null;
+        if (
+          !item ||
+          item.isSymbolicLink() ||
+          !item.isFile() ||
+          item.size > 1024 * 1024
+        )
+          fail("native-log-bound");
+      }
+    };
+    const modeA = await runAcp04ModeA(cdp, deadline, ACP04_ECHOES, {
       codexVersion: options.codex.version,
-      guard: () => {
-        for (const logPath of [
-          options.nativeLogs.stdout,
-          options.nativeLogs.stderr,
-        ]) {
-          const item = existsSync(logPath) ? lstatSync(logPath) : null;
-          if (
-            !item ||
-            item.isSymbolicLink() ||
-            !item.isFile() ||
-            item.size > 1024 * 1024
-          )
-            fail("native-log-bound");
-        }
-      },
+      guard,
     });
-    const transcriptName = "acp04-mode-a-observations.json";
+    const modeB = await runAcp04ModeB(cdp, deadline, modeA.state, {
+      codexVersion: options.codex.version,
+      guard,
+    });
+    const result = Object.freeze({
+      startedAt: modeA.startedAt,
+      completedAt: modeB.completedAt,
+      state: modeB.state,
+      modeA,
+      modeB,
+      runtimeObservation: modeB.runtimeObservation,
+    });
+    const transcriptName = "acp04-mode-b-observations.json";
     writeContainedText(
       options.sourceRoot,
       options.output,
       transcriptName,
       `${JSON.stringify(result, null, 2)}\n`,
     );
-    const screenshotName = "acp04-mode-a-complete.png";
+    const screenshotName = "acp04-mode-b-complete.png";
     writeContainedBytes(
       options.sourceRoot,
       options.output,
