@@ -1516,6 +1516,25 @@ test("Node identity requires a canonical path with only plain ancestors", () => 
   );
 });
 
+test(
+  "Windows verbatim executable paths match their canonical filesystem form",
+  { skip: process.platform !== "win32" },
+  () => {
+    const expected = { bytes: 456, sha256: "e".repeat(64) };
+    const verbatim = `\\\\?\\${process.execPath}`;
+    const actual = validatePlainCanonicalExecutable(verbatim, expected, {
+      lstatSync: () => ({ isSymbolicLink: () => false }),
+      realpathSync: (current) =>
+        current.startsWith("\\\\?\\") ? current.slice(4) : current,
+      validateBinding: (current, binding) => {
+        assert.equal(current, verbatim);
+        return binding;
+      },
+    });
+    assert.deepEqual(actual, { path: verbatim, ...expected });
+  },
+);
+
 test("bounded Playwright helper settles overflow and timeout when child never closes", async () => {
   for (const mode of ["overflow", "timeout"]) {
     const child = new EventEmitter();
