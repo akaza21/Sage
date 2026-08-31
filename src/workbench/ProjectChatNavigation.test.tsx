@@ -80,6 +80,12 @@ function currentChats() {
   return useWorkbenchStore.getState().tabs.filter((tab) => tab.kind === "chat");
 }
 
+function openChatActions(title: string) {
+  fireEvent.click(
+    screen.getByRole("button", { name: `Chat actions for ${title}` }),
+  );
+}
+
 it("shows Devin session-card status and hides the unread dot on the focused chat", () => {
   syncAgentRailClock(Date.UTC(2026, 7, 26, 18, 0, 0));
   seedChats();
@@ -176,6 +182,43 @@ it("animates only a live working turn and marks waiting as attention", () => {
   ).toBeNull();
 });
 
+it("keeps pin state visible and restores focus from one chat actions menu", () => {
+  seedChats();
+  useWorkbenchStore.setState({
+    tabs: currentChats().map((tab) =>
+      tab.id === "chat:a" ? { ...tab, pinned: true } : tab,
+    ),
+  });
+  render(
+    <ProjectChatNavigation
+      projectId="project-a"
+      chats={currentChats()}
+      selected
+    />,
+  );
+
+  expect(
+    screen.getByRole("button", { name: "Open chat Alpha, pinned" }),
+  ).toContainElement(document.querySelector(".project-chat__pinned"));
+  expect(screen.queryByRole("button", { name: "Unpin chat Alpha" })).toBeNull();
+  const actionTrigger = screen.getByRole("button", {
+    name: "Chat actions for Alpha",
+  });
+  fireEvent.click(actionTrigger);
+  expect(
+    screen.getByRole("menu", { name: "Actions for Alpha" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("menuitem", { name: "Unpin chat" }),
+  ).toBeInTheDocument();
+
+  fireEvent.keyDown(screen.getByRole("menu", { name: "Actions for Alpha" }), {
+    key: "Escape",
+  });
+  expect(screen.queryByRole("menu", { name: "Actions for Alpha" })).toBeNull();
+  expect(actionTrigger).toHaveFocus();
+});
+
 it("pins a chat and offers a move popover without Add folder root", () => {
   seedChats();
   const pinChat = vi.fn(async () => undefined);
@@ -198,14 +241,12 @@ it("pins a chat and offers a move popover without Add folder root", () => {
   );
 
   expect(screen.queryByTitle("Add folder root")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Pin chat Alpha" }));
+  openChatActions("Alpha");
+  fireEvent.click(screen.getByRole("menuitem", { name: "Pin chat" }));
   expect(pinChat).toHaveBeenCalledWith("chat:a", "project-a");
-  fireEvent.click(
-    screen.getAllByRole("button", {
-      name: "Move chat to another project",
-    })[0]!,
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Move chat to Work" }));
+  openChatActions("Alpha");
+  fireEvent.click(screen.getByRole("menuitem", { name: "Move to project" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Move chat to Work" }));
   expect(moveChat).toHaveBeenCalledWith("chat:a", "project-b", "project-a");
 });
 
@@ -248,14 +289,15 @@ it("pins and moves a chat that belongs to another project folder", () => {
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Pin chat Alpha" }));
+  openChatActions("Alpha");
+  fireEvent.click(screen.getByRole("menuitem", { name: "Pin chat" }));
   expect(pinChat).toHaveBeenCalledWith("chat:a", "project-a");
-  fireEvent.click(
-    screen.getAllByRole("button", { name: "Move chat to another project" })[0]!,
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Move chat to Work" }));
+  openChatActions("Alpha");
+  fireEvent.click(screen.getByRole("menuitem", { name: "Move to project" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Move chat to Work" }));
   expect(moveChat).toHaveBeenCalledWith("chat:a", "project-b", "project-a");
-  fireEvent.click(screen.getByRole("button", { name: "Rename chat Alpha" }));
+  openChatActions("Alpha");
+  fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
   fireEvent.change(screen.getByLabelText("New name for Alpha"), {
     target: { value: "Research" },
   });
@@ -263,7 +305,8 @@ it("pins and moves a chat that belongs to another project folder", () => {
     screen.getByLabelText("New name for Alpha").closest("form")!,
   );
   expect(renameChat).toHaveBeenCalledWith("chat:a", "Research", "project-a");
-  fireEvent.click(screen.getByRole("button", { name: "Archive chat Extra" }));
+  openChatActions("Extra");
+  fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
   expect(archiveChat).toHaveBeenCalledWith("chat:extra", "project-a");
 });
 

@@ -3,10 +3,12 @@ import {
   ChevronRight,
   FolderOpen,
   GitBranch,
+  PanelLeftOpen,
   Plus,
   SquarePen,
+  X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../app/store";
 import { ChatSearchControl } from "../features/chatSearch/ChatSearchControl";
@@ -34,7 +36,15 @@ import {
 } from "./agentRailViewPrefs";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
 
-export function LeftSidebar() {
+export function LeftSidebar({
+  compact = false,
+  open = true,
+  onOpenChange,
+}: {
+  compact?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+} = {}) {
   const projects = useWorkbenchStore((state) => state.projects);
   const project = useWorkbenchStore((state) => state.project);
   const tabs = useWorkbenchStore((state) => state.tabs);
@@ -55,6 +65,9 @@ export function LeftSidebar() {
   );
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const [railTick, setRailTick] = useState(0);
+  const drawerRef = useRef<HTMLElement>(null);
+  const drawerTriggerRef = useRef<HTMLButtonElement>(null);
+  const wasDrawerOpen = useRef(false);
   const gitLabel = sessionRailGitLabel(
     useWorkbenchStore(
       (state) =>
@@ -134,8 +147,19 @@ export function LeftSidebar() {
     projectTransitioning,
   ]);
 
-  return (
-    <aside className="project-sidebar" aria-label="Projects and chats">
+  useLayoutEffect(() => {
+    if (compact && open) drawerRef.current?.focus();
+  }, [compact, open]);
+
+  useEffect(() => {
+    if (compact && !open && wasDrawerOpen.current) {
+      drawerTriggerRef.current?.focus();
+    }
+    wasDrawerOpen.current = compact && open;
+  }, [compact, open]);
+
+  const navigation = (
+    <>
       <div className="project-sidebar__actions">
         <button
           className="project-action project-action--primary"
@@ -311,6 +335,59 @@ export function LeftSidebar() {
           ) : null}
         </section>
       </div>
+    </>
+  );
+
+  if (!compact) {
+    return (
+      <aside className="project-sidebar" aria-label="Projects and chats">
+        {navigation}
+      </aside>
+    );
+  }
+
+  return (
+    <aside
+      className="project-sidebar project-sidebar--compact"
+      aria-label="Agent navigation"
+    >
+      <button
+        ref={drawerTriggerRef}
+        className="project-sidebar__drawer-trigger"
+        type="button"
+        aria-label="Open projects and chats"
+        aria-expanded={open}
+        onClick={() => onOpenChange?.(!open)}
+      >
+        <PanelLeftOpen size={18} aria-hidden="true" />
+        <span>Chats</span>
+      </button>
+      {open ? (
+        <section
+          ref={drawerRef}
+          className="project-sidebar__drawer"
+          role="dialog"
+          aria-label="Projects and chats"
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            onOpenChange?.(false);
+          }}
+        >
+          <header className="project-sidebar__drawer-header">
+            <strong>Projects and chats</strong>
+            <button
+              type="button"
+              aria-label="Close projects and chats"
+              onClick={() => onOpenChange?.(false)}
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+          </header>
+          {navigation}
+        </section>
+      ) : null}
     </aside>
   );
 }

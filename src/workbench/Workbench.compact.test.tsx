@@ -26,6 +26,22 @@ function selectWindowMode(mode: "Agent" | "Editor") {
   );
 }
 
+function openAgentNavigation() {
+  const trigger = screen.queryByRole("button", {
+    name: "Open projects and chats",
+  });
+  if (trigger?.getAttribute("aria-expanded") !== "true") {
+    fireEvent.click(trigger!);
+  }
+}
+
+function openChatActions(title: string) {
+  openAgentNavigation();
+  fireEvent.click(
+    screen.getByRole("button", { name: `Chat actions for ${title}` }),
+  );
+}
+
 const initialState = useWorkbenchStore.getState();
 let compactViewport = true;
 let setCompactViewport: (compact: boolean) => void;
@@ -80,6 +96,170 @@ afterEach(() => {
 });
 
 describe("compact Workbench project tools", () => {
+  it("keeps an empty Agent resource pane collapsed until the user opens it", () => {
+    compactViewport = false;
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
+      tabs: [
+        {
+          id: "chat:a",
+          kind: "chat",
+          title: "Chat: A",
+          position: 0,
+          pinned: true,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat:a",
+    });
+
+    render(<Workbench />);
+    selectWindowMode("Agent");
+
+    const openResources = screen.getByRole("button", {
+      name: "Open files, changes, and preview",
+    });
+    expect(openResources).toBeVisible();
+    expect(
+      screen.queryByRole("separator", { name: "Resize files and preview" }),
+    ).toBeNull();
+
+    fireEvent.click(openResources);
+
+    expect(
+      screen.getByRole("separator", { name: "Resize files and preview" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", {
+        name: "Collapse files, changes, and preview",
+      }),
+    ).toBeVisible();
+  });
+
+  it("opens compact Agent resources from the right edge without shrinking Chat", () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
+      tabs: [
+        {
+          id: "chat:a",
+          kind: "chat",
+          title: "Chat: A",
+          position: 0,
+          pinned: true,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat:a",
+    });
+
+    const { container } = render(<Workbench />);
+    selectWindowMode("Agent");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Open files, changes, and preview",
+      }),
+    );
+
+    const resources = screen.getByRole("complementary", {
+      name: "Agent artifacts",
+    });
+    expect(resources).not.toHaveClass("agent-artifact-pane--collapsed");
+    expect(container.querySelector(".center-region")).toHaveAttribute("inert");
+
+    fireEvent.keyDown(resources, { key: "Escape" });
+    expect(
+      screen.getByRole("button", {
+        name: "Open files, changes, and preview",
+      }),
+    ).toBeVisible();
+    expect(container.querySelector(".center-region")).not.toHaveAttribute(
+      "inert",
+    );
+  });
+
+  it("renders only the focused Chat when compact instead of squeezing a pair", () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
+      tabs: [
+        {
+          id: "chat:a",
+          kind: "chat",
+          title: "Chat: A",
+          position: 0,
+          pinned: true,
+          dirty: false,
+        },
+        {
+          id: "chat:b",
+          kind: "chat",
+          title: "Chat: B",
+          position: 1,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat:b",
+    });
+
+    render(<Workbench />);
+    selectWindowMode("Agent");
+
+    expect(screen.getAllByRole("region", { name: "Agent chat" })).toHaveLength(
+      1,
+    );
+    expect(screen.getByLabelText("Chat pane B")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("separator", { name: "Resize chat panes" }),
+    ).toBeNull();
+  });
+
+  it("opens compact Agent navigation as an Escape-dismissable drawer", () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
+      tabs: [
+        {
+          id: "chat:a",
+          kind: "chat",
+          title: "Chat: A",
+          position: 0,
+          pinned: true,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat:a",
+    });
+
+    const { container } = render(<Workbench />);
+    selectWindowMode("Agent");
+
+    const trigger = screen.getByRole("button", {
+      name: "Open projects and chats",
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "Projects and chats" }),
+    ).toBeNull();
+
+    fireEvent.click(trigger);
+
+    const drawer = screen.getByRole("dialog", { name: "Projects and chats" });
+    expect(drawer).toHaveFocus();
+    expect(container.querySelector(".center-region")).toHaveAttribute("inert");
+
+    fireEvent.keyDown(drawer, { key: "Escape" });
+
+    expect(
+      screen.queryByRole("dialog", { name: "Projects and chats" }),
+    ).toBeNull();
+    expect(trigger).toHaveFocus();
+    expect(container.querySelector(".center-region")).not.toHaveAttribute(
+      "inert",
+    );
+  });
+
   it("routes Chat navigation from the sidebar through authoritative activation", () => {
     const activateTab = vi.fn(async () => undefined);
     useWorkbenchStore.setState({
@@ -108,6 +288,7 @@ describe("compact Workbench project tools", () => {
     });
     render(<Workbench />);
     selectWindowMode("Agent");
+    openAgentNavigation();
 
     fireEvent.click(screen.getByTitle("Open chat B"));
 
@@ -137,7 +318,8 @@ describe("compact Workbench project tools", () => {
     render(<Workbench />);
     selectWindowMode("Agent");
 
-    fireEvent.click(screen.getByRole("button", { name: "Rename chat B" }));
+    openChatActions("B");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
     const input = screen.getByRole("textbox", { name: "New name for B" });
     fireEvent.change(input, { target: { value: "Release notes" } });
     fireEvent.click(screen.getByRole("button", { name: "Save chat name" }));
@@ -152,7 +334,7 @@ describe("compact Workbench project tools", () => {
         screen.queryByRole("textbox", { name: "New name for B" }),
       ).toBeNull();
       expect(
-        screen.getByRole("button", { name: "Rename chat B" }),
+        screen.getByRole("button", { name: "Chat actions for B" }),
       ).toHaveFocus();
     });
     expect(activateTab).not.toHaveBeenCalled();
@@ -184,11 +366,13 @@ describe("compact Workbench project tools", () => {
     });
     const { container } = render(<Workbench />);
     selectWindowMode("Agent");
+    openAgentNavigation();
     const sidebarScroll = container.querySelector(".project-sidebar__scroll");
     expect(sidebarScroll).not.toBeNull();
     sidebarScroll!.scrollTop = 72;
 
-    fireEvent.click(screen.getByRole("button", { name: "Rename chat B" }));
+    openChatActions("B");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
     const input = screen.getByRole("textbox", { name: "New name for B" });
     fireEvent.change(input, {
       target: { value: "Release notes" },
@@ -215,7 +399,9 @@ describe("compact Workbench project tools", () => {
         screen.queryByRole("textbox", { name: "New name for B" }),
       ).toBeNull();
       expect(
-        screen.getByRole("button", { name: "Rename chat Release notes" }),
+        screen.getByRole("button", {
+          name: "Chat actions for Release notes",
+        }),
       ).toHaveFocus();
       expect(container.querySelector(".project-sidebar__scroll")).toBe(
         sidebarScroll,
@@ -243,21 +429,23 @@ describe("compact Workbench project tools", () => {
     render(<Workbench />);
     selectWindowMode("Agent");
 
-    let trigger = screen.getByRole("button", { name: "Rename chat B" });
-    fireEvent.click(trigger);
+    openChatActions("B");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel chat rename" }));
+    let trigger: HTMLElement;
     await vi.waitFor(() => {
-      trigger = screen.getByRole("button", { name: "Rename chat B" });
+      trigger = screen.getByRole("button", { name: "Chat actions for B" });
       expect(trigger).toHaveFocus();
     });
 
-    fireEvent.click(trigger);
+    openChatActions("B");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
     fireEvent.keyDown(screen.getByRole("textbox", { name: "New name for B" }), {
       key: "Escape",
     });
     await vi.waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Rename chat B" }),
+        screen.getByRole("button", { name: "Chat actions for B" }),
       ).toHaveFocus();
     });
   });
@@ -294,7 +482,8 @@ describe("compact Workbench project tools", () => {
     render(<Workbench />);
     selectWindowMode("Agent");
 
-    fireEvent.click(screen.getByRole("button", { name: "Archive chat B" }));
+    openChatActions("B");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
     expect(archiveChat).toHaveBeenCalledWith("chat:b", "project-a");
     const disclosure = screen.getByRole("button", { name: "Archived chats" });
     expect(disclosure).toHaveAttribute("aria-expanded", "false");
@@ -311,8 +500,9 @@ describe("compact Workbench project tools", () => {
         tabs: [{ ...useWorkbenchStore.getState().tabs[0], pinned: false }],
       });
     });
+    openChatActions("A");
     expect(
-      screen.getByRole("button", { name: "Archive chat A" }),
+      screen.getByRole("menuitem", { name: "Archive chat" }),
     ).toBeDisabled();
   });
 
@@ -351,7 +541,8 @@ describe("compact Workbench project tools", () => {
     render(<Workbench />);
     selectWindowMode("Agent");
 
-    fireEvent.click(screen.getByRole("button", { name: "Rename chat B" }));
+    openChatActions("B");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
     const input = screen.getByRole("textbox", { name: "New name for B" });
     expect(input).toHaveAttribute("maxlength", "128");
     fireEvent.change(input, { target: { value: " \t " } });
@@ -384,6 +575,7 @@ describe("compact Workbench project tools", () => {
     });
     render(<Workbench />);
     selectWindowMode("Agent");
+    openAgentNavigation();
 
     const newChatControls = screen.getAllByRole("button", {
       name: "New chat",
@@ -423,13 +615,14 @@ describe("compact Workbench project tools", () => {
     });
     render(<Workbench />);
     selectWindowMode("Agent");
+    openAgentNavigation();
 
     expect(
       screen.queryByRole("button", { name: "Open settings" }),
     ).not.toBeInTheDocument();
 
     const searchChats = within(
-      screen.getByRole("complementary", { name: "Projects and chats" }),
+      screen.getByRole("dialog", { name: "Projects and chats" }),
     ).getByRole("button", { name: "Search chats" });
     expect(searchChats).toBeEnabled();
     searchChats.focus();
@@ -493,6 +686,11 @@ describe("compact Workbench project tools", () => {
     expect(agentRail).toHaveAttribute("aria-valuemax", "380");
     fireEvent.keyDown(agentRail, { key: "Home" });
     expect(agentRail).toHaveAttribute("aria-valuenow", "180");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Open files, changes, and preview",
+      }),
+    );
     expect(
       screen.getByRole("separator", { name: "Resize files and preview" }),
     ).toHaveAttribute("aria-valuenow", "360");
@@ -541,6 +739,11 @@ describe("compact Workbench project tools", () => {
     expect(
       screen.getByRole("separator", { name: "Resize project and chat rail" }),
     ).toHaveAttribute("aria-valuenow", "248");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Open files, changes, and preview",
+      }),
+    );
     expect(
       screen.getByRole("separator", { name: "Resize files and preview" }),
     ).toHaveAttribute("aria-valuenow", "360");

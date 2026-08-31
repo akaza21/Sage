@@ -85,7 +85,7 @@ describe("compact workbench window mode seam", () => {
     expect(center).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("keeps the compact center interactive while tabs change during Agent mode", async () => {
+  it("opens new Agent resources on the right while tabs change", async () => {
     compactViewport = true;
     const activateTab = vi.fn(async (tabId: string) => {
       useWorkbenchStore.setState({ activeTabId: tabId });
@@ -130,11 +130,15 @@ describe("compact workbench window mode seam", () => {
     );
 
     await vi.waitFor(() => {
-      expect(screen.getByRole("region", { name: "Agent chat" }));
+      expect(
+        screen.getByRole("region", { name: "Agent chat", hidden: true }),
+      ).toBeInTheDocument();
     });
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(center).not.toHaveAttribute("inert");
-    expect(center).not.toHaveAttribute("aria-hidden");
+    expect(
+      screen.getByRole("complementary", { name: "Agent artifacts" }),
+    ).not.toHaveClass("agent-artifact-pane--collapsed");
+    expect(center).toHaveAttribute("inert");
+    expect(center).toHaveAttribute("aria-hidden", "true");
 
     fireEvent.click(
       within(
@@ -145,9 +149,10 @@ describe("compact workbench window mode seam", () => {
     await vi.waitFor(() => {
       expect(activateTab).toHaveBeenLastCalledWith("file:a");
     });
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(center).not.toHaveAttribute("inert");
-    expect(center).not.toHaveAttribute("aria-hidden");
-    expect(screen.getByRole("region", { name: "Agent chat" }));
+    expect(center).toHaveAttribute("inert");
+    expect(center).toHaveAttribute("aria-hidden", "true");
+    expect(
+      screen.getByRole("region", { name: "Agent chat", hidden: true }),
+    ).toBeInTheDocument();
   });
 });

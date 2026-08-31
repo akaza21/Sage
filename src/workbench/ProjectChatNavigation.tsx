@@ -1,11 +1,9 @@
 import {
-  Archive,
   Check,
   ChevronDown,
   ChevronRight,
   GitBranch,
   MessageSquare,
-  Pencil,
   Pin,
   RotateCcw,
   X,
@@ -13,7 +11,6 @@ import {
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { AgentRailChat, ArchivedChatSummary } from "../domain/workbench";
 import { agentChatMoveDestinations } from "./agentChatRail";
-import { MoveChatButton, MoveChatPopover } from "./MoveChatPopover";
 
 import { useWorkbenchStore } from "../app/store";
 import { MAX_CHAT_TITLE_BYTES, chatDisplayTitle } from "../domain/chatTitle";
@@ -32,6 +29,7 @@ import {
 } from "./agentRailStatusView";
 import { agentRailClockMs } from "./agentRailViewPrefs";
 import { ProjectChatRailGlyph } from "./ProjectChatRailGlyph";
+import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
 
 export function ProjectChatNavigation({
   projectId,
@@ -63,7 +61,7 @@ export function ProjectChatNavigation({
   const [renameSaving, setRenameSaving] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [archivedOpen, setArchivedOpen] = useState(false);
-  const [movingChatId, setMovingChatId] = useState<string | null>(null);
+  const [actionMenuChatId, setActionMenuChatId] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const renameTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocusChatId = useRef<string | null>(null);
@@ -153,6 +151,7 @@ export function ProjectChatNavigation({
                 onKeyDown={(event) => {
                   if (event.key === "Escape") {
                     event.preventDefault();
+                    event.stopPropagation();
                     closeRename(tab.id);
                   }
                 }}
@@ -224,6 +223,7 @@ export function ProjectChatNavigation({
               }`}
               type="button"
               title={`Open chat ${displayTitle}`}
+              aria-label={`Open chat ${displayTitle}${tab.pinned ? ", pinned" : ""}`}
               aria-current={focused ? "page" : undefined}
               onClick={() => {
                 ackSessionRailUnread(tab.id, fingerprint);
@@ -240,7 +240,18 @@ export function ProjectChatNavigation({
                 attention={attention}
               />
               <span className="project-chat__copy">
-                <span className="project-chat__title">{displayTitle}</span>
+                <span className="project-chat__title">
+                  <span className="project-chat__title-label">
+                    {displayTitle}
+                  </span>
+                  {tab.pinned ? (
+                    <Pin
+                      className="project-chat__pinned"
+                      size={10}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                </span>
                 {statusLabel ? (
                   <span
                     className={`project-chat__status project-chat__status--${tab.status ?? "idle"}`}
@@ -277,67 +288,29 @@ export function ProjectChatNavigation({
                 </time>
               ) : null}
             </button>
-            <button
-              className={`project-chat__pin${tab.pinned ? " project-chat__pin--on" : ""}`}
-              type="button"
-              aria-label={
-                tab.pinned
-                  ? `Unpin chat ${displayTitle}`
-                  : `Pin chat ${displayTitle}`
-              }
-              title={tab.pinned ? "Unpin chat" : "Pin chat"}
+            <ProjectChatActionMenu
+              chatTitle={displayTitle}
+              pinned={tab.pinned}
+              open={actionMenuChatId === tab.id}
               disabled={projectTransitioning}
-              onClick={() => void pinChat(tab.id, projectId)}
-            >
-              <Pin size={12} aria-hidden="true" />
-            </button>
-            <MoveChatButton
-              open={movingChatId === tab.id}
-              onToggle={() =>
-                setMovingChatId((current) =>
-                  current === tab.id ? null : tab.id,
-                )
-              }
-            />
-            {movingChatId === tab.id ? (
-              <MoveChatPopover
-                chatTitle={displayTitle}
-                destinations={moveDestinations}
-                onClose={() => setMovingChatId(null)}
-                onMove={(targetProjectId) => {
-                  setMovingChatId(null);
-                  void moveChat(tab.id, targetProjectId, projectId);
-                }}
-              />
-            ) : null}
-            <button
-              ref={(node) => {
-                if (node) renameTriggerRefs.current.set(tab.id, node);
-                else renameTriggerRefs.current.delete(tab.id);
-              }}
-              className="project-chat__rename"
-              type="button"
-              aria-label={`Rename chat ${displayTitle}`}
-              title={`Rename chat ${displayTitle}`}
-              disabled={projectTransitioning}
-              onClick={() => {
+              archiveDisabled={projectTransitioning || chatTabs.length <= 1}
+              destinations={moveDestinations}
+              onOpenChange={(open) => setActionMenuChatId(open ? tab.id : null)}
+              onPin={() => void pinChat(tab.id, projectId)}
+              onRename={() => {
                 setRenameError(null);
                 setRenameDraft(displayTitle);
                 setRenamingChatId(tab.id);
               }}
-            >
-              <Pencil size={12} aria-hidden="true" />
-            </button>
-            <button
-              className="project-chat__archive"
-              type="button"
-              aria-label={`Archive chat ${displayTitle}`}
-              title={`Archive chat ${displayTitle}`}
-              disabled={projectTransitioning || chatTabs.length <= 1}
-              onClick={() => void archiveChat(tab.id, projectId)}
-            >
-              <Archive size={12} aria-hidden="true" />
-            </button>
+              onMove={(targetProjectId) =>
+                void moveChat(tab.id, targetProjectId, projectId)
+              }
+              onArchive={() => void archiveChat(tab.id, projectId)}
+              triggerRef={(node) => {
+                if (node) renameTriggerRefs.current.set(tab.id, node);
+                else renameTriggerRefs.current.delete(tab.id);
+              }}
+            />
           </div>
         );
       })}

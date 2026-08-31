@@ -1,11 +1,12 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   acpProjectionStoreFor,
@@ -150,6 +151,93 @@ afterEach(() => {
 });
 
 describe("Agent artifact file chips", () => {
+  it("starts empty as a collapsed right-edge resource affordance", () => {
+    const onExpandedChange = vi.fn();
+    setHarnessBrowseOwner(null);
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: "chat-focused",
+          kind: "chat",
+          title: "Focused",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-focused",
+    });
+
+    const { rerender } = render(
+      <AgentArtifactPane
+        expanded={false}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+
+    const expand = screen.getByRole("button", {
+      name: "Open files, changes, and preview",
+    });
+    expect(expand).toBeVisible();
+    expect(screen.queryByText("Nothing open")).toBeNull();
+
+    fireEvent.click(expand);
+    expect(onExpandedChange).toHaveBeenLastCalledWith(true);
+
+    rerender(
+      <AgentArtifactPane expanded onExpandedChange={onExpandedChange} />,
+    );
+    expect(screen.getByText("Nothing open")).toBeVisible();
+    fireEvent.keyDown(screen.getByLabelText("Agent artifacts"), {
+      key: "Escape",
+    });
+    expect(onExpandedChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("requests expansion when a new Agent file becomes available", () => {
+    const onExpandedChange = vi.fn();
+    setHarnessBrowseOwner(null);
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: "chat-focused",
+          kind: "chat",
+          title: "Focused",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-focused",
+    });
+    render(
+      <AgentArtifactPane
+        expanded={false}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        tabs: [
+          ...state.tabs,
+          {
+            id: "file:new",
+            kind: "file",
+            title: "new.ts",
+            position: 1,
+            pinned: false,
+            dirty: false,
+            resource: { rootId: "root-a", relativePath: "src/new.ts" },
+          },
+        ],
+      }));
+      useAgentArtifactAdmissionStore.getState().admit("file:new");
+    });
+
+    expect(onExpandedChange).toHaveBeenCalledWith(true);
+  });
+
   it("keeps Preview closed until the focused Chat opens an admitted browse session", () => {
     render(<AgentArtifactPane />);
 

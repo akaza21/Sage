@@ -21,8 +21,9 @@ describe("Project and chat navigation stylesheet seams", () => {
     expect(shellCss).not.toMatch(/^\.project-sidebar\b/m);
     expect(shellCss).not.toMatch(/^\.project-chat-row\b/m);
     expect(projectCss).toMatch(/^\.project-sidebar\b/m);
-    expect(projectCss).toMatch(/^\.chat-move-popover\b/m);
+    expect(projectCss).toMatch(/\.project-sidebar__drawer\b/);
     expect(chatCss).toMatch(/^\.project-chat-row\b/m);
+    expect(chatCss).toMatch(/^\.project-chat-actions__menu\b/m);
     expect(chatCss).toMatch(/^\.project-chat-edit\b/m);
   });
 
@@ -37,7 +38,7 @@ describe("Project and chat navigation stylesheet seams", () => {
     );
 
     expect(chatCss).toMatch(
-      /\.project-chat-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+repeat\(4,\s*24px\);/s,
+      /\.project-chat-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+28px;/s,
     );
     expect(chatCss).toMatch(/\.project-chat\s*\{[^}]*min-height:\s*36px;/s);
     expect(projectCss).toMatch(
@@ -47,7 +48,7 @@ describe("Project and chat navigation stylesheet seams", () => {
     expect(projectCss).toMatch(/\.project-row\s*\{[^}]*height:\s*28px;/s);
   });
 
-  it("keeps compact-width project and chat rules on the navigation surfaces", async () => {
+  it("uses a real compact navigation drawer instead of icon-crushing chat rows", async () => {
     const [shellCss, projectCss, chatCss] = await Promise.all([
       readFile(resolve("src/styles/global.css"), "utf8"),
       readFile(resolve("src/styles/project-navigation-surface.css"), "utf8"),
@@ -59,16 +60,11 @@ describe("Project and chat navigation stylesheet seams", () => {
     expect(shellCss).not.toMatch(/\.project-empty-action\b/);
     expect(shellCss).not.toMatch(/\.project-sidebar__account\b/);
     expect(projectCss).toMatch(
-      /@media \(max-width: 760px\)[\s\S]*\.project-sidebar__actions\b/,
+      /@media \(max-width: 760px\)[\s\S]*\.project-sidebar--compact\b/,
     );
     expect(projectCss).toMatch(
-      /@media \(max-width: 760px\)[\s\S]*\.project-chats\b/,
+      /@media \(max-width: 760px\)[\s\S]*\.project-sidebar__drawer\b/,
     );
-    expect(chatCss).toMatch(
-      /@media \(max-width: 760px\)[\s\S]*\.project-empty-action\b/,
-    );
-    expect(chatCss).toMatch(
-      /@media \(max-width: 760px\)[\s\S]*\.project-sidebar__account\b/,
-    );
+    expect(chatCss).not.toMatch(/@media \(max-width: 760px\)/);
   });
 });

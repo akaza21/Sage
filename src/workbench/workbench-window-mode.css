@@ -66,6 +66,22 @@
   grid-template-rows: minmax(0, 1fr);
 }
 
+.workbench--agent.workbench--compact .workbench__body {
+  position: relative;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+}
+
+.workbench--agent.workbench--compact
+  .agent-artifact-pane:not(.agent-artifact-pane--collapsed) {
+  position: absolute;
+  z-index: 12;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, calc(100% - 44px));
+  box-shadow: -12px 0 28px rgb(0 0 0 / 0.32);
+}
+
 .workbench-sidebar-splitter {
   position: relative;
   z-index: 2;
@@ -248,7 +264,83 @@
 }
 
 .agent-artifact-pane--empty {
+  grid-template-rows: 42px minmax(0, 1fr);
+}
+
+.agent-artifact-pane--collapsed {
   grid-template-rows: minmax(0, 1fr);
+  border-left: 1px solid var(--border);
+}
+
+.agent-artifact-pane__header {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+}
+
+.agent-artifact-pane__header > .tab-strip {
+  min-width: 0;
+  flex: 1;
+}
+
+.agent-artifact-pane__header > strong {
+  min-width: 0;
+  flex: 1;
+  align-self: center;
+  padding: 0 12px;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-artifact-pane__collapse {
+  display: grid;
+  width: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.agent-artifact-pane__collapse:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.agent-artifact-pane__edge-action {
+  display: grid;
+  width: 100%;
+  align-content: start;
+  gap: 8px;
+  padding: 8px 3px;
+  border: 0;
+  color: var(--muted);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.agent-artifact-pane__edge-action:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.agent-artifact-pane__edge-action > span {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+
+.agent-artifact-pane__edge-action small {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 8px;
+  text-overflow: ellipsis;
 }
 
 .agent-artifact-pane__canvas {

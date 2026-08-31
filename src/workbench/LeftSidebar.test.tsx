@@ -176,16 +176,20 @@ it("pins and moves a foreign-folder chat without switching first", () => {
   });
   render(<LeftSidebar />);
   fireEvent.click(
-    screen.getByRole("button", { name: "Pin chat Research agent memory" }),
+    screen.getByRole("button", {
+      name: "Chat actions for Research agent memory",
+    }),
   );
+  fireEvent.click(screen.getByRole("menuitem", { name: "Pin chat" }));
   expect(pinChat).toHaveBeenCalledWith("chat:cross", "cross");
   expect(switchProject).not.toHaveBeenCalled();
   fireEvent.click(
-    screen.getAllByRole("button", {
-      name: "Move chat to another project",
-    })[0]!,
+    screen.getByRole("button", {
+      name: "Chat actions for Research agent memory",
+    }),
   );
-  fireEvent.click(screen.getByRole("button", { name: "Move chat to Work" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Move to project" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Move chat to Work" }));
   expect(moveChat).toHaveBeenCalledWith("chat:cross", "work", "cross");
   expect(switchProject).not.toHaveBeenCalled();
 });

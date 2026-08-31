@@ -39,7 +39,7 @@ function sameVisibleIds(left: readonly string[], right: readonly string[]) {
   return true;
 }
 
-export function AgentChatPanes() {
+export function AgentChatPanes({ compact = false }: { compact?: boolean }) {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const activateTab = useWorkbenchStore((state) => state.activateTab);
@@ -58,10 +58,10 @@ export function AgentChatPanes() {
     setVisibleIds(nextVisibleIds);
   }
 
-  pinAcpProjectionIds(nextVisibleIds);
-  pinUnreadAckIds(nextVisibleIds);
-
   const focusedId = focusedAgentChatId(chatIds, nextVisibleIds, activeTabId);
+  const displayedIds = compact && focusedId ? [focusedId] : nextVisibleIds;
+  pinAcpProjectionIds(displayedIds);
+  pinUnreadAckIds(displayedIds);
   pinAgentChatOwner(focusedId);
 
   useEffect(() => {
@@ -124,7 +124,7 @@ export function AgentChatPanes() {
     );
   }
 
-  const split = nextVisibleIds.length > 1;
+  const split = displayedIds.length > 1;
   return (
     <div
       ref={panesRef}
@@ -140,7 +140,7 @@ export function AgentChatPanes() {
           : undefined
       }
     >
-      {nextVisibleIds.map((id, index) => {
+      {displayedIds.map((id, index) => {
         const tab = tabs.find((candidate) => candidate.id === id);
         if (!tab) return null;
         return (

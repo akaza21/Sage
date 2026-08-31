@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../app/store";
 import { sameResource } from "../domain/resourceIdentity";
@@ -219,6 +219,8 @@ export function Workbench() {
   const [agentArtifactWidth, setAgentArtifactWidth] = useState(
     AGENT_ARTIFACT_WIDTH.defaultWidth,
   );
+  const [agentArtifactExpanded, setAgentArtifactExpanded] = useState(false);
+  const [agentNavigationOpen, setAgentNavigationOpen] = useState(false);
   const [editorToolRailWidth, setEditorToolRailWidth] = useState(
     initialLayout.editorToolRailWidth,
   );
@@ -228,19 +230,37 @@ export function Workbench() {
       windowMode,
     });
   }, [editorToolRailWidth, windowMode]);
-  const drawerOpen = isCompactDrawerOpen(compact, sidebarOpen, windowMode);
+  const changeAgentNavigation = useCallback((open: boolean) => {
+    setAgentNavigationOpen(open);
+    if (open) setAgentArtifactExpanded(false);
+  }, []);
+  const changeAgentArtifact = useCallback((expanded: boolean) => {
+    setAgentArtifactExpanded(expanded);
+    if (expanded) setAgentNavigationOpen(false);
+  }, []);
+  const drawerOpen =
+    isCompactDrawerOpen(compact, sidebarOpen, windowMode) ||
+    (compact &&
+      windowMode === "agent" &&
+      (agentNavigationOpen || agentArtifactExpanded));
   const bodyStyle = compact
     ? undefined
     : windowMode === "agent"
-      ? {
-          gridTemplateColumns: `${agentLeftRailWidth}px 8px minmax(0, 1fr) 8px ${agentArtifactWidth}px`,
-        }
+      ? agentArtifactExpanded
+        ? {
+            gridTemplateColumns: `${agentLeftRailWidth}px 8px minmax(0, 1fr) 8px ${agentArtifactWidth}px`,
+          }
+        : {
+            gridTemplateColumns: `${agentLeftRailWidth}px 8px minmax(0, 1fr) 44px`,
+          }
       : {
           gridTemplateColumns: `${editorToolRailWidth + EDITOR_ACTIVITY_BAR_WIDTH}px 8px minmax(0, 1fr)`,
         };
 
   return (
-    <main className={`workbench workbench--${windowMode}`}>
+    <main
+      className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}`}
+    >
       <TitleBar mode={windowMode} onModeChange={setWindowMode} />
       <AgentCenterKeeper windowMode={windowMode} />
       <EditorContinuityKeeper windowMode={windowMode} />
@@ -249,7 +269,11 @@ export function Workbench() {
         {windowMode === "editor" ? (
           <RightSidebar compact={compact} railFirst />
         ) : (
-          <LeftSidebar />
+          <LeftSidebar
+            compact={compact}
+            open={agentNavigationOpen}
+            onOpenChange={changeAgentNavigation}
+          />
         )}
         {!compact ? (
           <WorkbenchSidebarSplitter
@@ -283,7 +307,7 @@ export function Workbench() {
           aria-hidden={drawerOpen || undefined}
         >
           {windowMode === "agent" ? (
-            <AgentChatPanes />
+            <AgentChatPanes compact={compact} />
           ) : (
             <>
               <div className="workbench__tabs">
@@ -298,7 +322,7 @@ export function Workbench() {
         </div>
         {windowMode === "agent" ? (
           <>
-            {!compact ? (
+            {!compact && agentArtifactExpanded ? (
               <WorkbenchSidebarSplitter
                 ariaLabel="Resize files and preview"
                 side="trailing"
@@ -307,7 +331,11 @@ export function Workbench() {
                 onChange={setAgentArtifactWidth}
               />
             ) : null}
-            <AgentArtifactPane />
+            <AgentArtifactPane
+              expanded={agentArtifactExpanded}
+              focusOnExpand={compact}
+              onExpandedChange={changeAgentArtifact}
+            />
           </>
         ) : null}
       </div>
