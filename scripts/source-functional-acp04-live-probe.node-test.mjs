@@ -37,6 +37,7 @@ import {
   decodeTerminalZeroCleanup,
   preflightCodex,
   revalidateCodexPreflight,
+  revalidateSource,
   validatePendingAcp04Candidate,
   validateRuntimeObservation,
 } from "./source-functional-acp04-finalizer.mjs";
@@ -1113,6 +1114,48 @@ test("collector-owned Codex preflight records the exact bounded version", async 
   assert.deepEqual(invocation[1].slice(0, 3), ["/d", "/s", "/c"]);
   assert.equal(invocation[4].commandRole, "codex-version-preflight");
   assert.equal(invocation[4].maxOutputBytes, 4096);
+});
+
+test("source revalidation gates short Git commands behind captured ownership", async () => {
+  const command = path.join(process.env.SystemRoot, "System32", "cmd.exe");
+  const invocations = [];
+  await revalidateSource(
+    {
+      sourceRoot: "C:\\Sage",
+      output: "C:\\Sage\\local-evidence\\ACP04-live-test",
+      source: { commit: GIT, tree: GIT },
+    },
+    Date.now() + 1_000,
+    {
+      command,
+      runTool: async (...args) => {
+        invocations.push(args);
+        return args[4].commandRole === "source-status"
+          ? ""
+          : `${GIT}\n${GIT}\n`;
+      },
+    },
+  );
+  assert.equal(invocations.length, 2);
+  for (const invocation of invocations) {
+    assert.equal(invocation[0].toLowerCase(), command.toLowerCase());
+    assert.deepEqual(invocation[1].slice(0, 3), ["/d", "/s", "/c"]);
+    assert.equal(invocation[3], "C:\\Sage");
+    assert.equal(invocation[4].identityHandshake, "captured-owner\r\n");
+    assert.equal(
+      invocation[4].expectedExecutablePath.toLowerCase(),
+      command.toLowerCase(),
+    );
+    assert.equal(invocation[4].windowsVerbatimArguments, true);
+  }
+  assert.equal(
+    invocations[0][1][3],
+    'set /p "SAGE_ACP04_ACK=" && git status --porcelain=v1 --untracked-files=all',
+  );
+  assert.equal(
+    invocations[1][1][3],
+    'set /p "SAGE_ACP04_ACK=" && git rev-parse HEAD "HEAD^{tree}"',
+  );
 });
 
 test("pending validation rejects nested receipt mutation before finalization", () => {
