@@ -7,6 +7,7 @@ pub(crate) struct CompletedPumpParts<A, J, R> {
     publisher: Arc<dyn ProjectionPublisher>,
     session_intent: SessionPumpIntent,
     terminal_cursor: AdapterTurnCursor,
+    next_synthetic_item: u64,
 }
 
 type PumpHandoff<T, P> = Result<T, Box<(P, AdapterPumpError)>>;
@@ -48,19 +49,23 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                         publisher: self.publisher,
                         session_intent: self.session_intent,
                         terminal_cursor: self.terminal_cursor,
+                        next_synthetic_item: self.next_synthetic_item,
                     },
                     AdapterPumpError::Journal(error),
                 )));
             }
         };
-        Ok(AdapterPump::from_admission(
+        let next_synthetic_item = self.next_synthetic_item;
+        let mut pump = AdapterPump::from_admission(
             self.adapter,
             journal,
             self.resources,
             self.publisher,
             intent,
             admission,
-        ))
+        );
+        pump.next_synthetic_item = next_synthetic_item;
+        Ok(pump)
     }
 }
 
@@ -101,6 +106,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             publisher: self.publisher,
             session_intent,
             terminal_cursor,
+            next_synthetic_item: self.next_synthetic_item,
         })
     }
 }
