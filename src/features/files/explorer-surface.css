@@ -1,12 +1,21 @@
 .explorer-add-root {
-  height: 22px;
-  padding: 0 7px;
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-1);
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
   background: transparent;
   font-size: 11px;
   cursor: pointer;
+}
+
+@media (max-width: 960px) {
+  .explorer-add-root span {
+    display: none;
+  }
 }
 
 .explorer-add-root:hover:not(:disabled) {

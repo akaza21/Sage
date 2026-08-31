@@ -1,3 +1,5 @@
+import { FolderPlus } from "lucide-react";
+
 import { useWorkbenchStore } from "../../app/store";
 import { selectOpenProject } from "../../app/workbenchSelectors";
 import {
@@ -72,7 +74,6 @@ export function ExplorerActions() {
 
   return (
     <span className="sidebar__heading-actions">
-      <span className="muted">{project?.name ?? "No project"}</span>
       <button
         className="explorer-add-root"
         type="button"
@@ -81,7 +82,8 @@ export function ExplorerActions() {
         disabled={!project}
         onClick={() => void addProjectRoot()}
       >
-        Add folder
+        <FolderPlus size={14} aria-hidden="true" />
+        <span>Add folder</span>
       </button>
       <NewFileControl parent={parent} rootName={parentRootName} />
       <NewFolderControl parent={parent} rootName={parentRootName} />
