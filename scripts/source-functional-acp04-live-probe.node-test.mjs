@@ -19,6 +19,7 @@ import {
   createAcp04Ui,
   createAcp04Receipt,
   createModeAState,
+  freshChatReadyExpression,
   fillPromptExpression,
   finalizeAcp04Collection,
   parseAcp04ProbeArguments,
@@ -278,6 +279,16 @@ test("Mode A uses behavior seams for Editor to one seeded Agent chat", async () 
     async waitForSeededAgentChat() {
       calls.push("seeded-chat");
     },
+    async seededChatId() {
+      calls.push("seeded-chat-id");
+      return "chat-seeded";
+    },
+    async createFreshChat() {
+      calls.push("new-chat");
+    },
+    async waitForFreshChat(seedChatId) {
+      calls.push(`fresh-chat:${seedChatId}`);
+    },
     async waitForCodexSelectable() {
       calls.push("codex-selectable");
     },
@@ -314,14 +325,60 @@ test("Mode A uses behavior seams for Editor to one seeded Agent chat", async () 
     codexVersion: CODEX_VERSION,
   });
   assert.equal(result.state.phase, "complete");
-  assert.deepEqual(calls.slice(0, 5), [
+  assert.deepEqual(calls.slice(0, 9), [
     "editor-ready",
     "enter-agent",
     "seeded-chat",
+    "seeded-chat-id",
+    "new-chat",
+    "fresh-chat:chat-seeded",
     "codex-selectable",
     "select-codex",
+    "snapshot-0",
   ]);
-  assert.equal(calls.includes("new-chat"), false);
+  assert.equal(calls.filter((call) => call === "new-chat").length, 1);
+});
+
+test("clean Chat navigation accepts one top-level New chat and only an empty replacement Chat", () => {
+  const dom = new JSDOM(
+    `<!doctype html><main class="workbench workbench--agent"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor"><input type="radio" name="workbench-window-mode" value="agent" checked></div><aside class="project-sidebar" aria-label="Projects and chats"><div class="project-sidebar__actions"><button type="button" title="New chat">New chat</button></div><button class="project-chat" aria-current="page">Seeded chat</button></aside><section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat"><section class="acp-chat-projection" aria-label="Agent chat seeded" data-project-id="project-1" data-chat-id="chat-seeded" data-current-session-id="session-sim" data-projection-revision="1"><section class="acp-turn" data-turn-id="simulator-turn" data-session-id="session-sim" data-runtime-epoch="0" data-turn-ordinal="0"></section></section></section></section></main>`,
+  );
+  const previous = { document: globalThis.document };
+  globalThis.document = dom.window.document;
+  try {
+    const ui = createAcp04Ui(CODEX_VERSION);
+    const action = dom.window.document.querySelector(
+      '.project-sidebar__actions button[title="New chat"]',
+    );
+    let clicks = 0;
+    action.addEventListener("click", () => {
+      clicks += 1;
+      const rail = dom.window.document.querySelector(".project-chat");
+      const projection = dom.window.document.querySelector(
+        ".acp-chat-projection",
+      );
+      rail.textContent = "Fresh chat";
+      projection.setAttribute("aria-label", "Agent chat fresh");
+      projection.dataset.chatId = "chat-fresh";
+      projection.dataset.currentSessionId = "";
+    });
+    assert.equal(eval(ui.seededChatId), "chat-seeded");
+    assert.equal(eval(ui.createFreshChat), true);
+    assert.equal(clicks, 1);
+    assert.equal(eval(freshChatReadyExpression("chat-seeded")), false);
+    dom.window.document.querySelector(".acp-turn").remove();
+    assert.equal(eval(freshChatReadyExpression("chat-seeded")), true);
+    action.after(action.cloneNode(true));
+    assert.equal(eval(ui.createFreshChat), false);
+    assert.equal(clicks, 1);
+    dom.window.document
+      .querySelectorAll('.project-sidebar__actions button[title="New chat"]')
+      .forEach((button) => button.remove());
+    assert.equal(eval(ui.createFreshChat), false);
+  } finally {
+    globalThis.document = previous.document;
+    dom.window.close();
+  }
 });
 
 test("browser DOM contract selects the discovered Codex display and exposes exact two-turn ids", () => {

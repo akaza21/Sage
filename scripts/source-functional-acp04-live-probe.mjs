@@ -52,6 +52,10 @@ export function createAcp04Ui(codexVersion) {
       '(()=>{const mains=[...document.querySelectorAll(\'main.workbench.workbench--editor\')],groups=[...document.querySelectorAll(\'[role="radiogroup"][aria-label="Window mode"]\')];if(mains.length!==1||groups.length!==1)return false;const editor=[...groups[0].querySelectorAll(\'input[name="workbench-window-mode"][value="editor"]\')];const agent=[...groups[0].querySelectorAll(\'input[name="workbench-window-mode"][value="agent"]\')];if(editor.length!==1||agent.length!==1||!editor[0].checked||agent[0].checked)return false;agent[0].click();return true})()',
     seededAgentReady:
       "(()=>{const groups=[...document.querySelectorAll('[role=\"radiogroup\"][aria-label=\"Window mode\"]')];const panes=[...document.querySelectorAll('section.agent-chat-pane')];const rails=[...document.querySelectorAll('.project-chat[aria-current=\"page\"]')];if(groups.length!==1||panes.length!==1||rails.length!==1||!panes[0].classList.contains('agent-chat-pane--focused'))return false;const agent=[...groups[0].querySelectorAll('input[name=\"workbench-window-mode\"][value=\"agent\"]:checked')];return agent.length===1&&document.querySelectorAll('main.workbench.workbench--agent').length===1&&panes[0].querySelectorAll('section.chat-surface[aria-label=\"Agent chat\"]').length===1})()",
+    seededChatId:
+      "(()=>{const panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')],rails=[...document.querySelectorAll('.project-chat[aria-current=\"page\"]')];if(panes.length!==1||rails.length!==1)return null;const surfaces=[...panes[0].querySelectorAll('section.chat-surface[aria-label=\"Agent chat\"]')];if(surfaces.length!==1)return null;const projections=[...surfaces[0].querySelectorAll('section.acp-chat-projection[aria-label^=\"Agent chat \"]')];return projections.length===1&&projections[0].dataset.chatId?projections[0].dataset.chatId:null})()",
+    createFreshChat:
+      "(()=>{const sidebars=[...document.querySelectorAll('aside.project-sidebar[aria-label=\"Projects and chats\"]')];if(sidebars.length!==1)return false;const actions=[...sidebars[0].querySelectorAll('.project-sidebar__actions')];if(actions.length!==1)return false;const buttons=[...actions[0].querySelectorAll('button[title=\"New chat\"]')].filter(x=>x.textContent.trim()==='New chat'&&!x.disabled);if(buttons.length!==1)return false;buttons[0].click();return true})()",
     codexSelectable: `(()=>{const groups=[...document.querySelectorAll('[role="radiogroup"][aria-label="Window mode"]')],panes=[...document.querySelectorAll('section.agent-chat-pane')],rails=[...document.querySelectorAll('.project-chat[aria-current="page"]')];if(groups.length!==1||panes.length!==1||rails.length!==1||!panes[0].classList.contains('agent-chat-pane--focused'))return false;const agent=[...groups[0].querySelectorAll('input[name="workbench-window-mode"][value="agent"]:checked')],surfaces=[...panes[0].querySelectorAll('section.chat-surface[aria-label="Agent chat"]')];if(agent.length!==1||document.querySelectorAll('main.workbench.workbench--agent').length!==1||surfaces.length!==1)return false;const selects=[...surfaces[0].querySelectorAll('.composer__controls select')],options=selects.length===2?[...selects[0].options].filter(x=>x.textContent.trim()===${JSON.stringify(display)}&&!x.disabled):[];return selects.length===2&&options.length===1})()`,
     selectCodex: `(()=>{const panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];if(panes.length!==1)return false;const selects=[...panes[0].querySelectorAll('.composer__controls select')];if(selects.length!==2)return false;const options=[...selects[0].options].filter(x=>x.textContent.trim()===${JSON.stringify(display)});if(options.length!==1||options[0].disabled)return false;const set=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;set.call(selects[0],options[0].value);selects[0].dispatchEvent(new Event('change',{bubbles:true}));return true})()`,
     codexReady: `(()=>{const panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];if(panes.length!==1)return false;const s=panes[0].querySelector('section.chat-surface[aria-label="Agent chat"]');if(!s)return false;const p=s.querySelectorAll('section.acp-chat-projection[aria-label^="Agent chat "]');const selects=s.querySelectorAll('.composer__controls select');const composers=[...s.querySelectorAll('textarea[aria-label="Message agent"]')];const status=s.querySelector('.session-state')?.textContent.trim();return p.length===1&&selects.length===2&&selects[0].selectedOptions.length===1&&selects[0].selectedOptions[0].textContent.trim()===${JSON.stringify(display)}&&selects[1].value!==''&&(status==='Ready'||status==='Live')&&composers.length===1&&composers[0].disabled===false})()`,
@@ -62,6 +66,16 @@ export function createAcp04Ui(codexVersion) {
 }
 
 export const ACP04_SNAPSHOT_EXPRESSION = `(()=>{const panes=[...document.querySelectorAll('section.agent-chat-pane')];if(panes.length!==1||!panes[0].classList.contains('agent-chat-pane--focused'))return null;const surfaces=[...panes[0].querySelectorAll('section.chat-surface[aria-label="Agent chat"]')];if(surfaces.length!==1)return null;const s=surfaces[0],projections=[...s.querySelectorAll('section.acp-chat-projection[aria-label^="Agent chat "]')],selects=[...s.querySelectorAll('.composer__controls select')],composers=[...s.querySelectorAll('textarea[aria-label="Message agent"]')];if(projections.length!==1||selects.length!==2)return null;const p=projections[0],selected=x=>x.selectedOptions.length===1?{id:x.value,text:x.selectedOptions[0].textContent.trim()}:null;const alerts=[...s.querySelectorAll('[role="alert"]')].map(x=>x.innerText.trim()).filter(Boolean);const named=s.innerText.match(/ProtocolFailure|HostError::Closed|ACP[^\\n]{0,80}(?:recovery|capacity)/giu)||[];return {projectId:p.dataset.projectId||'',chatId:p.dataset.chatId||'',currentSessionId:p.dataset.currentSessionId||'',projectionRevision:p.dataset.projectionRevision||'',harness:selected(selects[0]),model:selected(selects[1]),harnessStatus:(s.querySelector('.session-state')?.textContent||'').trim(),composerEnabled:composers.length===1&&composers[0].disabled===false,failures:[...new Set([...alerts,...named])],turns:[...p.querySelectorAll(':scope > section.acp-turn')].map(t=>({id:t.dataset.turnId||'',sessionId:t.dataset.sessionId||'',runtimeEpoch:t.dataset.runtimeEpoch||'',ordinal:Number(t.dataset.turnOrdinal),state:t.querySelector(':scope > header [data-turn-status][role="status"]')?.getAttribute('aria-label')||'',items:[...t.querySelectorAll('article[data-item-id][data-message-role]')].map(x=>({id:x.dataset.itemId||'',role:x.dataset.messageRole||'',text:(x.querySelector('.acp-markdown')?.innerText||'').trim()}))}))}})()`;
+
+export function freshChatReadyExpression(previousChatId) {
+  if (
+    typeof previousChatId !== "string" ||
+    previousChatId.length === 0 ||
+    previousChatId.length > 512
+  )
+    fail("seeded-chat-id-invalid");
+  return `(()=>{const groups=[...document.querySelectorAll('[role="radiogroup"][aria-label="Window mode"]')],panes=[...document.querySelectorAll('section.agent-chat-pane')],rails=[...document.querySelectorAll('.project-chat[aria-current="page"]')];if(groups.length!==1||panes.length!==1||rails.length!==1||!panes[0].classList.contains('agent-chat-pane--focused'))return false;const agent=[...groups[0].querySelectorAll('input[name="workbench-window-mode"][value="agent"]:checked')],surfaces=[...panes[0].querySelectorAll('section.chat-surface[aria-label="Agent chat"]')];if(agent.length!==1||document.querySelectorAll('main.workbench.workbench--agent').length!==1||surfaces.length!==1)return false;const projections=[...surfaces[0].querySelectorAll('section.acp-chat-projection[aria-label^="Agent chat "]')];if(projections.length!==1)return false;const p=projections[0];return p.dataset.chatId!==${JSON.stringify(previousChatId)}&&p.dataset.chatId!==''&&p.dataset.currentSessionId===''&&p.querySelectorAll(':scope > section.acp-turn').length===0})()`;
+}
 
 const RUNTIME_OBSERVATION_EXPRESSION =
   '(()=>{const invoke=window.__TAURI_INTERNALS__?.invoke;if(typeof invoke!=="function")throw new Error("Sage invoke unavailable");return invoke("get_codex_runtime_identity",{})})()';
@@ -305,6 +319,28 @@ function defaultDriver(cdp, deadline, codexVersion, guard = () => {}) {
         deadline,
         "acp04-seeded-chat-timeout",
       ),
+    seededChatId: async () => {
+      guard();
+      const chatId = await cdp.evaluate(
+        ui.seededChatId,
+        operationDeadline(deadline),
+      );
+      if (
+        typeof chatId !== "string" ||
+        chatId.length === 0 ||
+        chatId.length > 512
+      )
+        fail("seeded-chat-id-invalid");
+      return chatId;
+    },
+    createFreshChat: () =>
+      exactAction(ui.createFreshChat, "new-chat-ambiguous"),
+    waitForFreshChat: (seededChatId) =>
+      waitUntil(
+        () => readiness(freshChatReadyExpression(seededChatId)),
+        deadline,
+        "acp04-fresh-chat-timeout",
+      ),
     waitForCodexSelectable: () =>
       waitUntil(
         () => readiness(ui.codexSelectable),
@@ -354,6 +390,9 @@ export async function runAcp04ModeA(
   await driver.waitForEditorReady();
   await driver.enterAgentFromEditor();
   await driver.waitForSeededAgentChat();
+  const seededChatId = await driver.seededChatId();
+  await driver.createFreshChat();
+  await driver.waitForFreshChat(seededChatId);
   await driver.waitForCodexSelectable();
   await driver.selectCodex();
   await driver.waitForCodexReady?.();
