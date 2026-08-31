@@ -14,16 +14,21 @@ import { JSDOM } from "jsdom";
 
 import {
   ACP04_MODE_A,
+  ACP04_MODE_B_CANCEL_PROMPT,
+  ACP04_MODE_B_RECOVERY_ECHO,
   ACP04_SNAPSHOT_EXPRESSION,
+  acceptModeBSnapshot,
   acceptModeASnapshot,
   createAcp04Ui,
   createAcp04Receipt,
+  createModeBState,
   createModeAState,
   freshChatReadyExpression,
   fillPromptExpression,
   finalizeAcp04Collection,
   parseAcp04ProbeArguments,
   probeAcp04Snapshot,
+  runAcp04ModeB,
   runAcp04ModeA,
 } from "./source-functional-acp04-live-probe.mjs";
 import {
@@ -98,17 +103,41 @@ function snapshot({
   };
 }
 
-function completedTurn(ordinal, prompt, answer, sessionId = "session-1") {
+function completedTurn(
+  ordinal,
+  prompt,
+  answer,
+  sessionId = "session-1",
+  runtimeEpoch = "7",
+) {
   return {
     id: `turn-${ordinal}`,
     sessionId,
-    runtimeEpoch: "7",
+    runtimeEpoch,
     ordinal,
     state: "Completed",
     items: [
       { id: `item-${ordinal}-user`, role: "user", text: prompt },
       { id: `item-${ordinal}-assistant`, role: "assistant", text: answer },
     ],
+  };
+}
+
+function activeTurn(ordinal, prompt, sessionId = "session-1") {
+  return {
+    id: `turn-${ordinal}`,
+    sessionId,
+    runtimeEpoch: "7",
+    ordinal,
+    state: "Running",
+    items: [{ id: `item-${ordinal}-user`, role: "user", text: prompt }],
+  };
+}
+
+function cancelledTurn(ordinal, prompt, sessionId = "session-1") {
+  return {
+    ...activeTurn(ordinal, prompt, sessionId),
+    state: "Cancelled",
   };
 }
 
@@ -159,6 +188,195 @@ test("Mode A accepts exactly two turns with one project, chat, session, and mode
   assert.equal(state.sessionId, "session-1");
   assert.equal(state.runtimeEpoch, "7");
   assert.equal(state.projectionRevision, "3");
+});
+
+test("Mode B accepts one active cancellation then an exact recovery echo at a higher runtime epoch", () => {
+  let state = createModeBState(completeState());
+  const firstTwo = ECHOES.map((echo, index) =>
+    completedTurn(index + 1, `Reply with exactly: ${echo}`, echo),
+  );
+  state = acceptModeBSnapshot(
+    state,
+    snapshot({
+      projectionRevision: "4",
+      turns: [...firstTwo, activeTurn(3, ACP04_MODE_B_CANCEL_PROMPT)],
+    }),
+  );
+  assert.equal(state.phase, "await-terminal-third");
+  const cancelling = acceptModeBSnapshot(
+    state,
+    snapshot({
+      projectionRevision: "5",
+      turns: [
+        ...firstTwo,
+        {
+          ...activeTurn(3, ACP04_MODE_B_CANCEL_PROMPT),
+          state: "Cancelling",
+        },
+      ],
+    }),
+  );
+  assert.equal(cancelling.phase, "await-terminal-third");
+  state = acceptModeBSnapshot(
+    cancelling,
+    snapshot({
+      projectionRevision: "6",
+      turns: [...firstTwo, cancelledTurn(3, ACP04_MODE_B_CANCEL_PROMPT)],
+    }),
+  );
+  assert.equal(state.phase, "await-fourth");
+  state = acceptModeBSnapshot(
+    state,
+    snapshot({
+      projectionRevision: "7",
+      turns: [
+        ...firstTwo,
+        cancelledTurn(3, ACP04_MODE_B_CANCEL_PROMPT),
+        completedTurn(
+          4,
+          `Reply with exactly: ${ACP04_MODE_B_RECOVERY_ECHO}`,
+          ACP04_MODE_B_RECOVERY_ECHO,
+          "session-1",
+          "8",
+        ),
+      ],
+    }),
+  );
+  assert.equal(state.phase, "complete");
+  assert.equal(state.cancelledTurnId, "turn-3");
+  assert.equal(state.cancelledState, "Cancelled");
+  assert.equal(state.runtimeEpoch, "8");
+  assert.deepEqual(state.turnIds, ["turn-1", "turn-2", "turn-3", "turn-4"]);
+});
+
+test("Mode B rejects turn identity reuse and recovery without an epoch restart", () => {
+  const initial = createModeBState(completeState());
+  const firstTwo = ECHOES.map((echo, index) =>
+    completedTurn(index + 1, `Reply with exactly: ${echo}`, echo),
+  );
+  assert.throws(
+    () =>
+      acceptModeBSnapshot(
+        initial,
+        snapshot({
+          projectionRevision: "4",
+          turns: [
+            ...firstTwo,
+            { ...activeTurn(3, ACP04_MODE_B_CANCEL_PROMPT), id: "turn-2" },
+          ],
+        }),
+      ),
+    /acp04-snapshot-invalid:identity-order/,
+  );
+  const cancelled = acceptModeBSnapshot(
+    acceptModeBSnapshot(
+      initial,
+      snapshot({
+        projectionRevision: "4",
+        turns: [...firstTwo, activeTurn(3, ACP04_MODE_B_CANCEL_PROMPT)],
+      }),
+    ),
+    snapshot({
+      projectionRevision: "5",
+      turns: [...firstTwo, cancelledTurn(3, ACP04_MODE_B_CANCEL_PROMPT)],
+    }),
+  );
+  assert.throws(
+    () =>
+      acceptModeBSnapshot(
+        cancelled,
+        snapshot({
+          projectionRevision: "6",
+          turns: [
+            ...firstTwo,
+            cancelledTurn(3, ACP04_MODE_B_CANCEL_PROMPT),
+            completedTurn(
+              4,
+              `Reply with exactly: ${ACP04_MODE_B_RECOVERY_ECHO}`,
+              ACP04_MODE_B_RECOVERY_ECHO,
+            ),
+          ],
+        }),
+      ),
+    /acp04-mode-b-runtime-restart-missing/,
+  );
+});
+
+test("Mode B uses the exact Cancel control before the fourth normal composer turn", async () => {
+  const firstTwo = ECHOES.map((echo, index) =>
+    completedTurn(index + 1, `Reply with exactly: ${echo}`, echo),
+  );
+  let stage = 0;
+  const calls = [];
+  const driver = {
+    async fillPrompt(prompt) {
+      calls.push(`fill:${prompt}`);
+    },
+    async waitForSendReady() {
+      calls.push("send-ready");
+    },
+    async send() {
+      stage += 1;
+      calls.push(`send:${stage}`);
+    },
+    async waitForCancelReady() {
+      calls.push("cancel-ready");
+    },
+    async cancel() {
+      stage += 1;
+      calls.push("cancel");
+    },
+    async snapshot() {
+      calls.push(`snapshot:${stage}`);
+      if (stage === 1)
+        return snapshot({
+          projectionRevision: "4",
+          turns: [...firstTwo, activeTurn(3, ACP04_MODE_B_CANCEL_PROMPT)],
+        });
+      if (stage === 2)
+        return snapshot({
+          projectionRevision: "5",
+          turns: [...firstTwo, cancelledTurn(3, ACP04_MODE_B_CANCEL_PROMPT)],
+        });
+      return snapshot({
+        projectionRevision: "6",
+        turns: [
+          ...firstTwo,
+          cancelledTurn(3, ACP04_MODE_B_CANCEL_PROMPT),
+          completedTurn(
+            4,
+            `Reply with exactly: ${ACP04_MODE_B_RECOVERY_ECHO}`,
+            ACP04_MODE_B_RECOVERY_ECHO,
+            "session-1",
+            "8",
+          ),
+        ],
+      });
+    },
+    async runtimeObservation() {
+      calls.push("runtime-observation");
+      return runtimeObservation("8");
+    },
+  };
+  const result = await runAcp04ModeB({}, Date.now() + 5_000, completeState(), {
+    driver,
+    codexVersion: CODEX_VERSION,
+  });
+  assert.equal(result.state.phase, "complete");
+  assert.deepEqual(calls, [
+    `fill:${ACP04_MODE_B_CANCEL_PROMPT}`,
+    "send-ready",
+    "send:1",
+    "snapshot:1",
+    "cancel-ready",
+    "cancel",
+    "snapshot:2",
+    `fill:Reply with exactly: ${ACP04_MODE_B_RECOVERY_ECHO}`,
+    "send-ready",
+    "send:3",
+    "snapshot:3",
+    "runtime-observation",
+  ]);
 });
 
 test("Mode A rejects session churn and named protocol/recovery failures", () => {
@@ -726,13 +944,13 @@ test("runtime observation is owner-bound and root-process truth is independent f
   );
 });
 
-function runtimeObservation() {
+function runtimeObservation(runtimeEpoch = "7") {
   return {
     owner: {
       projectId: "project-1",
       chatId: "chat-1",
       sessionId: "session-1",
-      runtimeEpoch: "7",
+      runtimeEpoch,
     },
     admittedEntrypoint: {
       canonicalPath: "C:\\Tools\\codex.cmd",

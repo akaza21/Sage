@@ -25,6 +25,16 @@ import {
   createAcp04Receipt,
   parseAcp04ProbeArguments,
 } from "./source-functional-acp04-live-contract.mjs";
+import {
+  createModeBCancelUi,
+  runAcp04ModeBWithDriver,
+} from "./source-functional-acp04-mode-b.mjs";
+import {
+  fail,
+  rejectObservedFailures,
+  validateSnapshot,
+  waitUntil,
+} from "./source-functional-acp04-observation.mjs";
 
 export {
   ACP04_ECHOES,
@@ -33,14 +43,19 @@ export {
   parseAcp04ProbeArguments,
 } from "./source-functional-acp04-live-contract.mjs";
 export { finalizeAcp04Collection } from "./source-functional-acp04-finalizer.mjs";
-
-const FAILURE =
-  /ProtocolFailure|HostError::Closed|ACP[^\n]{0,80}(?:recovery|capacity)/iu;
-const DECIMAL_REVISION = /^(?:0|[1-9]\d*)$/u;
-
-function fail(code) {
-  throw new Error(`acp04-${code}`);
-}
+export {
+  ACP04_MODE_B_CANCEL_PROMPT,
+  ACP04_MODE_B_RECOVERY_ECHO,
+  acceptModeBSnapshot,
+  createModeBState,
+} from "./source-functional-acp04-mode-b.mjs";
+export {
+  fail,
+  rejectObservedFailures,
+  validSelectIdentity,
+  validateSnapshot,
+  waitUntil,
+} from "./source-functional-acp04-observation.mjs";
 
 export function createAcp04Ui(codexVersion) {
   if (!codexSemanticVersion(codexVersion)) fail("codex-version-invalid");
@@ -62,6 +77,7 @@ export function createAcp04Ui(codexVersion) {
     sendEnabled:
       "(()=>{const panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];return panes.length===1&&panes[0].querySelectorAll('button[aria-label=\"Send message\"]:not(:disabled)').length===1})()",
     send: "(()=>{const panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];if(panes.length!==1)return false;const x=[...panes[0].querySelectorAll('button[aria-label=\"Send message\"]:not(:disabled)')];if(x.length!==1)return false;x[0].click();return true})()",
+    ...createModeBCancelUi(),
   });
 }
 
@@ -79,86 +95,6 @@ export function freshChatReadyExpression(previousChatId) {
 
 const RUNTIME_OBSERVATION_EXPRESSION =
   '(()=>{const invoke=window.__TAURI_INTERNALS__?.invoke;if(typeof invoke!=="function")throw new Error("Sage invoke unavailable");return invoke("get_codex_runtime_identity",{})})()';
-
-function validSelectIdentity(value) {
-  return (
-    value &&
-    typeof value.id === "string" &&
-    value.id.length > 0 &&
-    typeof value.text === "string" &&
-    value.text.length > 0
-  );
-}
-
-function invalidSnapshotField(value) {
-  if (!value || typeof value !== "object") return "root";
-  if (typeof value.projectId !== "string" || value.projectId.length === 0)
-    return "project-id";
-  if (typeof value.chatId !== "string" || value.chatId.length === 0)
-    return "chat-id";
-  if (typeof value.currentSessionId !== "string") return "current-session-id";
-  if (!DECIMAL_REVISION.test(value.projectionRevision ?? ""))
-    return "projection-revision";
-  if (!validSelectIdentity(value.harness)) return "harness";
-  if (!validSelectIdentity(value.model)) return "model";
-  if (typeof value.harnessStatus !== "string") return "harness-status";
-  if (typeof value.composerEnabled !== "boolean") return "composer-enabled";
-  if (
-    !Array.isArray(value.failures) ||
-    !value.failures.every((item) => typeof item === "string")
-  )
-    return "failures";
-  if (!Array.isArray(value.turns)) return "turns";
-  return null;
-}
-
-function validateSnapshot(value) {
-  const validTurn = (turn) =>
-    turn &&
-    typeof turn.id === "string" &&
-    turn.id.length > 0 &&
-    typeof turn.sessionId === "string" &&
-    turn.sessionId.length > 0 &&
-    DECIMAL_REVISION.test(turn.runtimeEpoch ?? "") &&
-    Number.isSafeInteger(turn.ordinal) &&
-    turn.ordinal > 0 &&
-    typeof turn.state === "string" &&
-    turn.state.length > 0 &&
-    Array.isArray(turn.items) &&
-    turn.items.every(
-      (item) =>
-        item &&
-        typeof item.id === "string" &&
-        item.id.length > 0 &&
-        ["user", "assistant", "system"].includes(item.role) &&
-        typeof item.text === "string",
-    );
-  const invalidField = invalidSnapshotField(value);
-  if (invalidField) fail(`snapshot-invalid:${invalidField}`);
-  if (!value.turns.every(validTurn)) fail("snapshot-invalid:turn");
-  const turnIds = value.turns.map((turn) => turn.id);
-  const itemIds = value.turns.flatMap((turn) =>
-    turn.items.map((item) => item.id),
-  );
-  if (
-    new Set(turnIds).size !== turnIds.length ||
-    new Set(itemIds).size !== itemIds.length ||
-    value.turns.some(
-      (turn, index) =>
-        index > 0 && turn.ordinal <= value.turns[index - 1].ordinal,
-    )
-  )
-    fail("snapshot-invalid:identity-order");
-  return value;
-}
-
-function rejectObservedFailures(snapshot) {
-  if (
-    snapshot.failures.length > 0 ||
-    snapshot.failures.some((item) => FAILURE.test(item))
-  )
-    fail("observed-failure");
-}
 
 export async function probeAcp04Snapshot(cdp, deadline) {
   return validateSnapshot(
@@ -282,17 +218,6 @@ export function fillPromptExpression(prompt) {
   return `(()=>{const panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];if(panes.length!==1)return false;const x=[...panes[0].querySelectorAll('textarea[aria-label="Message agent"]')];if(x.length!==1||x[0].disabled!==false)return false;const set=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;set.call(x[0],${JSON.stringify(prompt)});x[0].dispatchEvent(new Event('input',{bubbles:true}));return true})()`;
 }
 
-async function waitUntil(action, deadline, message) {
-  while (Date.now() < deadline) {
-    const result = await action();
-    if (result) return result;
-    await new Promise((resolve) =>
-      setTimeout(resolve, Math.min(100, Math.max(0, deadline - Date.now()))),
-    );
-  }
-  throw new Error(message);
-}
-
 function defaultDriver(cdp, deadline, codexVersion, guard = () => {}) {
   const ui = createAcp04Ui(codexVersion);
   const exactAction = async (expression, code) => {
@@ -367,6 +292,13 @@ function defaultDriver(cdp, deadline, codexVersion, guard = () => {}) {
         "acp04-send-ready-timeout",
       ),
     send: () => exactAction(ui.send, "send-ambiguous"),
+    waitForCancelReady: () =>
+      waitUntil(
+        () => readiness(ui.cancelEnabled),
+        deadline,
+        "acp04-cancel-ready-timeout",
+      ),
+    cancel: () => exactAction(ui.cancel, "cancel-ambiguous"),
     runtimeObservation: () => {
       guard();
       return cdp.evaluate(
@@ -429,6 +361,15 @@ export async function runAcp04ModeA(
     state,
     observations,
     runtimeObservation,
+  });
+}
+
+export async function runAcp04ModeB(cdp, deadline, modeAState, deps = {}) {
+  const driver =
+    deps.driver ?? defaultDriver(cdp, deadline, deps.codexVersion, deps.guard);
+  return runAcp04ModeBWithDriver(deadline, modeAState, {
+    driver,
+    codexVersion: deps.codexVersion,
   });
 }
 
