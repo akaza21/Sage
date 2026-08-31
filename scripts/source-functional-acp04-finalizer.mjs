@@ -154,7 +154,7 @@ export async function revalidateSource(options, deadline, deps = {}) {
       "/d",
       "/s",
       "/c",
-      'set /p "SAGE_ACP04_ACK=" && git rev-parse HEAD HEAD^{tree}',
+      'set /p "SAGE_ACP04_ACK=" && git rev-parse HEAD "HEAD^{tree}"',
     ],
     deadline,
     options.output,

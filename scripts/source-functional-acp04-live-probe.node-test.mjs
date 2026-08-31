@@ -1059,6 +1059,10 @@ test("source revalidation waits for captured ownership before running fast Git c
   }
   assert.equal(invocations[0][4].commandRole, "source-status");
   assert.equal(invocations[1][4].commandRole, "source-identity");
+  assert.equal(
+    invocations[1][1][3],
+    'set /p "SAGE_ACP04_ACK=" && git rev-parse HEAD "HEAD^{tree}"',
+  );
 });
 
 test("Codex preflight rejects command-expansion paths before spawning", async () => {
