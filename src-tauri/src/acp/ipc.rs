@@ -335,13 +335,21 @@ pub fn validate_cancel_intent(
     request: &CancelAcpTurnRequest,
     snapshot: &IntentSnapshot,
 ) -> Result<(), IntentError> {
-    validate_base_intent(
-        &request.project_id,
-        request.project_generation,
-        &request.chat_id,
-        request.expected_projection_revision,
-        snapshot,
-    )?;
+    if request.project_id != snapshot.project_id {
+        return Err(IntentError::ForeignProject);
+    }
+    if request.project_generation != snapshot.project_generation {
+        return Err(IntentError::StaleProjectGeneration);
+    }
+    if request.chat_id != snapshot.chat_id {
+        return Err(IntentError::ForeignChat);
+    }
+    // Unrelated ingress can advance the chat projection after the UI has
+    // rendered this turn. Cancellation stays safe because its remaining
+    // guards bind it to the exact session, runtime, and turn revision.
+    if request.expected_projection_revision > snapshot.projection_revision {
+        return Err(IntentError::StaleProjectionRevision);
+    }
     if snapshot.session_id.as_ref() != Some(&request.session_id) {
         return Err(IntentError::ForeignSession);
     }

@@ -509,6 +509,79 @@ fn exact_intent_validation_rejects_each_stale_or_foreign_component() {
 }
 
 #[test]
+fn cancel_intent_tolerates_only_past_projection_revisions() {
+    let current = snapshot();
+    let cancel: CancelAcpTurnRequest = serde_json::from_value(with(
+        request_base(),
+        json!({
+            "sessionId": "session-a", "runtimeEpoch": "2", "turnId": "turn-a",
+            "expectedTurnState": "running", "expectedTurnRevision": "5"
+        }),
+    ))
+    .unwrap();
+
+    let mut advanced = current.clone();
+    advanced.projection_revision = ProjectionRevision::new(8).unwrap();
+    assert_eq!(validate_cancel_intent(&cancel, &advanced), Ok(()));
+
+    let mut future_projection = cancel.clone();
+    future_projection.expected_projection_revision = ProjectionRevision::new(9).unwrap();
+    assert_eq!(
+        validate_cancel_intent(&future_projection, &advanced),
+        Err(IntentError::StaleProjectionRevision)
+    );
+
+    let mut drifted = advanced.clone();
+    drifted.project_id = SageProjectId::parse("project-other").unwrap();
+    assert_eq!(
+        validate_cancel_intent(&cancel, &drifted),
+        Err(IntentError::ForeignProject)
+    );
+    drifted = advanced.clone();
+    drifted.project_generation = ProjectGeneration::new(4).unwrap();
+    assert_eq!(
+        validate_cancel_intent(&cancel, &drifted),
+        Err(IntentError::StaleProjectGeneration)
+    );
+    drifted = advanced.clone();
+    drifted.chat_id = SageChatId::parse("chat-other").unwrap();
+    assert_eq!(
+        validate_cancel_intent(&cancel, &drifted),
+        Err(IntentError::ForeignChat)
+    );
+    drifted = advanced.clone();
+    drifted.session_id = Some(SageAgentSessionId::parse("session-other").unwrap());
+    assert_eq!(
+        validate_cancel_intent(&cancel, &drifted),
+        Err(IntentError::ForeignSession)
+    );
+    drifted = advanced.clone();
+    drifted.runtime_epoch = Some(RuntimeEpoch::new(3).unwrap());
+    assert_eq!(
+        validate_cancel_intent(&cancel, &drifted),
+        Err(IntentError::StaleRuntimeEpoch)
+    );
+    drifted = advanced.clone();
+    drifted.turn_id = Some(SageTurnId::parse("turn-other").unwrap());
+    assert_eq!(
+        validate_cancel_intent(&cancel, &drifted),
+        Err(IntentError::ForeignTurn)
+    );
+    drifted = advanced.clone();
+    drifted.turn_state = Some(TurnState::WaitingModel);
+    assert_eq!(
+        validate_cancel_intent(&cancel, &drifted),
+        Err(IntentError::UnexpectedTurnState)
+    );
+    drifted = advanced.clone();
+    drifted.turn_revision = Some(EntityRevision::new(6).unwrap());
+    assert_eq!(
+        validate_cancel_intent(&cancel, &drifted),
+        Err(IntentError::StaleTurnRevision)
+    );
+}
+
+#[test]
 fn projection_events_are_revision_only_and_positive() {
     let event: ProjectionChangedV1 = serde_json::from_value(json!({
         "projectId": "project-a", "chatId": "chat-a", "sessionId": "session-a",
