@@ -283,7 +283,11 @@ function defaultDriver(cdp, deadline, codexVersion, guard = () => {}) {
   };
   return {
     enterAgentFromEditor: () =>
-      exactAction(ui.enterAgentFromEditor, "window-mode-invalid"),
+      waitUntil(
+        () => readiness(ui.enterAgentFromEditor),
+        deadline,
+        "acp04-window-mode-invalid",
+      ),
     waitForSeededAgentChat: () =>
       waitUntil(
         () => readiness(ui.seededAgentReady),
