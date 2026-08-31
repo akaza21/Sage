@@ -47,7 +47,7 @@ export function validateSnapshot(value) {
     turn.sessionId.length > 0 &&
     DECIMAL_REVISION.test(turn.runtimeEpoch ?? "") &&
     Number.isSafeInteger(turn.ordinal) &&
-    turn.ordinal > 0 &&
+    turn.ordinal >= 0 &&
     typeof turn.state === "string" &&
     turn.state.length > 0 &&
     Array.isArray(turn.items) &&

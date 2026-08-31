@@ -64,7 +64,7 @@ function validateModeACompleteState(value) {
     !value.turnOrdinals.every(
       (item, index) =>
         Number.isSafeInteger(item) &&
-        item > 0 &&
+        item >= 0 &&
         (index === 0 || item > value.turnOrdinals[index - 1]),
     )
   )

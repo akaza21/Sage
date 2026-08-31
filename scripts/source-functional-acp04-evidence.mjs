@@ -59,6 +59,10 @@ function positiveInteger(value, maximum = Number.MAX_SAFE_INTEGER) {
   return Number.isSafeInteger(value) && value > 0 && value <= maximum;
 }
 
+function nonNegativeInteger(value, maximum = Number.MAX_SAFE_INTEGER) {
+  return Number.isSafeInteger(value) && value >= 0 && value <= maximum;
+}
+
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -369,7 +373,7 @@ export function validatePendingAcp04Candidate(candidate, output) {
     candidate.observation.turnOrdinals.length !== 2 ||
     candidate.observation.turnOrdinals.some(
       (item, index) =>
-        !positiveInteger(item, 1024) ||
+        !nonNegativeInteger(item, 1024) ||
         (index > 0 && item <= candidate.observation.turnOrdinals[index - 1]),
     ) ||
     !Array.isArray(candidate.observation.itemIds) ||

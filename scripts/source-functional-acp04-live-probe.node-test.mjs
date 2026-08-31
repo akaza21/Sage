@@ -161,6 +161,26 @@ function completeState() {
   return state;
 }
 
+function zeroBasedCompleteState() {
+  let state = createModeAState(
+    ECHOES,
+    snapshot({ currentSessionId: "" }),
+    CODEX_VERSION,
+  );
+  for (let index = 0; index < ECHOES.length; index += 1) {
+    state = acceptModeASnapshot(
+      state,
+      snapshot({
+        projectionRevision: String(index + 2),
+        turns: ECHOES.slice(0, index + 1).map((echo, turnIndex) =>
+          completedTurn(turnIndex, `Reply with exactly: ${echo}`, echo),
+        ),
+      }),
+    );
+  }
+  return state;
+}
+
 test("argument contract binds a Codex launcher for collector-owned preflight", () => {
   const parsed = parseAcp04ProbeArguments(argumentsFor());
   assert.equal(parsed.mode, "two-turn");
@@ -188,6 +208,13 @@ test("Mode A accepts exactly two turns with one project, chat, session, and mode
   assert.equal(state.sessionId, "session-1");
   assert.equal(state.runtimeEpoch, "7");
   assert.equal(state.projectionRevision, "3");
+});
+
+test("Mode A accepts the durable zero-based Turn ordinal contract", () => {
+  const state = zeroBasedCompleteState();
+  assert.equal(state.phase, "complete");
+  assert.deepEqual(state.turnOrdinals, [0, 1]);
+  assert.equal(createModeBState(state).phase, "await-active-third");
 });
 
 test("Mode B accepts one active cancellation then an exact recovery echo at a higher runtime epoch", () => {
@@ -1125,7 +1152,7 @@ test("pending validation rejects nested receipt mutation before finalization", (
     const candidate = createAcp04Receipt(
       options,
       {
-        state: completeState(),
+        state: zeroBasedCompleteState(),
         startedAt: "2026-08-30T00:00:00.000Z",
         completedAt: "2026-08-30T00:00:01.000Z",
         runtimeObservation: runtimeObservation(),
