@@ -2,16 +2,7 @@ import { Check } from "lucide-react";
 
 import type { ChatMessage } from "../../domain/chat";
 import { EditSummary } from "./EditSummary";
-
-function messageTimestamp(createdAt: number) {
-  if (!Number.isFinite(createdAt) || createdAt <= 0) return null;
-  const timestamp = new Date(createdAt);
-  if (Number.isNaN(timestamp.getTime())) return null;
-  return {
-    dateTime: timestamp.toISOString(),
-    label: timestamp.toISOString().slice(11, 16),
-  };
-}
+import { chatTimestamp } from "./chatTimestamp";
 
 export function ChatLegacyTranscript({
   messages,
@@ -37,7 +28,7 @@ export function ChatLegacyTranscript({
         </div>
       ) : null}
       {messages.map((message) => {
-        const timestamp = messageTimestamp(message.createdAt);
+        const timestamp = chatTimestamp(message.createdAt);
         return (
           <article
             className={`message message--${message.role}`}

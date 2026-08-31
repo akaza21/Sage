@@ -26,6 +26,7 @@ describe("Wave 2 visual-system tokens", () => {
     expect(rootBlock).toMatch(/--color-diff-add:\s*var\(--color-success\);/);
     expect(rootBlock).toMatch(/--color-warning:\s*#e2b66b;/);
     expect(rootBlock).toMatch(/--color-danger:\s*#ef9a9a;/);
+    expect(rootBlock).toMatch(/--color-overlay:\s*rgb\(0 0 0 \/ 0\.52\);/);
     expect(rootBlock).toMatch(/--color-diff-delete:\s*#ef6d67;/);
     expect(rootBlock).toMatch(/--bg:\s*var\(--color-canvas\);/);
     expect(rootBlock).toMatch(/--surface:\s*var\(--color-panel\);/);
@@ -61,6 +62,9 @@ describe("Wave 2 visual-system tokens", () => {
     expect(rootBlock).toMatch(/--focus-ring-offset:\s*2px;/);
     expect(rootBlock).toMatch(
       /--focus-ring:\s*var\(--focus-ring-width\) solid var\(--color-focus-ring\);/,
+    );
+    expect(rootBlock).toMatch(
+      /--focus-ring-inset:\s*inset 0 0 0 var\(--focus-ring-width\)\s*var\(--color-focus-ring\);/,
     );
     expect(rootBlock).toMatch(/--opacity-disabled:\s*0\.45;/);
     expect(rootBlock).toMatch(/--motion-duration-fast:\s*100ms;/);

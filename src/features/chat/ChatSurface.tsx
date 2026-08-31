@@ -20,6 +20,7 @@ import {
   useComposerFocusHotkey,
 } from "./composerChrome";
 import { ComposerContext } from "./ComposerContext";
+import { followEndScrollBehavior, transcriptIsAtEnd } from "./chatFollowEnd";
 import { composerDisabledReason } from "./composerDisabledReason";
 import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
 import {
@@ -156,7 +157,10 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
 
   useEffect(() => {
     if (!followingEnd) return;
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    endRef.current?.scrollIntoView({
+      behavior: followEndScrollBehavior(),
+      block: "end",
+    });
   }, [followingEnd, messages.length, acpPage?.projectionRevision]);
 
   useEffect(() => {
@@ -210,14 +214,15 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   function updateFollowEnd() {
     const transcript = messageListRef.current;
     if (!transcript) return;
-    const distanceFromEnd =
-      transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight;
-    setFollowingEnd(distanceFromEnd <= 64);
+    setFollowingEnd(transcriptIsAtEnd(transcript));
   }
 
   function jumpToLatest() {
     setFollowingEnd(true);
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    endRef.current?.scrollIntoView({
+      behavior: followEndScrollBehavior(),
+      block: "end",
+    });
   }
 
   return (

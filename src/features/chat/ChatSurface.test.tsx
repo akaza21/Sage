@@ -193,6 +193,7 @@ afterEach(() => {
   useWorkbenchStore.setState(initialState, true);
   clearAcpProjectionRegistry();
   clearAgentChatOwner();
+  vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 
@@ -272,6 +273,32 @@ describe("ChatSurface ACP resource integration", () => {
 
     expect(scrollIntoView).toHaveBeenCalledWith({
       behavior: "smooth",
+      block: "end",
+    });
+  });
+
+  it("follows without smooth motion when reduced motion is requested", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(
+        (query) =>
+          ({
+            matches: query === "(prefers-reduced-motion: reduce)",
+          }) as MediaQueryList,
+      ),
+    );
+    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView);
+    const { rerender } = render(<ChatSurface />);
+    scrollIntoView.mockClear();
+
+    hooks.page = {
+      ...hooks.page!,
+      projectionRevision: "3" as never,
+    };
+    rerender(<ChatSurface />);
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "auto",
       block: "end",
     });
   });

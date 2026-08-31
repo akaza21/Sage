@@ -73,7 +73,7 @@ function runFunctionProbe(names, body, options = {}) {
     "$ErrorActionPreference='Stop'",
     `$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile('${escaped}',[ref]$tokens,[ref]$errors)`,
     "if($errors.Count){throw ($errors|% Message)}",
-    `foreach($name in @(${wanted})){$fn=$ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name},$true)|Select-Object -First 1;if($null -eq $fn){throw \"missing function $name\"};. ([scriptblock]::Create($fn.Extent.Text))}`,
+    `foreach($name in @(${wanted})){$fn=$ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name},$true)|Select-Object -First 1;if($null -eq $fn){throw "missing function $name"};. ([scriptblock]::Create($fn.Extent.Text))}`,
     body,
   ].join(";");
   return execFileSync(

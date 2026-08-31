@@ -27,10 +27,10 @@ describe("Agent rail stylesheet seam", () => {
     );
 
     expect(surfaceCss).toMatch(
-      /\.agent-rail-status__header\s*\{[^}]*font-size:\s*var\(--type-size-caption\);/s,
+      /\.agent-rail-status__header\s*\{[^}]*font-size:\s*var\(--font-size-xs\);/s,
     );
     expect(surfaceCss).toMatch(
-      /\.agent-rail-filter__menu button,[\s\S]*?\.agent-rail-filter__select\s*\{[^}]*font-size:\s*var\(--type-size-chrome\);/s,
+      /\.agent-rail-filter__menu button,[\s\S]*?\.agent-rail-filter__select\s*\{[^}]*font-size:\s*var\(--font-size-sm\);/s,
     );
   });
 
@@ -41,10 +41,10 @@ describe("Agent rail stylesheet seam", () => {
     );
 
     expect(surfaceCss).toMatch(
-      /\.agent-rail-filter__trigger\s*\{[^}]*width:\s*var\(--control-target\);[^}]*height:\s*var\(--control-target\);/s,
+      /\.agent-rail-filter__trigger\s*\{[^}]*width:\s*var\(--control-height-compact\);[^}]*height:\s*var\(--control-height-compact\);/s,
     );
     expect(surfaceCss).toMatch(
-      /\.agent-rail-filter__menu button,[\s\S]*?\.agent-rail-filter__select\s*\{[^}]*min-height:\s*var\(--control-target\);/s,
+      /\.agent-rail-filter__menu button,[\s\S]*?\.agent-rail-filter__select\s*\{[^}]*min-height:\s*var\(--control-height-compact\);/s,
     );
   });
 });

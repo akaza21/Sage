@@ -3,15 +3,15 @@
   min-width: 0;
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  border-right: 1px solid var(--border);
-  background: var(--surface);
+  border-right: 1px solid var(--color-border-subtle);
+  background: var(--color-panel);
 }
 
 .project-sidebar__actions {
   display: grid;
   gap: 3px;
   padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .project-action,
@@ -21,7 +21,7 @@
   min-width: 0;
   align-items: center;
   border: 0;
-  color: var(--text-soft);
+  color: var(--color-text-secondary);
   background: transparent;
   cursor: pointer;
   text-align: left;
@@ -31,25 +31,25 @@
   height: 30px;
   gap: 8px;
   padding: 0 8px;
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
 }
 
 .project-action:hover,
 .project-row:hover,
 .project-chat:hover {
-  color: var(--text);
-  background: var(--surface-hover);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .project-action--primary {
-  color: var(--text);
+  color: var(--color-text-primary);
 }
 
 .project-sidebar__scroll {
   min-height: 0;
   overflow-y: auto;
-  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-color: var(--color-border-strong) transparent;
 }
 
 .project-section {
@@ -62,8 +62,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 8px;
-  color: var(--muted);
-  font-size: 10px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
   font-weight: 650;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -76,15 +76,15 @@
   padding: 0;
   place-items: center;
   border: 0;
-  border-radius: 6px;
-  color: var(--muted);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
   background: transparent;
   cursor: pointer;
 }
 
 .project-section__title button:hover {
-  color: var(--text);
-  background: var(--surface-hover);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .project-row {
@@ -92,20 +92,20 @@
   height: 28px;
   gap: 7px;
   padding: 0 8px;
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
 }
 
 .project-row--active {
-  color: var(--text);
-  background: var(--surface-hover);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .project-row .project-row__count,
 .project-row .project-row__branch {
   flex: 0 0 auto;
-  color: var(--muted);
-  font-size: 10px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
 }
 
 .project-row .project-row__branch {
@@ -115,8 +115,8 @@
   gap: 3px;
   overflow: hidden;
   padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-pill);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -151,15 +151,15 @@
   padding: 0;
   place-items: center;
   border: 0;
-  border-radius: 6px;
-  color: var(--muted);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
   background: transparent;
   cursor: pointer;
 }
 
 .project-entry__new-chat:hover {
-  color: var(--text);
-  background: var(--surface-hover);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .project-chats {
@@ -170,8 +170,8 @@
 
 .project-empty-copy {
   margin: 8px 10px 0;
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
   line-height: 1.4;
 }
 
@@ -185,8 +185,8 @@
   height: 28px;
   gap: 7px;
   padding: 0 9px 0 23px;
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
 }
 
 .archived-chats__disclosure span:first-of-type {
@@ -210,8 +210,8 @@
   align-items: center;
   gap: 7px;
   padding-left: 27px;
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
 }
 
 .archived-chat-row > span {
@@ -228,14 +228,14 @@
   padding: 0;
   border: 0;
   border-radius: 5px;
-  color: var(--muted);
+  color: var(--color-text-muted);
   background: transparent;
   cursor: pointer;
 }
 
 .archived-chat-row button:hover {
-  color: var(--text);
-  background: var(--surface-hover);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .archived-chat-row button:disabled {
@@ -249,7 +249,7 @@
     display: block;
     width: 44px;
     overflow: visible;
-    background: var(--bg);
+    background: var(--color-canvas);
   }
 
   .project-sidebar__drawer-trigger {
@@ -261,19 +261,19 @@
     gap: 3px;
     padding: 4px 2px;
     border: 0;
-    color: var(--text-soft);
+    color: var(--color-text-secondary);
     background: transparent;
     cursor: pointer;
   }
 
   .project-sidebar__drawer-trigger:hover,
   .project-sidebar__drawer-trigger[aria-expanded="true"] {
-    color: var(--text);
-    background: var(--surface-hover);
+    color: var(--color-text-primary);
+    background: var(--color-surface-hover);
   }
 
   .project-sidebar__drawer-trigger span {
-    font-size: 9px;
+    font-size: var(--font-size-xs);
   }
 
   .project-sidebar__drawer {
@@ -286,9 +286,9 @@
     width: min(320px, calc(100vw - 88px));
     min-width: 240px;
     grid-template-rows: 38px auto minmax(0, 1fr);
-    border-right: 1px solid var(--border);
-    background: var(--surface);
-    box-shadow: 12px 0 28px rgb(0 0 0 / 0.32);
+    border-right: 1px solid var(--color-border-subtle);
+    background: var(--color-panel);
+    box-shadow: var(--elevation-popover);
   }
 
   .project-sidebar__drawer-header {
@@ -296,9 +296,9 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 8px 0 12px;
-    border-bottom: 1px solid var(--border);
-    color: var(--text-soft);
-    font-size: 11px;
+    border-bottom: 1px solid var(--color-border-subtle);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
   }
 
   .project-sidebar__drawer-header button {
@@ -308,14 +308,14 @@
     place-items: center;
     padding: 0;
     border: 0;
-    border-radius: 6px;
-    color: var(--muted);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-muted);
     background: transparent;
     cursor: pointer;
   }
 
   .project-sidebar__drawer-header button:hover {
-    color: var(--text);
-    background: var(--surface-hover);
+    color: var(--color-text-primary);
+    background: var(--color-surface-hover);
   }
 }

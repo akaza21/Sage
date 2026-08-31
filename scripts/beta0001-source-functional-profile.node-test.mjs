@@ -332,6 +332,13 @@ test("reports the dirty Sage checkout as source-identity-dirty with --attestatio
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
   );
+  const attestationCommit = git(repositoryRoot, ["rev-parse", "HEAD"]);
+  const attestedCandidate = JSON.parse(
+    git(repositoryRoot, [
+      "show",
+      `${attestationCommit}:local-evidence/BETA-0001/source-functional/attestation-v1.json`,
+    ]),
+  ).candidateCommit;
   assert.deepEqual(
     JSON.parse(
       execFileSync(
@@ -344,7 +351,7 @@ test("reports the dirty Sage checkout as source-identity-dirty with --attestatio
           ),
           "--current",
           "--attestation",
-          git(repositoryRoot, ["rev-parse", "HEAD"]),
+          attestationCommit,
         ],
         { cwd: repositoryRoot, encoding: "utf8" },
       ),
@@ -353,7 +360,7 @@ test("reports the dirty Sage checkout as source-identity-dirty with --attestatio
       verdict: "incomplete",
       acceptance: "local-green-only",
       reason: "source-identity-dirty",
-      sourceCommit: git(repositoryRoot, ["rev-parse", "HEAD"]),
+      sourceCommit: attestedCandidate,
     },
   );
 });

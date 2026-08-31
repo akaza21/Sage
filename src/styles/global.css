@@ -38,6 +38,7 @@
     var(--color-danger) 12%,
     var(--color-panel)
   );
+  --color-overlay: rgb(0 0 0 / 0.52);
   --color-diff-add: var(--color-success);
   --color-diff-add-muted: color-mix(
     in srgb,
@@ -99,6 +100,8 @@
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
   --focus-ring: var(--focus-ring-width) solid var(--color-focus-ring);
+  --focus-ring-inset: inset 0 0 0 var(--focus-ring-width)
+    var(--color-focus-ring);
   --opacity-disabled: 0.45;
   --motion-duration-fast: 100ms;
   --motion-duration-normal: 160ms;
@@ -281,7 +284,11 @@ textarea:disabled,
 
 .brand-mark--error {
   color: var(--danger);
-  border-color: color-mix(in srgb, var(--color-danger) 45%, var(--border));
+  border-color: color-mix(
+    in srgb,
+    var(--color-danger) 45%,
+    var(--color-border-subtle)
+  );
   background: var(--color-danger-muted);
 }
 

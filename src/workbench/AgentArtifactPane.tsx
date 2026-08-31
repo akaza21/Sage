@@ -1,5 +1,5 @@
 import { Eye, Files, GitCompareArrows, PanelRightClose, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
@@ -41,13 +41,18 @@ export function AgentArtifactPane({
   const focusedPage = useStore(acpProjectionStoreFor(browseChatId), (state) =>
     browseChatId && state.page?.chatId === browseChatId ? state.page : null,
   );
-  const artifacts = orderedTabs(tabs).filter((tab) =>
-    agentArtifactVisible({
-      tabId: tab.id,
-      kind: tab.kind,
-      admittedIds,
-      hasFocusedChatStats: artifactChipStatsForTab(tab, focusedPage) != null,
-    }),
+  const artifacts = useMemo(
+    () =>
+      orderedTabs(tabs).filter((tab) =>
+        agentArtifactVisible({
+          tabId: tab.id,
+          kind: tab.kind,
+          admittedIds,
+          hasFocusedChatStats:
+            artifactChipStatsForTab(tab, focusedPage) != null,
+        }),
+      ),
+    [admittedIds, focusedPage, tabs],
   );
   const activeArtifact =
     artifacts.find((tab) => tab.id === activeTabId) ?? null;
@@ -70,21 +75,22 @@ export function AgentArtifactPane({
   }, [browseRevision]);
 
   const hasResources = artifacts.length > 0 || previewOpen;
-  const resourceAvailability = [
-    ...artifacts.map((tab) => tab.id),
-    ...(previewOpen ? [`preview:${browseChatId}:${browseRevision}`] : []),
-  ].join("\u0000");
+  const resourceKeys = useMemo(
+    () =>
+      new Set([
+        ...artifacts.map((tab) => tab.id),
+        ...(previewOpen ? [`preview:${browseChatId}:${browseRevision}`] : []),
+      ]),
+    [artifacts, browseChatId, browseRevision, previewOpen],
+  );
 
   useEffect(() => {
-    const current = new Set(
-      resourceAvailability ? resourceAvailability.split("\u0000") : [],
-    );
-    const added = [...current].some(
+    const added = [...resourceKeys].some(
       (resourceKey) => !availableResourceKeys.current.has(resourceKey),
     );
-    availableResourceKeys.current = current;
+    availableResourceKeys.current = resourceKeys;
     if (!expanded && added) onExpandedChange?.(true);
-  }, [expanded, onExpandedChange, resourceAvailability]);
+  }, [expanded, onExpandedChange, resourceKeys]);
 
   useLayoutEffect(() => {
     if (expanded && !previousExpanded.current && focusOnExpand) {

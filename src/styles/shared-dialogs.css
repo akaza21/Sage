@@ -5,27 +5,27 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgb(0 0 0 / 0.52);
+  background: var(--color-overlay);
 }
 
 .dirty-dialog {
   width: min(440px, 100%);
   padding: 20px;
-  border: 1px solid var(--border-strong);
-  border-radius: 12px;
-  background: var(--surface-raised);
-  box-shadow: 0 20px 70px rgb(0 0 0 / 0.45);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--elevation-floating);
 }
 
 .dirty-dialog h2 {
   margin: 0 0 8px;
-  font-size: 16px;
+  font-size: var(--font-size-lg);
 }
 
 .dirty-dialog p {
   margin: 0;
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
   line-height: 1.5;
 }
 
@@ -38,11 +38,11 @@
 
 .new-file-dialog {
   width: min(480px, calc(100vw - 32px));
-  color: var(--text);
+  color: var(--color-text-primary);
 }
 
 .new-file-dialog::backdrop {
-  background: rgb(0 0 0 / 52%);
+  background: var(--color-overlay);
 }
 
 .new-file-dialog__form,
@@ -57,32 +57,33 @@
 
 .new-file-dialog__field {
   margin-top: 12px;
-  color: var(--text-soft);
-  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
 }
 
 .new-file-dialog__field input {
   width: 100%;
   padding: 8px 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  color: var(--text);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
   outline: none;
-  background: var(--surface-raised);
+  background: var(--color-surface);
 }
 
 .new-file-dialog__field input:focus {
-  border-color: var(--accent);
+  border-color: var(--color-focus-ring);
+  box-shadow: var(--focus-ring-inset);
 }
 
 .new-file-dialog .new-file-dialog__preview {
   overflow-wrap: anywhere;
-  color: var(--text-soft);
+  color: var(--color-text-secondary);
 }
 
 .new-file-dialog .new-file-dialog__error {
   min-height: 18px;
-  color: var(--danger);
+  color: var(--color-danger);
 }
 
 .handoff-control {
@@ -98,22 +99,22 @@
   width: max-content;
   max-width: min(360px, calc(100vw - 32px));
   padding: 8px 10px;
-  border: 1px solid #7f3434;
-  border-radius: 6px;
-  color: #ffd6d6;
-  background: #3a2020;
-  font-size: 12px;
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  color: var(--color-danger);
+  background: var(--color-danger-muted);
+  font-size: var(--font-size-sm);
   line-height: 1.4;
 }
 
 .handoff-dialog {
   width: min(560px, calc(100vw - 32px));
   margin: auto;
-  color: var(--text);
+  color: var(--color-text-primary);
 }
 
 .handoff-dialog::backdrop {
-  background: rgb(0 0 0 / 0.52);
+  background: var(--color-overlay);
 }
 
 .handoff-dialog__form {
@@ -124,19 +125,19 @@
 .handoff-dialog__field {
   display: grid;
   gap: 6px;
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
 }
 
 .handoff-dialog__field select,
 .handoff-dialog__field textarea {
   width: 100%;
   padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
   outline: none;
-  background: var(--surface-active);
+  background: var(--color-surface-active);
   font: inherit;
 }
 
@@ -146,7 +147,8 @@
 
 .handoff-dialog__field select:focus,
 .handoff-dialog__field textarea:focus {
-  border-color: var(--accent);
+  border-color: var(--color-focus-ring);
+  box-shadow: var(--focus-ring-inset);
 }
 
 .chat-search-dialog {
@@ -155,7 +157,7 @@
 }
 
 .chat-search-dialog::backdrop {
-  background: rgb(0 0 0 / 48%);
+  background: var(--color-overlay);
 }
 
 .chat-search-dialog__form {
@@ -171,24 +173,25 @@
 .chat-search-dialog__query {
   display: grid;
   gap: 6px;
-  font-size: 12px;
-  color: var(--muted);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
 }
 
 .chat-search-dialog__query input,
 .chat-search-dialog__query select {
   width: 100%;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--surface-raised);
-  color: var(--text);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
   padding: 8px 10px;
 }
 
 .chat-search-dialog__query input:focus,
 .chat-search-dialog__query select:focus {
-  outline: 1px solid var(--accent);
-  border-color: var(--accent);
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  border-color: var(--color-focus-ring);
 }
 
 .chat-search-dialog__actions {
@@ -201,7 +204,7 @@
   min-height: 48px;
   max-height: 420px;
   overflow: auto;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--color-border-subtle);
   padding-top: 8px;
 }
 
@@ -215,17 +218,17 @@
   gap: 5px;
   width: 100%;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text);
+  color: var(--color-text-primary);
   padding: 8px;
   text-align: left;
 }
 
 .chat-search-result:hover,
 .chat-search-result:focus-visible {
-  border-color: var(--border-strong);
-  background: var(--surface-hover);
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-hover);
   outline: none;
 }
 
@@ -239,6 +242,6 @@
 .chat-search-result > span:last-child,
 .chat-search-dialog__more,
 .chat-search-dialog__empty {
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
 }

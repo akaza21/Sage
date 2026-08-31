@@ -33,11 +33,12 @@ responsive case also rejects document-level horizontal overflow.
 | Resources | Agent Diff, loopback Preview, and empty right pane |
 | Recovery | Failed Turn and waiting/running Turn |
 | Accessibility | Forced colors, reduced motion, and keyboard focus-visible |
-| Responsive | 720x560 narrow window and 690x440 200%-equivalent viewport |
+| Responsive | 720x560 narrow window and a 1380x880 device emulated at 200% zoom |
 
-The 690x440 case represents the CSS-pixel space left when the 1380x880
-reference window is viewed at 200% zoom. It does not claim native WebView zoom
-or operating-system scale-factor acceptance.
+The zoom case uses Chromium device metrics with a 2x scale factor and asserts
+both a 690 CSS-pixel effective width and `devicePixelRatio === 2` before capture.
+It therefore protects the same reflow boundary as a 1380x880 window at 200%,
+while the native walkthrough remains responsible for WebView integration.
 
 ## Dependency and runtime impact
 
@@ -46,7 +47,7 @@ npm packages have approximately 18.5 MB of unpacked JavaScript in total and are
 not part of the Vite production bundle. Chromium installation is separate from
 `npm ci`; on the Windows authoring machine the Chromium and headless-shell cache
 occupied 731,309,635 bytes (about 697 MiB) outside the repository. The 13
-integrated-candidate PNG baselines occupy 774,097 bytes.
+integrated-candidate PNG baselines occupy 792,758 bytes.
 
 A warm integrated-candidate Windows run completed in about 16 seconds. This lane is purposely
 not included in `npm run check`: the existing CI matrix is not a Windows pixel
@@ -59,5 +60,5 @@ Windows Chromium infrastructure.
 - The tracked baselines are Windows Chromium only.
 - Fixtures exercise real React surfaces and stores but not Tauri commands,
   native dialogs, WebView destruction/recreation, or signed packages.
-- First-launch, Project creation/opening, native error recovery, and a complete
-  keyboard-only walkthrough remain W2.8/native acceptance work.
+- Signed-package, macOS, and operating-system assistive-technology acceptance
+  remain outside this browser lane.

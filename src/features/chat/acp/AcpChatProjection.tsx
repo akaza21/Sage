@@ -5,6 +5,7 @@ import type {
   ProjectRootSummary,
   ResourceRef,
 } from "../../../domain/workbench";
+import { chatTimestamp } from "../chatTimestamp";
 
 import { AcpAnnouncementRegions } from "./AcpAnnouncementRegions";
 import { dispatchBrowseFromAcpPage } from "./dispatchBrowse";
@@ -23,6 +24,7 @@ import {
   useAgentRailViewPrefs,
 } from "../../../workbench/agentRailViewPrefs";
 import "./acp-chat.css";
+import "./acp-chat-activities.css";
 
 const MAX_THOUGHT_WORKING_ROWS = 64;
 
@@ -126,23 +128,32 @@ function ItemView({
   onOpenResource?: AcpChatProjectionProps["onOpenResource"];
 }) {
   switch (item.kind) {
-    case "text":
+    case "text": {
+      const timestamp = chatTimestamp(item.createdAt);
       return (
         <article
           className={`acp-message acp-message--${item.payload.role}`}
           data-item-id={item.id}
           data-message-role={item.payload.role}
         >
-          <span className="acp-message__role">
-            {item.payload.role === "assistant"
-              ? "Agent"
-              : item.payload.role === "user"
-                ? "You"
-                : "System"}
-          </span>
+          <header className="acp-message__meta">
+            <span className="acp-message__role">
+              {item.payload.role === "assistant"
+                ? "Agent"
+                : item.payload.role === "user"
+                  ? "You"
+                  : "System"}
+            </span>
+            {timestamp ? (
+              <time dateTime={timestamp.dateTime} title={timestamp.dateTime}>
+                {timestamp.label}
+              </time>
+            ) : null}
+          </header>
           <ChatMarkdown text={item.payload.text} />
         </article>
       );
+    }
     case "thoughtSummary":
       return (
         <details className="acp-details acp-thought">

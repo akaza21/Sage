@@ -30,6 +30,7 @@ function textItem(): Extract<AcpItem, { kind: "text" }> {
     id: "item-text",
     kind: "text",
     origin: "primary",
+    createdAt: Date.UTC(2026, 7, 31, 9, 5),
     payload: { role: "assistant", text: "Normalized answer" },
   } as unknown as Extract<AcpItem, { kind: "text" }>;
 }
@@ -173,6 +174,10 @@ describe("AcpChatProjection", () => {
       screen.getByRole("status", { name: "Waiting for model" }),
     ).toHaveTextContent("Waiting for model");
     expect(screen.getByText("Normalized answer")).toBeInTheDocument();
+    expect(screen.getByText("09:05", { selector: "time" })).toHaveAttribute(
+      "dateTime",
+      "2026-08-31T09:05:00.000Z",
+    );
     expect(container.querySelector(".acp-chat-projection")).toMatchObject({
       dataset: {
         projectId: "project-1",

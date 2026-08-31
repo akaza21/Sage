@@ -1,14 +1,14 @@
 .diff-limit {
   margin: 8px;
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
   line-height: 1.45;
 }
 
 .diff-header__counts {
   display: flex;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -49,7 +49,7 @@
   align-items: center;
   gap: 8px;
   color: var(--color-text-primary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .diff-header__path span {
@@ -62,7 +62,7 @@
   padding: 0 14px;
   color: var(--color-text-secondary);
   background: var(--color-panel);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .diff-toolbar__hint {
@@ -74,7 +74,7 @@
   padding: 16px 0;
   overflow: auto;
   font-family: var(--font-family-mono);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .diff-hunk + .diff-hunk {
@@ -87,7 +87,7 @@
   padding: 6px 14px 5px 104px;
   color: var(--color-diff-add);
   background: var(--color-diff-add-muted);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .diff-line {
@@ -131,7 +131,7 @@
 
 .diff-limit {
   padding: 8px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 7px;
-  background: var(--surface);
+  background: var(--color-panel);
 }

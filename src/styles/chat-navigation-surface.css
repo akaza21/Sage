@@ -16,14 +16,14 @@
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
   text-align: left;
 }
 
 .project-chat-more:hover {
-  color: var(--text);
-  background: var(--surface-hover);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .project-chat {
@@ -34,8 +34,8 @@
   align-items: center;
   gap: 7px;
   padding: 4px 4px 4px 8px;
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
 }
 
 .project-chat-row .project-chat {
@@ -51,7 +51,7 @@
   padding: 0;
   border: 0;
   border-radius: 5px;
-  color: var(--muted);
+  color: var(--color-text-muted);
   background: transparent;
   cursor: pointer;
 }
@@ -68,8 +68,8 @@
 
 .project-chat__actions:hover,
 .project-chat-edit button:hover {
-  color: var(--text);
-  background: var(--surface-hover);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .project-chat__actions:disabled,
@@ -87,7 +87,7 @@
 
 .project-chat__pinned {
   flex: 0 0 auto;
-  color: var(--accent);
+  color: var(--color-accent);
 }
 
 .project-chat__title-label {
@@ -110,10 +110,10 @@
   width: 190px;
   gap: 2px;
   padding: 5px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel, #161b22);
-  box-shadow: 0 10px 28px rgb(0 0 0 / 0.34);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-panel);
+  box-shadow: var(--elevation-popover);
 }
 
 .project-chat-actions__menu button {
@@ -124,19 +124,19 @@
   gap: 8px;
   padding: 0 8px;
   border: 0;
-  border-radius: 6px;
-  color: var(--text-soft);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
   background: transparent;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   text-align: left;
   cursor: pointer;
 }
 
 .project-chat-actions__menu button:hover,
 .project-chat-actions__menu button:focus-visible {
-  color: var(--text);
-  background: var(--surface-hover);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .project-chat-actions__menu button:disabled {
@@ -146,8 +146,8 @@
 
 .project-chat-actions__label {
   padding: 4px 8px 2px;
-  color: var(--muted);
-  font-size: 10px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
   font-weight: 650;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -156,8 +156,8 @@
 .project-chat-actions__empty {
   margin: 0;
   padding: 6px 8px;
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
 }
 
 .project-chat-edit {
@@ -173,23 +173,23 @@
   min-width: 0;
   height: 24px;
   padding: 0 6px;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--color-accent);
   border-radius: 5px;
-  color: var(--text);
+  color: var(--color-text-primary);
   outline: none;
-  background: var(--surface-active);
+  background: var(--color-surface-active);
   font: inherit;
 }
 
 .project-chat-edit input[aria-invalid="true"] {
-  border-color: var(--danger);
+  border-color: var(--color-danger);
 }
 
 .project-chat-edit__error {
   grid-column: 2 / -1;
   padding: 1px 4px 4px;
-  color: var(--danger);
-  font-size: 10px;
+  color: var(--color-danger);
+  font-size: var(--font-size-xs);
   line-height: 1.25;
 }
 
@@ -210,8 +210,8 @@
 
 .project-chat__status {
   overflow: hidden;
-  color: var(--muted);
-  font-size: 10px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
   font-weight: 600;
   line-height: 1.2;
   text-align: left;
@@ -221,15 +221,15 @@
 
 .project-chat__status--working,
 .project-chat__status--recovering {
-  color: var(--accent);
+  color: var(--color-accent);
 }
 
 .project-chat__status--waiting {
-  color: var(--warning);
+  color: var(--color-warning);
 }
 
 .project-chat__status--failed {
-  color: var(--danger);
+  color: var(--color-danger);
 }
 
 .project-chat__working {
@@ -245,7 +245,7 @@
   width: 3px;
   height: 3px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--color-accent);
   animation: sage-working-pulse 1.2s ease-in-out infinite;
 }
 
@@ -259,8 +259,8 @@
 
 .project-chat__age {
   margin-left: auto;
-  color: var(--muted);
-  font-size: 9px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -277,8 +277,8 @@
   align-items: center;
   gap: 6px;
   overflow: hidden;
-  color: var(--muted);
-  font-size: 9px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   line-height: 1.25;
 }
@@ -302,12 +302,12 @@
 }
 
 .project-chat--active {
-  color: var(--text);
-  background: var(--surface-active);
+  color: var(--color-text-primary);
+  background: var(--color-surface-active);
 }
 
 .project-chat--utility {
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .project-chat--utility span {
@@ -325,11 +325,11 @@
   gap: 8px;
   margin: 6px;
   padding: 9px;
-  border: 1px dashed var(--border-strong);
+  border: 1px dashed var(--color-border-strong);
   border-radius: 7px;
-  color: var(--text-soft);
+  color: var(--color-text-secondary);
   background: transparent;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
 }
 
@@ -338,7 +338,7 @@
   height: 7px;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--color-accent);
   animation: sage-working-pulse 1.4s ease-in-out infinite;
 }
 
@@ -349,9 +349,9 @@
   align-items: center;
   gap: 8px;
   padding: 0 10px;
-  border-top: 1px solid var(--border);
-  color: var(--text-soft);
-  font-size: 12px;
+  border-top: 1px solid var(--color-border-subtle);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
 }
 
 .account-avatar {
@@ -360,8 +360,8 @@
   height: 23px;
   place-items: center;
   border-radius: 50%;
-  color: var(--accent-strong);
-  background: var(--accent-muted);
-  font-size: 10px;
+  color: var(--color-accent-hover);
+  background: var(--color-accent-muted);
+  font-size: var(--font-size-xs);
   font-weight: 700;
 }

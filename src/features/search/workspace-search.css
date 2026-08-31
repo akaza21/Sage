@@ -28,7 +28,7 @@
 
 .workspace-search__input:focus-within {
   border-color: var(--color-focus-ring);
-  box-shadow: var(--focus-shadow);
+  box-shadow: var(--focus-ring-inset);
 }
 
 .workspace-search__input input {
@@ -39,7 +39,7 @@
   outline: 0;
   color: var(--color-text-primary);
   background: transparent;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .workspace-search__input button,
@@ -52,7 +52,7 @@
   border-radius: 5px;
   color: var(--color-text-secondary);
   background: transparent;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
 }
 
@@ -86,7 +86,7 @@
   align-items: center;
   gap: 5px;
   color: var(--color-text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
 }
 
 .workspace-search__case input {
@@ -110,7 +110,7 @@
   justify-content: space-between;
   padding: 5px 9px;
   color: var(--color-text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -120,7 +120,7 @@
   margin: 0;
   padding: 10px;
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   line-height: 1.45;
 }
 
@@ -194,30 +194,30 @@
 }
 
 .workspace-search__path strong {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
 }
 
 .workspace-search__path span,
 .workspace-search__position {
   color: var(--color-text-muted);
-  font-size: 9px;
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
 
 .workspace-search__preview {
   color: var(--color-text-muted);
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
 }
 
 .workspace-search__position {
   flex: 0 0 auto;
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--color-text-muted);
   background: var(--color-surface-active);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
 

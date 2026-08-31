@@ -9,9 +9,9 @@
   display: flex;
   gap: 2px;
   padding: 2px;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  background: var(--surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-panel);
 }
 
 .title-bar__mode {
@@ -19,22 +19,22 @@
   display: inline-flex;
   align-items: center;
   padding: 3px 12px;
-  border-radius: 6px;
-  color: var(--muted);
-  font-size: 12px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
   font-weight: 600;
   cursor: pointer;
   user-select: none;
 }
 
 .title-bar__mode:hover {
-  color: var(--text-soft);
+  color: var(--color-text-secondary);
 }
 
 .title-bar__mode--active {
-  color: var(--text);
-  background: var(--surface-active);
-  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--color-text-primary);
+  background: var(--color-surface-active);
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
 }
 
 .title-bar__mode input {
@@ -47,8 +47,8 @@
 }
 
 .title-bar__mode:has(input:focus-visible) {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .workbench--editor .workbench__body {
@@ -79,7 +79,7 @@
   right: 0;
   bottom: 0;
   width: min(420px, calc(100% - 44px));
-  box-shadow: -12px 0 28px rgb(0 0 0 / 0.32);
+  box-shadow: var(--elevation-popover);
 }
 
 .workbench-sidebar-splitter {
@@ -98,18 +98,18 @@
   left: 3px;
   width: 2px;
   border-radius: 2px;
-  background: var(--border);
+  background: var(--color-border-subtle);
   content: "";
 }
 
 .workbench-sidebar-splitter:hover::after,
 .workbench-sidebar-splitter--active::after,
 .workbench-sidebar-splitter:focus-visible::after {
-  background: var(--accent);
+  background: var(--color-accent);
 }
 
 .workbench-sidebar-splitter:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-accent);
   outline-offset: -2px;
 }
 
@@ -139,18 +139,18 @@
   left: 3px;
   width: 2px;
   border-radius: 2px;
-  background: var(--border);
+  background: var(--color-border-subtle);
   content: "";
 }
 
 .agent-chat-splitter:hover::after,
 .agent-chat-splitter--active::after,
 .agent-chat-splitter:focus-visible::after {
-  background: var(--accent);
+  background: var(--color-accent);
 }
 
 .agent-chat-splitter:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-accent);
   outline-offset: -2px;
 }
 
@@ -159,11 +159,10 @@
   min-width: 0;
   min-height: 0;
   grid-template-rows: 36px minmax(0, 1fr);
-  border-right: 1px solid var(--border);
 }
 
-.agent-chat-pane--focused {
-  box-shadow: inset 0 0 0 1px var(--accent-muted);
+.agent-chat-pane--focused .agent-chat-pane__header {
+  border-top: var(--focus-ring-width) solid var(--color-accent);
 }
 
 .agent-chat-pane__header {
@@ -172,8 +171,8 @@
   align-items: center;
   gap: 8px;
   padding: 0 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-panel);
 }
 
 .agent-chat-pane__focus {
@@ -186,9 +185,9 @@
   padding: 0;
   overflow: hidden;
   border: 0;
-  color: var(--text-soft);
+  color: var(--color-text-secondary);
   background: transparent;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   text-align: left;
   text-overflow: ellipsis;
@@ -197,7 +196,7 @@
 }
 
 .agent-chat-pane__focus:hover {
-  color: var(--text);
+  color: var(--color-text-primary);
 }
 
 .agent-chat-pane__header > .agent-chat-chip {
@@ -248,28 +247,30 @@
   height: 7px;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  background: var(--color-accent);
+  outline: var(--focus-ring-width) solid
+    color-mix(in srgb, var(--color-accent) 18%, transparent);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .agent-unread-dot--attention {
-  background: var(--warning);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 22%, transparent);
+  background: var(--color-warning);
+  outline-color: color-mix(in srgb, var(--color-warning) 22%, transparent);
 }
 
 .agent-chat-chip {
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
   font-weight: 600;
 }
 
 .agent-chat-chip--working {
-  color: var(--accent);
+  color: var(--color-accent);
   animation: sage-working-pulse 1.4s ease-in-out infinite;
 }
 
 .agent-chat-chip--waiting {
-  color: var(--text-soft);
+  color: var(--color-text-secondary);
 }
 
 .agent-artifact-pane {
@@ -277,8 +278,7 @@
   min-width: 0;
   min-height: 0;
   grid-template-rows: 42px minmax(0, 1fr);
-  border-left: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--color-panel);
 }
 
 .agent-artifact-pane--empty {
@@ -287,14 +287,14 @@
 
 .agent-artifact-pane--collapsed {
   grid-template-rows: minmax(0, 1fr);
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--color-border-subtle);
 }
 
 .agent-artifact-pane__header {
   display: flex;
   min-width: 0;
   align-items: stretch;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .agent-artifact-pane__header > .tab-strip {
@@ -308,8 +308,8 @@
   align-self: center;
   padding: 0 12px;
   overflow: hidden;
-  color: var(--text-soft);
-  font-size: 11px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -321,14 +321,14 @@
   place-items: center;
   padding: 0;
   border: 0;
-  color: var(--muted);
+  color: var(--color-text-muted);
   background: transparent;
   cursor: pointer;
 }
 
 .agent-artifact-pane__collapse:hover {
-  color: var(--text);
-  background: var(--surface-hover);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .agent-artifact-pane__edge-action {
@@ -338,14 +338,14 @@
   gap: 8px;
   padding: 8px 3px;
   border: 0;
-  color: var(--muted);
-  background: var(--surface);
+  color: var(--color-text-muted);
+  background: var(--color-panel);
   cursor: pointer;
 }
 
 .agent-artifact-pane__edge-action:hover {
-  color: var(--text);
-  background: var(--surface-hover);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .agent-artifact-pane__edge-action > span {
@@ -357,7 +357,7 @@
 .agent-artifact-pane__edge-action small {
   max-width: 100%;
   overflow: hidden;
-  font-size: 8px;
+  font-size: var(--font-size-xs);
   text-overflow: ellipsis;
 }
 
@@ -388,8 +388,8 @@
   align-items: center;
   gap: 6px;
   padding: 0 8px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-panel);
 }
 
 .harness-browser__address {
@@ -401,15 +401,15 @@
   width: 100%;
   height: 24px;
   padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--canvas);
-  color: var(--text);
-  font-size: 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-canvas);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
 }
 
 .harness-browser__address input[aria-invalid="true"] {
-  border-color: var(--danger, #d14);
+  border-color: var(--color-danger);
 }
 
 .harness-browser__chrome button {
@@ -419,26 +419,26 @@
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .harness-browser__chrome button:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--surface-hover);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .harness-browser__denied {
   margin: 0;
   padding: 4px 10px;
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
 }
 
 .harness-browser__frame {
   width: 100%;
   height: 100%;
   border: 0;
-  background: var(--canvas);
+  background: var(--color-canvas);
 }

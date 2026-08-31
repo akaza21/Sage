@@ -36,7 +36,7 @@
   color: var(--color-text-primary);
   background: var(--color-danger-muted);
   box-shadow: var(--elevation-popover);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .repository-mutation-alert span {

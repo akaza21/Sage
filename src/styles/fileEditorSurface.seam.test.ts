@@ -27,10 +27,10 @@ describe("File editor surface stylesheet seam", () => {
     );
 
     expect(surfaceCss).toMatch(
-      /\.file-header\s*\{[^}]*font-size:\s*var\(--type-size-caption\);/s,
+      /\.file-header\s*\{[^}]*font-size:\s*var\(--font-size-xs\);/s,
     );
     expect(surfaceCss).toMatch(
-      /\.editor-notice\s*\{[^}]*font-size:\s*var\(--type-size-editor-ui\);/s,
+      /\.editor-notice\s*\{[^}]*font-size:\s*var\(--font-size-sm\);/s,
     );
     expect(surfaceCss).not.toMatch(
       /\.editor-input \.cm-scroller\s*\{[^}]*font-size:/s,

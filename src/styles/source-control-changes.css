@@ -17,36 +17,37 @@
   gap: 6px;
   padding: 0 7px;
   border: 0;
-  border-radius: 6px;
-  color: var(--text-soft);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
   background: transparent;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   text-align: left;
 }
 
 .source-change:hover,
 .source-change--selected {
-  color: var(--text);
-  background: var(--surface-hover);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .source-change--conflicted {
-  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border));
-  background: color-mix(in srgb, var(--danger) 10%, var(--surface-raised));
+  border: 1px solid
+    color-mix(in srgb, var(--color-danger) 45%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface));
 }
 
 .source-change__status {
-  color: var(--warning);
+  color: var(--color-warning);
   font-weight: 700;
 }
 
 .source-change__status--conflict {
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: #fff;
-  background: var(--danger);
-  font-size: 10px;
+  background: var(--color-danger);
+  font-size: var(--font-size-xs);
 }
 
 .source-change__path {
@@ -56,7 +57,7 @@
 }
 
 .source-change__counts {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -68,19 +69,19 @@
 
 .source-change__resolve {
   padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--text-soft);
-  background: var(--surface-raised);
-  font-size: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  font-size: var(--font-size-xs);
   font-weight: 700;
   cursor: pointer;
 }
 
 .source-change__resolve:hover:not(:disabled),
 .source-change__resolve:focus-visible {
-  color: var(--text);
-  border-color: var(--accent);
+  color: var(--color-text-primary);
+  border-color: var(--color-accent);
 }
 
 .source-change__resolve:disabled {
@@ -96,15 +97,15 @@
   place-items: center;
   border: 0;
   border-radius: 5px;
-  color: var(--muted);
+  color: var(--color-text-muted);
   background: transparent;
   cursor: pointer;
 }
 
 .source-change__action:hover:not(:disabled),
 .source-change__action:focus-visible {
-  color: var(--text);
-  background: var(--surface-hover);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .source-change__action:disabled {
@@ -120,11 +121,12 @@
   gap: 8px;
   margin: 0 5px;
   padding: 7px;
-  border: 1px solid color-mix(in srgb, var(--danger) 42%, var(--border));
-  border-radius: 6px;
-  color: var(--text-soft);
-  background: var(--surface-raised);
-  font-size: 11px;
+  border: 1px solid
+    color-mix(in srgb, var(--color-danger) 42%, var(--color-border-subtle));
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  font-size: var(--font-size-xs);
 }
 
 .source-change__confirmation-actions {
@@ -135,23 +137,27 @@
 
 .source-change__confirmation-button {
   padding: 3px 7px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 5px;
-  color: var(--text-soft);
-  background: var(--surface);
+  color: var(--color-text-secondary);
+  background: var(--color-panel);
   cursor: pointer;
   font: inherit;
 }
 
 .source-change__confirmation-button--danger {
-  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
-  color: var(--danger);
+  border-color: color-mix(
+    in srgb,
+    var(--color-danger) 55%,
+    var(--color-border-subtle)
+  );
+  color: var(--color-danger);
 }
 
 .source-change__confirmation-button:hover:not(:disabled),
 .source-change__confirmation-button:focus-visible {
-  color: var(--text);
-  background: var(--surface-hover);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .source-change__confirmation-button:disabled {

@@ -73,6 +73,24 @@ async function expectNoViewportOverflow(page: Page) {
     .toBe(true);
 }
 
+async function settleTranscriptAtEnd(page: Page) {
+  await page.locator(".message-list").evaluateAll((lists) => {
+    for (const list of lists) list.scrollTop = list.scrollHeight;
+  });
+  await expect
+    .poll(() =>
+      page
+        .locator(".message-list")
+        .evaluateAll((lists) =>
+          lists.every(
+            (list) =>
+              list.scrollHeight - list.scrollTop - list.clientHeight <= 1,
+          ),
+        ),
+    )
+    .toBe(true);
+}
+
 test.describe("Wave 2 canonical visual states", () => {
   test.use({ viewport: { width: 1380, height: 880 } });
 
@@ -114,17 +132,6 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(workbench).toHaveScreenshot("agent-narrow-720x560.png");
   });
 
-  test("supports the 200%-equivalent Agent viewport", async ({ page }) => {
-    await page.setViewportSize({ width: 690, height: 440 });
-    const workbench = await openScenario(page, "agent-single", "agent");
-
-    await expect(
-      page.getByRole("region", { name: "Agent chat", exact: true }),
-    ).toBeVisible();
-    await expectNoViewportOverflow(page);
-    await expect(workbench).toHaveScreenshot("agent-zoom-200-equivalent.png");
-  });
-
   test("exposes visible keyboard focus", async ({ page }) => {
     await page.setViewportSize({ width: 1380, height: 880 });
     const workbench = await openScenario(page, "agent-single", "agent");
@@ -133,6 +140,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const focusVisible = page.locator(":focus-visible");
     await expect(focusVisible).toHaveCount(1);
     await expect(focusVisible).toBeVisible();
+    await settleTranscriptAtEnd(page);
     await expect(workbench).toHaveScreenshot("agent-keyboard-focus.png");
   });
 
@@ -153,5 +161,31 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       page.getByRole("status", { name: "1 working turn" }),
     ).toBeVisible();
     await expect(workbench).toHaveScreenshot("agent-reduced-motion.png");
+  });
+});
+
+test.describe("Wave 2 200% zoom state", () => {
+  test.use({
+    viewport: { width: 690, height: 440 },
+    deviceScaleFactor: 2,
+  });
+
+  test("supports the Agent workbench at 200% zoom", async ({ page }) => {
+    const workbench = await openScenario(page, "agent-single", "agent");
+
+    await expect(workbench).toHaveClass(/workbench--compact/);
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          devicePixelRatio: window.devicePixelRatio,
+          innerWidth: window.innerWidth,
+        })),
+      )
+      .toEqual({ devicePixelRatio: 2, innerWidth: 690 });
+    await expect(
+      page.getByRole("region", { name: "Agent chat", exact: true }),
+    ).toBeVisible();
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("agent-zoom-200.png");
   });
 });

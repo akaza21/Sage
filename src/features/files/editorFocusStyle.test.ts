@@ -16,7 +16,7 @@ describe("editor focus style policy", () => {
 
     expect(rule?.[0]).toBeDefined();
     expect(rule?.groups?.declarations).toMatch(
-      /outline:\s*2px solid var\(--accent\);/,
+      /outline:\s*2px solid var\(--color-accent\);/,
     );
     expect(rule?.groups?.declarations).toMatch(/outline-offset:\s*-2px;/);
     expect(rule?.[0]).not.toContain("aria-readonly");

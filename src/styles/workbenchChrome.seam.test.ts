@@ -26,7 +26,7 @@ describe("Workbench chrome stylesheet seam", () => {
 
     expect(chromeCss).toMatch(/\.title-bar__end\s*\{[^}]*min-width:\s*0;/s);
     expect(chromeCss).toMatch(
-      /\.tab-strip__new\s*\{[^}]*width:\s*var\(--control-target\);[^}]*height:\s*100%;/s,
+      /\.tab-strip__new\s*\{[^}]*width:\s*var\(--control-height-compact\);[^}]*height:\s*100%;/s,
     );
     expect(chromeCss).toMatch(
       /@media \(max-width: 640px\)\s*\{[\s\S]*?\.title-bar\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;/,
