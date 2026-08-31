@@ -9,8 +9,9 @@ describe("Devin / VS Code dark tokens", () => {
       readFileSync(resolve("src/features/search/workspace-search.css"), "utf8"),
     ].join("\n");
     expect(css).not.toMatch(/#0f110f|#2b4932|#31523a|#263f2c|#465248|#526354/);
-    expect(css).toContain("--accent: #4c8dff");
-    expect(css).toContain("--editor: #0e1116");
-    expect(css).toContain("--selection: #264f78");
+    expect(css).toContain("--color-accent: #4c8dff");
+    expect(css).toContain("--color-canvas: #0e1116");
+    expect(css).toContain("--color-selection: #264f78");
+    expect(css).toContain("--editor: var(--color-canvas)");
   });
 });
