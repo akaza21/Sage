@@ -19,6 +19,7 @@ import {
   createAcp04Ui,
   createAcp04Receipt,
   createModeAState,
+  fillPromptExpression,
   finalizeAcp04Collection,
   parseAcp04ProbeArguments,
   probeAcp04Snapshot,
@@ -325,7 +326,7 @@ test("Mode A uses behavior seams for Editor to one seeded Agent chat", async () 
 
 test("browser DOM contract selects the discovered Codex display and exposes exact two-turn ids", () => {
   const dom = new JSDOM(
-    `<!doctype html><main class="workbench workbench--editor"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor" checked><input type="radio" name="workbench-window-mode" value="agent"></div><button class="project-chat" aria-current="page">Chat</button><section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat"><div class="composer__controls"><select><option value="codex">Codex \u2014 ${CODEX_VERSION}</option></select><select><option value="gpt-5.6" selected>gpt-5.6</option></select></div><div class="session-state">Ready</div><textarea id="prompt"></textarea><section class="acp-chat-projection" aria-label="Agent chat ACP" data-project-id="project-1" data-chat-id="chat-1" data-current-session-id="session-1" data-projection-revision="3"><section class="acp-turn" data-turn-id="turn-1" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="1"><header><span data-turn-status="turn-1" role="status" aria-label="Completed"></span></header><article data-item-id="item-1-user" data-message-role="user"><span class="acp-markdown">Reply with exactly: SAGE_ACP04_A_TURN_1</span></article><article data-item-id="item-1-assistant" data-message-role="assistant"><span class="acp-markdown">SAGE_ACP04_A_TURN_1</span></article></section><section class="acp-turn" data-turn-id="turn-2" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="2"><header><span data-turn-status="turn-2" role="status" aria-label="Completed"></span></header><article data-item-id="item-2-user" data-message-role="user"><span class="acp-markdown">Reply with exactly: SAGE_ACP04_A_TURN_2</span></article><article data-item-id="item-2-assistant" data-message-role="assistant"><span class="acp-markdown">SAGE_ACP04_A_TURN_2</span></article></section></section></section></section></main>`,
+    `<!doctype html><main class="workbench workbench--editor"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor" checked><input type="radio" name="workbench-window-mode" value="agent"></div><button class="project-chat" aria-current="page">Chat</button><section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat"><div class="composer__controls"><select><option value="codex">Codex \u2014 ${CODEX_VERSION}</option></select><select><option value="gpt-5.6" selected>gpt-5.6</option></select></div><div class="session-state">Ready</div><textarea id="prompt-chat-1" aria-label="Message agent"></textarea><section class="acp-chat-projection" aria-label="Agent chat ACP" data-project-id="project-1" data-chat-id="chat-1" data-current-session-id="session-1" data-projection-revision="3"><section class="acp-turn" data-turn-id="turn-1" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="1"><header><span data-turn-status="turn-1" role="status" aria-label="Completed"></span></header><article data-item-id="item-1-user" data-message-role="user"><span class="acp-markdown">Reply with exactly: SAGE_ACP04_A_TURN_1</span></article><article data-item-id="item-1-assistant" data-message-role="assistant"><span class="acp-markdown">SAGE_ACP04_A_TURN_1</span></article></section><section class="acp-turn" data-turn-id="turn-2" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="2"><header><span data-turn-status="turn-2" role="status" aria-label="Completed"></span></header><article data-item-id="item-2-user" data-message-role="user"><span class="acp-markdown">Reply with exactly: SAGE_ACP04_A_TURN_2</span></article><article data-item-id="item-2-assistant" data-message-role="assistant"><span class="acp-markdown">SAGE_ACP04_A_TURN_2</span></article></section></section></section></section></main>`,
   );
   const previous = {
     document: globalThis.document,
@@ -354,6 +355,18 @@ test("browser DOM contract selects the discovered Codex display and exposes exac
     assert.equal(eval(ui.codexSelectable), true);
     assert.equal(eval(ui.selectCodex), true);
     assert.equal(eval(ui.codexReady), true);
+    assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).composerEnabled, true);
+    const composer = dom.window.document.querySelector(
+      'textarea[aria-label="Message agent"]',
+    );
+    composer.disabled = true;
+    assert.equal(eval(ui.codexReady), false);
+    assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).composerEnabled, false);
+    composer.disabled = false;
+    composer.after(composer.cloneNode());
+    assert.equal(eval(ui.codexReady), false);
+    assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).composerEnabled, false);
+    composer.nextElementSibling.remove();
     const codex = dom.window.document.querySelector("select option");
     let changes = 0;
     codex.parentElement.addEventListener("change", () => {
@@ -412,6 +425,44 @@ test("browser DOM contract refuses Agent, ambiguous, and absent Editor states wi
     assert.equal(clicks, 0);
   } finally {
     globalThis.document = previous.document;
+    dom.window.close();
+  }
+});
+
+test("browser DOM contract fills only one enabled dynamic agent composer", () => {
+  const dom = new JSDOM(
+    '<!doctype html><section class="agent-chat-pane agent-chat-pane--focused"><textarea id="prompt-chat-1" aria-label="Message agent"></textarea></section>',
+  );
+  const previous = {
+    document: globalThis.document,
+    HTMLTextAreaElement: globalThis.HTMLTextAreaElement,
+    Event: globalThis.Event,
+  };
+  Object.assign(globalThis, {
+    document: dom.window.document,
+    HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+    Event: dom.window.Event,
+  });
+  try {
+    const composer = dom.window.document.querySelector(
+      'textarea[aria-label="Message agent"]',
+    );
+    let inputs = 0;
+    composer.addEventListener("input", () => {
+      inputs += 1;
+    });
+    assert.equal(eval(fillPromptExpression("hello")), true);
+    assert.equal(composer.value, "hello");
+    assert.equal(inputs, 1);
+    composer.disabled = true;
+    assert.equal(eval(fillPromptExpression("disabled")), false);
+    composer.disabled = false;
+    composer.after(composer.cloneNode());
+    assert.equal(eval(fillPromptExpression("ambiguous")), false);
+    assert.equal(composer.value, "hello");
+    assert.equal(inputs, 1);
+  } finally {
+    Object.assign(globalThis, previous);
     dom.window.close();
   }
 });

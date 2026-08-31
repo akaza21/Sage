@@ -348,6 +348,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         <textarea
           ref={composerRef}
           id={composerFieldId}
+          aria-label="Message agent"
           aria-describedby={composerDescriptionId}
           value={composerText}
           maxLength={MAX_CHAT_COMPOSER_BYTES}
