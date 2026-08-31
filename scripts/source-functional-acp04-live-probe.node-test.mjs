@@ -339,6 +339,7 @@ test("browser DOM contract selects the discovered Codex display and exposes exac
     });
     const ui = createAcp04Ui(CODEX_VERSION);
     assert.equal(eval(ui.enterAgentFromEditor), true);
+    assert.equal(eval(ui.enterAgentFromEditor), true);
     dom.window.document.querySelector("main").className =
       "workbench workbench--agent";
     assert.equal(eval(ui.seededAgentReady), true);
