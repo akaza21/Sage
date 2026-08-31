@@ -276,6 +276,36 @@ describe("ChatSurface ACP resource integration", () => {
     });
   });
 
+  it("stops following when the reader scrolls away and offers a return to latest", () => {
+    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView);
+    const { rerender } = render(<ChatSurface />);
+    const transcript = document.querySelector(".message-list");
+    expect(transcript).not.toBeNull();
+    Object.defineProperties(transcript!, {
+      clientHeight: { configurable: true, value: 400 },
+      scrollHeight: { configurable: true, value: 1_000 },
+      scrollTop: { configurable: true, value: 100, writable: true },
+    });
+
+    fireEvent.scroll(transcript!);
+    scrollIntoView.mockClear();
+    hooks.page = {
+      ...hooks.page!,
+      projectionRevision: "4" as never,
+    };
+    rerender(<ChatSurface />);
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    const returnToLatest = screen.getByRole("button", {
+      name: "Jump to latest",
+    });
+    fireEvent.click(returnToLatest);
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "end",
+    });
+  });
+
   it("keeps selected not-installed Codex truthful and hides later built-in harnesses", () => {
     hooks.page = null;
     useWorkbenchStore.setState({
@@ -900,7 +930,8 @@ describe("ChatSurface ACP resource integration", () => {
     );
     const composer = screen.getByRole("textbox", {
       name: "Message agent",
-      description: "Send a message to the selected harness and model",
+      description:
+        /Send a message to the selected harness and model.*active Turn/i,
     });
 
     expect(composer).toBeDisabled();
@@ -1413,8 +1444,8 @@ describe("ChatSurface A11Y-2 singleton chrome", () => {
   });
 });
 
-describe("ChatSurface session tab", () => {
-  it("shows a fail-closed session tab and drops the leftover Sage workbench header", () => {
+describe("ChatSurface embedded chrome", () => {
+  it("leaves the session title to the pane header instead of repeating it as a tab", () => {
     useWorkbenchStore.setState({
       tabs: [
         {
@@ -1430,13 +1461,12 @@ describe("ChatSurface session tab", () => {
     });
     render(<ChatSurface chatId="chat-a" />);
 
-    const tab = screen.getByRole("tab", { name: "Review" });
-    expect(tab).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("tab")).toBeNull();
     expect(screen.queryByText("Sage workbench")).toBeNull();
     expect(screen.queryByText("Persistent agent session")).toBeNull();
   });
 
-  it("hides the session tab when the title is invalid", () => {
+  it("does not restore embedded chrome when a stored title is invalid", () => {
     useWorkbenchStore.setState({
       tabs: [
         {
@@ -1539,8 +1569,7 @@ describe("ChatSurface composer context", () => {
 
   it("shows Working for nonterminal ACP turns but hides it during project transition", async () => {
     render(<ChatSurface />);
-    expect(screen.getByText("1 turn working")).toBeVisible();
-    expect(screen.getAllByText("1 Working")).toHaveLength(2);
+    expect(screen.getByText("1 Working")).toBeVisible();
     expect(
       screen.getByRole("status", { name: "1 working turn" }),
     ).toBeVisible();
@@ -1548,7 +1577,6 @@ describe("ChatSurface composer context", () => {
     await act(async () => {
       useWorkbenchStore.setState({ projectTransitioning: true });
     });
-    expect(screen.queryByText("1 turn working")).toBeNull();
     expect(screen.queryByText("1 Working")).toBeNull();
     expect(screen.queryByRole("status", { name: "1 working turn" })).toBeNull();
   });

@@ -90,6 +90,8 @@ describe("ProblemsSurface", () => {
 
     expect(surface).toHaveAttribute("data-diagnostic-listener-ready", "false");
     expect(surface).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByText("Loading diagnostics…")).toBeVisible();
+    expect(screen.queryByText("No problems for the active File.")).toBeNull();
     act(() => activateResource(secondResource));
     await waitFor(() =>
       expect(languageDesktop.subscribeDiagnostics).toHaveBeenCalledTimes(2),
@@ -103,6 +105,7 @@ describe("ProblemsSurface", () => {
       expect(surface).toHaveAttribute("data-diagnostic-listener-ready", "true"),
     );
     expect(surface).toHaveAttribute("aria-busy", "false");
+    expect(screen.getByText("No problems for the active File.")).toBeVisible();
 
     act(() => activateResource(thirdResource));
     await waitFor(() =>

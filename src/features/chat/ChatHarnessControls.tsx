@@ -29,7 +29,7 @@ export function ChatHarnessControls({ availableBinding, canPrompt }: Props) {
   return (
     <div className="composer__controls">
       <label className="select-control select-control--chip">
-        <span className="sr-only">Harness</span>
+        <span className="select-control__label">Harness</span>
         <select
           value={selectedHarnessId ?? ""}
           disabled={projectTransitioning}
@@ -56,7 +56,7 @@ export function ChatHarnessControls({ availableBinding, canPrompt }: Props) {
         <ChevronDown size={14} aria-hidden="true" />
       </label>
       <label className="select-control select-control--chip">
-        <span className="sr-only">Model</span>
+        <span className="select-control__label">Model</span>
         <select
           value={selectedModelId ?? ""}
           disabled={projectTransitioning || !canPrompt || models.length === 0}

@@ -127,6 +127,16 @@ describe("StatusBar repository truth", () => {
     );
   });
 
+  it("keeps Editor-only appearance controls out of Agent mode", () => {
+    render(<StatusBar showEditorSettings={false} />);
+
+    expect(
+      screen.queryByRole("group", { name: "Editor appearance" }),
+    ).toBeNull();
+    expect(screen.queryByTitle("Caret position")).toBeNull();
+    expect(screen.queryByTitle("Editor language")).toBeNull();
+  });
+
   it("names the Editor tool rail as the left sidebar", () => {
     render(<StatusBar railLeading />);
     expect(screen.getByLabelText("Hide left sidebar")).toBeInTheDocument();

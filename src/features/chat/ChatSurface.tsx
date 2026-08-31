@@ -1,10 +1,8 @@
 import { ArrowUp, Check } from "lucide-react";
-import { type FormEvent, useEffect, useRef } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { pinnedAgentChatOwner } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
-import { titleBarSessionTitle } from "../../workbench/titleBarCenter";
-import { ChatSessionStrip } from "./ChatSessionStrip";
 import { SessionWorkingPill } from "./SessionWorkingPill";
 import type {
   AcpChatPage,
@@ -51,6 +49,16 @@ function currentNonterminalTurn(
   return current;
 }
 
+function messageTimestamp(createdAt: number) {
+  if (!Number.isFinite(createdAt) || createdAt <= 0) return null;
+  const timestamp = new Date(createdAt);
+  if (Number.isNaN(timestamp.getTime())) return null;
+  return {
+    dateTime: timestamp.toISOString(),
+    label: timestamp.toISOString().slice(11, 16),
+  };
+}
+
 export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const messages = useWorkbenchStore((state) => state.messages);
   const harnesses = useWorkbenchStore((state) => state.harnesses);
@@ -67,13 +75,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     (state) => state.projectTransitioning,
   );
   const project = useWorkbenchStore((state) => state.project);
-  const tabs = useWorkbenchStore((state) => state.tabs);
-  const sessionTitle = titleBarSessionTitle(
-    chatId
-      ? (tabs.find((tab) => tab.id === chatId && tab.kind === "chat")?.title ??
-          null)
-      : null,
-  );
   const error = useWorkbenchStore((state) => state.error);
   const openDiff = useWorkbenchStore((state) => state.openDiff);
   const openFile = useWorkbenchStore((state) => state.openFile);
@@ -87,12 +88,15 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const foregroundError = acpActions.error ?? chatError;
   const acpHistory = useAcpChatHistory(chatId);
   const surfaceRef = useRef<HTMLElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const [followingEnd, setFollowingEnd] = useState(true);
   const priorActiveTurnId = useRef<TurnProjection["id"] | null>(null);
   const terminalFocusTurnId = useRef<TurnProjection["id"] | null>(null);
   const composerFieldId = chatId ? `prompt-${chatId}` : "prompt";
   const composerDescriptionId = `${composerFieldId}-description`;
+  const composerDisabledReasonId = `${composerFieldId}-disabled-reason`;
   const focused = chatId == null || pinnedAgentChatOwner() === chatId;
   useRendererRecreationFocus(surfaceRef, focused ? acpPage : null);
 
@@ -162,9 +166,32 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     focused && composerEnabled && !actionBusy && !projectTransitioning;
   useComposerFocusHotkey(composerRef, composerHotkeyEnabled);
 
+  const composerDisabledReason = projectTransitioning
+    ? "Wait for the Project to finish loading."
+    : actionBusy
+      ? "Wait for the current action to finish."
+      : activeAcpTurn
+        ? "Wait for the active Turn to finish, or cancel it when available."
+        : !selectedHarness
+          ? "Choose an available Harness before sending."
+          : harnessDiscoveryPhase === "checking"
+            ? "Wait while Sage checks the selected Harness."
+            : harnessDiscoveryPhase === "signInRequired" ||
+                harnessDiscoveryPhase === "consent" ||
+                harnessDiscoveryPhase === "waiting"
+              ? "Finish signing in before sending."
+              : !harnessAvailable
+                ? "The selected Harness is unavailable."
+                : useNativeAcp && !availableBinding
+                  ? "No reviewed local binding is available for this Harness."
+                  : !canPrompt
+                    ? "The selected Harness cannot accept prompts in this session."
+                    : null;
+
   useEffect(() => {
+    if (!followingEnd) return;
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length, acpPage?.projectionRevision]);
+  }, [followingEnd, messages.length, acpPage?.projectionRevision]);
 
   useEffect(() => {
     const priorId = priorActiveTurnId.current;
@@ -214,10 +241,22 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       : openDiff(resource, undefined, "agent"));
   }
 
+  function updateFollowEnd() {
+    const transcript = messageListRef.current;
+    if (!transcript) return;
+    const distanceFromEnd =
+      transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight;
+    setFollowingEnd(distanceFromEnd <= 64);
+  }
+
+  function jumpToLatest() {
+    setFollowingEnd(true);
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }
+
   return (
     <section ref={surfaceRef} className="chat-surface" aria-label="Agent chat">
       <header className="surface-header">
-        <ChatSessionStrip title={sessionTitle} />
         <SessionWorkingPill
           count={workingTurnCount}
           hidden={projectTransitioning}
@@ -254,7 +293,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         </div>
       </header>
 
-      <div className="message-list">
+      <div
+        ref={messageListRef}
+        className="message-list"
+        onScroll={updateFollowEnd}
+      >
         {projectTransitioning ? (
           <div className="composer__notice" role="status">
             Loading the authoritative project…
@@ -290,17 +333,30 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
                     </div>
                   </div>
                 ) : null}
-                {messages.map((message) => (
-                  <article
-                    className={`message message--${message.role}`}
-                    key={message.id}
-                  >
-                    <div className="message__role">
-                      {message.role === "user" ? "You" : "Sage"}
-                    </div>
-                    <p>{message.text}</p>
-                  </article>
-                ))}
+                {messages.map((message) => {
+                  const timestamp = messageTimestamp(message.createdAt);
+                  return (
+                    <article
+                      className={`message message--${message.role}`}
+                      key={message.id}
+                    >
+                      <header className="message__meta">
+                        <span className="message__role">
+                          {message.role === "user" ? "You" : "Sage"}
+                        </span>
+                        {timestamp ? (
+                          <time
+                            dateTime={timestamp.dateTime}
+                            title={timestamp.dateTime}
+                          >
+                            {timestamp.label}
+                          </time>
+                        ) : null}
+                      </header>
+                      <p>{message.text}</p>
+                    </article>
+                  );
+                })}
               </>
             )}
             {!useNativeAcp ? <EditSummary /> : null}
@@ -308,6 +364,16 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         )}
         <div ref={endRef} />
       </div>
+
+      {!followingEnd ? (
+        <button
+          className="chat-follow-end"
+          type="button"
+          onClick={jumpToLatest}
+        >
+          Jump to latest
+        </button>
+      ) : null}
 
       <form
         className="composer"
@@ -325,12 +391,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
           </div>
         ) : null}
         <HarnessDiscoveryNotice />
-        {workingTurnCount > 0 && !projectTransitioning ? (
-          <div className="composer__notice" role="status">
-            {workingTurnCount} {workingTurnCount === 1 ? "turn" : "turns"}{" "}
-            working
-          </div>
-        ) : null}
         {!availableBinding &&
         !["checking", "signInRequired", "consent", "waiting", "error"].includes(
           harnessDiscoveryPhase,
@@ -348,7 +408,9 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         <textarea
           ref={composerRef}
           id={composerFieldId}
-          aria-describedby={composerDescriptionId}
+          aria-describedby={`${composerDescriptionId}${
+            composerDisabledReason ? ` ${composerDisabledReasonId}` : ""
+          }`}
           value={composerText}
           maxLength={MAX_CHAT_COMPOSER_BYTES}
           rows={3}
@@ -365,16 +427,22 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
             }
           }}
         />
+        {composerDisabledReason ? (
+          <p
+            className="composer__disabled-reason"
+            id={composerDisabledReasonId}
+          >
+            {composerDisabledReason}
+          </p>
+        ) : null}
         <div className="composer__toolbar">
           <ChatHarnessControls
             availableBinding={availableBinding}
             canPrompt={canPrompt}
           />
-          {workingTurnCount > 0 && !projectTransitioning ? (
-            <span className="composer__working-pill">
-              {workingTurnCount} Working
-            </span>
-          ) : null}
+          <span className="composer__shortcut" aria-hidden="true">
+            Enter to send <span>/</span> Shift+Enter for a new line
+          </span>
           {useNativeAcp && acpActions.cancellableTurnId ? (
             <button
               className="send-button"

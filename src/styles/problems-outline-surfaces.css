@@ -10,29 +10,31 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px 6px;
+  min-height: var(--chrome-row-height);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .problems-surface__header h1,
 .outline-surface__header h1 {
   margin: 0;
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 650;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
 }
 
 .problems-surface__header span,
 .outline-surface__header span {
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
 }
 
 .problems-surface__list,
 .outline-surface__list {
   display: grid;
-  gap: 6px;
+  gap: 1px;
   margin: 0;
-  padding: 0 8px 10px;
+  padding: var(--space-1);
   overflow: auto;
   list-style: none;
 }
@@ -44,19 +46,18 @@
   min-width: 0;
   align-items: flex-start;
   gap: 8px;
-  padding: 8px 9px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
   color: inherit;
   text-align: left;
-  background: var(--surface-raised);
+  background: transparent;
   cursor: pointer;
 }
 
 .problem-card:hover,
 .outline-card:hover {
-  border-color: var(--border-strong, var(--border));
-  background: var(--surface-hover);
+  background: var(--color-surface-hover);
 }
 
 .problem-card__kind,
@@ -64,28 +65,28 @@
   flex: 0 0 auto;
   padding: 1px 6px;
   border-radius: 999px;
-  font-size: 10px;
-  font-weight: 700;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
 }
 
 .outline-card__kind {
-  color: var(--text);
-  background: var(--surface-active);
+  color: var(--color-text-primary);
+  background: var(--color-surface-active);
 }
 
 .problem-card--error .problem-card__kind {
-  color: #fff;
-  background: var(--danger);
+  color: var(--color-text-inverse);
+  background: var(--color-danger);
 }
 
 .problem-card--warning .problem-card__kind {
   color: #1a1208;
-  background: var(--warning);
+  background: var(--color-warning);
 }
 
 .problem-card--info .problem-card__kind {
-  color: var(--text);
-  background: var(--surface-active);
+  color: var(--color-text-primary);
+  background: var(--color-surface-active);
 }
 
 .problem-card__copy,
@@ -105,8 +106,8 @@
 .problem-card__copy small,
 .outline-card__copy small {
   overflow: hidden;
-  color: var(--muted);
-  font-size: 10px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -114,7 +115,7 @@
 .problems-surface__empty,
 .outline-surface__empty {
   margin: 16px 12px;
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
   line-height: 1.5;
 }

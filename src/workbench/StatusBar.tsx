@@ -28,9 +28,11 @@ function repositoryStatusLabel(repositories: ProjectRepositoryStatus) {
 export function StatusBar({
   railLeading = false,
   showSidebarToggle = true,
+  showEditorSettings = true,
 }: {
   railLeading?: boolean;
   showSidebarToggle?: boolean;
+  showEditorSettings?: boolean;
 }) {
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const toggleSidebar = useWorkbenchStore((state) => state.toggleSidebar);
@@ -72,44 +74,48 @@ export function StatusBar({
         {recoveryNotice ? <span role="status">{recoveryNotice}</span> : null}
       </div>
       <div className="status-bar__group">
-        {caretLabel ? <span title="Caret position">{caretLabel}</span> : null}
-        {languageLabel ? (
+        {showEditorSettings && caretLabel ? (
+          <span title="Caret position">{caretLabel}</span>
+        ) : null}
+        {showEditorSettings && languageLabel ? (
           <span title="Editor language">{languageLabel}</span>
         ) : null}
-        <div
-          className="status-bar__editor-settings"
-          role="group"
-          aria-label="Editor appearance"
-        >
-          <button
-            className="status-bar__button"
-            type="button"
-            aria-label="Cycle editor font size"
-            title="Cycle editor font size"
-            onClick={cycleFont}
+        {showEditorSettings ? (
+          <div
+            className="status-bar__editor-settings"
+            role="group"
+            aria-label="Editor appearance"
           >
-            Font: {fontSize}px
-          </button>
-          <button
-            className="status-bar__button"
-            type="button"
-            aria-label="Cycle editor tab size"
-            title="Cycle editor tab size"
-            onClick={cycleTab}
-          >
-            Tabs: {tabSize} spaces
-          </button>
-          <button
-            className="status-bar__button"
-            type="button"
-            aria-pressed={wordWrap}
-            aria-label="Toggle editor word wrap"
-            title="Toggle editor word wrap"
-            onClick={toggleWrap}
-          >
-            Word wrap: {wordWrap ? "On" : "Off"}
-          </button>
-        </div>
+            <button
+              className="status-bar__button"
+              type="button"
+              aria-label="Cycle editor font size"
+              title="Cycle editor font size"
+              onClick={cycleFont}
+            >
+              Font: {fontSize}px
+            </button>
+            <button
+              className="status-bar__button"
+              type="button"
+              aria-label="Cycle editor tab size"
+              title="Cycle editor tab size"
+              onClick={cycleTab}
+            >
+              Tabs: {tabSize} spaces
+            </button>
+            <button
+              className="status-bar__button"
+              type="button"
+              aria-pressed={wordWrap}
+              aria-label="Toggle editor word wrap"
+              title="Toggle editor word wrap"
+              onClick={toggleWrap}
+            >
+              Word wrap: {wordWrap ? "On" : "Off"}
+            </button>
+          </div>
+        ) : null}
         {showSidebarToggle ? (
           <button
             className="status-bar__button"

@@ -313,7 +313,7 @@ export function AcpChatProjection({
       data-current-session-id={page.currentSessionId ?? ""}
     >
       {focused ? <AcpAnnouncementRegions page={page} /> : null}
-      <h2 className="acp-chat-projection__title">{page.title}</h2>
+      <h2 className="sr-only">{page.title}</h2>
       {hasEarlier && onLoadEarlier ? (
         <button
           type="button"

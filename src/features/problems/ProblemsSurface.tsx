@@ -27,7 +27,11 @@ export function ProblemsSurface() {
         <h1>{summary}</h1>
         <span>{report?.diagnostics.length ?? 0}</span>
       </header>
-      {report?.diagnostics.length ? (
+      {!listenerReady ? (
+        <p className="problems-surface__empty" role="status">
+          Loading diagnostics…
+        </p>
+      ) : report?.diagnostics.length ? (
         <ul className="problems-surface__list">
           {report.diagnostics.map((diagnostic, index) => {
             const kind = problemSeverityLabel(diagnostic.severity);

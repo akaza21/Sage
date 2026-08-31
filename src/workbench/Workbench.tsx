@@ -314,6 +314,7 @@ export function Workbench() {
       <StatusBar
         railLeading={windowMode === "editor"}
         showSidebarToggle={windowMode === "editor"}
+        showEditorSettings={windowMode === "editor"}
       />
       <DirtyTabDialog />
     </main>

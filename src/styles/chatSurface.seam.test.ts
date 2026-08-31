@@ -26,10 +26,10 @@ describe("Chat surface stylesheet seam", () => {
 
     expect(surfaceCss).toMatch(/\.surface-header\s*\{[^}]*min-width:\s*0;/s);
     expect(surfaceCss).toMatch(
-      /@media \(max-width: 560px\)\s*\{[\s\S]*?\.surface-header\s*\{[^}]*flex-wrap:\s*wrap;/,
+      /@media \(max-width: 640px\)\s*\{[\s\S]*?\.surface-header\s*\{[^}]*flex-wrap:\s*wrap;/,
     );
     expect(surfaceCss).toMatch(
-      /@media \(max-width: 560px\)\s*\{[\s\S]*?\.session-controls\s*\{[^}]*flex-wrap:\s*wrap;/,
+      /@media \(max-width: 640px\)\s*\{[\s\S]*?\.session-controls\s*\{[^}]*flex-wrap:\s*wrap;/,
     );
   });
 
@@ -40,13 +40,13 @@ describe("Chat surface stylesheet seam", () => {
     );
 
     expect(surfaceCss).toMatch(
-      /\.session-controls\s*\{[^}]*gap:\s*var\(--control-gap\);/s,
+      /\.session-controls\s*\{[^}]*gap:\s*var\(--space-1\);/s,
     );
     expect(surfaceCss).toMatch(
-      /\.session-controls\s+\.button--compact\s*\{[^}]*min-height:\s*var\(--control-target\);/s,
+      /\.session-controls\s+\.button--compact\s*\{[^}]*min-height:\s*var\(--control-height-compact\);/s,
     );
     expect(surfaceCss).toMatch(
-      /@media \(max-width: 560px\)\s*\{[\s\S]*?\.session-state\s*\{[^}]*flex-basis:\s*100%;/,
+      /@media \(max-width: 640px\)\s*\{[\s\S]*?\.session-controls\s*\{[^}]*width:\s*100%;/,
     );
   });
 
@@ -57,13 +57,11 @@ describe("Chat surface stylesheet seam", () => {
     );
 
     expect(surfaceCss).toMatch(
-      /\.surface-header h1\s*\{[^}]*font-size:\s*var\(--type-size-chat-title\);/s,
+      /\.message p\s*\{[^}]*font-size:\s*var\(--font-size-md\);/s,
     );
     expect(surfaceCss).toMatch(
-      /\.message p\s*\{[^}]*font-size:\s*var\(--type-size-chat\);/s,
+      /\.message__meta\s*\{[^}]*font-size:\s*var\(--font-size-xs\);/s,
     );
-    expect(surfaceCss).toMatch(
-      /\.message__role\s*\{[^}]*font-size:\s*var\(--type-size-caption\);/s,
-    );
+    expect(surfaceCss).not.toMatch(/\.session-tab\s*\{/);
   });
 });

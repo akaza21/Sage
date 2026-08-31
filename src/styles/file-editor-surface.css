@@ -4,7 +4,7 @@
   height: 100%;
   min-height: 0;
   flex-direction: column;
-  background: var(--editor);
+  background: var(--color-canvas);
 }
 
 .file-header {
@@ -12,10 +12,11 @@
   min-width: 0;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  min-height: var(--chrome-row-height);
+  gap: var(--space-4);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-panel);
   font-size: var(--type-size-caption);
 }
 
@@ -25,7 +26,7 @@
   align-items: center;
   gap: 8px;
   overflow: hidden;
-  color: var(--text);
+  color: var(--color-text-primary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -43,13 +44,13 @@
   min-width: 0;
   align-items: center;
   gap: 4px;
-  color: var(--text-soft);
+  color: var(--color-text-secondary);
   font-size: var(--type-size-caption);
 }
 
 .file-breadcrumb__item:last-child {
-  color: var(--text);
-  font-weight: 600;
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
 }
 
 .file-breadcrumb__item span {
@@ -93,7 +94,7 @@
 
 .file-header__metadata {
   flex: 0 0 auto;
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .file-header__actions {
@@ -112,14 +113,14 @@
 }
 
 .button--primary {
-  border-color: var(--accent);
-  background: var(--accent-muted);
+  border-color: var(--color-accent);
+  background: var(--color-accent-muted);
 }
 
 .button--danger {
-  border-color: #714442;
-  color: #f2c1bd;
-  background: #3c2423;
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  background: var(--color-danger-muted);
 }
 
 .editor-notice {
@@ -133,13 +134,13 @@
 }
 
 .editor-notice--conflict {
-  color: #f0d4a6;
-  background: #332a1d;
+  color: var(--color-warning);
+  background: var(--color-warning-muted);
 }
 
 .editor-notice--error {
-  color: #efb3ae;
-  background: #35201f;
+  color: var(--color-danger);
+  background: var(--color-danger-muted);
 }
 
 .editor-find {

@@ -210,18 +210,18 @@
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  color: var(--text-soft);
-  background: var(--surface-raised);
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
   font-size: 12px;
 }
 
 .source-commit__sha {
   padding: 1px 6px;
   border-radius: 999px;
-  color: var(--accent-strong);
-  background: var(--accent-muted);
+  color: var(--color-accent);
+  background: var(--color-accent-muted);
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
   font-size: 11px;
   font-variant-ligatures: none;
@@ -247,10 +247,10 @@
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  color: var(--text-soft);
-  background: var(--surface-raised);
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
   font-size: 12px;
 }
 
@@ -268,7 +268,7 @@
 .source-remote__action {
   border: 0;
   background: transparent;
-  color: var(--accent-strong);
+  color: var(--color-accent);
   cursor: pointer;
   font: inherit;
   padding: 0;
