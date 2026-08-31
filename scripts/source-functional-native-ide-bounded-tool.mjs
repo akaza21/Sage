@@ -125,6 +125,7 @@ export function runBoundedTool(executable, args, deadline, cwd, deps = {}) {
         env: childEnvironment,
         shell: false,
         windowsHide: true,
+        windowsVerbatimArguments: deps.windowsVerbatimArguments === true,
         stdio: [hasIdentityHandshake ? "pipe" : "ignore", "pipe", "pipe"],
       });
     } catch (error) {

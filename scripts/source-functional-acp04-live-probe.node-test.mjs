@@ -612,6 +612,7 @@ test("Codex cmd preflight waits for its captured-owner acknowledgement before st
   assert.deepEqual(invocation[1].slice(0, 3), ["/d", "/s", "/c"]);
   assert.equal(invocation[4].identityHandshake, "captured-owner\r\n");
   assert.match(invocation[4].expectedExecutablePath, /cmd\.exe$/iu);
+  assert.equal(invocation[4].windowsVerbatimArguments, true);
   assert.equal(
     invocation[1][3],
     'set /p "SAGE_ACP04_ACK=" && call "C:\\Tools\\codex.cmd" --version',
@@ -681,6 +682,7 @@ test("Codex preflight binds a valid spaced path before its acknowledgement-gated
       assert.deepEqual(args.slice(0, 3), ["/d", "/s", "/c"]);
       assert.equal(toolOptions.identityHandshake, "captured-owner\r\n");
       assert.match(toolOptions.expectedExecutablePath, /cmd\.exe$/iu);
+      assert.equal(toolOptions.windowsVerbatimArguments, true);
       assert.equal(
         args[3],
         'set /p "SAGE_ACP04_ACK=" && call "C:\\Tools\\Codex CLI\\codex.cmd" --version',

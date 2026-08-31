@@ -103,6 +103,7 @@ async function runCodexVersion(options, deadline, deps = {}) {
       expectedExecutablePath: command,
       identityHandshake: "captured-owner\r\n",
       maxOutputBytes: 4096,
+      windowsVerbatimArguments: true,
     },
   );
   const display = output.trim();

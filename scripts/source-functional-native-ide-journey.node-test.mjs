@@ -1576,6 +1576,7 @@ test("bounded tool releases an identity handshake only after exact capture", asy
     {
       spawn: (_executable, _args, options) => {
         assert.deepEqual(options.stdio, ["pipe", "pipe", "pipe"]);
+        assert.equal(options.windowsVerbatimArguments, false);
         return child;
       },
       identityHandshake: "captured-owner\r\n",
@@ -1586,6 +1587,42 @@ test("bounded tool releases an identity handshake only after exact capture", asy
   child.emit("close", 0);
   assert.equal(await pending, "");
 });
+
+test(
+  "Windows bounded tool handshake preserves quoted cmd arguments after exact capture",
+  { skip: process.platform !== "win32" },
+  async () => {
+    const root = mkdtempSync(
+      path.join(tmpdir(), "sage bounded handshake with spaces-"),
+    );
+    const fixture = path.join(root, "Codex Fixture.cmd");
+    const command = path.join(process.env.SystemRoot, "System32", "cmd.exe");
+    try {
+      writeFileSync(fixture, "@echo off\r\necho codex-cli 0.146.0\r\n", "utf8");
+      const output = await runBoundedTool(
+        command,
+        [
+          "/d",
+          "/s",
+          "/c",
+          `set /p "SAGE_ACP04_ACK=" && call "${fixture}" --version`,
+        ],
+        Date.now() + 15_000,
+        root,
+        {
+          commandRole: "codex-version-preflight",
+          expectedExecutablePath: command,
+          identityHandshake: "captured-owner\r\n",
+          maxOutputBytes: 4096,
+          windowsVerbatimArguments: true,
+        },
+      );
+      assert.equal(output.trim(), "codex-cli 0.146.0");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test("identity capture failure releases the handshake gate and retains quarantine", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-tool-handshake-"));
