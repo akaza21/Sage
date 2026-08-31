@@ -261,7 +261,7 @@ test("snapshot probe propagates malformed observations instead of retrying them"
         { evaluate: async () => ({ ...observed, turns: "bad" }) },
         Date.now() + 1_000,
       ),
-    /acp04-snapshot-invalid/,
+    /acp04-snapshot-invalid:turns/,
   );
 });
 

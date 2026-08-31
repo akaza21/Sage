@@ -76,6 +76,28 @@ function validSelectIdentity(value) {
   );
 }
 
+function invalidSnapshotField(value) {
+  if (!value || typeof value !== "object") return "root";
+  if (typeof value.projectId !== "string" || value.projectId.length === 0)
+    return "project-id";
+  if (typeof value.chatId !== "string" || value.chatId.length === 0)
+    return "chat-id";
+  if (typeof value.currentSessionId !== "string") return "current-session-id";
+  if (!DECIMAL_REVISION.test(value.projectionRevision ?? ""))
+    return "projection-revision";
+  if (!validSelectIdentity(value.harness)) return "harness";
+  if (!validSelectIdentity(value.model)) return "model";
+  if (typeof value.harnessStatus !== "string") return "harness-status";
+  if (typeof value.composerEnabled !== "boolean") return "composer-enabled";
+  if (
+    !Array.isArray(value.failures) ||
+    !value.failures.every((item) => typeof item === "string")
+  )
+    return "failures";
+  if (!Array.isArray(value.turns)) return "turns";
+  return null;
+}
+
 function validateSnapshot(value) {
   const validTurn = (turn) =>
     turn &&
@@ -97,25 +119,9 @@ function validateSnapshot(value) {
         ["user", "assistant", "system"].includes(item.role) &&
         typeof item.text === "string",
     );
-  if (
-    !value ||
-    typeof value !== "object" ||
-    typeof value.projectId !== "string" ||
-    value.projectId.length === 0 ||
-    typeof value.chatId !== "string" ||
-    value.chatId.length === 0 ||
-    typeof value.currentSessionId !== "string" ||
-    !DECIMAL_REVISION.test(value.projectionRevision ?? "") ||
-    !validSelectIdentity(value.harness) ||
-    !validSelectIdentity(value.model) ||
-    typeof value.harnessStatus !== "string" ||
-    typeof value.composerEnabled !== "boolean" ||
-    !Array.isArray(value.failures) ||
-    !value.failures.every((item) => typeof item === "string") ||
-    !Array.isArray(value.turns) ||
-    !value.turns.every(validTurn)
-  )
-    fail("snapshot-invalid");
+  const invalidField = invalidSnapshotField(value);
+  if (invalidField) fail(`snapshot-invalid:${invalidField}`);
+  if (!value.turns.every(validTurn)) fail("snapshot-invalid:turn");
   const turnIds = value.turns.map((turn) => turn.id);
   const itemIds = value.turns.flatMap((turn) =>
     turn.items.map((item) => item.id),
@@ -128,7 +134,7 @@ function validateSnapshot(value) {
         index > 0 && turn.ordinal <= value.turns[index - 1].ordinal,
     )
   )
-    fail("snapshot-invalid");
+    fail("snapshot-invalid:identity-order");
   return value;
 }
 
