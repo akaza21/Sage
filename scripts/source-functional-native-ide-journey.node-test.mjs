@@ -1577,9 +1577,11 @@ test("bounded tool releases an identity handshake only after exact capture", asy
       spawn: (_executable, _args, options) => {
         assert.deepEqual(options.stdio, ["pipe", "pipe", "pipe"]);
         assert.equal(options.windowsVerbatimArguments, false);
+        assert.equal(options.cwd, "D:\\source fixture");
         return child;
       },
       identityHandshake: "captured-owner\r\n",
+      spawnCwd: "D:\\source fixture",
       captureIdentity: (pid) => ({ processId: pid, creationDate: "exact" }),
     },
   );

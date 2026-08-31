@@ -110,6 +110,7 @@ export function processIdentityHelper(action, value) {
 
 export function runBoundedTool(executable, args, deadline, cwd, deps = {}) {
   const spawnTool = deps.spawn ?? spawn;
+  const spawnCwd = deps.spawnCwd ?? cwd;
   const maximumOutputBytes = deps.maxOutputBytes ?? 64 * 1024;
   const childEnvironment = controlledChildEnvironment();
   const remaining = deadline - Date.now();
@@ -121,7 +122,7 @@ export function runBoundedTool(executable, args, deadline, cwd, deps = {}) {
     let child;
     try {
       child = spawnTool(executable, args, {
-        cwd,
+        cwd: spawnCwd,
         env: childEnvironment,
         shell: false,
         windowsHide: true,

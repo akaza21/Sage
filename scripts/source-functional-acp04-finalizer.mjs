@@ -124,28 +124,41 @@ export async function preflightCodex(options, deadline, deps = {}) {
   });
 }
 
-async function revalidateSource(options, deadline, deps = {}) {
+export async function revalidateSource(options, deadline, deps = {}) {
   const runTool = deps.runTool ?? runBoundedTool;
+  const command = commandInterpreter(deps);
+  const sourceToolOptions = (commandRole) => ({
+    commandRole,
+    expectedExecutablePath: command,
+    identityHandshake: "captured-owner\r\n",
+    maxOutputBytes: 4096,
+    spawnCwd: options.sourceRoot,
+    windowsVerbatimArguments: true,
+  });
   const status = await runTool(
-    "git",
+    command,
     [
-      "-C",
-      options.sourceRoot,
-      "status",
-      "--porcelain=v1",
-      "--untracked-files=all",
+      "/d",
+      "/s",
+      "/c",
+      'set /p "SAGE_ACP04_ACK=" && git status --porcelain=v1 --untracked-files=all',
     ],
     deadline,
     options.output,
-    { commandRole: "source-status" },
+    sourceToolOptions("source-status"),
   );
   if (status !== "") fail("source-dirty");
   const identity = await runTool(
-    "git",
-    ["-C", options.sourceRoot, "rev-parse", "HEAD", "HEAD^{tree}"],
+    command,
+    [
+      "/d",
+      "/s",
+      "/c",
+      'set /p "SAGE_ACP04_ACK=" && git rev-parse HEAD HEAD^{tree}',
+    ],
     deadline,
     options.output,
-    { commandRole: "source-identity" },
+    sourceToolOptions("source-identity"),
   );
   const lines = identity.trim().split(/\r?\n/u);
   if (

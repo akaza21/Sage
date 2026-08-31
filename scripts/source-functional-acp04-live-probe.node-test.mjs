@@ -37,6 +37,7 @@ import {
   decodeTerminalZeroCleanup,
   preflightCodex,
   revalidateCodexPreflight,
+  revalidateSource,
   validatePendingAcp04Candidate,
   validateRuntimeObservation,
 } from "./source-functional-acp04-finalizer.mjs";
@@ -1022,6 +1023,42 @@ test("Codex cmd preflight waits for its captured-owner acknowledgement before st
   );
   assert.equal(invocation[4].commandRole, "codex-version-preflight");
   assert.equal(invocation[4].maxOutputBytes, 4096);
+});
+
+test("source revalidation waits for captured ownership before running fast Git commands", async () => {
+  const command = "C:\\Windows\\System32\\cmd.exe";
+  const invocations = [];
+  await revalidateSource(
+    {
+      sourceRoot: "C:\\Sage source",
+      output: "C:\\Sage source\\local-evidence\\ACP04-live-test",
+      source: { commit: GIT, tree: GIT },
+    },
+    Date.now() + 1_000,
+    {
+      command,
+      runTool: async (...args) => {
+        invocations.push(args);
+        return args[4].commandRole === "source-status"
+          ? ""
+          : `${GIT}\r\n${GIT}\r\n`;
+      },
+    },
+  );
+
+  assert.equal(invocations.length, 2);
+  for (const [executable, args, , output, options] of invocations) {
+    assert.equal(executable, command);
+    assert.deepEqual(args.slice(0, 3), ["/d", "/s", "/c"]);
+    assert.match(args[3], /^set \/p "SAGE_ACP04_ACK=" && git /u);
+    assert.equal(output, "C:\\Sage source\\local-evidence\\ACP04-live-test");
+    assert.equal(options.expectedExecutablePath, command);
+    assert.equal(options.identityHandshake, "captured-owner\r\n");
+    assert.equal(options.spawnCwd, "C:\\Sage source");
+    assert.equal(options.windowsVerbatimArguments, true);
+  }
+  assert.equal(invocations[0][4].commandRole, "source-status");
+  assert.equal(invocations[1][4].commandRole, "source-identity");
 });
 
 test("Codex preflight rejects command-expansion paths before spawning", async () => {
