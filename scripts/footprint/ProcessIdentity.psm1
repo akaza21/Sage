@@ -410,7 +410,19 @@ function Invoke-FootprintTreeCore {
     $identityLost = $identityLost -or $currentPlan.identityLost
     $current = @($currentPlan.candidates | Where-Object { [int]$_.ProcessId -eq [int]$candidate.ProcessId }) | Select-Object -First 1
     if ($null -eq $current -or -not (Test-FootprintProcessIdentity $current $candidate.ExecutablePath (ConvertTo-FootprintCreationIdentity $candidate.CreationDate))) { continue }
-    & $StopProcessById ([int]$current.ProcessId)
+    try {
+      & $StopProcessById ([int]$current.ProcessId)
+    } catch {
+      $afterStopFailure = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
+      foreach ($reusedProcessId in @($afterStopFailure.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
+      $identityLost = $identityLost -or $afterStopFailure.identityLost
+      $stillPresent = @($afterStopFailure.candidates | Where-Object {
+          [int]$_.ProcessId -eq [int]$candidate.ProcessId -and
+          (Test-FootprintProcessIdentity $_ $candidate.ExecutablePath (ConvertTo-FootprintCreationIdentity $candidate.CreationDate))
+        }).Count -eq 1
+      if ($stillPresent) { throw }
+      continue
+    }
     $killed += ConvertTo-FootprintProcessIdentity $current
     if ([int]$current.ProcessId -eq $rootPid) { $exactRootTerminationIssued = $true }
   }

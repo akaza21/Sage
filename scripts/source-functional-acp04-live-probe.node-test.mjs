@@ -14,14 +14,21 @@ import { JSDOM } from "jsdom";
 
 import {
   ACP04_MODE_A,
+  ACP04_MODE_B_CANCEL_PROMPT,
+  ACP04_MODE_B_RECOVERY_ECHO,
   ACP04_SNAPSHOT_EXPRESSION,
+  acceptModeBSnapshot,
   acceptModeASnapshot,
   createAcp04Ui,
   createAcp04Receipt,
+  createModeBState,
   createModeAState,
+  freshChatReadyExpression,
+  fillPromptExpression,
   finalizeAcp04Collection,
   parseAcp04ProbeArguments,
   probeAcp04Snapshot,
+  runAcp04ModeB,
   runAcp04ModeA,
 } from "./source-functional-acp04-live-probe.mjs";
 import {
@@ -96,17 +103,41 @@ function snapshot({
   };
 }
 
-function completedTurn(ordinal, prompt, answer, sessionId = "session-1") {
+function completedTurn(
+  ordinal,
+  prompt,
+  answer,
+  sessionId = "session-1",
+  runtimeEpoch = "7",
+) {
   return {
     id: `turn-${ordinal}`,
     sessionId,
-    runtimeEpoch: "7",
+    runtimeEpoch,
     ordinal,
     state: "Completed",
     items: [
       { id: `item-${ordinal}-user`, role: "user", text: prompt },
       { id: `item-${ordinal}-assistant`, role: "assistant", text: answer },
     ],
+  };
+}
+
+function activeTurn(ordinal, prompt, sessionId = "session-1") {
+  return {
+    id: `turn-${ordinal}`,
+    sessionId,
+    runtimeEpoch: "7",
+    ordinal,
+    state: "Running",
+    items: [{ id: `item-${ordinal}-user`, role: "user", text: prompt }],
+  };
+}
+
+function cancelledTurn(ordinal, prompt, sessionId = "session-1") {
+  return {
+    ...activeTurn(ordinal, prompt, sessionId),
+    state: "Cancelled",
   };
 }
 
@@ -123,6 +154,26 @@ function completeState() {
         projectionRevision: String(index + 2),
         turns: ECHOES.slice(0, index + 1).map((echo, turnIndex) =>
           completedTurn(turnIndex + 1, `Reply with exactly: ${echo}`, echo),
+        ),
+      }),
+    );
+  }
+  return state;
+}
+
+function zeroBasedCompleteState() {
+  let state = createModeAState(
+    ECHOES,
+    snapshot({ currentSessionId: "" }),
+    CODEX_VERSION,
+  );
+  for (let index = 0; index < ECHOES.length; index += 1) {
+    state = acceptModeASnapshot(
+      state,
+      snapshot({
+        projectionRevision: String(index + 2),
+        turns: ECHOES.slice(0, index + 1).map((echo, turnIndex) =>
+          completedTurn(turnIndex, `Reply with exactly: ${echo}`, echo),
         ),
       }),
     );
@@ -157,6 +208,202 @@ test("Mode A accepts exactly two turns with one project, chat, session, and mode
   assert.equal(state.sessionId, "session-1");
   assert.equal(state.runtimeEpoch, "7");
   assert.equal(state.projectionRevision, "3");
+});
+
+test("Mode A accepts the durable zero-based Turn ordinal contract", () => {
+  const state = zeroBasedCompleteState();
+  assert.equal(state.phase, "complete");
+  assert.deepEqual(state.turnOrdinals, [0, 1]);
+  assert.equal(createModeBState(state).phase, "await-active-third");
+});
+
+test("Mode B accepts one active cancellation then an exact recovery echo at a higher runtime epoch", () => {
+  let state = createModeBState(completeState());
+  const firstTwo = ECHOES.map((echo, index) =>
+    completedTurn(index + 1, `Reply with exactly: ${echo}`, echo),
+  );
+  state = acceptModeBSnapshot(
+    state,
+    snapshot({
+      projectionRevision: "4",
+      turns: [...firstTwo, activeTurn(3, ACP04_MODE_B_CANCEL_PROMPT)],
+    }),
+  );
+  assert.equal(state.phase, "await-terminal-third");
+  const cancelling = acceptModeBSnapshot(
+    state,
+    snapshot({
+      projectionRevision: "5",
+      turns: [
+        ...firstTwo,
+        {
+          ...activeTurn(3, ACP04_MODE_B_CANCEL_PROMPT),
+          state: "Cancelling",
+        },
+      ],
+    }),
+  );
+  assert.equal(cancelling.phase, "await-terminal-third");
+  state = acceptModeBSnapshot(
+    cancelling,
+    snapshot({
+      projectionRevision: "6",
+      turns: [...firstTwo, cancelledTurn(3, ACP04_MODE_B_CANCEL_PROMPT)],
+    }),
+  );
+  assert.equal(state.phase, "await-fourth");
+  state = acceptModeBSnapshot(
+    state,
+    snapshot({
+      projectionRevision: "7",
+      turns: [
+        ...firstTwo,
+        cancelledTurn(3, ACP04_MODE_B_CANCEL_PROMPT),
+        completedTurn(
+          4,
+          `Reply with exactly: ${ACP04_MODE_B_RECOVERY_ECHO}`,
+          ACP04_MODE_B_RECOVERY_ECHO,
+          "session-1",
+          "8",
+        ),
+      ],
+    }),
+  );
+  assert.equal(state.phase, "complete");
+  assert.equal(state.cancelledTurnId, "turn-3");
+  assert.equal(state.cancelledState, "Cancelled");
+  assert.equal(state.runtimeEpoch, "8");
+  assert.deepEqual(state.turnIds, ["turn-1", "turn-2", "turn-3", "turn-4"]);
+});
+
+test("Mode B rejects turn identity reuse and recovery without an epoch restart", () => {
+  const initial = createModeBState(completeState());
+  const firstTwo = ECHOES.map((echo, index) =>
+    completedTurn(index + 1, `Reply with exactly: ${echo}`, echo),
+  );
+  assert.throws(
+    () =>
+      acceptModeBSnapshot(
+        initial,
+        snapshot({
+          projectionRevision: "4",
+          turns: [
+            ...firstTwo,
+            { ...activeTurn(3, ACP04_MODE_B_CANCEL_PROMPT), id: "turn-2" },
+          ],
+        }),
+      ),
+    /acp04-snapshot-invalid:identity-order/,
+  );
+  const cancelled = acceptModeBSnapshot(
+    acceptModeBSnapshot(
+      initial,
+      snapshot({
+        projectionRevision: "4",
+        turns: [...firstTwo, activeTurn(3, ACP04_MODE_B_CANCEL_PROMPT)],
+      }),
+    ),
+    snapshot({
+      projectionRevision: "5",
+      turns: [...firstTwo, cancelledTurn(3, ACP04_MODE_B_CANCEL_PROMPT)],
+    }),
+  );
+  assert.throws(
+    () =>
+      acceptModeBSnapshot(
+        cancelled,
+        snapshot({
+          projectionRevision: "6",
+          turns: [
+            ...firstTwo,
+            cancelledTurn(3, ACP04_MODE_B_CANCEL_PROMPT),
+            completedTurn(
+              4,
+              `Reply with exactly: ${ACP04_MODE_B_RECOVERY_ECHO}`,
+              ACP04_MODE_B_RECOVERY_ECHO,
+            ),
+          ],
+        }),
+      ),
+    /acp04-mode-b-runtime-restart-missing/,
+  );
+});
+
+test("Mode B uses the exact Cancel control before the fourth normal composer turn", async () => {
+  const firstTwo = ECHOES.map((echo, index) =>
+    completedTurn(index + 1, `Reply with exactly: ${echo}`, echo),
+  );
+  let stage = 0;
+  const calls = [];
+  const driver = {
+    async fillPrompt(prompt) {
+      calls.push(`fill:${prompt}`);
+    },
+    async waitForSendReady() {
+      calls.push("send-ready");
+    },
+    async send() {
+      stage += 1;
+      calls.push(`send:${stage}`);
+    },
+    async waitForCancelReady() {
+      calls.push("cancel-ready");
+    },
+    async cancel() {
+      stage += 1;
+      calls.push("cancel");
+    },
+    async snapshot() {
+      calls.push(`snapshot:${stage}`);
+      if (stage === 1)
+        return snapshot({
+          projectionRevision: "4",
+          turns: [...firstTwo, activeTurn(3, ACP04_MODE_B_CANCEL_PROMPT)],
+        });
+      if (stage === 2)
+        return snapshot({
+          projectionRevision: "5",
+          turns: [...firstTwo, cancelledTurn(3, ACP04_MODE_B_CANCEL_PROMPT)],
+        });
+      return snapshot({
+        projectionRevision: "6",
+        turns: [
+          ...firstTwo,
+          cancelledTurn(3, ACP04_MODE_B_CANCEL_PROMPT),
+          completedTurn(
+            4,
+            `Reply with exactly: ${ACP04_MODE_B_RECOVERY_ECHO}`,
+            ACP04_MODE_B_RECOVERY_ECHO,
+            "session-1",
+            "8",
+          ),
+        ],
+      });
+    },
+    async runtimeObservation() {
+      calls.push("runtime-observation");
+      return runtimeObservation("8");
+    },
+  };
+  const result = await runAcp04ModeB({}, Date.now() + 5_000, completeState(), {
+    driver,
+    codexVersion: CODEX_VERSION,
+  });
+  assert.equal(result.state.phase, "complete");
+  assert.deepEqual(calls, [
+    `fill:${ACP04_MODE_B_CANCEL_PROMPT}`,
+    "send-ready",
+    "send:1",
+    "snapshot:1",
+    "cancel-ready",
+    "cancel",
+    "snapshot:2",
+    `fill:Reply with exactly: ${ACP04_MODE_B_RECOVERY_ECHO}`,
+    "send-ready",
+    "send:3",
+    "snapshot:3",
+    "runtime-observation",
+  ]);
 });
 
 test("Mode A rejects session churn and named protocol/recovery failures", () => {
@@ -260,7 +507,7 @@ test("snapshot probe propagates malformed observations instead of retrying them"
         { evaluate: async () => ({ ...observed, turns: "bad" }) },
         Date.now() + 1_000,
       ),
-    /acp04-snapshot-invalid/,
+    /acp04-snapshot-invalid:turns/,
   );
 });
 
@@ -268,11 +515,27 @@ test("Mode A uses behavior seams for Editor to one seeded Agent chat", async () 
   let sent = 0;
   const calls = [];
   const driver = {
+    async waitForEditorReady() {
+      calls.push("editor-ready");
+    },
     async enterAgentFromEditor() {
       calls.push("enter-agent");
     },
     async waitForSeededAgentChat() {
       calls.push("seeded-chat");
+    },
+    async seededChatId() {
+      calls.push("seeded-chat-id");
+      return "chat-seeded";
+    },
+    async createFreshChat() {
+      calls.push("new-chat");
+    },
+    async waitForFreshChat(seedChatId) {
+      calls.push(`fresh-chat:${seedChatId}`);
+    },
+    async waitForCodexSelectable() {
+      calls.push("codex-selectable");
     },
     async selectCodex() {
       calls.push("select-codex");
@@ -307,18 +570,59 @@ test("Mode A uses behavior seams for Editor to one seeded Agent chat", async () 
     codexVersion: CODEX_VERSION,
   });
   assert.equal(result.state.phase, "complete");
-  assert.deepEqual(calls.slice(0, 4), [
+  assert.deepEqual(calls.slice(0, 9), [
+    "editor-ready",
     "enter-agent",
     "seeded-chat",
+    "seeded-chat-id",
+    "new-chat",
+    "fresh-chat:chat-seeded",
+    "codex-selectable",
     "select-codex",
     "snapshot-0",
   ]);
-  assert.equal(calls.includes("new-chat"), false);
+  assert.equal(calls.filter((call) => call === "new-chat").length, 1);
+});
+
+test("clean Chat navigation accepts one top-level New chat and only an empty replacement Chat", () => {
+  const dom = new JSDOM(
+    `<!doctype html><main class="workbench workbench--agent"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor"><input type="radio" name="workbench-window-mode" value="agent" checked></div><aside class="project-sidebar" aria-label="Projects and chats"><div class="project-sidebar__actions"><button type="button" title="New chat">New chat</button></div><button class="project-chat" data-chat-id="chat-seeded" aria-current="page">Seeded chat</button></aside><section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat"></section></section><section class="agent-chat-pane"><section class="chat-surface" aria-label="Agent chat"></section></section></main>`,
+  );
+  const previous = { document: globalThis.document };
+  globalThis.document = dom.window.document;
+  try {
+    const ui = createAcp04Ui(CODEX_VERSION);
+    const action = dom.window.document.querySelector(
+      '.project-sidebar__actions button[title="New chat"]',
+    );
+    let clicks = 0;
+    action.addEventListener("click", () => {
+      clicks += 1;
+      const rail = dom.window.document.querySelector(".project-chat");
+      rail.textContent = "Fresh chat";
+      rail.dataset.chatId = "chat-fresh";
+    });
+    assert.equal(eval(ui.seededChatId), "chat-seeded");
+    assert.equal(eval(freshChatReadyExpression("chat-seeded")), false);
+    assert.equal(eval(ui.createFreshChat), true);
+    assert.equal(clicks, 1);
+    assert.equal(eval(freshChatReadyExpression("chat-seeded")), true);
+    action.after(action.cloneNode(true));
+    assert.equal(eval(ui.createFreshChat), false);
+    assert.equal(clicks, 1);
+    dom.window.document
+      .querySelectorAll('.project-sidebar__actions button[title="New chat"]')
+      .forEach((button) => button.remove());
+    assert.equal(eval(ui.createFreshChat), false);
+  } finally {
+    globalThis.document = previous.document;
+    dom.window.close();
+  }
 });
 
 test("browser DOM contract selects the discovered Codex display and exposes exact two-turn ids", () => {
   const dom = new JSDOM(
-    `<!doctype html><main class="workbench workbench--editor"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor" checked><input type="radio" name="workbench-window-mode" value="agent"></div><button class="project-chat" aria-current="page">Chat</button><section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat"><div class="composer__controls"><select><option value="codex">Codex \u2014 ${CODEX_VERSION}</option></select><select><option value="gpt-5.6" selected>gpt-5.6</option></select></div><div class="session-state">Ready</div><textarea id="prompt"></textarea><section class="acp-chat-projection" aria-label="Agent chat ACP" data-project-id="project-1" data-chat-id="chat-1" data-current-session-id="session-1" data-projection-revision="3"><section class="acp-turn" data-turn-id="turn-1" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="1"><header><span data-turn-status="turn-1" role="status" aria-label="Completed"></span></header><article data-item-id="item-1-user" data-message-role="user"><span class="acp-markdown">Reply with exactly: SAGE_ACP04_A_TURN_1</span></article><article data-item-id="item-1-assistant" data-message-role="assistant"><span class="acp-markdown">SAGE_ACP04_A_TURN_1</span></article></section><section class="acp-turn" data-turn-id="turn-2" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="2"><header><span data-turn-status="turn-2" role="status" aria-label="Completed"></span></header><article data-item-id="item-2-user" data-message-role="user"><span class="acp-markdown">Reply with exactly: SAGE_ACP04_A_TURN_2</span></article><article data-item-id="item-2-assistant" data-message-role="assistant"><span class="acp-markdown">SAGE_ACP04_A_TURN_2</span></article></section></section></section></section></main>`,
+    `<!doctype html><main class="workbench workbench--editor"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor" checked><input type="radio" name="workbench-window-mode" value="agent"></div><button class="project-chat" aria-current="page">Chat</button><section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat"><div class="composer__controls"><select><option value="codex">Codex \u2014 ${CODEX_VERSION}</option></select><select><option value="gpt-5.6" selected>gpt-5.6</option></select></div><div class="session-state">Ready</div><textarea id="prompt-chat-1" aria-label="Message agent"></textarea><section class="acp-chat-projection" aria-label="Agent chat ACP" data-project-id="project-1" data-chat-id="chat-1" data-current-session-id="session-1" data-projection-revision="3"><section class="acp-turn" data-turn-id="turn-1" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="1"><header><span data-turn-status="turn-1" role="status" aria-label="Completed"></span></header><article data-item-id="item-1-user" data-message-role="user"><span class="acp-markdown">Reply with exactly: SAGE_ACP04_A_TURN_1</span></article><article data-item-id="item-1-assistant" data-message-role="assistant"><span class="acp-markdown">SAGE_ACP04_A_TURN_1</span></article></section><section class="acp-turn" data-turn-id="turn-2" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="2"><header><span data-turn-status="turn-2" role="status" aria-label="Completed"></span></header><article data-item-id="item-2-user" data-message-role="user"><span class="acp-markdown">Reply with exactly: SAGE_ACP04_A_TURN_2</span></article><article data-item-id="item-2-assistant" data-message-role="assistant"><span class="acp-markdown">SAGE_ACP04_A_TURN_2</span></article></section></section></section></section></main>`,
   );
   const previous = {
     document: globalThis.document,
@@ -338,13 +642,36 @@ test("browser DOM contract selects the discovered Codex display and exposes exac
       },
     });
     const ui = createAcp04Ui(CODEX_VERSION);
+    assert.equal(eval(ui.editorReady), true);
     assert.equal(eval(ui.enterAgentFromEditor), true);
-    assert.equal(eval(ui.enterAgentFromEditor), true);
+    assert.equal(eval(ui.editorReady), false);
     dom.window.document.querySelector("main").className =
       "workbench workbench--agent";
     assert.equal(eval(ui.seededAgentReady), true);
+    assert.equal(eval(ui.codexSelectable), true);
     assert.equal(eval(ui.selectCodex), true);
     assert.equal(eval(ui.codexReady), true);
+    assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).composerEnabled, true);
+    const composer = dom.window.document.querySelector(
+      'textarea[aria-label="Message agent"]',
+    );
+    composer.disabled = true;
+    assert.equal(eval(ui.codexReady), false);
+    assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).composerEnabled, false);
+    composer.disabled = false;
+    composer.after(composer.cloneNode());
+    assert.equal(eval(ui.codexReady), false);
+    assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).composerEnabled, false);
+    composer.nextElementSibling.remove();
+    const codex = dom.window.document.querySelector("select option");
+    let changes = 0;
+    codex.parentElement.addEventListener("change", () => {
+      changes += 1;
+    });
+    codex.disabled = true;
+    assert.equal(eval(ui.codexSelectable), false);
+    assert.equal(eval(ui.selectCodex), false);
+    assert.equal(changes, 0);
     const actual = eval(ACP04_SNAPSHOT_EXPRESSION);
     assert.equal(actual.projectionRevision, "3");
     assert.deepEqual(
@@ -355,6 +682,81 @@ test("browser DOM contract selects the discovered Codex display and exposes exac
       actual.turns.flatMap((turn) => turn.items.map((item) => item.id)),
       ["item-1-user", "item-1-assistant", "item-2-user", "item-2-assistant"],
     );
+  } finally {
+    Object.assign(globalThis, previous);
+    dom.window.close();
+  }
+});
+
+test("browser DOM contract refuses Agent, ambiguous, and absent Editor states without clicking", () => {
+  const dom = new JSDOM(
+    `<!doctype html><main class="workbench workbench--agent"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor"><input type="radio" name="workbench-window-mode" value="agent" checked></div></main>`,
+  );
+  const previous = { document: globalThis.document };
+  globalThis.document = dom.window.document;
+  try {
+    const ui = createAcp04Ui(CODEX_VERSION);
+    const editor = dom.window.document.querySelector('[value="editor"]');
+    const agent = dom.window.document.querySelector('[value="agent"]');
+    let clicks = 0;
+    agent.addEventListener("click", () => {
+      clicks += 1;
+    });
+    assert.equal(eval(ui.editorReady), false);
+    assert.equal(eval(ui.enterAgentFromEditor), false);
+    dom.window.document.querySelector("main").className =
+      "workbench workbench--editor";
+    editor.checked = true;
+    agent.checked = false;
+    dom.window.document.body.append(
+      dom.window.document.querySelector("main").cloneNode(false),
+    );
+    assert.equal(eval(ui.editorReady), false);
+    assert.equal(eval(ui.enterAgentFromEditor), false);
+    dom.window.document
+      .querySelectorAll("main")
+      .forEach((main) => main.remove());
+    assert.equal(eval(ui.editorReady), false);
+    assert.equal(eval(ui.enterAgentFromEditor), false);
+    assert.equal(clicks, 0);
+  } finally {
+    globalThis.document = previous.document;
+    dom.window.close();
+  }
+});
+
+test("browser DOM contract fills only one enabled dynamic agent composer", () => {
+  const dom = new JSDOM(
+    '<!doctype html><section class="agent-chat-pane agent-chat-pane--focused"><textarea id="prompt-chat-1" aria-label="Message agent"></textarea></section>',
+  );
+  const previous = {
+    document: globalThis.document,
+    HTMLTextAreaElement: globalThis.HTMLTextAreaElement,
+    Event: globalThis.Event,
+  };
+  Object.assign(globalThis, {
+    document: dom.window.document,
+    HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+    Event: dom.window.Event,
+  });
+  try {
+    const composer = dom.window.document.querySelector(
+      'textarea[aria-label="Message agent"]',
+    );
+    let inputs = 0;
+    composer.addEventListener("input", () => {
+      inputs += 1;
+    });
+    assert.equal(eval(fillPromptExpression("hello")), true);
+    assert.equal(composer.value, "hello");
+    assert.equal(inputs, 1);
+    composer.disabled = true;
+    assert.equal(eval(fillPromptExpression("disabled")), false);
+    composer.disabled = false;
+    composer.after(composer.cloneNode());
+    assert.equal(eval(fillPromptExpression("ambiguous")), false);
+    assert.equal(composer.value, "hello");
+    assert.equal(inputs, 1);
   } finally {
     Object.assign(globalThis, previous);
     dom.window.close();
@@ -563,13 +965,13 @@ test("runtime observation is owner-bound and root-process truth is independent f
   );
 });
 
-function runtimeObservation() {
+function runtimeObservation(runtimeEpoch = "7") {
   return {
     owner: {
       projectId: "project-1",
       chatId: "chat-1",
       sessionId: "session-1",
-      runtimeEpoch: "7",
+      runtimeEpoch,
     },
     admittedEntrypoint: {
       canonicalPath: "C:\\Tools\\codex.cmd",
@@ -750,7 +1152,7 @@ test("pending validation rejects nested receipt mutation before finalization", (
     const candidate = createAcp04Receipt(
       options,
       {
-        state: completeState(),
+        state: zeroBasedCompleteState(),
         startedAt: "2026-08-30T00:00:00.000Z",
         completedAt: "2026-08-30T00:00:01.000Z",
         runtimeObservation: runtimeObservation(),

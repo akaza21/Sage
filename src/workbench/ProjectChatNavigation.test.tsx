@@ -101,6 +101,7 @@ it("shows Devin session-card status and hides the unread dot on the focused chat
   expect(screen.getByText("Done")).toBeInTheDocument();
   const focused = screen.getByTitle("Open chat Alpha");
   expect(focused).toHaveAttribute("aria-current", "page");
+  expect(focused).toHaveAttribute("data-chat-id", "chat:a");
   expect(focused.querySelector("[aria-label='Working']")).toBeInTheDocument();
   expect(
     focused.querySelector("[aria-label='Unread updates']"),

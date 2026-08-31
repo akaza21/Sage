@@ -146,3 +146,24 @@ $failed=$false;try{[void](Invoke-TestFootprintTree $root $store $snapshot $stop 
     assert.deepEqual(observed, { failed: true, stops: [101] });
   },
 );
+
+test(
+  "a matching candidate that exits between revalidation and stop reaches terminal zero",
+  windowsOnly,
+  () => {
+    const observed = runPowerShellFixture(`${commonFixture}
+$script:rootAlive=$true;$script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:stops=@();
+$snapshot={if($script:rootAlive){return @($rootRow)};return @()};
+$stop={param([int]$processId)$script:stops+=$processId;$script:rootAlive=$false;throw 'process not found'};
+$clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script:now.AddSeconds(2)};
+$result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
+[ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds);stops=@($script:stops)}|ConvertTo-Json -Compress
+`);
+    assert.deepEqual(observed, {
+      identityLost: false,
+      remaining: [],
+      reused: [],
+      stops: [101],
+    });
+  },
+);
