@@ -559,7 +559,7 @@ test("Mode A uses behavior seams for Editor to one seeded Agent chat", async () 
 
 test("clean Chat navigation accepts one top-level New chat and only an empty replacement Chat", () => {
   const dom = new JSDOM(
-    `<!doctype html><main class="workbench workbench--agent"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor"><input type="radio" name="workbench-window-mode" value="agent" checked></div><aside class="project-sidebar" aria-label="Projects and chats"><div class="project-sidebar__actions"><button type="button" title="New chat">New chat</button></div><button class="project-chat" data-chat-id="chat-seeded" aria-current="page">Seeded chat</button></aside><section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat"></section></section></main>`,
+    `<!doctype html><main class="workbench workbench--agent"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor"><input type="radio" name="workbench-window-mode" value="agent" checked></div><aside class="project-sidebar" aria-label="Projects and chats"><div class="project-sidebar__actions"><button type="button" title="New chat">New chat</button></div><button class="project-chat" data-chat-id="chat-seeded" aria-current="page">Seeded chat</button></aside><section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat"></section></section><section class="agent-chat-pane"><section class="chat-surface" aria-label="Agent chat"></section></section></main>`,
   );
   const previous = { document: globalThis.document };
   globalThis.document = dom.window.document;
