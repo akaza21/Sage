@@ -145,11 +145,18 @@ export function validateExecutableBinding(filePath, expected, deps = {}) {
 }
 
 function sameCanonicalPath(left, right) {
-  const normalize =
-    process.platform === "win32"
-      ? (value) => value.toLowerCase()
-      : (value) => value;
-  return normalize(path.normalize(left)) === normalize(path.normalize(right));
+  const normalize = (value) => {
+    let canonical = value;
+    if (process.platform === "win32") {
+      const lower = canonical.toLowerCase();
+      if (lower.startsWith("\\\\?\\unc\\"))
+        canonical = `\\\\${canonical.slice(8)}`;
+      else if (lower.startsWith("\\\\?\\")) canonical = canonical.slice(4);
+      canonical = canonical.toLowerCase();
+    }
+    return path.normalize(canonical);
+  };
+  return normalize(left) === normalize(right);
 }
 
 export function validatePlainCanonicalExecutable(

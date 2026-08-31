@@ -1495,6 +1495,15 @@ test("Node identity requires a canonical path with only plain ancestors", () => 
   });
   assert.deepEqual(actual, { path: process.execPath, ...expected });
   assert.ok(inspected.includes(path.parse(process.execPath).root));
+  if (process.platform === "win32") {
+    const extendedPath = `\\\\?\\${process.execPath}`;
+    assert.deepEqual(
+      validatePlainCanonicalExecutable(extendedPath, expected, {
+        validateBinding: () => expected,
+      }),
+      { path: extendedPath, ...expected },
+    );
+  }
   assert.throws(
     () =>
       validatePlainCanonicalExecutable(
