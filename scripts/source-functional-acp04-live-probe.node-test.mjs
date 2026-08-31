@@ -496,6 +496,18 @@ test("Mode A rejects session churn and named protocol/recovery failures", () => 
       ),
     /acp04-observed-failure/,
   );
+  assert.throws(
+    () =>
+      createModeAState(
+        ECHOES,
+        snapshot({
+          currentSessionId: "",
+          failures: ["[composer__error] A bounded failure"],
+        }),
+        CODEX_VERSION,
+      ),
+    /acp04-observed-failure:composer__error/,
+  );
 });
 
 test("Mode A rejects stale revisions, extra turns, and empty or duplicate IDs", () => {

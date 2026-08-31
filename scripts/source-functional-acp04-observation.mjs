@@ -82,8 +82,12 @@ export function rejectObservedFailures(snapshot) {
   if (
     snapshot.failures.length > 0 ||
     snapshot.failures.some((item) => FAILURE.test(item))
-  )
-    fail("observed-failure");
+  ) {
+    const source = /^\[([a-z0-9_-]{1,64})\]/iu.exec(
+      snapshot.failures[0] ?? "",
+    )?.[1];
+    fail(`observed-failure:${source?.toLowerCase() ?? "unclassified"}`);
+  }
 }
 
 export async function waitUntil(action, deadline, message) {
