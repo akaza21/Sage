@@ -224,6 +224,7 @@ export function ProjectChatNavigation({
               }`}
               type="button"
               title={`Open chat ${displayTitle}`}
+              data-chat-id={tab.id}
               aria-current={focused ? "page" : undefined}
               onClick={() => {
                 ackSessionRailUnread(tab.id, fingerprint);

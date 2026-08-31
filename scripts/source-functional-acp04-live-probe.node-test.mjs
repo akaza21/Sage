@@ -559,7 +559,7 @@ test("Mode A uses behavior seams for Editor to one seeded Agent chat", async () 
 
 test("clean Chat navigation accepts one top-level New chat and only an empty replacement Chat", () => {
   const dom = new JSDOM(
-    `<!doctype html><main class="workbench workbench--agent"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor"><input type="radio" name="workbench-window-mode" value="agent" checked></div><aside class="project-sidebar" aria-label="Projects and chats"><div class="project-sidebar__actions"><button type="button" title="New chat">New chat</button></div><button class="project-chat" aria-current="page">Seeded chat</button></aside><section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat"><section class="acp-chat-projection" aria-label="Agent chat seeded" data-project-id="project-1" data-chat-id="chat-seeded" data-current-session-id="session-sim" data-projection-revision="1"><section class="acp-turn" data-turn-id="simulator-turn" data-session-id="session-sim" data-runtime-epoch="0" data-turn-ordinal="0"></section></section></section></section></main>`,
+    `<!doctype html><main class="workbench workbench--agent"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor"><input type="radio" name="workbench-window-mode" value="agent" checked></div><aside class="project-sidebar" aria-label="Projects and chats"><div class="project-sidebar__actions"><button type="button" title="New chat">New chat</button></div><button class="project-chat" data-chat-id="chat-seeded" aria-current="page">Seeded chat</button></aside><section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat"></section></section></main>`,
   );
   const previous = { document: globalThis.document };
   globalThis.document = dom.window.document;
@@ -572,19 +572,13 @@ test("clean Chat navigation accepts one top-level New chat and only an empty rep
     action.addEventListener("click", () => {
       clicks += 1;
       const rail = dom.window.document.querySelector(".project-chat");
-      const projection = dom.window.document.querySelector(
-        ".acp-chat-projection",
-      );
       rail.textContent = "Fresh chat";
-      projection.setAttribute("aria-label", "Agent chat fresh");
-      projection.dataset.chatId = "chat-fresh";
-      projection.dataset.currentSessionId = "";
+      rail.dataset.chatId = "chat-fresh";
     });
     assert.equal(eval(ui.seededChatId), "chat-seeded");
+    assert.equal(eval(freshChatReadyExpression("chat-seeded")), false);
     assert.equal(eval(ui.createFreshChat), true);
     assert.equal(clicks, 1);
-    assert.equal(eval(freshChatReadyExpression("chat-seeded")), false);
-    dom.window.document.querySelector(".acp-turn").remove();
     assert.equal(eval(freshChatReadyExpression("chat-seeded")), true);
     action.after(action.cloneNode(true));
     assert.equal(eval(ui.createFreshChat), false);
