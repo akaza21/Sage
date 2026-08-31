@@ -244,20 +244,26 @@ function defaultDriver(cdp, deadline, codexVersion, guard = () => {}) {
         deadline,
         "acp04-seeded-chat-timeout",
       ),
-    seededChatId: async () => {
-      guard();
-      const chatId = await cdp.evaluate(
-        ui.seededChatId,
-        operationDeadline(deadline),
-      );
-      if (
-        typeof chatId !== "string" ||
-        chatId.length === 0 ||
-        chatId.length > 512
-      )
-        fail("seeded-chat-id-invalid");
-      return chatId;
-    },
+    seededChatId: () =>
+      waitUntil(
+        async () => {
+          guard();
+          const chatId = await cdp.evaluate(
+            ui.seededChatId,
+            operationDeadline(deadline),
+          );
+          if (chatId === null) return null;
+          if (
+            typeof chatId !== "string" ||
+            chatId.length === 0 ||
+            chatId.length > 512
+          )
+            fail("seeded-chat-id-invalid");
+          return chatId;
+        },
+        deadline,
+        "acp04-seeded-chat-id-timeout",
+      ),
     createFreshChat: () =>
       exactAction(ui.createFreshChat, "new-chat-ambiguous"),
     waitForFreshChat: (seededChatId) =>
