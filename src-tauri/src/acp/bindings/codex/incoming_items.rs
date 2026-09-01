@@ -6,6 +6,7 @@ use crate::acp::{
     intent::{NormalizedPayload, ToolCategory},
     lifecycle::{ItemLifecycle, ToolState},
     limits::LIMITS,
+    runtime::host_browse::{CURATED_BROWSE_TOOL_NAME, admit_browse_url},
 };
 
 use super::{
@@ -52,7 +53,7 @@ pub(super) fn normalize_item<M: ResourceMapper>(
         ))),
         "commandExecution" => tool(item, lifecycle, ToolCategory::Command, "Command").map(Some),
         "mcpToolCall" => tool(item, lifecycle, ToolCategory::Mcp, "MCP tool").map(Some),
-        "dynamicToolCall" => tool(item, lifecycle, ToolCategory::Other, "Tool").map(Some),
+        "dynamicToolCall" => dynamic_tool(item, lifecycle).map(Some),
         "webSearch" => tool(item, lifecycle, ToolCategory::Web, "Web search").map(Some),
         "collabAgentToolCall" | "subAgentActivity" => Ok(Some((
             NormalizedPayload::Collaboration {
@@ -72,6 +73,30 @@ pub(super) fn normalize_item<M: ResourceMapper>(
             Some(ItemLifecycle::Unsupported),
         ))),
     }
+}
+
+fn dynamic_tool(
+    item: &Map<String, Value>,
+    lifecycle: ItemLifecycle,
+) -> Result<ItemNormalization, IngressError> {
+    let label = text(item, "tool", 128)?;
+    if label == CURATED_BROWSE_TOOL_NAME {
+        let href = item
+            .get("arguments")
+            .and_then(Value::as_object)
+            .and_then(|arguments| arguments.get("url"))
+            .and_then(Value::as_str)
+            .and_then(admit_browse_url)
+            .ok_or(IngressError::Malformed)?;
+        return tool_with_summary(
+            item,
+            lifecycle,
+            ToolCategory::Web,
+            CURATED_BROWSE_TOOL_NAME,
+            Some(href),
+        );
+    }
+    tool(item, lifecycle, ToolCategory::Other, "Tool")
 }
 
 fn image_generation(
@@ -108,6 +133,16 @@ fn tool(
     category: ToolCategory,
     label: &str,
 ) -> Result<ItemNormalization, IngressError> {
+    tool_with_summary(item, lifecycle, category, label, None)
+}
+
+fn tool_with_summary(
+    item: &Map<String, Value>,
+    lifecycle: ItemLifecycle,
+    category: ToolCategory,
+    label: &str,
+    summary: Option<String>,
+) -> Result<ItemNormalization, IngressError> {
     let status = item
         .get("status")
         .and_then(Value::as_str)
@@ -130,13 +165,19 @@ fn tool(
         NormalizedPayload::ToolCall {
             category,
             label,
-            input_summary: None,
+            input_summary: summary
+                .map(|value| SafeText::new("toolInput", value))
+                .transpose()
+                .map_err(content)?,
         }
     } else {
         NormalizedPayload::ToolUpdateResult {
             category,
             label,
-            output_summary: None,
+            output_summary: summary
+                .map(|value| SafeText::new("toolOutput", value))
+                .transpose()
+                .map_err(content)?,
         }
     };
     Ok((payload, Some(tool_state), terminal))
@@ -336,5 +377,27 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn dynamic_browse_keeps_its_curated_label_and_admitted_url() {
+        let item = item(json!({
+            "type": "dynamicToolCall",
+            "id": "browse-1",
+            "tool": "sage.browse",
+            "arguments": {"url": "http://127.0.0.1:43124/proof"},
+            "status": "inProgress"
+        }));
+        let (payload, state, terminal) =
+            normalize_item(&item, ItemLifecycle::Started, &UnusedMapper)
+                .unwrap()
+                .expect("admitted browse");
+        assert_eq!(state, Some(ToolState::InProgress));
+        assert_eq!(terminal, None);
+        assert!(matches!(
+            payload,
+            NormalizedPayload::ToolCall { category: ToolCategory::Web, label, input_summary: Some(summary) }
+                if label.as_str() == "sage.browse" && summary.as_str() == "http://127.0.0.1:43124/proof"
+        ));
     }
 }

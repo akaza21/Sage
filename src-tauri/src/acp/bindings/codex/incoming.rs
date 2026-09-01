@@ -90,6 +90,9 @@ pub(crate) enum IncomingEvent {
         turn_id: ScopedExternalId,
         payload: NormalizedPayload,
     },
+    HostToolReply {
+        bytes: Vec<u8>,
+    },
     Acknowledged {
         closes_session: bool,
     },

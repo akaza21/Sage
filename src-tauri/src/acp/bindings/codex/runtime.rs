@@ -57,6 +57,17 @@ impl CodexRuntime {
                 }
                 let mut batch = AdapterBatchBuilder::new();
                 for event in events {
+                    if let IncomingEvent::HostToolReply { bytes } = event {
+                        let frame =
+                            OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
+                        batch
+                            .push_egress(AdapterEgress::new(
+                                frame,
+                                EgressToken::protocol_notification(),
+                            ))
+                            .map_err(|_| AdapterRuntimeError::BatchCount)?;
+                        continue;
+                    }
                     let (event, egress) = self.translate_event(event, request_digest)?;
                     let mandatory = egress
                         .as_ref()
@@ -199,6 +210,7 @@ impl CodexRuntime {
                 },
                 None,
             ),
+            IncomingEvent::HostToolReply { .. } => unreachable!("handled before translation"),
             IncomingEvent::Acknowledged { closes_session } => {
                 if closes_session {
                     self.snapshots.clear();

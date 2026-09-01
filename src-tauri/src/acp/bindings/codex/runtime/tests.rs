@@ -277,6 +277,31 @@ fn running_turn(runtime: &mut CodexRuntime) {
 }
 
 #[test]
+fn dynamic_browse_call_is_answered_without_a_synthetic_transcript_event() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    let batch = runtime
+        .ingest(
+            &frame(json!({"id":"browse-1","method":"item/tool/call","params":{
+                "threadId":"thread-1","turnId":"turn-1","callId":"call-1",
+                "tool":"sage.browse","arguments":{"url":"http://127.0.0.1:43124/proof"}
+            }})),
+            &Mapper,
+        )
+        .expect("admitted dynamic browse call");
+    assert!(batch.events().is_empty());
+    assert_eq!(batch.egress().len(), 1);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(batch.egress()[0].frame().payload()).unwrap(),
+        json!({"id":"browse-1","result":{
+            "success":true,
+            "contentItems":[{"type":"inputText","text":"http://127.0.0.1:43124/proof"}]
+        }})
+    );
+}
+
+#[test]
 fn notification_first_turn_start_ignores_the_late_response_state_regression() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);

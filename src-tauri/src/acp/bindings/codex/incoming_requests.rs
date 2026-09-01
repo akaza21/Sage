@@ -6,6 +6,7 @@ use crate::acp::{
     contract::SafeText,
     intent::{NormalizedPayload, ToolCategory},
     limits::LIMITS,
+    runtime::host_browse::{CURATED_BROWSE_TOOL_NAME, admit_browse_url},
 };
 
 use super::super::state::{CodexAdapter, ExternalKind, PermissionRegistration};
@@ -20,6 +21,9 @@ pub(super) fn server_request(
     method: &str,
     params: &Map<String, Value>,
 ) -> Result<IngressDisposition, IngressError> {
+    if method == "item/tool/call" {
+        return dynamic_tool_call(adapter, object, params);
+    }
     let request_id = request_id_text(object.get("id").ok_or(IngressError::Malformed)?)?;
     let thread = text(params, "threadId", 512)?;
     let turn = text(params, "turnId", 512)?;
@@ -87,6 +91,45 @@ pub(super) fn server_request(
         denial: Box::new(denial),
     };
     Ok(event.into())
+}
+
+fn dynamic_tool_call(
+    adapter: &CodexAdapter,
+    object: &Map<String, Value>,
+    params: &Map<String, Value>,
+) -> Result<IngressDisposition, IngressError> {
+    let thread = text(params, "threadId", 512)?;
+    let turn = text(params, "turnId", 512)?;
+    adapter.expect_thread(thread).map_err(identity)?;
+    adapter.expect_turn(turn).map_err(identity)?;
+    let _call_id = text(params, "callId", 512)?;
+    let tool = text(params, "tool", 128)?;
+    if tool != CURATED_BROWSE_TOOL_NAME {
+        return Err(IngressError::UnsupportedServerRequest);
+    }
+    let args = params
+        .get("arguments")
+        .and_then(Value::as_object)
+        .ok_or(IngressError::Malformed)?;
+    let href = args
+        .get("url")
+        .and_then(Value::as_str)
+        .and_then(admit_browse_url)
+        .ok_or(IngressError::Malformed)?;
+    let bytes = serde_json::to_vec(&json!({
+        "id": object["id"].clone(),
+        "result": {
+            "success": true,
+            "contentItems": [{"type": "inputText", "text": href}]
+        }
+    }))
+    .map_err(|_| IngressError::Malformed)?;
+    if bytes.len() >= LIMITS.wire.frame_bytes as usize
+        || bytes.iter().any(|byte| matches!(byte, b'\n' | b'\r'))
+    {
+        return Err(IngressError::FrameBytes);
+    }
+    Ok(IncomingEvent::HostToolReply { bytes }.into())
 }
 
 fn request_fingerprint(object: &Map<String, Value>) -> u64 {
