@@ -8,6 +8,7 @@ function createDesktop() {
     ...ports.repository,
     ...ports.chat,
     ...ports.agent,
+    ...ports.settings,
   };
 }
 

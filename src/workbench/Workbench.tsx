@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import { useWorkbenchStore } from "../app/store";
+import { useEditorAppearanceStore } from "../app/editorAppearanceStore";
 import { sameResource } from "../domain/resourceIdentity";
 import { admitsFocusedCodexRendererRecreation } from "../features/chat/acp/rendererRecreationCollectorAdmission";
 import { mountRendererRecreationPacketCollector } from "../features/chat/acp/rendererRecreationPacket";
@@ -18,6 +19,7 @@ import { LeftSidebar } from "./LeftSidebar";
 import { PlaceholderSurface } from "./PlaceholderSurface";
 import { RightSidebar } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
+import { SettingsSurface } from "./SettingsSurface";
 import { TabStrip } from "./TabStrip";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import { renderFileOrDiffCanvas } from "./surfaceRegistry";
@@ -95,7 +97,11 @@ function ActiveCanvas({ onOpenAgent }: { onOpenAgent: () => void }) {
         </div>
       ) : null}
       {canvas}
-      {activeTab && !editorTab && activeTab.kind !== "chat" ? (
+      {activeTab?.kind === "settings" ? <SettingsSurface /> : null}
+      {activeTab &&
+      !editorTab &&
+      activeTab.kind !== "chat" &&
+      activeTab.kind !== "settings" ? (
         <PlaceholderSurface tab={activeTab} />
       ) : null}
       {showEditorEmpty ? <EditorWelcome onOpenAgent={onOpenAgent} /> : null}
@@ -230,6 +236,20 @@ export function Workbench() {
   const [editorToolRailWidth, setEditorToolRailWidth] = useState(
     initialLayout.editorToolRailWidth,
   );
+  useEffect(() => {
+    void useEditorAppearanceStore.getState().restore();
+  }, []);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === ",") {
+        event.preventDefault();
+        setWindowMode("editor");
+        useWorkbenchStore.getState().openSettings();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   useEffect(() => {
     writeWorkbenchLayout({
       editorToolRailWidth,

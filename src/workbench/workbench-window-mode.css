@@ -444,3 +444,47 @@
   border: 0;
   background: var(--color-canvas);
 }
+
+.settings-surface {
+  overflow: auto;
+  max-width: 760px;
+  padding: 32px;
+  color: var(--color-text-primary);
+}
+
+.settings-surface header,
+.settings-surface__section,
+.settings-surface label {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-surface header {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
+  align-items: end;
+  margin-bottom: 28px;
+}
+
+.settings-surface h1,
+.settings-surface h2 {
+  margin: 0;
+}
+
+.settings-surface__section {
+  max-width: 420px;
+}
+
+.settings-surface select,
+.settings-surface input[type="search"] {
+  min-height: 32px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-canvas);
+  color: inherit;
+  padding: 0 8px;
+}
+
+.settings-surface__toggle {
+  display: flex;
+  align-items: center;
+}

@@ -42,13 +42,14 @@ async function featureProductionFiles(): Promise<string[]> {
 }
 
 describe("S0.3 workbench port seam", () => {
-  it("freezes the five port method names", () => {
+  it("freezes the six port method names", () => {
     expect(Object.keys(FROZEN_WORKBENCH_PORT_METHODS).sort()).toEqual([
       "agent",
       "chat",
       "editor",
       "project",
       "repository",
+      "settings",
     ]);
     expect(FROZEN_WORKBENCH_PORT_METHODS.project).toEqual([
       "addProjectRootFromPicker",
@@ -107,6 +108,10 @@ describe("S0.3 workbench port seam", () => {
       "listHarnessModels",
       "sendPrompt",
     ]);
+    expect(FROZEN_WORKBENCH_PORT_METHODS.settings).toEqual([
+      "getEditorAppearance",
+      "setEditorAppearance",
+    ]);
   });
 
   it("native and browser adapters implement every frozen port method", () => {
@@ -138,6 +143,7 @@ describe("S0.3 workbench port seam", () => {
     expect(typeof ports.project.getBootstrapSnapshot).toBe("function");
     expect(typeof ports.editor.openEditorDocument).toBe("function");
     expect(typeof ports.chat.createChat).toBe("function");
+    expect(typeof ports.settings.getEditorAppearance).toBe("function");
   });
 
   it("exposes named store selectors so features do not expand aggregate store", () => {

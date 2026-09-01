@@ -1,4 +1,4 @@
-import { FileSearch, Search } from "lucide-react";
+import { FileSearch, Search, Settings } from "lucide-react";
 import { useRef } from "react";
 
 import { useWorkbenchStore } from "../app/store";
@@ -29,6 +29,7 @@ export function TitleBar({
     (state) => state.projectTransitioning,
   );
   const setSidebarView = useWorkbenchStore((state) => state.setSidebarView);
+  const openSettings = useWorkbenchStore((state) => state.openSettings);
   const chatSearchRef = useRef<HTMLButtonElement | null>(null);
   const focusedId = titleBarFocusedChatId(collectChatTabIds(tabs), activeTabId);
   const sessionTitle =
@@ -102,7 +103,17 @@ export function TitleBar({
           >
             <Search size={14} aria-hidden="true" />
           </button>
-        ) : null}
+        ) : (
+          <button
+            className="title-bar__chat-search"
+            type="button"
+            title="Open settings"
+            aria-label="Open settings"
+            onClick={openSettings}
+          >
+            <Settings size={14} aria-hidden="true" />
+          </button>
+        )}
       </div>
     </header>
   );

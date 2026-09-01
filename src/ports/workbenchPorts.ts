@@ -52,6 +52,7 @@ import type {
   TrashProjectResourceRequest,
   TrashProjectResourceResult,
 } from "../domain/workbench";
+import type { EditorAppearance } from "../features/files/editorAppearance";
 
 export interface SendPromptRequest {
   chatId: string;
@@ -222,12 +223,18 @@ export interface AgentPort {
   sendPrompt(request: SendPromptRequest): Promise<SimulatorTurnResult>;
 }
 
+export interface SettingsPort {
+  getEditorAppearance(): Promise<EditorAppearance>;
+  setEditorAppearance(appearance: EditorAppearance): Promise<EditorAppearance>;
+}
+
 export interface WorkbenchPorts {
   project: ProjectPort;
   editor: EditorPort;
   repository: RepositoryPort;
   chat: ChatPort;
   agent: AgentPort;
+  settings: SettingsPort;
 }
 
 export const FROZEN_WORKBENCH_PORT_METHODS = {
@@ -285,4 +292,5 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "restoreChat",
   ],
   agent: ["listHarnessModels", "sendPrompt"],
+  settings: ["getEditorAppearance", "setEditorAppearance"],
 } as const;

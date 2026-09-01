@@ -75,6 +75,7 @@ fn state_with_unavailable_codex_project() -> (AppState, String, String, std::pat
             .unwrap();
     let state = AppState {
         database,
+        settings: crate::settings_store::SettingsStore::in_memory().unwrap(),
         acp,
         harnesses: crate::harnesses::HarnessCatalog::with_codex_registration(codex),
         editor_operations: crate::editor_coordination::EditorOperationCoordinator::default(),
@@ -101,6 +102,7 @@ fn state_with_admitted_codex_project() -> (AppState, String, String, std::path::
             .unwrap();
     let state = AppState {
         database,
+        settings: crate::settings_store::SettingsStore::in_memory().unwrap(),
         acp,
         harnesses: crate::harnesses::HarnessCatalog::with_codex_registration(codex),
         editor_operations: crate::editor_coordination::EditorOperationCoordinator::default(),

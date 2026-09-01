@@ -17,8 +17,14 @@ import type {
   EditorPort,
   ProjectPort,
   RepositoryPort,
+  SettingsPort,
   WorkbenchPorts,
 } from "./workbenchPorts";
+import {
+  DEFAULT_EDITOR_APPEARANCE,
+  admitEditorAppearance,
+  type EditorAppearance,
+} from "../features/files/editorAppearance";
 
 function uncommittedTransition(
   expectedTransitionEpoch: number,
@@ -169,6 +175,16 @@ const agent: AgentPort = {
   sendPrompt: (request) => browserDesktop.sendPrompt(request),
 };
 
+let editorAppearance: EditorAppearance = DEFAULT_EDITOR_APPEARANCE;
+
+const settings: SettingsPort = {
+  getEditorAppearance: () => Promise.resolve(editorAppearance),
+  setEditorAppearance: (appearance) => {
+    editorAppearance = admitEditorAppearance(appearance);
+    return Promise.resolve(editorAppearance);
+  },
+};
+
 export function createBrowserWorkbenchPorts(): WorkbenchPorts {
-  return { project, editor, repository, chat, agent };
+  return { project, editor, repository, chat, agent, settings };
 }
