@@ -56,6 +56,7 @@ export function SourceChangeRow({
   const canDiscard = !readOnly && isSafeDiscardChange(change);
   const canResolve = !readOnly && conflicted;
   const path = change.resource.relativePath;
+  const isSelected = sameResource(selected, change.resource);
   const cancelDiscard = () => {
     setConfirmingDiscard(false);
     queueMicrotask(() => discardTriggerRef.current?.focus());
@@ -69,12 +70,11 @@ export function SourceChangeRow({
     >
       <button
         className={`source-change ${
-          sameResource(selected, change.resource)
-            ? "source-change--selected"
-            : ""
+          isSelected ? "source-change--selected" : ""
         }${conflicted ? " source-change--conflicted" : ""}`}
         type="button"
         aria-label={`Open diff for ${path}`}
+        aria-current={isSelected ? "true" : undefined}
         onClick={() => void openDiff(change.resource, repository)}
       >
         <span

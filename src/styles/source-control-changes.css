@@ -29,6 +29,8 @@
 .source-change--selected {
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+  font-weight: var(--font-weight-semibold);
 }
 
 .source-change--conflicted {
@@ -59,6 +61,13 @@
 .source-change__counts {
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
+}
+
+@media (forced-colors: active) {
+  .source-change[aria-current="true"] {
+    outline: 1px solid Highlight;
+    outline-offset: -2px;
+  }
 }
 
 .source-change__actions {

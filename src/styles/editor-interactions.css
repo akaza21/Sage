@@ -47,6 +47,10 @@
     .source-change__action,
     .source-change__resolve,
     .source-change__confirmation-button,
+    .source-branch__switch,
+    .source-branch__delete,
+    .source-branch-create button,
+    .source-remote__action,
     .repository-commit__footer button,
     .workspace-search__controls button,
     .workspace-search__input button,
@@ -136,7 +140,7 @@
 .workbench--editor .editor-welcome__actions {
   display: grid;
   width: min(100%, 260px);
-  gap: 2px;
+  gap: var(--space-1);
 }
 
 .workbench--editor .editor-welcome__actions button {

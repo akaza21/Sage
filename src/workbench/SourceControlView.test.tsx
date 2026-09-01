@@ -195,6 +195,7 @@ it("selects a nested repository, opens its Diff, and offers no mutations", async
     repositoryRefs: [rootRepository, nestedRepository],
     selectedRepository: rootRepository,
     selectedRepositoryStatus: rootStatus,
+    selectedResource: nestedStatus.changes[0].resource,
     repositoryInventoryPhase: "ready",
     repositoryStatusPhase: "ready",
     loadRepositoryInventory: vi.fn(async () => undefined),
@@ -216,11 +217,11 @@ it("selects a nested repository, opens its Diff, and offers no mutations", async
     expect(selectRepository).toHaveBeenCalledWith(nestedRepository),
   );
 
-  fireEvent.click(
-    screen.getByRole("button", {
-      name: "Open diff for packages/tool/src/app.ts",
-    }),
-  );
+  const selectedChange = screen.getByRole("button", {
+    name: "Open diff for packages/tool/src/app.ts",
+  });
+  expect(selectedChange).toHaveAttribute("aria-current", "true");
+  fireEvent.click(selectedChange);
 
   expect(openDiff).toHaveBeenCalledWith(
     nestedStatus.changes[0].resource,

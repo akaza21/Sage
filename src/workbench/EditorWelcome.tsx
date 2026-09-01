@@ -14,15 +14,15 @@ export function EditorWelcome({ onOpenAgent }: { onOpenAgent: () => void }) {
       </div>
       <div className="editor-welcome__actions">
         <button type="button" onClick={() => openView("explorer")}>
-          <Files size={15} aria-hidden="true" />
+          <Files size={16} aria-hidden="true" />
           Browse files
         </button>
         <button type="button" onClick={() => openView("search")}>
-          <Search size={15} aria-hidden="true" />
+          <Search size={16} aria-hidden="true" />
           Search files
         </button>
         <button type="button" onClick={onOpenAgent}>
-          <MessageSquare size={15} aria-hidden="true" />
+          <MessageSquare size={16} aria-hidden="true" />
           Open Agent
         </button>
       </div>

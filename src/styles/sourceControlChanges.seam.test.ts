@@ -18,5 +18,9 @@ describe("Source Control changes stylesheet seam", () => {
     expect(shellCss).not.toMatch(/^\.source-change__discard-confirmation\b/m);
     expect(surfaceCss).toMatch(/^\.source-change-row\b/m);
     expect(surfaceCss).toMatch(/^\.source-change__discard-confirmation\b/m);
+    expect(surfaceCss).toMatch(
+      /\.source-change--selected\s*\{[^}]*box-shadow:[^}]*font-weight:/s,
+    );
+    expect(surfaceCss).toContain('.source-change[aria-current="true"]');
   });
 });
