@@ -685,7 +685,8 @@ $preLaunchExecutableBytes = (Get-Item -LiteralPath $resolvedExecutable -Force).L
 $preLaunchExecutableSha256 = (Get-FileHash -LiteralPath $resolvedExecutable -Algorithm SHA256).Hash.ToLowerInvariant()
 if (-not (Test-FullyQualifiedPath $SourceRoot)) { throw "SourceRoot must be an absolute canonical path." }
 $resolvedSource = (Get-Item -LiteralPath $SourceRoot -Force).FullName
-if (-not (Test-Path -LiteralPath (Join-Path $resolvedSource ".git") -PathType Container)) { throw "SourceRoot must be a Git checkout." }
+$gitMarker = Get-Item -LiteralPath (Join-Path $resolvedSource ".git") -Force -ErrorAction SilentlyContinue
+if ($null -eq $gitMarker) { throw "SourceRoot must be a Git checkout." }
 $node = Require-PlainCanonicalFile (Get-Command node -ErrorAction Stop).Source "node"
 $preLaunchNodeBytes = (Get-Item -LiteralPath $node -Force).Length
 $preLaunchNodeSha256 = (Get-FileHash -LiteralPath $node -Algorithm SHA256).Hash.ToLowerInvariant()

@@ -2398,6 +2398,46 @@ test("Windows wrapper has no Playwright CLI input and rejects noncanonical Sourc
   assert.equal(existsSync(evidence), false);
 });
 
+test("Windows wrapper admits a linked-worktree Git marker before Git validates it", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-linked-worktree-marker-"));
+  const powershell = path.join(
+    process.env.SystemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  const wrapper = path.resolve(
+    "scripts",
+    "run-source-functional-native-ide-journey.ps1",
+  );
+  try {
+    writeFileSync(path.join(root, ".git"), "gitdir: C:\\missing-gitdir\n");
+    const result = spawnSync(
+      powershell,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        wrapper,
+        "-SageExecutable",
+        wrapper,
+        "-SourceRoot",
+        root,
+        "-EvidenceRoot",
+        path.join(root, "local-evidence", "linked-worktree-check"),
+      ],
+      { encoding: "utf8", windowsHide: true, timeout: 5000 },
+    );
+    const output = `${result.stdout}\n${result.stderr}`;
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(output, /SourceRoot must be a Git checkout/u);
+    assert.match(output, /git status .* failed/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("Windows wrapper rejects a mixed-case Node preload before invoking the collector", () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-wrapper-env-poison-"));
   const powershell = path.join(
