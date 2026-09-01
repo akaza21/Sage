@@ -6,7 +6,7 @@ use crate::acp::{
     lifecycle::{ItemLifecycle, TerminalUpdate, TurnState},
 };
 
-use super::super::state::ExternalKind;
+use super::super::state::{AdapterError, ExternalKind, TurnStartedRejection};
 use super::{
     CodexAdapter, IncomingEvent, IngressDisposition, IngressError, ItemUpdateMode, ResourceMapper,
     content, error_payload, expect_thread_and_turn, identity, normalize_item, parse_usage,
@@ -105,16 +105,19 @@ pub(super) fn notification<M: ResourceMapper>(
             Ok(IngressDisposition::IgnoredLate)
         }
         "turn/started" => {
-            adapter
-                .expect_thread(text(params, "threadId", 512)?)
-                .map_err(identity)?;
+            let thread = text(params, "threadId", 512)?;
+            if let Err(error) = adapter.expect_thread(thread) {
+                return Err(turn_started_rejection(adapter, error));
+            }
             let turn = params
                 .get("turn")
                 .and_then(Value::as_object)
                 .ok_or(IngressError::Malformed)?;
-            let (id, binding) = adapter
-                .observe_turn_started(text(turn, "id", 512)?)
-                .map_err(identity)?;
+            let turn_id = text(turn, "id", 512)?;
+            let (id, binding) = match adapter.observe_turn_started(turn_id) {
+                Ok(value) => value,
+                Err(error) => return Err(turn_started_rejection(adapter, error)),
+            };
             if binding == super::super::state::TurnBinding::PreviousTerminal {
                 return Ok(IngressDisposition::IgnoredLate);
             }
@@ -174,6 +177,18 @@ pub(super) fn notification<M: ResourceMapper>(
             Ok(IncomingEvent::Unsupported(unsupported(other, "Unsupported Codex event")?).into())
         }
     }
+}
+
+fn turn_started_rejection(adapter: &CodexAdapter, error: AdapterError) -> IngressError {
+    let reason = TurnStartedRejection::from_adapter_error(&error);
+    tracing::warn!(
+        acp_turn_started_rejection = reason.as_str(),
+        active_turn = adapter.has_active_turn(),
+        pending_turn_start = adapter.has_pending_turn_start(),
+        previous_turn = adapter.has_previous_turn(),
+        "Codex turn/started rejected by adapter state"
+    );
+    identity(error)
 }
 
 fn turn_completed(

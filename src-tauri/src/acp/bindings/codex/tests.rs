@@ -1459,6 +1459,56 @@ fn conflicting_terminal_and_foreign_scope_fail_closed() {
 }
 
 #[test]
+fn turn_started_rejection_diagnostic_classifies_only_safe_adapter_state() {
+    use super::state::TurnStartedRejection;
+
+    let mut foreign_thread = adapter();
+    ready(&mut foreign_thread);
+    assert_eq!(
+        TurnStartedRejection::from_adapter_error(
+            &foreign_thread.expect_thread("foreign-thread").unwrap_err()
+        ),
+        TurnStartedRejection::ForeignThread
+    );
+
+    let mut overlapping_turn = adapter();
+    ready(&mut overlapping_turn);
+    arm_turn(&mut overlapping_turn, 2, "client-overlapping");
+    overlapping_turn
+        .observe_turn_started("turn-1")
+        .expect("first turn starts");
+    assert_eq!(
+        TurnStartedRejection::from_adapter_error(
+            &overlapping_turn.observe_turn_started("turn-2").unwrap_err()
+        ),
+        TurnStartedRejection::OverlappingTurn
+    );
+
+    let mut missing_correlation = adapter();
+    ready(&mut missing_correlation);
+    assert_eq!(
+        TurnStartedRejection::from_adapter_error(
+            &missing_correlation
+                .observe_turn_started("uncorrelated-turn")
+                .unwrap_err()
+        ),
+        TurnStartedRejection::MissingCorrelation
+    );
+    assert_eq!(
+        TurnStartedRejection::ForeignThread.as_str(),
+        "foreignThread"
+    );
+    assert_eq!(
+        TurnStartedRejection::OverlappingTurn.as_str(),
+        "overlappingTurn"
+    );
+    assert_eq!(
+        TurnStartedRejection::MissingCorrelation.as_str(),
+        "missingCorrelation"
+    );
+}
+
+#[test]
 fn permission_request_produces_only_a_decline_and_no_raw_authority() {
     let mut adapter = adapter();
     ready(&mut adapter);

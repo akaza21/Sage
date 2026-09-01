@@ -4,8 +4,8 @@ mod permissions;
 mod turn_starts;
 mod turns;
 
-pub(crate) use errors::AdapterError;
 use errors::observed_platform;
+pub(crate) use errors::{AdapterError, TurnStartedRejection};
 
 use turn_starts::{CorrelationMatch, TurnStartCorrelations};
 

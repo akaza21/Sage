@@ -59,6 +59,34 @@ pub(crate) enum AdapterError {
     PermissionTeardownRequired,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TurnStartedRejection {
+    ForeignThread,
+    OverlappingTurn,
+    MissingCorrelation,
+    Other,
+}
+
+impl TurnStartedRejection {
+    pub(crate) fn from_adapter_error(error: &AdapterError) -> Self {
+        match error {
+            AdapterError::ForeignIdentity => Self::ForeignThread,
+            AdapterError::IdentityConflict => Self::OverlappingTurn,
+            AdapterError::TurnIntentConflict => Self::MissingCorrelation,
+            _ => Self::Other,
+        }
+    }
+
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::ForeignThread => "foreignThread",
+            Self::OverlappingTurn => "overlappingTurn",
+            Self::MissingCorrelation => "missingCorrelation",
+            Self::Other => "other",
+        }
+    }
+}
+
 impl From<IncomingEvent> for IngressDisposition {
     fn from(event: IncomingEvent) -> Self {
         Self::Events(vec![event])

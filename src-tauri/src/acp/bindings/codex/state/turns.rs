@@ -164,6 +164,14 @@ impl CodexAdapter {
         self.active_turn_id.is_some()
     }
 
+    pub(crate) fn has_pending_turn_start(&self) -> bool {
+        self.turn_start_correlations.has_pending()
+    }
+
+    pub(crate) fn has_previous_turn(&self) -> bool {
+        self.previous_turn.is_some()
+    }
+
     pub(crate) fn turn_is_terminal(&self, value: &str) -> bool {
         self.previous_turn
             .as_ref()
