@@ -117,9 +117,7 @@ it("loads editor runtime only for an active File and destroys it on return to Ch
   render(<Workbench />);
 
   await act(async () => Promise.resolve());
-  expect(
-    screen.getByRole("region", { name: "Editor welcome" }),
-  ).toBeVisible();
+  expect(screen.getByRole("region", { name: "Editor welcome" })).toBeVisible();
   expect(runtimeProbe.moduleLoaded).not.toHaveBeenCalled();
   expect(runtimeProbe.create).not.toHaveBeenCalled();
 
