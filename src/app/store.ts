@@ -117,6 +117,7 @@ export interface WorkbenchState
   refreshRepository: () => Promise<void>;
   setSidebarView: (view: SidebarView) => void;
   toggleSidebar: () => void;
+  openSettings: () => void;
 }
 
 const emptyRepositories: ProjectRepositoryStatus = {
@@ -251,6 +252,32 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     },
 
     closeTab: (tabId) => closeWorkbenchTab(set, get, tabId),
+
+    openSettings: () => {
+      const id = "settings:appearance";
+      if (!get().tabs.some((tab) => tab.id === id)) {
+        set((state) => ({
+          tabs: [
+            ...state.tabs,
+            {
+              id,
+              kind: "settings",
+              title: "Settings",
+              position: state.tabs.length,
+              pinned: false,
+              dirty: false,
+            },
+          ],
+          activeTabId: id,
+          activeEditor: null,
+        }));
+      } else {
+        set({ activeTabId: id, activeEditor: null });
+      }
+      void get()
+        .persistLayout()
+        .catch((error) => set({ error: errorMessage(error) }));
+    },
 
     refreshRepository: async () => {
       if (

@@ -10,6 +10,7 @@ use crate::{
     error::AppResult,
     harnesses::HarnessCatalog,
     persistence::Database,
+    settings_store::SettingsStore,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +43,7 @@ impl ActiveProjectContext<'_> {
 #[derive(Debug)]
 pub struct AppState {
     pub database: Database,
+    pub settings: SettingsStore,
     pub acp: AcpService,
     pub harnesses: HarnessCatalog,
     pub editor_operations: EditorOperationCoordinator,
@@ -77,6 +79,7 @@ impl AppState {
 
     #[cfg(test)]
     pub fn try_new(database: Database) -> AppResult<Self> {
+        let settings = SettingsStore::in_memory()?;
         let trash_recovery = crate::resource_trash_commands::recover_pending_at_startup(&database)?;
         let transition_epoch = trash_recovery
             .as_ref()
@@ -90,6 +93,7 @@ impl AppState {
             })?;
         Ok(Self {
             database,
+            settings,
             acp,
             harnesses: HarnessCatalog::with_codex_registration(codex),
             editor_operations: EditorOperationCoordinator::default(),
@@ -98,7 +102,11 @@ impl AppState {
         })
     }
 
-    pub fn try_new_desktop(database: Database, app: tauri::AppHandle) -> AppResult<Self> {
+    pub fn try_new_desktop(
+        database: Database,
+        settings: SettingsStore,
+        app: tauri::AppHandle,
+    ) -> AppResult<Self> {
         let trash_recovery = crate::resource_trash_commands::recover_pending_at_startup(&database)?;
         let transition_epoch = trash_recovery
             .as_ref()
@@ -116,6 +124,7 @@ impl AppState {
         })?;
         Ok(Self {
             database,
+            settings,
             acp,
             harnesses: HarnessCatalog::with_codex_registration(codex),
             editor_operations: EditorOperationCoordinator::default(),
@@ -127,6 +136,7 @@ impl AppState {
     #[cfg(all(windows, feature = "acp-fixture"))]
     pub fn try_new_characterization_desktop(
         database: Database,
+        settings: SettingsStore,
         app: tauri::AppHandle,
         binding: crate::acp::service::CharacterizationBinding,
     ) -> AppResult<Self> {
@@ -148,6 +158,7 @@ impl AppState {
         })?;
         Ok(Self {
             database,
+            settings,
             acp,
             harnesses: HarnessCatalog::with_codex_registration_and_characterization(codex),
             editor_operations: EditorOperationCoordinator::default(),

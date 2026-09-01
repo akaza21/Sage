@@ -65,6 +65,8 @@ mod repository_workspace;
 mod resource_commands;
 mod resource_trash_commands;
 mod session_events;
+mod settings_commands;
+mod settings_store;
 mod state;
 mod workbench_persistence;
 mod workbench_restore;
@@ -156,13 +158,26 @@ pub fn run() {
             let state = match characterization {
                 Some(binding) => AppState::try_new_characterization_desktop(
                     database,
+                    settings_store::SettingsStore::open(
+                        &profile.durable_dir().join("settings.db"),
+                    )?,
                     app.handle().clone(),
                     binding,
                 )?,
-                None => AppState::try_new_desktop(database, app.handle().clone())?,
+                None => AppState::try_new_desktop(
+                    database,
+                    settings_store::SettingsStore::open(
+                        &profile.durable_dir().join("settings.db"),
+                    )?,
+                    app.handle().clone(),
+                )?,
             };
             #[cfg(not(all(windows, feature = "acp-fixture")))]
-            let state = AppState::try_new_desktop(database, app.handle().clone())?;
+            let state = AppState::try_new_desktop(
+                database,
+                settings_store::SettingsStore::open(&profile.durable_dir().join("settings.db"))?,
+                app.handle().clone(),
+            )?;
             app.manage(state);
             let main_window_config = app
                 .config()
@@ -265,6 +280,8 @@ pub fn run() {
             project_commands::switch_project,
             commands::list_harness_models,
             commands::send_simulated_prompt,
+            settings_commands::get_editor_appearance,
+            settings_commands::set_editor_appearance,
             commands::acp::get_acp_chat_page,
             commands::acp::get_codex_discovery,
             #[cfg(any(debug_assertions, feature = "diagnostics"))]

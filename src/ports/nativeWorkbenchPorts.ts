@@ -4,9 +4,11 @@ import type {
   EditorPort,
   ProjectPort,
   RepositoryPort,
+  SettingsPort,
   SendPromptRequest,
   WorkbenchPorts,
 } from "./workbenchPorts";
+import type { EditorAppearance } from "../features/files/editorAppearance";
 import { invokeNative, isTauriRuntime } from "./nativeInvoke";
 import { startEditorWatchSession } from "./editorWatchSession";
 import {
@@ -391,6 +393,15 @@ const agent: AgentPort = {
   },
 };
 
+const settings: SettingsPort = {
+  getEditorAppearance(): Promise<EditorAppearance> {
+    return invokeNative("get_editor_appearance");
+  },
+  setEditorAppearance(appearance: EditorAppearance): Promise<EditorAppearance> {
+    return invokeNative("set_editor_appearance", { appearance });
+  },
+};
+
 export function createNativeWorkbenchPorts(): WorkbenchPorts {
-  return { project, editor, repository, chat, agent };
+  return { project, editor, repository, chat, agent, settings };
 }
