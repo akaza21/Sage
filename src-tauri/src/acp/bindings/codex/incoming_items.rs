@@ -9,6 +9,7 @@ use crate::acp::{
     runtime::host_browse::{CURATED_BROWSE_TOOL_NAME, admit_browse_url},
 };
 
+use super::super::CODEX_BROWSE_TOOL_NAME;
 use super::{
     IngressError, ResourceMapper,
     support::{content, safe_text, text, unsupported},
@@ -80,7 +81,7 @@ fn dynamic_tool(
     lifecycle: ItemLifecycle,
 ) -> Result<ItemNormalization, IngressError> {
     let label = text(item, "tool", 128)?;
-    if label == CURATED_BROWSE_TOOL_NAME {
+    if label == CURATED_BROWSE_TOOL_NAME || label == CODEX_BROWSE_TOOL_NAME {
         let href = item
             .get("arguments")
             .and_then(Value::as_object)
@@ -384,7 +385,7 @@ mod tests {
         let item = item(json!({
             "type": "dynamicToolCall",
             "id": "browse-1",
-            "tool": "sage.browse",
+            "tool": "sage_browse",
             "arguments": {"url": "http://127.0.0.1:43124/proof"},
             "status": "inProgress"
         }));

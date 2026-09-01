@@ -285,7 +285,7 @@ fn dynamic_browse_call_is_answered_without_a_synthetic_transcript_event() {
         .ingest(
             &frame(json!({"id":"browse-1","method":"item/tool/call","params":{
                 "threadId":"thread-1","turnId":"turn-1","callId":"call-1",
-                "tool":"sage.browse","arguments":{"url":"http://127.0.0.1:43124/proof"}
+                "tool":"sage_browse","arguments":{"url":"http://127.0.0.1:43124/proof"}
             }})),
             &Mapper,
         )

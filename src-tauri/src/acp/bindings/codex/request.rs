@@ -4,8 +4,10 @@ use crate::acp::{
     contract::RequiredText,
     intent::{ModelId, Prompt},
     limits::LIMITS,
+    runtime::host_browse::MAX_HARNESS_BROWSE_URL_BYTES,
 };
 
+use super::CODEX_BROWSE_TOOL_NAME;
 use super::manifest::Platform;
 use super::policy::{
     APPROVAL_POLICY_NEVER, SANDBOX_NETWORK_ACCESS, SANDBOX_POLICY_READ_ONLY, SANDBOX_READ_ONLY,
@@ -103,7 +105,9 @@ impl OutgoingRequest {
                     "title": client.title,
                     "version": client.version
                 },
-                "capabilities": {"experimentalApi": false}
+                // Codex 0.146 requires this initialize capability before it
+                // accepts the documented thread/start.dynamicTools field.
+                "capabilities": {"experimentalApi": true}
             }),
         )
     }
@@ -121,7 +125,8 @@ impl OutgoingRequest {
                 "cwd": root.as_str(),
                 "approvalPolicy": APPROVAL_POLICY_NEVER,
                 "sandbox": SANDBOX_READ_ONLY,
-                "ephemeral": false
+                "ephemeral": false,
+                "dynamicTools": codex_dynamic_tools()
             }),
         )
     }
@@ -212,6 +217,22 @@ impl OutgoingRequest {
             json!({"threadId": thread_id.as_str()}),
         )
     }
+}
+
+fn codex_dynamic_tools() -> Vec<Value> {
+    vec![json!({
+        "type": "function",
+        "name": CODEX_BROWSE_TOOL_NAME,
+        "description": "Open a Sage Preview URL. Only loopback HTTP(S) URLs with an explicit port are allowed.",
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["url"],
+            "properties": {
+                "url": {"type": "string", "maxLength": MAX_HARNESS_BROWSE_URL_BYTES}
+            }
+        }
+    })]
 }
 
 pub(crate) fn initialized_notification() -> Result<Vec<u8>, RequestError> {
