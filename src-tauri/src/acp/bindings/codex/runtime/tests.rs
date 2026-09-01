@@ -337,6 +337,93 @@ fn notification_first_turn_start_ignores_the_late_response_state_regression() {
 }
 
 #[test]
+fn completed_notification_first_turn_admits_the_next_turn_started() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+
+    let first = runtime
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Run one bounded command").unwrap(),
+            client_message_id: RequiredText::new("client", "first-command").unwrap(),
+        })
+        .unwrap();
+    let first_id = request_id(&first);
+    runtime
+        .ingest(
+            &frame(json!({"method":"turn/started","params":{
+                "threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"method":"turn/completed","params":{
+                "threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    let late_first_response = runtime
+        .ingest(
+            &frame(json!({"id":first_id,"result":{"turn":{"id":"turn-1"}}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(
+        late_first_response.events(),
+        [AdapterEvent::IgnoredDuplicate]
+    ));
+
+    let second = runtime
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Follow up without editing").unwrap(),
+            client_message_id: RequiredText::new("client", "second-follow-up").unwrap(),
+        })
+        .unwrap();
+    let second_id = request_id(&second);
+    let started = runtime
+        .ingest(
+            &frame(json!({"method":"turn/started","params":{
+                "threadId":"thread-1","turn":{"id":"turn-2","status":"inProgress"}
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(
+        started.events(),
+        [AdapterEvent::Turn {
+            state: crate::acp::lifecycle::TurnState::Running,
+            ..
+        }]
+    ));
+    let late_second_response = runtime
+        .ingest(
+            &frame(json!({"id":second_id,"result":{"turn":{"id":"turn-2"}}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(
+        late_second_response.events(),
+        [AdapterEvent::IgnoredLate]
+    ));
+
+    for invalid in [
+        json!({"method":"turn/started","params":{
+            "threadId":"foreign-thread","turn":{"id":"turn-2","status":"inProgress"}
+        }}),
+        json!({"method":"turn/started","params":{
+            "threadId":"thread-1","turn":{"id":"unexpected-turn","status":"inProgress"}
+        }}),
+    ] {
+        assert!(matches!(
+            runtime.ingest(&frame(invalid), &Mapper),
+            Err(AdapterRuntimeError::Operation)
+        ));
+    }
+}
+
+#[test]
 fn prompt_and_interrupt_rpc_errors_emit_terminal_failure_without_replay() {
     let mut prompt_failed = fixture_runtime();
     ready(&mut prompt_failed);
