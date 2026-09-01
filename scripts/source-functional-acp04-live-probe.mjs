@@ -39,6 +39,7 @@ import {
 export {
   ACP04_ECHOES,
   ACP04_MODE_A,
+  ACP04_MODE_B,
   createAcp04Receipt,
   parseAcp04ProbeArguments,
 } from "./source-functional-acp04-live-contract.mjs";
@@ -81,7 +82,7 @@ export function createAcp04Ui(codexVersion) {
   });
 }
 
-export const ACP04_SNAPSHOT_EXPRESSION = `(()=>{const allPanes=[...document.querySelectorAll('section.agent-chat-pane')],panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];if(allPanes.length<1||allPanes.length>2||panes.length!==1)return null;const surfaces=[...panes[0].querySelectorAll('section.chat-surface[aria-label="Agent chat"]')];if(surfaces.length!==1)return null;const s=surfaces[0],projections=[...s.querySelectorAll('section.acp-chat-projection[aria-label^="Agent chat "]')],selects=[...s.querySelectorAll('.composer__controls select')],composers=[...s.querySelectorAll('textarea[aria-label="Message agent"]')];if(projections.length!==1||selects.length!==2)return null;const p=projections[0],selected=x=>x.selectedOptions.length===1?{id:x.value,text:x.selectedOptions[0].textContent.trim()}:null;const alerts=[...s.querySelectorAll('[role="alert"]')].map(x=>x.innerText.trim()).filter(Boolean);const named=s.innerText.match(/ProtocolFailure|HostError::Closed|ACP[^\\n]{0,80}(?:recovery|capacity)/giu)||[];return {projectId:p.dataset.projectId||'',chatId:p.dataset.chatId||'',currentSessionId:p.dataset.currentSessionId||'',projectionRevision:p.dataset.projectionRevision||'',harness:selected(selects[0]),model:selected(selects[1]),harnessStatus:(s.querySelector('.session-state')?.textContent||'').trim(),composerEnabled:composers.length===1&&composers[0].disabled===false,failures:[...new Set([...alerts,...named])],turns:[...p.querySelectorAll(':scope > section.acp-turn')].map(t=>({id:t.dataset.turnId||'',sessionId:t.dataset.sessionId||'',runtimeEpoch:t.dataset.runtimeEpoch||'',ordinal:Number(t.dataset.turnOrdinal),state:t.querySelector(':scope > header [data-turn-status][role="status"]')?.getAttribute('aria-label')||'',items:[...t.querySelectorAll('article[data-item-id][data-message-role]')].map(x=>({id:x.dataset.itemId||'',role:x.dataset.messageRole||'',text:(x.querySelector('.acp-markdown')?.innerText||'').trim()}))}))}})()`;
+export const ACP04_SNAPSHOT_EXPRESSION = `(()=>{const allPanes=[...document.querySelectorAll('section.agent-chat-pane')],panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];if(allPanes.length<1||allPanes.length>2||panes.length!==1)return null;const surfaces=[...panes[0].querySelectorAll('section.chat-surface[aria-label="Agent chat"]')];if(surfaces.length!==1)return null;const s=surfaces[0],projections=[...s.querySelectorAll('section.acp-chat-projection[aria-label^="Agent chat "]')],selects=[...s.querySelectorAll('.composer__controls select')],composers=[...s.querySelectorAll('textarea[aria-label="Message agent"]')];if(projections.length!==1||selects.length!==2)return null;const p=projections[0],selected=x=>x.selectedOptions.length===1?{id:x.value,text:x.selectedOptions[0].textContent.trim()}:null;const alerts=[...s.querySelectorAll('[role="alert"]')].map(x=>{const source=(String(x.className).trim().split(/\\s+/u)[0]||x.tagName.toLowerCase()).replace(/[^a-z0-9_-]/giu,'-').slice(0,64)||'unclassified';return '['+source+'] '+x.innerText.trim()}).filter(x=>!x.endsWith('] '));const named=(s.innerText.match(/ProtocolFailure|HostError::Closed|ACP[^\\n]{0,80}(?:recovery|capacity)/giu)||[]).map(x=>'[named-protocol] '+x);return {projectId:p.dataset.projectId||'',chatId:p.dataset.chatId||'',currentSessionId:p.dataset.currentSessionId||'',projectionRevision:p.dataset.projectionRevision||'',harness:selected(selects[0]),model:selected(selects[1]),harnessStatus:(s.querySelector('.session-state')?.textContent||'').trim(),composerEnabled:composers.length===1&&composers[0].disabled===false,failures:[...new Set([...alerts,...named])],turns:[...p.querySelectorAll(':scope > section.acp-turn')].map(t=>({id:t.dataset.turnId||'',sessionId:t.dataset.sessionId||'',runtimeEpoch:t.dataset.runtimeEpoch||'',ordinal:Number(t.dataset.turnOrdinal),state:t.querySelector(':scope > header [data-turn-status][role="status"]')?.getAttribute('aria-label')||'',items:[...t.querySelectorAll('article[data-item-id][data-message-role]')].map(x=>({id:x.dataset.itemId||'',role:x.dataset.messageRole||'',text:(x.querySelector('.acp-markdown')?.innerText||'').trim()}))}))}})()`;
 
 export function freshChatReadyExpression(previousChatId) {
   if (
@@ -397,32 +398,45 @@ async function execute(options) {
   let collectionError;
   try {
     await revalidateAttachedPage(options, cdp, admitted, deadline);
-    const result = await runAcp04ModeA(cdp, deadline, ACP04_ECHOES, {
+    const guard = () => {
+      for (const logPath of [
+        options.nativeLogs.stdout,
+        options.nativeLogs.stderr,
+      ]) {
+        const item = existsSync(logPath) ? lstatSync(logPath) : null;
+        if (
+          !item ||
+          item.isSymbolicLink() ||
+          !item.isFile() ||
+          item.size > 1024 * 1024
+        )
+          fail("native-log-bound");
+      }
+    };
+    const modeA = await runAcp04ModeA(cdp, deadline, ACP04_ECHOES, {
       codexVersion: options.codex.version,
-      guard: () => {
-        for (const logPath of [
-          options.nativeLogs.stdout,
-          options.nativeLogs.stderr,
-        ]) {
-          const item = existsSync(logPath) ? lstatSync(logPath) : null;
-          if (
-            !item ||
-            item.isSymbolicLink() ||
-            !item.isFile() ||
-            item.size > 1024 * 1024
-          )
-            fail("native-log-bound");
-        }
-      },
+      guard,
     });
-    const transcriptName = "acp04-mode-a-observations.json";
+    const modeB = await runAcp04ModeB(cdp, deadline, modeA.state, {
+      codexVersion: options.codex.version,
+      guard,
+    });
+    const result = Object.freeze({
+      startedAt: modeA.startedAt,
+      completedAt: modeB.completedAt,
+      state: modeB.state,
+      modeA,
+      modeB,
+      runtimeObservation: modeB.runtimeObservation,
+    });
+    const transcriptName = "acp04-mode-b-observations.json";
     writeContainedText(
       options.sourceRoot,
       options.output,
       transcriptName,
       `${JSON.stringify(result, null, 2)}\n`,
     );
-    const screenshotName = "acp04-mode-a-complete.png";
+    const screenshotName = "acp04-mode-b-complete.png";
     writeContainedBytes(
       options.sourceRoot,
       options.output,

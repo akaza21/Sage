@@ -14,6 +14,7 @@ import { JSDOM } from "jsdom";
 
 import {
   ACP04_MODE_A,
+  ACP04_MODE_B,
   ACP04_MODE_B_CANCEL_PROMPT,
   ACP04_MODE_B_RECOVERY_ECHO,
   ACP04_SNAPSHOT_EXPRESSION,
@@ -76,7 +77,7 @@ function argumentsFor(overrides = {}) {
     "frontend-ready": "true",
     "receipt-name": "machine-receipt.pending.json",
     "deadline-ms": "90000",
-    mode: ACP04_MODE_A,
+    mode: ACP04_MODE_B,
     ...overrides,
   };
   return Object.entries(values).flatMap(([key, value]) => [`--${key}`, value]);
@@ -182,14 +183,65 @@ function zeroBasedCompleteState() {
   return state;
 }
 
+function completeModeBState() {
+  let state = createModeBState(completeState());
+  const firstTwo = ECHOES.map((echo, index) =>
+    completedTurn(index + 1, `Reply with exactly: ${echo}`, echo),
+  );
+  state = acceptModeBSnapshot(
+    state,
+    snapshot({
+      projectionRevision: "4",
+      turns: [...firstTwo, activeTurn(3, ACP04_MODE_B_CANCEL_PROMPT)],
+    }),
+  );
+  state = acceptModeBSnapshot(
+    state,
+    snapshot({
+      projectionRevision: "5",
+      turns: [...firstTwo, cancelledTurn(3, ACP04_MODE_B_CANCEL_PROMPT)],
+    }),
+  );
+  return acceptModeBSnapshot(
+    state,
+    snapshot({
+      projectionRevision: "6",
+      turns: [
+        ...firstTwo,
+        cancelledTurn(3, ACP04_MODE_B_CANCEL_PROMPT),
+        completedTurn(
+          4,
+          `Reply with exactly: ${ACP04_MODE_B_RECOVERY_ECHO}`,
+          ACP04_MODE_B_RECOVERY_ECHO,
+          "session-1",
+          "8",
+        ),
+      ],
+    }),
+  );
+}
+
+function modeBCampaignResult() {
+  const modeA = completeState();
+  const state = completeModeBState();
+  return {
+    state,
+    modeA: { state: modeA },
+    modeB: { state },
+    startedAt: "2026-08-30T00:00:00.000Z",
+    completedAt: "2026-08-30T00:00:01.000Z",
+    runtimeObservation: runtimeObservation("8"),
+  };
+}
+
 test("argument contract binds a Codex launcher for collector-owned preflight", () => {
   const parsed = parseAcp04ProbeArguments(argumentsFor());
-  assert.equal(parsed.mode, "two-turn");
+  assert.equal(parsed.mode, ACP04_MODE_B);
   assert.equal(parsed.codex.path, "C:\\Tools\\codex.cmd");
   assert.equal("version" in parsed.codex, false);
   assert.equal(parsed.sageProcess.processId, 4100);
   assert.throws(
-    () => parseAcp04ProbeArguments(argumentsFor({ mode: "restart" })),
+    () => parseAcp04ProbeArguments(argumentsFor({ mode: ACP04_MODE_A })),
     /acp04-arguments-invalid/,
   );
 });
@@ -443,6 +495,18 @@ test("Mode A rejects session churn and named protocol/recovery failures", () => 
         CODEX_VERSION,
       ),
     /acp04-observed-failure/,
+  );
+  assert.throws(
+    () =>
+      createModeAState(
+        ECHOES,
+        snapshot({
+          currentSessionId: "",
+          failures: ["[composer__error] A bounded failure"],
+        }),
+        CODEX_VERSION,
+      ),
+    /acp04-observed-failure:composer__error/,
   );
 });
 
@@ -785,8 +849,8 @@ test("receipt binds exact ordered artifact hashes and excludes ACP-04 acceptance
           .digest("hex"),
       }),
     );
-    const transcript = path.join(root, "acp04-mode-a-observations.json");
-    const screenshot = path.join(root, "acp04-mode-a-complete.png");
+    const transcript = path.join(root, "acp04-mode-b-observations.json");
+    const screenshot = path.join(root, "acp04-mode-b-complete.png");
     writeFileSync(transcript, "observations\n");
     writeFileSync(screenshot, "png\n");
     const receipt = createAcp04Receipt(
@@ -795,12 +859,7 @@ test("receipt binds exact ordered artifact hashes and excludes ACP-04 acceptance
         output: root,
         profile: { path: profile, identityArtifact: profileArtifact },
       },
-      {
-        state: completeState(),
-        startedAt: "2026-08-30T00:00:00.000Z",
-        completedAt: "2026-08-30T00:00:01.000Z",
-        runtimeObservation: runtimeObservation(),
-      },
+      modeBCampaignResult(),
       { id: "target-1" },
       [transcript, screenshot],
       { connectionCount: 1, maxInFlight: 1, requestCount: 12 },
@@ -823,10 +882,15 @@ test("receipt binds exact ordered artifact hashes and excludes ACP-04 acceptance
       "artifacts",
     ]);
     assert.equal(receipt.sourceBinding, "collection-only");
+    assert.equal(receipt.mode, ACP04_MODE_B);
+    assert.equal(receipt.observation.cancelRuntimeEpoch, "7");
+    assert.equal(receipt.observation.runtimeEpoch, "8");
+    assert.equal(receipt.observation.cancelledTurnId, "turn-3");
+    assert.equal(receipt.observation.cancelledState, "Cancelled");
     assert.ok(receipt.excludedClaims.includes("ACP-04 acceptance"));
     assert.deepEqual(
       receipt.artifacts.map((item) => item.name),
-      ["acp04-mode-a-observations.json", "acp04-mode-a-complete.png"],
+      ["acp04-mode-b-observations.json", "acp04-mode-b-complete.png"],
     );
     assert.equal(
       receipt.artifacts[0].sha256,
@@ -901,6 +965,7 @@ test("wrapper defaults to native IDE and exposes the bounded ACP route", () => {
   assert.match(wrapper, /JourneyKind = "native-ide"/u);
   assert.match(wrapper, /JourneyKind -eq "acp04-live"/u);
   assert.match(wrapper, /source-functional-acp04-live-probe\.mjs/u);
+  assert.match(wrapper, /"--mode", "two-turn-cancel-restart"/u);
   assert.match(wrapper, /Publish-PendingJourneyReceipt/u);
 });
 
@@ -1156,6 +1221,51 @@ test("collector-owned Codex preflight records the exact bounded version", async 
   assert.equal(invocation[4].maxOutputBytes, 4096);
 });
 
+test("source revalidation gates short Git commands behind captured ownership", async () => {
+  const command = path.join(process.env.SystemRoot, "System32", "cmd.exe");
+  const invocations = [];
+  await revalidateSource(
+    {
+      sourceRoot: "C:\\Sage",
+      output: "C:\\Sage\\local-evidence\\ACP04-live-test",
+      source: { commit: GIT, tree: GIT },
+    },
+    Date.now() + 1_000,
+    {
+      command,
+      runTool: async (...args) => {
+        invocations.push(args);
+        return args[4].commandRole === "source-status"
+          ? ""
+          : `${GIT}\n${GIT}\n`;
+      },
+    },
+  );
+  assert.equal(invocations.length, 2);
+  for (const invocation of invocations) {
+    assert.equal(invocation[0].toLowerCase(), command.toLowerCase());
+    assert.deepEqual(invocation[1].slice(0, 3), ["/d", "/s", "/c"]);
+    assert.equal(invocation[3], "C:\\Sage\\local-evidence\\ACP04-live-test");
+    assert.equal(invocation[4].spawnCwd, "C:\\Sage");
+    assert.equal(invocation[4].identityHandshake, "captured-owner\r\n");
+    assert.equal(
+      invocation[4].expectedExecutablePath.toLowerCase(),
+      command.toLowerCase(),
+    );
+    assert.equal(invocation[4].windowsVerbatimArguments, true);
+  }
+  assert.equal(
+    invocations[0][1][3],
+    'set /p "SAGE_ACP04_ACK=" && git status --porcelain=v1 --untracked-files=all',
+  );
+  assert.equal(invocations[0][4].maxOutputBytes, 64 * 1024);
+  assert.equal(
+    invocations[1][1][3],
+    'set /p "SAGE_ACP04_ACK=" && git rev-parse HEAD "HEAD^{tree}"',
+  );
+  assert.equal(invocations[1][4].maxOutputBytes, 4096);
+});
+
 test("pending validation rejects nested receipt mutation before finalization", () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-acp04-pending-"));
   try {
@@ -1176,8 +1286,8 @@ test("pending validation rejects nested receipt mutation before finalization", (
           .digest("hex"),
       }),
     );
-    const transcript = path.join(root, "acp04-mode-a-observations.json");
-    const screenshot = path.join(root, "acp04-mode-a-complete.png");
+    const transcript = path.join(root, "acp04-mode-b-observations.json");
+    const screenshot = path.join(root, "acp04-mode-b-complete.png");
     writeFileSync(transcript, "observations\n");
     writeFileSync(screenshot, "png\n");
     const options = {
@@ -1192,12 +1302,7 @@ test("pending validation rejects nested receipt mutation before finalization", (
     };
     const candidate = createAcp04Receipt(
       options,
-      {
-        state: zeroBasedCompleteState(),
-        startedAt: "2026-08-30T00:00:00.000Z",
-        completedAt: "2026-08-30T00:00:01.000Z",
-        runtimeObservation: runtimeObservation(),
-      },
+      modeBCampaignResult(),
       { id: "target-1" },
       [transcript, screenshot],
       { connectionCount: 1, maxInFlight: 1, requestCount: 12 },
@@ -1207,6 +1312,34 @@ test("pending validation rejects nested receipt mutation before finalization", (
       () =>
         validatePendingAcp04Candidate(
           { ...candidate, cdp: { ...candidate.cdp, extra: true } },
+          root,
+        ),
+      /acp04-pending-schema-invalid/,
+    );
+    assert.throws(
+      () =>
+        validatePendingAcp04Candidate(
+          {
+            ...candidate,
+            observation: {
+              ...candidate.observation,
+              runtimeEpoch: candidate.observation.cancelRuntimeEpoch,
+            },
+          },
+          root,
+        ),
+      /acp04-pending-schema-invalid/,
+    );
+    assert.throws(
+      () =>
+        validatePendingAcp04Candidate(
+          {
+            ...candidate,
+            observation: {
+              ...candidate.observation,
+              itemIds: candidate.observation.itemIds.slice(0, 6),
+            },
+          },
           root,
         ),
       /acp04-pending-schema-invalid/,

@@ -251,8 +251,8 @@ export function createFinalAcp04Receipt(candidate, diagnostics, cleanup) {
 
 export function validatePendingAcp04Candidate(candidate, output) {
   const expectedArtifacts = [
-    "acp04-mode-a-observations.json",
-    "acp04-mode-a-complete.png",
+    "acp04-mode-b-observations.json",
+    "acp04-mode-b-complete.png",
   ];
   const expectedExcluded = [
     "ACP-04 acceptance",
@@ -282,7 +282,7 @@ export function validatePendingAcp04Candidate(candidate, output) {
     candidate.completed !== true ||
     candidate.evidenceClass !== "source-functional-collection-only" ||
     candidate.sourceBinding !== "collection-only" ||
-    candidate.mode !== "two-turn" ||
+    candidate.mode !== "two-turn-cancel-restart" ||
     !Array.isArray(candidate.excludedClaims) ||
     candidate.excludedClaims.join("\0") !== expectedExcluded.join("\0") ||
     !exactKeys(candidate.source, ["commit", "tree"]) ||
@@ -350,9 +350,13 @@ export function validatePendingAcp04Candidate(candidate, output) {
       "itemIds",
       "projectionRevision",
       "runtimeEpoch",
+      "cancelRuntimeEpoch",
+      "cancelledTurnId",
+      "cancelledState",
       "harness",
       "model",
       "echoes",
+      "recoveryEcho",
     ]) ||
     ![
       candidate.observation.projectIdSha256,
@@ -362,27 +366,38 @@ export function validatePendingAcp04Candidate(candidate, output) {
     ![
       candidate.observation.projectionRevision,
       candidate.observation.runtimeEpoch,
+      candidate.observation.cancelRuntimeEpoch,
     ].every((item) => DECIMAL.test(item)) ||
+    BigInt(candidate.observation.runtimeEpoch) <=
+      BigInt(candidate.observation.cancelRuntimeEpoch) ||
     !validSelection(candidate.observation.harness) ||
     !validSelection(candidate.observation.model) ||
     !Array.isArray(candidate.observation.turnIds) ||
-    candidate.observation.turnIds.length !== 2 ||
+    candidate.observation.turnIds.length !== 4 ||
     !candidate.observation.turnIds.every((item) => bounded(item)) ||
-    new Set(candidate.observation.turnIds).size !== 2 ||
+    new Set(candidate.observation.turnIds).size !== 4 ||
     !Array.isArray(candidate.observation.turnOrdinals) ||
-    candidate.observation.turnOrdinals.length !== 2 ||
+    candidate.observation.turnOrdinals.length !== 4 ||
     candidate.observation.turnOrdinals.some(
       (item, index) =>
         !nonNegativeInteger(item, 1024) ||
         (index > 0 && item <= candidate.observation.turnOrdinals[index - 1]),
     ) ||
     !Array.isArray(candidate.observation.itemIds) ||
-    candidate.observation.itemIds.length !== 4 ||
+    candidate.observation.itemIds.length < 7 ||
+    candidate.observation.itemIds.length > 256 ||
     !candidate.observation.itemIds.every((item) => bounded(item)) ||
-    new Set(candidate.observation.itemIds).size !== 4 ||
+    new Set(candidate.observation.itemIds).size !==
+      candidate.observation.itemIds.length ||
+    candidate.observation.cancelledTurnId !==
+      candidate.observation.turnIds[2] ||
+    !["Cancelled", "Interrupted"].includes(
+      candidate.observation.cancelledState,
+    ) ||
     !Array.isArray(candidate.observation.echoes) ||
     candidate.observation.echoes.join("\0") !==
       "SAGE_ACP04_A_TURN_1\0SAGE_ACP04_A_TURN_2" ||
+    candidate.observation.recoveryEcho !== "SAGE_ACP04_B_TURN_4" ||
     !Array.isArray(candidate.artifacts) ||
     candidate.artifacts.length !== expectedArtifacts.length ||
     !expectedArtifacts.every((name, index) =>

@@ -71,6 +71,24 @@ where
     reason: TreeExit,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShutdownObservability {
+    Intentional,
+    Failure,
+}
+
+fn shutdown_observability(
+    reason: TreeExit,
+    durable_terminal: bool,
+    termination_succeeded: bool,
+) -> ShutdownObservability {
+    if durable_terminal && termination_succeeded && matches!(reason, TreeExit::Cancelled) {
+        ShutdownObservability::Intentional
+    } else {
+        ShutdownObservability::Failure
+    }
+}
+
 fn run<A, R, T, Auth>(
     activation: ActivationProcessDriver<A, CoordinatorActivationJournal, R, T, TreeControl>,
     input: RunInput<A, R, T, Auth>,
@@ -312,22 +330,43 @@ where
     let durable_completed = exit.state.has_durable_completed_cursor();
     let durable_cancelled = exit.state.has_durable_cancelled_cursor();
     let durable_terminal = already_closed || durable_completed || durable_cancelled;
+    let mut observability = shutdown_observability(exit.reason, durable_terminal, true);
+    let mut termination_succeeded = already_closed;
     if !already_closed {
-        let stderr_summary = control.stderr_summary().ok();
-        let stderr = control.stderr_diagnostic().ok();
-        let native_child_exit_code = control.native_exit_code_if_exited().ok().flatten();
-        tracing::warn!(
-            recovery_checkpoint = "acp_runner.protocol_failure.pre_termination",
-            protocol_failure_reason = ?exit.reason,
-            native_child_exit_code,
-            jsonrpc_method = ?stderr.as_ref().and_then(|diagnostic| diagnostic.method.as_deref()),
-            jsonrpc_error_code = ?stderr.as_ref().and_then(|diagnostic| diagnostic.error_code.as_deref()),
-            jsonrpc_error_message = ?stderr.as_ref().and_then(|diagnostic| diagnostic.error_message.as_deref()),
-            stderr_summary = ?stderr_summary,
-            "ACP runner diagnostic captured before termination"
-        );
+        match observability {
+            ShutdownObservability::Intentional => tracing::info!(
+                shutdown_reason = ?exit.reason,
+                "ACP runner requesting termination after finalized turn"
+            ),
+            ShutdownObservability::Failure => {
+                let stderr_summary = control.stderr_summary().ok();
+                let stderr = control.stderr_diagnostic().ok();
+                let native_child_exit_code = control.native_exit_code_if_exited().ok().flatten();
+                tracing::warn!(
+                    recovery_checkpoint = "acp_runner.protocol_failure.pre_termination",
+                    protocol_failure_reason = ?exit.reason,
+                    native_child_exit_code,
+                    jsonrpc_method = ?stderr.as_ref().and_then(|diagnostic| diagnostic.method.as_deref()),
+                    jsonrpc_error_code = ?stderr.as_ref().and_then(|diagnostic| diagnostic.error_code.as_deref()),
+                    jsonrpc_error_message = ?stderr.as_ref().and_then(|diagnostic| diagnostic.error_message.as_deref()),
+                    stderr_summary = ?stderr_summary,
+                    "ACP runner diagnostic captured before termination"
+                );
+            }
+        }
         exit.state.close_stdin_after_durable_completed();
-        let _ = control.request_termination(exit.reason);
+        match control.request_termination(exit.reason) {
+            Ok(()) => termination_succeeded = true,
+            Err(error) => {
+                observability = ShutdownObservability::Failure;
+                let stderr_summary = control.stderr_summary().ok();
+                tracing::warn!(
+                    termination_error = ?error,
+                    stderr_summary = ?stderr_summary,
+                    "ACP runner termination request failed"
+                );
+            }
+        }
     }
     mailbox.close();
     if let Some(envelope) = exit.shutdown.take() {
@@ -336,13 +375,22 @@ where
     let wait_deadline = Instant::now() + cleanup_budget();
     let converged = match control.wait_zero_before(wait_deadline) {
         Ok((root_exit, token)) => {
-            let stderr = control.stderr_summary().ok();
-            tracing::warn!(
-                root_exit = ?root_exit,
-                sage_requested_termination = !matches!(root_exit, TreeExit::Exited { .. }),
-                stderr_summary = ?stderr,
-                "ACP runner reached process-tree zero"
-            );
+            match observability {
+                ShutdownObservability::Intentional => tracing::info!(
+                    root_exit = ?root_exit,
+                    sage_requested_termination = !matches!(root_exit, TreeExit::Exited { .. }),
+                    "ACP runner reached process-tree zero after requested clean termination"
+                ),
+                ShutdownObservability::Failure => {
+                    let stderr = control.stderr_summary().ok();
+                    tracing::warn!(
+                        root_exit = ?root_exit,
+                        sage_requested_termination = !matches!(root_exit, TreeExit::Exited { .. }),
+                        stderr_summary = ?stderr,
+                        "ACP runner reached process-tree zero"
+                    );
+                }
+            }
             if durable_completed {
                 tauri::async_runtime::block_on(exit.state.park_after_zero(token));
             }
@@ -361,10 +409,40 @@ where
     let remaining = wait_deadline.saturating_duration_since(Instant::now());
     let reader_done = reader.wait(remaining).is_ok();
     let watcher_done = watcher.wait(remaining).is_ok();
-    let clean_shutdown = durable_terminal && converged && reader_done && watcher_done;
+    let clean_shutdown =
+        durable_terminal && termination_succeeded && converged && reader_done && watcher_done;
     (!clean_shutdown).then(|| Box::new(exit.state) as RetainedRunnerRecovery)
 }
 
 fn cleanup_budget() -> Duration {
     Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finalized_turn_cancelled_by_host_is_reported_as_intentional_shutdown() {
+        assert_eq!(
+            shutdown_observability(TreeExit::Cancelled, true, true),
+            ShutdownObservability::Intentional
+        );
+    }
+
+    #[test]
+    fn protocol_failure_after_a_finalized_turn_remains_failure_observable() {
+        assert_eq!(
+            shutdown_observability(TreeExit::ProtocolFailure, true, true),
+            ShutdownObservability::Failure
+        );
+    }
+
+    #[test]
+    fn failed_termination_request_remains_failure_observable() {
+        assert_eq!(
+            shutdown_observability(TreeExit::Cancelled, true, false),
+            ShutdownObservability::Failure
+        );
+    }
 }

@@ -277,6 +277,7 @@ struct ControlState {
     zero: bool,
     waits: usize,
     observations: usize,
+    wait_handle_checkpoints: Vec<&'static str>,
 }
 
 #[derive(Clone)]
@@ -292,6 +293,14 @@ impl ProcessTreeControl for FakeControl {
 
     fn wait_root_exit(&self) -> Result<TreeExit, LaunchError> {
         Err(LaunchError::Deadline)
+    }
+
+    fn log_wait_handle_observation(&self, checkpoint: &'static str) {
+        self.0
+            .lock()
+            .expect("control")
+            .wait_handle_checkpoints
+            .push(checkpoint);
     }
 
     fn observe_root_exit(&self) -> Result<TreeExit, LaunchError> {
@@ -934,6 +943,11 @@ fn passive_root_exit_watcher_signals_without_consuming_zero_proof() {
         "root observation must not consume zero-process convergence"
     );
     assert_eq!(control.lock().expect("control").observations, 1);
+    assert_eq!(
+        control.lock().expect("control").wait_handle_checkpoints,
+        ["acp.process_exit_watcher.attached"],
+        "the watcher must not re-query a handle after root exit"
+    );
 }
 
 struct BlockingInput {

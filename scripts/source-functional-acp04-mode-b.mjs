@@ -130,6 +130,7 @@ export function createModeBState(modeAState) {
     sessionId: modeA.sessionId,
     projectionRevision: modeA.projectionRevision,
     runtimeEpoch: modeA.runtimeEpoch,
+    cancelRuntimeEpoch: modeA.runtimeEpoch,
     harness: { ...modeA.harness },
     model: { ...modeA.model },
     echoes: [...modeA.echoes],

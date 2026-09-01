@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 const FAILURE =
   /ProtocolFailure|HostError::Closed|ACP[^\n]{0,80}(?:recovery|capacity)/iu;
 const DECIMAL_REVISION = /^(?:0|[1-9]\d*)$/u;
@@ -82,8 +84,22 @@ export function rejectObservedFailures(snapshot) {
   if (
     snapshot.failures.length > 0 ||
     snapshot.failures.some((item) => FAILURE.test(item))
-  )
-    fail("observed-failure");
+  ) {
+    const source = /^\[([a-z0-9_-]{1,64})\]/iu.exec(
+      snapshot.failures[0] ?? "",
+    )?.[1];
+    const message = (snapshot.failures[0] ?? "").replace(
+      /^\[[a-z0-9_-]{1,64}\]\s*/iu,
+      "",
+    );
+    const digest = createHash("sha256")
+      .update(message)
+      .digest("hex")
+      .slice(0, 16);
+    fail(
+      `observed-failure:${source?.toLowerCase() ?? "unclassified"}:${digest}`,
+    );
+  }
 }
 
 export async function waitUntil(action, deadline, message) {

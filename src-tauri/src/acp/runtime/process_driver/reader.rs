@@ -34,8 +34,6 @@ impl<C: ProcessTreeControl> ProcessExitWatcher<C> {
             .log_wait_handle_observation("acp.process_exit_watcher.attached");
         match self.control.observe_root_exit() {
             Ok(exit) => {
-                self.control
-                    .log_wait_handle_observation("acp.process_exit_watcher.exited");
                 tracing::warn!(
                     root_exit = ?exit,
                     sage_requested_termination = !matches!(exit, crate::acp::process::TreeExit::Exited { .. }),
