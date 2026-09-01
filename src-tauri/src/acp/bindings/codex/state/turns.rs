@@ -160,6 +160,10 @@ impl CodexAdapter {
         }
     }
 
+    pub(crate) fn has_active_turn(&self) -> bool {
+        self.active_turn_id.is_some()
+    }
+
     pub(crate) fn turn_is_terminal(&self, value: &str) -> bool {
         self.previous_turn
             .as_ref()

@@ -273,6 +273,9 @@ fn observed_entrypoint_identity(
     path: &std::path::Path,
 ) -> Result<EntrypointIdentity, CodexAdmissionUnavailable> {
     const MAX_OBSERVED_EXECUTABLE_BYTES: u64 = 512 * 1024 * 1024;
+    let path = path
+        .canonicalize()
+        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
     let metadata = path
         .metadata()
         .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
@@ -280,7 +283,8 @@ fn observed_entrypoint_identity(
     {
         return Err(CodexAdmissionUnavailable::IndependentAdmission);
     }
-    let mut file = File::open(path).map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+    let mut file =
+        File::open(&path).map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
     let mut digest = Sha256::new();
     let mut chunk = [0_u8; 64 * 1024];
     loop {
@@ -293,7 +297,7 @@ fn observed_entrypoint_identity(
         digest.update(&chunk[..read]);
     }
     Ok(EntrypointIdentity {
-        path: path.to_path_buf(),
+        path,
         sha256: digest.finalize().into(),
         byte_len: metadata.len(),
     })
@@ -315,48 +319,79 @@ fn sha256_hex(digest: [u8; 32]) -> String {
 fn observed_environment(
     entrypoint: &std::path::Path,
 ) -> Result<Vec<(String, String)>, CodexAdmissionUnavailable> {
-    const KEYS: &[&str] = &[
-        "APPDATA",
-        "ComSpec",
-        "PATHEXT",
-        "SystemRoot",
-        "TEMP",
-        "TMP",
-        "USERPROFILE",
-        "WINDIR",
-    ];
-    let mut entries = KEYS
-        .iter()
-        .map(|key| {
-            std::env::var(key)
-                .ok()
-                .filter(|value| !value.is_empty())
-                .map(|value| ((*key).to_owned(), value))
-                .ok_or(CodexAdmissionUnavailable::IndependentAdmission)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let node_directory = entrypoint
-        .parent()
-        .into_iter()
-        .map(std::path::Path::to_path_buf)
-        .chain(std::env::var("PATH").ok().into_iter().flat_map(|path| {
-            path.split(';')
-                .filter(|value| !value.is_empty())
-                .map(std::path::PathBuf::from)
-                .collect::<Vec<_>>()
-        }))
-        .find(|directory| directory.join("node.exe").is_file())
-        .and_then(|directory| directory.to_str().map(str::to_owned))
-        .ok_or(CodexAdmissionUnavailable::IndependentAdmission)?;
-    entries.insert(0, ("PATH".into(), node_directory));
-    if entries.len() > 16
-        || entries
-            .iter()
-            .any(|(key, value)| key.len() > 128 || value.len() > 8_192)
+    #[cfg(not(windows))]
     {
-        return Err(CodexAdmissionUnavailable::IndependentAdmission);
+        let _ = entrypoint;
+        const KEYS: &[&str] = &[
+            "HOME",
+            "PATH",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_STATE_HOME",
+        ];
+        return KEYS
+            .iter()
+            .filter_map(|key| {
+                std::env::var(key)
+                    .ok()
+                    .filter(|value| !value.is_empty())
+                    .map(|value| ((*key).to_owned(), value))
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .try_fold(Vec::new(), |mut entries, entry| {
+                if entry.0.len() > 128 || entry.1.len() > 8_192 {
+                    return Err(CodexAdmissionUnavailable::IndependentAdmission);
+                }
+                entries.push(entry);
+                Ok(entries)
+            });
     }
-    Ok(entries)
+    #[cfg(windows)]
+    {
+        const KEYS: &[&str] = &[
+            "APPDATA",
+            "ComSpec",
+            "PATHEXT",
+            "SystemRoot",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+            "WINDIR",
+        ];
+        let mut entries = KEYS
+            .iter()
+            .map(|key| {
+                std::env::var(key)
+                    .ok()
+                    .filter(|value| !value.is_empty())
+                    .map(|value| ((*key).to_owned(), value))
+                    .ok_or(CodexAdmissionUnavailable::IndependentAdmission)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let node_directory = entrypoint
+            .parent()
+            .into_iter()
+            .map(std::path::Path::to_path_buf)
+            .chain(std::env::var("PATH").ok().into_iter().flat_map(|path| {
+                path.split(';')
+                    .filter(|value| !value.is_empty())
+                    .map(std::path::PathBuf::from)
+                    .collect::<Vec<_>>()
+            }))
+            .find(|directory| directory.join("node.exe").is_file())
+            .and_then(|directory| directory.to_str().map(str::to_owned))
+            .ok_or(CodexAdmissionUnavailable::IndependentAdmission)?;
+        entries.insert(0, ("PATH".into(), node_directory));
+        if entries.len() > 16
+            || entries
+                .iter()
+                .any(|(key, value)| key.len() > 128 || value.len() > 8_192)
+        {
+            return Err(CodexAdmissionUnavailable::IndependentAdmission);
+        }
+        Ok(entries)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -451,10 +486,11 @@ mod tests {
 
         assert!(!registration.same_authority(&separately_started));
         #[cfg(not(windows))]
-        assert_eq!(
-            registration.unavailable(),
-            Some(CodexAdmissionUnavailable::Platform)
-        );
+        match registration.unavailable() {
+            Some(CodexAdmissionUnavailable::IndependentAdmission) => {}
+            None => assert!(registration.is_available()),
+            Some(unavailable) => panic!("unexpected startup availability: {unavailable:?}"),
+        }
         #[cfg(windows)]
         match registration.unavailable() {
             Some(CodexAdmissionUnavailable::ObservationOnly) => {}

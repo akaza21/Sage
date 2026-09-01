@@ -115,7 +115,7 @@ fn batch_launch_contract_accepts_only_cmd_and_bat_launchers() {
 
 #[cfg(not(windows))]
 #[test]
-fn unsupported_platform_fails_before_artifact_access() {
+fn cooperative_wsl_supervisor_rejects_windows_tree_requirement_before_artifact_access() {
     let missing = std::env::current_dir()
         .unwrap()
         .canonicalize()
@@ -127,7 +127,7 @@ fn unsupported_platform_fails_before_artifact_access() {
         PlatformSupervisor::launch(&spec, pool.try_acquire(spec.limits.descendants).unwrap())
             .err()
             .unwrap();
-    assert_eq!(failure.error(), LaunchError::PlatformUnavailable);
+    assert_eq!(failure.error(), LaunchError::ContainmentFailure);
     assert_eq!(
         failure.into_zero_process().unwrap().runtime_epoch(),
         spec.runtime_epoch

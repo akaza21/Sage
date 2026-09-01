@@ -488,6 +488,136 @@ fn observed_remote_control_status_notification_is_ignored_during_initialization(
 }
 
 #[test]
+fn observed_idle_thread_status_notification_is_ignored_during_ready_handoff() {
+    let mut runtime = fixture_runtime();
+    let notification = runtime
+        .ingest(
+            &frame(json!({
+                "emittedAtMs": 1_788_261_366_663_u64,
+                "method": "thread/status/changed",
+                "params": {
+                    "status": { "type": "idle" },
+                    "threadId": "thread-observed"
+                }
+            })),
+            &Mapper,
+        )
+        .expect("observed idle notification is informational");
+
+    assert!(matches!(notification.events(), [AdapterEvent::IgnoredLate]));
+}
+
+#[test]
+fn observed_active_thread_status_notification_is_ignored_before_turn_started() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    runtime
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
+            client_message_id: RequiredText::new("client", "active-status").expect("client"),
+        })
+        .expect("prompt");
+    let notification = runtime
+        .ingest(
+            &frame(json!({
+                "method": "thread/status/changed",
+                "params": {
+                    "status": { "type": "active", "activeFlags": [] },
+                    "threadId": "thread-observed"
+                }
+            })),
+            &Mapper,
+        )
+        .expect("observed active notification is informational before turn start");
+
+    assert!(matches!(notification.events(), [AdapterEvent::IgnoredLate]));
+    let started = runtime
+        .ingest(
+            &frame(json!({"method":"turn/started","params":{
+                "threadId":"thread-1","turn":{"id":"turn-active-status"}
+            }})),
+            &Mapper,
+        )
+        .expect("turn start follows active status");
+    assert!(matches!(
+        started.events(),
+        [AdapterEvent::Turn {
+            state: crate::acp::lifecycle::TurnState::Running,
+            ..
+        }]
+    ));
+}
+
+#[test]
+fn observed_goal_cleared_notification_is_ignored_during_ready_handoff() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let notification = runtime
+        .ingest(
+            &frame(json!({
+                "method": "thread/goal/cleared",
+                "params": { "threadId": "thread-1" }
+            })),
+            &Mapper,
+        )
+        .expect("observed goal clear is informational during handoff");
+
+    assert!(matches!(notification.events(), [AdapterEvent::IgnoredLate]));
+}
+
+#[test]
+fn unrecognized_goal_notification_is_rejected() {
+    let mut runtime = fixture_runtime();
+    let notification = runtime.ingest(
+        &frame(json!({
+            "method": "thread/goal/updated",
+            "params": { "threadId": "thread-observed", "goal": {} }
+        })),
+        &Mapper,
+    );
+
+    assert!(matches!(notification, Err(AdapterRuntimeError::Frame)));
+}
+
+#[test]
+fn unrecognized_thread_status_notification_is_rejected() {
+    let mut runtime = fixture_runtime();
+    let notification = runtime.ingest(
+        &frame(json!({
+            "method": "thread/status/changed",
+            "params": {
+                "status": { "type": "running" },
+                "threadId": "thread-observed"
+            }
+        })),
+        &Mapper,
+    );
+
+    assert!(matches!(notification, Err(AdapterRuntimeError::Frame)));
+}
+
+#[test]
+fn historical_usage_replayed_during_resume_is_ignored_without_an_active_turn() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let usage = runtime
+        .ingest(
+            &frame(json!({
+                "method": "thread/tokenUsage/updated",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "historical-turn",
+                    "tokenUsage": { "last": { "inputTokens": 8, "outputTokens": 3 } }
+                }
+            })),
+            &Mapper,
+        )
+        .expect("bounded historical usage is informational during resume");
+
+    assert!(matches!(usage.events(), [AdapterEvent::IgnoredLate]));
+}
+
+#[test]
 fn observed_mcp_startup_status_notification_is_ignored_during_activation() {
     let mut runtime = fixture_runtime();
     let notification = runtime

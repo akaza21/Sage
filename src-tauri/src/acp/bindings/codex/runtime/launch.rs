@@ -79,7 +79,14 @@ impl CodexRuntime {
             fixed_args,
             environment,
             project_root,
-            required_guarantee: RequiredContainment::EnforcedTree,
+            required_guarantee: if cfg!(windows) {
+                RequiredContainment::EnforcedTree
+            } else {
+                // WSL is an explicitly admitted functional-beta host. Its
+                // supervisor owns the root process only; it must never be
+                // presented as Windows Job-object tree containment.
+                RequiredContainment::TrustedCooperativeTree
+            },
             limits: TreeLimits::ade_0006a(),
             deadlines: ProcessDeadlines::ade_0006a(),
             absolute_cleanup_deadline: None,

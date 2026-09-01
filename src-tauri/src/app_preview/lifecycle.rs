@@ -85,16 +85,24 @@ pub(crate) fn reserve_start(
                     "Preview target must be discovered before it can start.",
                 )
             })?;
-            let mut child = Command::new(npm_executable())
+            let mut command = Command::new(npm_executable());
+            command
                 .args(["run", target.script_name.as_str()])
                 .current_dir(package_root)
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .map_err(|_| PreviewError::Unavailable {
-                    message: "Preview could not start its curated package script.".into(),
-                })?;
+                .stderr(Stdio::piped());
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::CommandExt;
+
+                // A preview script conventionally forks npm and a dev server.
+                // Its own process group gives cancellation one bounded owner.
+                command.process_group(0);
+            }
+            let mut child = command.spawn().map_err(|_| PreviewError::Unavailable {
+                message: "Preview could not start its curated package script.".into(),
+            })?;
             let stdout = child.stdout.take().expect("preview stdout was piped");
             let stderr = child.stderr.take().expect("preview stderr was piped");
             let child = match ManagedChild::reserve(child) {
@@ -295,6 +303,8 @@ fn matches_target(left: &PreviewTargetRef, right: &PreviewTargetRef) -> bool {
 
 struct ManagedChild {
     child: Child,
+    #[cfg(unix)]
+    process_group: i32,
     #[cfg(windows)]
     job: super::lifecycle_windows::PreviewJob,
 }
@@ -310,7 +320,13 @@ impl ManagedChild {
         }
         #[cfg(not(windows))]
         {
-            Ok(Self { child })
+            let Ok(process_group) = i32::try_from(child.id()) else {
+                return Err(child);
+            };
+            Ok(Self {
+                child,
+                process_group,
+            })
         }
     }
 }
@@ -318,9 +334,22 @@ impl ManagedChild {
 fn stop_child(child: &mut ManagedChild) {
     #[cfg(windows)]
     child.job.terminate();
-    #[cfg(not(windows))]
+    #[cfg(unix)]
+    terminate_process_group(child.process_group);
+    #[cfg(not(unix))]
     let _ = child.child.kill();
     let _ = child.child.wait();
+}
+
+#[cfg(unix)]
+fn terminate_process_group(process_group: i32) {
+    const SIGKILL: i32 = 9;
+    unsafe extern "C" {
+        fn kill(pid: i32, signal: i32) -> i32;
+    }
+    // SAFETY: a negative pid targets only the group created for this owned
+    // preview root; the child id was range-checked when the group was stored.
+    let _ = unsafe { kill(-process_group, SIGKILL) };
 }
 
 fn npm_executable() -> &'static str {

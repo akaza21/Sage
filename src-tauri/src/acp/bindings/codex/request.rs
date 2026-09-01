@@ -252,7 +252,7 @@ fn is_absolute_normalized(platform: Platform, value: &str) -> bool {
                             && (part.contains(':') || part.ends_with('.') || part.ends_with(' ')))
                 })
         }
-        Platform::MacosAarch64 | Platform::MacosX86_64 => {
+        Platform::LinuxX86_64 | Platform::MacosAarch64 | Platform::MacosX86_64 => {
             value.starts_with('/')
                 && !value
                     .split('/')

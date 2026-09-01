@@ -91,6 +91,8 @@ pub(crate) enum ManagedStagingError {
 enum ManagedProof {
     #[cfg(windows)]
     Windows(Box<windows::WindowsManagedProof>),
+    #[cfg(not(windows))]
+    Unavailable,
     #[cfg(test)]
     Fixture,
 }
@@ -130,6 +132,8 @@ impl ManagedStagingPrerequisite {
         match &self.proof {
             #[cfg(windows)]
             ManagedProof::Windows(proof) => windows::revalidate(packet, proof),
+            #[cfg(not(windows))]
+            ManagedProof::Unavailable => Err(ManagedStagingError::PlatformUnavailable),
             #[cfg(test)]
             ManagedProof::Fixture => Ok(()),
         }

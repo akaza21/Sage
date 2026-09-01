@@ -107,7 +107,12 @@ fn valid_observed_codex_home(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 32 * 1024
         && !value.chars().any(char::is_control)
-        && std::path::Path::new(value).is_absolute()
+        && (value.starts_with('/')
+            || value.as_bytes().get(0..3).is_some_and(|prefix| {
+                prefix[0].is_ascii_alphabetic()
+                    && prefix[1] == b':'
+                    && matches!(prefix[2], b'\\' | b'/')
+            }))
 }
 
 fn valid_platform_identity(family: &str, os: &str, observed: bool) -> bool {
@@ -116,7 +121,7 @@ fn valid_platform_identity(family: &str, os: &str, observed: bool) -> bool {
     }
     matches!(
         (family, os),
-        ("windows", "windows") | ("macos", "macos") | ("macOS", "macOS")
+        ("windows", "windows") | ("macos", "macos") | ("macOS", "macOS") | ("unix", "linux")
     )
 }
 

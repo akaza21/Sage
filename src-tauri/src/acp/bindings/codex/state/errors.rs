@@ -13,7 +13,11 @@ pub(super) fn observed_platform() -> Platform {
     {
         Platform::MacosX86_64
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    {
+        Platform::LinuxX86_64
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         Platform::WindowsX86_64
     }

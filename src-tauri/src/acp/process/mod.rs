@@ -7,11 +7,14 @@ mod identity;
 mod platform;
 mod supervisor;
 #[cfg(not(windows))]
-mod unavailable;
+mod unix;
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]
 pub(crate) use windows::monotonic_tick;
+
+#[cfg(all(test, not(windows)))]
+pub(crate) use unix::launch_fixture_for_test;
 
 pub(crate) use capacity::{TreeCapacityLease, TreeCapacityPool};
 pub(crate) use identity::{ProcessIdentityReceipt, SpawnTimingReceipt};

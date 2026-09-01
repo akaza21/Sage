@@ -78,8 +78,23 @@ impl PhysicallyInspectedPackage {
         }
         #[cfg(not(windows))]
         {
-            let _ = packet;
-            false
+            #[cfg(test)]
+            {
+                const ENTRYPOINT_SUFFIX: &str = r"\vendor\x86_64-pc-windows-msvc\bin\codex.exe";
+                let entrypoint = packet.metadata().entrypoint.path.to_string_lossy();
+                let Some(package_root) = entrypoint.strip_suffix(ENTRYPOINT_SUFFIX) else {
+                    return false;
+                };
+                return self.package_root == Path::new(package_root)
+                    && self.codex_home == packet.codex_home()
+                    && self.artifact_count == packet.metadata().supporting_artifacts.len() + 1
+                    && self.byte_len == packet.metadata().package_unpacked_byte_len;
+            }
+            #[cfg(not(test))]
+            {
+                let _ = packet;
+                false
+            }
         }
     }
 
@@ -223,6 +238,13 @@ pub(super) fn inspect_claims(
     claims: InspectionClaims,
 ) -> Result<PhysicallyInspectedPackage, PhysicalInspectionError> {
     windows::inspect_claims(claims)
+}
+
+#[cfg(not(windows))]
+pub(super) fn inspect_claims(
+    _claims: InspectionClaims,
+) -> Result<PhysicallyInspectedPackage, PhysicalInspectionError> {
+    Err(PhysicalInspectionError::PlatformUnavailable)
 }
 
 #[cfg(windows)]

@@ -123,11 +123,26 @@ fn open_sqlite_anchor(path: &Path, writable: bool, create_new: bool) -> AppResul
     Ok(options.open(path)?)
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, unix)))]
 fn open_sqlite_anchor(_path: &Path, _writable: bool, _create_new: bool) -> AppResult<File> {
     Err(AppError::InvalidRequest(
         "file-backed schema migration is not admitted on this platform".into(),
     ))
+}
+
+#[cfg(unix)]
+fn open_sqlite_anchor(path: &Path, writable: bool, create_new: bool) -> AppResult<File> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    super::platform::reject_path_alias(path)?;
+    let mut options = OpenOptions::new();
+    options.read(true).write(writable).create_new(create_new);
+    #[cfg(target_os = "linux")]
+    const O_NOFOLLOW: i32 = 0x0002_0000;
+    #[cfg(target_os = "macos")]
+    const O_NOFOLLOW: i32 = 0x0000_0100;
+    options.custom_flags(O_NOFOLLOW);
+    Ok(options.open(path)?)
 }
 
 #[cfg(windows)]
@@ -204,7 +219,28 @@ where
     FORCE_NEXT_REPARSE.with(|forced| forced.set(true));
 }
 
-#[cfg(not(windows))]
+#[cfg(unix)]
+fn file_identity(file: &File) -> AppResult<NativeFileIdentity> {
+    use std::os::unix::fs::MetadataExt;
+
+    let metadata = file.metadata()?;
+    if !metadata.file_type().is_file() {
+        return Err(AppError::InvalidRequest(
+            "SQLite migration anchor is not a regular file".into(),
+        ));
+    }
+    let volume_serial = u32::try_from(metadata.dev()).map_err(|_| {
+        AppError::InvalidRequest(
+            "SQLite migration volume identity exceeds the admitted range".into(),
+        )
+    })?;
+    Ok(NativeFileIdentity {
+        volume_serial,
+        file_index: metadata.ino(),
+    })
+}
+
+#[cfg(not(any(windows, unix)))]
 fn file_identity(_file: &File) -> AppResult<NativeFileIdentity> {
     Err(AppError::InvalidRequest(
         "native SQLite file identity is not admitted on this platform".into(),

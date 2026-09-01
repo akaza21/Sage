@@ -2,14 +2,12 @@ use super::TreeCapacityLease;
 use super::supervisor::{LaunchError, LaunchSpec, ZeroProcessToken};
 
 #[cfg(not(windows))]
-use super::unavailable;
+use super::unix;
 #[cfg(windows)]
 use super::windows;
 
 #[cfg(not(windows))]
-pub(crate) use unavailable::{
-    LaunchRecovery, RunningTree, StdinEndpoint, StdoutEndpoint, TreeControl,
-};
+pub(crate) use unix::{LaunchRecovery, RunningTree, StdinEndpoint, StdoutEndpoint, TreeControl};
 #[cfg(windows)]
 pub(crate) use windows::{LaunchRecovery, RunningTree, StdinEndpoint, StdoutEndpoint, TreeControl};
 
@@ -83,7 +81,7 @@ impl PlatformSupervisor {
         }
         #[cfg(not(windows))]
         {
-            unavailable::launch(spec, lease)
+            unix::launch(spec, lease)
         }
     }
 }

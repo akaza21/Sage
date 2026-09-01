@@ -41,6 +41,50 @@ pub(super) fn notification<M: ResourceMapper>(
                 _ => Err(IngressError::Malformed),
             }
         }
+        "thread/status/changed" => {
+            let _thread = text(params, "threadId", 512)?;
+            let status = params
+                .get("status")
+                .and_then(Value::as_object)
+                .ok_or(IngressError::Malformed)?;
+            match text(status, "type", 32)? {
+                // Codex emits these informational transitions both immediately
+                // after `thread/resume` and immediately after `turn/start`.
+                // They carry no durable state Sage needs to project, but must
+                // not tear down the live runner before `turn/started` arrives.
+                "idle" => Ok(IngressDisposition::IgnoredLate),
+                "active" => {
+                    let flags = status
+                        .get("activeFlags")
+                        .and_then(Value::as_array)
+                        .ok_or(IngressError::Malformed)?;
+                    if flags.len() > 32
+                        || flags.iter().any(|flag| {
+                            !flag
+                                .as_str()
+                                .is_some_and(|value| !value.is_empty() && value.len() <= 64)
+                        })
+                    {
+                        return Err(IngressError::Malformed);
+                    }
+                    Ok(IngressDisposition::IgnoredLate)
+                }
+                _ => Err(IngressError::Malformed),
+            }
+        }
+        "thread/goal/cleared" => {
+            // Codex emits this one-field informational notification while a
+            // resumed thread is rehydrated. It changes Codex-local goal state,
+            // which Sage neither owns nor projects, but must not abort the
+            // ReadyHandoff before the next turn can start.
+            if params.len() != 1 {
+                return Err(IngressError::Malformed);
+            }
+            adapter
+                .expect_thread(text(params, "threadId", 512)?)
+                .map_err(identity)?;
+            Ok(IngressDisposition::IgnoredLate)
+        }
         "mcpServer/startupStatus/updated" => {
             let _name = text(params, "name", 512)?;
             let _thread = text(params, "threadId", 512)?;
@@ -82,8 +126,19 @@ pub(super) fn notification<M: ResourceMapper>(
         "item/reasoning/summaryTextDelta" => delta_event(adapter, params, DeltaKind::Thought),
         "item/plan/delta" => delta_event(adapter, params, DeltaKind::Plan),
         "thread/tokenUsage/updated" => {
-            expect_thread_and_turn(adapter, params)?;
+            let thread = text(params, "threadId", 512)?;
+            adapter.expect_thread(thread).map_err(identity)?;
             let turn = text(params, "turnId", 512)?;
+            if adapter.expect_turn(turn).is_err() {
+                // Resume can replay bounded usage for a historical, terminal
+                // turn before this new adapter owns an active turn. Validate
+                // the payload but do not project uncorrelated history.
+                if !adapter.has_active_turn() {
+                    let _ = parse_usage(params)?;
+                    return Ok(IngressDisposition::IgnoredLate);
+                }
+                return Err(IngressError::Identity);
+            }
             Ok(IncomingEvent::Usage {
                 turn_id: adapter
                     .scoped_id(ExternalKind::Turn, turn)
@@ -109,6 +164,7 @@ pub(super) fn notification<M: ResourceMapper>(
             )?;
             Ok(IncomingEvent::Error(error_payload("codex", message, will_retry)?).into())
         }
+        other if other.starts_with("thread/goal/") => Err(IngressError::Malformed),
         other => {
             Ok(IncomingEvent::Unsupported(unsupported(other, "Unsupported Codex event")?).into())
         }

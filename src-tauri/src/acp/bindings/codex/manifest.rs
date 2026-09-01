@@ -77,6 +77,7 @@ const PINNED_ARTIFACTS: [ExpectedArtifact; 8] = [
 #[serde(rename_all = "camelCase")]
 pub(crate) enum Platform {
     WindowsX86_64,
+    LinuxX86_64,
     MacosAarch64,
     MacosX86_64,
 }
@@ -377,7 +378,7 @@ fn absolute_normalized(path: &Path, platform: Platform) -> bool {
                             && (part.contains(':') || part.ends_with('.') || part.ends_with(' ')))
                 })
         }
-        Platform::MacosAarch64 | Platform::MacosX86_64 => {
+        Platform::LinuxX86_64 | Platform::MacosAarch64 | Platform::MacosX86_64 => {
             raw.starts_with('/')
                 && !raw
                     .split('/')
@@ -391,7 +392,7 @@ fn normalized_path_key(path: &Path, platform: Platform) -> String {
     let value = path.as_os_str().to_string_lossy().into_owned();
     match platform {
         Platform::WindowsX86_64 => value.to_ascii_lowercase(),
-        Platform::MacosAarch64 | Platform::MacosX86_64 => value,
+        Platform::LinuxX86_64 | Platform::MacosAarch64 | Platform::MacosX86_64 => value,
     }
 }
 
