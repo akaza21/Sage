@@ -2382,6 +2382,10 @@ test("Windows wrapper has no Playwright CLI input and rejects noncanonical Sourc
   assert.doesNotMatch(wrapperSource, /SAGE_PLAYWRIGHT_CLI|--playwright-cli/u);
   assert.match(wrapperSource, /--node-bytes/u);
   assert.match(wrapperSource, /--node-sha256/u);
+  assert.match(
+    wrapperSource,
+    /--remote-debugging-address=127\.0\.0\.1 --remote-debugging-port=\$port/u,
+  );
   for (const rejected of [
     "relative\\source",
     `${sourceRoot}\\safe\\..\\escape`,

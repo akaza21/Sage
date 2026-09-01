@@ -776,7 +776,7 @@ try {
   $runtimeReceipt = Wait-OwnedFrontendReady $viteRuntime $frontendContract $startupDeadline
   [Environment]::SetEnvironmentVariable("SAGE_DISPOSABLE_PROFILE_ROOT", $profile, "Process")
   [Environment]::SetEnvironmentVariable("SAGE_PROJECT_ROOT", $fixture, "Process")
-  [Environment]::SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--remote-debugging-port=$port", "Process")
+  [Environment]::SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--remote-debugging-address=127.0.0.1 --remote-debugging-port=$port", "Process")
   if ($JourneyKind -eq "acp04-live") {
     $process = Start-Process -FilePath $resolvedExecutable `
       -WorkingDirectory (Split-Path -Parent $resolvedExecutable) `
