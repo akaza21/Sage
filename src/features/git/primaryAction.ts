@@ -5,6 +5,7 @@ export type RepositoryPrimaryAction =
   | { kind: "commit"; label: "Commit"; reason: null }
   | { kind: "publish"; label: "Publish Branch"; remote: string; reason: null }
   | { kind: "push"; label: "Push"; remote: string; reason: null }
+  | { kind: "pull"; label: "Pull"; reason: null }
   | { kind: "sync"; label: "Sync Changes"; reason: string }
   | null;
 
@@ -25,11 +26,36 @@ export function repositoryPrimaryAction(
   const ahead = repository.ahead ?? 0;
   const behind = repository.behind ?? 0;
   if (behind > 0) {
+    if (ahead > 0) {
+      return {
+        kind: "sync",
+        label: "Sync Changes",
+        reason:
+          "This branch has diverged from its upstream. Sage cannot yet choose a merge or rebase safely.",
+      };
+    }
+    if (
+      !repository.upstream ||
+      !repository.branch ||
+      repository.branch.endsWith("(detached)") ||
+      repository.truncated ||
+      repository.changes.length > 0 ||
+      repository.mergeInProgress ||
+      repository.rebaseInProgress ||
+      repository.cherryPickInProgress ||
+      repository.revertInProgress
+    ) {
+      return {
+        kind: "sync",
+        label: "Sync Changes",
+        reason:
+          "Pull requires a clean, complete repository projection with a current upstream branch.",
+      };
+    }
     return {
-      kind: "sync",
-      label: "Sync Changes",
-      reason:
-        "Sage can fetch and push, but cannot yet integrate incoming changes safely.",
+      kind: "pull",
+      label: "Pull",
+      reason: null,
     };
   }
   if (ahead > 0 && repository.upstream) {

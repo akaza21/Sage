@@ -123,6 +123,8 @@ const repository: RepositoryPort = {
     browserDesktop.deleteGitLocalBranch(request, expectedTransitionEpoch),
   fetchGitRemote: (request, expectedTransitionEpoch) =>
     browserDesktop.fetchGitRemote(request, expectedTransitionEpoch),
+  pullGitRepository: (request, expectedTransitionEpoch) =>
+    browserDesktop.pullGitRepository(request, expectedTransitionEpoch),
   discoverProjectRepositories: async (request) => ({
     projectId: request.projectId,
     transitionEpoch: request.expectedTransitionEpoch,

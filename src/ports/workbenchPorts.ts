@@ -36,6 +36,8 @@ import type {
   GitRepositorySequenceAbortRequest,
   GitRepositoryRemoteTransportRequest,
   GitRepositoryRemoteTransportResult,
+  GitRepositoryPullRequest,
+  GitRepositoryPullResult,
   ModelOption,
   ProjectLayoutRequest,
   ProjectRepositoryStatus,
@@ -167,6 +169,10 @@ export interface RepositoryPort {
     request: GitRepositoryRemoteTransportRequest,
     expectedTransitionEpoch: number,
   ): Promise<GitRepositoryRemoteTransportResult>;
+  pullGitRepository(
+    request: GitRepositoryPullRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<GitRepositoryPullResult>;
   discoverProjectRepositories(
     request: DiscoverProjectRepositoriesRequest,
   ): Promise<DiscoverProjectRepositoriesResult>;
@@ -279,6 +285,7 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "getNestedRepositoryStatus",
     "getRepositoryStatus",
     "mutateGitFile",
+    "pullGitRepository",
     "pushGitRemote",
     "renameGitLocalBranch",
   ],

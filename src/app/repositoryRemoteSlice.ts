@@ -5,11 +5,11 @@ import { desktop } from "../services/desktop";
 import { matchesProjectIntent } from "./projectIntent";
 import type { WorkbenchState } from "./store";
 
-export type RepositoryRemoteAction = "fetch" | "push";
+export type RepositoryRemoteAction = "fetch" | "push" | "pull";
 
 export interface RepositoryRemote {
   rootId: string;
-  remote: string;
+  remote: string | null;
   action: RepositoryRemoteAction;
 }
 
@@ -23,6 +23,7 @@ export interface RepositoryRemoteSlice {
   repositoryRemote: RepositoryRemote | null;
   repositoryRemoteError: RepositoryRemoteError | null;
   fetchRemote: (rootId: string, remote: string) => Promise<boolean>;
+  pullRepository: (rootId: string) => Promise<boolean>;
   pushRemote: (rootId: string, remote: string) => Promise<boolean>;
   clearRepositoryRemoteError: (rootId: string) => void;
 }
@@ -67,7 +68,7 @@ export const createRepositoryRemoteSlice: StateCreator<
 > = (set, get) => {
   async function transportRemote(
     rootId: string,
-    remote: string,
+    remote: string | null,
     action: RepositoryRemoteAction,
   ): Promise<boolean> {
     const projectId = get().project?.id;
@@ -75,7 +76,7 @@ export const createRepositoryRemoteSlice: StateCreator<
     const transitionEpoch = get().nativeTransitionEpoch;
     if (
       !projectId ||
-      !remote ||
+      (action !== "pull" && !remote) ||
       get().projectTransitioning ||
       get().repositoryRefreshing ||
       get().repositoryMutation ||
@@ -89,12 +90,17 @@ export const createRepositoryRemoteSlice: StateCreator<
     const transport: RepositoryRemote = { rootId, remote, action };
     set({ repositoryRemote: transport, repositoryRemoteError: null });
     try {
-      const invoke =
-        action === "fetch" ? desktop.fetchGitRemote : desktop.pushGitRemote;
-      const result = await invoke(
-        { projectId, rootId, remote },
-        transitionEpoch,
-      );
+      const result =
+        action === "pull"
+          ? await desktop.pullGitRepository(
+              { projectId, rootId },
+              transitionEpoch,
+            )
+          : await (
+              action === "fetch"
+                ? desktop.fetchGitRemote
+                : desktop.pushGitRemote
+            )({ projectId, rootId, remote: remote! }, transitionEpoch);
       if (
         get().repositoryRemote !== transport ||
         get().projectTransitioning ||
@@ -150,6 +156,7 @@ export const createRepositoryRemoteSlice: StateCreator<
       }
     },
     fetchRemote: (rootId, remote) => transportRemote(rootId, remote, "fetch"),
+    pullRepository: (rootId) => transportRemote(rootId, null, "pull"),
     pushRemote: (rootId, remote) => transportRemote(rootId, remote, "push"),
   };
 };

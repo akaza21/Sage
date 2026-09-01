@@ -200,9 +200,7 @@ const editor: EditorPort = {
 };
 
 const repository: RepositoryPort = {
-  getRepositoryStatus(): Promise<ProjectRepositoryStatus> {
-    return invokeNative("get_repository_status");
-  },
+  getRepositoryStatus: () => invokeNative("get_repository_status"),
   getFileDiff(resource: ResourceRef): Promise<FileDiff> {
     return invokeNative("get_file_diff", { resource });
   },
@@ -296,6 +294,8 @@ const repository: RepositoryPort = {
       expectedTransitionEpoch,
     });
   },
+  pullGitRepository: (request, expectedTransitionEpoch) =>
+    invokeNative("pull_git_repository", { request, expectedTransitionEpoch }),
   discoverProjectRepositories(
     request: DiscoverProjectRepositoriesRequest,
   ): Promise<DiscoverProjectRepositoriesResult> {

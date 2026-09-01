@@ -52,6 +52,8 @@ mod repository_mutation;
 mod repository_mutation_commands;
 mod repository_parse;
 mod repository_public_error;
+mod repository_pull;
+mod repository_pull_commands;
 mod repository_rebase_commands;
 mod repository_ref_commands;
 mod repository_remote_transport;
@@ -253,6 +255,7 @@ pub fn run() {
             repository_revert_commands::continue_git_revert,
             repository_remote_transport_commands::fetch_git_remote,
             repository_remote_transport_commands::push_git_remote,
+            repository_pull_commands::pull_git_repository,
             resource_commands::list_directory,
             resource_commands::read_text_file,
             resource_commands::open_editor_document,
