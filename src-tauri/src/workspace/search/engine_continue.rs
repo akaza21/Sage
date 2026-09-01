@@ -5,6 +5,7 @@ use crate::workspace::Workspace;
 use super::{
     contained_file::open_contained_file,
     engine::{RootCounters, SearchBudget, SearchEngine},
+    literal_match::literal_matches,
     types::{
         ContinuationCursor, SearchLimitReason, SearchRootReport, SearchRootState,
         WorkspaceSearchMatch, push_reason,
@@ -37,6 +38,7 @@ impl SearchEngine {
         relative_path: &str,
         query: &str,
         case_sensitive: bool,
+        whole_word: bool,
         cursor: &ContinuationCursor,
     ) -> bool {
         let resource = workspace.resource_unchecked(relative_path);
@@ -63,7 +65,7 @@ impl SearchEngine {
             .enumerate()
             .any(|(line_index, raw_line)| {
                 let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
-                literal_positions(line, query, case_sensitive).any(|column| {
+                literal_positions(line, query, case_sensitive, whole_word).any(|column| {
                     cursor.line_number == one_based(line_index) && cursor.column_number == column
                 })
             })
@@ -76,6 +78,7 @@ impl SearchEngine {
         relative_path: String,
         query: &str,
         case_sensitive: bool,
+        whole_word: bool,
         cursor: &ContinuationCursor,
         matches: &mut Vec<WorkspaceSearchMatch>,
         budget: &mut SearchBudget,
@@ -125,7 +128,7 @@ impl SearchEngine {
         counters.bytes_scanned += bytes.len() as u64;
         for (line_index, raw_line) in content.split('\n').enumerate() {
             let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
-            for column in literal_positions(line, query, case_sensitive) {
+            for column in literal_positions(line, query, case_sensitive, whole_word) {
                 let line_number = one_based(line_index);
                 if line_number < cursor.line_number
                     || (line_number == cursor.line_number && column <= cursor.column_number)
@@ -166,38 +169,11 @@ fn literal_positions<'a>(
     line: &'a str,
     query: &'a str,
     case_sensitive: bool,
+    whole_word: bool,
 ) -> impl Iterator<Item = u32> + 'a {
-    let mut offset = 0;
-    std::iter::from_fn(move || {
-        let (start, end) = find_literal(&line[offset..], query, case_sensitive)?;
-        let absolute = offset + start;
-        offset += end.max(start + 1);
-        Some(column_number(line, absolute))
-    })
-}
-
-fn find_literal(line: &str, query: &str, case_sensitive: bool) -> Option<(usize, usize)> {
-    if case_sensitive {
-        return line.find(query).map(|start| (start, start + query.len()));
-    }
-    let needle = query.to_lowercase();
-    let mut folded = String::with_capacity(line.len());
-    let mut origin = Vec::with_capacity(line.len());
-    for (start, character) in line.char_indices() {
-        let end = start + character.len_utf8();
-        for folded_character in character.to_lowercase() {
-            let mut encoded = [0; 4];
-            let encoded = folded_character.encode_utf8(&mut encoded);
-            folded.push_str(encoded);
-            origin.extend(std::iter::repeat_n((start, end), encoded.len()));
-        }
-    }
-    let folded_start = folded.find(&needle)?;
-    let folded_end = folded_start + needle.len();
-    Some((
-        origin.get(folded_start)?.0,
-        origin.get(folded_end.checked_sub(1)?)?.1,
-    ))
+    literal_matches(line, query, case_sensitive, whole_word)
+        .into_iter()
+        .map(|(start, _)| column_number(line, start))
 }
 
 fn one_based(zero_based: usize) -> u32 {

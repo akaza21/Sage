@@ -168,6 +168,42 @@ it("uses disambiguated project-root labels for repository options", () => {
   ).toBeInTheDocument();
 });
 
+it("shows native-proven identity and dispatches the selected publish action", async () => {
+  const pushRemote = vi.fn(async () => true);
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: {
+      roots: [{ ...rootStatus, upstream: null, ahead: 0, behind: 0 }],
+      truncated: false,
+      elapsedMs: 1,
+    },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    pushRemote,
+  });
+  render(<SourceControlView />);
+  expect(screen.getByText("No upstream")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Publish Branch" }));
+  await waitFor(() =>
+    expect(pushRemote).toHaveBeenCalledWith("root-a", "origin"),
+  );
+});
+
 it("selects a nested repository, opens its Diff, and offers no mutations", async () => {
   const selectRepository = vi.fn(async (repository: RepositoryRef) => {
     useWorkbenchStore.setState({

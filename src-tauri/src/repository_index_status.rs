@@ -74,6 +74,7 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         }
     }
     let branch = symbolic_branch(workspace).await?;
+    let tracking = repository::tracking_status(workspace, branch.as_deref()).await?;
     let listed = crate::repository_branches::list_local_branches(workspace).await?;
     let listed =
         crate::repository_branches::compose_current_named_branch(listed, branch.as_deref());
@@ -108,6 +109,9 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         root_id: workspace.root_id().into(),
         state: "repository".into(),
         branch,
+        upstream: tracking.upstream,
+        ahead: tracking.ahead,
+        behind: tracking.behind,
         branches: listed.names,
         branches_truncated: listed.truncated,
         recent_commits: history.commits,

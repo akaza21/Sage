@@ -45,6 +45,9 @@ describe("workspace Search desktop adapter", () => {
       continuationToken: null,
       query: "  needle  ",
       caseSensitive: false,
+      wholeWord: false,
+      includePatterns: ["src/**/*.ts"],
+      excludePatterns: ["**/generated/**"],
     });
 
     expect(invoke).toHaveBeenCalledWith("search_workspace", {
@@ -55,6 +58,9 @@ describe("workspace Search desktop adapter", () => {
         continuationToken: null,
         query: "needle",
         caseSensitive: false,
+        wholeWord: false,
+        includePatterns: ["src/**/*.ts"],
+        excludePatterns: ["**/generated/**"],
         requestId: expect.any(String),
       },
     });
@@ -78,6 +84,9 @@ describe("workspace Search desktop adapter", () => {
         continuationToken: null,
         query: "needle",
         caseSensitive: false,
+        wholeWord: false,
+        includePatterns: [],
+        excludePatterns: [],
       },
       controller.signal,
     );
@@ -110,6 +119,9 @@ describe("workspace Search desktop adapter", () => {
         continuationToken: null,
         query: "needle",
         caseSensitive: false,
+        wholeWord: false,
+        includePatterns: [],
+        excludePatterns: [],
       }),
     ).rejects.toThrow("invalid workspace Search response");
   });

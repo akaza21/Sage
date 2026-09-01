@@ -13,12 +13,14 @@ import type {
   GitFileMutationAction,
   RepositoryRef,
   ResourceRef,
+  RootRepositoryStatus,
 } from "../domain/workbench";
 import { RepositoryCommitControl } from "./RepositoryCommitControl";
 import { SourceBranchList } from "./SourceBranchList";
 import { SourceChangeRow } from "./SourceChangeRow";
 import { SourceCommitList } from "./SourceCommitList";
 import { SourceRemoteList } from "./SourceRemoteList";
+import { repositoryPrimaryAction } from "../features/git/primaryAction";
 
 function SourceChangeGroups({
   changes,
@@ -51,6 +53,10 @@ function SourceChangeGroups({
   ) => Promise<void>;
 }) {
   const { conflicts, others } = partitionSourceChanges(changes);
+  const staged = others.filter((change) => change.indexStatus !== "unchanged");
+  const unstaged = others.filter(
+    (change) => change.indexStatus === "unchanged",
+  );
   const renderChange = (change: FileChange) => (
     <SourceChangeRow
       key={`${resourceKey(change.resource)}:${change.indexStatus}:${change.worktreeStatus}:${change.originalResource ? resourceKey(change.originalResource) : ""}`}
@@ -63,24 +69,50 @@ function SourceChangeGroups({
       openDiff={openDiff}
     />
   );
+  const group = (label: string, entries: readonly FileChange[]) =>
+    entries.length > 0 ? (
+      <details className="source-change-group" open>
+        <summary>
+          <span>{label}</span>
+          <span aria-label={`${entries.length} ${label.toLowerCase()}`}>
+            {entries.length}
+          </span>
+        </summary>
+        {entries.map(renderChange)}
+      </details>
+    ) : null;
   return (
     <>
       {conflicts.length > 0 ? (
-        <>
-          <p className="source-group-label">
-            {conflictGroupLabel({
-              rebaseInProgress,
-              cherryPickInProgress,
-              revertInProgress,
-            })}
-          </p>
-          {conflicts.map(renderChange)}
-        </>
+        group(
+          conflictGroupLabel({
+            rebaseInProgress,
+            cherryPickInProgress,
+            revertInProgress,
+          }),
+          conflicts,
+        )
       ) : rebaseInProgress || cherryPickInProgress || revertInProgress ? (
         <p className="sidebar__empty">Conflicts are resolved.</p>
       ) : null}
-      {others.map(renderChange)}
+      {group("Staged Changes", staged)}
+      {group("Changes", unstaged)}
     </>
+  );
+}
+
+function RepositoryIdentity({
+  repository,
+}: {
+  repository: RootRepositoryStatus;
+}) {
+  const tracking = repository.upstream
+    ? `${repository.upstream}${repository.ahead || repository.behind ? ` · ↑${repository.ahead ?? 0} ↓${repository.behind ?? 0}` : ""}`
+    : "No upstream";
+  return (
+    <span className="source-root__identity" title={tracking}>
+      {tracking}
+    </span>
   );
 }
 
@@ -272,14 +304,45 @@ export function SourceControlView() {
           return (
             <section className="source-root" key={repository.rootId}>
               <div className="source-control-list__group">
-                <span>{rootLabel}</span>
-                <span className="muted">
+                <span className="source-root__name" title={rootLabel}>
+                  {rootLabel}
+                </span>
+                <span className="source-root__branch">
                   {repository.branch ??
                     (repository.state === "notRepository"
                       ? "Not a repository"
                       : "Unavailable")}
                 </span>
               </div>
+              {repository.state === "repository" ? (
+                <div className="source-root__tracking">
+                  <RepositoryIdentity repository={repository} />
+                  {(() => {
+                    const action = repositoryPrimaryAction(repository);
+                    if (!action || action.kind === "commit") return null;
+                    return (
+                      <button
+                        type="button"
+                        className="source-root__primary"
+                        disabled={controlsDisabled || action.reason !== null}
+                        title={
+                          action.reason ??
+                          `${action.label} using ${action.remote ?? "the staged changes"}`
+                        }
+                        onClick={() => {
+                          if (
+                            action.kind === "push" ||
+                            action.kind === "publish"
+                          )
+                            void pushRemote(repository.rootId, action.remote);
+                        }}
+                      >
+                        {action.label}
+                      </button>
+                    );
+                  })()}
+                </div>
+              ) : null}
               {repository.state === "repository" &&
               (!selectedRepository || isRootRepository(selectedRepository)) ? (
                 <RepositoryCommitControl

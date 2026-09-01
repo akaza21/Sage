@@ -33,6 +33,9 @@ export interface WorkspaceSearchRequest {
   continuationToken?: string | null;
   query: string;
   caseSensitive: boolean;
+  wholeWord: boolean;
+  includePatterns: string[];
+  excludePatterns: string[];
 }
 
 export interface WorkspaceSearchMatch {
@@ -104,6 +107,34 @@ function boundedString(
 
 function safeCount(value: unknown, minimum = 0): value is number {
   return Number.isSafeInteger(value) && (value as number) >= minimum;
+}
+
+function validFilterPattern(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    new TextEncoder().encode(value).byteLength <=
+      WORKSPACE_SEARCH_LIMITS.filterPatternBytes &&
+    !value.startsWith("/") &&
+    !value.startsWith("~") &&
+    !value.includes("\\") &&
+    !value.includes(":") &&
+    !value.includes("\0") &&
+    ![...value].some((character) => /[\p{Cc}]/u.test(character)) &&
+    value
+      .split("/")
+      .every((segment) => segment !== "" && segment !== "." && segment !== "..")
+  );
+}
+
+function validFilterPatterns(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= WORKSPACE_SEARCH_LIMITS.filterPatterns &&
+    value.every(validFilterPattern) &&
+    new TextEncoder().encode(value.join("")).byteLength <=
+      WORKSPACE_SEARCH_LIMITS.filterBytes
+  );
 }
 
 function canonicalResource(value: unknown): value is ResourceRef {
@@ -195,6 +226,22 @@ export function validateWorkspaceSearchRequest(
     throw new Error(
       `workspace Search query must be 1-${MAX_WORKSPACE_SEARCH_QUERY_BYTES} bytes`,
     );
+  }
+  if (typeof request.wholeWord !== "boolean") {
+    throw new Error("workspace Search whole-word mode must be a boolean");
+  }
+  if (
+    !validFilterPatterns(request.includePatterns) ||
+    !validFilterPatterns(request.excludePatterns)
+  ) {
+    throw new Error("workspace Search path filters are invalid");
+  }
+  if (
+    new TextEncoder().encode(
+      [...request.includePatterns, ...request.excludePatterns].join(""),
+    ).byteLength > WORKSPACE_SEARCH_LIMITS.filterBytes
+  ) {
+    throw new Error("workspace Search path filters exceed the byte limit");
   }
 }
 

@@ -76,6 +76,7 @@ pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         &status_output.stdout,
         status_output.stdout_truncated,
     )?;
+    let tracking = tracking_status(workspace, branch.as_deref()).await?;
     for change in &mut changes {
         change.resource = workspace.git_resource_identity(&change.resource)?;
         if let Some(original) = &change.original_resource {
@@ -129,6 +130,9 @@ pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         root_id: workspace.root_id().into(),
         state: "repository".into(),
         branch,
+        upstream: tracking.upstream,
+        ahead: tracking.ahead,
+        behind: tracking.behind,
         branches: listed.names,
         branches_truncated: listed.truncated,
         recent_commits: history.commits,
@@ -143,6 +147,86 @@ pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         truncated: parser_truncated || numstat_truncated,
         elapsed_ms: started.elapsed().as_millis() as u64,
         message: None,
+    })
+}
+
+pub(crate) struct TrackingStatus {
+    pub upstream: Option<String>,
+    pub ahead: u64,
+    pub behind: u64,
+}
+
+/// A missing upstream is the ordinary unpublished-branch state, not an error.
+pub(crate) async fn tracking_status(
+    workspace: &Workspace,
+    branch: Option<&str>,
+) -> AppResult<TrackingStatus> {
+    if crate::repository_branches::named_branch(branch).is_none() {
+        return Ok(TrackingStatus {
+            upstream: None,
+            ahead: 0,
+            behind: 0,
+        });
+    }
+    let upstream = crate::repository_workspace::run_git(
+        workspace,
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ],
+        1024,
+    )
+    .await?;
+    if !upstream.succeeded() && matches!(upstream.exit_code(), Some(1) | Some(128)) {
+        return Ok(TrackingStatus {
+            upstream: None,
+            ahead: 0,
+            behind: 0,
+        });
+    }
+    ensure_success(&upstream)?;
+    if upstream.stdout_truncated {
+        return Err(AppError::ResourceLimit(
+            "Git upstream identity exceeds its bounded contract".into(),
+        ));
+    }
+    let upstream = std::str::from_utf8(&upstream.stdout)
+        .map_err(|_| AppError::Git("Git returned a non-UTF-8 upstream identity".into()))?
+        .trim();
+    if upstream.is_empty() || upstream.len() > 512 || upstream.chars().any(char::is_control) {
+        return Err(AppError::Git(
+            "Git returned an invalid upstream identity".into(),
+        ));
+    }
+    let counts = crate::repository_workspace::run_git(
+        workspace,
+        &["rev-list", "--left-right", "--count", "@{upstream}...HEAD"],
+        128,
+    )
+    .await?;
+    ensure_success(&counts)?;
+    if counts.stdout_truncated {
+        return Err(AppError::ResourceLimit(
+            "Git tracking counts exceed their bounded contract".into(),
+        ));
+    }
+    let counts = std::str::from_utf8(&counts.stdout)
+        .map_err(|_| AppError::Git("Git returned non-UTF-8 tracking counts".into()))?
+        .split_whitespace()
+        .map(str::parse::<u64>)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| AppError::Git("Git returned invalid tracking counts".into()))?;
+    let [behind, ahead] = counts.as_slice() else {
+        return Err(AppError::Git(
+            "Git returned incomplete tracking counts".into(),
+        ));
+    };
+    Ok(TrackingStatus {
+        upstream: Some(upstream.into()),
+        ahead: *ahead,
+        behind: *behind,
     })
 }
 
@@ -462,6 +546,35 @@ mod tests {
         assert_eq!(status.changes[0].worktree_status, "modified");
         assert_eq!(status.changes[0].additions, Some(2));
         assert_eq!(status.changes[0].deletions, Some(0));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn status_projects_an_exact_tracking_ref_and_ahead_count() {
+        let root = std::env::temp_dir().join(format!("sage-git-tracking-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q", "-b", "main"]);
+        git(&root, &["config", "user.email", "sage@example.invalid"]);
+        git(&root, &["config", "user.name", "Sage Test"]);
+        fs::write(root.join("tracked.txt"), "base\n").unwrap();
+        git(&root, &["add", "tracked.txt"]);
+        git(&root, &["commit", "-q", "-m", "base"]);
+        git(&root, &["remote", "add", "origin", root.to_str().unwrap()]);
+        git(&root, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        git(&root, &["config", "branch.main.remote", "origin"]);
+        git(&root, &["config", "branch.main.merge", "refs/heads/main"]);
+        fs::write(root.join("tracked.txt"), "ahead\n").unwrap();
+        git(&root, &["add", "tracked.txt"]);
+        git(&root, &["commit", "-q", "-m", "ahead"]);
+
+        let workspace = Workspace::open("project-test", "root-test", &root).unwrap();
+        let projected = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(status(&workspace))
+            .unwrap();
+        assert_eq!(projected.upstream.as_deref(), Some("origin/main"));
+        assert_eq!(projected.ahead, 1);
+        assert_eq!(projected.behind, 0);
         fs::remove_dir_all(root).unwrap();
     }
 

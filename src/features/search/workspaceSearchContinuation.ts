@@ -11,6 +11,8 @@ interface ContinuationToken {
   g: number;
   e: number;
   c: 0 | 1;
+  w: 0 | 1;
+  f: string;
   q: string;
   r: string;
   p: string;
@@ -89,6 +91,8 @@ function readContinuationToken(value: string): ContinuationToken | null {
     "g",
     "e",
     "c",
+    "w",
+    "f",
     "q",
     "r",
     "p",
@@ -106,6 +110,9 @@ function readContinuationToken(value: string): ContinuationToken | null {
     !safeCounter(token.g) ||
     !safeCounter(token.e) ||
     (token.c !== 0 && token.c !== 1) ||
+    (token.w !== 0 && token.w !== 1) ||
+    typeof token.f !== "string" ||
+    !/^[a-f0-9]{64}$/.test(token.f) ||
     typeof token.q !== "string" ||
     !/^[a-f0-9]{64}$/.test(token.q) ||
     !boundedIdentifier(token.r) ||
@@ -130,6 +137,7 @@ export function assertWorkspaceSearchContinuationMatchesRequest(
     indexGeneration: number;
     expectedTransitionEpoch: number;
     caseSensitive: boolean;
+    wholeWord: boolean;
   },
 ): void {
   const parsed = readContinuationToken(token);
@@ -139,7 +147,8 @@ export function assertWorkspaceSearchContinuationMatchesRequest(
   if (
     parsed.g !== request.indexGeneration ||
     parsed.e !== request.expectedTransitionEpoch ||
-    parsed.c !== (request.caseSensitive ? 1 : 0)
+    parsed.c !== (request.caseSensitive ? 1 : 0) ||
+    parsed.w !== (request.wholeWord ? 1 : 0)
   ) {
     throw new Error("workspace Search continuation is stale");
   }

@@ -1,0 +1,66 @@
+import { describe, expect, it } from "vitest";
+
+import type { RootRepositoryStatus } from "../../domain/workbench";
+import { repositoryPrimaryAction } from "./primaryAction";
+
+function repository(
+  overrides: Partial<RootRepositoryStatus> = {},
+): RootRepositoryStatus {
+  return {
+    rootId: "root-a",
+    state: "repository",
+    branch: "main",
+    changes: [],
+    truncated: false,
+    elapsedMs: 1,
+    message: null,
+    remotes: ["origin"],
+    ...overrides,
+  };
+}
+
+describe("repositoryPrimaryAction", () => {
+  it("uses only native-proven state and never guesses from a branch name", () => {
+    expect(repositoryPrimaryAction(repository())).toEqual({
+      kind: "publish",
+      label: "Publish Branch",
+      remote: "origin",
+      reason: null,
+    });
+    expect(
+      repositoryPrimaryAction(
+        repository({ upstream: "origin/main", ahead: 2 }),
+      ),
+    ).toEqual({ kind: "push", label: "Push", remote: "origin", reason: null });
+    expect(
+      repositoryPrimaryAction(
+        repository({ upstream: "origin/main", behind: 1 }),
+      ),
+    ).toMatchObject({ kind: "sync" });
+    expect(repositoryPrimaryAction(repository({ remotes: [] }))).toBeNull();
+  });
+
+  it("prioritizes a real commit over transport and rejects detached or unavailable repositories", () => {
+    expect(
+      repositoryPrimaryAction(
+        repository({
+          changes: [
+            {
+              resource: { rootId: "root-a", relativePath: "a.ts" },
+              indexStatus: "modified",
+              worktreeStatus: "unchanged",
+              additions: 1,
+              deletions: 0,
+            },
+          ],
+        }),
+      ),
+    ).toMatchObject({ kind: "commit" });
+    expect(
+      repositoryPrimaryAction(repository({ branch: "HEAD (detached)" })),
+    ).toBeNull();
+    expect(
+      repositoryPrimaryAction(repository({ state: "unavailable" })),
+    ).toBeNull();
+  });
+});

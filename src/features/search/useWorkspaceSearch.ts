@@ -14,6 +14,9 @@ export interface WorkspaceSearchState {
   phase: WorkspaceSearchPhase;
   query: string;
   caseSensitive: boolean;
+  wholeWord: boolean;
+  includePatternText: string;
+  excludePatternText: string;
   response: WorkspaceSearchResponse | null;
   pages: WorkspaceSearchResponse[];
   error: string | null;
@@ -30,6 +33,9 @@ const initialState = (): WorkspaceSearchState => ({
   phase: "idle",
   query: "",
   caseSensitive: false,
+  wholeWord: false,
+  includePatternText: "",
+  excludePatternText: "",
   response: null,
   pages: [],
   error: null,
@@ -37,6 +43,13 @@ const initialState = (): WorkspaceSearchState => ({
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function filterPatterns(value: string): string[] {
+  return value
+    .split(",")
+    .map((pattern) => pattern.trim())
+    .filter(Boolean);
 }
 
 export function useWorkspaceSearch({
@@ -85,6 +98,51 @@ export function useWorkspaceSearch({
         ...current,
         phase: "idle",
         caseSensitive,
+        response: null,
+        pages: [],
+        error: null,
+      }));
+    },
+    [retireCriteria],
+  );
+
+  const setWholeWord = useCallback(
+    (wholeWord: boolean) => {
+      retireCriteria();
+      setState((current) => ({
+        ...current,
+        phase: "idle",
+        wholeWord,
+        response: null,
+        pages: [],
+        error: null,
+      }));
+    },
+    [retireCriteria],
+  );
+
+  const setIncludePatternText = useCallback(
+    (includePatternText: string) => {
+      retireCriteria();
+      setState((current) => ({
+        ...current,
+        phase: "idle",
+        includePatternText,
+        response: null,
+        pages: [],
+        error: null,
+      }));
+    },
+    [retireCriteria],
+  );
+
+  const setExcludePatternText = useCallback(
+    (excludePatternText: string) => {
+      retireCriteria();
+      setState((current) => ({
+        ...current,
+        phase: "idle",
+        excludePatternText,
         response: null,
         pages: [],
         error: null,
@@ -149,6 +207,9 @@ export function useWorkspaceSearch({
           continuationToken: null,
           query,
           caseSensitive: state.caseSensitive,
+          wholeWord: state.wholeWord,
+          includePatterns: filterPatterns(state.includePatternText),
+          excludePatterns: filterPatterns(state.excludePatternText),
         },
         controller.signal,
       );
@@ -195,6 +256,9 @@ export function useWorkspaceSearch({
     indexGeneration,
     projectId,
     state.caseSensitive,
+    state.wholeWord,
+    state.includePatternText,
+    state.excludePatternText,
     state.query,
     transitionEpoch,
   ]);
@@ -227,6 +291,9 @@ export function useWorkspaceSearch({
           continuationToken: lastPage.continuationToken,
           query,
           caseSensitive: state.caseSensitive,
+          wholeWord: state.wholeWord,
+          includePatterns: filterPatterns(state.includePatternText),
+          excludePatterns: filterPatterns(state.excludePatternText),
         },
         controller.signal,
       );
@@ -275,6 +342,9 @@ export function useWorkspaceSearch({
     indexGeneration,
     projectId,
     state.caseSensitive,
+    state.wholeWord,
+    state.includePatternText,
+    state.excludePatternText,
     state.pages,
     state.query,
     transitionEpoch,
@@ -299,5 +369,16 @@ export function useWorkspaceSearch({
     });
   }, [indexGeneration, projectId, transitionEpoch]);
 
-  return { state, setQuery, setCaseSensitive, submit, continueSearch, cancel };
+  return {
+    state,
+    setQuery,
+    setCaseSensitive,
+    setWholeWord,
+    setIncludePatternText,
+    setExcludePatternText,
+    submit,
+    continueSearch,
+    cancel,
+    refresh: submit,
+  };
 }

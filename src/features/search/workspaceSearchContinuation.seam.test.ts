@@ -48,8 +48,13 @@ function page(
   };
 }
 
-function continuationToken(indexGeneration = 0, epoch = 4, caseFlag = 0) {
-  return `{"v":1,"g":${indexGeneration},"e":${epoch},"c":${caseFlag},"q":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","r":"root-a","p":"safe.txt","l":1,"o":1}`;
+function continuationToken(
+  indexGeneration = 0,
+  epoch = 4,
+  caseFlag = 0,
+  wholeWordFlag = 0,
+) {
+  return `{"v":1,"g":${indexGeneration},"e":${epoch},"c":${caseFlag},"w":${wholeWordFlag},"f":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","q":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","r":"root-a","p":"safe.txt","l":1,"o":1}`;
 }
 
 const token = continuationToken();
@@ -182,6 +187,9 @@ describe("workspace Search continuation public seam", () => {
       continuationToken: continuationToken(7),
       query: "needle",
       caseSensitive: false,
+      wholeWord: false,
+      includePatterns: [],
+      excludePatterns: [],
     });
     expect(invoke).toHaveBeenCalledWith("search_workspace", {
       request: expect.objectContaining({
@@ -209,6 +217,9 @@ describe("workspace Search continuation public seam", () => {
         continuationToken: null,
         query: "needle",
         caseSensitive: false,
+        wholeWord: false,
+        includePatterns: [],
+        excludePatterns: [],
       }),
     ).rejects.toThrow("invalid workspace Search response");
   });
@@ -232,6 +243,9 @@ describe("workspace Search continuation public seam", () => {
       indexGeneration: 0,
       query: "needle",
       caseSensitive: false,
+      wholeWord: false,
+      includePatterns: [],
+      excludePatterns: [],
     };
     expect(() =>
       validateWorkspaceSearchRequest({
@@ -245,6 +259,36 @@ describe("workspace Search continuation public seam", () => {
         continuationToken: continuationToken(0, 4, 1),
       }),
     ).toThrow("workspace Search continuation is stale");
+    expect(() =>
+      validateWorkspaceSearchRequest({
+        ...request,
+        continuationToken: continuationToken(0, 4, 0, 1),
+      }),
+    ).toThrow("workspace Search continuation is stale");
+  });
+
+  it("rejects unsafe include and exclude patterns before native invocation", () => {
+    const request = {
+      projectId: "project-a",
+      expectedTransitionEpoch: 4,
+      indexGeneration: 0,
+      continuationToken: null,
+      query: "needle",
+      caseSensitive: false,
+      wholeWord: false,
+      includePatterns: ["../outside"],
+      excludePatterns: [],
+    };
+    expect(() => validateWorkspaceSearchRequest(request)).toThrow(
+      "workspace Search path filters are invalid",
+    );
+    expect(() =>
+      validateWorkspaceSearchRequest({
+        ...request,
+        includePatterns: [],
+        excludePatterns: ["/absolute"],
+      }),
+    ).toThrow("workspace Search path filters are invalid");
   });
 
   it("page 4 is retained and a fifth continue is refused", async () => {

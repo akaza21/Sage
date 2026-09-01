@@ -24,6 +24,9 @@ pub const MAX_SEARCH_PREVIEW_CHARS: usize = 240;
 pub const MAX_RESOURCE_PATH_BYTES: usize = 16 * 1024;
 pub const MAX_SEARCH_DURATION: Duration = Duration::from_secs(2);
 pub const MAX_CONTINUATION_TOKEN_BYTES: usize = 1024;
+pub const MAX_SEARCH_FILTER_PATTERNS: usize = 16;
+pub const MAX_SEARCH_FILTER_PATTERN_BYTES: usize = 256;
+pub const MAX_SEARCH_FILTER_BYTES: usize = 2 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -38,6 +41,12 @@ pub struct WorkspaceSearchRequest {
     pub query: String,
     #[serde(default)]
     pub case_sensitive: bool,
+    #[serde(default)]
+    pub whole_word: bool,
+    #[serde(default)]
+    pub include_patterns: Vec<String>,
+    #[serde(default)]
+    pub exclude_patterns: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -117,6 +126,10 @@ struct ContinuationToken {
     transition_epoch: u64,
     #[serde(rename = "c")]
     case_sensitive: u8,
+    #[serde(rename = "w", default)]
+    whole_word: u8,
+    #[serde(rename = "f")]
+    filter_hash: String,
     #[serde(rename = "q")]
     query_hash: String,
     #[serde(rename = "r")]
@@ -145,6 +158,8 @@ fn read_continuation_token(value: &str) -> AppResult<ContinuationToken> {
         serde_json::from_str(value).map_err(|_| invalid_continuation())?;
     if token.version != 1
         || !matches!(token.case_sensitive, 0 | 1)
+        || !matches!(token.whole_word, 0 | 1)
+        || !valid_sha256(&token.filter_hash)
         || !valid_sha256(&token.query_hash)
         || !valid_token_identifier(&token.root_id)
         || !valid_relative_path(&token.relative_path)
@@ -165,6 +180,8 @@ pub fn validate_continuation_stamp(
     if token.index_generation != request.index_generation
         || token.transition_epoch != request.expected_transition_epoch
         || token.case_sensitive != u8::from(request.case_sensitive)
+        || token.whole_word != u8::from(request.whole_word)
+        || token.filter_hash != search_filter_hash(request)
         || token.query_hash != search_query_hash(query)
     {
         return Err(stale_continuation());
@@ -182,6 +199,8 @@ pub fn encode_continuation_token(
         index_generation: request.index_generation,
         transition_epoch: request.expected_transition_epoch,
         case_sensitive: u8::from(request.case_sensitive),
+        whole_word: u8::from(request.whole_word),
+        filter_hash: search_filter_hash(request),
         query_hash: search_query_hash(query),
         root_id: cursor.root_id.clone(),
         relative_path: cursor.relative_path.clone(),
@@ -211,6 +230,21 @@ pub fn stale_continuation() -> AppError {
 
 fn search_query_hash(query: &str) -> String {
     format!("{:x}", Sha256::digest(query.as_bytes()))
+}
+
+fn search_filter_hash(request: &WorkspaceSearchRequest) -> String {
+    let mut hasher = Sha256::new();
+    for (kind, patterns) in [
+        (b'i', &request.include_patterns),
+        (b'x', &request.exclude_patterns),
+    ] {
+        hasher.update([kind]);
+        for pattern in patterns {
+            hasher.update((pattern.len() as u64).to_be_bytes());
+            hasher.update(pattern.as_bytes());
+        }
+    }
+    format!("{:x}", hasher.finalize())
 }
 
 fn valid_sha256(value: &str) -> bool {
@@ -288,6 +322,7 @@ pub fn validate_search_request(request: &WorkspaceSearchRequest) -> AppResult<()
             "workspace search query exceeds the {MAX_QUERY_BYTES}-byte limit"
         )));
     }
+    super::path_filter::validate_patterns(&request.include_patterns, &request.exclude_patterns)?;
     Ok(())
 }
 

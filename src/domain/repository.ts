@@ -80,6 +80,10 @@ export interface RootRepositoryStatus {
   rootId: string;
   state: RepositoryRootState;
   branch: string | null;
+  /** Native-proven tracking ref for the current branch; absent for old snapshots. */
+  upstream?: string | null;
+  ahead?: number;
+  behind?: number;
   branches?: string[];
   branchesTruncated?: boolean;
   recentCommits?: GitRecentCommit[];
