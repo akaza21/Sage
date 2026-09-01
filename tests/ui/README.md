@@ -47,7 +47,7 @@ npm packages have approximately 18.5 MB of unpacked JavaScript in total and are
 not part of the Vite production bundle. Chromium installation is separate from
 `npm ci`; on the Windows authoring machine the Chromium and headless-shell cache
 occupied 731,309,635 bytes (about 697 MiB) outside the repository. The 27
-integrated-candidate PNG baselines occupy 1,456,164 bytes.
+integrated-candidate PNG baselines occupy 1,449,938 bytes.
 
 A warm integrated-candidate Windows run completed in about 22 seconds. This
 lane is purposely not included in `npm run check`: the existing CI matrix is

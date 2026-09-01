@@ -19,7 +19,13 @@ describe("Source Control changes stylesheet seam", () => {
     expect(surfaceCss).toMatch(/^\.source-change-row\b/m);
     expect(surfaceCss).toMatch(/^\.source-change__discard-confirmation\b/m);
     expect(surfaceCss).toMatch(
-      /\.source-change--selected\s*\{[^}]*box-shadow:[^}]*font-weight:/s,
+      /\.source-change--selected\s*\{[^}]*background:\s*var\(--color-surface-selected\)[^}]*box-shadow:[^}]*font-weight:/s,
+    );
+    expect(surfaceCss).toMatch(
+      /\.source-change:hover\s*\{[^}]*background:\s*var\(--color-surface-hover\)/s,
+    );
+    expect(surfaceCss).not.toMatch(
+      /\.source-change:hover\s*,\s*\.source-change--selected/,
     );
     expect(surfaceCss).toContain('.source-change[aria-current="true"]');
   });

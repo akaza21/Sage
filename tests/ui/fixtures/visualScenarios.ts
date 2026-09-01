@@ -920,11 +920,29 @@ export function installVisualDirtyEditor() {
     ),
     activeEditor:
       state.activeEditor?.phase === "ready"
-        ? {
-            ...state.activeEditor,
-            content: `${state.activeEditor.content}\n// interaction-state review`,
-            revision: state.activeEditor.revision + 1,
-          }
+        ? (() => {
+            const content = `${state.activeEditor.content}\n// interaction-state review`;
+            const revision = state.activeEditor.revision + 1;
+            return {
+              ...state.activeEditor,
+              document: {
+                ...state.activeEditor.document,
+                buffer: {
+                  ...state.activeEditor.document.buffer,
+                  fingerprint: "visual-editor-dirty-v1",
+                  byteLen: new TextEncoder().encode(content).byteLength,
+                  revision,
+                  content,
+                },
+                dirty: true,
+              },
+              content,
+              revision,
+              // This fixture captures the post-recovery-snapshot dirty state;
+              // disk persistence still requires the explicit Save command.
+              persistedRevision: revision,
+            };
+          })()
         : state.activeEditor,
   }));
 }

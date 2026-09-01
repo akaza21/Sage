@@ -25,10 +25,14 @@
   text-align: left;
 }
 
-.source-change:hover,
-.source-change--selected {
+.source-change:hover {
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
+}
+
+.source-change--selected {
+  color: var(--color-text-primary);
+  background: var(--color-surface-selected);
   box-shadow: inset 2px 0 0 var(--color-accent);
   font-weight: var(--font-weight-semibold);
 }
