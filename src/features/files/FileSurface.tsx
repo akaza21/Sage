@@ -22,6 +22,8 @@ import { useEditorExternalWatch } from "./editorExternalWatch";
 import { findLiteralMatches, MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
 import { fileNavigationSelection } from "./fileNavigation";
 import { useLanguageSession } from "../language/languageClient";
+import { useOutlineProjection } from "../language/languageClient";
+import { localSymbolNavigation } from "../language/outlineNavigation";
 
 export function FileSurface({ tab }: { tab: WorkbenchTab }) {
   const resource = tab.resource;
@@ -128,6 +130,8 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
   });
   useEditorExternalWatch(watchedResource, editorWatchBridge);
   useLanguageSession(watchedResource, findContent);
+  const outline = useOutlineProjection(watchedResource);
+  const [languageNavigationStatus, setLanguageNavigationStatus] = useState("");
   const onCaretOffset = useEditorCaretPublisher(
     !previewing &&
       editor?.phase === "ready" &&
@@ -255,6 +259,30 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
     closeGoToLine();
   }
 
+  function goToLocalSymbol() {
+    const input = editorInputRef.current;
+    const readyEditor = editor;
+    if (!input || !resource || readyEditor?.phase !== "ready") {
+      setLanguageNavigationStatus("Local symbol navigation is unavailable.");
+      return;
+    }
+    const target = localSymbolNavigation(
+      resource,
+      readyEditor.content,
+      input.selection(),
+      outline,
+    );
+    if (!target) {
+      setLanguageNavigationStatus(
+        "No local symbol is available from the language session.",
+      );
+      return;
+    }
+    input.focus();
+    input.setSelection(target.start, target.end);
+    setLanguageNavigationStatus("Moved to local symbol.");
+  }
+
   function moveMatch(direction: 1 | -1) {
     const count = findMatches.offsets.length;
     if (count === 0) {
@@ -301,6 +329,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
     <section
       className="file-surface"
       aria-label={`File editor ${path}`}
+      aria-keyshortcuts="F12"
       onKeyDown={(event) => {
         handleFileSurfaceCommandKey(event, {
           previewing,
@@ -315,6 +344,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
           closeGoToLine,
           openFind,
           openGoToLine,
+          goToLocalSymbol,
           save: () => {
             void saveActiveEditor();
           },
@@ -340,6 +370,11 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
         }}
       />
       <FileEditorNotices conflict={conflict} message={editor.message} />
+      {languageNavigationStatus ? (
+        <p role="status" className="file-language-navigation-status">
+          {languageNavigationStatus}
+        </p>
+      ) : null}
       {findOpen && !previewing ? (
         <FileFindBar
           inputRef={findInputRef}
