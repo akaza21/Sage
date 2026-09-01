@@ -5,6 +5,7 @@ use crate::{domain::ResourceRef, workspace::Workspace};
 use super::{
     contained_file::{ContainedFile, open_contained_file},
     engine::{RootCounters, SearchBudget, SearchEngine},
+    literal_match::literal_matches,
     types::{SearchLimitReason, WorkspaceSearchMatch, push_reason},
 };
 
@@ -16,6 +17,7 @@ impl SearchEngine {
         relative_path: String,
         query: &str,
         case_sensitive: bool,
+        whole_word: bool,
         matches: &mut Vec<WorkspaceSearchMatch>,
         budget: &mut SearchBudget,
         counters: &mut RootCounters,
@@ -69,6 +71,7 @@ impl SearchEngine {
             content,
             query,
             case_sensitive,
+            whole_word,
             matches,
             budget,
             counters,
@@ -82,21 +85,14 @@ impl SearchEngine {
         content: &str,
         query: &str,
         case_sensitive: bool,
+        whole_word: bool,
         matches: &mut Vec<WorkspaceSearchMatch>,
         budget: &mut SearchBudget,
         counters: &mut RootCounters,
     ) {
         for (line_index, raw_line) in content.split('\n').enumerate() {
             let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
-            let mut remainder_start = 0;
-            while remainder_start <= line.len() {
-                let Some((start, end)) =
-                    find_literal(&line[remainder_start..], query, case_sensitive)
-                else {
-                    break;
-                };
-                let start = remainder_start + start;
-                let end = remainder_start + end;
+            for (start, _) in literal_matches(line, query, case_sensitive, whole_word) {
                 matches.push(WorkspaceSearchMatch {
                     resource: resource.clone(),
                     line_number: one_based(line_index),
@@ -108,34 +104,9 @@ impl SearchEngine {
                     counters.partial = true;
                     return;
                 }
-                remainder_start = end.max(start + 1);
             }
         }
     }
-}
-
-fn find_literal(line: &str, query: &str, case_sensitive: bool) -> Option<(usize, usize)> {
-    if case_sensitive {
-        return line.find(query).map(|start| (start, start + query.len()));
-    }
-    let needle = query.to_lowercase();
-    let mut folded = String::with_capacity(line.len());
-    let mut origin = Vec::with_capacity(line.len());
-    for (start, character) in line.char_indices() {
-        let end = start + character.len_utf8();
-        for folded_character in character.to_lowercase() {
-            let mut encoded = [0; 4];
-            let encoded = folded_character.encode_utf8(&mut encoded);
-            folded.push_str(encoded);
-            origin.extend(std::iter::repeat_n((start, end), encoded.len()));
-        }
-    }
-    let folded_start = folded.find(&needle)?;
-    let folded_end = folded_start + needle.len();
-    Some((
-        origin.get(folded_start)?.0,
-        origin.get(folded_end.checked_sub(1)?)?.1,
-    ))
 }
 
 fn bounded_preview(line: &str, max_chars: usize) -> String {

@@ -8,6 +8,9 @@ import type {
 } from "../domain/workbench";
 
 export const browserRootId = "browser-root";
+/** This data exists solely to exercise the browser renderer; it is never Git state. */
+export const BROWSER_FIXTURE_LABEL =
+  "Simulated browser fixture — not live repository state.";
 export const browserRef = (relativePath: string): ResourceRef => ({
   rootId: browserRootId,
   relativePath,
@@ -32,7 +35,7 @@ export const browserRepository: ProjectRepositoryStatus = {
       changes: browserChanges,
       truncated: false,
       elapsedMs: 18,
-      message: null,
+      message: BROWSER_FIXTURE_LABEL,
     },
   ],
   truncated: false,

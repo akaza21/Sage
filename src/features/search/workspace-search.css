@@ -70,6 +70,24 @@
   gap: 8px;
 }
 
+.workspace-search__filters {
+  display: grid;
+  gap: 6px;
+}
+
+.workspace-search__filters label {
+  display: grid;
+  gap: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.workspace-search__filters input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
 .workspace-search__controls > button {
   border: 1px solid var(--color-border-strong);
   background: var(--color-surface);
@@ -101,6 +119,51 @@
   min-height: 0;
   overflow-y: auto;
   scrollbar-color: var(--color-border-strong) transparent;
+}
+
+.workspace-search__file-group {
+  display: grid;
+  gap: 1px;
+}
+
+.workspace-search__file-heading {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+  text-align: left;
+}
+.workspace-search__file-heading:hover,
+.workspace-search__file-heading:focus-visible {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+.workspace-search__file-heading span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-search__file-heading span:last-child {
+  padding: 1px 5px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-active);
+  font-variant-numeric: tabular-nums;
+}
+.workspace-search__preview mark {
+  padding: 0;
+  color: inherit;
+  background: color-mix(in srgb, var(--color-warning) 36%, transparent);
 }
 
 .workspace-search__summary {

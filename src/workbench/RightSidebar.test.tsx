@@ -123,6 +123,9 @@ describe("RightSidebar Search", () => {
         continuationToken: null,
         query: "needle",
         caseSensitive: false,
+        wholeWord: false,
+        includePatterns: [],
+        excludePatterns: [],
       },
       expect.any(AbortSignal),
     );

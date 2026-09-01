@@ -6,6 +6,7 @@ use crate::{
 };
 
 use super::engine_continue::{ContinuationSeek, stale_report};
+use super::path_filter::path_is_admitted;
 use super::types::{
     ContinuationCursor, MAX_RESOURCE_PATH_BYTES, SearchLimitReason, SearchLimits, SearchRoot,
     SearchRootReport, SearchRootSource, SearchRootState, WorkspaceSearchMatch,
@@ -99,6 +100,9 @@ impl SearchEngine {
                     &workspace,
                     query,
                     request.case_sensitive,
+                    request.whole_word,
+                    &request.include_patterns,
+                    &request.exclude_patterns,
                     &mut matches,
                     &mut budget,
                     &mut seek,
@@ -155,6 +159,9 @@ impl SearchEngine {
         workspace: &Workspace,
         query: &str,
         case_sensitive: bool,
+        whole_word: bool,
+        include_patterns: &[String],
+        exclude_patterns: &[String],
         matches: &mut Vec<WorkspaceSearchMatch>,
         budget: &mut SearchBudget,
         seek: &mut Option<ContinuationSeek>,
@@ -300,6 +307,10 @@ impl SearchEngine {
                     counters.skipped_files += 1;
                     continue;
                 }
+                if !path_is_admitted(&child_relative, include_patterns, exclude_patterns) {
+                    counters.skipped_files += 1;
+                    continue;
+                }
                 if seek.is_none() && budget.files_seen == self.limits.max_files {
                     push_reason(&mut budget.reasons, SearchLimitReason::FileCount);
                     counters.partial = true;
@@ -316,6 +327,7 @@ impl SearchEngine {
                         &child_relative,
                         query,
                         case_sensitive,
+                        whole_word,
                         &active_seek.cursor,
                     ) {
                         continue;
@@ -329,6 +341,7 @@ impl SearchEngine {
                         child_relative,
                         query,
                         case_sensitive,
+                        whole_word,
                         &cursor,
                         matches,
                         budget,
@@ -341,6 +354,7 @@ impl SearchEngine {
                         child_relative,
                         query,
                         case_sensitive,
+                        whole_word,
                         matches,
                         budget,
                         &mut counters,

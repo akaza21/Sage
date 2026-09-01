@@ -34,6 +34,12 @@ pub struct RootRepositoryStatus {
     pub state: String,
     pub branch: Option<String>,
     #[serde(default)]
+    pub upstream: Option<String>,
+    #[serde(default)]
+    pub ahead: u64,
+    #[serde(default)]
+    pub behind: u64,
+    #[serde(default)]
     pub branches: Vec<String>,
     #[serde(default)]
     pub branches_truncated: bool,
@@ -65,6 +71,9 @@ impl RootRepositoryStatus {
             root_id: root_id.into(),
             state: "unavailable".into(),
             branch: None,
+            upstream: None,
+            ahead: 0,
+            behind: 0,
             branches: Vec::new(),
             branches_truncated: false,
             recent_commits: Vec::new(),
@@ -87,6 +96,9 @@ impl RootRepositoryStatus {
             root_id: root_id.into(),
             state: "notRepository".into(),
             branch: None,
+            upstream: None,
+            ahead: 0,
+            behind: 0,
             branches: Vec::new(),
             branches_truncated: false,
             recent_commits: Vec::new(),
@@ -109,6 +121,9 @@ impl RootRepositoryStatus {
             root_id: root_id.into(),
             state: "notRepository".into(),
             branch: None,
+            upstream: None,
+            ahead: 0,
+            behind: 0,
             branches: Vec::new(),
             branches_truncated: false,
             recent_commits: Vec::new(),

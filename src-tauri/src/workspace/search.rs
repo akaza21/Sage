@@ -6,6 +6,8 @@ mod file_scan;
 mod helper_process;
 mod helper_protocol;
 pub(crate) mod language_fixture;
+mod literal_match;
+mod path_filter;
 mod types;
 
 pub use helper_protocol::run_stdio_helper_if_requested;
@@ -53,6 +55,9 @@ mod tests {
             continuation_token: None,
             query: query.into(),
             case_sensitive: false,
+            whole_word: false,
+            include_patterns: Vec::new(),
+            exclude_patterns: Vec::new(),
         }
     }
 
@@ -91,6 +96,86 @@ mod tests {
         assert_eq!(result.matches[0].line_number, 2);
         assert_eq!(result.matches[0].column_number, 21);
         assert_eq!(result.matches[0].preview, "let greeting = \"Hello Sage\";");
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn whole_word_search_excludes_identifier_substrings_and_preserves_case_mode() {
+        let (path, root) = fixture_root();
+        fs::write(
+            path.join("whole-word.txt"),
+            "needle needles needle_value NEEDLE (needle)\n",
+        )
+        .unwrap();
+        let result = SearchEngine::new(SearchLimits::default())
+            .search(
+                WorkspaceSearchRequest {
+                    whole_word: true,
+                    ..request("needle")
+                },
+                vec![root],
+            )
+            .unwrap();
+
+        let matches = result
+            .matches
+            .iter()
+            .filter(|match_value| match_value.resource.relative_path == "whole-word.txt")
+            .map(|match_value| match_value.column_number)
+            .collect::<Vec<_>>();
+        assert_eq!(matches, vec![1, 29, 37]);
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn path_filters_include_matching_files_then_subtract_exclusions() {
+        let (path, root) = fixture_root();
+        fs::write(path.join("src").join("kept.rs"), "needle\n").unwrap();
+        fs::write(path.join("src").join("ignored.rs"), "needle\n").unwrap();
+        fs::write(path.join("notes.txt"), "needle\n").unwrap();
+
+        let result = SearchEngine::new(SearchLimits::default())
+            .search(
+                WorkspaceSearchRequest {
+                    include_patterns: vec!["src/**/*.rs".into()],
+                    exclude_patterns: vec!["**/ignored.rs".into()],
+                    ..request("needle")
+                },
+                vec![root],
+            )
+            .unwrap();
+
+        assert_eq!(result.matches.len(), 1);
+        assert_eq!(result.matches[0].resource.relative_path, "src/kept.rs");
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn invalid_path_filters_fail_closed_before_walking() {
+        let (path, _root) = fixture_root();
+        for include_patterns in [
+            vec!["../outside".into()],
+            vec!["/absolute".into()],
+            vec!["C:/drive".into()],
+            vec!["line\nbreak".into()],
+        ] {
+            let error = SearchEngine::new(SearchLimits::default())
+                .search(
+                    WorkspaceSearchRequest {
+                        include_patterns,
+                        ..request("needle")
+                    },
+                    vec![SearchRoot {
+                        root_id: "root-test".into(),
+                        root_name: "fixture".into(),
+                        source: SearchRootSource::Available(
+                            Workspace::open("project-test", "root-test", &path).unwrap(),
+                        ),
+                    }],
+                )
+                .unwrap_err();
+            assert!(error.to_string().contains("workspace search path filter"));
+        }
         fs::remove_dir_all(path).unwrap();
     }
 
@@ -252,6 +337,82 @@ mod tests {
                     .contains("workspace search continuation is stale")
             );
         }
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn continuation_with_a_different_whole_word_mode_is_stale() {
+        let (path, root) = fixture_root();
+        fs::write(path.join("another.txt"), "needle needle\n").unwrap();
+        let first = SearchEngine::new(SearchLimits {
+            max_results: 1,
+            ..SearchLimits::default()
+        })
+        .search(
+            WorkspaceSearchRequest {
+                whole_word: true,
+                ..request("needle")
+            },
+            vec![root],
+        )
+        .unwrap();
+        let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
+        let error = SearchEngine::new(SearchLimits::default())
+            .search(
+                WorkspaceSearchRequest {
+                    continuation_token: first.continuation_token,
+                    ..request("needle")
+                },
+                vec![SearchRoot {
+                    root_id: "root-test".into(),
+                    root_name: "fixture".into(),
+                    source: SearchRootSource::Available(workspace),
+                }],
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("workspace search continuation is stale")
+        );
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn continuation_with_different_path_filters_is_stale() {
+        let (path, root) = fixture_root();
+        fs::write(path.join("another.txt"), "needle needle\n").unwrap();
+        let first = SearchEngine::new(SearchLimits {
+            max_results: 1,
+            ..SearchLimits::default()
+        })
+        .search(
+            WorkspaceSearchRequest {
+                include_patterns: vec!["**/*.txt".into()],
+                ..request("needle")
+            },
+            vec![root],
+        )
+        .unwrap();
+        let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
+        let error = SearchEngine::new(SearchLimits::default())
+            .search(
+                WorkspaceSearchRequest {
+                    continuation_token: first.continuation_token,
+                    ..request("needle")
+                },
+                vec![SearchRoot {
+                    root_id: "root-test".into(),
+                    root_name: "fixture".into(),
+                    source: SearchRootSource::Available(workspace),
+                }],
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("workspace search continuation is stale")
+        );
         fs::remove_dir_all(path).unwrap();
     }
 
