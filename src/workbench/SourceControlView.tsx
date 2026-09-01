@@ -210,7 +210,7 @@ export function SourceControlView() {
       <div className="source-control-list">
         {repositoryRefs.length > 0 ? (
           <label className="source-control-selector">
-            <span>Repository</span>
+            <span className="sr-only">Repository</span>
             <select
               aria-label="Select repository"
               value={
@@ -242,14 +242,22 @@ export function SourceControlView() {
           </label>
         ) : null}
         {inventoryError ? (
-          <p className="sidebar__empty">{inventoryError}</p>
+          <p className="sidebar__error" role="alert">
+            {inventoryError}
+          </p>
         ) : null}
-        {statusError ? <p className="sidebar__empty">{statusError}</p> : null}
+        {statusError ? (
+          <p className="sidebar__error" role="alert">
+            {statusError}
+          </p>
+        ) : null}
         {inventoryPhase === "loading" || statusPhase === "loading" ? (
-          <p className="sidebar__empty">Loading repository status…</p>
+          <p className="sidebar__loading" role="status">
+            Loading repository status…
+          </p>
         ) : null}
         {selectedRepository && !isRootRepository(selectedRepository) ? (
-          <p className="sidebar__empty">
+          <p className="sidebar__notice">
             Nested repository status is read-only in this beta.
           </p>
         ) : null}
@@ -272,6 +280,14 @@ export function SourceControlView() {
                       : "Unavailable")}
                 </span>
               </div>
+              {repository.state === "repository" &&
+              (!selectedRepository || isRootRepository(selectedRepository)) ? (
+                <RepositoryCommitControl
+                  repository={repository}
+                  rootLabel={rootLabel}
+                  controlsDisabled={controlsDisabled}
+                />
+              ) : null}
               <SourceBranchList
                 rootLabel={rootLabel}
                 branch={repository.branch}
@@ -338,21 +354,28 @@ export function SourceControlView() {
                 }
               />
               {checkoutError?.rootId === repository.rootId ? (
-                <p className="sidebar__empty">{checkoutError.message}</p>
+                <p className="sidebar__error" role="alert">
+                  {checkoutError.message}
+                </p>
               ) : null}
               {remoteError?.rootId === repository.rootId ? (
-                <p className="sidebar__empty">{remoteError.message}</p>
+                <p className="sidebar__error" role="alert">
+                  {remoteError.message}
+                </p>
               ) : null}
               {repository.message ? (
-                <p className="sidebar__empty">{repository.message}</p>
-              ) : null}
-              {repository.state === "repository" &&
-              (!selectedRepository || isRootRepository(selectedRepository)) ? (
-                <RepositoryCommitControl
-                  repository={repository}
-                  rootLabel={rootLabel}
-                  controlsDisabled={controlsDisabled}
-                />
+                <p
+                  className={
+                    repository.state === "unavailable"
+                      ? "sidebar__error"
+                      : "sidebar__notice"
+                  }
+                  role={
+                    repository.state === "unavailable" ? "alert" : undefined
+                  }
+                >
+                  {repository.message}
+                </p>
               ) : null}
               <SourceChangeGroups
                 changes={repository.changes.slice(0, 300)}

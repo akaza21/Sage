@@ -18,7 +18,7 @@ npm run test:ui:update
 reviewing the intended change. Failure screenshots and Playwright error context
 are written below `output/playwright/`, which is ignored by Git.
 
-The lane runs 13 tests serially with a fixed clock, locale, timezone, font wait,
+The lane runs 25 tests serially with a fixed clock, locale, timezone, font wait,
 disabled screenshot animations, hidden carets, and explicit transcript
 follow-end settlement. Screenshots are scoped to `main.workbench`; role
 assertions verify important landmarks and controls before capture. Every
@@ -29,7 +29,7 @@ responsive case also rejects document-level horizontal overflow.
 | State | Browser proof |
 | --- | --- |
 | Agent | Single Chat, dual Chat, and a bounded 14-turn transcript |
-| Editor | Explorer, tabs, breadcrumbs, CodeMirror, and status bar |
+| Editor | Explorer, populated/empty Search, Source Control plus loading/error states, populated/empty Problems and Outline, tabs, breadcrumbs, CodeMirror, and status bar |
 | Resources | Agent Diff, loopback Preview, and empty right pane |
 | Recovery | Failed Turn and waiting/running Turn |
 | Accessibility | Forced colors, reduced motion, and keyboard focus-visible |
@@ -46,14 +46,14 @@ while the native walkthrough remains responsible for WebView integration.
 npm packages have approximately 18.5 MB of unpacked JavaScript in total and are
 not part of the Vite production bundle. Chromium installation is separate from
 `npm ci`; on the Windows authoring machine the Chromium and headless-shell cache
-occupied 731,309,635 bytes (about 697 MiB) outside the repository. The 13
-integrated-candidate PNG baselines occupy 792,758 bytes.
+occupied 731,309,635 bytes (about 697 MiB) outside the repository. The 25
+integrated-candidate PNG baselines occupy 1,392,638 bytes.
 
-A warm integrated-candidate Windows run completed in about 16 seconds. This lane is purposely
-not included in `npm run check`: the existing CI matrix is not a Windows pixel
-environment, and the browser download is materially larger than the normal
-frontend check. A future merge gate should run `npm run test:ui` on pinned
-Windows Chromium infrastructure.
+A warm integrated-candidate Windows run completed in about 22 seconds. This
+lane is purposely not included in `npm run check`: the existing CI matrix is
+not a Windows pixel environment, and the browser download is materially larger
+than the normal frontend check. A future merge gate should run
+`npm run test:ui` on pinned Windows Chromium infrastructure.
 
 ## Deliberate limits
 

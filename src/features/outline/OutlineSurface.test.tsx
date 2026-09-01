@@ -71,8 +71,9 @@ describe("OutlineSurface", () => {
     expect(screen.getAllByRole("button")).toHaveLength(64);
     expect(start).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("heading", { name: "64 Symbols" }),
+      screen.getByRole("heading", { name: "Outline" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("64 Symbols")).toBeInTheDocument();
   });
 
   it("problems_or_outline_row_opens_the_existing_file_tab", async () => {
@@ -94,8 +95,9 @@ describe("OutlineSurface", () => {
 
     expect(openFile).toHaveBeenCalledWith(resource);
     expect(
-      screen.getByRole("heading", { name: "1 Symbol" }),
+      screen.getByRole("heading", { name: "Outline" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("1 Symbol")).toBeInTheDocument();
     expect(screen.getByText("Function")).toBeInTheDocument();
   });
 });

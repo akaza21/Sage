@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 
 import { useWorkbenchStore } from "../app/store";
 import { sameResource } from "../domain/resourceIdentity";
@@ -40,6 +46,10 @@ import "./workbench-window-mode.css";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 
 registerWorkbenchSurfaces();
+
+const workbenchGeometryStyle = {
+  "--editor-activity-width": `${EDITOR_ACTIVITY_BAR_WIDTH}px`,
+} as CSSProperties;
 
 function repositoryMutationTitle(
   error: NonNullable<
@@ -260,6 +270,7 @@ export function Workbench() {
   return (
     <main
       className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}`}
+      style={workbenchGeometryStyle}
     >
       <TitleBar mode={windowMode} onModeChange={setWindowMode} />
       <AgentCenterKeeper windowMode={windowMode} />

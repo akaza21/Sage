@@ -717,7 +717,7 @@ describe("compact Workbench project tools", () => {
 
     fireEvent.pointerDown(splitter, { pointerId: 1, clientX: 346 });
 
-    expect(splitter).toHaveAttribute("aria-valuenow", "302");
+    expect(splitter).toHaveAttribute("aria-valuenow", "298");
   });
 
   it("restores only persisted single-splitter widths on load", () => {

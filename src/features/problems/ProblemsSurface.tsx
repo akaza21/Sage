@@ -24,8 +24,8 @@ export function ProblemsSurface() {
       data-diagnostic-listener-ready={listenerReady ? "true" : "false"}
     >
       <header className="problems-surface__header">
-        <h1>{summary}</h1>
-        <span>{report?.diagnostics.length ?? 0}</span>
+        <h1>Problems</h1>
+        <span>{summary}</span>
       </header>
       {!listenerReady ? (
         <p className="problems-surface__empty" role="status">

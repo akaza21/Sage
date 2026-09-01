@@ -136,7 +136,10 @@ describe("ProblemsSurface", () => {
     act(() => deliver(report(2, 1)));
     expect(screen.getAllByRole("button")).toHaveLength(1);
     expect(screen.getByRole("button")).toHaveTextContent("problem 1");
-    expect(screen.getByRole("heading", { name: "1 Bug" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Problems" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("1 Bug")).toBeInTheDocument();
     expect(screen.getByText("Bug")).toBeInTheDocument();
   });
 

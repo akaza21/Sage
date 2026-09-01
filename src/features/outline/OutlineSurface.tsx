@@ -12,8 +12,8 @@ export function OutlineSurface() {
   return (
     <section className="outline-surface" aria-label="Outline">
       <header className="outline-surface__header">
-        <h1>{outlineSummaryTitle(symbols.length)}</h1>
-        <span>{symbols.length}</span>
+        <h1>Outline</h1>
+        <span>{outlineSummaryTitle(symbols.length)}</span>
       </header>
       {symbols.length ? (
         <ul className="outline-surface__list">

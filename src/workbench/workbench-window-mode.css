@@ -52,7 +52,9 @@
 }
 
 .workbench--editor .workbench__body {
-  grid-template-columns: calc(var(--sidebar-width) + 46px) minmax(0, 1fr);
+  grid-template-columns:
+    calc(var(--sidebar-width) + var(--editor-activity-width))
+    minmax(0, 1fr);
 }
 
 .workbench--agent .workbench__body {

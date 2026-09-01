@@ -30,12 +30,14 @@ import type {
   ResourceRef,
   WorkbenchTab,
 } from "../../../src/domain/workbench";
+import { workspaceSearchDesktop } from "../../../src/features/search/workspaceSearchDesktop";
 import {
   applyBrowseIntent,
   clearBrowseSessions,
   setHarnessBrowseOwner,
 } from "../../../src/features/preview/harnessBrowse";
 import { acpDesktop } from "../../../src/services/acpDesktop";
+import { languageDesktop } from "../../../src/services/languageDesktop";
 
 export type VisualScenarioName =
   | "agent-single"
@@ -458,6 +460,84 @@ const fileResource: ResourceRef = {
   relativePath: "src/workbench/AgentChatPanes.tsx",
 };
 
+function installEditorToolFixtures() {
+  languageDesktop.startLanguageSession = () => new Promise<number>(() => {});
+  languageDesktop.cancelLanguageSession = async () => undefined;
+  languageDesktop.subscribeDiagnostics = async (onReport) => {
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() =>
+        onReport({
+          resource: fileResource,
+          generation: 1,
+          diagnostics: [
+            {
+              resource: fileResource,
+              message: "maximum should be named maxVisibleChats",
+              severity: "warning",
+              startLine: 4,
+              startColumn: 43,
+              endLine: 4,
+              endColumn: 50,
+            },
+          ],
+        }),
+      ),
+    );
+    return () => undefined;
+  };
+  languageDesktop.subscribeOutline = async (onReport) => {
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() =>
+        onReport({
+          resource: fileResource,
+          generation: 1,
+          symbols: [
+            {
+              resource: fileResource,
+              name: "AgentChatPanes",
+              kind: "function",
+              startLine: 3,
+            },
+          ],
+        }),
+      ),
+    );
+    return () => undefined;
+  };
+  workspaceSearchDesktop.search = async (request) => ({
+    requestId: "visual-search",
+    projectId: request.projectId,
+    transitionEpoch: request.expectedTransitionEpoch,
+    indexGeneration: request.indexGeneration,
+    query: request.query,
+    matches: [
+      {
+        resource: fileResource,
+        lineNumber: 3,
+        columnNumber: 17,
+        preview: "export function AgentChatPanes() {",
+      },
+    ],
+    roots: [
+      {
+        rootId: ROOT_ID,
+        rootName: "Sage",
+        state: "complete",
+        filesScanned: 124,
+        bytesScanned: 84_200,
+        entriesVisited: 139,
+        skippedFiles: 0,
+        errorCount: 0,
+        message: null,
+      },
+    ],
+    truncated: false,
+    continuationToken: null,
+    limitReasons: [],
+    elapsedMs: 8,
+  });
+}
+
 const editorContent = [
   'import { ChatSurface } from "../features/chat/ChatSurface";',
   "",
@@ -595,6 +675,7 @@ export async function installVisualScenario(name: VisualScenarioName) {
   clearBrowseSessions();
   useAgentArtifactAdmissionStore.getState().clear();
   pinAcpProjectionIds(chatIds);
+  installEditorToolFixtures();
 
   const pagesByChat = new Map(
     scenario.pages.map((pageValue) => [pageValue.chatId, pageValue]),
@@ -799,4 +880,26 @@ export async function installVisualScenario(name: VisualScenarioName) {
   await new Promise((resolve) =>
     requestAnimationFrame(() => resolve(undefined)),
   );
+}
+
+export function installVisualRepositoryError() {
+  useWorkbenchStore.setState({
+    repositoryInventoryError: "Could not refresh repository inventory.",
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+  });
+}
+
+export function installVisualRepositoryLoading() {
+  useWorkbenchStore.setState({
+    repositoryInventoryError: null,
+    repositoryStatusError: null,
+    repositoryInventoryPhase: "loading",
+    repositoryStatusPhase: "loading",
+  });
+}
+
+export function installVisualEmptyEditorTools() {
+  languageDesktop.subscribeDiagnostics = async () => () => undefined;
+  languageDesktop.subscribeOutline = async () => () => undefined;
 }

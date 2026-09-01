@@ -16,7 +16,7 @@ export const EDITOR_TOOL_RAIL_WIDTH: WorkbenchSidebarWidth = {
   maxWidth: 420,
 };
 
-export const EDITOR_ACTIVITY_BAR_WIDTH = 44;
+export const EDITOR_ACTIVITY_BAR_WIDTH = 48;
 
 export const AGENT_ARTIFACT_WIDTH: WorkbenchSidebarWidth = {
   defaultWidth: 360,

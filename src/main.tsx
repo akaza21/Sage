@@ -20,6 +20,7 @@ import "./styles/chat-surface.css";
 import "./styles/composer-surface.css";
 import "./styles/problems-outline-surfaces.css";
 import "./styles/agent-rail-surface.css";
+import "./styles/editor-visual-reference.css";
 
 const root = document.getElementById("root");
 

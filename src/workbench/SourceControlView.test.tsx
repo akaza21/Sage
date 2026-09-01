@@ -405,6 +405,85 @@ it("lists recent commits newest first with a shortened SHA", () => {
   expect(remotes).not.toHaveTextContent(".git");
 });
 
+it("places the commit control before repository detail lists", () => {
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [rootStatus], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: rootStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+
+  render(<SourceControlView />);
+
+  const commitControl = screen.getByRole("form", {
+    name: "Commit staged changes in Root A",
+  });
+  const branchList = screen.getByRole("list", {
+    name: "Local branches in Root A",
+  });
+
+  expect(
+    commitControl.compareDocumentPosition(branchList) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+});
+
+it("distinguishes repository errors from loading and informational states", () => {
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [rootStatus], truncated: false, elapsedMs: 1 },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    selectedRepositoryStatus: rootStatus,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    repositoryInventoryError: "Repository inventory failed.",
+    repositoryCheckoutError: {
+      rootId: "root-a",
+      branch: "topic",
+      kind: "failed",
+      message: "Checkout failed.",
+    },
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+
+  render(<SourceControlView />);
+
+  expect(screen.getAllByRole("alert")).toHaveLength(2);
+  expect(screen.getByText("Repository inventory failed.")).toHaveClass(
+    "sidebar__error",
+  );
+  expect(screen.getByText("Checkout failed.")).toHaveClass("sidebar__error");
+});
+
 it("lists conflicted files under a Conflicts heading with a Conflict chip", () => {
   useWorkbenchStore.setState({
     project: {
