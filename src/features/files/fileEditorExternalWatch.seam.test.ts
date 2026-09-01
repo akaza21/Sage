@@ -260,6 +260,123 @@ describe("IDE-2 editor external watch seam", () => {
     }
   });
 
+  it("reconciles Sage's completed save but still rejects different disk bytes", async () => {
+    let resolveOpen: (document: EditorDocument) => void = () => undefined;
+    const pending = new Promise<EditorDocument>((resolve) => {
+      resolveOpen = resolve;
+    });
+    const editor = fakeEditorPort();
+    vi.mocked(editor.openEditorDocument).mockReturnValue(pending);
+    const savedVersion = {
+      fingerprint: "saved",
+      byteLen: 6,
+      modifiedAt: 2,
+    };
+    const savedDocument: EditorDocument = {
+      ...document,
+      disk: savedVersion,
+      base: savedVersion,
+      buffer: {
+        fingerprint: savedVersion.fingerprint,
+        byteLen: savedVersion.byteLen,
+        revision: 0,
+        content: "saved\n",
+      },
+      dirty: false,
+      conflict: null,
+    };
+    let activeEditor = {
+      phase: "ready" as const,
+      resource,
+      document,
+      content: "saved\n",
+      revision: 1,
+      persistedRevision: 1,
+      persisting: false,
+      saving: true,
+      message: null,
+    };
+    const tabStatuses: Array<string | null | undefined> = [];
+    const bridge: EditorStateBridge = {
+      getActiveEditor: () => activeEditor,
+      setActiveEditor: (next, options) => {
+        activeEditor = next as typeof activeEditor;
+        tabStatuses.push(options?.tabStatus);
+      },
+    };
+
+    const apply = applyEditorExternalWatchNotice(
+      { resource, generation: 4, kind: "changed" },
+      bridge,
+      editor,
+    );
+    bridge.setActiveEditor({
+      phase: "ready",
+      resource,
+      document: savedDocument,
+      content: savedDocument.buffer.content,
+      revision: 0,
+      persistedRevision: 0,
+      persisting: false,
+      saving: false,
+      message: null,
+    });
+    resolveOpen(savedDocument);
+    await apply;
+
+    expect(activeEditor.document.conflict).toBeNull();
+    expect(tabStatuses).not.toContain("failed");
+
+    const externalVersion = {
+      fingerprint: "external",
+      byteLen: 9,
+      modifiedAt: 3,
+    };
+    const externalDocument: EditorDocument = {
+      ...savedDocument,
+      disk: externalVersion,
+      base: externalVersion,
+      buffer: {
+        fingerprint: externalVersion.fingerprint,
+        byteLen: externalVersion.byteLen,
+        revision: 0,
+        content: "external\n",
+      },
+    };
+    activeEditor = {
+      phase: "ready",
+      resource,
+      document,
+      content: "saved\n",
+      revision: 2,
+      persistedRevision: 2,
+      persisting: false,
+      saving: true,
+      message: null,
+    };
+    vi.mocked(editor.openEditorDocument).mockResolvedValue(externalDocument);
+    const applyExternal = applyEditorExternalWatchNotice(
+      { resource, generation: 5, kind: "changed" },
+      bridge,
+      editor,
+    );
+    bridge.setActiveEditor({
+      phase: "ready",
+      resource,
+      document: savedDocument,
+      content: savedDocument.buffer.content,
+      revision: 0,
+      persistedRevision: 0,
+      persisting: false,
+      saving: false,
+      message: null,
+    });
+    await applyExternal;
+
+    expect(activeEditor.document.conflict?.kind).toBe("external-change");
+    expect(tabStatuses).toContain("failed");
+  });
+
   it("stops delivering notices after cancel", async () => {
     const editor = fakeEditorPort();
     const injected = createInjectedEditorWatchDelivery();

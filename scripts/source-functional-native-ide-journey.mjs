@@ -897,7 +897,7 @@ export const UI_PROBES = Object.freeze({
   diagnosticMessages:
     "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Problems project tools\"]')];if(panels.length!==1)return null;const surfaces=[...panels[0].querySelectorAll('section[aria-label=\"Problems\"]')];if(surfaces.length!==1)return null;return JSON.stringify([...surfaces[0].querySelectorAll('button.problem-card')].map(x=>x.innerText))})()",
   saveSettled:
-    "(()=>{const editors=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]')];if(editors.length!==1)return false;const unsaved=editors[0].querySelectorAll('.file-header__save-state--dirty').length;const dirtyTabs=document.querySelectorAll('.tab--active .tab__dirty').length;return unsaved===0&&dirtyTabs===0})()",
+    "(()=>{const editors=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]')];if(editors.length!==1)return false;const unsaved=editors[0].querySelectorAll('.file-header__save-state--dirty').length;const conflicts=editors[0].querySelectorAll('.editor-notice--conflict').length;const dirtyTabs=document.querySelectorAll('.tab--active .tab__dirty').length;return unsaved===0&&conflicts===0&&dirtyTabs===0})()",
   savedContent:
     "(()=>{const editors=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]')];if(editors.length!==1)return null;const contents=[...editors[0].querySelectorAll('.cm-content')];return contents.length===1?contents[0].innerText:null})()",
   diffContent:

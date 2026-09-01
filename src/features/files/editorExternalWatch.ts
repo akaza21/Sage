@@ -144,11 +144,12 @@ export async function applyEditorExternalWatchNotice(
           persistedRevision: active.persistedRevision,
           content: active.content,
           fingerprint: active.document.buffer.fingerprint,
+          saving: active.saving,
         }
       : null;
   const dirty =
     active.phase === "ready" && active.revision > active.persistedRevision;
-  if (dirty) {
+  if (dirty && !active.saving) {
     setExternalChangeConflict(bridge, active);
     return;
   }
@@ -166,8 +167,20 @@ export async function applyEditorExternalWatchNotice(
       current.document.buffer.fingerprint !== snapshot.fingerprint ||
       current.revision > current.persistedRevision)
   ) {
-    setExternalChangeConflict(bridge, current);
-    return;
+    const completedMatchingSave =
+      snapshot.saving &&
+      !current.saving &&
+      !current.document.dirty &&
+      current.document.conflict === null &&
+      current.revision === current.persistedRevision &&
+      current.content === document.buffer.content &&
+      current.document.buffer.fingerprint === document.buffer.fingerprint &&
+      current.document.disk.fingerprint === document.disk.fingerprint &&
+      current.document.lineEnding === document.lineEnding;
+    if (!completedMatchingSave) {
+      setExternalChangeConflict(bridge, current);
+      return;
+    }
   }
   bridge.setActiveEditor(
     {

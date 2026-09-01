@@ -629,6 +629,7 @@ test("native IDE Problems probes bind one exact panel and diagnostic surface", (
 
 test("native IDE save action uses the admitted File editor shortcut", () => {
   let dirty = true;
+  let conflictVisible = true;
   const received = [];
   class TestKeyboardEvent {
     constructor(type, init) {
@@ -649,6 +650,8 @@ test("native IDE save action uses the admitted File editor shortcut", () => {
     querySelectorAll: (selector) => {
       if (selector === ".file-header__save-state--dirty")
         return dirty ? [{}] : [];
+      if (selector === ".editor-notice--conflict")
+        return conflictVisible ? [{}] : [];
       if (selector === ".cm-content")
         return [{ innerText: "saved journey content" }];
       return [];
@@ -677,6 +680,11 @@ test("native IDE save action uses the admitted File editor shortcut", () => {
   assert.equal(received[0].key, "s");
   assert.equal(received[0].ctrlKey, true);
   dirty = false;
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.saveSettled, { document }),
+    false,
+  );
+  conflictVisible = false;
   assert.equal(
     evaluateBrowserExpression(UI_PROBES.saveSettled, { document }),
     true,
