@@ -92,6 +92,7 @@ describe("S0.3 workbench port seam", () => {
       "getNestedRepositoryStatus",
       "getRepositoryStatus",
       "mutateGitFile",
+      "pullGitRepository",
       "pushGitRemote",
       "renameGitLocalBranch",
     ]);

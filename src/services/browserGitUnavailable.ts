@@ -42,6 +42,9 @@ export const browserGitUnavailable = {
   pushGitRemote: nativeGitUnavailable(
     "Git push requires the native Sage desktop",
   ),
+  pullGitRepository: nativeGitUnavailable(
+    "Git pull requires the native Sage desktop",
+  ),
   renameGitLocalBranch: nativeGitUnavailable(
     "Git rename branch requires the native Sage desktop",
   ),

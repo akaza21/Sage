@@ -192,6 +192,26 @@ pub(crate) fn remote_transport(error: &AppError) -> String {
     bounded(message)
 }
 
+pub(crate) fn pull(error: &AppError) -> String {
+    let message = match error {
+        AppError::InvalidRequest(message) | AppError::ResourceLimit(message) => message.as_str(),
+        AppError::Git(_) => {
+            "Git could not fast-forward the incoming history. Refresh Source Control, resolve authentication, network, or conflict errors, and retry."
+        }
+        AppError::Io(_) => "Git could not access the selected repository.",
+        AppError::Database(_) => "Sage could not load the active Project for this Git pull.",
+        AppError::Unsupported(_) => "Git pull is unavailable on this platform.",
+        AppError::GitEffectUnknown(_) => {
+            "The Git pull outcome is uncertain. Refresh Source Control before continuing."
+        }
+        AppError::GitContainment { .. } => containment(),
+        AppError::UnknownHarness(_) | AppError::HarnessUnavailable(_) => {
+            "Sage could not complete the Git pull."
+        }
+    };
+    bounded(message)
+}
+
 pub(crate) fn revert(error: &AppError) -> String {
     let message = match error {
         AppError::InvalidRequest(message) | AppError::ResourceLimit(message) => message.as_str(),
@@ -277,6 +297,7 @@ mod tests {
             cherry_pick(&native),
             revert(&native),
             remote_transport(&native),
+            pull(&native),
             projection(&native),
         ] {
             assert!(message.len() <= MAX_PUBLIC_REPOSITORY_ERROR_BYTES);
@@ -291,6 +312,17 @@ mod tests {
             "fatal: could not read from remote https://secret.example/repo.git".into(),
         );
         let message = remote_transport(&leaked);
+        assert!(!message.contains("secret.example"));
+        assert!(!message.contains("http"));
+        assert!(!message.contains(".git"));
+    }
+
+    #[test]
+    fn git_pull_errors_never_include_urls() {
+        let leaked = AppError::Git(
+            "fatal: could not read from remote https://secret.example/repo.git".into(),
+        );
+        let message = pull(&leaked);
         assert!(!message.contains("secret.example"));
         assert!(!message.contains("http"));
         assert!(!message.contains(".git"));

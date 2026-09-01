@@ -199,6 +199,13 @@ export interface GitRepositoryRemoteTransportRequest {
 
 export type GitRepositoryRemoteTransportResult = GitRepositoryCheckoutResult;
 
+export interface GitRepositoryPullRequest {
+  projectId: string;
+  rootId: string;
+}
+
+export type GitRepositoryPullResult = GitRepositoryCheckoutResult;
+
 export type GitProcessState = "terminatedUnreaped" | "potentiallyRunning";
 
 export type GitFileMutationCommandError =

@@ -160,6 +160,15 @@ pub struct GitRepositoryRemoteTransportRequest {
 pub type GitRepositoryRemoteTransportResult = GitRepositoryCheckoutResult;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GitRepositoryPullRequest {
+    pub project_id: String,
+    pub root_id: String,
+}
+
+pub type GitRepositoryPullResult = GitRepositoryCheckoutResult;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateProjectFileRequest {
     pub project_id: String,

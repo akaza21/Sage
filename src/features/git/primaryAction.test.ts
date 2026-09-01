@@ -36,8 +36,43 @@ describe("repositoryPrimaryAction", () => {
       repositoryPrimaryAction(
         repository({ upstream: "origin/main", behind: 1 }),
       ),
-    ).toMatchObject({ kind: "sync" });
+    ).toEqual({ kind: "pull", label: "Pull", reason: null });
     expect(repositoryPrimaryAction(repository({ remotes: [] }))).toBeNull();
+  });
+
+  it("only offers Pull for a clean branch that is behind without divergence", () => {
+    expect(
+      repositoryPrimaryAction(
+        repository({ upstream: "origin/main", ahead: 1, behind: 1 }),
+      ),
+    ).toEqual({
+      kind: "sync",
+      label: "Sync Changes",
+      reason:
+        "This branch has diverged from its upstream. Sage cannot yet choose a merge or rebase safely.",
+    });
+    expect(
+      repositoryPrimaryAction(
+        repository({
+          upstream: "origin/main",
+          behind: 1,
+          changes: [
+            {
+              resource: { rootId: "root-a", relativePath: "dirty.txt" },
+              indexStatus: "unchanged",
+              worktreeStatus: "modified",
+              additions: 1,
+              deletions: 0,
+            },
+          ],
+        }),
+      ),
+    ).toMatchObject({ kind: "sync" });
+    expect(
+      repositoryPrimaryAction(
+        repository({ upstream: "origin/main", behind: 1, truncated: true }),
+      ),
+    ).toMatchObject({ kind: "sync" });
   });
 
   it("prioritizes a real commit over transport and rejects detached or unavailable repositories", () => {

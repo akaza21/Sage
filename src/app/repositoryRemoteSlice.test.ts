@@ -101,6 +101,30 @@ describe("repositoryRemoteSlice", () => {
     );
   });
 
+  it("pulls only the selected repository and replaces Source Control status", async () => {
+    const pullRepository = vi
+      .spyOn(desktop, "pullGitRepository")
+      .mockResolvedValue({
+        projectId: "project-a",
+        rootId: "root-a",
+        transitionEpoch: 7,
+        repositories: afterRepositories,
+        error: null,
+      });
+
+    await expect(
+      useWorkbenchStore.getState().pullRepository("root-a"),
+    ).resolves.toBe(true);
+
+    expect(pullRepository).toHaveBeenCalledWith(
+      { projectId: "project-a", rootId: "root-a" },
+      7,
+    );
+    expect(useWorkbenchStore.getState().repositories).toEqual(
+      afterRepositories,
+    );
+  });
+
   it("does not fetch while a commit is in flight", async () => {
     const fetchRemote = vi.spyOn(desktop, "fetchGitRemote");
     useWorkbenchStore.setState({ repositoryCommit: { rootId: "root-a" } });

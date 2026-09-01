@@ -177,7 +177,7 @@ describe("browser repository mutations", () => {
     ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
   });
 
-  it("reports the same native-only failure for fetch and push", async () => {
+  it("reports the same native-only failure for fetch, push, and pull", async () => {
     await expect(
       browserDesktop.fetchGitRemote(
         {
@@ -194,6 +194,15 @@ describe("browser repository mutations", () => {
           projectId: "project-a",
           rootId: "root-a",
           remote: "origin",
+        },
+        0,
+      ),
+    ).rejects.toBeInstanceOf(BrowserGitMutationUnavailableError);
+    await expect(
+      browserDesktop.pullGitRepository(
+        {
+          projectId: "project-a",
+          rootId: "root-a",
         },
         0,
       ),

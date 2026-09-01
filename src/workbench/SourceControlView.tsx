@@ -173,6 +173,7 @@ export function SourceControlView() {
     (state) => state.renameLocalBranch,
   );
   const fetchRemote = useWorkbenchStore((state) => state.fetchRemote);
+  const pullRepository = useWorkbenchStore((state) => state.pullRepository);
   const pushRemote = useWorkbenchStore((state) => state.pushRemote);
   const transitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
@@ -327,9 +328,14 @@ export function SourceControlView() {
                         disabled={controlsDisabled || action.reason !== null}
                         title={
                           action.reason ??
-                          `${action.label} using ${action.remote ?? "the staged changes"}`
+                          (action.kind === "pull"
+                            ? "Pull the current upstream"
+                            : `${action.label} using ${action.remote ?? "the staged changes"}`)
                         }
                         onClick={() => {
+                          if (action.kind === "pull") {
+                            void pullRepository(repository.rootId);
+                          }
                           if (
                             action.kind === "push" ||
                             action.kind === "publish"
