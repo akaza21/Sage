@@ -127,6 +127,7 @@ test.describe("Wave 2 canonical visual states", () => {
       } else {
         await expect(page.getByRole("tabpanel")).toBeVisible();
       }
+      if (mode === "agent") await settleTranscriptAtEnd(page);
       await expectNoViewportOverflow(page);
       await expect(workbench).toHaveScreenshot(`${name}.png`);
     });
