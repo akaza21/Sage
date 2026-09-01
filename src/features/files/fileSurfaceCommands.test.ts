@@ -31,12 +31,25 @@ function actions(
     closeGoToLine: vi.fn(),
     openFind: vi.fn(),
     openGoToLine: vi.fn(),
+    goToLocalSymbol: vi.fn(),
     save: vi.fn(),
     ...overrides,
   };
 }
 
 describe("handleFileSurfaceCommandKey", () => {
+  it("routes F12 to bounded local-symbol navigation outside Preview", () => {
+    const opened = actions();
+    expect(handleFileSurfaceCommandKey(event({ key: "F12" }), opened)).toBe(
+      true,
+    );
+    expect(opened.goToLocalSymbol).toHaveBeenCalledOnce();
+
+    const preview = actions({ previewing: true });
+    handleFileSurfaceCommandKey(event({ key: "F12" }), preview);
+    expect(preview.goToLocalSymbol).not.toHaveBeenCalled();
+  });
+
   it("opens Go-to Line on Ctrl/Cmd+G unless Preview is open", () => {
     const opened = actions();
     expect(

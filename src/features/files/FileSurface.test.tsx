@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useEditorCaretStore } from "../../app/editorCaretStore";
 import { useWorkbenchStore } from "../../app/store";
+import type { LanguageOutlineReport } from "../../domain/languageService";
 import type { EditorDocument, WorkbenchTab } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { languageDesktop } from "../../services/languageDesktop";
@@ -648,6 +649,47 @@ describe("FileSurface Go-to Line", () => {
       ctrlKey: true,
     });
     expect(screen.queryByRole("search", { name: "Go to line" })).toBeNull();
+  });
+});
+
+describe("FileSurface local symbol navigation", () => {
+  it("fails closed until an admitted Outline report arrives, then moves the F12 caret", async () => {
+    let deliverOutline: ((report: LanguageOutlineReport) => void) | undefined;
+    vi.spyOn(languageDesktop, "subscribeOutline").mockImplementation(
+      async (callback) => {
+        deliverOutline = callback;
+        return () => undefined;
+      },
+    );
+    const content =
+      "const value = example();\n\nexport function example() {}\n";
+    setReadyEditor(tab, content);
+    render(<FileSurface tab={tab} />);
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
+    viewForEditor(editor).dispatch({ selection: { anchor: 14 } });
+
+    fireEvent.keyDown(editor, { key: "F12" });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "No local symbol is available from the language session.",
+    );
+    expect(editorSelection(editor)).toEqual({ start: 14, end: 14 });
+
+    act(() => {
+      deliverOutline?.({
+        resource,
+        generation: 1,
+        symbols: [
+          { resource, name: "example", kind: "function", startLine: 3 },
+        ],
+      });
+    });
+    fireEvent.keyDown(editor, { key: "F12" });
+    expect(editorSelection(editor)).toEqual({ start: 25, end: 25 });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Moved to local symbol.",
+    );
   });
 });
 

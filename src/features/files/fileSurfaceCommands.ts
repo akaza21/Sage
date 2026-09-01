@@ -7,6 +7,7 @@ export interface FileSurfaceCommandActions {
   closeGoToLine: () => void;
   openFind: () => void;
   openGoToLine: () => void;
+  goToLocalSymbol: () => void;
   save: () => void;
 }
 
@@ -21,6 +22,17 @@ export function handleFileSurfaceCommandKey(
   },
   actions: FileSurfaceCommandActions,
 ): boolean {
+  if (
+    event.key === "F12" &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey
+  ) {
+    event.preventDefault();
+    if (!actions.previewing) actions.goToLocalSymbol();
+    return true;
+  }
   if (event.key === "Escape") {
     if (actions.previewing) {
       event.preventDefault();
