@@ -1,4 +1,4 @@
-import { Eye, FilePenLine, Save, Undo2 } from "lucide-react";
+import { Eye, FilePenLine } from "lucide-react";
 
 import { FilePathChips } from "./FilePathChips";
 
@@ -13,8 +13,6 @@ interface FileEditorHeaderProps {
   canPreview?: boolean;
   previewing?: boolean;
   onTogglePreview?: () => void;
-  onDiscard: () => void;
-  onSave: () => void;
 }
 
 export function FileEditorHeader({
@@ -28,9 +26,22 @@ export function FileEditorHeader({
   canPreview = false,
   previewing = false,
   onTogglePreview,
-  onDiscard,
-  onSave,
 }: FileEditorHeaderProps) {
+  const saveState = saving
+    ? { label: "Saving…", accessibleLabel: "Saving file" }
+    : persisting
+      ? {
+          label: "Protecting changes…",
+          accessibleLabel: "Protecting recovery copy",
+        }
+      : dirty
+        ? {
+            label: "Unsaved · Ctrl/Cmd+S",
+            accessibleLabel:
+              "Unsaved changes. Press Control or Command plus S to save.",
+          }
+        : null;
+
   return (
     <header className="file-header">
       <span className="file-header__path">
@@ -39,43 +50,39 @@ export function FileEditorHeader({
       <span className="file-header__metadata">
         UTF-8 · {lineEnding.toUpperCase()} · {diskByteLen.toLocaleString()} disk
         bytes
-        {persisting ? " · Recovering…" : ""}
       </span>
-      <span className="file-header__actions">
-        {canPreview ? (
-          <button
-            className="button button--compact"
-            type="button"
-            disabled={transitioning}
-            onClick={onTogglePreview}
-          >
-            {previewing ? (
-              <FilePenLine size={14} aria-hidden="true" />
-            ) : (
-              <Eye size={14} aria-hidden="true" />
-            )}
-            {previewing ? "Edit" : "Preview"}
-          </button>
-        ) : null}
-        <button
-          className="button button--compact"
-          type="button"
-          disabled={!dirty || saving || transitioning}
-          onClick={onDiscard}
-        >
-          <Undo2 size={14} aria-hidden="true" />
-          Discard
-        </button>
-        <button
-          className="button button--compact button--primary"
-          type="button"
-          disabled={!dirty || saving || persisting || transitioning}
-          onClick={onSave}
-        >
-          <Save size={14} aria-hidden="true" />
-          {saving ? "Saving…" : "Save"}
-        </button>
-      </span>
+      {saveState || canPreview ? (
+        <span className="file-header__actions">
+          {saveState ? (
+            <span
+              className={`file-header__save-state${dirty ? " file-header__save-state--dirty" : ""}`}
+              role="status"
+              aria-label={saveState.accessibleLabel}
+              title={saveState.accessibleLabel}
+            >
+              <span className="file-header__save-dot" aria-hidden="true" />
+              {saveState.label}
+            </span>
+          ) : null}
+          {canPreview ? (
+            <button
+              className="button button--compact file-header__preview"
+              type="button"
+              aria-label={previewing ? "Return to editor" : "Preview file"}
+              aria-pressed={previewing}
+              disabled={transitioning}
+              onClick={onTogglePreview}
+            >
+              {previewing ? (
+                <FilePenLine size={14} aria-hidden="true" />
+              ) : (
+                <Eye size={14} aria-hidden="true" />
+              )}
+              {previewing ? "Edit" : "Preview"}
+            </button>
+          ) : null}
+        </span>
+      ) : null}
     </header>
   );
 }

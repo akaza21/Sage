@@ -100,7 +100,36 @@
 .file-header__actions {
   display: flex;
   flex: 0 0 auto;
+  align-items: center;
   gap: 6px;
+}
+
+.file-header__save-state {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.file-header__save-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+}
+
+.file-header__save-state--dirty .file-header__save-dot {
+  background: var(--color-warning);
+}
+
+.file-header__preview[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+  background: var(--color-surface-active);
 }
 
 .button--compact {

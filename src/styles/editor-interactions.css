@@ -1,0 +1,195 @@
+/* Editor controls share one stable interaction language without moving layout. */
+.workbench--editor
+  :where(
+    button,
+    .tree__row,
+    .root-tree__heading,
+    .source-change,
+    .workspace-search__result,
+    .problem-card,
+    .outline-card
+  ) {
+  transition:
+    color var(--motion-duration-fast) ease,
+    background-color var(--motion-duration-fast) ease,
+    border-color var(--motion-duration-fast) ease,
+    box-shadow var(--motion-duration-fast) ease;
+}
+
+@media (hover: hover) {
+  .workbench--editor
+    :where(
+      .title-bar__search,
+      .file-header__preview,
+      .status-bar__button,
+      .tab__activate,
+      .tab__close,
+      .source-change__confirmation-button
+    ):hover:not(:disabled) {
+    color: var(--color-text-primary);
+    background: var(--color-surface-hover);
+  }
+}
+
+.workbench--editor
+  :where(
+    .title-bar__search,
+    .title-bar__mode,
+    .activity-rail__button,
+    .sidebar__heading button,
+    .file-header__preview,
+    .status-bar__button,
+    .tab__activate,
+    .tab__close,
+    .tree__row,
+    .root-tree__heading,
+    .source-change,
+    .source-change__action,
+    .source-change__resolve,
+    .source-change__confirmation-button,
+    .repository-commit__footer button,
+    .workspace-search__controls button,
+    .workspace-search__input button,
+    .workspace-search__result,
+    .problem-card,
+    .outline-card,
+    .editor-find__button,
+    .editor-welcome__actions button
+  ):active:not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--color-surface-active);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+
+.workbench--editor
+  :where(
+    .file-header__preview,
+    .status-bar__button,
+    .editor-find__button,
+    .workspace-search__controls button
+  )[aria-pressed="true"] {
+  color: var(--color-text-primary);
+  background: var(--color-surface-active);
+  box-shadow: inset 0 -1px 0 var(--color-accent);
+}
+
+.workbench--editor :where(button, input, select, textarea):disabled {
+  color: var(--color-text-disabled);
+  cursor: default;
+}
+
+.workbench--editor
+  :where(
+    .source-change__confirmation-button--danger,
+    .button--danger
+  ):active:not(:disabled) {
+  color: var(--color-danger);
+  background: var(--color-danger-muted);
+  box-shadow: inset 0 0 0 1px var(--color-danger);
+}
+
+.workbench--editor .status-bar__button {
+  border-inline: 1px solid transparent;
+}
+
+.workbench--editor .status-bar__button:focus-visible {
+  border-inline-color: var(--color-focus-ring);
+  outline: 0;
+  box-shadow: var(--focus-ring-inset);
+}
+
+.workbench--editor .source-change__discard-confirmation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.workbench--editor .source-change__confirmation-actions {
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.workbench--editor .editor-welcome {
+  display: grid;
+  height: 100%;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-4);
+  padding: clamp(24px, 7vw, 72px);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.workbench--editor .editor-welcome__mark {
+  display: grid;
+  width: clamp(104px, 14vw, 156px);
+  aspect-ratio: 1;
+  place-items: center;
+  color: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+  font-size: clamp(76px, 11vw, 120px);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1;
+  user-select: none;
+}
+
+.workbench--editor .editor-welcome__actions {
+  display: grid;
+  width: min(100%, 260px);
+  gap: 2px;
+}
+
+.workbench--editor .editor-welcome__actions button {
+  display: grid;
+  min-height: 32px;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.workbench--editor .editor-welcome__actions button:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.workbench--editor .editor-welcome p {
+  margin: 0;
+  font-size: var(--font-size-xs);
+}
+
+@media (max-width: 760px) {
+  .workbench--editor .file-header__save-state {
+    max-width: 116px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .workbench--editor .editor-welcome {
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workbench--editor :where(button, .tree__row, .source-change) {
+    transition-duration: 0ms;
+  }
+}
+
+@media (forced-colors: active) {
+  .workbench--editor
+    :where(button, .tree__row, .source-change):active:not(:disabled),
+  .workbench--editor [aria-pressed="true"] {
+    border-color: Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+}

@@ -57,9 +57,6 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
     (state) => state.flushActiveEditor,
   );
   const saveActiveEditor = useWorkbenchStore((state) => state.saveActiveEditor);
-  const discardActiveEditor = useWorkbenchStore(
-    (state) => state.discardActiveEditor,
-  );
   const fileNavigationTarget = useWorkbenchStore(
     (state) => state.fileNavigationTarget,
   );
@@ -341,8 +338,6 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
             current === activeResourceKey ? "" : activeResourceKey,
           );
         }}
-        onDiscard={() => void discardActiveEditor()}
-        onSave={() => void saveActiveEditor()}
       />
       <FileEditorNotices conflict={conflict} message={editor.message} />
       {findOpen && !previewing ? (

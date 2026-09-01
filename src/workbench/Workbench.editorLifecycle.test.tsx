@@ -92,7 +92,9 @@ it("destroys the heavy editor when a non-File tab becomes active", async () => {
 
   act(() => useWorkbenchStore.setState({ activeTabId: "chat:next" }));
 
-  expect(screen.getByText("No open files")).toBeVisible();
+  expect(
+    screen.getByRole("region", { name: "Editor welcome" }),
+  ).toBeVisible();
   expect(container.querySelector(".cm-editor")).toBeNull();
   expect(destroy).toHaveBeenCalledOnce();
 });

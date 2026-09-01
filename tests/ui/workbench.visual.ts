@@ -150,6 +150,105 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(workbench).toHaveScreenshot("editor-source-control.png");
   });
 
+  test("keeps the Editor welcome surface useful and bounded", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    const workbench = await openScenario(page, "editor", "editor");
+    await page.evaluate(async () => {
+      const fixtures = await import("/tests/ui/fixtures/visualScenarios.ts");
+      fixtures.installVisualEmptyEditorCanvas();
+    });
+
+    const welcome = page.getByRole("region", { name: "Editor welcome" });
+    await expect(welcome).toBeVisible();
+    await expect(
+      welcome.getByRole("button", { name: "Browse files" }),
+    ).toBeVisible();
+    await expect(
+      welcome.getByRole("button", { name: "Search files" }),
+    ).toBeVisible();
+    await expect(
+      welcome.getByRole("button", { name: "Open Agent" }),
+    ).toBeVisible();
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("editor-welcome.png");
+  });
+
+  test("shows selected, pressed, disabled, dirty, and confirmation states", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    const workbench = await openScenario(page, "editor", "editor");
+    await page.evaluate(async () => {
+      const fixtures = await import("/tests/ui/fixtures/visualScenarios.ts");
+      fixtures.installVisualDirtyEditor();
+    });
+
+    await expect(
+      page.getByRole("status", {
+        name: "Unsaved changes. Press Control or Command plus S to save.",
+      }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Discard" })).toHaveCount(0);
+
+    const wrap = page.getByRole("button", {
+      name: "Toggle editor word wrap",
+    });
+    await wrap.click();
+    await expect(wrap).toHaveAttribute("aria-pressed", "true");
+    const font = page.getByRole("button", {
+      name: "Cycle editor font size",
+    });
+    const tabs = page.getByRole("button", { name: "Cycle editor tab size" });
+    await font.click();
+    await tabs.click();
+    await expect(font).toHaveText("Font: 14px");
+    await expect(tabs).toHaveText("Tabs: 4 spaces");
+
+    const sourceControl = page.getByRole("button", {
+      name: "Source Control",
+      exact: true,
+    });
+    await sourceControl.click();
+    await expect(sourceControl).toHaveAttribute("aria-expanded", "true");
+
+    const sourceTools = page.getByLabel("Source Control project tools", {
+      exact: true,
+    });
+    const commit = sourceTools.getByRole("button", {
+      name: /Commit staged changes in Sage/,
+    });
+    await expect(commit).toBeDisabled();
+
+    const discard = sourceTools.getByRole("button", {
+      name: /Discard unstaged changes to src\/workbench\/AgentChatPanes\.tsx/,
+    });
+    await discard.hover();
+    await expect(discard).toHaveCSS("background-color", "rgb(42, 42, 42)");
+    await discard.click();
+    const confirmation = sourceTools.getByRole("group", {
+      name: /Confirm discard of src\/workbench\/AgentChatPanes\.tsx/,
+    });
+    await expect(confirmation).toBeVisible();
+    const cancel = confirmation.getByRole("button", {
+      name: /Cancel discard/,
+    });
+    await expect(cancel).toBeVisible();
+    await cancel.focus();
+    await expect(cancel).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    const confirmDiscard = confirmation.getByRole("button", {
+      name: /Confirm discard/,
+    });
+    await expect(confirmDiscard).toBeFocused();
+    await expect(page.locator(":focus-visible")).toHaveCount(1);
+
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("editor-control-states.png");
+  });
+
   test("keeps Editor Source Control errors distinct", async ({ page }) => {
     await page.setViewportSize({ width: 1380, height: 880 });
     const workbench = await openScenario(page, "editor", "editor");

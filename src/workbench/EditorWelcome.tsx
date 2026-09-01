@@ -1,0 +1,32 @@
+import { Files, MessageSquare, Search } from "lucide-react";
+
+import { useWorkbenchStore, type SidebarView } from "../app/store";
+
+export function EditorWelcome({ onOpenAgent }: { onOpenAgent: () => void }) {
+  const setSidebarView = useWorkbenchStore((state) => state.setSidebarView);
+
+  const openView = (view: SidebarView) => setSidebarView(view);
+
+  return (
+    <section className="editor-welcome" aria-label="Editor welcome">
+      <div className="editor-welcome__mark" aria-hidden="true">
+        S
+      </div>
+      <div className="editor-welcome__actions">
+        <button type="button" onClick={() => openView("explorer")}>
+          <Files size={15} aria-hidden="true" />
+          Browse files
+        </button>
+        <button type="button" onClick={() => openView("search")}>
+          <Search size={15} aria-hidden="true" />
+          Search files
+        </button>
+        <button type="button" onClick={onOpenAgent}>
+          <MessageSquare size={15} aria-hidden="true" />
+          Open Agent
+        </button>
+      </div>
+      <p>Editor preferences stay within reach in the status bar.</p>
+    </section>
+  );
+}

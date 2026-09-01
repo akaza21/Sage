@@ -130,13 +130,11 @@ describe("FileSurface durability cadence", () => {
     expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
-  it("keeps edit, save, discard, and conflict behavior at the File surface", async () => {
+  it("keeps edit, keyboard save, undo, and conflict behavior at the File surface", async () => {
     const save = vi.fn(async () => true);
-    const discard = vi.fn(async () => true);
     setReadyEditor({ ...tab, dirty: true });
     useWorkbenchStore.setState((state) => ({
       saveActiveEditor: save,
-      discardActiveEditor: discard,
       activeEditor:
         state.activeEditor?.phase === "ready"
           ? {
@@ -166,10 +164,31 @@ describe("FileSurface durability cadence", () => {
       "External change detected. Disk content changed",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    fireEvent.keyDown(
+      screen.getByRole("region", { name: `File editor ${path}` }),
+      { key: "s", ctrlKey: true },
+    );
     expect(save).toHaveBeenCalledOnce();
-    expect(discard).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "Discard" })).toBeNull();
+  });
+
+  it("clears the dirty marker when undo returns a clean file to disk content", async () => {
+    setReadyEditor();
+    render(<FileSurface tab={tab} />);
+
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
+    replaceEditorContent(editor, "edited\n");
+    expect(useWorkbenchStore.getState().tabs[0]?.dirty).toBe(true);
+
+    fireEvent.keyDown(editor, { key: "z", ctrlKey: true });
+
+    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+      phase: "ready",
+      content: document.buffer.content,
+    });
+    expect(useWorkbenchStore.getState().tabs[0]?.dirty).toBe(false);
   });
 
   it("sends one trailing snapshot after 750 ms", async () => {
@@ -623,7 +642,7 @@ describe("FileSurface Go-to Line", () => {
     setReadyEditor(markdownTab, "# Title\n\nHello");
     render(<FileSurface tab={markdownTab} />);
     await screen.findByRole("textbox", { name: "Edit docs/notes.md" });
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview file" }));
     fireEvent.keyDown(screen.getByLabelText("File editor docs/notes.md"), {
       key: "g",
       ctrlKey: true,
@@ -644,7 +663,7 @@ describe("FileSurface Markdown Preview", () => {
     setReadyEditor(tab, "plain");
     render(<FileSurface tab={tab} />);
     await screen.findByRole("textbox", { name: `Edit ${path}` });
-    expect(screen.queryByRole("button", { name: "Preview" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Preview file" })).toBeNull();
   });
 
   it("unmounts the editor while previewing live buffer markdown", async () => {
@@ -657,7 +676,7 @@ describe("FileSurface Markdown Preview", () => {
       name: "Edit docs/readme.md",
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview file" }));
 
     expect(
       screen.queryByRole("textbox", { name: "Edit docs/readme.md" }),
@@ -668,7 +687,9 @@ describe("FileSurface Markdown Preview", () => {
     expect(screen.getByRole("heading", { name: "Title" })).toBeVisible();
     expect(screen.getByText("Hello world and docs.")).toBeVisible();
     expect(screen.queryByText("https://example.test")).toBeNull();
-    expect(screen.getByRole("button", { name: "Edit" })).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Return to editor" }),
+    ).toBeVisible();
 
     const surface = screen.getByLabelText("File editor docs/readme.md");
     fireEvent.keyDown(surface, { key: "f", ctrlKey: true });
@@ -687,7 +708,7 @@ describe("FileSurface Markdown Preview", () => {
     );
     render(<FileSurface tab={markdownTab} />);
     await screen.findByRole("textbox", { name: "Edit docs/readme.md" });
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview file" }));
     expect(screen.getByRole("img", { name: "Mermaid diagram" })).toBeVisible();
     expect(
       screen.getByRole("button", { name: "Copy diagram source" }),
@@ -704,7 +725,7 @@ describe("FileSurface Markdown Preview", () => {
     setReadyEditor(mermaidTab, "graph TD\nA --> B");
     render(<FileSurface tab={mermaidTab} />);
     await screen.findByRole("textbox", { name: "Edit docs/flow.mmd" });
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview file" }));
     expect(
       screen.getByRole("article", { name: "Diagram preview" }),
     ).toBeVisible();

@@ -13,6 +13,7 @@ import { mountRendererRecreationPacketCollector } from "../features/chat/acp/ren
 import { AgentArtifactPane } from "./AgentArtifactPane";
 import { AgentChatPanes } from "./AgentChatPanes";
 import { DirtyTabDialog } from "./DirtyTabDialog";
+import { EditorWelcome } from "./EditorWelcome";
 import { LeftSidebar } from "./LeftSidebar";
 import { PlaceholderSurface } from "./PlaceholderSurface";
 import { RightSidebar } from "./RightSidebar";
@@ -66,7 +67,7 @@ function repositoryMutationTitle(
   return `Source Control could not ${error.action} ${path}`;
 }
 
-function ActiveCanvas() {
+function ActiveCanvas({ onOpenAgent }: { onOpenAgent: () => void }) {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const repositoryMutationError = useWorkbenchStore(
@@ -97,12 +98,7 @@ function ActiveCanvas() {
       {activeTab && !editorTab && activeTab.kind !== "chat" ? (
         <PlaceholderSurface tab={activeTab} />
       ) : null}
-      {showEditorEmpty ? (
-        <section className="placeholder-surface">
-          <h1>No open files</h1>
-          <p>Open a file from Explorer, Search, or Source Control.</p>
-        </section>
-      ) : null}
+      {showEditorEmpty ? <EditorWelcome onOpenAgent={onOpenAgent} /> : null}
     </div>
   );
 }
@@ -327,7 +323,7 @@ export function Workbench() {
                   showNewChat={false}
                 />
               </div>
-              <ActiveCanvas />
+              <ActiveCanvas onOpenAgent={() => setWindowMode("agent")} />
             </>
           )}
         </div>

@@ -21,6 +21,7 @@ import "./styles/composer-surface.css";
 import "./styles/problems-outline-surfaces.css";
 import "./styles/agent-rail-surface.css";
 import "./styles/editor-visual-reference.css";
+import "./styles/editor-interactions.css";
 
 const root = document.getElementById("root");
 

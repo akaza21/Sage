@@ -246,11 +246,11 @@ describe("source-functional IDE journey", () => {
         dirty
         saving={false}
         transitioning={false}
-        onDiscard={() => undefined}
-        onSave={() => void useWorkbenchStore.getState().saveActiveEditor()}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await act(async () => {
+      await useWorkbenchStore.getState().saveActiveEditor();
+    });
     await waitFor(() =>
       expect(editor.saveEditorDocument).toHaveBeenCalledWith(target),
     );

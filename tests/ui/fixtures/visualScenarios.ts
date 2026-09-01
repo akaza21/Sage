@@ -903,3 +903,28 @@ export function installVisualEmptyEditorTools() {
   languageDesktop.subscribeDiagnostics = async () => () => undefined;
   languageDesktop.subscribeOutline = async () => () => undefined;
 }
+
+export function installVisualEmptyEditorCanvas() {
+  useWorkbenchStore.setState((state) => ({
+    tabs: state.tabs.filter((tab) => tab.kind === "chat"),
+    activeTabId: state.tabs.find((tab) => tab.kind === "chat")?.id ?? null,
+    activeEditor: null,
+    selectedResource: null,
+  }));
+}
+
+export function installVisualDirtyEditor() {
+  useWorkbenchStore.setState((state) => ({
+    tabs: state.tabs.map((tab) =>
+      tab.kind === "file" ? { ...tab, dirty: true } : tab,
+    ),
+    activeEditor:
+      state.activeEditor?.phase === "ready"
+        ? {
+            ...state.activeEditor,
+            content: `${state.activeEditor.content}\n// interaction-state review`,
+            revision: state.activeEditor.revision + 1,
+          }
+        : state.activeEditor,
+  }));
+}

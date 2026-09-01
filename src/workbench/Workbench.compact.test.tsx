@@ -589,10 +589,16 @@ describe("compact Workbench project tools", () => {
   it("guides an empty Editor workbench only through implemented entry points", () => {
     render(<Workbench />);
 
-    expect(screen.getByText("No open files")).toBeInTheDocument();
+    const welcome = screen.getByRole("region", { name: "Editor welcome" });
     expect(
-      screen.getByText("Open a file from Explorer, Search, or Source Control."),
-    ).toBeInTheDocument();
+      within(welcome).getByRole("button", { name: "Browse files" }),
+    ).toBeEnabled();
+    expect(
+      within(welcome).getByRole("button", { name: "Search files" }),
+    ).toBeEnabled();
+    expect(
+      within(welcome).getByRole("button", { name: "Open Agent" }),
+    ).toBeEnabled();
     expect(screen.queryByRole("button", { name: "New chat" })).toBeNull();
     expect(screen.queryByText("Username")).toBeNull();
   });

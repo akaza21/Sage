@@ -627,26 +627,28 @@ test("native IDE Problems probes bind one exact panel and diagnostic surface", (
   );
 });
 
-test("native IDE save action clicks one Save inside the admitted File editor", () => {
-  const save = {
-    textContent: "Save",
-    disabled: false,
-    clicks: 0,
-    click() {
-      this.clicks += 1;
-    },
-  };
-  const decoy = {
-    textContent: "Save",
-    disabled: false,
-    clicks: 0,
-    click() {
-      this.clicks += 1;
-    },
-  };
+test("native IDE save action uses the admitted File editor shortcut", () => {
+  let dirty = true;
+  const received = [];
+  class TestKeyboardEvent {
+    constructor(type, init) {
+      this.type = type;
+      this.defaultPrevented = false;
+      Object.assign(this, init);
+    }
+    preventDefault() {
+      this.defaultPrevented = true;
+    }
+  }
   const editor = {
+    dispatchEvent(event) {
+      received.push(event);
+      event.preventDefault();
+      return false;
+    },
     querySelectorAll: (selector) => {
-      if (selector === 'button[type="button"]') return [save];
+      if (selector === ".file-header__save-state--dirty")
+        return dirty ? [{}] : [];
       if (selector === ".cm-content")
         return [{ innerText: "saved journey content" }];
       return [];
@@ -660,17 +662,21 @@ test("native IDE save action clicks one Save inside the admitted File editor", (
     querySelectorAll: (selector) => {
       if (selector === 'section[aria-label="File editor journey.ts"]')
         return [editor];
-      if (selector === "button") return [decoy, save];
+      if (selector === ".tab--active .tab__dirty") return dirty ? [{}] : [];
       return [];
     },
   };
   assert.equal(
-    evaluateBrowserExpression(uiAction("save").expression, { document }),
+    evaluateBrowserExpression(uiAction("save").expression, {
+      document,
+      KeyboardEvent: TestKeyboardEvent,
+    }),
     true,
   );
-  assert.equal(save.clicks, 1);
-  assert.equal(decoy.clicks, 0);
-  save.disabled = true;
+  assert.equal(received.length, 1);
+  assert.equal(received[0].key, "s");
+  assert.equal(received[0].ctrlKey, true);
+  dirty = false;
   assert.equal(
     evaluateBrowserExpression(UI_PROBES.saveSettled, { document }),
     true,
@@ -756,6 +762,132 @@ test("native IDE Source Control and Diff readiness wait for the exact ready chan
   );
 });
 
+test("native IDE recovery probes present and clear one external-change conflict", () => {
+  const explorer = {
+    clicks: 0,
+    click() {
+      this.clicks += 1;
+    },
+  };
+  const file = {
+    clicks: 0,
+    click() {
+      this.clicks += 1;
+    },
+  };
+  const tree = {
+    querySelectorAll: (selector) =>
+      selector === '[role="treeitem"][aria-label="Open file journey.ts"]'
+        ? [file]
+        : [],
+  };
+  const tools = {
+    querySelectorAll: (selector) =>
+      selector === '[role="tree"][aria-label="Project files"]' ? [tree] : [],
+  };
+  const editorInput = {
+    focus() {},
+  };
+  const conflict = { innerText: "External change detected. Disk changed." };
+  const close = {
+    clicks: 0,
+    click() {
+      this.clicks += 1;
+    },
+  };
+  const fileTab = {
+    textContent: "journey.ts",
+    querySelector: (selector) => (selector === ".file-kind-icon" ? {} : null),
+    querySelectorAll: (selector) =>
+      selector === 'button[aria-label="Close journey.ts"]' ? [close] : [],
+  };
+  const discard = {
+    textContent: "Discard",
+    clicks: 0,
+    click() {
+      this.clicks += 1;
+    },
+  };
+  let dialogVisible = true;
+  let conflictVisible = true;
+  const dialog = {
+    innerText: "Save changes to journey.ts?",
+    querySelectorAll: (selector) => (selector === "button" ? [discard] : []),
+  };
+  const document = {
+    execCommand: (command, _ui, value) =>
+      command === "insertText" && value.includes("SAGE_CONFLICT_EDIT"),
+    querySelectorAll: (selector) => {
+      if (selector === 'button[aria-label="Explorer"]') return [explorer];
+      if (selector === 'aside[aria-label="Project tools"]') return [tools];
+      if (
+        selector ===
+        '[role="tree"][aria-label="Project files"] [role="treeitem"][aria-label="Open file journey.ts"]'
+      )
+        return [file];
+      if (
+        selector ===
+        'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]'
+      )
+        return [editorInput];
+      if (
+        selector ===
+        'section[aria-label="File editor journey.ts"] .editor-notice--conflict[role="alert"]'
+      )
+        return conflictVisible ? [conflict] : [];
+      if (selector === ".tab") return [fileTab];
+      if (selector === 'section.dirty-dialog[role="dialog"]')
+        return dialogVisible ? [dialog] : [];
+      return [];
+    },
+  };
+
+  assert.equal(
+    evaluateBrowserExpression(uiAction("error-recovery").expression, {
+      document,
+    }),
+    true,
+  );
+  assert.equal(explorer.clicks, 1);
+  assert.equal(
+    evaluateBrowserExpression(verificationFor("error-recovery"), { document }),
+    true,
+  );
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.openExactExplorerFile, { document }),
+    true,
+  );
+  assert.equal(file.clicks, 1);
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.insertConflictEdit, { document }),
+    true,
+  );
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.conflictVisible, { document }),
+    true,
+  );
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.closeDirtyFile, { document }),
+    true,
+  );
+  assert.equal(close.clicks, 1);
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.dirtyDialogVisible, { document }),
+    true,
+  );
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.discardDirtyClose, { document }),
+    true,
+  );
+  assert.equal(discard.clicks, 1);
+  dialogVisible = false;
+  conflictVisible = false;
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.recoverySettled, { document }),
+    true,
+  );
+});
+
 test("native IDE journey requires an explicit bounded CDP launch contract", () => {
   assert.throws(
     () => parseJourneyArguments(["--port", "9229"]),
@@ -837,7 +969,7 @@ test("native IDE receipt binds a completed ordered journey and artifact hashes",
     };
     const receipt = createJourneyReceipt(input);
     assert.equal(receipt.completed, true);
-    assert.equal(receipt.schemaVersion, 4);
+    assert.equal(receipt.schemaVersion, 5);
     assert.deepEqual(
       receipt.milestones.map(({ step }) => step),
       JOURNEY_STEPS,
@@ -979,7 +1111,7 @@ test("native IDE receipt refuses unobserved save, diagnostic, and Diff claims", 
           evidenceRoot: root,
           observations: {
             ...observed(),
-            save: { ...observed().save, saveDisabled: false },
+            save: { ...observed().save, dirtyIndicatorCleared: false },
           },
         }),
       /journey-observations-invalid/,
@@ -3453,7 +3585,7 @@ function observed() {
   return {
     save: {
       editorPath: "journey.ts",
-      saveDisabled: true,
+      dirtyIndicatorCleared: true,
       contentSha256: "1".repeat(64),
       diskSha256: "2".repeat(64),
     },
@@ -3466,6 +3598,12 @@ function observed() {
       resource: "journey.ts",
       lineCount: 1,
       contentSha256: "4".repeat(64),
+    },
+    recovery: {
+      resource: "journey.ts",
+      conflictPresented: true,
+      recovered: true,
+      diskSha256: "5".repeat(64),
     },
   };
 }

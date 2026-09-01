@@ -39,6 +39,7 @@ export const JOURNEY_STEPS = Object.freeze([
   "save",
   "Source Control",
   "Diff",
+  "error-recovery",
 ]);
 
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -375,15 +376,15 @@ export function createJourneyReceipt({
     fail("milestones-invalid");
   }
   if (
-    !exactKeys(observations, ["diagnostic", "diff", "save"]) ||
+    !exactKeys(observations, ["diagnostic", "diff", "recovery", "save"]) ||
     !exactKeys(observations.save, [
       "contentSha256",
+      "dirtyIndicatorCleared",
       "diskSha256",
       "editorPath",
-      "saveDisabled",
     ]) ||
     observations.save.editorPath !== "journey.ts" ||
-    observations.save.saveDisabled !== true ||
+    observations.save.dirtyIndicatorCleared !== true ||
     !SHA256.test(observations.save.contentSha256) ||
     !SHA256.test(observations.save.diskSha256) ||
     !exactKeys(observations.diagnostic, [
@@ -399,7 +400,17 @@ export function createJourneyReceipt({
     observations.diff.resource !== "journey.ts" ||
     !Number.isSafeInteger(observations.diff.lineCount) ||
     observations.diff.lineCount < 1 ||
-    !SHA256.test(observations.diff.contentSha256)
+    !SHA256.test(observations.diff.contentSha256) ||
+    !exactKeys(observations.recovery, [
+      "conflictPresented",
+      "diskSha256",
+      "recovered",
+      "resource",
+    ]) ||
+    observations.recovery.resource !== "journey.ts" ||
+    observations.recovery.conflictPresented !== true ||
+    observations.recovery.recovered !== true ||
+    !SHA256.test(observations.recovery.diskSha256)
   )
     fail("observations-invalid");
   if (
@@ -424,7 +435,7 @@ export function createJourneyReceipt({
     return { name, ...hashFile(artifact) };
   });
   return Object.freeze({
-    schemaVersion: 4,
+    schemaVersion: 5,
     completed: true,
     source: Object.freeze({ ...source }),
     sourceBinding: "collection-only",
@@ -446,6 +457,7 @@ export function createJourneyReceipt({
       save: Object.freeze({ ...observations.save }),
       diagnostic: Object.freeze({ ...observations.diagnostic }),
       diff: Object.freeze({ ...observations.diff }),
+      recovery: Object.freeze({ ...observations.recovery }),
     }),
     milestones: Object.freeze(
       milestones.map((milestone) => Object.freeze({ ...milestone })),
@@ -782,8 +794,8 @@ export const UI_ACTIONS = Object.freeze([
   ),
   action(
     "save",
-    "(()=>{const editors=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]')];if(editors.length!==1)return false;const buttons=[...editors[0].querySelectorAll('button[type=\"button\"]')].filter(x=>x.textContent.trim()==='Save');if(buttons.length!==1)return false;buttons[0].click();return true})()",
-    "Save control is unavailable",
+    "(()=>{const editors=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]')];if(editors.length!==1)return false;const event=new KeyboardEvent('keydown',{key:'s',code:'KeyS',ctrlKey:true,bubbles:true,cancelable:true});editors[0].dispatchEvent(event);return event.defaultPrevented})()",
+    "Save shortcut was not handled",
   ),
   action(
     "Source Control",
@@ -794,6 +806,11 @@ export const UI_ACTIONS = Object.freeze([
     "Diff",
     "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Source Control project tools\"]')];if(panels.length!==1)return false;const rows=[...panels[0].querySelectorAll('button[aria-label=\"Open diff for journey.ts\"]')];if(rows.length!==1)return false;rows[0].click();return true})()",
     "Diff control is unavailable",
+  ),
+  action(
+    "error-recovery",
+    "(()=>{const x=[...document.querySelectorAll('button[aria-label=\"Explorer\"]')];if(x.length!==1)return false;x[0].click();return true})()",
+    "Explorer control is unavailable for recovery",
   ),
 ]);
 
@@ -859,6 +876,8 @@ export function verificationFor(step) {
     return "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Source Control project tools\"]')];return panels.length===1&&panels[0].querySelectorAll('button[aria-label=\"Open diff for journey.ts\"]').length===1})()";
   if (step === "Diff")
     return "(()=>{const surfaces=[...document.querySelectorAll('section.diff-surface[aria-label=\"Diff for journey.ts\"]')];if(surfaces.length!==1)return false;const ready=[...surfaces[0].querySelectorAll('.diff-editor[role=\"table\"][aria-label=\"Unified file diff\"]')];return ready.length===1&&ready[0].textContent.includes('// SAGE_TS_DIAGNOSTIC journey edited through native CDP')})()";
+  if (step === "error-recovery")
+    return '(()=>{const tools=[...document.querySelectorAll(\'aside[aria-label="Project tools"]\')];if(tools.length!==1)return false;const trees=[...tools[0].querySelectorAll(\'[role="tree"][aria-label="Project files"]\')];return trees.length===1&&trees[0].querySelectorAll(\'[role="treeitem"][aria-label="Open file journey.ts"]\').length===1})()';
   return UI_ACTIONS[0].expression;
 }
 
@@ -878,11 +897,25 @@ export const UI_PROBES = Object.freeze({
   diagnosticMessages:
     "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Problems project tools\"]')];if(panels.length!==1)return null;const surfaces=[...panels[0].querySelectorAll('section[aria-label=\"Problems\"]')];if(surfaces.length!==1)return null;return JSON.stringify([...surfaces[0].querySelectorAll('button.problem-card')].map(x=>x.innerText))})()",
   saveSettled:
-    "(()=>{const editors=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]')];if(editors.length!==1)return false;const buttons=[...editors[0].querySelectorAll('button[type=\"button\"]')].filter(x=>x.textContent.trim()==='Save');return buttons.length===1&&buttons[0].disabled===true})()",
+    "(()=>{const editors=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]')];if(editors.length!==1)return false;const unsaved=editors[0].querySelectorAll('.file-header__save-state--dirty').length;const dirtyTabs=document.querySelectorAll('.tab--active .tab__dirty').length;return unsaved===0&&dirtyTabs===0})()",
   savedContent:
     "(()=>{const editors=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]')];if(editors.length!==1)return null;const contents=[...editors[0].querySelectorAll('.cm-content')];return contents.length===1?contents[0].innerText:null})()",
   diffContent:
     "(()=>{const surfaces=[...document.querySelectorAll('section.diff-surface[aria-label=\"Diff for journey.ts\"]')];return surfaces.length===1?surfaces[0].innerText:null})()",
+  openExactExplorerFile:
+    '(()=>{const x=[...document.querySelectorAll(\'[role="tree"][aria-label="Project files"] [role="treeitem"][aria-label="Open file journey.ts"]\')];if(x.length!==1)return false;x[0].click();return true})()',
+  insertConflictEdit:
+    '(()=>{const x=[...document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\')];if(x.length!==1)return false;x[0].focus();return document.execCommand("insertText",false,"\\n// SAGE_CONFLICT_EDIT native recovery\\n")})()',
+  conflictVisible:
+    "(()=>{const alerts=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"] .editor-notice--conflict[role=\"alert\"]')];return alerts.length===1&&alerts[0].innerText.includes('External change detected')})()",
+  closeDirtyFile:
+    "(()=>{const tabs=[...document.querySelectorAll('.tab')].filter(x=>x.querySelector('.file-kind-icon')&&x.textContent.includes('journey.ts'));if(tabs.length!==1)return false;const buttons=[...tabs[0].querySelectorAll('button[aria-label=\"Close journey.ts\"]')];if(buttons.length!==1)return false;buttons[0].click();return true})()",
+  dirtyDialogVisible:
+    "(()=>{const dialogs=[...document.querySelectorAll('section.dirty-dialog[role=\"dialog\"]')];return dialogs.length===1&&dialogs[0].innerText.includes('Save changes to journey.ts?')})()",
+  discardDirtyClose:
+    "(()=>{const dialogs=[...document.querySelectorAll('section.dirty-dialog[role=\"dialog\"]')];if(dialogs.length!==1)return false;const buttons=[...dialogs[0].querySelectorAll('button')].filter(x=>x.textContent.trim()==='Discard');if(buttons.length!==1)return false;buttons[0].click();return true})()",
+  recoverySettled:
+    '(()=>document.querySelectorAll(\'section.dirty-dialog[role="dialog"]\').length===0&&document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .editor-notice--conflict[role="alert"]\').length===0)()',
 });
 
 export async function performUiMilestone(cdp, current, deadline) {
@@ -920,6 +953,28 @@ export async function performUiMilestone(cdp, current, deadline) {
       UI_PROBES.diagnosticMessages,
       operationDeadline(deadline),
     );
+  }
+  if (current.label === "error-recovery") {
+    if (
+      (await cdp.evaluate(
+        UI_PROBES.openExactExplorerFile,
+        operationDeadline(deadline),
+      )) !== true
+    )
+      throw new Error("recovery file was not unique");
+    await waitFor(
+      cdp,
+      UI_PROBES.editableEditor,
+      deadline,
+      "recovery editor did not become editable",
+    );
+    if (
+      (await cdp.evaluate(
+        UI_PROBES.insertConflictEdit,
+        operationDeadline(deadline),
+      )) !== true
+    )
+      throw new Error("recovery edit was not accepted");
   }
   return null;
 }
@@ -1011,7 +1066,9 @@ async function execute(options) {
   ];
   let diagnosticMessages = null;
   let savedContent = null;
+  let savedDisk = null;
   let diffContent = null;
+  let recoveryDisk = null;
   let controlledTarget;
   let receipt;
   let journeyError;
@@ -1031,17 +1088,91 @@ async function execute(options) {
           cdp,
           UI_PROBES.saveSettled,
           deadline,
-          "save did not settle to a disabled control",
+          "save did not clear the dirty indicator",
         );
         savedContent = await cdp.evaluate(
           UI_PROBES.savedContent,
           operationDeadline(deadline),
+        );
+        savedDisk = readFileSync(
+          path.join(options.fixture, "journey.ts"),
+          "utf8",
         );
       }
       if (current.label === "Diff") {
         diffContent = await cdp.evaluate(
           UI_PROBES.diffContent,
           operationDeadline(deadline),
+        );
+      }
+      if (current.label === "error-recovery") {
+        const externalContent = `${savedDisk}\n// SAGE_EXTERNAL_CHANGE native recovery\n`;
+        writeFileSync(
+          path.join(options.fixture, "journey.ts"),
+          externalContent,
+          "utf8",
+        );
+        const saveAction = UI_ACTIONS.find((item) => item.label === "save");
+        if (
+          !saveAction ||
+          (await cdp.evaluate(
+            saveAction.expression,
+            operationDeadline(deadline),
+          )) !== true
+        )
+          throw new Error("recovery save shortcut was not handled");
+        await waitFor(
+          cdp,
+          UI_PROBES.conflictVisible,
+          deadline,
+          "external-change conflict was not presented",
+        );
+        const errorScreenshotName = "09-error-presented.png";
+        const errorScreenshot = await cdp.screenshot(
+          operationDeadline(deadline),
+        );
+        const errorArtifact = path.join(options.output, errorScreenshotName);
+        writeContainedBytes(
+          options.sourceRoot,
+          options.output,
+          errorScreenshotName,
+          decodeBoundedScreenshot(errorScreenshot),
+        );
+        artifacts.push(errorArtifact);
+        log.push({
+          ordinal: index + 1,
+          step: "error-presented",
+          captured: errorScreenshotName,
+        });
+        if (
+          (await cdp.evaluate(
+            UI_PROBES.closeDirtyFile,
+            operationDeadline(deadline),
+          )) !== true
+        )
+          throw new Error("dirty recovery file did not close");
+        await waitFor(
+          cdp,
+          UI_PROBES.dirtyDialogVisible,
+          deadline,
+          "dirty close decision did not appear",
+        );
+        if (
+          (await cdp.evaluate(
+            UI_PROBES.discardDirtyClose,
+            operationDeadline(deadline),
+          )) !== true
+        )
+          throw new Error("dirty close discard was unavailable");
+        await waitFor(
+          cdp,
+          UI_PROBES.recoverySettled,
+          deadline,
+          "external-change recovery did not settle",
+        );
+        recoveryDisk = readFileSync(
+          path.join(options.fixture, "journey.ts"),
+          "utf8",
         );
       }
       controlledTarget = await revalidateAttachedPage(
@@ -1076,10 +1207,9 @@ async function execute(options) {
     );
     artifacts.push(logPath);
     const diagnostics = JSON.parse(String(diagnosticMessages));
-    const disk = readFileSync(path.join(options.fixture, "journey.ts"), "utf8");
     if (
-      savedContent !== disk ||
-      !disk.includes(
+      savedContent !== savedDisk ||
+      !savedDisk.includes(
         "// SAGE_TS_DIAGNOSTIC journey edited through native CDP",
       ) ||
       !Array.isArray(diagnostics) ||
@@ -1093,16 +1223,19 @@ async function execute(options) {
       !diffContent.includes("journey.ts") ||
       !diffContent.includes(
         "// SAGE_TS_DIAGNOSTIC journey edited through native CDP",
-      )
+      ) ||
+      typeof recoveryDisk !== "string" ||
+      !recoveryDisk.includes("// SAGE_EXTERNAL_CHANGE native recovery") ||
+      recoveryDisk.includes("// SAGE_CONFLICT_EDIT native recovery")
     )
       fail("observations-invalid");
     const digest = (value) => createHash("sha256").update(value).digest("hex");
     const observations = {
       save: {
         editorPath: "journey.ts",
-        saveDisabled: true,
+        dirtyIndicatorCleared: true,
         contentSha256: digest(savedContent),
-        diskSha256: digest(disk),
+        diskSha256: digest(savedDisk),
       },
       diagnostic: {
         resource: "journey.ts",
@@ -1113,6 +1246,12 @@ async function execute(options) {
         resource: "journey.ts",
         lineCount: diffContent.split("\n").length,
         contentSha256: digest(diffContent),
+      },
+      recovery: {
+        resource: "journey.ts",
+        conflictPresented: true,
+        recovered: true,
+        diskSha256: digest(recoveryDisk),
       },
     };
     const finalNodeIdentity = validatePlainCanonicalExecutable(

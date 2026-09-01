@@ -144,7 +144,6 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
               ack.revision,
             ),
             persisting: false,
-            document: { ...current.document, dirty },
           },
           { dirty },
         );
@@ -194,6 +193,10 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
       if (!active) {
         return;
       }
+      const dirty =
+        content === active.document.buffer.content
+          ? active.document.dirty
+          : true;
       bridge.setActiveEditor(
         {
           ...active,
@@ -201,7 +204,7 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
           revision: active.revision + 1,
           message: null,
         },
-        { dirty: true },
+        { dirty },
       );
     },
     snapshot: (request) => editor.snapshotEditorBuffer(request),
