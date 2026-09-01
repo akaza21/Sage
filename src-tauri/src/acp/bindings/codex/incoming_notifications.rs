@@ -41,6 +41,11 @@ pub(super) fn notification<M: ResourceMapper>(
                 _ => Err(IngressError::Malformed),
             }
         }
+        // Account state belongs to Codex and has no Sage-owned projection.
+        // The frame is bounded before reaching this matcher and its payload is
+        // discarded, so a known account update cannot become a transcript
+        // artifact or alter a turn/session state.
+        "account/updated" | "account/rateLimits/updated" => Ok(IngressDisposition::IgnoredLate),
         "thread/status/changed" => {
             let _thread = text(params, "threadId", 512)?;
             let status = params

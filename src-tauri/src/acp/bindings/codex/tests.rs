@@ -1654,6 +1654,38 @@ fn malformed_oversized_and_unknown_inputs_are_bounded() {
 }
 
 #[test]
+fn known_account_updates_and_user_echoes_do_not_create_unsupported_transcript_items() {
+    let mut adapter = adapter();
+    for method in ["account/updated", "account/rateLimits/updated"] {
+        let account = json!({"method":method,"params":{"account":"ignored"}});
+        assert!(matches!(
+            adapter.ingest(&serde_json::to_vec(&account).unwrap(), &Mapper),
+            Ok(IngressDisposition::IgnoredLate)
+        ));
+    }
+
+    ready(&mut adapter);
+    arm_turn(&mut adapter, 2, "client-user-echo");
+    let started = json!({"method":"turn/started","params":{
+        "threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}
+    }});
+    adapter
+        .ingest(&serde_json::to_vec(&started).unwrap(), &Mapper)
+        .unwrap();
+    for method in ["item/started", "item/completed"] {
+        let echo = json!({"method":method,"params":{
+            "threadId":"thread-1","turnId":"turn-1","item":{
+                "type":"userMessage","id":"echo-1","text":"already local"
+            }
+        }});
+        assert!(matches!(
+            adapter.ingest(&serde_json::to_vec(&echo).unwrap(), &Mapper),
+            Ok(IngressDisposition::Events(events)) if events.is_empty()
+        ));
+    }
+}
+
+#[test]
 fn unsupported_server_request_requires_runtime_teardown() {
     let mut adapter = adapter();
     ready(&mut adapter);

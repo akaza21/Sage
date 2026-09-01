@@ -22,6 +22,12 @@ pub(super) fn normalize_item<M: ResourceMapper>(
 ) -> Result<Option<ItemNormalization>, IngressError> {
     let kind = text(item, "type", 128)?;
     match kind {
+        // Sage persists the client prompt before dispatching `turn/start`.
+        // Codex subsequently echoes that same user-facing item, so retaining
+        // it again would duplicate the user bubble. Keep the echo out of the
+        // durable projection without treating a known protocol item as an
+        // unsupported activity.
+        "userMessage" => Ok(None),
         "agentMessage" => Ok(Some((
             NormalizedPayload::Text {
                 text: safe_text(item.get("text"), 262_144, "text")?,
@@ -311,5 +317,24 @@ mod tests {
             NormalizedPayload::Unsupported { ref external_kind, .. }
                 if external_kind.as_str() == "imageView"
         ));
+    }
+
+    #[test]
+    fn user_message_echo_is_ignored_after_sage_persists_the_prompt() {
+        let item = item(json!({
+            "type": "userMessage",
+            "id": "user-echo-1",
+            "text": "Already represented by the local prompt"
+        }));
+        assert!(
+            normalize_item(&item, ItemLifecycle::Started, &UnusedMapper)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            normalize_item(&item, ItemLifecycle::Completed, &UnusedMapper)
+                .unwrap()
+                .is_none()
+        );
     }
 }
