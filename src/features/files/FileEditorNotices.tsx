@@ -21,7 +21,7 @@ export function FileEditorNotices({
           </span>
         </div>
       ) : null}
-      {message ? (
+      {message && !conflict ? (
         <div className="editor-notice editor-notice--error" role="alert">
           <AlertTriangle size={16} aria-hidden="true" />
           <span>{message}</span>
