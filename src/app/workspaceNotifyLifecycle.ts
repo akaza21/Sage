@@ -12,6 +12,10 @@ import {
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { currentProjectLayout } from "./projectProjection";
+import {
+  flushEditorAppearancePersistence,
+  holdEditorAppearancePersistenceForClose,
+} from "./editorAppearanceStore";
 import type { WorkbenchState } from "./store";
 
 export function liveProjectNotifyStamp(
@@ -173,10 +177,16 @@ export async function unbindWorkspaceNotify(): Promise<void> {
 export async function closeLiveWorkbench(
   get: () => WorkbenchState,
 ): Promise<void> {
-  await get().flushActiveEditor();
-  await unbindWorkspaceNotify();
-  await getWorkbenchPorts().project.persistProjectLayoutAndClose(
-    currentProjectLayout(get()),
-    get().nativeTransitionEpoch,
-  );
+  const releaseAppearance = holdEditorAppearancePersistenceForClose();
+  try {
+    await get().flushActiveEditor();
+    await flushEditorAppearancePersistence();
+    await unbindWorkspaceNotify();
+    await getWorkbenchPorts().project.persistProjectLayoutAndClose(
+      currentProjectLayout(get()),
+      get().nativeTransitionEpoch,
+    );
+  } finally {
+    releaseAppearance();
+  }
 }

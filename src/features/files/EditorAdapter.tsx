@@ -45,6 +45,10 @@ export const EditorAdapter = forwardRef<
   const fontSize = useEditorAppearanceStore((state) => state.fontSize);
   const tabSize = useEditorAppearanceStore((state) => state.tabSize);
   const wordWrap = useEditorAppearanceStore((state) => state.wordWrap);
+  const lineNumbers = useEditorAppearanceStore((state) => state.lineNumbers);
+  const showWhitespace = useEditorAppearanceStore(
+    (state) => state.showWhitespace,
+  );
   latestPropsRef.current = props;
 
   useLayoutEffect(() => {
@@ -65,6 +69,8 @@ export const EditorAdapter = forwardRef<
             fontSize: useEditorAppearanceStore.getState().fontSize,
             tabSize: useEditorAppearanceStore.getState().tabSize,
             wordWrap: useEditorAppearanceStore.getState().wordWrap,
+            lineNumbers: useEditorAppearanceStore.getState().lineNumbers,
+            showWhitespace: useEditorAppearanceStore.getState().showWhitespace,
           },
         });
         runtimeRef.current = runtime;
@@ -94,11 +100,18 @@ export const EditorAdapter = forwardRef<
     if (runtime) {
       runtime.update({
         ...latestPropsRef.current,
-        appearance: { fontSize, tabSize, wordWrap },
+        appearance: {
+          fontSize,
+          tabSize,
+          wordWrap,
+          lineNumbers,
+          showWhitespace,
+        },
       });
     }
   }, [
     fontSize,
+    lineNumbers,
     props.ariaLabel,
     props.content,
     props.disabled,
@@ -107,6 +120,7 @@ export const EditorAdapter = forwardRef<
     props.onCaretOffset,
     props.path,
     tabSize,
+    showWhitespace,
     wordWrap,
   ]);
 

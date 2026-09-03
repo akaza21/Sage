@@ -15,6 +15,7 @@ import {
   EditorView,
   highlightActiveLine,
   highlightActiveLineGutter,
+  highlightWhitespace,
   keymap,
   lineNumbers,
 } from "@codemirror/view";
@@ -65,6 +66,8 @@ function appearanceExtensions(appearance: EditorAppearance): Extension {
     EditorState.tabSize.of(appearance.tabSize),
     indentUnit.of(" ".repeat(appearance.tabSize)),
     appearance.wordWrap ? EditorView.lineWrapping : [],
+    appearance.lineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : [],
+    appearance.showWhitespace ? highlightWhitespace() : [],
     EditorView.theme({
       ".cm-scroller": { fontSize: `${appearance.fontSize}px` },
     }),
@@ -85,6 +88,30 @@ function editableExtensions(props: RuntimeProps): Extension {
   ];
 }
 
+function sameAppearance(
+  left: EditorAppearance,
+  right: EditorAppearance,
+): boolean {
+  return (
+    left.fontSize === right.fontSize &&
+    left.tabSize === right.tabSize &&
+    left.wordWrap === right.wordWrap &&
+    left.lineNumbers === right.lineNumbers &&
+    left.showWhitespace === right.showWhitespace
+  );
+}
+
+function sameEditableConfiguration(
+  left: RuntimeProps,
+  right: RuntimeProps,
+): boolean {
+  return (
+    left.ariaLabel === right.ariaLabel &&
+    left.disabled === right.disabled &&
+    left.maxContentLength === right.maxContentLength
+  );
+}
+
 export function createCodeMirrorEditorRuntime(
   options: RuntimeOptions,
 ): CodeMirrorEditorRuntime {
@@ -103,8 +130,6 @@ export function createCodeMirrorEditorRuntime(
     state: EditorState.create({
       doc: options.content,
       extensions: [
-        lineNumbers(),
-        highlightActiveLineGutter(),
         highlightActiveLine(),
         history(),
         keymap.of([...historyKeymap, ...defaultKeymap]),
@@ -176,21 +201,31 @@ export function createCodeMirrorEditorRuntime(
       });
     },
     update: (props) => {
-      const previousPath = current.path;
-      current = {
+      const previous = current;
+      const next = {
         ...props,
         appearance: props.appearance ?? DEFAULT_EDITOR_APPEARANCE,
       };
-      view.dispatch({
-        effects: [
-          editableCompartment.reconfigure(editableExtensions(current)),
+      current = next;
+      const effects = [];
+      if (!sameEditableConfiguration(previous, next)) {
+        effects.push(editableCompartment.reconfigure(editableExtensions(next)));
+      }
+      if (
+        !sameAppearance(
+          previous.appearance ?? DEFAULT_EDITOR_APPEARANCE,
+          next.appearance ?? DEFAULT_EDITOR_APPEARANCE,
+        )
+      ) {
+        effects.push(
           appearanceCompartment.reconfigure(
-            appearanceExtensions(
-              current.appearance ?? DEFAULT_EDITOR_APPEARANCE,
-            ),
+            appearanceExtensions(next.appearance ?? DEFAULT_EDITOR_APPEARANCE),
           ),
-        ],
-      });
+        );
+      }
+      if (effects.length > 0) {
+        view.dispatch({ effects });
+      }
       if (view.state.doc.toString() !== props.content) {
         applyingControlledContent = true;
         try {
@@ -206,7 +241,7 @@ export function createCodeMirrorEditorRuntime(
           applyingControlledContent = false;
         }
       }
-      if (props.path !== previousPath) {
+      if (props.path !== previous.path) {
         selectLanguage(props.path);
       }
     },

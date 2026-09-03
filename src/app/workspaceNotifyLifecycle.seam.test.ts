@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { childResource, resourceKey } from "../domain/resourceIdentity";
 import type { BootstrapSnapshot } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import {
+  flushEditorAppearancePersistence,
+  useEditorAppearanceStore,
+} from "./editorAppearanceStore";
 import { useWorkbenchStore } from "./store";
 import {
   createWorkspaceNotifyHooks,
@@ -62,6 +66,7 @@ describe("live Project workspace notify bind", () => {
   });
 
   afterEach(async () => {
+    await flushEditorAppearancePersistence();
     await unbindWorkspaceNotify();
     vi.restoreAllMocks();
     useWorkbenchStore.setState(initialState, true);
@@ -398,5 +403,66 @@ describe("live Project workspace notify bind", () => {
     expect(projectPort.unwatchWorkspaceNotify).toHaveBeenCalledWith({
       projectId: "project-a",
     });
+  });
+
+  it("waits for the latest editor appearance before native close", async () => {
+    let finishSave: (() => void) | undefined;
+    let finishUnwatch: (() => void) | undefined;
+    const save = vi
+      .spyOn(getWorkbenchPorts().settings, "setEditorAppearance")
+      .mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishSave = () =>
+              resolve({
+                fontSize: 16,
+                tabSize: 2,
+                wordWrap: false,
+                lineNumbers: true,
+                showWhitespace: false,
+              });
+          }),
+      );
+    const close = vi
+      .spyOn(projectPort, "persistProjectLayoutAndClose")
+      .mockResolvedValue();
+    vi.mocked(projectPort.unwatchWorkspaceNotify).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishUnwatch = resolve;
+        }),
+    );
+    await useWorkbenchStore.getState().initialize();
+    useEditorAppearanceStore.setState({ persistenceReady: true });
+    useEditorAppearanceStore.getState().setAppearance({
+      fontSize: 16,
+      tabSize: 2,
+      wordWrap: false,
+      lineNumbers: true,
+      showWhitespace: false,
+    });
+
+    const closing = useWorkbenchStore.getState().closeWorkbench();
+    await vi.waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(close).not.toHaveBeenCalled();
+
+    finishSave?.();
+    await vi.waitFor(() => expect(finishUnwatch).toBeTypeOf("function"));
+    useEditorAppearanceStore.getState().setAppearance({
+      fontSize: 14,
+      tabSize: 2,
+      wordWrap: false,
+      lineNumbers: true,
+      showWhitespace: false,
+    });
+    useEditorAppearanceStore.getState().retryPersistence();
+    expect(save).toHaveBeenCalledOnce();
+    expect(useEditorAppearanceStore.getState().fontSize).toBe(16);
+    expect(close).not.toHaveBeenCalled();
+
+    finishUnwatch?.();
+    await closing;
+    expect(close).toHaveBeenCalledOnce();
+    expect(useEditorAppearanceStore.getState().persistenceClosing).toBe(false);
   });
 });

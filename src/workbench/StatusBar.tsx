@@ -38,12 +38,7 @@ export function StatusBar({
   const toggleSidebar = useWorkbenchStore((state) => state.toggleSidebar);
   const repositories = useWorkbenchStore((state) => state.repositories);
   const recoveryNotice = useWorkbenchStore((state) => state.recoveryNotice);
-  const fontSize = useEditorAppearanceStore((state) => state.fontSize);
   const tabSize = useEditorAppearanceStore((state) => state.tabSize);
-  const wordWrap = useEditorAppearanceStore((state) => state.wordWrap);
-  const cycleFont = useEditorAppearanceStore((state) => state.cycleFontSize);
-  const cycleTab = useEditorAppearanceStore((state) => state.cycleTabSize);
-  const toggleWrap = useEditorAppearanceStore((state) => state.toggleWordWrap);
   const caretLabel = caretStatusLabel(
     useEditorCaretStore((state) => state.caret),
   );
@@ -81,40 +76,7 @@ export function StatusBar({
           <span title="Editor language">{languageLabel}</span>
         ) : null}
         {showEditorSettings ? (
-          <div
-            className="status-bar__editor-settings"
-            role="group"
-            aria-label="Editor appearance"
-          >
-            <button
-              className="status-bar__button"
-              type="button"
-              aria-label="Cycle editor font size"
-              title="Cycle editor font size"
-              onClick={cycleFont}
-            >
-              Font: {fontSize}px
-            </button>
-            <button
-              className="status-bar__button"
-              type="button"
-              aria-label="Cycle editor tab size"
-              title="Cycle editor tab size"
-              onClick={cycleTab}
-            >
-              Tabs: {tabSize} spaces
-            </button>
-            <button
-              className="status-bar__button"
-              type="button"
-              aria-pressed={wordWrap}
-              aria-label="Toggle editor word wrap"
-              title="Toggle editor word wrap"
-              onClick={toggleWrap}
-            >
-              Word wrap: {wordWrap ? "On" : "Off"}
-            </button>
-          </div>
+          <span title="Indentation">Spaces: {tabSize}</span>
         ) : null}
         {showSidebarToggle ? (
           <button

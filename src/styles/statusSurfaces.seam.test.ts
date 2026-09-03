@@ -20,17 +20,15 @@ describe("Status surfaces stylesheet seam", () => {
     expect(surfaceCss).toMatch(/^\.status-bar\b/m);
   });
 
-  it("keeps the editor appearance controls as a bounded status-bar group", async () => {
+  it("keeps informational editor status compact without appearance controls", async () => {
     const surfaceCss = await readFile(
       resolve("src/styles/status-surfaces.css"),
       "utf8",
     );
 
+    expect(surfaceCss).not.toContain(".status-bar__editor-settings");
     expect(surfaceCss).toMatch(
-      /\.status-bar__editor-settings\s*\{[^}]*flex:\s*0 0 auto;/s,
-    );
-    expect(surfaceCss).toMatch(
-      /\.status-bar__editor-settings\s*\{[^}]*border-inline-start:/s,
+      /\.status-bar__group span\s*\{[^}]*white-space:\s*nowrap;/s,
     );
     expect(surfaceCss).toMatch(/\.status-bar\s*\{[^}]*overflow-x:\s*auto;/s);
   });

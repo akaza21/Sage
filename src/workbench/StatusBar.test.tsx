@@ -1,10 +1,4 @@
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { useEditorAppearanceStore } from "../app/editorAppearanceStore";
@@ -51,17 +45,11 @@ describe("StatusBar repository truth", () => {
     expect(screen.queryByText("1 session")).toBeNull();
     expect(screen.queryByText("Trusted project")).toBeNull();
     expect(
-      screen.getByRole("group", { name: "Editor appearance" }),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("Cycle editor font size")).toHaveTextContent(
-      "Font: 13px",
-    );
-    expect(screen.getByLabelText("Cycle editor tab size")).toHaveTextContent(
-      "Tabs: 2 spaces",
-    );
-    expect(screen.getByLabelText("Toggle editor word wrap")).toHaveTextContent(
-      "Word wrap: Off",
-    );
+      screen.queryByRole("group", { name: "Editor appearance" }),
+    ).toBeNull();
+    expect(screen.getByTitle("Indentation")).toHaveTextContent("Spaces: 2");
+    expect(screen.queryByText(/Font:/)).toBeNull();
+    expect(screen.queryByText(/Word wrap:/)).toBeNull();
   });
 
   it("summarizes repositories across multiple roots without choosing one branch", () => {
@@ -111,28 +99,19 @@ describe("StatusBar repository truth", () => {
     );
   });
 
-  it("cycles admitted editor font, tab, and wrap from the status bar", () => {
+  it("reports indentation without mutating Editor appearance", () => {
+    useEditorAppearanceStore.setState({ tabSize: 4 });
     render(<StatusBar />);
-    fireEvent.click(screen.getByLabelText("Cycle editor font size"));
-    expect(screen.getByLabelText("Cycle editor font size")).toHaveTextContent(
-      "Font: 14px",
-    );
-    fireEvent.click(screen.getByLabelText("Cycle editor tab size"));
-    expect(screen.getByLabelText("Cycle editor tab size")).toHaveTextContent(
-      "Tabs: 4 spaces",
-    );
-    fireEvent.click(screen.getByLabelText("Toggle editor word wrap"));
-    expect(screen.getByLabelText("Toggle editor word wrap")).toHaveTextContent(
-      "Word wrap: On",
-    );
+    expect(screen.getByTitle("Indentation")).toHaveTextContent("Spaces: 4");
+    expect(screen.queryByRole("button", { name: /editor font/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /editor tab/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /word wrap/i })).toBeNull();
   });
 
   it("keeps Editor-only appearance controls out of Agent mode", () => {
     render(<StatusBar showEditorSettings={false} />);
 
-    expect(
-      screen.queryByRole("group", { name: "Editor appearance" }),
-    ).toBeNull();
+    expect(screen.queryByTitle("Indentation")).toBeNull();
     expect(screen.queryByTitle("Caret position")).toBeNull();
     expect(screen.queryByTitle("Editor language")).toBeNull();
   });

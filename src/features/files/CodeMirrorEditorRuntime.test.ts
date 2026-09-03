@@ -1,3 +1,4 @@
+import { undo } from "@codemirror/commands";
 import { syntaxTree } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -126,20 +127,72 @@ describe("CodeMirrorEditorRuntime caret", () => {
 });
 
 describe("CodeMirrorEditorRuntime appearance", () => {
-  it("applies admitted tab size and word wrap without remounting the buffer", () => {
-    const { runtime, view } = runtimeForPath("notes.txt");
+  it("reconfigures all five settings without remounting or losing selection and undo history", () => {
+    const { parent, runtime, view } = runtimeForPath("notes.txt");
     expect(view.state.tabSize).toBe(2);
+    expect(parent.querySelector(".cm-lineNumbers")).not.toBeNull();
+    expect(parent.querySelector(".cm-highlightSpace")).toBeNull();
+    view.dispatch({ changes: { from: view.state.doc.length, insert: "!" } });
+    expect(view.state.doc.toString()).toBe("fn main() {}!");
+    runtime.setSelection(3, 7);
+    runtime.update({
+      ariaLabel: "Edit notes.txt",
+      path: "notes.txt",
+      content: "fn main() {}!",
+      disabled: false,
+      maxContentLength: 1024,
+      appearance: {
+        fontSize: 16,
+        tabSize: 4,
+        wordWrap: true,
+        lineNumbers: false,
+        showWhitespace: true,
+      },
+      onChange: vi.fn(),
+    });
+    expect(view.state.tabSize).toBe(4);
+    expect(runtime.selection()).toEqual({ start: 3, end: 7 });
+    expect(EditorView.findFromDOM(view.contentDOM)).toBe(view);
+    expect(parent.querySelector(".cm-lineNumbers")).toBeNull();
+    expect(parent.querySelector(".cm-highlightSpace")).not.toBeNull();
+    expect(view.dom.className).toContain("cm-editor");
+    expect(undo(view)).toBe(true);
+    expect(view.state.doc.toString()).toBe("fn main() {}");
+
     runtime.update({
       ariaLabel: "Edit notes.txt",
       path: "notes.txt",
       content: "fn main() {}",
       disabled: false,
       maxContentLength: 1024,
-      appearance: { fontSize: 16, tabSize: 4, wordWrap: true },
+      appearance: {
+        fontSize: 13,
+        tabSize: 2,
+        wordWrap: false,
+        lineNumbers: true,
+        showWhitespace: false,
+      },
       onChange: vi.fn(),
     });
-    expect(view.state.tabSize).toBe(4);
-    expect(view.dom.className).toContain("cm-editor");
+    expect(parent.querySelector(".cm-lineNumbers")).not.toBeNull();
+    expect(parent.querySelector(".cm-highlightSpace")).toBeNull();
+    runtime.destroy();
+  });
+
+  it("does not rebuild appearance chrome for an ordinary controlled content update", () => {
+    const { parent, runtime } = runtimeForPath("notes.txt");
+    const gutter = parent.querySelector(".cm-gutters");
+
+    runtime.update({
+      ariaLabel: "Edit notes.txt",
+      path: "notes.txt",
+      content: "controlled content",
+      disabled: false,
+      maxContentLength: 1024,
+      onChange: vi.fn(),
+    });
+
+    expect(parent.querySelector(".cm-gutters")).toBe(gutter);
     runtime.destroy();
   });
 });

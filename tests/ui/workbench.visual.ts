@@ -496,15 +496,60 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       name: "Reset Editor Appearance",
     });
     await expect(reset).toBeDisabled();
+    await expect(
+      settings.getByRole("checkbox", { name: "Line numbers" }),
+    ).toBeChecked();
+    await expect(
+      settings.getByRole("checkbox", { name: "Show whitespace" }),
+    ).not.toBeChecked();
     await settings
       .getByRole("combobox", { name: "Font size" })
       .selectOption("16");
+    await settings.getByRole("checkbox", { name: "Line numbers" }).uncheck();
+    await settings.getByRole("checkbox", { name: "Show whitespace" }).check();
     await expect(reset).toBeEnabled();
+    await page.getByRole("button", { name: "Close Settings" }).click();
+    await expect(page.locator(".cm-lineNumbers")).toHaveCount(0);
+    await expect(page.locator(".cm-highlightSpace").first()).toBeVisible();
+    await page.getByRole("button", { name: "Open settings" }).click();
     await reset.click();
     await expect(
       settings.getByRole("combobox", { name: "Font size" }),
     ).toHaveValue("13");
+    await expect(
+      settings.getByRole("checkbox", { name: "Line numbers" }),
+    ).toBeChecked();
+    await expect(
+      settings.getByRole("checkbox", { name: "Show whitespace" }),
+    ).not.toBeChecked();
     await expect(workbench).toHaveScreenshot("editor-settings.png");
+
+    const settingsSearch = settings.getByRole("searchbox");
+    await settingsSearch.fill("whitespace");
+    await expect(
+      settings.getByRole("checkbox", { name: "Show whitespace" }),
+    ).toBeVisible();
+    await expect(
+      settings.getByRole("combobox", { name: "Font size" }),
+    ).toHaveCount(0);
+    await settingsSearch.fill("");
+
+    await page.evaluate(async () => {
+      const { useEditorAppearanceStore } =
+        await import("/src/app/editorAppearanceStore.ts");
+      useEditorAppearanceStore.setState({
+        persistencePhase: "error",
+        persistenceErrorKind: "save",
+        persistenceMessage: "Editor settings could not be saved.",
+      });
+    });
+    await expect(settings.getByRole("alert")).toContainText(
+      "Editor settings could not be saved.",
+    );
+    await expect(settings.getByRole("button", { name: "Retry" })).toBeVisible();
+    await expect(workbench).toHaveScreenshot("editor-settings-save-error.png");
+    await settings.getByRole("button", { name: "Retry" }).click();
+    await expect(settings.getByRole("alert")).toHaveCount(0);
 
     await page.setViewportSize({ width: 720, height: 560 });
     await page.getByRole("button", { name: "Hide left sidebar" }).click();
@@ -521,12 +566,22 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     expect(copyBounds).not.toBeNull();
     expect(selectBounds).not.toBeNull();
     expect(selectBounds!.y).toBeGreaterThan(copyBounds!.y);
-    await page.emulateMedia({ forcedColors: "active" });
+    await page.emulateMedia({
+      forcedColors: "active",
+      reducedMotion: "reduce",
+    });
     await expect(settings.getByRole("searchbox")).toBeVisible();
-    await settings.getByRole("checkbox", { name: "Word wrap" }).check();
+    const wordWrap = settings.getByRole("checkbox", { name: "Word wrap" });
+    await wordWrap.focus();
+    await page.keyboard.press("Space");
     await expect(
       settings.getByRole("checkbox", { name: "Word wrap" }),
     ).toBeChecked();
+    expect(
+      await settings
+        .getByRole("searchbox")
+        .evaluate((node) => getComputedStyle(node).transitionDuration),
+    ).toBe("0s");
     await expect(reset).toBeEnabled();
     await expectNoViewportOverflow(page);
   });
@@ -971,6 +1026,52 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await agentPage.setViewportSize({ width: 1380, height: 880 });
     await openScenario(agentPage, "file", "agent");
     const agentAppearance = await readFileAppearance(agentPage);
+    const applyCustomAppearance = async (target: Page) => {
+      await expect
+        .poll(() =>
+          target.evaluate(async () => {
+            const { useEditorAppearanceStore } =
+              await import("/src/app/editorAppearanceStore.ts");
+            return useEditorAppearanceStore.getState().persistenceReady;
+          }),
+        )
+        .toBe(true);
+      await target.evaluate(async () => {
+        const { useEditorAppearanceStore } =
+          await import("/src/app/editorAppearanceStore.ts");
+        useEditorAppearanceStore.getState().setAppearance({
+          fontSize: 16,
+          tabSize: 4,
+          wordWrap: true,
+          lineNumbers: false,
+          showWhitespace: true,
+        });
+      });
+      await expect(target.locator(".file-surface .cm-lineNumbers")).toHaveCount(
+        0,
+      );
+      await expect(
+        target.locator(".file-surface .cm-highlightSpace").first(),
+      ).toBeVisible();
+      return target.locator(".file-surface").evaluate((surface) => {
+        const content = surface.querySelector<HTMLElement>(".cm-content");
+        const scroller = surface.querySelector<HTMLElement>(".cm-scroller");
+        if (!content || !scroller) {
+          throw new Error("Custom appearance probe could not find the editor");
+        }
+        return {
+          fontSize: getComputedStyle(scroller).fontSize,
+          lineWrapping: content.classList.contains("cm-lineWrapping"),
+          lineNumbers: surface.querySelectorAll(".cm-lineNumbers").length,
+          tabSize: getComputedStyle(content).tabSize,
+          whitespace: surface.querySelectorAll(".cm-highlightSpace").length,
+        };
+      });
+    };
+    const [customEditorAppearance, customAgentAppearance] = await Promise.all([
+      applyCustomAppearance(page),
+      applyCustomAppearance(agentPage),
+    ]);
     const agentEditor = agentPage.getByRole("textbox", {
       name: "Edit src/workbench/AgentChatPanes.tsx",
     });
@@ -1013,6 +1114,14 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await agentFind.getByRole("button", { name: "Close find" }).click();
 
     expect(agentAppearance).toEqual(editorAppearance);
+    expect(customAgentAppearance).toEqual(customEditorAppearance);
+    expect(customEditorAppearance).toMatchObject({
+      fontSize: "16px",
+      lineWrapping: true,
+      lineNumbers: 0,
+      tabSize: "4",
+    });
+    expect(customEditorAppearance.whitespace).toBeGreaterThan(0);
     await expect(agentPage.locator(".file-header__metadata")).toBeHidden();
     await expect(
       agentPage.locator(".file-breadcrumb__item").last(),
@@ -1129,19 +1238,10 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Discard" })).toHaveCount(0);
 
-    const wrap = page.getByRole("button", {
-      name: "Toggle editor word wrap",
-    });
-    await wrap.click();
-    await expect(wrap).toHaveAttribute("aria-pressed", "true");
-    const font = page.getByRole("button", {
-      name: "Cycle editor font size",
-    });
-    const tabs = page.getByRole("button", { name: "Cycle editor tab size" });
-    await font.click();
-    await tabs.click();
-    await expect(font).toHaveText("Font: 14px");
-    await expect(tabs).toHaveText("Tabs: 4 spaces");
+    await expect(page.getByTitle("Indentation")).toHaveText("Spaces: 2");
+    await expect(
+      page.getByRole("group", { name: "Editor appearance" }),
+    ).toHaveCount(0);
 
     const sourceControl = page.getByRole("button", {
       name: "Source Control",

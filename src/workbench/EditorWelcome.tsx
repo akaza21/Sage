@@ -26,7 +26,7 @@ export function EditorWelcome({ onOpenAgent }: { onOpenAgent: () => void }) {
           Open Agent
         </button>
       </div>
-      <p>Editor preferences stay within reach in the status bar.</p>
+      <p>Use Settings to tune how every File is displayed.</p>
     </section>
   );
 }

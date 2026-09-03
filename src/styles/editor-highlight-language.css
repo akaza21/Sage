@@ -93,7 +93,6 @@
 
   /* Pressed controls remain distinct without reading as keyboard focus. */
   .workbench--editor .file-header__preview[aria-pressed="true"],
-  .workbench--editor .status-bar__button[aria-pressed="true"],
   .workbench--editor .editor-find__button[aria-pressed="true"],
   .workbench--editor
     .workspace-search__query-actions

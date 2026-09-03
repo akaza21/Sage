@@ -8,12 +8,16 @@ export interface EditorAppearance {
   fontSize: EditorFontSize;
   tabSize: EditorTabSize;
   wordWrap: boolean;
+  lineNumbers: boolean;
+  showWhitespace: boolean;
 }
 
 export const DEFAULT_EDITOR_APPEARANCE: EditorAppearance = {
   fontSize: 13,
   tabSize: 2,
   wordWrap: false,
+  lineNumbers: true,
+  showWhitespace: false,
 };
 
 function isFontSize(value: unknown): value is EditorFontSize {
@@ -38,15 +42,13 @@ export function admitEditorAppearance(
       typeof input?.wordWrap === "boolean"
         ? input.wordWrap
         : DEFAULT_EDITOR_APPEARANCE.wordWrap,
+    lineNumbers:
+      typeof input?.lineNumbers === "boolean"
+        ? input.lineNumbers
+        : DEFAULT_EDITOR_APPEARANCE.lineNumbers,
+    showWhitespace:
+      typeof input?.showWhitespace === "boolean"
+        ? input.showWhitespace
+        : DEFAULT_EDITOR_APPEARANCE.showWhitespace,
   };
-}
-
-export function cycleFontSize(current: EditorFontSize): EditorFontSize {
-  const index = EDITOR_FONT_SIZES.indexOf(current);
-  return EDITOR_FONT_SIZES[(index + 1) % EDITOR_FONT_SIZES.length]!;
-}
-
-export function cycleTabSize(current: EditorTabSize): EditorTabSize {
-  const index = EDITOR_TAB_SIZES.indexOf(current);
-  return EDITOR_TAB_SIZES[(index + 1) % EDITOR_TAB_SIZES.length]!;
 }

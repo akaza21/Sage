@@ -11,9 +11,15 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { useEditorAppearanceStore } from "../../app/editorAppearanceStore";
 import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
 
-afterEach(cleanup);
+const initialAppearance = useEditorAppearanceStore.getState();
+
+afterEach(() => {
+  cleanup();
+  useEditorAppearanceStore.setState(initialAppearance, true);
+});
 
 function viewForEditor(editor: HTMLElement) {
   const view = EditorView.findFromDOM(editor);
@@ -93,6 +99,28 @@ describe("EditorAdapter", () => {
       await screen.findByRole("textbox", { name: "Edit notes.txt" }),
     ).toHaveAttribute("aria-readonly", "true");
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("projects the same display settings into every shared File editor", async () => {
+    useEditorAppearanceStore.setState({
+      lineNumbers: false,
+      showWhitespace: true,
+    });
+    const { container } = render(
+      <EditorAdapter
+        ariaLabel="Edit shared.txt"
+        path="shared.txt"
+        content={"one two\tthree"}
+        disabled={false}
+        maxContentLength={1024}
+        onChange={vi.fn()}
+      />,
+    );
+
+    await screen.findByRole("textbox", { name: "Edit shared.txt" });
+    expect(container.querySelector(".cm-lineNumbers")).toBeNull();
+    expect(container.querySelector(".cm-highlightSpace")).not.toBeNull();
+    expect(container.querySelector(".cm-highlightTab")).not.toBeNull();
   });
 
   it("emits exact edits and supports keyboard undo and redo", async () => {
