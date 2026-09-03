@@ -18,6 +18,7 @@ describe("Repository sidebar controls stylesheet seam", () => {
     expect(shellCss).not.toMatch(/^\.repository-commit\b/m);
     expect(surfaceCss).toMatch(/^\.sidebar__heading\b/m);
     expect(surfaceCss).toMatch(/^\.source-control-list\b/m);
+    expect(surfaceCss).toMatch(/^\.source-root__summary\b/m);
     expect(surfaceCss).toMatch(/^\.repository-commit\b/m);
   });
 });

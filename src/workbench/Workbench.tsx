@@ -244,7 +244,7 @@ export function Workbench() {
       if ((event.ctrlKey || event.metaKey) && event.key === ",") {
         event.preventDefault();
         setWindowMode("editor");
-        useWorkbenchStore.getState().openSettings();
+        void useWorkbenchStore.getState().openSettings();
       }
     };
     window.addEventListener("keydown", onKeyDown);

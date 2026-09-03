@@ -1,16 +1,24 @@
 import { create } from "zustand";
 
-import { admitAgentArtifactIds } from "../workbench/agentArtifactAdmission";
+import type { AgentArtifactAdmission } from "../domain/agentArtifact";
+import {
+  admitAgentArtifact,
+  forgetAgentArtifactTab,
+} from "../workbench/agentArtifactAdmission";
 
 interface AgentArtifactAdmissionStore {
-  ids: readonly string[];
-  admit: (tabId: string) => void;
+  admissions: readonly AgentArtifactAdmission[];
+  admit: (admission: AgentArtifactAdmission) => void;
+  forget: (tabId: string) => void;
   clear: () => void;
 }
 
 export const useAgentArtifactAdmissionStore =
   create<AgentArtifactAdmissionStore>((set, get) => ({
-    ids: [],
-    admit: (tabId) => set({ ids: admitAgentArtifactIds(get().ids, tabId) }),
-    clear: () => set({ ids: [] }),
+    admissions: [],
+    admit: (admission) =>
+      set({ admissions: admitAgentArtifact(get().admissions, admission) }),
+    forget: (tabId) =>
+      set({ admissions: forgetAgentArtifactTab(get().admissions, tabId) }),
+    clear: () => set({ admissions: [] }),
   }));

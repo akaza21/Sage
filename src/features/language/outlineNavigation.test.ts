@@ -21,7 +21,7 @@ describe("localSymbolNavigation", () => {
         { start: 14, end: 14 },
         report([{ resource, name: "example", kind: "function", startLine: 3 }]),
       ),
-    ).toEqual({ start: 25, end: 25 });
+    ).toEqual({ start: 26, end: 26 });
   });
 
   it("fails closed when the language process has not delivered an outline report", () => {

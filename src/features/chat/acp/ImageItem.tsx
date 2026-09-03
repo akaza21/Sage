@@ -11,7 +11,11 @@ export function ImageItem({ item }: { item: ImageProjectionItem }) {
   if (!admitted) return null;
   return (
     <figure className="acp-image">
-      <img className="acp-image__src" alt="" src={admitted.dataUrl} />
+      <img
+        className="acp-image__src"
+        alt="Image provided by the agent"
+        src={admitted.dataUrl}
+      />
     </figure>
   );
 }

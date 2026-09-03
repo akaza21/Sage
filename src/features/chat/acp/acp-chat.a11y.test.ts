@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 
 it("animates Thought disclosure only when motion is allowed", async () => {
   const css = await readFile(
-    path.join(process.cwd(), "src/features/chat/acp/acp-chat-activities.css"),
+    path.join(process.cwd(), "src/features/chat/acp/acp-activity-cards.css"),
     "utf8",
   );
 

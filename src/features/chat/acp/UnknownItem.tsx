@@ -8,17 +8,24 @@ export function UnknownItem({ item }: { item: UnknownProjectionItem }) {
   const descriptionId = useId();
   return (
     <article
-      className="acp-unknown"
+      className="acp-activity-card acp-activity-card--unknown acp-unknown"
       role="group"
       aria-label="Unsupported tool activity"
       aria-describedby={descriptionId}
+      data-activity-kind="unknown"
+      data-activity-state="unsupported"
     >
       <span className="sr-only" id={descriptionId}>
         This harness activity is not supported by Sage
       </span>
       <header>
         <strong>Unsupported activity</strong>
-        <span role="status" aria-label="Unsupported" aria-live="off">
+        <span
+          className="acp-state"
+          role="status"
+          aria-label="Unsupported"
+          aria-live="off"
+        >
           Unsupported
         </span>
       </header>

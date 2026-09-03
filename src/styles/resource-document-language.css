@@ -1,0 +1,49 @@
+/*
+ * Files and Diffs are one workbench resource in both window modes. Their
+ * surrounding chrome may differ, but the document itself owns one palette,
+ * density, selection treatment, and compact geometry.
+ */
+.resource-document {
+  --resource-document-header-height: 36px;
+  --resource-document-code-foreground: CanvasText;
+  --resource-document-gutter-foreground: CanvasText;
+  --resource-document-gutter-divider: CanvasText;
+  --resource-document-active-line: Canvas;
+  --resource-document-caret: CanvasText;
+  --resource-document-selection: Highlight;
+  --resource-document-selection-foreground: HighlightText;
+  --resource-document-error-foreground: CanvasText;
+}
+
+@media (forced-colors: none) {
+  .resource-document {
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --color-canvas: #141414;
+    --color-panel: #141414;
+    --color-surface: #232323;
+    --color-surface-hover: #2a2a2a;
+    --color-surface-active: #2a4b6d;
+    --color-surface-selected: #2a4b6d;
+    --color-border-subtle: #242424;
+    --color-border-strong: #2a2a2a;
+    --color-text-primary: #c5c5c5;
+    --color-text-secondary: #adadad;
+    --color-text-muted: #858585;
+    --color-text-disabled: #656565;
+    --color-accent: #4c9df3;
+    --color-accent-hover: #75b4f7;
+    --color-accent-muted: #2a4b6d;
+    --color-focus-ring: #4c9df3;
+    --color-selection: #264f78;
+    --resource-document-code-foreground: #cbd1ca;
+    --resource-document-gutter-foreground: #667067;
+    --resource-document-gutter-divider: rgb(255 255 255 / 0.045);
+    --resource-document-active-line: rgb(255 255 255 / 0.035);
+    --resource-document-caret: #e1e7df;
+    --resource-document-selection: #264f78;
+    --resource-document-selection-foreground: #f4f7fb;
+    --resource-document-error-foreground: #efb3ae;
+  }
+}

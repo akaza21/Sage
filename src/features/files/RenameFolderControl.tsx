@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from "react";
+import { useState, type FormEvent, type RefObject } from "react";
 import { FilePenLine } from "lucide-react";
 
 import { useWorkbenchStore } from "../../app/store";
@@ -14,14 +7,20 @@ import {
   sameOrDescendantResource,
 } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
+import { ModalDialog } from "../../ui/ModalDialog";
+import { useExplorerActionDialog } from "./explorerActionDialogController";
 import { renameFolderTargetResource } from "./folderRenameContract";
 
 export function RenameFolderControl({
   source,
   rootName,
+  returnFocusRef,
+  onDialogOpen,
 }: {
   source: ResourceRef | null;
   rootName: string | null;
+  returnFocusRef: RefObject<HTMLButtonElement | null>;
+  onDialogOpen: () => void;
 }) {
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
@@ -41,119 +40,32 @@ export function RenameFolderControl({
           sameOrDescendantResource(tab.resource, source),
       ),
   );
-  const [open, setOpen] = useState(false);
   const [basename, setBasename] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
-  const [scope, setScope] = useState<{
-    projectId: string;
-    projectGeneration: number;
-    transitionEpoch: number;
-  } | null>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const closingRef = useRef(false);
-  const ownRenameRef = useRef(false);
-
-  const close = useCallback(
-    (restoreFocus = true, force = false) => {
-      if ((inFlight && !force) || closingRef.current) return;
-      closingRef.current = true;
-      setOpen(false);
-      setScope(null);
-      setBasename("");
-      setLocalError(null);
-      clearError();
-      if (restoreFocus) queueMicrotask(() => triggerRef.current?.focus());
-    },
-    [clearError, inFlight],
-  );
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!open || !dialog) return;
-    if (typeof dialog.showModal === "function") {
-      if (!dialog.open) dialog.showModal();
-    } else {
-      dialog.setAttribute("open", "");
-    }
-    return () => {
-      if (typeof dialog.close === "function" && dialog.open) dialog.close();
-      else dialog.removeAttribute("open");
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || !scope) return;
-    return useWorkbenchStore.subscribe((state) => {
-      if (ownRenameRef.current) return;
-      if (
-        state.projectTransitioning ||
-        state.project?.id !== scope.projectId ||
-        state.projectGeneration !== scope.projectGeneration ||
-        state.nativeTransitionEpoch !== scope.transitionEpoch
-      ) {
-        close(false, true);
-      }
-    });
-  }, [close, open, scope]);
+  const dialog = useExplorerActionDialog({
+    clearError,
+    inFlight,
+    returnFocusRef,
+  });
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!source || !scope || inFlight) return;
+    const capturedSource = dialog.target?.source;
+    if (!capturedSource || inFlight) return;
     try {
-      renameFolderTargetResource(source, basename);
+      renameFolderTargetResource(capturedSource, basename);
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : String(error));
       return;
     }
     setLocalError(null);
-    ownRenameRef.current = true;
-    let renamed: boolean;
-    try {
-      renamed = await renameProjectFolder(source, basename);
-    } finally {
-      ownRenameRef.current = false;
-    }
-    if (renamed) {
-      close();
-      return;
-    }
-    const state = useWorkbenchStore.getState();
-    if (
-      state.projectTransitioning ||
-      state.project?.id !== scope.projectId ||
-      state.projectGeneration !== scope.projectGeneration ||
-      state.nativeTransitionEpoch !== scope.transitionEpoch
-    ) {
-      close(false, true);
-    }
-  };
-
-  const containFocus = (event: KeyboardEvent<HTMLDialogElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      close();
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusable = Array.from(
-      event.currentTarget.querySelectorAll<HTMLElement>(
-        "input:not([disabled]), button:not([disabled])",
-      ),
+    await dialog.runWithTarget((target) =>
+      renameProjectFolder(target.source, basename),
     );
-    const first = focusable[0];
-    const last = focusable.at(-1);
-    if (!first || !last) event.preventDefault();
-    else if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
   };
 
-  const parent = source ? parentResource(source) : null;
+  const displaySource = dialog.target?.source ?? source;
+  const parent = displaySource ? parentResource(displaySource) : null;
   const previewParent = parent?.relativePath
     ? `${rootName ?? "Root"}/${parent.relativePath}`
     : (rootName ?? "Root");
@@ -166,39 +78,30 @@ export function RenameFolderControl({
   return (
     <>
       <button
-        ref={triggerRef}
+        className="explorer-action-menu__item"
         type="button"
+        role="menuitem"
+        tabIndex={-1}
         aria-label="Rename Folder"
         title={triggerTitle}
         disabled={!source || sourceOpen || projectTransitioning}
         onClick={() => {
-          const state = useWorkbenchStore.getState();
-          if (!state.project || !source) return;
-          closingRef.current = false;
-          clearError();
-          setScope({
-            projectId: state.project.id,
-            projectGeneration: state.projectGeneration,
-            transitionEpoch: state.nativeTransitionEpoch,
-          });
+          if (!source || !dialog.openDialog({ kind: "emptyFolder", source })) {
+            return;
+          }
           setBasename(source.relativePath.split("/").at(-1) ?? "");
           setLocalError(null);
-          setOpen(true);
+          onDialogOpen();
         }}
       >
         <FilePenLine size={14} aria-hidden="true" />
+        <span>Rename Folder</span>
       </button>
-      {open && source && scope ? (
-        <dialog
-          ref={dialogRef}
-          className="dirty-dialog new-file-dialog"
-          aria-modal="true"
-          aria-labelledby="rename-folder-title"
-          onCancel={(event) => {
-            event.preventDefault();
-            close();
-          }}
-          onKeyDown={containFocus}
+      {dialog.target ? (
+        <ModalDialog
+          className="new-file-dialog new-file-dialog--editor"
+          labelledBy="rename-folder-title"
+          onDismiss={() => dialog.closeDialog()}
         >
           <form className="new-file-dialog__form" onSubmit={submit}>
             <h2 id="rename-folder-title">Rename Folder</h2>
@@ -233,7 +136,7 @@ export function RenameFolderControl({
                 className="button"
                 type="button"
                 disabled={inFlight}
-                onClick={() => close()}
+                onClick={() => dialog.closeDialog()}
               >
                 Cancel
               </button>
@@ -246,7 +149,7 @@ export function RenameFolderControl({
               </button>
             </div>
           </form>
-        </dialog>
+        </ModalDialog>
       ) : null}
     </>
   );

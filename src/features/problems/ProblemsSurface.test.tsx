@@ -10,7 +10,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
 import type { LanguageDiagnosticReport } from "../../domain/languageService";
-import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { languageDesktop } from "../../services/languageDesktop";
 import { ProblemsSurface } from "./ProblemsSurface";
 
@@ -43,6 +42,22 @@ function report(generation: number, count: number): LanguageDiagnosticReport {
 
 function activateResource(activeResource = resource) {
   useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "Project A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    projectGeneration: 3,
+    nativeTransitionEpoch: 7,
+    projectTransitioning: false,
     tabs: [
       {
         id: "file:example",
@@ -167,15 +182,11 @@ describe("ProblemsSurface", () => {
     expect(screen.queryByLabelText("Problems")).not.toBeInTheDocument();
   });
 
-  it("problems_or_outline_row_opens_the_existing_file_tab", async () => {
+  it("opens the exact diagnostic caret through an accessible compact row", async () => {
     let deliver!: (value: LanguageDiagnosticReport) => void;
     activateResource();
-    const openFile = vi.fn(async () => undefined);
-    useWorkbenchStore.setState({ openFile });
-    const openEditorDocument = vi.spyOn(
-      getWorkbenchPorts().editor,
-      "openEditorDocument",
-    );
+    const openFileLocation = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({ openFileLocation });
     vi.spyOn(languageDesktop, "subscribeDiagnostics").mockImplementation(
       async (onReport) => {
         deliver = onReport;
@@ -186,9 +197,20 @@ describe("ProblemsSurface", () => {
 
     await waitFor(() => expect(deliver).toBeTypeOf("function"));
     act(() => deliver(report(1, 1)));
-    fireEvent.click(screen.getByRole("button", { name: /problem 1/i }));
+    const row = screen.getByRole("button", {
+      name: "Bug: problem 1. src/example.ts, line 1, column 1",
+    });
+    expect(row).toHaveAttribute("title", "problem 1 — src/example.ts:1:1");
+    expect(row).toHaveTextContent("example.ts:1:1");
+    fireEvent.click(row);
 
-    expect(openFile).toHaveBeenCalledWith(resource);
-    expect(openEditorDocument).not.toHaveBeenCalled();
+    expect(openFileLocation).toHaveBeenCalledWith({
+      projectId: "project-a",
+      transitionEpoch: 7,
+      resource,
+      lineNumber: 1,
+      columnNumber: 1,
+      selection: { kind: "caret" },
+    });
   });
 });

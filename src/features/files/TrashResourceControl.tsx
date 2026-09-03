@@ -1,31 +1,26 @@
 import { Trash2 } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from "react";
+import { type FormEvent, type RefObject } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
-import {
-  resourceKey,
-  sameOrDescendantResource,
-  sameResource,
-} from "../../domain/resourceIdentity";
+import { sameOrDescendantResource } from "../../domain/resourceIdentity";
 import type { ResourceRef, TrashResourceKind } from "../../domain/workbench";
+import { ModalDialog } from "../../ui/ModalDialog";
+import { useExplorerActionDialog } from "./explorerActionDialogController";
 
 interface TrashResourceControlProps {
   source: ResourceRef | null;
   kind: TrashResourceKind | null;
   rootName: string | null;
+  returnFocusRef: RefObject<HTMLButtonElement | null>;
+  onDialogOpen: () => void;
 }
 
 export function TrashResourceControl({
   source,
   kind,
   rootName,
+  returnFocusRef,
+  onDialogOpen,
 }: TrashResourceControlProps) {
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
@@ -47,135 +42,26 @@ export function TrashResourceControl({
         ) || sameOrDescendantResource(state.activeEditor?.resource, source)
       : false,
   );
-  const [open, setOpen] = useState(false);
-  const [scope, setScope] = useState<{
-    projectId: string;
-    projectGeneration: number;
-    transitionEpoch: number;
-  } | null>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const closingRef = useRef(false);
-  const ownTrashRef = useRef(false);
-
-  const restoreExplorerFocus = useCallback(() => {
-    const selected = useWorkbenchStore.getState().selectedResource;
-    const trigger = triggerRef.current;
-    if (sameResource(selected, source) && trigger && !trigger.disabled) {
-      trigger.focus();
-      return;
-    }
-    if (!selected) return;
-    const tree = document.querySelector<HTMLElement>(
-      '[role="tree"][aria-label="Project files"]',
-    );
-    const candidates = tree?.querySelectorAll<HTMLElement>(
-      "[data-resource-key]",
-    );
-    const selectedKey = resourceKey(selected);
-    const rootKey = resourceKey({ rootId: selected.rootId, relativePath: "" });
-    const target = Array.from(candidates ?? []).find(
-      (candidate) => candidate.dataset.resourceKey === selectedKey,
-    );
-    const fallback = Array.from(candidates ?? []).find(
-      (candidate) => candidate.dataset.resourceKey === rootKey,
-    );
-    (target ?? fallback)?.focus();
-  }, [source]);
-
-  const close = useCallback(
-    (shouldRestoreFocus = true, force = false) => {
-      if ((inFlight && !force) || closingRef.current) return;
-      closingRef.current = true;
-      setOpen(false);
-      setScope(null);
-      clearError();
-      if (shouldRestoreFocus) queueMicrotask(restoreExplorerFocus);
-    },
-    [clearError, inFlight, restoreExplorerFocus],
-  );
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!open || !dialog) return;
-    if (typeof dialog.showModal === "function") {
-      if (!dialog.open) dialog.showModal();
-    } else {
-      dialog.setAttribute("open", "");
-    }
-    return () => {
-      if (typeof dialog.close === "function" && dialog.open) dialog.close();
-      else dialog.removeAttribute("open");
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || !scope) return;
-    return useWorkbenchStore.subscribe((state) => {
-      if (ownTrashRef.current) return;
-      if (
-        state.projectTransitioning ||
-        state.project?.id !== scope.projectId ||
-        state.projectGeneration !== scope.projectGeneration ||
-        state.nativeTransitionEpoch !== scope.transitionEpoch
-      ) {
-        close(false, true);
-      }
-    });
-  }, [close, open, scope]);
+  const dialog = useExplorerActionDialog({
+    clearError,
+    inFlight,
+    returnFocusRef,
+  });
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!source || !kind || !scope || inFlight) return;
-    ownTrashRef.current = true;
-    let trashed: boolean;
-    try {
-      trashed = await trashProjectResource(source, kind);
-    } finally {
-      ownTrashRef.current = false;
-    }
-    if (trashed) {
-      close();
-      return;
-    }
-    const state = useWorkbenchStore.getState();
-    if (
-      state.projectTransitioning ||
-      state.project?.id !== scope.projectId ||
-      state.projectGeneration !== scope.projectGeneration ||
-      state.nativeTransitionEpoch !== scope.transitionEpoch
-    ) {
-      close(false, true);
-    }
-  };
-
-  const containFocus = (event: KeyboardEvent<HTMLDialogElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      close();
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusable = Array.from(
-      event.currentTarget.querySelectorAll<HTMLElement>(
-        "button:not([disabled])",
-      ),
+    if (!dialog.target || inFlight) return;
+    await dialog.runWithTarget((target) =>
+      trashProjectResource(target.source, target.kind),
     );
-    const first = focusable[0];
-    const last = focusable.at(-1);
-    if (!first || !last) event.preventDefault();
-    else if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
   };
 
-  const resourceLabel = kind === "emptyFolder" ? "empty folder" : "file";
-  const path = source
-    ? `${rootName ?? "Root"}/${source.relativePath}`
+  const displayTarget =
+    dialog.target ?? (source && kind ? { source, kind } : null);
+  const resourceLabel =
+    displayTarget?.kind === "emptyFolder" ? "empty folder" : "file";
+  const path = displayTarget
+    ? `${rootName ?? "Root"}/${displayTarget.source.relativePath}`
     : (rootName ?? "Root");
   const triggerTitle = sourceOpen
     ? "Close File and Diff tabs for this resource and its descendants"
@@ -186,37 +72,26 @@ export function TrashResourceControl({
   return (
     <>
       <button
-        ref={triggerRef}
+        className="explorer-action-menu__item"
         type="button"
+        role="menuitem"
+        tabIndex={-1}
         aria-label="Move to Recycle Bin"
         title={triggerTitle}
         disabled={!source || !kind || sourceOpen || projectTransitioning}
         onClick={() => {
-          const state = useWorkbenchStore.getState();
-          if (!state.project || !source || !kind) return;
-          closingRef.current = false;
-          clearError();
-          setScope({
-            projectId: state.project.id,
-            projectGeneration: state.projectGeneration,
-            transitionEpoch: state.nativeTransitionEpoch,
-          });
-          setOpen(true);
+          if (!source || !kind || !dialog.openDialog({ kind, source })) return;
+          onDialogOpen();
         }}
       >
         <Trash2 size={14} aria-hidden="true" />
+        <span>Move to Recycle Bin</span>
       </button>
-      {open && source && kind && scope ? (
-        <dialog
-          ref={dialogRef}
-          className="dirty-dialog new-file-dialog"
-          aria-modal="true"
-          aria-labelledby="trash-resource-title"
-          onCancel={(event) => {
-            event.preventDefault();
-            close();
-          }}
-          onKeyDown={containFocus}
+      {dialog.target ? (
+        <ModalDialog
+          className="new-file-dialog new-file-dialog--editor"
+          labelledBy="trash-resource-title"
+          onDismiss={() => dialog.closeDialog()}
         >
           <form className="new-file-dialog__form" onSubmit={submit}>
             <h2 id="trash-resource-title">Move to Recycle Bin?</h2>
@@ -232,7 +107,7 @@ export function TrashResourceControl({
                 className="button"
                 type="button"
                 disabled={inFlight}
-                onClick={() => close()}
+                onClick={() => dialog.closeDialog()}
               >
                 Cancel
               </button>
@@ -246,7 +121,7 @@ export function TrashResourceControl({
               </button>
             </div>
           </form>
-        </dialog>
+        </ModalDialog>
       ) : null}
     </>
   );

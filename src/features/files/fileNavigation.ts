@@ -1,10 +1,12 @@
 import { MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
 
+export type FileNavigationSelectionIntent =
+  { kind: "caret" } | { kind: "match"; query: string; caseSensitive: boolean };
+
 interface FileNavigationLocation {
   lineNumber: number;
   columnNumber: number;
-  query: string;
-  caseSensitive: boolean;
+  selection: FileNavigationSelectionIntent;
 }
 
 function nextCodePointOffset(content: string, offset: number, limit: number) {
@@ -38,9 +40,9 @@ function matchedEnd(
   content: string,
   start: number,
   lineEnd: number,
-  query: string,
-  caseSensitive: boolean,
+  match: Extract<FileNavigationSelectionIntent, { kind: "match" }>,
 ) {
+  const { query, caseSensitive } = match;
   if (caseSensitive && content.startsWith(query, start)) {
     return Math.min(lineEnd, start + query.length);
   }
@@ -88,14 +90,11 @@ export function fileNavigationSelection(
     location.columnNumber - 1,
     lineEnd,
   );
+  if (location.selection.kind === "caret") {
+    return { start, end: start };
+  }
   return {
     start,
-    end: matchedEnd(
-      content,
-      start,
-      lineEnd,
-      location.query,
-      location.caseSensitive,
-    ),
+    end: matchedEnd(content, start, lineEnd, location.selection),
   };
 }

@@ -212,6 +212,16 @@ describe("artifact chip stats", () => {
     });
   });
 
+  it("never falls back to an older session when the current session has no turn", () => {
+    const projection = page([
+      turn([fileItem("old", 1, [change("root-a", "src/app.ts", 9, 8)])], {
+        sessionId: "session-old" as never,
+      }),
+    ]);
+
+    expect(artifactChipStatsForTab(matchedTab, projection)).toBeNull();
+  });
+
   it("returns no counters without a focused page or tab resource", () => {
     expect(artifactChipStatsForTab(matchedTab, null)).toBeNull();
     expect(

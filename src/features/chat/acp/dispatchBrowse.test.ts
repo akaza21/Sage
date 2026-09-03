@@ -2,10 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../../domain/acp";
 import {
-  browseSessionForChat,
+  browseSessionForOwner,
   clearBrowseSessions,
 } from "../../preview/harnessBrowse";
 import { dispatchBrowseFromAcpPage } from "./dispatchBrowse";
+import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 
 afterEach(() => {
   clearBrowseSessions();
@@ -31,11 +32,19 @@ function page(items: AcpItem[], chatId = "chat-1"): AcpChatPage {
         createdAt: 1,
         updatedAt: 1,
         terminalAt: null,
-        items,
+        items: items.map((item) => ({ ...item, chatId }) as AcpItem),
         activities: [],
       } as unknown as TurnProjection,
     ],
   } as unknown as AcpChatPage;
+}
+
+function ownerFor(chatId: string): AgentArtifactOwner {
+  return {
+    projectId: "project-1",
+    chatId,
+    sessionId: "session-1",
+  } as AgentArtifactOwner;
 }
 
 function webTool(
@@ -76,7 +85,7 @@ describe("ACP curated browse dispatch", () => {
     dispatchBrowseFromAcpPage(
       page([webTool("Opened http://127.0.0.1:5173/app")]),
     );
-    expect(browseSessionForChat("chat-1")?.href).toBe(
+    expect(browseSessionForOwner(ownerFor("chat-1"))?.href).toBe(
       "http://127.0.0.1:5173/app",
     );
   });
@@ -84,7 +93,9 @@ describe("ACP curated browse dispatch", () => {
   it("keeps rejected URLs closed", () => {
     dispatchBrowseFromAcpPage(page([webTool("Opened http://127.0.0.1:5173/")]));
     dispatchBrowseFromAcpPage(page([webTool("see https://example.com/docs")]));
-    expect(browseSessionForChat("chat-1")?.href).toBe("http://127.0.0.1:5173/");
+    expect(browseSessionForOwner(ownerFor("chat-1"))?.href).toBe(
+      "http://127.0.0.1:5173/",
+    );
   });
 
   it("scopes browse to the current chat and session", () => {
@@ -95,10 +106,10 @@ describe("ACP curated browse dispatch", () => {
     foreign.turns[0].items[0].sessionId =
       "session-other" as AcpItem["sessionId"];
     dispatchBrowseFromAcpPage(foreign);
-    expect(browseSessionForChat("chat-a")?.href).toBe(
+    expect(browseSessionForOwner(ownerFor("chat-a"))?.href).toBe(
       "http://127.0.0.1:4173/a",
     );
-    expect(browseSessionForChat("chat-b")).toBeNull();
+    expect(browseSessionForOwner(ownerFor("chat-b"))).toBeNull();
   });
 
   it("respects the two-chat browse cap", () => {
@@ -111,7 +122,9 @@ describe("ACP curated browse dispatch", () => {
     dispatchBrowseFromAcpPage(
       page([webTool("http://127.0.0.1:3000/")], "chat-c"),
     );
-    expect(browseSessionForChat("chat-a")).toBeNull();
-    expect(browseSessionForChat("chat-c")?.href).toBe("http://127.0.0.1:3000/");
+    expect(browseSessionForOwner(ownerFor("chat-a"))).toBeNull();
+    expect(browseSessionForOwner(ownerFor("chat-c"))?.href).toBe(
+      "http://127.0.0.1:3000/",
+    );
   });
 });

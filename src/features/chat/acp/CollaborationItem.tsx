@@ -24,15 +24,29 @@ export function CollaborationItem({
     <article
       className="acp-collaboration"
       role="group"
-      aria-label="Harness collaboration"
+      aria-label={`Harness collaboration: ${item.payload.label}`}
       aria-describedby={descriptionId}
     >
       <span className="sr-only" id={descriptionId}>
         Read-only activity owned and scheduled by the harness
       </span>
       <header>
-        <strong>{item.payload.label}</strong>
-        <span role="status" aria-label={status} aria-live="off">
+        <span className="acp-collaboration__identity">
+          <span className="acp-collaboration__kind">Collaboration</span>
+          <strong
+            className="acp-collaboration__label"
+            title={item.payload.label}
+          >
+            {item.payload.label}
+          </strong>
+        </span>
+        <span
+          className="acp-collaboration__status"
+          role="status"
+          aria-label={status}
+          aria-live="off"
+          data-lifecycle={item.lifecycle}
+        >
           {status}
         </span>
       </header>

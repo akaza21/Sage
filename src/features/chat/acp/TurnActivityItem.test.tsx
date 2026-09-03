@@ -1,0 +1,148 @@
+import { cleanup, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+
+import type { AcpItem } from "../../../domain/acp";
+import { TurnActivityItem } from "./TurnActivityItem";
+
+afterEach(cleanup);
+
+function item<T extends AcpItem["kind"]>(
+  kind: T,
+  payload: Extract<AcpItem, { kind: T }>["payload"],
+): Extract<AcpItem, { kind: T }> {
+  return {
+    id: `item-${kind}`,
+    projectId: "project-1",
+    chatId: "chat-1",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    runtimeEpoch: "1",
+    ordinal: 1,
+    origin: "primary",
+    activityId: null,
+    lifecycle: "completed",
+    revision: "1",
+    createdAt: 1,
+    updatedAt: 2,
+    terminalAt: 2,
+    kind,
+    toolState: null,
+    payload,
+  } as Extract<AcpItem, { kind: T }>;
+}
+
+describe("TurnActivityItem", () => {
+  it("presents Plan progress and human-readable entry states", () => {
+    const plan = item("plan", {
+      entries: [
+        { label: "Inspect", state: "completed" },
+        { label: "Implement", state: "inProgress" },
+        { label: "Verify", state: "pending" },
+        { label: "Publish", state: "failed" },
+      ],
+    });
+    const { container } = render(<TurnActivityItem item={plan} />);
+
+    const region = screen.getByRole("region", { name: "Agent plan" });
+    expect(within(region).getByRole("status")).toHaveTextContent(
+      "1 of 4 complete",
+    );
+    expect(region).toHaveTextContent("In progress");
+    expect(region).not.toHaveTextContent("inProgress");
+    expect(container.querySelector(".acp-plan")).toHaveAttribute(
+      "data-activity-state",
+      "failed",
+    );
+  });
+
+  it("renders reported and unknown Usage as compact metadata", () => {
+    const { container, rerender } = render(
+      <TurnActivityItem
+        item={item("usage", {
+          inputTokens: 800,
+          outputTokens: 434,
+          cachedInputTokens: 100,
+          totalTokens: 1234,
+        })}
+      />,
+    );
+    expect(screen.getByLabelText("Usage")).toHaveTextContent("1,234 tokens");
+    expect(container.querySelector(".acp-usage")).toHaveAttribute(
+      "data-activity-state",
+      "reported",
+    );
+
+    rerender(
+      <TurnActivityItem
+        item={item("usage", {
+          inputTokens: null,
+          outputTokens: null,
+          cachedInputTokens: null,
+          totalTokens: null,
+        })}
+      />,
+    );
+    expect(screen.getByLabelText("Usage")).toHaveTextContent(
+      "Tokens not reported",
+    );
+  });
+
+  it("keeps recoverable and non-recoverable errors explicit", () => {
+    const { rerender } = render(
+      <TurnActivityItem
+        item={item("error", {
+          code: "PREVIEW_STOPPED",
+          message: "Preview stopped safely.",
+          recoverable: true,
+        })}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Retry available");
+
+    rerender(
+      <TurnActivityItem
+        item={item("error", {
+          code: "SESSION_LOST",
+          message: "Inspect the Chat before continuing.",
+          recoverable: false,
+        })}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Needs attention");
+  });
+
+  it("keeps Thought disclosure keyboard-native with visible working status", () => {
+    const thought = item("thoughtSummary", { summary: "Checking the files." });
+    const working = {
+      ...item("error", {
+        code: "unused",
+        message: "unused",
+        recoverable: false,
+      }),
+      id: "tool-working",
+      kind: "toolCall",
+      lifecycle: "streaming",
+      terminalAt: null,
+      toolState: "inProgress",
+      payload: {
+        presentation: {
+          kind: "search",
+          label: "Search workspace",
+          querySummary: "activity cards",
+          resources: [],
+        },
+        inputSummary: "Scanning files",
+      },
+    } as unknown as Extract<AcpItem, { kind: "toolCall" }>;
+    const { container } = render(
+      <TurnActivityItem item={thought} workingItems={[working]} />,
+    );
+
+    expect(screen.getByText("In progress")).toBeVisible();
+    expect(screen.getByText("Search workspace")).not.toBeVisible();
+    const details = container.querySelector("details");
+    expect(details).not.toBeNull();
+    details!.open = true;
+    expect(screen.getByText("Search workspace")).toBeVisible();
+  });
+});

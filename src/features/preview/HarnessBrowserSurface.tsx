@@ -5,15 +5,20 @@ import {
   applyBrowseIntent,
   browseBack,
   browseForward,
-  browseHistoryForChat,
+  browseHistoryForOwner,
   clearBrowseSession,
 } from "./harnessBrowse";
 import { useHarnessBrowseSession } from "./useHarnessBrowseSession";
+import type { AgentArtifactOwner } from "../../domain/agentArtifact";
 
-export function HarnessBrowserSurface({ chatId }: { chatId: string | null }) {
-  const session = useHarnessBrowseSession(chatId);
-  const history = chatId
-    ? browseHistoryForChat(chatId)
+export function HarnessBrowserSurface({
+  owner,
+}: {
+  owner: AgentArtifactOwner | null;
+}) {
+  const session = useHarnessBrowseSession(owner);
+  const history = owner
+    ? browseHistoryForOwner(owner)
     : { canBack: false, canForward: false };
   const sessionHref = session?.href ?? "";
   const [override, setOverride] = useState<{
@@ -27,8 +32,8 @@ export function HarnessBrowserSurface({ chatId }: { chatId: string | null }) {
 
   const submitAddress = (event: FormEvent) => {
     event.preventDefault();
-    if (!chatId) return;
-    const next = applyBrowseIntent({ chatId, url: draft.trim() });
+    if (!owner) return;
+    const next = applyBrowseIntent({ owner, url: draft.trim() });
     if (!next) {
       setDenied(true);
       return;
@@ -44,9 +49,9 @@ export function HarnessBrowserSurface({ chatId }: { chatId: string | null }) {
           type="button"
           aria-label="Back"
           title="Back"
-          disabled={!history.canBack || !chatId}
+          disabled={!history.canBack || !owner}
           onClick={() => {
-            if (chatId) browseBack(chatId);
+            if (owner) browseBack(owner);
           }}
         >
           <ChevronLeft size={13} aria-hidden="true" />
@@ -55,9 +60,9 @@ export function HarnessBrowserSurface({ chatId }: { chatId: string | null }) {
           type="button"
           aria-label="Forward"
           title="Forward"
-          disabled={!history.canForward || !chatId}
+          disabled={!history.canForward || !owner}
           onClick={() => {
-            if (chatId) browseForward(chatId);
+            if (owner) browseForward(owner);
           }}
         >
           <ChevronRight size={13} aria-hidden="true" />
@@ -87,12 +92,12 @@ export function HarnessBrowserSurface({ chatId }: { chatId: string | null }) {
         >
           <RotateCw size={13} aria-hidden="true" />
         </button>
-        {session && chatId ? (
+        {session && owner ? (
           <button
             type="button"
             aria-label="Close browser"
             title="Close browser"
-            onClick={() => clearBrowseSession(chatId)}
+            onClick={() => clearBrowseSession(owner)}
           >
             <X size={13} aria-hidden="true" />
           </button>

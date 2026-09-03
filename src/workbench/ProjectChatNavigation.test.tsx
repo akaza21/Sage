@@ -86,7 +86,7 @@ function openChatActions(title: string) {
   );
 }
 
-it("shows Devin session-card status and hides the unread dot on the focused chat", () => {
+it("shows one prioritized trailing state per chat and keeps actions separate", () => {
   syncAgentRailClock(Date.UTC(2026, 7, 26, 18, 0, 0));
   seedChats();
   render(
@@ -97,32 +97,33 @@ it("shows Devin session-card status and hides the unread dot on the focused chat
     />,
   );
 
-  expect(screen.getByText("Working…")).toBeInTheDocument();
-  expect(screen.getByText("Done")).toBeInTheDocument();
   const focused = screen.getByTitle("Open chat Alpha");
   expect(focused).toHaveAttribute("aria-current", "page");
   expect(focused).toHaveAttribute("data-chat-id", "chat:a");
-  expect(focused.querySelector("[aria-label='Working']")).toBeInTheDocument();
-  expect(
-    focused.querySelector("[aria-label='Unread updates']"),
-  ).not.toBeInTheDocument();
-  expect(
-    screen
-      .getByTitle("Open chat Beta")
-      .querySelector("[aria-label='Unread updates']"),
-  ).toBeInTheDocument();
-  expect(
-    screen
-      .getByTitle("Open chat Gamma")
-      .querySelector("[aria-label='Unread updates']"),
-  ).not.toBeInTheDocument();
+  const focusedRow = focused.closest(".project-chat-row");
+  expect(focusedRow?.querySelectorAll(".project-chat__state")).toHaveLength(1);
+  expect(focusedRow?.querySelector(".project-chat__state")).toHaveTextContent(
+    "Working…",
+  );
+  const betaRow = screen
+    .getByTitle("Open chat Beta")
+    .closest(".project-chat-row");
+  expect(betaRow?.querySelectorAll(".project-chat__state")).toHaveLength(1);
+  expect(betaRow?.querySelector(".project-chat__state")).toHaveTextContent(
+    "Unread",
+  );
+  const gammaRow = screen
+    .getByTitle("Open chat Gamma")
+    .closest(".project-chat-row");
+  expect(gammaRow?.querySelectorAll(".project-chat__state")).toHaveLength(1);
+  expect(gammaRow?.querySelector(".project-chat__state")).toHaveTextContent(
+    "53d",
+  );
   expect(screen.getAllByText("feat/onboarding")).toHaveLength(3);
-  expect(screen.getByText("6h")).toBeInTheDocument();
-  expect(screen.getByText("53d")).toBeInTheDocument();
-  expect(screen.getByText("now")).toBeInTheDocument();
-  expect(
-    screen.getByTitle("Open chat Gamma").querySelector("time"),
-  ).toHaveTextContent("53d");
+  expect(gammaRow?.querySelector("time")).toHaveTextContent("53d");
+  expect(focusedRow?.querySelector(".project-chat__trailing")).toContainElement(
+    screen.getByRole("button", { name: "Chat actions for Alpha" }),
+  );
 });
 
 it("animates only a live working turn and marks waiting as attention", () => {
@@ -171,15 +172,20 @@ it("animates only a live working turn and marks waiting as attention", () => {
   expect(
     screen
       .getByTitle("Open chat Live turn")
-      .querySelector("[aria-label='Working']"),
-  ).toBeInTheDocument();
+      .closest(".project-chat-row")
+      ?.querySelector(".project-chat__state"),
+  ).toHaveTextContent("Working…");
   expect(
     screen
       .getByTitle("Open chat Need a decision")
-      .querySelector("[aria-label='Unread updates']"),
-  ).toHaveClass("agent-unread-dot--attention");
+      .closest(".project-chat-row")
+      ?.querySelector(".project-chat__state"),
+  ).toHaveTextContent("Waiting");
   expect(
-    screen.getByTitle("Open chat Idle").querySelector("[aria-label='Working']"),
+    screen
+      .getByTitle("Open chat Idle")
+      .closest(".project-chat-row")
+      ?.querySelector(".project-chat__state"),
   ).toBeNull();
 });
 
@@ -361,16 +367,19 @@ it("clears the rail unread dot after an unseen Done session is opened", () => {
   expect(
     screen
       .getByTitle("Open chat Beta")
-      .querySelector("[aria-label='Unread updates']"),
+      .closest(".project-chat-row")
+      ?.querySelector("[aria-label='Unread updates']"),
   ).not.toBeInTheDocument();
   expect(
     screen
       .getByTitle("Open chat Alpha")
-      .querySelector("[aria-label='Working']"),
+      .closest(".project-chat-row")
+      ?.querySelector("[aria-label='Working']"),
   ).toBeInTheDocument();
   expect(
     screen
       .getByTitle("Open chat Alpha")
-      .querySelector("[aria-label='Unread updates']"),
+      .closest(".project-chat-row")
+      ?.querySelector("[aria-label='Unread updates']"),
   ).not.toBeInTheDocument();
 });

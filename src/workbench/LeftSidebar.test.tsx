@@ -429,7 +429,8 @@ it("groups chats by durable status without dropping folder identity", () => {
   expect(
     screen
       .getByTitle("Open chat Kickoff")
-      .querySelector("[aria-label='Working']"),
+      .closest(".project-chat-row")
+      ?.querySelector("[aria-label='Working']"),
   ).toBeInTheDocument();
 });
 
@@ -464,13 +465,15 @@ it("marks visible unread rail chats read from the filter menu", () => {
   expect(
     screen
       .getByTitle("Open chat Shipped")
-      .querySelector("[aria-label='Unread updates']"),
+      .closest(".project-chat-row")
+      ?.querySelector("[aria-label='Unread updates']"),
   ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Chat list options" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Mark All as Read" }));
   expect(
     screen
       .getByTitle("Open chat Shipped")
-      .querySelector("[aria-label='Unread updates']"),
+      .closest(".project-chat-row")
+      ?.querySelector("[aria-label='Unread updates']"),
   ).not.toBeInTheDocument();
 });

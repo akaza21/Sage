@@ -204,13 +204,13 @@ async function editSaveSearchAndCommit(client) {
     `document.querySelector('button[aria-label="Search"]').click()`,
   );
   await client.waitFor(
-    `document.querySelectorAll('input[aria-label="Search files"]').length===1`,
+    `document.querySelectorAll('input[aria-label="Search text"]').length===1`,
   );
   await client.evaluate(
-    setValueExpression('input[aria-label="Search files"]', "committed"),
+    setValueExpression('input[aria-label="Search text"]', "committed"),
   );
   await client.evaluate(
-    `(()=>{const e=[...document.querySelectorAll('.workspace-search button')].find(e=>e.textContent.trim()==='Search');if(!e)return false;e.click();return true})()`,
+    `(()=>{const e=document.querySelector('.workspace-search__form');if(!e)return false;return e.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))===false})()`,
   );
   await client.waitFor(
     `document.querySelectorAll('button[aria-label^="Open README.md at line "]').length===1`,

@@ -31,4 +31,19 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer__toolbar\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;/s,
     );
   });
+
+  it("keeps the conversation composer compact without moving controls on hover", async () => {
+    const surfaceCss = await readFile(
+      resolve("src/styles/composer-surface.css"),
+      "utf8",
+    );
+
+    expect(surfaceCss).toMatch(
+      /\.composer textarea\s*\{[^}]*min-height:\s*56px;[^}]*padding:\s*var\(--space-3\)\s+var\(--space-3\)\s+var\(--space-1\);/s,
+    );
+    expect(surfaceCss).toMatch(
+      /@media \(max-width:\s*820px\)[\s\S]*\.composer__shortcut\s*\{[^}]*display:\s*none;/s,
+    );
+    expect(surfaceCss).not.toMatch(/transform:\s*translate/);
+  });
 });

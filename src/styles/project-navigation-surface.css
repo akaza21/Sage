@@ -114,9 +114,9 @@
   align-items: center;
   gap: 3px;
   overflow: hidden;
-  padding: 1px 6px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-pill);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

@@ -784,7 +784,7 @@ export const UI_ACTIONS = Object.freeze([
   ),
   action(
     "File",
-    "(()=>{const forms=[...document.querySelectorAll('.workspace-search__form')];if(forms.length!==1)return false;const inputs=[...forms[0].querySelectorAll('input[type=\"search\"][aria-label=\"Search files\"]')];const buttons=[...forms[0].querySelectorAll('button[type=\"submit\"]')];if(inputs.length!==1||buttons.length!==1)return false;const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;set.call(inputs[0],'SAGE_JOURNEY_SENTINEL');inputs[0].dispatchEvent(new Event('input',{bubbles:true}));buttons[0].click();return true})()",
+    "(()=>{const forms=[...document.querySelectorAll('.workspace-search__form')];if(forms.length!==1)return false;const inputs=[...forms[0].querySelectorAll('input[type=\"search\"][aria-label=\"Search text\"]')];if(inputs.length!==1)return false;const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;set.call(inputs[0],'SAGE_JOURNEY_SENTINEL');inputs[0].dispatchEvent(new Event('input',{bubbles:true}));return forms[0].dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))===false})()",
     "Search form is unavailable",
   ),
   action(
@@ -865,7 +865,7 @@ export function verificationFor(step) {
   if (step === "Explorer")
     return '(()=>{const tools=[...document.querySelectorAll(\'aside[aria-label="Project tools"]\')];if(tools.length!==1)return false;const trees=[...tools[0].querySelectorAll(\'[role="tree"][aria-label="Project files"]\')];return trees.length===1&&trees[0].querySelectorAll(\'[role="treeitem"][aria-label="Open file journey.ts"]\').length===1})()';
   if (step === "Search")
-    return "(()=>{const forms=[...document.querySelectorAll('.workspace-search__form')];if(forms.length!==1)return false;return forms[0].querySelectorAll('input[type=\"search\"][aria-label=\"Search files\"]').length===1&&forms[0].querySelectorAll('button[type=\"submit\"]').length===1})()";
+    return "(()=>{const forms=[...document.querySelectorAll('.workspace-search__form')];if(forms.length!==1)return false;return forms[0].querySelectorAll('input[type=\"search\"][aria-label=\"Search text\"]').length===1})()";
   if (step === "File")
     return 'document.querySelectorAll(\'.workspace-search__results[role="list"] [role="listitem"] > button.workspace-search__result[aria-label="Open journey.ts at line 1, column 14"]\').length===1';
   if (step === "edit-diagnostic")

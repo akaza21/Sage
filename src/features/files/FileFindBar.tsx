@@ -27,7 +27,11 @@ export function FileFindBar({
   onClose,
 }: FileFindBarProps) {
   return (
-    <div className="editor-find" role="search" aria-label="Find in file">
+    <div
+      className="editor-find editor-find--overlay"
+      role="search"
+      aria-label="Find in file"
+    >
       <label className="editor-find__query">
         <span className="sr-only">Find text</span>
         <input

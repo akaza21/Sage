@@ -16,6 +16,7 @@ describe("Right-region stylesheet seam", () => {
     expect(shellCss).not.toMatch(/^\.right-region--collapsed\b/m);
     expect(shellCss).not.toMatch(/^\.right-region--leading\b/m);
     expect(chromeCss).toMatch(/^\.right-region\b/m);
+    expect(chromeCss).toMatch(/^\.right-region\s*\{[\s\S]*?min-height:\s*0;/m);
     expect(chromeCss).toMatch(/^\.right-region--collapsed\b/m);
     expect(chromeCss).toMatch(/^\.right-region--leading\b/m);
   });

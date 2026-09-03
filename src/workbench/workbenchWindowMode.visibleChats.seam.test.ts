@@ -70,11 +70,24 @@ describe("Agent visible chat selection", () => {
 
   it("focuses the active chat when it is one of the chats", () => {
     expect(
-      focusedAgentChatId(["chat:a", "chat:b"], ["chat:a", "chat:b"], "chat:b"),
+      focusedAgentChatId(
+        ["chat:a", "chat:b"],
+        ["chat:a", "chat:b"],
+        "chat:b",
+        "chat:a",
+      ),
     ).toBe("chat:b");
     expect(
-      focusedAgentChatId(["chat:a", "chat:b"], ["chat:a", "chat:b"], "file:a"),
-    ).toBe("chat:a");
+      focusedAgentChatId(
+        ["chat:a", "chat:b"],
+        ["chat:a", "chat:b"],
+        "file:a",
+        "chat:b",
+      ),
+    ).toBe("chat:b");
+    expect(focusedAgentChatId(["chat:a"], ["chat:a"], "file:a", "chat:b")).toBe(
+      "chat:a",
+    );
   });
 
   it("prefers the remembered artifact for Editor continuity", () => {

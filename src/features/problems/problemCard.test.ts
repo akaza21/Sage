@@ -15,11 +15,13 @@ describe("problemSeverityLabel", () => {
 });
 
 describe("problemSummaryTitle", () => {
-  it("prefers bugs, then flags, then informational", () => {
-    expect(problemSummaryTitle({ bugs: 1, flags: 3, infos: 2 })).toBe("1 Bug");
+  it("summarizes the complete bounded problem list", () => {
+    expect(problemSummaryTitle({ bugs: 1, flags: 3, infos: 2 })).toBe(
+      "6 Problems",
+    );
     expect(problemSummaryTitle({ bugs: 2, flags: 0, infos: 0 })).toBe("2 Bugs");
     expect(problemSummaryTitle({ bugs: 0, flags: 3, infos: 1 })).toBe(
-      "3 Flags",
+      "4 Problems",
     );
     expect(problemSummaryTitle({ bugs: 0, flags: 0, infos: 1 })).toBe(
       "1 Informational",

@@ -12,11 +12,10 @@ describe("Shared dialogs stylesheet seam", () => {
     ]);
 
     expect(entry).toMatch(/import ["']\.\/styles\/shared-dialogs\.css["'];/);
-    expect(shellCss).not.toMatch(/^\.dialog-backdrop\b/m);
     expect(shellCss).not.toMatch(/^\.dirty-dialog\b/m);
     expect(shellCss).not.toMatch(/^\.chat-search-dialog\b/m);
-    expect(surfaceCss).toMatch(/^\.dialog-backdrop\b/m);
     expect(surfaceCss).toMatch(/^\.dirty-dialog\b/m);
+    expect(surfaceCss).toMatch(/^\.dirty-dialog::backdrop\b/m);
     expect(surfaceCss).toMatch(/^\.new-file-dialog\b/m);
     expect(surfaceCss).toMatch(/^\.handoff-dialog\b/m);
     expect(surfaceCss).toMatch(/^\.chat-search-dialog\b/m);

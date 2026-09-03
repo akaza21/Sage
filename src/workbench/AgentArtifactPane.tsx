@@ -1,20 +1,35 @@
-import { Eye, Files, GitCompareArrows, PanelRightClose, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Eye,
+  Files,
+  GitCompareArrows,
+  PanelRightClose,
+  Pin,
+  X,
+} from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useStore } from "zustand";
 
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
+import {
+  agentArtifactFollowRecordFor,
+  sameAgentArtifactTarget,
+  type AgentArtifactTarget,
+  useAgentArtifactFollowStore,
+} from "../app/agentArtifactFollowStore";
 import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
+import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
 import { orderedTabs } from "../app/tabState";
 import { useWorkbenchStore } from "../app/store";
 import { agentArtifactVisible } from "./agentArtifactAdmission";
 import { FileKindIcon } from "../features/files/FileKindIcon";
 import { HarnessBrowserSurface } from "../features/preview/HarnessBrowserSurface";
-import {
-  useHarnessBrowseOwner,
-  useHarnessBrowseSession,
-} from "../features/preview/useHarnessBrowseSession";
+import { useHarnessBrowseSession } from "../features/preview/useHarnessBrowseSession";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { renderFileOrDiffCanvas } from "./surfaceRegistry";
+import {
+  agentArtifactOwnerKey,
+  type AgentArtifactOwner,
+} from "../domain/agentArtifact";
 
 export function AgentArtifactPane({
   expanded = true,
@@ -29,59 +44,125 @@ export function AgentArtifactPane({
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const activateTab = useWorkbenchStore((state) => state.activateTab);
   const closeTab = useWorkbenchStore((state) => state.closeTab);
-  const [previewSelected, setPreviewSelected] = useState(false);
-  const lastArtifactId = useRef(activeTabId);
-  const lastBrowseRevision = useRef(0);
   const availableResourceKeys = useRef(new Set<string>());
   const paneRef = useRef<HTMLElement | null>(null);
   const edgeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const previousExpanded = useRef(expanded);
-  const admittedIds = useAgentArtifactAdmissionStore((state) => state.ids);
-  const browseChatId = useHarnessBrowseOwner();
-  const focusedPage = useStore(acpProjectionStoreFor(browseChatId), (state) =>
-    browseChatId && state.page?.chatId === browseChatId ? state.page : null,
+  const admissions = useAgentArtifactAdmissionStore(
+    (state) => state.admissions,
   );
+  const followRecords = useAgentArtifactFollowStore((state) => state.records);
+  const project = useWorkbenchStore((state) => state.project);
+  const projectGeneration = useWorkbenchStore(
+    (state) => state.projectGeneration,
+  );
+  const projectTransitioning = useWorkbenchStore(
+    (state) => state.projectTransitioning,
+  );
+  const focusedChatId = usePinnedAgentChatOwner();
+  const focusedProjectionStore = acpProjectionStoreFor(focusedChatId);
+  const focusedPage = useStore(focusedProjectionStore, (state) => state.page);
+  const focusedScope = useStore(focusedProjectionStore, (state) => state.scope);
+  const focusedOwner = useMemo<AgentArtifactOwner | null>(() => {
+    if (
+      projectTransitioning ||
+      !project ||
+      !focusedChatId ||
+      !focusedPage?.currentSessionId ||
+      !focusedScope ||
+      focusedPage.projectId !== project.id ||
+      focusedPage.chatId !== focusedChatId ||
+      focusedScope.projectId !== focusedPage.projectId ||
+      focusedScope.chatId !== focusedPage.chatId ||
+      focusedScope.projectGeneration !== String(projectGeneration)
+    ) {
+      return null;
+    }
+    return {
+      projectId: focusedPage.projectId,
+      chatId: focusedPage.chatId,
+      sessionId: focusedPage.currentSessionId,
+    };
+  }, [
+    focusedChatId,
+    focusedPage,
+    focusedScope,
+    project,
+    projectGeneration,
+    projectTransitioning,
+  ]);
   const artifacts = useMemo(
     () =>
       orderedTabs(tabs).filter((tab) =>
         agentArtifactVisible({
           tabId: tab.id,
           kind: tab.kind,
-          admittedIds,
+          admissions,
+          focusedOwner,
           hasFocusedChatStats:
-            artifactChipStatsForTab(tab, focusedPage) != null,
+            artifactChipStatsForTab(tab, focusedOwner ? focusedPage : null) !=
+            null,
         }),
       ),
-    [admittedIds, focusedPage, tabs],
+    [admissions, focusedOwner, focusedPage, tabs],
   );
-  const activeArtifact =
-    artifacts.find((tab) => tab.id === activeTabId) ?? null;
-  const browseSession = useHarnessBrowseSession(browseChatId);
+  const browseSession = useHarnessBrowseSession(focusedOwner);
   const browseRevision = browseSession?.revision ?? 0;
   const previewOpen = browseSession !== null;
+  const availableTargets = useMemo<AgentArtifactTarget[]>(
+    () => [
+      ...artifacts.map((tab) => ({ kind: "tab" as const, tabId: tab.id })),
+      ...(previewOpen ? [{ kind: "preview" as const }] : []),
+    ],
+    [artifacts, previewOpen],
+  );
+  const followRecord = agentArtifactFollowRecordFor(
+    followRecords,
+    focusedOwner,
+  );
+  const activeWorkbenchArtifact = artifacts.find(
+    (tab) => tab.id === activeTabId,
+  );
+  const defaultTarget: AgentArtifactTarget | null = activeWorkbenchArtifact
+    ? { kind: "tab", tabId: activeWorkbenchArtifact.id }
+    : previewOpen
+      ? { kind: "preview" }
+      : null;
+  const selectedTarget = followRecord
+    ? (availableTargets.find((target) =>
+        sameAgentArtifactTarget(target, followRecord.selected),
+      ) ?? null)
+    : defaultTarget;
+  const previewSelected = selectedTarget?.kind === "preview";
+  const activeArtifact =
+    selectedTarget?.kind === "tab"
+      ? (artifacts.find((tab) => tab.id === selectedTarget.tabId) ?? null)
+      : null;
 
   useEffect(() => {
-    if (activeArtifact && activeTabId !== lastArtifactId.current) {
-      setPreviewSelected(false);
-    }
-    lastArtifactId.current = activeTabId;
-  }, [activeArtifact, activeTabId]);
+    if (!focusedOwner || !browseSession) return;
+    useAgentArtifactFollowStore
+      .getState()
+      .observe(focusedOwner, { kind: "preview" }, browseSession.revision);
+  }, [browseSession, focusedOwner]);
 
   useEffect(() => {
-    if (browseRevision > lastBrowseRevision.current) {
-      setPreviewSelected(true);
-    }
-    lastBrowseRevision.current = browseRevision;
-  }, [browseRevision]);
+    if (!focusedOwner) return;
+    useAgentArtifactFollowStore
+      .getState()
+      .reconcile(focusedOwner, availableTargets);
+  }, [availableTargets, focusedOwner]);
 
   const hasResources = artifacts.length > 0 || previewOpen;
   const resourceKeys = useMemo(
     () =>
       new Set([
         ...artifacts.map((tab) => tab.id),
-        ...(previewOpen ? [`preview:${browseChatId}:${browseRevision}`] : []),
+        ...(previewOpen
+          ? [`preview:${agentArtifactOwnerKey(focusedOwner)}:${browseRevision}`]
+          : []),
       ]),
-    [artifacts, browseChatId, browseRevision, previewOpen],
+    [artifacts, browseRevision, focusedOwner, previewOpen],
   );
 
   useEffect(() => {
@@ -152,8 +233,13 @@ export function AgentArtifactPane({
           <nav className="tab-strip" aria-label="Agent artifact tabs">
             <div className="tab-strip__scroll">
               {artifacts.map((tab) => {
-                const selected = !previewSelected && tab.id === activeTabId;
-                const stats = artifactChipStatsForTab(tab, focusedPage);
+                const selected =
+                  selectedTarget?.kind === "tab" &&
+                  tab.id === selectedTarget.tabId;
+                const stats = artifactChipStatsForTab(
+                  tab,
+                  focusedOwner ? focusedPage : null,
+                );
                 return (
                   <div
                     className={`tab ${selected ? "tab--active" : ""}`}
@@ -166,7 +252,14 @@ export function AgentArtifactPane({
                       role="tab"
                       aria-selected={selected}
                       onClick={() => {
-                        setPreviewSelected(false);
+                        if (focusedOwner) {
+                          useAgentArtifactFollowStore
+                            .getState()
+                            .pin(focusedOwner, {
+                              kind: "tab",
+                              tabId: tab.id,
+                            });
+                        }
                         void activateTab(tab.id);
                       }}
                     >
@@ -218,7 +311,13 @@ export function AgentArtifactPane({
                     type="button"
                     role="tab"
                     aria-selected={previewSelected}
-                    onClick={() => setPreviewSelected(true)}
+                    onClick={() => {
+                      if (focusedOwner) {
+                        useAgentArtifactFollowStore
+                          .getState()
+                          .pin(focusedOwner, { kind: "preview" });
+                      }
+                    }}
                   >
                     <Eye size={15} strokeWidth={1.8} aria-hidden="true" />
                     <span>Preview</span>
@@ -230,6 +329,24 @@ export function AgentArtifactPane({
         ) : (
           <strong>Files, changes, and preview</strong>
         )}
+        {focusedOwner && followRecord && availableTargets.length > 1 ? (
+          <button
+            className="agent-artifact-pane__follow"
+            type="button"
+            aria-label="Follow latest resource"
+            aria-pressed={followRecord.mode === "follow"}
+            title={
+              followRecord.mode === "follow"
+                ? "Following the newest resource from this Chat"
+                : "Resume following the newest resource from this Chat"
+            }
+            onClick={() =>
+              useAgentArtifactFollowStore.getState().followLatest(focusedOwner)
+            }
+          >
+            <Pin size={15} aria-hidden="true" />
+          </button>
+        ) : null}
         <button
           className="agent-artifact-pane__collapse"
           type="button"
@@ -243,7 +360,7 @@ export function AgentArtifactPane({
       <div className="agent-artifact-pane__canvas">
         {previewSelected && previewOpen ? (
           <div className="agent-preview-stack">
-            <HarnessBrowserSurface chatId={browseChatId} />
+            <HarnessBrowserSurface owner={focusedOwner} />
           </div>
         ) : null}
         {!previewSelected && activeArtifact

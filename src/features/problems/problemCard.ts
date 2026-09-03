@@ -20,6 +20,12 @@ export function problemSummaryTitle(input: {
   flags: number;
   infos: number;
 }): string {
+  const total = input.bugs + input.flags + input.infos;
+  const representedKinds =
+    Number(input.bugs > 0) + Number(input.flags > 0) + Number(input.infos > 0);
+  if (representedKinds > 1) {
+    return `${total} Problems`;
+  }
   if (input.bugs > 0) {
     return input.bugs === 1 ? "1 Bug" : `${input.bugs} Bugs`;
   }

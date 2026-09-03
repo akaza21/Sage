@@ -21,6 +21,13 @@ const lifecycleLabels = {
   unsupported: "Unsupported",
 } as const;
 
+const activityKindLabels = {
+  root: "Harness activity",
+  fork: "Branch activity",
+  child: "Child activity",
+  unknown: "Harness activity",
+} as const;
+
 interface ActivityItemNode {
   activity: HarnessActivityProjection;
   children: ActivityItemNode[];
@@ -135,6 +142,8 @@ export function HarnessActivity({
     ? activeItemId
     : (visibleNodes[0]?.item.id ?? null);
   const safeLabel = activity.provenance.safeLabel ?? "Harness activity";
+  const activityKind = activityKindLabels[activity.role];
+  const activityLevel = Math.min(4, Math.max(1, activity.depth));
   const activeStale = activeItemId !== null && !allIds.has(activeItemId);
 
   useEffect(() => {
@@ -208,19 +217,25 @@ export function HarnessActivity({
 
   return (
     <details
-      className="acp-activity"
+      className="acp-activity acp-child-activity"
       role="group"
       aria-label={`Harness activity: ${safeLabel}`}
       aria-describedby={descriptionId}
       data-sage-activity-id={activity.id}
     >
-      <summary ref={disclosureRef}>
-        <span>{safeLabel}</span>
+      <summary className="acp-child-activity__summary" ref={disclosureRef}>
+        <span className="acp-child-activity__identity">
+          <span className="acp-child-activity__kind">{activityKind}</span>
+          <span className="acp-child-activity__label" title={safeLabel}>
+            {safeLabel}
+          </span>
+        </span>
         <span
-          className="acp-state"
+          className="acp-state acp-child-activity__status"
           role="status"
           aria-label={lifecycleLabels[activity.lifecycle]}
           aria-live="off"
+          data-lifecycle={activity.lifecycle}
         >
           {lifecycleLabels[activity.lifecycle]}
         </span>
@@ -229,12 +244,17 @@ export function HarnessActivity({
         Bounded read-only child activity in the originating Turn
       </span>
       <p className="acp-activity__provenance">
-        Harness-owned {activity.role} activity · depth {activity.depth}
+        Harness-owned {activity.role} activity · level {activityLevel}
       </p>
-      <div role="tree" aria-label={`${safeLabel} activity items`}>
+      <div
+        className="acp-child-activity__tree"
+        role="tree"
+        aria-label={`${safeLabel} activity items`}
+      >
         {visibleNodes.map((node) => (
           <div
             key={node.item.id}
+            className="acp-child-activity__item"
             ref={(element) => {
               if (element) nodeRefs.current.set(node.item.id, element);
               else nodeRefs.current.delete(node.item.id);

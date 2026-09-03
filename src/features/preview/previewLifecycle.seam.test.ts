@@ -102,6 +102,33 @@ describe("Preview lifecycle public seam", () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it("rejects lifecycle responses for a different Preview target", async () => {
+    const differentTarget: PreviewTargetRef = {
+      ...target,
+      rootId: "root-other",
+    };
+
+    invoke.mockResolvedValueOnce({
+      ref: differentTarget,
+      origin: "http://127.0.0.1:5173",
+      healthy: true,
+    });
+    await expect(getPreviewHealth(target)).rejects.toThrow(/invalid response/i);
+
+    invoke.mockResolvedValueOnce({
+      ref: differentTarget,
+      origin: "http://127.0.0.1:5173",
+    });
+    await expect(startPreviewTarget(target)).rejects.toThrow(
+      /invalid response/i,
+    );
+
+    invoke.mockResolvedValueOnce({ ref: differentTarget });
+    await expect(stopPreviewTarget(target)).rejects.toThrow(
+      /invalid response/i,
+    );
+  });
+
   it("rejects stale starts, permits one active child, and releases it on stop", async () => {
     await expect(
       startPreviewTarget({ ...target, expectedTransitionEpoch: 6 }),

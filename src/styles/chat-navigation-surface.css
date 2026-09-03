@@ -1,13 +1,23 @@
 .project-chat-row {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(28px, auto);
   align-items: center;
-  gap: 2px;
+  border-radius: 5px;
 }
 
 .project-chat-row--foreign {
-  grid-template-columns: minmax(0, 1fr) 28px;
+  grid-template-columns: minmax(0, 1fr) minmax(28px, auto);
+}
+
+.project-chat-row:hover {
+  background: var(--color-surface-hover);
+}
+
+.project-chat-row--active {
+  background: var(--color-surface-active);
+  box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
 .project-chat-more {
@@ -30,16 +40,31 @@
   position: relative;
   display: flex;
   width: 100%;
-  min-height: 36px;
+  height: 32px;
   align-items: center;
   gap: 7px;
-  padding: 4px 4px 4px 8px;
-  border-radius: var(--radius-sm);
+  padding: 0 4px 0 8px;
+  border-radius: 5px 0 0 5px;
   font-size: var(--font-size-sm);
 }
 
 .project-chat-row .project-chat {
   width: auto;
+}
+
+.project-chat-row:hover .project-chat,
+.project-chat-row:focus-within .project-chat,
+.project-chat--active {
+  background: transparent;
+}
+
+.project-chat__identity {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+}
+
+.project-chat--active .project-chat__identity {
+  color: var(--color-text-secondary);
 }
 
 .project-chat__actions,
@@ -57,7 +82,10 @@
 }
 
 .project-chat__actions {
+  grid-area: 1 / 1;
+  justify-self: end;
   opacity: 0;
+  transition: opacity 110ms ease;
 }
 
 .project-chat-row:hover .project-chat__actions,
@@ -66,13 +94,27 @@
   opacity: 1;
 }
 
+.project-chat-row:hover .project-chat__state,
+.project-chat-row:focus-within .project-chat__state {
+  opacity: 0;
+}
+
 .project-chat__actions:hover,
 .project-chat-edit button:hover {
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
 }
 
-.project-chat__actions:disabled,
+.project-chat__actions:disabled {
+  cursor: default;
+  opacity: 0;
+}
+
+.project-chat-row:hover .project-chat__actions:disabled,
+.project-chat-row:focus-within .project-chat__actions:disabled {
+  opacity: 0.4;
+}
+
 .project-chat-edit button:disabled {
   cursor: default;
   opacity: 0.4;
@@ -81,6 +123,7 @@
 .project-chat__title {
   display: flex;
   min-width: 0;
+  flex: 1 1 auto;
   align-items: center;
   gap: 5px;
 }
@@ -99,6 +142,9 @@
 
 .project-chat-actions {
   position: relative;
+  display: grid;
+  grid-area: 1 / 1;
+  justify-self: end;
 }
 
 .project-chat-actions__menu {
@@ -194,10 +240,11 @@
 }
 
 .project-chat__copy {
-  display: grid;
+  display: flex;
   min-width: 0;
   flex: 1;
-  gap: 1px;
+  align-items: center;
+  gap: 6px;
   line-height: 1.2;
 }
 
@@ -208,83 +255,84 @@
   white-space: nowrap;
 }
 
-.project-chat__status {
+.project-chat__context {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 42%;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 5px;
   overflow: hidden;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.2;
-  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.project-chat__status--working,
-.project-chat__status--recovering {
-  color: var(--color-accent);
+.project-chat__trailing {
+  display: grid;
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 1;
+  align-items: center;
+  justify-items: end;
+  padding-right: 4px;
 }
 
-.project-chat__status--waiting {
-  color: var(--color-warning);
+.project-chat__state {
+  display: inline-flex;
+  max-width: 64px;
+  grid-area: 1 / 1;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 550;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: opacity 110ms ease;
 }
 
-.project-chat__status--failed {
+.project-chat__state--failed {
   color: var(--color-danger);
 }
 
-.project-chat__working {
-  display: inline-flex;
-  width: 14px;
-  height: 14px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: space-between;
+.project-chat__state--waiting {
+  color: var(--color-warning);
 }
 
-.project-chat__working span {
-  width: 3px;
-  height: 3px;
+.project-chat__state--working,
+.project-chat__state--recovering {
+  color: var(--color-accent);
+}
+
+.project-chat__state--unread::before {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
   border-radius: 50%;
   background: var(--color-accent);
-  animation: sage-working-pulse 1.2s ease-in-out infinite;
+  content: "";
 }
 
-.project-chat__working span:nth-child(2) {
-  animation-delay: 0.15s;
-}
-
-.project-chat__working span:nth-child(3) {
-  animation-delay: 0.3s;
-}
-
-.project-chat__age {
-  margin-left: auto;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  white-space: nowrap;
+.project-chat__working {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: sage-working-pulse 1.4s ease-in-out infinite;
 }
 
 .project-chat__workspace {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.project-chat__meta {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-  overflow: hidden;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  line-height: 1.25;
-}
-
-.project-chat__meta time {
-  flex: 0 0 auto;
 }
 
 .project-chat__git {
@@ -303,7 +351,6 @@
 
 .project-chat--active {
   color: var(--color-text-primary);
-  background: var(--color-surface-active);
 }
 
 .project-chat--utility {
@@ -333,15 +380,6 @@
   cursor: pointer;
 }
 
-.project-chat__working {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--color-accent);
-  animation: sage-working-pulse 1.4s ease-in-out infinite;
-}
-
 .project-sidebar__account {
   display: grid;
   height: 48px;
@@ -364,4 +402,33 @@
   background: var(--color-accent-muted);
   font-size: var(--font-size-xs);
   font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-chat__actions,
+  .project-chat__state {
+    transition: none;
+  }
+
+  .project-chat__working {
+    animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .project-chat-row--active {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+    box-shadow: none;
+  }
+
+  .project-chat__state,
+  .project-chat__identity {
+    color: CanvasText;
+  }
+
+  .project-chat__working,
+  .project-chat__state--unread::before {
+    background: Highlight;
+  }
 }

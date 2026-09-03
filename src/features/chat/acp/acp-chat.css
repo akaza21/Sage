@@ -32,10 +32,7 @@
 }
 
 .acp-turn__header,
-.acp-tool-card__header,
-.acp-permission header,
-.acp-unknown header,
-.acp-collaboration header {
+.acp-permission header {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -57,9 +54,7 @@
 .acp-state,
 .acp-message__role,
 .acp-change-operation,
-.acp-unknown__category,
-.acp-collaboration__receivers,
-.acp-activity__provenance {
+.acp-unknown__category {
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   line-height: var(--line-height-tight);
@@ -198,11 +193,4 @@
   line-height: 1.6;
   tab-size: 2;
   white-space: pre;
-}
-
-.acp-usage {
-  margin: var(--space-1) 0 0;
-  color: var(--color-text-muted);
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-xs);
 }

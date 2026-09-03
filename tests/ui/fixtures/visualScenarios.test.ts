@@ -8,7 +8,11 @@ describe("visual scenario contract", () => {
       { name: "agent-single", mode: "agent", resource: "empty" },
       { name: "agent-dual", mode: "agent", resource: "empty" },
       { name: "agent-long", mode: "agent", resource: "empty" },
+      { name: "agent-activity-family", mode: "agent", resource: "empty" },
+      { name: "agent-image", mode: "agent", resource: "empty" },
+      { name: "agent-child-activity", mode: "agent", resource: "empty" },
       { name: "editor", mode: "editor", resource: "file" },
+      { name: "file", mode: "agent", resource: "file" },
       { name: "diff", mode: "agent", resource: "diff" },
       { name: "preview", mode: "agent", resource: "preview" },
       { name: "error", mode: "agent", resource: "empty" },
@@ -33,5 +37,54 @@ describe("visual scenario contract", () => {
       state: "running",
       terminalAt: null,
     });
+  });
+
+  it("builds one deterministic admitted image in a dual-width Chat state", () => {
+    const scenario = buildVisualScenario("agent-image");
+    const imageItems = scenario.pages.flatMap((page) =>
+      page.turns.flatMap((turn) =>
+        turn.items.filter((item) => item.kind === "image"),
+      ),
+    );
+
+    expect(scenario.pages).toHaveLength(2);
+    expect(imageItems).toHaveLength(1);
+    expect(imageItems[0]).toMatchObject({
+      payload: {
+        mediaType: "image/png",
+      },
+    });
+    expect(imageItems[0]?.payload.dataUrl).toMatch(
+      /^data:image\/png;base64,iVBOR/,
+    );
+    expect(imageItems[0]?.payload.dataUrl.length).toBeLessThan(262_144);
+  });
+
+  it("builds one bounded read-only collaboration hierarchy across levels one to four", () => {
+    const scenario = buildVisualScenario("agent-child-activity");
+    const turn = scenario.pages[0]?.turns[0];
+    const collaborationItems = turn?.items.filter(
+      (item) => item.kind === "collaboration",
+    );
+
+    expect(scenario.pages).toHaveLength(1);
+    expect(turn?.activities.map((activity) => activity.depth)).toEqual([
+      1, 2, 3, 4,
+    ]);
+    expect(
+      turn?.activities.map((activity) => activity.parentActivityId),
+    ).toEqual([
+      null,
+      "visual-child-activity-1",
+      "visual-child-activity-2",
+      "visual-child-activity-3",
+    ]);
+    expect(collaborationItems).toHaveLength(4);
+    expect(
+      collaborationItems?.every((item) => item.origin === "harnessActivity"),
+    ).toBe(true);
+    expect(
+      collaborationItems?.every((item) => item.payload.label.length > 60),
+    ).toBe(true);
   });
 });

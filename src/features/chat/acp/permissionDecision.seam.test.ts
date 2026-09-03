@@ -1,12 +1,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createElement } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { AcpItem, PermissionDecision } from "../../../domain/acp";
+import type { AcpItem } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";
-import { desktop } from "../../../services/desktop";
 import { PermissionItem } from "./PermissionItem";
 
 const acpDirectory = path.resolve(import.meta.dirname);
@@ -46,14 +45,7 @@ function waitingPermission(): PermissionProjectionItem {
 }
 
 describe("permission decision seam", () => {
-  it("exposes exactly Ask, Allow once, and Deny through the desktop decision seam", async () => {
-    const decisions = [
-      "ask",
-      "allowOnce",
-      "deny",
-    ] as const satisfies readonly PermissionDecision[];
-    expect(decisions).toEqual(["ask", "allowOnce", "deny"]);
-
+  it("keeps the product surface read-only until permission decisions are admitted", () => {
     const resolve = vi
       .spyOn(acpDesktop, "resolvePermissionDecision")
       .mockResolvedValue({
@@ -64,24 +56,20 @@ describe("permission decision seam", () => {
         decision: "deny",
         state: "declinePending",
       });
-    const sendPrompt = vi.spyOn(desktop, "sendPrompt");
 
     render(createElement(PermissionItem, { item: waitingPermission() }));
 
-    expect(screen.getByRole("button", { name: "Ask" })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Allow once" }),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
-
-    expect(resolve).toHaveBeenCalledWith({
-      projectId: "project-1",
-      chatId: "chat-1",
-      sessionId: "session-1",
-      requestId: "request-1",
-      decision: "deny",
-    });
-    expect(sendPrompt).not.toHaveBeenCalled();
+      screen.getByRole("note", {
+        name: "",
+      }),
+    ).toHaveTextContent(
+      "Permission actions are unavailable. Sage automatically denies permission requests in this build.",
+    );
+    expect(
+      screen.queryByRole("button", { name: /ask|allow|deny/i }),
+    ).toBeNull();
+    expect(resolve).not.toHaveBeenCalled();
   });
 
   it("keeps decision behavior harness-neutral", async () => {

@@ -27,7 +27,7 @@ describe("Project and chat navigation stylesheet seams", () => {
     expect(chatCss).toMatch(/^\.project-chat-edit\b/m);
   });
 
-  it("keeps the Agent rail's projects and chats compact", async () => {
+  it("keeps the Agent rail flat, compact, and title-safe", async () => {
     const chatCss = await readFile(
       resolve("src/styles/chat-navigation-surface.css"),
       "utf8",
@@ -38,14 +38,35 @@ describe("Project and chat navigation stylesheet seams", () => {
     );
 
     expect(chatCss).toMatch(
-      /\.project-chat-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+28px;/s,
+      /\.project-chat-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(28px,\s*auto\);/s,
     );
-    expect(chatCss).toMatch(/\.project-chat\s*\{[^}]*min-height:\s*36px;/s);
+    expect(chatCss).toMatch(/\.project-chat\s*\{[^}]*height:\s*32px;/s);
+    expect(chatCss).toMatch(
+      /\.project-chat__trailing\s*\{[^}]*grid-column:\s*2;[^}]*grid-row:\s*1;/s,
+    );
+    expect(chatCss).toMatch(
+      /\.project-chat-row:hover \.project-chat__state,[\s\S]*?\.project-chat-row:focus-within \.project-chat__state\s*\{[^}]*opacity:\s*0;/s,
+    );
+    expect(chatCss).toMatch(
+      /\.project-chat-row:hover \.project-chat__actions,[\s\S]*?\.project-chat-row:focus-within \.project-chat__actions,[\s\S]*?\.project-chat__actions\[aria-expanded="true"\]\s*\{[^}]*opacity:\s*1;/s,
+    );
+    expect(chatCss).toMatch(
+      /\.project-chat__actions:disabled\s*\{[^}]*opacity:\s*0;/s,
+    );
+    expect(chatCss).toMatch(
+      /\.project-chat-row:hover \.project-chat__actions:disabled,[\s\S]*?\.project-chat-row:focus-within \.project-chat__actions:disabled\s*\{[^}]*opacity:\s*0\.4;/s,
+    );
+    expect(chatCss.match(/^\.project-chat__working\s*\{/gm)).toHaveLength(1);
+    expect(chatCss).toMatch(/@media \(prefers-reduced-motion: reduce\)/);
+    expect(chatCss).toMatch(/@media \(forced-colors: active\)/);
     expect(projectCss).toMatch(
       /\.project-sidebar__actions\s*\{[^}]*padding:\s*6px\s+8px;/s,
     );
     expect(projectCss).toMatch(/\.project-section\s*\{[^}]*padding:\s*8px/s);
     expect(projectCss).toMatch(/\.project-row\s*\{[^}]*height:\s*28px;/s);
+    expect(projectCss).toMatch(
+      /\.project-row \.project-row__branch\s*\{[^}]*border:\s*0;/s,
+    );
   });
 
   it("uses a real compact navigation drawer instead of icon-crushing chat rows", async () => {

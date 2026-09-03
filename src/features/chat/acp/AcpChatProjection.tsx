@@ -19,76 +19,11 @@ import { ToolItem, type OpenResourceTarget } from "./ToolItem";
 import { ImageItem } from "./ImageItem";
 import { UnknownItem } from "./UnknownItem";
 import { turnStateLabels } from "./statusSemantics";
-import {
-  agentRailClockMs,
-  useAgentRailViewPrefs,
-} from "../../../workbench/agentRailViewPrefs";
+import { TurnActivityItem } from "./TurnActivityItem";
 import "./acp-chat.css";
 import "./acp-chat-activities.css";
-
-const MAX_THOUGHT_WORKING_ROWS = 64;
-
-function thoughtLabel(createdAt: number, nowMs: number) {
-  if (
-    !Number.isFinite(createdAt) ||
-    !Number.isFinite(nowMs) ||
-    nowMs <= createdAt
-  )
-    return "Thought briefly";
-  const seconds = Math.floor((nowMs - createdAt) / 1_000);
-  return seconds > 0 ? `Thought ${seconds}s` : "Thought briefly";
-}
-
-function isWorkingTool(
-  item: AcpItem,
-): item is Extract<AcpItem, { kind: "toolCall" | "toolUpdateResult" }> {
-  return (
-    (item.kind === "toolCall" || item.kind === "toolUpdateResult") &&
-    item.toolState === "inProgress"
-  );
-}
-
-function workingToolStatus(
-  item: Extract<AcpItem, { kind: "toolCall" | "toolUpdateResult" }>,
-) {
-  const presentation = item.payload.presentation;
-  if (presentation.kind === "search") {
-    return `Searching… ${presentation.querySummary}`;
-  }
-  const detail =
-    item.kind === "toolCall"
-      ? item.payload.inputSummary
-      : item.payload.outputSummary;
-  return detail || "Working…";
-}
-
-function ThoughtBlock({ turn }: { turn: TurnProjection }) {
-  useAgentRailViewPrefs();
-  const thought = turn.items.find((item) => item.kind === "thoughtSummary");
-  if (!thought) return null;
-  const working = turn.items
-    .filter(isWorkingTool)
-    .slice(0, MAX_THOUGHT_WORKING_ROWS);
-  return (
-    <details className="acp-details acp-thought">
-      <summary>{thoughtLabel(thought.createdAt, agentRailClockMs())}</summary>
-      <ChatMarkdown text={thought.payload.summary} />
-      {working.length > 0 ? (
-        <ul className="acp-thought__working" aria-label="Working tools">
-          {working.map((item) => (
-            <li key={item.id}>
-              <span className="acp-thought__pulse" aria-hidden="true" />
-              <span className="acp-thought__working-copy">
-                <span>{item.payload.presentation.label}</span>
-                <span>{workingToolStatus(item)}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </details>
-  );
-}
+import "./acp-child-activity.css";
+import "./acp-activity-cards.css";
 
 interface AcpChatProjectionProps {
   page: AcpChatPage;
@@ -122,9 +57,11 @@ function projectRootLabels(
 
 function ItemView({
   item,
+  interactive,
   onOpenResource,
 }: {
   item: AcpItem;
+  interactive: boolean;
   onOpenResource?: AcpChatProjectionProps["onOpenResource"];
 }) {
   switch (item.kind) {
@@ -155,29 +92,18 @@ function ItemView({
       );
     }
     case "thoughtSummary":
-      return (
-        <details className="acp-details acp-thought">
-          <summary>Thought summary</summary>
-          <ChatMarkdown text={item.payload.summary} />
-        </details>
-      );
+      return <TurnActivityItem item={item} />;
     case "plan":
-      return (
-        <section className="acp-plan" aria-label="Agent plan">
-          <strong>Plan</strong>
-          <ol>
-            {item.payload.entries.map((entry, index) => (
-              <li key={`${index}:${entry.label}`}>
-                <span>{entry.label}</span>
-                <span>{entry.state}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
-      );
+      return <TurnActivityItem item={item} />;
     case "toolCall":
     case "toolUpdateResult":
-      return <ToolItem item={item} onOpenResource={onOpenResource} />;
+      return (
+        <ToolItem
+          item={item}
+          allowBrowse={interactive}
+          onOpenResource={interactive ? onOpenResource : undefined}
+        />
+      );
     case "fileChangeDiff":
       return (
         <p className="acp-activity__edit-reference">
@@ -187,21 +113,11 @@ function ItemView({
     case "image":
       return <ImageItem item={item} />;
     case "usage":
-      return (
-        <p className="acp-usage">
-          Usage: {item.payload.totalTokens?.toLocaleString() ?? "not reported"}{" "}
-          tokens
-        </p>
-      );
+      return <TurnActivityItem item={item} />;
     case "permissionRequest":
       return <PermissionItem item={item} />;
     case "error":
-      return (
-        <article className="acp-error" role="alert" aria-live="off">
-          <strong>{item.payload.code}</strong>
-          <p>{item.payload.message}</p>
-        </article>
-      );
+      return <TurnActivityItem item={item} />;
     case "unsupported":
       return <UnknownItem item={item} />;
     case "collaboration":
@@ -239,6 +155,8 @@ function Turn({
       itemActivities.get(activity.parentItemId) !== activity.parentActivityId,
   );
   const status = turnStateLabels[turn.state];
+  const interactive = turn.sessionId === page.currentSessionId;
+  const thought = turn.items.find((item) => item.kind === "thoughtSummary");
   return (
     <section
       className="acp-turn"
@@ -262,9 +180,16 @@ function Turn({
         </span>
       </header>
       <div className="acp-turn__items">
-        <ThoughtBlock turn={turn} />
+        {thought ? (
+          <TurnActivityItem item={thought} workingItems={turn.items} />
+        ) : null}
         {primaryItems.map((item) => (
-          <ItemView key={item.id} item={item} onOpenResource={onOpenResource} />
+          <ItemView
+            key={item.id}
+            item={item}
+            interactive={interactive}
+            onOpenResource={onOpenResource}
+          />
         ))}
         {activityRoots.map((activity) => (
           <HarnessActivity
@@ -273,7 +198,11 @@ function Turn({
             activities={turn.activities}
             items={turn.items}
             renderItem={(item) => (
-              <ItemView item={item} onOpenResource={onOpenResource} />
+              <ItemView
+                item={item}
+                interactive={interactive}
+                onOpenResource={onOpenResource}
+              />
             )}
           />
         ))}
@@ -283,7 +212,7 @@ function Turn({
           rootLabels={rootLabels}
           countIncomplete={countIncomplete}
           onOpenDiff={
-            onOpenResource
+            interactive && onOpenResource
               ? (resource) => onOpenResource(resource, "diff")
               : undefined
           }

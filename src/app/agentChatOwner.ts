@@ -1,13 +1,26 @@
-let ownerId: string | null = null;
+import { create } from "zustand";
+
+interface AgentChatOwnerStore {
+  ownerId: string | null;
+}
+
+const useAgentChatOwnerStore = create<AgentChatOwnerStore>(() => ({
+  ownerId: null,
+}));
 
 export function pinAgentChatOwner(chatId: string | null): void {
-  ownerId = chatId;
+  if (useAgentChatOwnerStore.getState().ownerId === chatId) return;
+  useAgentChatOwnerStore.setState({ ownerId: chatId });
 }
 
 export function pinnedAgentChatOwner(): string | null {
-  return ownerId;
+  return useAgentChatOwnerStore.getState().ownerId;
+}
+
+export function usePinnedAgentChatOwner(): string | null {
+  return useAgentChatOwnerStore((state) => state.ownerId);
 }
 
 export function clearAgentChatOwner(): void {
-  ownerId = null;
+  pinAgentChatOwner(null);
 }

@@ -98,4 +98,43 @@ describe("repositoryPrimaryAction", () => {
       repositoryPrimaryAction(repository({ state: "unavailable" })),
     ).toBeNull();
   });
+
+  it("hides transport actions during every recovery sequence or conflict", () => {
+    for (const sequence of [
+      "mergeInProgress",
+      "rebaseInProgress",
+      "cherryPickInProgress",
+      "revertInProgress",
+    ] as const) {
+      const unpublished = repositoryPrimaryAction(
+        repository({ [sequence]: true }),
+      );
+      const ahead = repositoryPrimaryAction(
+        repository({
+          [sequence]: true,
+          upstream: "origin/main",
+          ahead: 1,
+        }),
+      );
+      expect(["publish", "push", "pull", "sync"]).not.toContain(
+        unpublished?.kind,
+      );
+      expect(["publish", "push", "pull", "sync"]).not.toContain(ahead?.kind);
+    }
+    expect(
+      repositoryPrimaryAction(
+        repository({
+          changes: [
+            {
+              resource: { rootId: "root-a", relativePath: "conflict.ts" },
+              indexStatus: "conflicted",
+              worktreeStatus: "conflicted",
+              additions: null,
+              deletions: null,
+            },
+          ],
+        }),
+      ),
+    ).toBeNull();
+  });
 });

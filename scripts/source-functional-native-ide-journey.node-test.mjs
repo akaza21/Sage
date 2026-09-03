@@ -303,39 +303,20 @@ test("native IDE Explorer action leaves the retained expanded panel open", () =>
   assert.equal(clicks, 1);
 });
 
-test("native IDE Search readiness selects the panel input and its submit control", () => {
-  const headerSearchButton = {};
+test("native IDE Search readiness selects the exact panel input", () => {
   const searchInput = {};
-  const submitButton = {};
-  const outsideSearchInput = {};
-  const outsideSubmitButton = {};
   let scopedInputs = [searchInput];
-  let scopedSubmits = [submitButton];
   const form = {
     querySelectorAll: (selector) => {
-      if (selector === 'input[type="search"][aria-label="Search files"]')
+      if (selector === 'input[type="search"][aria-label="Search text"]')
         return scopedInputs;
-      if (selector === 'button[type="submit"]') return scopedSubmits;
       return [];
     },
   };
   let forms = [form];
-  const selectorResults = new Map([
-    ['[aria-label="Search files"]', [headerSearchButton, searchInput]],
-    [
-      'input[type="search"][aria-label="Search files"]',
-      [searchInput, outsideSearchInput],
-    ],
-    [
-      '.workspace-search__form button[type="submit"]',
-      [submitButton, outsideSubmitButton],
-    ],
-  ]);
   const document = {
     querySelectorAll: (selector) =>
-      selector === ".workspace-search__form"
-        ? forms
-        : (selectorResults.get(selector) ?? []),
+      selector === ".workspace-search__form" ? forms : [],
   };
   assert.equal(
     evaluateBrowserExpression(verificationFor("Search"), { document }),
@@ -349,12 +330,6 @@ test("native IDE Search readiness selects the panel input and its submit control
   );
 
   forms = [form];
-  scopedSubmits = [];
-  assert.equal(
-    evaluateBrowserExpression(verificationFor("Search"), { document }),
-    false,
-  );
-  scopedSubmits = [submitButton];
   scopedInputs = [];
   assert.equal(
     evaluateBrowserExpression(verificationFor("Search"), { document }),
@@ -377,18 +352,12 @@ test("native IDE File action searches through the exact panel form, not the head
     constructor(type, options) {
       this.type = type;
       this.bubbles = options?.bubbles === true;
+      this.cancelable = options?.cancelable === true;
     }
   }
   const input = new HTMLInputElement();
   const header = { textContent: "Search files", clicks: 0 };
   const decoy = {
-    textContent: "Search",
-    clicks: 0,
-    click() {
-      this.clicks += 1;
-    },
-  };
-  const submit = {
     textContent: "Search",
     clicks: 0,
     click() {
@@ -405,10 +374,13 @@ test("native IDE File action searches through the exact panel form, not the head
   };
   const form = {
     querySelectorAll: (selector) => {
-      if (selector === 'input[type="search"][aria-label="Search files"]')
+      if (selector === 'input[type="search"][aria-label="Search text"]')
         return [input];
-      if (selector === 'button[type="submit"]') return [submit];
       return [];
+    },
+    dispatchEvent(event) {
+      this.event = event;
+      return false;
     },
   };
   const document = {
@@ -416,11 +388,9 @@ test("native IDE File action searches through the exact panel form, not the head
       selector === '[aria-label="Search files"]' ? header : null,
     querySelectorAll: (selector) => {
       if (selector === ".workspace-search__form") return [form];
-      if (selector === 'input[type="search"][aria-label="Search files"]')
+      if (selector === 'input[type="search"][aria-label="Search text"]')
         return [input, outsideInput];
-      if (selector === '.workspace-search__form button[type="submit"]')
-        return [submit, outsideSubmit];
-      if (selector === "button") return [decoy, submit, outsideSubmit];
+      if (selector === "button") return [decoy, outsideSubmit];
       return [];
     },
   };
@@ -437,7 +407,14 @@ test("native IDE File action searches through the exact panel form, not the head
     { type: input.event.type, bubbles: input.event.bubbles },
     { type: "input", bubbles: true },
   );
-  assert.equal(submit.clicks, 1);
+  assert.deepEqual(
+    {
+      type: form.event.type,
+      bubbles: form.event.bubbles,
+      cancelable: form.event.cancelable,
+    },
+    { type: "submit", bubbles: true, cancelable: true },
+  );
   assert.equal(outsideSubmit.clicks, 0);
   assert.equal(decoy.clicks, 0);
   assert.equal(header.clicks, 0);
@@ -445,6 +422,7 @@ test("native IDE File action searches through the exact panel form, not the head
 
 test("native IDE File action rejects ambiguous or split Search forms", () => {
   const input = {};
+  let scopedInputs = [input];
   const outsideSubmit = {
     clicks: 0,
     click() {
@@ -453,8 +431,8 @@ test("native IDE File action rejects ambiguous or split Search forms", () => {
   };
   const form = {
     querySelectorAll: (selector) =>
-      selector === 'input[type="search"][aria-label="Search files"]'
-        ? [input]
+      selector === 'input[type="search"][aria-label="Search text"]'
+        ? scopedInputs
         : [],
   };
   let forms = [form, {}];
@@ -471,6 +449,7 @@ test("native IDE File action rejects ambiguous or split Search forms", () => {
     false,
   );
   forms = [form];
+  scopedInputs = [];
   assert.equal(
     evaluateBrowserExpression(uiAction("File").expression, { document }),
     false,

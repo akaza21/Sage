@@ -4,12 +4,12 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type KeyboardEvent,
 } from "react";
 import { FilePlus2, FolderPlus } from "lucide-react";
 
 import { useWorkbenchStore } from "../../app/store";
 import type { ResourceRef } from "../../domain/workbench";
+import { ModalDialog } from "../../ui/ModalDialog";
 import { validateNewFilePath } from "./newFileContract";
 
 function NewEntryControl({
@@ -44,7 +44,6 @@ function NewEntryControl({
     projectGeneration: number;
     transitionEpoch: number;
   } | null>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const label = kind === "file" ? "File" : "Folder";
   const titleId = `new-${kind}-title`;
@@ -63,20 +62,6 @@ function NewEntryControl({
     },
     [clearError, inFlight],
   );
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!open || !dialog) return;
-    if (typeof dialog.showModal === "function") {
-      if (!dialog.open) dialog.showModal();
-    } else {
-      dialog.setAttribute("open", "");
-    }
-    return () => {
-      if (typeof dialog.close === "function" && dialog.open) dialog.close();
-      else dialog.removeAttribute("open");
-    };
-  }, [open]);
 
   useEffect(() => {
     if (!open || !scope) return;
@@ -106,30 +91,6 @@ function NewEntryControl({
     }
     setLocalError(null);
     if (await createProjectResource(parent, basename)) close();
-  };
-
-  const containFocus = (event: KeyboardEvent<HTMLDialogElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      close();
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusable = Array.from(
-      event.currentTarget.querySelectorAll<HTMLElement>(
-        "input:not([disabled]), button:not([disabled])",
-      ),
-    );
-    const first = focusable[0];
-    const last = focusable.at(-1);
-    if (!first || !last) event.preventDefault();
-    else if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
   };
 
   const previewParent = parent?.relativePath
@@ -168,16 +129,10 @@ function NewEntryControl({
         )}
       </button>
       {open && parent && scope ? (
-        <dialog
-          ref={dialogRef}
-          className="dirty-dialog new-file-dialog"
-          aria-modal="true"
-          aria-labelledby={titleId}
-          onCancel={(event) => {
-            event.preventDefault();
-            close();
-          }}
-          onKeyDown={containFocus}
+        <ModalDialog
+          className="new-file-dialog new-file-dialog--editor"
+          labelledBy={titleId}
+          onDismiss={() => close()}
         >
           <form className="new-file-dialog__form" onSubmit={submit}>
             <h2 id={titleId}>New {label}</h2>
@@ -225,7 +180,7 @@ function NewEntryControl({
               </button>
             </div>
           </form>
-        </dialog>
+        </ModalDialog>
       ) : null}
     </>
   );

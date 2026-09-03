@@ -22,9 +22,11 @@ export type ArtifactChipStats = {
 };
 
 function currentOrLatestTurn(page: AcpChatPage): TurnProjection | null {
+  if (!page.currentSessionId) return null;
   let current: TurnProjection | null = null;
   let latest: TurnProjection | null = null;
   for (const turn of page.turns) {
+    if (turn.sessionId !== page.currentSessionId) continue;
     if (!latest || turn.ordinal > latest.ordinal) latest = turn;
     if (
       !terminalTurnStates.has(turn.state) &&

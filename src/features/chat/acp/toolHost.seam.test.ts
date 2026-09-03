@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 
 import {
   CURATED_APPLY_FILE_TOOL_NAME,
@@ -46,34 +47,37 @@ describe("curated read tool-host seam", () => {
   });
 
   it("dispatches sage.browse through the curated host-tool invoke", async () => {
-    const { browseSessionForChat, clearBrowseSessions } =
+    const { browseSessionForOwner, clearBrowseSessions } =
       await import("../../preview/harnessBrowse");
     clearBrowseSessions();
     const toolHost = createToolHost();
+    const owner = {
+      projectId: "project:invoke",
+      chatId: "chat:invoke",
+      sessionId: "session-1",
+    } as AgentArtifactOwner;
     expect(
       toolHost.invoke("sage.browse", {
-        chatId: "chat:invoke",
-        sessionId: "session-1",
+        owner,
         url: "http://127.0.0.1:5173/app",
       })?.href,
     ).toBe("http://127.0.0.1:5173/app");
-    expect(browseSessionForChat("chat:invoke")?.href).toBe(
+    expect(browseSessionForOwner(owner)?.href).toBe(
       "http://127.0.0.1:5173/app",
     );
     expect(
       toolHost.invoke("sage.read_text", {
-        chatId: "chat:invoke",
+        owner,
         url: "http://127.0.0.1:5173/app",
       }),
     ).toBeNull();
     expect(
       toolHost.invoke("sage.browse", {
-        chatId: "chat:invoke",
-        sessionId: "session-1",
+        owner,
         url: "https://example.com/",
       }),
     ).toBeNull();
-    expect(browseSessionForChat("chat:invoke")?.href).toBe(
+    expect(browseSessionForOwner(owner)?.href).toBe(
       "http://127.0.0.1:5173/app",
     );
     clearBrowseSessions();

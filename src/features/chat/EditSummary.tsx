@@ -1,4 +1,4 @@
-import { ChevronRight, Files, GitBranch } from "lucide-react";
+import { ChevronRight, Files } from "lucide-react";
 
 import { useWorkbenchStore } from "../../app/store";
 import { resourceKey } from "../../domain/resourceIdentity";
@@ -6,7 +6,6 @@ import { resourceKey } from "../../domain/resourceIdentity";
 export function EditSummary() {
   const changes = useWorkbenchStore((state) => state.turnChanges);
   const openDiff = useWorkbenchStore((state) => state.openDiff);
-  const setSidebarView = useWorkbenchStore((state) => state.setSidebarView);
 
   if (changes.length === 0) {
     return null;
@@ -25,23 +24,15 @@ export function EditSummary() {
     <section className="edit-summary" aria-label="Files edited in this turn">
       <div className="edit-summary__header">
         <span className="edit-summary__icon">
-          <Files size={17} aria-hidden="true" />
+          <Files size={14} aria-hidden="true" />
         </span>
-        <div>
-          <strong>Edited {changes.length} files</strong>
-          <div className="edit-summary__totals">
-            <span>+{additions}</span>
-            <span>-{deletions}</span>
-          </div>
-        </div>
-        <button
-          className="edit-summary__source-control"
-          type="button"
-          onClick={() => setSidebarView("sourceControl")}
-        >
-          <GitBranch size={14} aria-hidden="true" />
-          Source Control
-        </button>
+        <strong>
+          Edited {changes.length} {changes.length === 1 ? "file" : "files"}
+        </strong>
+        <span className="edit-summary__totals" aria-label="Line changes">
+          <span>+{additions}</span>
+          <span>-{deletions}</span>
+        </span>
       </div>
       <div className="edit-summary__files">
         {changes.map((change) => (
@@ -50,7 +41,7 @@ export function EditSummary() {
             key={resourceKey(change.resource)}
             type="button"
             aria-label={`Open diff for ${change.resource.relativePath}`}
-            onClick={() => openDiff(change.resource, undefined, "agent")}
+            onClick={() => openDiff(change.resource)}
           >
             <span className="edit-file__path">
               {change.resource.relativePath}

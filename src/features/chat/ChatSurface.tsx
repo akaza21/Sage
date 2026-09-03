@@ -1,28 +1,21 @@
-import { ArrowUp } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 
-import { pinnedAgentChatOwner } from "../../app/agentChatOwner";
+import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
+import { openAgentArtifact } from "../../app/openAgentArtifact";
 import { useWorkbenchStore } from "../../app/store";
-import { SessionWorkingPill } from "./SessionWorkingPill";
 import type {
   CuratedBindingId,
   CuratedModelId,
   TurnProjection,
 } from "../../domain/acp";
 import type { ResourceRef } from "../../domain/workbench";
-import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
+import { SessionWorkingPill } from "./SessionWorkingPill";
+import { ChatComposer } from "./ChatComposer";
 import { ChatLegacyTranscript } from "./ChatLegacyTranscript";
 import { ChatHandoffControl } from "./ChatHandoffControl";
-import { ChatHarnessControls } from "./ChatHarnessControls";
-import {
-  composerPromptPlaceholder,
-  composerShortcutLabel,
-  useComposerFocusHotkey,
-} from "./composerChrome";
-import { ComposerContext } from "./ComposerContext";
+import { useComposerFocusHotkey } from "./composerChrome";
 import { followEndScrollBehavior, transcriptIsAtEnd } from "./chatFollowEnd";
 import { composerDisabledReason } from "./composerDisabledReason";
-import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
 import {
   AcpChatProjection,
   type OpenResourceTarget,
@@ -37,6 +30,7 @@ import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
 import { useBoundChatComposer } from "./useBoundChatComposer";
 
 export function ChatSurface({ chatId }: { chatId?: string } = {}) {
+  const focusedChatId = usePinnedAgentChatOwner();
   const messages = useWorkbenchStore((state) => state.messages);
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const selectedHarnessId = useWorkbenchStore(
@@ -53,8 +47,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   );
   const project = useWorkbenchStore((state) => state.project);
   const error = useWorkbenchStore((state) => state.error);
-  const openDiff = useWorkbenchStore((state) => state.openDiff);
-  const openFile = useWorkbenchStore((state) => state.openFile);
   const selectedHarness = harnesses.find(
     (harness) => harness.id === selectedHarnessId,
   );
@@ -74,7 +66,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const composerFieldId = chatId ? `prompt-${chatId}` : "prompt";
   const composerDescriptionId = `${composerFieldId}-description`;
   const composerDisabledReasonId = `${composerFieldId}-disabled-reason`;
-  const focused = chatId == null || pinnedAgentChatOwner() === chatId;
+  const focused = chatId == null || focusedChatId === chatId;
   useRendererRecreationFocus(surfaceRef, focused ? acpPage : null);
 
   const harnessAvailable = selectedHarness?.installState === "available";
@@ -206,9 +198,16 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   }
 
   function openAcpResource(resource: ResourceRef, target: OpenResourceTarget) {
-    void (target === "file"
-      ? openFile(resource, "agent")
-      : openDiff(resource, undefined, "agent"));
+    if (!acpPage?.currentSessionId) return;
+    void openAgentArtifact({
+      owner: {
+        projectId: acpPage.projectId,
+        chatId: acpPage.chatId,
+        sessionId: acpPage.currentSessionId,
+      },
+      target,
+      resource,
+    });
   }
 
   function updateFollowEnd() {
@@ -309,106 +308,40 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         </button>
       ) : null}
 
-      <form
-        className="composer"
-        aria-busy={projectTransitioning}
+      <ChatComposer
+        composerRef={composerRef}
+        fieldId={composerFieldId}
+        descriptionId={composerDescriptionId}
+        disabledReasonId={composerDisabledReasonId}
+        text={composerText}
+        enabled={composerEnabled}
+        actionBusy={actionBusy}
+        projectTransitioning={projectTransitioning}
+        workbenchError={error}
+        chatError={foregroundError}
+        availableBinding={availableBinding}
+        canPrompt={canPrompt}
+        missingBindingNotice={
+          useNativeAcp &&
+          !availableBinding &&
+          ![
+            "checking",
+            "signInRequired",
+            "consent",
+            "waiting",
+            "error",
+          ].includes(harnessDiscoveryPhase)
+        }
+        disabledReason={disabledReason}
+        project={project}
         onSubmit={submit}
-      >
-        {error ? (
-          <div className="composer__error" role="alert">
-            {error}
-          </div>
-        ) : null}
-        {foregroundError ? (
-          <div className="composer__error" role="alert">
-            {foregroundError}
-          </div>
-        ) : null}
-        <HarnessDiscoveryNotice />
-        {useNativeAcp &&
-        !availableBinding &&
-        !["checking", "signInRequired", "consent", "waiting", "error"].includes(
-          harnessDiscoveryPhase,
-        ) ? (
-          <div className="composer__notice">
-            No reviewed local binding is available for this harness.
-          </div>
-        ) : null}
-        <label className="sr-only" htmlFor={composerFieldId}>
-          Message agent
-        </label>
-        <span className="sr-only" id={composerDescriptionId}>
-          Send a message to the selected harness and model
-        </span>
-        <textarea
-          ref={composerRef}
-          id={composerFieldId}
-          aria-label="Message agent"
-          aria-describedby={`${composerDescriptionId}${
-            disabledReason ? ` ${composerDisabledReasonId}` : ""
-          }`}
-          value={composerText}
-          maxLength={MAX_CHAT_COMPOSER_BYTES}
-          rows={3}
-          placeholder={composerPromptPlaceholder(
-            canPrompt,
-            composerShortcutLabel(/mac/i.test(navigator.platform)),
-          )}
-          disabled={!composerEnabled || actionBusy || projectTransitioning}
-          onChange={(event) => setComposerText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey && composerEnabled) {
-              event.preventDefault();
-              event.currentTarget.form?.requestSubmit();
-            }
-          }}
-        />
-        {disabledReason ? (
-          <p
-            className="composer__disabled-reason"
-            id={composerDisabledReasonId}
-          >
-            {disabledReason}
-          </p>
-        ) : null}
-        <div className="composer__toolbar">
-          <ChatHarnessControls
-            availableBinding={availableBinding}
-            canPrompt={canPrompt}
-          />
-          <span className="composer__shortcut" aria-hidden="true">
-            Enter to send <span>/</span> Shift+Enter for a new line
-          </span>
-          {useNativeAcp && acpActions.cancellableTurnId ? (
-            <button
-              className="send-button send-button--cancel"
-              type="button"
-              aria-label="Cancel turn"
-              disabled={actionBusy || projectTransitioning}
-              onClick={() =>
-                void acpActions.cancel(acpActions.cancellableTurnId!)
-              }
-            >
-              Cancel
-            </button>
-          ) : (
-            <button
-              className="send-button"
-              type="submit"
-              aria-label="Send message"
-              disabled={
-                projectTransitioning ||
-                !composerText.trim() ||
-                !composerEnabled ||
-                actionBusy
-              }
-            >
-              <ArrowUp size={18} aria-hidden="true" />
-            </button>
-          )}
-        </div>
-        <ComposerContext project={project} />
-      </form>
+        onTextChange={setComposerText}
+        onCancelTurn={
+          useNativeAcp && acpActions.cancellableTurnId
+            ? () => void acpActions.cancel(acpActions.cancellableTurnId!)
+            : null
+        }
+      />
     </section>
   );
 }

@@ -19,6 +19,7 @@ afterEach(() => {
 const idle: ChatLiveSnapshot = {
   chatId: "chat-2",
   statusLabel: "Completed",
+  statusTone: "idle",
   latestText: "Done.",
   streaming: false,
   waiting: false,
@@ -28,6 +29,7 @@ const idle: ChatLiveSnapshot = {
 const neverStarted: ChatLiveSnapshot = {
   chatId: "chat-2",
   statusLabel: "Idle",
+  statusTone: "idle",
   latestText: "",
   streaming: false,
   waiting: false,

@@ -105,6 +105,38 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("FileSurface document language", () => {
+  it("keeps one resource root across loading, error, and ready states", () => {
+    useWorkbenchStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      activeEditor: { phase: "loading", resource },
+      loadEditor: vi.fn(async () => undefined),
+    });
+    render(<FileSurface tab={tab} />);
+
+    const fileRegion = () =>
+      screen.getByRole("region", { name: `File editor ${path}` });
+    expect(fileRegion()).toHaveClass("file-surface", "resource-document");
+    expect(screen.getByText(`Loading ${path}…`)).toBeVisible();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        activeEditor: {
+          phase: "error",
+          resource,
+          message: "The file is unavailable.",
+        },
+      });
+    });
+    expect(fileRegion()).toHaveClass("file-surface", "resource-document");
+    expect(screen.getByText(`Could not open ${path}`)).toBeVisible();
+
+    act(() => setReadyEditor());
+    expect(fileRegion()).toHaveClass("file-surface", "resource-document");
+  });
+});
+
 describe("FileSurface durability cadence", () => {
   it("starts a language session for the File and cancels it on unmount", async () => {
     const unsubscribe = vi.fn();
@@ -305,7 +337,33 @@ describe("FileSurface durability cadence", () => {
   });
 });
 
-describe("FileSurface Search navigation", () => {
+describe("FileSurface location navigation", () => {
+  it("places a collapsed caret at an exact Unicode-aware location", async () => {
+    const content = "zero\n🙂 target";
+    setReadyEditor(tab, content);
+    useWorkbenchStore.setState({
+      projectGeneration: 3,
+      nativeTransitionEpoch: 7,
+      fileNavigationTarget: {
+        projectId: "project-a",
+        projectGeneration: 3,
+        transitionEpoch: 7,
+        resource,
+        lineNumber: 2,
+        columnNumber: 3,
+        selection: { kind: "caret" },
+      },
+    });
+    render(<FileSurface tab={tab} />);
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
+
+    expect(editor).toHaveFocus();
+    expect(editorSelection(editor)).toEqual({ start: 8, end: 8 });
+    expect(useWorkbenchStore.getState().fileNavigationTarget).toBeNull();
+  });
+
   it("selects the exact Unicode match range and clamps stale offsets", async () => {
     const content = "zero\n🙂 needle tail";
     setReadyEditor(tab, content);
@@ -319,8 +377,11 @@ describe("FileSurface Search navigation", () => {
         resource,
         lineNumber: 2,
         columnNumber: 3,
-        query: "needle",
-        caseSensitive: true,
+        selection: {
+          kind: "match",
+          query: "needle",
+          caseSensitive: true,
+        },
       },
     });
     render(<FileSurface tab={tab} />);
@@ -341,8 +402,11 @@ describe("FileSurface Search navigation", () => {
           resource,
           lineNumber: 0xffff_ffff,
           columnNumber: 0xffff_ffff,
-          query: "needle",
-          caseSensitive: false,
+          selection: {
+            kind: "match",
+            query: "needle",
+            caseSensitive: false,
+          },
         },
       });
     });
@@ -363,8 +427,11 @@ describe("FileSurface Search navigation", () => {
       resource,
       lineNumber: 1,
       columnNumber: 7,
-      query: "needle",
-      caseSensitive: true,
+      selection: {
+        kind: "match" as const,
+        query: "needle",
+        caseSensitive: true,
+      },
     };
     useWorkbenchStore.setState({
       projectGeneration: 3,
@@ -402,8 +469,11 @@ describe("FileSurface Search navigation", () => {
         resource,
         lineNumber: 1,
         columnNumber: 0xffff_ffff,
-        query: "needle",
-        caseSensitive: true,
+        selection: {
+          kind: "match",
+          query: "needle",
+          caseSensitive: true,
+        },
       },
     });
     render(<FileSurface tab={tab} />);
@@ -437,8 +507,11 @@ describe("FileSurface Search navigation", () => {
           resource,
           lineNumber: 1,
           columnNumber: 7,
-          query: "needle",
-          caseSensitive: true,
+          selection: {
+            kind: "match",
+            query: "needle",
+            caseSensitive: true,
+          },
         },
       });
     });
@@ -465,6 +538,10 @@ describe("FileSurface in-file find", () => {
 
     fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
     const query = screen.getByRole("textbox", { name: "Find text" });
+    expect(screen.getByRole("search", { name: "Find in file" })).toHaveClass(
+      "editor-find--overlay",
+    );
+    expect(screen.getByRole("textbox", { name: `Edit ${path}` })).toBe(editor);
     expect(query).toHaveFocus();
     expect(screen.getByRole("status")).toHaveTextContent("No query");
 
@@ -502,6 +579,7 @@ describe("FileSurface in-file find", () => {
 
     fireEvent.keyDown(query, { key: "Escape" });
     expect(screen.queryByRole("search", { name: "Find in file" })).toBeNull();
+    expect(screen.getByRole("textbox", { name: `Edit ${path}` })).toBe(editor);
     expect(editor).toHaveFocus();
   });
 
@@ -654,10 +732,11 @@ describe("FileSurface Go-to Line", () => {
 
 describe("FileSurface local symbol navigation", () => {
   it("fails closed until an admitted Outline report arrives, then moves the F12 caret", async () => {
-    let deliverOutline: ((report: LanguageOutlineReport) => void) | undefined;
+    const outlineSubscriptions: Array<(report: LanguageOutlineReport) => void> =
+      [];
     vi.spyOn(languageDesktop, "subscribeOutline").mockImplementation(
       async (callback) => {
-        deliverOutline = callback;
+        outlineSubscriptions.push(callback);
         return () => undefined;
       },
     );
@@ -676,17 +755,20 @@ describe("FileSurface local symbol navigation", () => {
     );
     expect(editorSelection(editor)).toEqual({ start: 14, end: 14 });
 
+    await waitFor(() => expect(outlineSubscriptions).toHaveLength(2));
     act(() => {
-      deliverOutline?.({
-        resource,
-        generation: 1,
-        symbols: [
-          { resource, name: "example", kind: "function", startLine: 3 },
-        ],
-      });
+      for (const deliverOutline of outlineSubscriptions) {
+        deliverOutline({
+          resource,
+          generation: 1,
+          symbols: [
+            { resource, name: "example", kind: "function", startLine: 3 },
+          ],
+        });
+      }
     });
     fireEvent.keyDown(editor, { key: "F12" });
-    expect(editorSelection(editor)).toEqual({ start: 25, end: 25 });
+    expect(editorSelection(editor)).toEqual({ start: 26, end: 26 });
     expect(screen.getByRole("status")).toHaveTextContent(
       "Moved to local symbol.",
     );

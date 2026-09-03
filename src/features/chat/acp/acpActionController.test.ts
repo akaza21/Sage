@@ -397,7 +397,7 @@ describe("ACP action controller", () => {
     },
   );
 
-  it("bounds and serializes double submissions without concurrent native sends", async () => {
+  it("rejects a second same-Chat submission until the first settles, then permits an explicit follow-up", async () => {
     const test = harness(page("5", session("hot", "1", null)));
     const first = deferred<{ projection: AcpChatPage }>();
     vi.mocked(test.commands.sendTurn)
@@ -410,47 +410,74 @@ describe("ACP action controller", () => {
     const actionTwo = test.controller.submit("two", bindingId, modelId);
     await nextMicrotask();
     expect(test.commands.sendTurn).toHaveBeenCalledTimes(1);
+    await expect(actionTwo).resolves.toBe("rejected");
+    expect(test.states.at(-1)?.error?.failure).toMatchObject({
+      kind: "capacity",
+      resource: "queue",
+      limit: 1,
+    });
+    expect(test.cleared).toEqual(["one"]);
+    expect(test.restored).toEqual([]);
 
-    first.resolve({ projection: page("6", session("hot", "1", null)) });
-    await actionOne;
-    await expect(actionTwo).resolves.toBe("applied");
+    const runningTurn = turn("turn-first", 1, "running");
+    first.resolve({
+      projection: page("6", session("hot", "1", null), [runningTurn]),
+    });
+    await expect(actionOne).resolves.toBe("applied");
+    await expect(
+      test.controller.submit("too early", bindingId, modelId),
+    ).resolves.toBe("rejected");
+    expect(test.commands.sendTurn).toHaveBeenCalledTimes(1);
+    expect(test.states.at(-1)?.error?.failure).toMatchObject({
+      kind: "invalidRequest",
+      message:
+        "Wait for the current Turn to finish before sending a follow-up.",
+    });
+
+    test.setContext({
+      scope,
+      ownershipEpoch: 1,
+      commandProjectGeneration,
+      page: page("6", session("hot", "1", null), [
+        { ...runningTurn, state: "completed", terminalAt: 3 },
+      ]),
+    });
+    await expect(
+      test.controller.submit("follow-up", bindingId, modelId),
+    ).resolves.toBe("applied");
     expect(test.commands.sendTurn).toHaveBeenCalledTimes(2);
     expect(test.commands.sendTurn).toHaveBeenLastCalledWith(
       expect.objectContaining({
         expectedProjectionRevision: "6",
-        prompt: "two",
+        prompt: "follow-up",
       }),
     );
   });
 
-  it("rejects action count limit plus one without dispatching the overflow", async () => {
+  it("keeps the same Chat locked across transient Project switch-back generations", async () => {
     const test = harness(page("5", session("hot", "1", null)));
-    const first = deferred<{ projection: AcpChatPage }>();
-    vi.mocked(test.commands.sendTurn)
-      .mockReturnValueOnce(first.promise)
-      .mockResolvedValue({
-        projection: page("6", session("hot", "1", null)),
-      });
-
-    const admitted = Array.from({ length: 32 }, (_, index) =>
-      test.controller.submit(`prompt-${index}`, bindingId, modelId),
-    );
+    const pending = deferred<{ projection: AcpChatPage }>();
+    vi.mocked(test.commands.sendTurn).mockReturnValue(pending.promise);
+    const first = test.controller.submit("one", bindingId, modelId);
     await nextMicrotask();
-    await expect(
-      test.controller.submit("overflow", bindingId, modelId),
-    ).resolves.toBe("rejected");
-    expect(test.states.at(-1)?.error?.failure).toMatchObject({
-      kind: "capacity",
-      resource: "queue",
-      limit: 32,
+
+    test.setContext({
+      scope: {
+        ...scope,
+        projectGeneration: "4" as ProjectGeneration,
+      },
+      ownershipEpoch: 1,
+      commandProjectGeneration: "12" as ProjectGeneration,
+      page: page("5", session("hot", "1", null)),
     });
+
+    await expect(
+      test.controller.submit("switch-back repeat", bindingId, modelId),
+    ).resolves.toBe("rejected");
     expect(test.commands.sendTurn).toHaveBeenCalledTimes(1);
 
-    first.resolve({ projection: page("6", session("hot", "1", null)) });
-    await expect(Promise.all(admitted)).resolves.toEqual(
-      Array.from({ length: 32 }, () => "applied"),
-    );
-    expect(test.commands.sendTurn).toHaveBeenCalledTimes(32);
+    pending.resolve({ projection: page("6", session("hot", "1", null)) });
+    await expect(first).resolves.toBe("ignoredStale");
   });
 
   it("does not let an old chat's deferred action block the newly active chat", async () => {

@@ -18,6 +18,18 @@ describe("File editor surface stylesheet seam", () => {
     expect(shellCss).not.toMatch(/^\.editor-input\b/m);
     expect(surfaceCss).toMatch(/^\.file-surface\b/m);
     expect(surfaceCss).toMatch(/^\.editor-input\b/m);
+    expect(surfaceCss).toMatch(
+      /\.file-editor-stage\s*\{[^}]*position:\s*relative;[^}]*overflow:\s*hidden;/s,
+    );
+    expect(surfaceCss).toMatch(
+      /\.editor-find--overlay\s*\{[^}]*position:\s*absolute;[^}]*right:\s*12px;[^}]*width:\s*min\(440px, calc\(100% - 24px\)\);/s,
+    );
+    expect(surfaceCss).toMatch(
+      /@container \(max-width: 420px\)\s*\{[\s\S]*\.editor-find--overlay\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\) repeat\(4, 26px\);/,
+    );
+    expect(surfaceCss).toMatch(
+      /@media \(forced-colors: active\)\s*\{\s*\.editor-find--overlay\s*\{[^}]*border-color:\s*CanvasText;[^}]*box-shadow:\s*none;/s,
+    );
   });
 
   it("uses UI tokens without overriding the editor appearance font size", async () => {

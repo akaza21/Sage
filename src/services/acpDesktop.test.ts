@@ -1,14 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
+  ActivateAcpSessionRequest,
+  CancelAcpTurnRequest,
   ClientIntentId,
+  CloseAcpSessionRequest,
   CuratedBindingId,
   CodexAuthScope,
+  EntityRevision,
   GetCodexDiscoveryRequest,
   ProjectGeneration,
   ProjectionRevision,
+  RuntimeEpoch,
+  SageAgentSessionId,
   SageChatId,
   SageProjectId,
+  SageTurnId,
+  SendAcpTurnRequest,
   StartAcpSessionRequest,
 } from "../domain/acp";
 
@@ -36,6 +44,23 @@ const discoveryRequest: GetCodexDiscoveryRequest = {
   bindingId: "codex-app-server" as CuratedBindingId,
 };
 const authRequest: CodexAuthScope = discoveryRequest;
+const sessionRequest: ActivateAcpSessionRequest = {
+  ...request,
+  sessionId: "session-a" as SageAgentSessionId,
+  runtimeEpoch: "2" as RuntimeEpoch,
+};
+const sendRequest: SendAcpTurnRequest = {
+  ...sessionRequest,
+  target: "session",
+  prompt: "hello",
+};
+const cancelRequest: CancelAcpTurnRequest = {
+  ...sessionRequest,
+  turnId: "turn-a" as SageTurnId,
+  expectedTurnState: "running",
+  expectedTurnRevision: "1" as EntityRevision,
+};
+const closeRequest: CloseAcpSessionRequest = sessionRequest;
 
 function setDesktopRuntime(active: boolean): void {
   if (active) {
@@ -235,6 +260,83 @@ describe("ACP desktop bridge", () => {
       AcpDesktopError,
     );
     expect(invokeMock).toHaveBeenCalledWith("start_acp_session", { request });
+  });
+
+  it.each([
+    {
+      name: "start",
+      command: "start_acp_session",
+      invoke: () => acpDesktop.startSession(request),
+    },
+    {
+      name: "activate",
+      command: "activate_acp_session",
+      invoke: () => acpDesktop.activateSession(sessionRequest),
+    },
+    {
+      name: "send",
+      command: "send_acp_turn",
+      invoke: () => acpDesktop.sendTurn(sendRequest),
+    },
+    {
+      name: "cancel",
+      command: "cancel_acp_turn",
+      invoke: () => acpDesktop.cancelTurn(cancelRequest),
+    },
+    {
+      name: "close",
+      command: "close_acp_session",
+      invoke: () => acpDesktop.closeSession(closeRequest),
+    },
+  ])(
+    "rejects an invalid $name mutation projection",
+    async ({ command, invoke }) => {
+      setDesktopRuntime(true);
+      invokeMock.mockResolvedValue({
+        projection: { projectId: "project-a", rawFrame: "never-retain" },
+      });
+
+      await expect(invoke()).rejects.toMatchObject({
+        failure: {
+          kind: "internal",
+          message: "ACP mutation returned an invalid bounded projection.",
+        },
+      });
+      expect(invokeMock).toHaveBeenCalledWith(command, {
+        request: expect.any(Object),
+      });
+    },
+  );
+
+  it("retains only a bounded mutation projection", async () => {
+    setDesktopRuntime(true);
+    invokeMock.mockResolvedValue({
+      projection: {
+        projectId: "project-a",
+        chatId: "chat-a",
+        title: "A",
+        projectionRevision: "10",
+        currentSessionId: null,
+        sessions: [],
+        turns: [],
+        nextCursor: null,
+        rawFrame: "never-retain",
+      },
+      processSecret: "never-retain",
+    });
+
+    await expect(acpDesktop.startSession(request)).resolves.toEqual({
+      projection: {
+        projectId: "project-a",
+        chatId: "chat-a",
+        title: "A",
+        projectionRevision: "10",
+        currentSessionId: null,
+        sessions: [],
+        turns: [],
+        nextCursor: null,
+      },
+    });
   });
 
   it("retains only the typed safe failure and drops unknown native fields", async () => {

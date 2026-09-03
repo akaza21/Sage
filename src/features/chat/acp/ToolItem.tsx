@@ -1,5 +1,6 @@
 import { useId } from "react";
 
+import { useAgentArtifactFollowStore } from "../../../app/agentArtifactFollowStore";
 import type { AcpItem, SafeResourceLocation } from "../../../domain/acp";
 import type { ResourceRef } from "../../../domain/workbench";
 import { extractAdmittedBrowseUrl } from "../../preview/harnessBrowse";
@@ -17,6 +18,7 @@ export type OpenResourceTarget = "file" | "diff";
 
 interface ToolItemProps {
   item: ToolProjectionItem;
+  allowBrowse?: boolean;
   onOpenResource?: (resource: ResourceRef, target: OpenResourceTarget) => void;
 }
 
@@ -64,8 +66,9 @@ function ResourceLocations({
 
 function Presentation({
   item,
+  allowBrowse,
   onOpenResource,
-}: Pick<ToolItemProps, "item" | "onOpenResource">) {
+}: Pick<ToolItemProps, "item" | "allowBrowse" | "onOpenResource">) {
   const presentation = item.payload.presentation;
   switch (presentation.kind) {
     case "file":
@@ -112,17 +115,29 @@ function Presentation({
       return (
         <>
           {presentation.summary ? <p>{presentation.summary}</p> : null}
-          {browse ? (
+          {browse && allowBrowse !== false ? (
             <button
               type="button"
               className="acp-resource-action"
-              onClick={() =>
-                createToolHost().invoke(CURATED_BROWSE_TOOL_NAME, {
+              onClick={() => {
+                const owner = {
+                  projectId: item.projectId,
                   chatId: item.chatId,
                   sessionId: item.sessionId,
-                  url: browse.href,
-                })
-              }
+                };
+                const opened = createToolHost().invoke(
+                  CURATED_BROWSE_TOOL_NAME,
+                  {
+                    owner,
+                    url: browse.href,
+                  },
+                );
+                if (opened) {
+                  useAgentArtifactFollowStore
+                    .getState()
+                    .pin(owner, { kind: "preview" });
+                }
+              }}
             >
               Open in Sage browser
             </button>
@@ -141,7 +156,11 @@ function Presentation({
   }
 }
 
-export function ToolItem({ item, onOpenResource }: ToolItemProps) {
+export function ToolItem({
+  item,
+  allowBrowse = true,
+  onOpenResource,
+}: ToolItemProps) {
   const descriptionId = useId();
   const detail =
     item.kind === "toolCall"
@@ -150,19 +169,22 @@ export function ToolItem({ item, onOpenResource }: ToolItemProps) {
   const label = item.payload.presentation.label;
   const status = toolStateLabels[item.toolState];
   const terminal = terminalToolStates.has(item.toolState);
+  const kind = item.payload.presentation.kind;
   return (
     <article
-      className={`acp-tool-card acp-tool-card--${item.toolState}`}
+      className={`acp-activity-card acp-activity-card--tool acp-tool-card acp-tool-card--${item.toolState}`}
       role="group"
       aria-label={label}
       aria-describedby={detail ? descriptionId : undefined}
+      data-activity-kind={kind}
+      data-activity-state={item.toolState}
     >
       {detail ? (
         <span className="sr-only" id={descriptionId}>
           {detail}
         </span>
       ) : null}
-      <header className="acp-tool-card__header">
+      <header className="acp-activity-card__header acp-tool-card__header">
         <strong>{label}</strong>
         <span
           className="acp-state"
@@ -174,7 +196,11 @@ export function ToolItem({ item, onOpenResource }: ToolItemProps) {
           {status}
         </span>
       </header>
-      <Presentation item={item} onOpenResource={onOpenResource} />
+      <Presentation
+        item={item}
+        allowBrowse={allowBrowse}
+        onOpenResource={onOpenResource}
+      />
       {detail ? (
         <details className="acp-details">
           <summary>Tool details</summary>

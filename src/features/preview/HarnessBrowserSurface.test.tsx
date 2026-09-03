@@ -3,6 +3,18 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { HarnessBrowserSurface } from "./HarnessBrowserSurface";
 import { applyBrowseIntent, clearBrowseSessions } from "./harnessBrowse";
+import type { AgentArtifactOwner } from "../../domain/agentArtifact";
+
+const ownerA = {
+  projectId: "project-1",
+  chatId: "chat:a",
+  sessionId: "session-1",
+} as AgentArtifactOwner;
+const ownerB = {
+  projectId: "project-1",
+  chatId: "chat:b",
+  sessionId: "session-1",
+} as AgentArtifactOwner;
 
 afterEach(() => {
   cleanup();
@@ -12,23 +24,23 @@ afterEach(() => {
 describe("HarnessBrowserSurface", () => {
   it("shows the admitted loopback page for that chat and refuses a missing session", () => {
     applyBrowseIntent({
-      chatId: "chat:a",
+      owner: ownerA,
       url: "http://127.0.0.1:5173/app",
     });
-    const { rerender } = render(<HarnessBrowserSurface chatId="chat:a" />);
+    const { rerender } = render(<HarnessBrowserSurface owner={ownerA} />);
     const frame = screen.getByTitle("Sage browser");
     expect(frame).toHaveAttribute("src", "http://127.0.0.1:5173/app");
     expect(screen.getByLabelText("Preview address")).toHaveValue(
       "http://127.0.0.1:5173/app",
     );
 
-    rerender(<HarnessBrowserSurface chatId="chat:b" />);
+    rerender(<HarnessBrowserSurface owner={ownerB} />);
     expect(screen.queryByTitle("Sage browser")).toBeNull();
     expect(screen.getByText(/Loopback HTTP\(S\) only/i)).toBeInTheDocument();
   });
 
   it("opens an admitted address and refuses public HTTPS", () => {
-    render(<HarnessBrowserSurface chatId="chat:a" />);
+    render(<HarnessBrowserSurface owner={ownerA} />);
     const address = screen.getByLabelText("Preview address");
     fireEvent.change(address, {
       target: { value: "https://example.com/docs" },
@@ -52,10 +64,10 @@ describe("HarnessBrowserSurface", () => {
 
   it("reloads the admitted page without leaving Sage", () => {
     applyBrowseIntent({
-      chatId: "chat:a",
+      owner: ownerA,
       url: "http://127.0.0.1:5173/app",
     });
-    render(<HarnessBrowserSurface chatId="chat:a" />);
+    render(<HarnessBrowserSurface owner={ownerA} />);
     const first = screen.getByTitle("Sage browser");
     fireEvent.click(screen.getByRole("button", { name: "Reload preview" }));
     const reloaded = screen.getByTitle("Sage browser");
@@ -65,10 +77,10 @@ describe("HarnessBrowserSurface", () => {
 
   it("keeps the browser chrome controls named in DOM order", () => {
     applyBrowseIntent({
-      chatId: "chat:a",
+      owner: ownerA,
       url: "http://127.0.0.1:5173/app",
     });
-    render(<HarnessBrowserSurface chatId="chat:a" />);
+    render(<HarnessBrowserSurface owner={ownerA} />);
 
     const chrome = screen.getByRole("region", { name: "Sage browser" });
     expect(
@@ -86,14 +98,14 @@ describe("HarnessBrowserSurface", () => {
 
   it("walks admitted back and forward without leaving Sage", () => {
     applyBrowseIntent({
-      chatId: "chat:a",
+      owner: ownerA,
       url: "http://127.0.0.1:5173/one",
     });
     applyBrowseIntent({
-      chatId: "chat:a",
+      owner: ownerA,
       url: "http://127.0.0.1:5173/two",
     });
-    render(<HarnessBrowserSurface chatId="chat:a" />);
+    render(<HarnessBrowserSurface owner={ownerA} />);
     const back = screen.getByRole("button", { name: "Back" });
     const forward = screen.getByRole("button", { name: "Forward" });
     expect(back).toBeEnabled();
@@ -116,10 +128,10 @@ describe("HarnessBrowserSurface", () => {
 
   it("clears the chat session without opening an external window", () => {
     applyBrowseIntent({
-      chatId: "chat:a",
+      owner: ownerA,
       url: "http://127.0.0.1:4173/",
     });
-    render(<HarnessBrowserSurface chatId="chat:a" />);
+    render(<HarnessBrowserSurface owner={ownerA} />);
     fireEvent.click(screen.getByRole("button", { name: "Close browser" }));
     expect(screen.queryByTitle("Sage browser")).toBeNull();
   });

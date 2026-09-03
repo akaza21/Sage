@@ -338,13 +338,6 @@ textarea:disabled,
     padding-right: 22px;
     padding-left: 22px;
   }
-
-  .edit-summary__source-control {
-    width: 31px;
-    padding: 0;
-    justify-content: center;
-    font-size: 0;
-  }
 }
 
 @media (max-width: 760px) {

@@ -101,6 +101,29 @@ afterEach(() => {
 });
 
 describe("useAcpChatActions per-Chat ownership", () => {
+  it("does not turn a rapid repeat Send into a queued prompt", async () => {
+    const pending = deferred<Awaited<ReturnType<typeof acpDesktop.sendTurn>>>();
+    const send = vi
+      .spyOn(acpDesktop, "sendTurn")
+      .mockReturnValue(pending.promise);
+    useWorkbenchStore.getState().setComposerText("one");
+    const { result } = renderHook(() => useAcpChatActions());
+
+    const first = result.current.submit("one", bindingId, null);
+    const repeated = result.current.submit("two", bindingId, null);
+    await waitFor(() => expect(send).toHaveBeenCalledOnce());
+    await expect(repeated).resolves.toBe("rejected");
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: "one" }),
+    );
+
+    pending.resolve({
+      projection: { ...page(), projectionRevision: "2" } as AcpChatPage,
+    });
+    await expect(first).resolves.toBe("applied");
+    expect(send).toHaveBeenCalledOnce();
+  });
+
   it("restores a background failure into only the captured Chat composer", async () => {
     const pending = deferred<Awaited<ReturnType<typeof acpDesktop.sendTurn>>>();
     const send = vi

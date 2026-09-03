@@ -6,12 +6,22 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
-import { browseSessionForChat, clearBrowseSessions } from "./harnessBrowse";
+import {
+  browseSessionForOwner,
+  clearBrowseSessions,
+  setHarnessBrowseOwner,
+} from "./harnessBrowse";
 import { PreviewSurface } from "./PreviewSurface";
-import type { PreviewTargetRef } from "./previewDesktop";
+import type { PreviewHealthResponse, PreviewTargetRef } from "./previewDesktop";
+import type { AgentArtifactOwner } from "../../domain/agentArtifact";
+import {
+  acpProjectionStoreFor,
+  clearAcpProjectionRegistry,
+} from "../../app/acpProjectionRegistry";
+import type { AcpChatPage, ProjectGeneration } from "../../domain/acp";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -28,6 +38,31 @@ const target: PreviewTargetRef = {
   rootId: "root-preview",
   scriptName: "dev",
 };
+const browseOwner = {
+  projectId: target.projectId,
+  chatId: "chat:preview",
+  sessionId: "session-preview",
+} as AgentArtifactOwner;
+
+function seedBrowseOwner(owner: AgentArtifactOwner): void {
+  const store = acpProjectionStoreFor(owner.chatId);
+  const scope = {
+    projectId: owner.projectId,
+    projectGeneration: String(target.projectGeneration) as ProjectGeneration,
+    chatId: owner.chatId,
+  };
+  store.getState().activateScope(scope);
+  store.getState().applyAuthoritativePage(scope, {
+    projectId: owner.projectId,
+    chatId: owner.chatId,
+    title: "Preview chat",
+    projectionRevision: "1",
+    currentSessionId: owner.sessionId,
+    sessions: [],
+    turns: [],
+    nextCursor: null,
+  } as unknown as AcpChatPage);
+}
 
 const {
   discoverPreviewTargets,
@@ -48,11 +83,13 @@ const {
       truncated: false,
     }),
   ),
-  getPreviewHealth: vi.fn(async (ref: PreviewTargetRef) => ({
-    ref,
-    origin: "http://127.0.0.1:5173",
-    healthy: true,
-  })),
+  getPreviewHealth: vi.fn(
+    async (ref: PreviewTargetRef): Promise<PreviewHealthResponse> => ({
+      ref,
+      origin: "http://127.0.0.1:5173",
+      healthy: true,
+    }),
+  ),
   startPreviewTarget: vi.fn(async (ref: PreviewTargetRef) => ({
     ref,
     origin: "http://127.0.0.1:5173",
@@ -67,17 +104,209 @@ vi.mock("./previewDesktop", () => ({
   stopPreviewTarget,
 }));
 
+let previewRunning = false;
+
 describe("PreviewSurface", () => {
+  beforeEach(() => {
+    previewRunning = false;
+    discoverPreviewTargets.mockImplementation(async (request) => ({
+      projectId: request.projectId,
+      transitionEpoch: request.expectedTransitionEpoch,
+      targets: [target],
+      truncated: false,
+    }));
+    getPreviewHealth.mockImplementation(async (ref) => ({
+      ref,
+      origin: previewRunning ? "http://127.0.0.1:5173" : null,
+      healthy: previewRunning,
+    }));
+    startPreviewTarget.mockImplementation(async (ref) => {
+      previewRunning = true;
+      return { ref, origin: "http://127.0.0.1:5173" };
+    });
+    stopPreviewTarget.mockImplementation(async (ref) => {
+      previewRunning = false;
+      return { ref };
+    });
+  });
+
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
     clearBrowseSessions();
+    clearAcpProjectionRegistry();
     useWorkbenchStore.setState({
       project: null,
       projectGeneration: 0,
       nativeTransitionEpoch: 0,
       projectTransitioning: false,
     });
+  });
+
+  it("recovers an already-running Preview after the UI reloads", async () => {
+    useWorkbenchStore.setState({
+      project: { id: target.projectId, name: "Preview", roots: [] },
+      projectGeneration: target.projectGeneration,
+      nativeTransitionEpoch: target.expectedTransitionEpoch,
+      projectTransitioning: false,
+    });
+    seedBrowseOwner(browseOwner);
+    setHarnessBrowseOwner(browseOwner);
+    previewRunning = true;
+
+    render(<PreviewSurface />);
+
+    await screen.findByRole("button", { name: "Stop" });
+    expect(startPreviewTarget).not.toHaveBeenCalled();
+    expect(browseSessionForOwner(browseOwner)?.href).toBe(
+      "http://127.0.0.1:5173/",
+    );
+  });
+
+  it("captures an owner established before deferred reload recovery begins", async () => {
+    useWorkbenchStore.setState({
+      project: { id: target.projectId, name: "Preview", roots: [] },
+      projectGeneration: target.projectGeneration,
+      nativeTransitionEpoch: target.expectedTransitionEpoch,
+      projectTransitioning: false,
+    });
+    previewRunning = true;
+
+    render(<PreviewSurface />);
+    act(() => {
+      seedBrowseOwner(browseOwner);
+      setHarnessBrowseOwner(browseOwner);
+    });
+
+    await screen.findByRole("button", { name: "Stop" });
+    expect(browseSessionForOwner(browseOwner)?.href).toBe(
+      "http://127.0.0.1:5173/",
+    );
+  });
+
+  it("captures the current owner when Refresh begins", async () => {
+    useWorkbenchStore.setState({
+      project: { id: target.projectId, name: "Preview", roots: [] },
+      projectGeneration: target.projectGeneration,
+      nativeTransitionEpoch: target.expectedTransitionEpoch,
+      projectTransitioning: false,
+    });
+    seedBrowseOwner(browseOwner);
+    setHarnessBrowseOwner(browseOwner);
+    render(<PreviewSurface />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Start" })).toBeEnabled(),
+    );
+
+    const replacementOwner = {
+      ...browseOwner,
+      sessionId: "session-replacement",
+    } as AgentArtifactOwner;
+    act(() => {
+      seedBrowseOwner(replacementOwner);
+      setHarnessBrowseOwner(replacementOwner);
+    });
+    previewRunning = true;
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    await waitFor(() =>
+      expect(browseSessionForOwner(replacementOwner)?.href).toBe(
+        "http://127.0.0.1:5173/",
+      ),
+    );
+    expect(browseSessionForOwner(browseOwner)).toBeNull();
+  });
+
+  it("ignores a healthy recovery response for a different target", async () => {
+    useWorkbenchStore.setState({
+      project: { id: target.projectId, name: "Preview", roots: [] },
+      projectGeneration: target.projectGeneration,
+      nativeTransitionEpoch: target.expectedTransitionEpoch,
+      projectTransitioning: false,
+    });
+    seedBrowseOwner(browseOwner);
+    setHarnessBrowseOwner(browseOwner);
+    getPreviewHealth.mockResolvedValue({
+      ref: { ...target, rootId: "root-other" },
+      origin: "http://127.0.0.1:5173",
+      healthy: true,
+    });
+
+    render(<PreviewSurface />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Start" })).toBeEnabled(),
+    );
+    expect(startPreviewTarget).not.toHaveBeenCalled();
+    expect(browseSessionForOwner(browseOwner)).toBeNull();
+  });
+
+  it("stops a newly-started Preview that does not become healthy", async () => {
+    useWorkbenchStore.setState({
+      project: { id: target.projectId, name: "Preview", roots: [] },
+      projectGeneration: target.projectGeneration,
+      nativeTransitionEpoch: target.expectedTransitionEpoch,
+      projectTransitioning: false,
+    });
+    getPreviewHealth.mockImplementation(async (ref) => ({
+      ref,
+      origin: null,
+      healthy: false,
+    }));
+    render(<PreviewSurface />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Start" }));
+
+    await waitFor(() => expect(stopPreviewTarget).toHaveBeenCalledWith(target));
+    expect(stopPreviewTarget).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/healthy/i);
+    expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
+  });
+
+  it("does not reassign Preview recovery when the focused session changes", async () => {
+    const pendingHealth = deferred<{
+      ref: PreviewTargetRef;
+      origin: string | null;
+      healthy: boolean;
+    }>();
+    getPreviewHealth
+      .mockReturnValueOnce(pendingHealth.promise)
+      .mockResolvedValue({
+        ref: target,
+        origin: "http://127.0.0.1:5173",
+        healthy: true,
+      });
+    useWorkbenchStore.setState({
+      project: { id: target.projectId, name: "Preview", roots: [] },
+      projectGeneration: target.projectGeneration,
+      nativeTransitionEpoch: target.expectedTransitionEpoch,
+      projectTransitioning: false,
+    });
+    seedBrowseOwner(browseOwner);
+    setHarnessBrowseOwner(browseOwner);
+    render(<PreviewSurface />);
+    await waitFor(() => expect(getPreviewHealth).toHaveBeenCalledOnce());
+
+    const replacementOwner = {
+      ...browseOwner,
+      sessionId: "session-replacement",
+    } as AgentArtifactOwner;
+    act(() => {
+      seedBrowseOwner(replacementOwner);
+      setHarnessBrowseOwner(replacementOwner);
+    });
+    await act(async () =>
+      pendingHealth.resolve({
+        ref: target,
+        origin: "http://127.0.0.1:5173",
+        healthy: true,
+      }),
+    );
+
+    await screen.findByRole("button", { name: "Stop" });
+    expect(getPreviewHealth).toHaveBeenCalledTimes(1);
+    expect(browseSessionForOwner(browseOwner)).toBeNull();
+    expect(browseSessionForOwner(replacementOwner)).toBeNull();
   });
 
   it("unmounts an inactive Preview surface and releases its active child", async () => {
@@ -127,7 +356,7 @@ describe("PreviewSurface", () => {
       starting.resolve({ ref: target, origin: "http://127.0.0.1:5173" }),
     );
     expect(stopPreviewTarget).toHaveBeenCalledTimes(1);
-    expect(getPreviewHealth).not.toHaveBeenCalled();
+    expect(getPreviewHealth).toHaveBeenCalledTimes(1);
   });
 
   it("resets an active target when the Project transition identity changes", async () => {
@@ -146,15 +375,6 @@ describe("PreviewSurface", () => {
           : nextTarget,
       ],
       truncated: false,
-    }));
-    startPreviewTarget.mockImplementation(async (ref) => ({
-      ref,
-      origin: "http://127.0.0.1:5173",
-    }));
-    getPreviewHealth.mockImplementation(async (ref) => ({
-      ref,
-      origin: "http://127.0.0.1:5173",
-      healthy: true,
     }));
     useWorkbenchStore.setState({
       project: { id: target.projectId, name: "Preview", roots: [] },
@@ -190,13 +410,65 @@ describe("PreviewSurface", () => {
       nativeTransitionEpoch: target.expectedTransitionEpoch,
       projectTransitioning: false,
     });
-    render(<PreviewSurface browseChatId="chat:preview" />);
+    seedBrowseOwner(browseOwner);
+    setHarnessBrowseOwner(browseOwner);
+    render(<PreviewSurface />);
     await screen.findByRole("button", { name: "Start" });
     fireEvent.click(screen.getByRole("button", { name: "Start" }));
     await waitFor(() =>
-      expect(browseSessionForChat("chat:preview")?.href).toBe(
+      expect(browseSessionForOwner(browseOwner)?.href).toBe(
         "http://127.0.0.1:5173/",
       ),
     );
+  });
+
+  it("does not publish a stale preview after the focused session changes", async () => {
+    const started = deferred<{
+      ref: PreviewTargetRef;
+      origin: string;
+    }>();
+    startPreviewTarget.mockImplementationOnce(() => started.promise);
+    useWorkbenchStore.setState({
+      project: { id: target.projectId, name: "Preview", roots: [] },
+      projectGeneration: target.projectGeneration,
+      nativeTransitionEpoch: target.expectedTransitionEpoch,
+      projectTransitioning: false,
+    });
+    seedBrowseOwner(browseOwner);
+    setHarnessBrowseOwner(browseOwner);
+    render(<PreviewSurface />);
+    const start = await screen.findByRole("button", { name: "Start" });
+    await waitFor(() => expect(getPreviewHealth).toHaveBeenCalledOnce());
+    getPreviewHealth.mockResolvedValue({
+      ref: target,
+      origin: "http://127.0.0.1:5173",
+      healthy: true,
+    });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    await waitFor(() => expect(startPreviewTarget).toHaveBeenCalledOnce());
+
+    const replacementOwner = {
+      ...browseOwner,
+      sessionId: "session-replacement",
+    } as AgentArtifactOwner;
+    const projection = acpProjectionStoreFor(browseOwner.chatId);
+    act(() => {
+      projection.setState({
+        page: {
+          ...projection.getState().page!,
+          currentSessionId: replacementOwner.sessionId,
+        },
+      });
+      setHarnessBrowseOwner(replacementOwner);
+    });
+    started.resolve({
+      ref: target,
+      origin: "http://127.0.0.1:5173",
+    });
+
+    await waitFor(() => expect(getPreviewHealth).toHaveBeenCalledTimes(2));
+    expect(browseSessionForOwner(browseOwner)).toBeNull();
+    expect(browseSessionForOwner(replacementOwner)).toBeNull();
   });
 });

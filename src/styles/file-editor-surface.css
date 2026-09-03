@@ -5,6 +5,7 @@
   min-height: 0;
   flex-direction: column;
   background: var(--color-canvas);
+  container-type: inline-size;
 }
 
 .file-header {
@@ -12,7 +13,7 @@
   min-width: 0;
   align-items: center;
   justify-content: space-between;
-  min-height: var(--chrome-row-height);
+  min-height: var(--resource-document-header-height);
   gap: var(--space-4);
   padding: 0 var(--space-3);
   border-bottom: 1px solid var(--color-border-subtle);
@@ -172,6 +173,17 @@
   background: var(--color-danger-muted);
 }
 
+.file-editor-stage {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .editor-find {
   display: flex;
   min-width: 0;
@@ -180,6 +192,20 @@
   padding: 6px 10px;
   border-bottom: 1px solid var(--color-border-subtle);
   background: var(--color-surface);
+}
+
+.editor-find--overlay {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  right: 12px;
+  width: min(440px, calc(100% - 24px));
+  box-sizing: border-box;
+  padding: 4px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-panel);
+  box-shadow: var(--elevation-floating);
 }
 
 .editor-find__query {
@@ -230,7 +256,7 @@
   overflow: hidden;
   border: 0;
   outline: 0;
-  color: #cbd1ca;
+  color: var(--resource-document-code-foreground);
   background: var(--color-canvas);
 }
 
@@ -239,7 +265,7 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
-  color: #cbd1ca;
+  color: var(--resource-document-code-foreground);
   background: var(--color-canvas);
 }
 
@@ -260,7 +286,7 @@
 }
 
 .editor-loading--error {
-  color: #efb3ae;
+  color: var(--resource-document-error-foreground);
 }
 
 .editor-input .cm-scroller {
@@ -273,7 +299,7 @@
 .editor-input .cm-content {
   min-height: 100%;
   padding: 18px 20px 18px 8px;
-  caret-color: #e1e7df;
+  caret-color: var(--resource-document-caret);
 }
 
 .editor-input .cm-line {
@@ -282,8 +308,8 @@
 
 .editor-input .cm-gutters {
   padding-top: 18px;
-  border-right: 1px solid var(--color-border-subtle);
-  color: #667067;
+  border-right: 1px solid var(--resource-document-gutter-divider);
+  color: var(--resource-document-gutter-foreground);
   background: var(--color-canvas);
 }
 
@@ -294,19 +320,86 @@
 
 .editor-input .cm-activeLine,
 .editor-input .cm-activeLineGutter {
-  background: rgb(255 255 255 / 0.035);
+  background: var(--resource-document-active-line);
 }
 
 .editor-input .cm-selectionBackground,
 .editor-input .cm-content ::selection {
-  background: var(--color-selection) !important;
+  background: var(--resource-document-selection) !important;
+}
+
+.editor-input .cm-content ::selection {
+  color: var(--resource-document-selection-foreground) !important;
 }
 
 .editor-input .cm-cursor {
-  border-left-color: #e1e7df;
+  border-left-color: var(--resource-document-caret);
 }
 
 .editor-input .cm-focused {
   outline: 2px solid var(--color-accent);
   outline-offset: -2px;
+}
+
+@container (max-width: 560px) {
+  .file-header {
+    gap: 8px;
+    padding: 0 8px;
+  }
+
+  .file-header__metadata,
+  .file-breadcrumb__item:not(:last-child),
+  .file-breadcrumb__item:last-child .lucide-chevron-right {
+    display: none;
+  }
+
+  .file-header__path {
+    flex: 1 1 auto;
+  }
+
+  .file-header__actions {
+    gap: 4px;
+  }
+
+  .file-header__actions .button--compact {
+    padding: 0 7px;
+  }
+
+  .editor-find--overlay {
+    right: 8px;
+    width: min(440px, calc(100% - 16px));
+  }
+
+  .editor-find__query {
+    min-width: 72px;
+  }
+
+  .editor-find__status {
+    min-width: 70px;
+  }
+}
+
+@container (max-width: 420px) {
+  .editor-find--overlay {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) repeat(4, 26px);
+  }
+
+  .editor-find--overlay .editor-find__query {
+    width: 100%;
+    max-width: none;
+    grid-column: 1 / -1;
+  }
+
+  .editor-find--overlay .editor-find__status {
+    min-width: 0;
+    text-align: left;
+  }
+}
+
+@media (forced-colors: active) {
+  .editor-find--overlay {
+    border-color: CanvasText;
+    box-shadow: none;
+  }
 }

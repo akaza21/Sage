@@ -73,6 +73,7 @@ describe("bounded Agent chat live snapshot", () => {
     );
     expect(snapshot.working).toBe(true);
     expect(snapshot.waiting).toBe(false);
+    expect(snapshot.statusTone).toBe("working");
     expect(snapshot.streaming).toBe(true);
     expect(snapshot.statusLabel).toBe("Running");
     expect(snapshot.latestText.length).toBe(MAX_LIVE_SNAPSHOT_TEXT);
@@ -89,6 +90,7 @@ describe("bounded Agent chat live snapshot", () => {
     ).toMatchObject({
       waiting: true,
       working: false,
+      statusTone: "waiting",
       statusLabel: "Waiting for approval",
       latestText: "Need a decision",
     });
@@ -97,9 +99,19 @@ describe("bounded Agent chat live snapshot", () => {
     ).toMatchObject({
       waiting: false,
       working: false,
+      statusTone: "idle",
       streaming: false,
       statusLabel: "Completed",
       latestText: "",
     });
+  });
+
+  it("keeps failure status distinct from quiet terminal states", () => {
+    expect(
+      projectChatLiveSnapshot("chat-1", page([turn("failed", 1)])),
+    ).toMatchObject({ statusLabel: "Failed", statusTone: "failed" });
+    expect(
+      projectChatLiveSnapshot("chat-1", page([turn("cancelled", 1)])),
+    ).toMatchObject({ statusLabel: "Cancelled", statusTone: "idle" });
   });
 });

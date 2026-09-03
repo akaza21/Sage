@@ -1,11 +1,5 @@
 import { ArrowRightLeft } from "lucide-react";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acp";
@@ -17,6 +11,7 @@ import {
 } from "../../domain/chatHandoff";
 import { chatDisplayTitle } from "../../domain/chatTitle";
 import type { ChatMessage } from "../../domain/workbench";
+import { ModalDialog } from "../../ui/ModalDialog";
 
 interface ChatHandoffControlProps {
   acpPage: AcpChatPage | null;
@@ -64,7 +59,6 @@ export function ChatHandoffControl({
   const [saving, setSaving] = useState(false);
   const [handoffError, setHandoffError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const dialogRef = useRef<HTMLDialogElement | null>(null);
   const sourceTab = tabs.find(
     (tab) => tab.id === activeTabId && tab.kind === "chat",
   );
@@ -81,8 +75,6 @@ export function ChatHandoffControl({
     activeTabId === intent.sourceChatId
       ? intent
       : null;
-  const dialogOpen = Boolean(currentIntent);
-
   useEffect(() => {
     if (!intent) return;
     return useWorkbenchStore.subscribe((state) => {
@@ -99,23 +91,6 @@ export function ChatHandoffControl({
       }
     });
   }, [intent]);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialogOpen || !dialog) return;
-    if (typeof dialog.showModal === "function") {
-      if (!dialog.open) dialog.showModal();
-    } else {
-      dialog.setAttribute("open", "");
-    }
-    return () => {
-      if (typeof dialog.close === "function" && dialog.open) {
-        dialog.close();
-      } else {
-        dialog.removeAttribute("open");
-      }
-    };
-  }, [dialogOpen]);
 
   const close = () => {
     setIntent(null);
@@ -169,37 +144,6 @@ export function ChatHandoffControl({
     queueMicrotask(() => triggerRef.current?.focus());
   };
 
-  const containFocus = (event: KeyboardEvent<HTMLDialogElement>) => {
-    if (event.key === "Escape" && !saving) {
-      event.preventDefault();
-      close();
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusable = Array.from(
-      event.currentTarget.querySelectorAll<HTMLElement>(
-        "button:not([disabled]), select:not([disabled]), textarea:not([disabled])",
-      ),
-    );
-    const first = focusable[0];
-    const last = focusable.at(-1);
-    if (!first || !last) {
-      event.preventDefault();
-      return;
-    }
-    if (
-      event.shiftKey &&
-      (document.activeElement === first ||
-        !event.currentTarget.contains(document.activeElement))
-    ) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
-
   return (
     <div className="handoff-control">
       <button
@@ -219,16 +163,12 @@ export function ChatHandoffControl({
         </div>
       ) : null}
       {currentIntent ? (
-        <dialog
-          ref={dialogRef}
-          className="dirty-dialog handoff-dialog"
-          aria-modal="true"
-          aria-labelledby="handoff-dialog-title"
-          onCancel={(event) => {
-            event.preventDefault();
+        <ModalDialog
+          className="handoff-dialog"
+          labelledBy="handoff-dialog-title"
+          onDismiss={() => {
             if (!saving) close();
           }}
-          onKeyDown={containFocus}
         >
           <form
             className="handoff-dialog__form"
@@ -299,7 +239,7 @@ export function ChatHandoffControl({
               </button>
             </div>
           </form>
-        </dialog>
+        </ModalDialog>
       ) : null}
     </div>
   );

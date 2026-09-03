@@ -17,11 +17,11 @@ import type {
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { cancellableTurnId } from "./acpTurnState";
 import { createClientIntentFactory } from "./clientIntent";
+import { currentNonterminalTurn } from "./currentNonterminalTurn";
 
 export { cancellableTurnId } from "./acpTurnState";
 
-const MAX_QUEUED_ACTIONS = 32;
-const MAX_QUEUED_CHAT_SCOPES = 8;
+const MAX_CONCURRENT_CHAT_ACTIONS = 8;
 
 export interface AcpActionContext {
   scope: AcpProjectionScope;
@@ -94,10 +94,8 @@ function sameScope(
 function scopeKey(context: AcpActionContext): string {
   return JSON.stringify([
     context.scope.projectId,
-    context.scope.projectGeneration,
     context.scope.chatId,
     context.ownershipEpoch,
-    context.commandProjectGeneration,
   ]);
 }
 
@@ -139,8 +137,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
   const commands = dependencies.commands ?? acpDesktop;
   const nextIntentId =
     dependencies.createIntentId ?? createClientIntentFactory();
-  const queues = new Map<string, Promise<unknown>>();
-  let queuedActions = 0;
+  const activeScopes = new Set<string>();
 
   const emitState = (
     captured: AcpActionContext,
@@ -174,18 +171,18 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     ) => Promise<AcpActionOutcome>,
   ): Promise<AcpActionOutcome> => {
     const key = scopeKey(captured);
-    if (
-      queuedActions >= MAX_QUEUED_ACTIONS ||
-      (!queues.has(key) && queues.size >= MAX_QUEUED_CHAT_SCOPES)
-    ) {
+    const scopeBusy = activeScopes.has(key);
+    if (scopeBusy || activeScopes.size >= MAX_CONCURRENT_CHAT_ACTIONS) {
       const error = new AcpDesktopError({
         kind: "capacity",
         resource: "queue",
-        limit: MAX_QUEUED_ACTIONS,
-        message: "Too many ACP actions are queued for this chat.",
+        limit: scopeBusy ? 1 : MAX_CONCURRENT_CHAT_ACTIONS,
+        message: scopeBusy
+          ? "Another action is already in progress for this Chat."
+          : "Too many Chat actions are already in progress.",
       });
       emitState(captured, {
-        busy: queues.has(key),
+        busy: scopeBusy,
         cancellingTurnId: null,
         error,
       });
@@ -200,26 +197,18 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
       presentation = { ...presentation, ...next };
       emitState(captured, presentation);
     };
-    queuedActions += 1;
+    activeScopes.add(key);
     emitState(captured, presentation);
-    const previous = queues.get(key) ?? Promise.resolve();
-    const result = previous.then(async () => {
+    const result = Promise.resolve().then(async () => {
       if (!sameScope(dependencies.getContext(), captured)) {
         return "ignoredStale" as const;
       }
       return action(updateState);
     });
-    const tail = result
-      .catch(() => undefined)
-      .finally(() => {
-        queuedActions -= 1;
-        if (queues.get(key) === tail) queues.delete(key);
-        if (!queues.has(key)) {
-          updateState({ busy: false });
-        }
-      });
-    queues.set(key, tail);
-    return result;
+    return result.finally(() => {
+      activeScopes.delete(key);
+      updateState({ busy: false });
+    });
   };
 
   const submit = (
@@ -230,6 +219,16 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     const captured = dependencies.getContext();
     const normalizedPrompt = prompt.trim();
     if (!captured || !normalizedPrompt) return Promise.resolve("rejected");
+    if (currentNonterminalTurn(captured.page)) {
+      emitState(captured, {
+        busy: false,
+        cancellingTurnId: null,
+        error: localFailure(
+          "Wait for the current Turn to finish before sending a follow-up.",
+        ),
+      });
+      return Promise.resolve("rejected");
+    }
     return enqueue(captured, async (updateState) => {
       let page = dependencies.getContext()?.page ?? captured.page;
       let promptCallStarted = false;

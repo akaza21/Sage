@@ -232,6 +232,21 @@ async function invokeAcp<T, Request extends object>(
   }
 }
 
+async function invokeAcpMutation<Request extends object>(
+  command: string,
+  request: Request,
+): Promise<AcpMutationResult> {
+  const response = await invokeAcp<unknown, Request>(command, request);
+  const safe = safeAcpMutationResponse(response);
+  if (!safe) {
+    throw new AcpDesktopError({
+      kind: "internal",
+      message: "ACP mutation returned an invalid bounded projection.",
+    });
+  }
+  return safe;
+}
+
 export const acpDesktop = {
   async getCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
     return invokeCodexAuth("get_codex_auth", request);
@@ -271,25 +286,25 @@ export const acpDesktop = {
   },
 
   startSession(request: StartAcpSessionRequest): Promise<AcpMutationResult> {
-    return invokeAcp("start_acp_session", request);
+    return invokeAcpMutation("start_acp_session", request);
   },
 
   activateSession(
     request: ActivateAcpSessionRequest,
   ): Promise<AcpMutationResult> {
-    return invokeAcp("activate_acp_session", request);
+    return invokeAcpMutation("activate_acp_session", request);
   },
 
   sendTurn(request: SendAcpTurnRequest): Promise<AcpMutationResult> {
-    return invokeAcp("send_acp_turn", request);
+    return invokeAcpMutation("send_acp_turn", request);
   },
 
   cancelTurn(request: CancelAcpTurnRequest): Promise<AcpMutationResult> {
-    return invokeAcp("cancel_acp_turn", request);
+    return invokeAcpMutation("cancel_acp_turn", request);
   },
 
   closeSession(request: CloseAcpSessionRequest): Promise<AcpMutationResult> {
-    return invokeAcp("close_acp_session", request);
+    return invokeAcpMutation("close_acp_session", request);
   },
 
   async resolvePermissionDecision(

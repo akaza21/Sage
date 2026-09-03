@@ -3,6 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import { applyBrowseIntent, harnessBrowseOwner } from "./harnessBrowse";
 import {
+  sameAgentArtifactOwner,
+  type AgentArtifactOwner,
+} from "../../domain/agentArtifact";
+import { agentArtifactOwnerIsCurrent } from "../../app/openAgentArtifact";
+import { useHarnessBrowseOwner } from "./useHarnessBrowseSession";
+import {
   discoverPreviewTargets,
   getPreviewHealth,
   startPreviewTarget,
@@ -10,11 +16,7 @@ import {
   type PreviewTargetRef,
 } from "./previewDesktop";
 
-export function PreviewSurface({
-  browseChatId,
-}: {
-  browseChatId?: string | null;
-} = {}) {
+export function PreviewSurface() {
   const project = useWorkbenchStore((state) => state.project);
   const projectGeneration = useWorkbenchStore(
     (state) => state.projectGeneration,
@@ -23,6 +25,7 @@ export function PreviewSurface({
   const transitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
+  const browseOwner = useHarnessBrowseOwner();
 
   return (
     <PreviewSession
@@ -31,7 +34,7 @@ export function PreviewSurface({
       projectGeneration={projectGeneration}
       epoch={epoch}
       transitioning={transitioning}
-      browseChatId={browseChatId ?? harnessBrowseOwner()}
+      browseOwner={browseOwner}
     />
   );
 }
@@ -41,7 +44,7 @@ type PreviewSessionProps = {
   projectGeneration: number;
   epoch: number;
   transitioning: boolean;
-  browseChatId: string | null;
+  browseOwner: AgentArtifactOwner | null;
 };
 
 function matchesPreviewTarget(
@@ -71,12 +74,37 @@ function matchesPreviewSession(
   );
 }
 
+function healthyOriginForTarget(
+  response: Awaited<ReturnType<typeof getPreviewHealth>>,
+  target: PreviewTargetRef,
+): string | null {
+  return response.healthy &&
+    typeof response.origin === "string" &&
+    matchesPreviewTarget(response.ref, target)
+    ? response.origin
+    : null;
+}
+
+function publishPreviewForOwner(
+  owner: AgentArtifactOwner | null,
+  projectGeneration: number,
+  origin: string,
+): void {
+  if (
+    owner &&
+    sameAgentArtifactOwner(owner, harnessBrowseOwner()) &&
+    agentArtifactOwnerIsCurrent(owner, projectGeneration)
+  ) {
+    applyBrowseIntent({ owner, url: origin });
+  }
+}
+
 function PreviewSession({
   project,
   projectGeneration,
   epoch,
   transitioning,
-  browseChatId,
+  browseOwner,
 }: PreviewSessionProps) {
   const [targets, setTargets] = useState<PreviewTargetRef[]>([]);
   const [active, setActive] = useState<PreviewTargetRef | null>(null);
@@ -89,6 +117,7 @@ function PreviewSession({
 
   const discover = useCallback(async () => {
     if (!project || transitioning) return;
+    const discoveryOwner = harnessBrowseOwner();
     setLoading(true);
     setMessage(null);
     try {
@@ -106,6 +135,30 @@ function PreviewSession({
         throw new Error("Preview discovery returned a stale target.");
       }
       setTargets(response.targets);
+      let recovered: { ref: PreviewTargetRef; origin: string } | null = null;
+      for (const target of response.targets) {
+        let health: Awaited<ReturnType<typeof getPreviewHealth>>;
+        try {
+          health = await getPreviewHealth(target);
+        } catch {
+          continue;
+        }
+        if (!mountedRef.current) return;
+        const origin = healthyOriginForTarget(health, target);
+        if (origin === null) continue;
+        recovered = { ref: health.ref, origin };
+        break;
+      }
+      if (!mountedRef.current) return;
+      activeTargetRef.current = recovered?.ref ?? null;
+      setActive(recovered?.ref ?? null);
+      if (recovered) {
+        publishPreviewForOwner(
+          discoveryOwner,
+          projectGeneration,
+          recovered.origin,
+        );
+      }
     } catch (error) {
       if (!mountedRef.current) return;
       setMessage(
@@ -186,18 +239,27 @@ function PreviewSession({
                   .then(async (started) => {
                     startedTarget = started.ref;
                     if (!mountedRef.current) return;
-                    await getPreviewHealth(target);
+                    if (!matchesPreviewTarget(started.ref, target)) {
+                      throw new Error("Preview start returned a stale target.");
+                    }
+                    const health = await getPreviewHealth(target);
                     if (!mountedRef.current) return;
+                    const healthyOrigin = healthyOriginForTarget(
+                      health,
+                      target,
+                    );
+                    if (healthyOrigin === null) {
+                      throw new Error("Preview did not become healthy.");
+                    }
                     activeTargetRef.current = started.ref;
                     startingTargetRef.current = null;
                     setStarting(false);
                     setActive(started.ref);
-                    if (browseChatId) {
-                      applyBrowseIntent({
-                        chatId: browseChatId,
-                        url: started.origin,
-                      });
-                    }
+                    publishPreviewForOwner(
+                      browseOwner,
+                      projectGeneration,
+                      healthyOrigin,
+                    );
                   })
                   .catch((error) => {
                     if (!mountedRef.current) return;

@@ -102,15 +102,17 @@ describe("TitleBar center chrome", () => {
     ).toBeNull();
   });
 
-  it("opens the durable Settings tab from Editor chrome", () => {
+  it("opens the durable Settings tab from Editor chrome", async () => {
     seedChats();
     render(<TitleBar mode="editor" onModeChange={vi.fn()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
 
-    expect(useWorkbenchStore.getState().activeTabId).toBe(
-      "settings:appearance",
-    );
+    await vi.waitFor(() => {
+      expect(useWorkbenchStore.getState().activeTabId).toBe(
+        "settings:appearance",
+      );
+    });
     expect(useWorkbenchStore.getState().tabs).toContainEqual(
       expect.objectContaining({ kind: "settings", title: "Settings" }),
     );

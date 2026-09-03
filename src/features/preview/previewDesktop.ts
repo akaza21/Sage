@@ -93,6 +93,16 @@ function assertTarget(value: unknown): asserts value is PreviewTargetRef {
   }
 }
 
+function sameTarget(left: PreviewTargetRef, right: PreviewTargetRef): boolean {
+  return (
+    left.projectId === right.projectId &&
+    left.projectGeneration === right.projectGeneration &&
+    left.expectedTransitionEpoch === right.expectedTransitionEpoch &&
+    left.rootId === right.rootId &&
+    left.scriptName === right.scriptName
+  );
+}
+
 function invalid(message: string): PreviewFailure {
   return { kind: "invalidRequest", message };
 }
@@ -184,6 +194,11 @@ export async function getPreviewHealth(
     );
   }
   assertTarget(response.ref);
+  if (!sameTarget(response.ref, ref)) {
+    throw new PreviewDesktopError(
+      invalid("Preview health returned an invalid response."),
+    );
+  }
   if (response.origin !== null && !isLoopbackOrigin(response.origin)) {
     throw new PreviewDesktopError(
       invalid("Preview health returned a non-loopback origin."),
@@ -207,6 +222,11 @@ export async function startPreviewTarget(
     );
   }
   assertTarget(response.ref);
+  if (!sameTarget(response.ref, ref)) {
+    throw new PreviewDesktopError(
+      invalid("Preview start returned an invalid response."),
+    );
+  }
   return response as PreviewStartResponse;
 }
 
@@ -221,5 +241,10 @@ export async function stopPreviewTarget(
     );
   }
   assertTarget(response.ref);
+  if (!sameTarget(response.ref, ref)) {
+    throw new PreviewDesktopError(
+      invalid("Preview stop returned an invalid response."),
+    );
+  }
   return response as PreviewStopResponse;
 }

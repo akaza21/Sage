@@ -44,23 +44,27 @@ function permission(
 }
 
 describe("PermissionItem", () => {
-  it("offers Ask, Allow once, and Deny while approval is waiting", () => {
+  it("keeps a waiting permission read-only until decisions are admitted", () => {
     render(<PermissionItem item={permission("received")} />);
     expect(
       screen.getByRole("group", {
         name: "Permission request",
-        description: "Choose how Sage should handle this permission request",
+        description:
+          "Sage automatically denies permission requests in this build",
       }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("status", { name: "Waiting for approval" }),
     ).toHaveAttribute("aria-live", "off");
     expect(screen.getByText("Details")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ask" })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Allow once" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Deny" })).toBeInTheDocument();
+      screen.getByText(
+        "Permission actions are unavailable. Sage automatically denies permission requests in this build.",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /ask|allow|deny/i }),
+    ).toBeNull();
   });
 
   it("retains a durable decline with the terminal name but live-off", () => {

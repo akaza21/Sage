@@ -18,15 +18,24 @@ function toolBrowseUrl(item: AcpItem): string | null {
 }
 
 export function dispatchBrowseFromAcpPage(
-  page: Pick<AcpChatPage, "chatId" | "currentSessionId" | "turns">,
+  page: Pick<
+    AcpChatPage,
+    "projectId" | "chatId" | "currentSessionId" | "turns"
+  >,
 ): void {
   const host = createToolHost();
-  if (!host.canInvoke(CURATED_BROWSE_TOOL_NAME) || !host.invoke) return;
+  if (
+    !page.currentSessionId ||
+    !host.canInvoke(CURATED_BROWSE_TOOL_NAME) ||
+    !host.invoke
+  ) {
+    return;
+  }
   for (const turn of page.turns) {
     for (const item of turn.items) {
       if (
-        item.sessionId &&
-        page.currentSessionId &&
+        item.projectId !== page.projectId ||
+        item.chatId !== page.chatId ||
         item.sessionId !== page.currentSessionId
       ) {
         continue;
@@ -34,8 +43,11 @@ export function dispatchBrowseFromAcpPage(
       const url = toolBrowseUrl(item);
       if (!url) continue;
       host.invoke(CURATED_BROWSE_TOOL_NAME, {
-        chatId: page.chatId,
-        sessionId: item.sessionId,
+        owner: {
+          projectId: page.projectId,
+          chatId: page.chatId,
+          sessionId: page.currentSessionId,
+        },
         url,
       });
     }

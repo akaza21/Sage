@@ -1,5 +1,8 @@
 import type { AgentRailChat, SessionStatus } from "../domain/workbench";
-import { sessionRailRelativeTime } from "../features/chat/acp/sessionRail";
+import {
+  sessionRailRelativeTime,
+  sessionRailStatusLabel,
+} from "../features/chat/acp/sessionRail";
 import type { AgentRailProjectGroup } from "./agentChatRail";
 
 export const MAX_AGENT_RAIL_STATUS_SECTION = 64;
@@ -57,6 +60,36 @@ export interface AgentRailStatusSection {
   truncated: boolean;
 }
 
+export type AgentRailTrailingStateKind =
+  "failed" | "waiting" | "working" | "recovering" | "unread" | "time";
+
+export interface AgentRailTrailingState {
+  kind: AgentRailTrailingStateKind;
+  label: string;
+}
+
+export function agentRailTrailingState(input: {
+  status?: SessionStatus;
+  unread: boolean;
+  stamp: string;
+}): AgentRailTrailingState | null {
+  if (input.status === "failed" || input.status === "waiting") {
+    return {
+      kind: input.status,
+      label: sessionRailStatusLabel(input.status),
+    };
+  }
+  if (input.status === "working" || input.status === "recovering") {
+    return {
+      kind: input.status,
+      label: sessionRailStatusLabel(input.status),
+    };
+  }
+  if (input.unread) return { kind: "unread", label: "Unread" };
+  if (input.stamp) return { kind: "time", label: input.stamp };
+  return null;
+}
+
 export function agentRailAgeStamp(input: {
   updatedAt?: number;
   live: boolean;
@@ -79,7 +112,7 @@ export function classifyAgentRailSection(input: {
   if (input.status === "working" || input.status === "recovering") {
     return "working";
   }
-  if (input.status === "waiting" || input.unread) {
+  if (input.status === "waiting" || input.status === "failed" || input.unread) {
     return "attention";
   }
   return "done";

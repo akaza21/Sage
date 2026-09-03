@@ -1,0 +1,220 @@
+.acp-activity-card {
+  min-width: 0;
+  padding: 6px 0 6px var(--space-3);
+  overflow: hidden;
+  border: 0;
+  border-left: 1px solid var(--color-border-strong);
+  border-radius: 0;
+  color: var(--color-text-secondary);
+  background: transparent;
+  font-size: var(--font-size-sm);
+}
+
+.acp-activity-card[data-activity-state="inProgress"] {
+  border-left-color: var(--color-accent);
+}
+
+.acp-activity-card[data-activity-state="waitingForApproval"] {
+  border-left-color: var(--color-warning);
+}
+
+.acp-activity-card[data-activity-state="failed"],
+.acp-activity-card--error {
+  border-left-color: var(--color-danger);
+  background: linear-gradient(
+    90deg,
+    var(--color-danger-muted),
+    transparent 72%
+  );
+}
+
+.acp-activity-card > header,
+.acp-activity-card > summary,
+.acp-activity-card__header,
+.acp-usage {
+  display: grid;
+  min-width: 0;
+  min-height: 26px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.acp-activity-card > summary {
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.acp-activity-card > summary:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.acp-activity-card strong,
+.acp-activity-card > summary > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.acp-activity-card .acp-state {
+  justify-self: end;
+  text-align: right;
+}
+
+.acp-activity-card[data-activity-state="inProgress"]
+  > :is(header, summary)
+  .acp-state {
+  color: var(--color-accent);
+  animation: sage-working-pulse 1.4s ease-in-out infinite;
+}
+
+.acp-activity-card p {
+  margin: var(--space-1) 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.acp-plan ol {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-6);
+}
+
+.acp-plan li {
+  min-width: 0;
+  padding-left: var(--space-1);
+}
+
+.acp-plan li::marker {
+  color: var(--color-text-muted);
+}
+
+.acp-plan li > span:first-child {
+  overflow-wrap: anywhere;
+}
+
+.acp-plan li > .acp-state {
+  display: block;
+  margin-top: 2px;
+  text-align: left;
+}
+
+.acp-usage {
+  margin: 0;
+  font-family: var(--font-family-mono);
+}
+
+.acp-tool-card > .acp-details,
+.acp-unknown > .acp-details {
+  margin-top: var(--space-1);
+}
+
+.acp-tool-command {
+  max-width: 100%;
+  margin-top: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.acp-activity-card .acp-resource-list {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acp-activity-card .acp-resource-list li {
+  min-width: 0;
+}
+
+.acp-thought__working {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acp-thought__working li {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 10px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.acp-thought__working-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.acp-thought__working-copy span {
+  overflow-wrap: anywhere;
+}
+
+.acp-thought__working-copy span:last-child {
+  color: var(--color-text-disabled);
+}
+
+.acp-thought__pulse {
+  width: 6px;
+  height: 6px;
+  margin-top: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  animation: sage-working-pulse 1.4s ease-in-out infinite;
+}
+
+.acp-thought[open] > :not(summary) {
+  animation: acp-thought-reveal var(--motion-duration-normal) ease-out both;
+}
+
+@keyframes acp-thought-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .acp-activity-card {
+    padding: 6px 0 6px var(--space-2);
+  }
+
+  .acp-activity-card > header,
+  .acp-activity-card > summary,
+  .acp-activity-card__header,
+  .acp-usage {
+    gap: var(--space-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .acp-activity-card *,
+  .acp-thought[open] > :not(summary) {
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .acp-activity-card {
+    border-color: CanvasText;
+    border-left-color: CanvasText;
+    border-left-style: solid;
+    background: Canvas;
+  }
+
+  .acp-activity-card > summary:focus-visible {
+    outline-color: Highlight;
+  }
+}

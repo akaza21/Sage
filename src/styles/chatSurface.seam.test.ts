@@ -5,32 +5,36 @@ import { describe, expect, it } from "vitest";
 
 describe("Chat surface stylesheet seam", () => {
   it("loads primary Chat rules from a focused stylesheet, not the shell stylesheet", async () => {
-    const [entry, shellCss, surfaceCss] = await Promise.all([
+    const [entry, shellCss, surfaceCss, changedFilesCss] = await Promise.all([
       readFile(resolve("src/main.tsx"), "utf8"),
       readFile(resolve("src/styles/global.css"), "utf8"),
       readFile(resolve("src/styles/chat-surface.css"), "utf8"),
+      readFile(resolve("src/styles/changed-files-summary.css"), "utf8"),
     ]);
 
     expect(entry).toMatch(/import ["']\.\/styles\/chat-surface\.css["'];/);
     expect(shellCss).not.toMatch(/^\.chat-surface\b/m);
     expect(shellCss).not.toMatch(/^\.message-list\b/m);
     expect(surfaceCss).toMatch(/^\.chat-surface\b/m);
-    expect(surfaceCss).toMatch(/^\.edit-summary\b/m);
+    expect(entry).toMatch(
+      /import ["']\.\/styles\/changed-files-summary\.css["'];/,
+    );
+    expect(surfaceCss).not.toMatch(/^\.edit-summary\b/m);
+    expect(changedFilesCss).toMatch(/^\.edit-summary\b/m);
+    expect(changedFilesCss).toMatch(/^\.acp-file-changes\b/m);
+    expect(changedFilesCss).not.toMatch(/edit-summary__source-control/);
   });
 
-  it("keeps the Chat header and transcript within a narrow dual-pane width", async () => {
+  it("keeps the Chat action row compact without a narrow wrapping jump", async () => {
     const surfaceCss = await readFile(
       resolve("src/styles/chat-surface.css"),
       "utf8",
     );
 
-    expect(surfaceCss).toMatch(/\.surface-header\s*\{[^}]*min-width:\s*0;/s);
     expect(surfaceCss).toMatch(
-      /@media \(max-width: 640px\)\s*\{[\s\S]*?\.surface-header\s*\{[^}]*flex-wrap:\s*wrap;/,
+      /\.surface-header\s*\{[^}]*min-width:\s*0;[^}]*min-height:\s*36px;[^}]*max-height:\s*36px;/s,
     );
-    expect(surfaceCss).toMatch(
-      /@media \(max-width: 640px\)\s*\{[\s\S]*?\.session-controls\s*\{[^}]*flex-wrap:\s*wrap;/,
-    );
+    expect(surfaceCss).not.toMatch(/\.surface-header\s*\{[^}]*flex-wrap:/s);
   });
 
   it("gives header controls a shared target and room to wrap", async () => {
@@ -46,7 +50,10 @@ describe("Chat surface stylesheet seam", () => {
       /\.session-controls\s+\.button--compact\s*\{[^}]*min-height:\s*var\(--control-height-compact\);/s,
     );
     expect(surfaceCss).toMatch(
-      /@media \(max-width: 640px\)\s*\{[\s\S]*?\.session-controls\s*\{[^}]*width:\s*100%;/,
+      /\.session-controls\s+\.button--compact\s*\{[^}]*background:\s*transparent;/s,
+    );
+    expect(surfaceCss).not.toMatch(
+      /\.session-state\s*\{[^}]*background:\s*var\(--color-surface\);/s,
     );
   });
 

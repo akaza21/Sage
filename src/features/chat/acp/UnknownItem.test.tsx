@@ -16,20 +16,23 @@ describe("UnknownItem", () => {
         truncated: true,
       },
     } as Extract<AcpItem, { kind: "unsupported" }>;
-    render(<UnknownItem item={item} />);
+    const { container } = render(<UnknownItem item={item} />);
     expect(
       screen.getByRole("group", {
         name: "Unsupported tool activity",
         description: "This harness activity is not supported by Sage",
       }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("status", { name: "Unsupported" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Unsupported" })).toHaveClass(
+      "acp-state",
+    );
     expect(screen.getByText("Activity details")).toBeInTheDocument();
     expect(
       screen.getByText("A future item was retained safely."),
     ).toBeInTheDocument();
     expect(screen.getByText("Summary truncated")).toBeInTheDocument();
+    expect(
+      container.querySelector(".acp-activity-card--unknown"),
+    ).toHaveAttribute("data-activity-state", "unsupported");
   });
 });

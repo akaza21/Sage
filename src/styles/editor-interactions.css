@@ -52,7 +52,8 @@
     .source-branch-create button,
     .source-remote__action,
     .repository-commit__footer button,
-    .workspace-search__controls button,
+    .workspace-search__details-toggle,
+    .workspace-search__query-actions button,
     .workspace-search__input button,
     .workspace-search__result,
     .problem-card,
@@ -71,7 +72,7 @@
     .file-header__preview,
     .status-bar__button,
     .editor-find__button,
-    .workspace-search__controls button
+    .workspace-search__query-actions button
   )[aria-pressed="true"] {
   color: var(--color-text-primary);
   background: var(--color-surface-active);

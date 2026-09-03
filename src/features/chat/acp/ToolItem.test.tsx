@@ -1,19 +1,30 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+  agentArtifactFollowRecordFor,
+  useAgentArtifactFollowStore,
+} from "../../../app/agentArtifactFollowStore";
 import type { AcpItem } from "../../../domain/acp";
 import {
-  browseSessionForChat,
+  browseSessionForOwner,
   clearBrowseSessions,
 } from "../../preview/harnessBrowse";
+import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 import { ToolItem } from "./ToolItem";
 
 afterEach(() => {
   cleanup();
   clearBrowseSessions();
+  useAgentArtifactFollowStore.getState().clear();
 });
 
 type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
+const browseOwner = {
+  projectId: "project-1",
+  chatId: "chat-1",
+  sessionId: "session-1",
+} as AgentArtifactOwner;
 
 function tool(
   presentation: ToolProjectionItem["payload"]["presentation"],
@@ -186,6 +197,33 @@ describe("ToolItem", () => {
     expect(status).toHaveAttribute("aria-atomic", "true");
   });
 
+  it.each([
+    "pending",
+    "inProgress",
+    "waitingForApproval",
+    "completed",
+    "failed",
+    "declined",
+    "cancelled",
+  ] as const)("exposes the %s state to the shared card grammar", (state) => {
+    const { container } = render(
+      <ToolItem
+        item={tool(
+          { kind: "generic", label: "Tool state", summary: "Bounded detail" },
+          state,
+        )}
+      />,
+    );
+    expect(container.querySelector(".acp-activity-card--tool")).toHaveAttribute(
+      "data-activity-kind",
+      "generic",
+    );
+    expect(container.querySelector(".acp-activity-card--tool")).toHaveAttribute(
+      "data-activity-state",
+      state,
+    );
+  });
+
   it("opens an admitted loopback web tool in the Sage browser", () => {
     render(
       <ToolItem
@@ -199,9 +237,33 @@ describe("ToolItem", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Open in Sage browser" }),
     );
-    expect(browseSessionForChat("chat-1")?.href).toBe(
+    expect(browseSessionForOwner(browseOwner)?.href).toBe(
       "http://127.0.0.1:5173/app",
     );
+    expect(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        browseOwner,
+      ),
+    ).toMatchObject({ mode: "pinned", selected: { kind: "preview" } });
+  });
+
+  it("does not pin a historical or non-interactive browse item", () => {
+    render(
+      <ToolItem
+        allowBrowse={false}
+        item={tool({
+          kind: "web",
+          label: "Browse preview",
+          summary: "Opened http://127.0.0.1:5173/history",
+        })}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Open in Sage browser" }),
+    ).toBeNull();
+    expect(browseSessionForOwner(browseOwner)).toBeNull();
+    expect(useAgentArtifactFollowStore.getState().records).toEqual([]);
   });
 
   it("keeps canonical resources inert until a native open handler is wired", () => {

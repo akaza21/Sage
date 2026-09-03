@@ -10,9 +10,67 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSearchGateway } from "./workspaceSearchDomain";
 import { WorkspaceSearchView } from "./WorkspaceSearchView";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+function submitWorkspaceSearch() {
+  const form = screen
+    .getByRole("searchbox", { name: "Search text" })
+    .closest("form");
+  expect(form).not.toBeNull();
+  fireEvent.submit(form!);
+}
 
 describe("Workspace Search view", () => {
+  it("keeps Search filters beside the query instead of adding a details row", () => {
+    render(
+      <WorkspaceSearchView
+        projectId="project-a"
+        transitionEpoch={4}
+        indexGeneration={0}
+        gateway={{ search: vi.fn() }}
+        onOpenMatch={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("searchbox", { name: "Search text" }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Match case" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(
+      screen.getByRole("button", { name: "Match whole word" }),
+    ).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByText("Search details")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Search" })).toBeNull();
+    expect(screen.queryByLabelText("Files to include")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Match case" }));
+    fireEvent.click(screen.getByRole("button", { name: "Match whole word" }));
+
+    expect(screen.getByRole("button", { name: "Match case" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(
+      screen.getByRole("button", { name: "Match whole word" }),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show Search filters" }),
+    );
+
+    expect(screen.getByLabelText("Files to include")).toBeVisible();
+    expect(screen.getByLabelText("Files to exclude")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Hide Search filters" }),
+    ).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("searches the active Project and opens a canonical result", async () => {
     const gateway: WorkspaceSearchGateway = {
       search: vi.fn().mockResolvedValue({
@@ -26,7 +84,7 @@ describe("Workspace Search view", () => {
             resource: { rootId: "root-b", relativePath: "src/main.ts" },
             lineNumber: 9,
             columnNumber: 3,
-            preview: "const needle = true;",
+            preview: "needle then NEEDLE",
           },
         ],
         roots: [
@@ -70,21 +128,22 @@ describe("Workspace Search view", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Search files"), {
+    fireEvent.change(screen.getByLabelText("Search text"), {
       target: { value: "needle" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    submitWorkspaceSearch();
 
     const result = await screen.findByRole("button", {
       name: "Open src/main.ts at line 9, column 3",
     });
     expect(screen.getByText("main.ts")).toBeVisible();
-    expect(screen.getByText("src/main.ts")).toBeVisible();
+    expect(screen.getByText("Sage › src")).toBeVisible();
     expect(screen.getByText("1 match in 1 file")).toBeVisible();
     expect(
       screen.getByRole("button", { name: "Collapse Search results" }),
     ).toBeEnabled();
-    expect(screen.getByText("needle").tagName).toBe("MARK");
+    expect(result.querySelectorAll("mark")).toHaveLength(1);
+    expect(result.querySelector("mark")).toHaveTextContent("needle");
     expect(
       screen.getByText("Some files exceeded the per-file size limit."),
     ).toBeVisible();
@@ -106,7 +165,7 @@ describe("Workspace Search view", () => {
     await waitFor(() => expect(gateway.search).toHaveBeenCalledTimes(1));
   });
 
-  it("projects whole-word mode into the native Search request", async () => {
+  it("projects text-search modes into the native Search request", async () => {
     const search = vi.fn().mockResolvedValue({
       requestId: "request-a",
       projectId: "project-a",
@@ -141,17 +200,18 @@ describe("Workspace Search view", () => {
         onOpenMatch={vi.fn()}
       />,
     );
-    fireEvent.change(screen.getByLabelText("Search files"), {
+    fireEvent.change(screen.getByLabelText("Search text"), {
       target: { value: "needle" },
     });
+    fireEvent.click(screen.getByLabelText("Match case"));
     fireEvent.click(screen.getByLabelText("Match whole word"));
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    submitWorkspaceSearch();
 
     await waitFor(() =>
       expect(search).toHaveBeenCalledWith(
         expect.objectContaining({
           query: "needle",
-          caseSensitive: false,
+          caseSensitive: true,
           wholeWord: true,
         }),
         expect.any(AbortSignal),
@@ -160,6 +220,132 @@ describe("Workspace Search view", () => {
     expect(
       await screen.findByText('No matches found for "needle".'),
     ).toBeVisible();
+  });
+
+  it("emphasizes the exact whole-word occurrence represented by each result row", async () => {
+    const search = vi.fn().mockResolvedValue({
+      requestId: "request-whole-word",
+      projectId: "project-a",
+      transitionEpoch: 4,
+      indexGeneration: 0,
+      query: "cat",
+      matches: [
+        {
+          resource: { rootId: "root-a", relativePath: "src/cats.ts" },
+          lineNumber: 1,
+          columnNumber: 1,
+          preview: "cat scatter cat",
+        },
+        {
+          resource: { rootId: "root-a", relativePath: "src/cats.ts" },
+          lineNumber: 1,
+          columnNumber: 13,
+          preview: "cat scatter cat",
+        },
+      ],
+      roots: [
+        {
+          rootId: "root-a",
+          rootName: "Sage",
+          state: "complete",
+          filesScanned: 1,
+          bytesScanned: 15,
+          entriesVisited: 1,
+          skippedFiles: 0,
+          errorCount: 0,
+          message: null,
+        },
+      ],
+      truncated: false,
+      continuationToken: null,
+      limitReasons: [],
+      elapsedMs: 1,
+    });
+
+    render(
+      <WorkspaceSearchView
+        projectId="project-a"
+        transitionEpoch={4}
+        indexGeneration={0}
+        gateway={{ search }}
+        onOpenMatch={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search text" }), {
+      target: { value: "cat" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Match whole word" }));
+    submitWorkspaceSearch();
+
+    const rows = await screen.findAllByRole("button", {
+      name: /Open src\/cats\.ts at line 1, column/,
+    });
+    expect(rows).toHaveLength(2);
+    expect(rows[0].querySelectorAll("mark")).toHaveLength(1);
+    expect(rows[0].querySelector("mark")?.previousSibling).toBeNull();
+    expect(rows[1].querySelectorAll("mark")).toHaveLength(1);
+    expect(rows[1].querySelector("mark")?.nextSibling).toBeNull();
+  });
+
+  it("keeps case-insensitive emphasis independent of the browser locale", async () => {
+    vi.spyOn(String.prototype, "toLocaleLowerCase").mockImplementation(
+      function localeSensitiveLowercase(this: string) {
+        return String(this).replaceAll("I", "ı").toLowerCase();
+      },
+    );
+    const search = vi.fn().mockResolvedValue({
+      requestId: "request-locale",
+      projectId: "project-a",
+      transitionEpoch: 4,
+      indexGeneration: 0,
+      query: "i",
+      matches: [
+        {
+          resource: { rootId: "root-a", relativePath: "src/locale.ts" },
+          lineNumber: 1,
+          columnNumber: 1,
+          preview: "I",
+        },
+      ],
+      roots: [
+        {
+          rootId: "root-a",
+          rootName: "Sage",
+          state: "complete",
+          filesScanned: 1,
+          bytesScanned: 1,
+          entriesVisited: 1,
+          skippedFiles: 0,
+          errorCount: 0,
+          message: null,
+        },
+      ],
+      truncated: false,
+      continuationToken: null,
+      limitReasons: [],
+      elapsedMs: 1,
+    });
+
+    render(
+      <WorkspaceSearchView
+        projectId="project-a"
+        transitionEpoch={4}
+        indexGeneration={0}
+        gateway={{ search }}
+        onOpenMatch={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search text" }), {
+      target: { value: "i" },
+    });
+    submitWorkspaceSearch();
+
+    const row = await screen.findByRole("button", {
+      name: "Open src/locale.ts at line 1, column 1",
+    });
+    expect(row.querySelector("mark")).toHaveTextContent("I");
   });
 
   it("projects comma-separated include and exclude filters into native Search", async () => {
@@ -197,16 +383,19 @@ describe("Workspace Search view", () => {
         onOpenMatch={vi.fn()}
       />,
     );
-    fireEvent.change(screen.getByLabelText("Search files"), {
+    fireEvent.change(screen.getByLabelText("Search text"), {
       target: { value: "needle" },
     });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show Search filters" }),
+    );
     fireEvent.change(screen.getByLabelText("Files to include"), {
       target: { value: "src/**/*.ts, tests/**/*.ts" },
     });
     fireEvent.change(screen.getByLabelText("Files to exclude"), {
       target: { value: "**/generated/**" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    submitWorkspaceSearch();
 
     await waitFor(() =>
       expect(search).toHaveBeenCalledWith(
@@ -265,11 +454,13 @@ describe("Workspace Search view", () => {
         onOpenMatch={vi.fn()}
       />,
     );
-    fireEvent.change(screen.getByLabelText("Search files"), {
+    fireEvent.change(screen.getByLabelText("Search text"), {
       target: { value: "needle" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
-    await screen.findByText("src/long/path.ts");
+    submitWorkspaceSearch();
+    await screen.findByRole("button", {
+      name: "Collapse results for src/long/path.ts",
+    });
     fireEvent.click(
       screen.getByRole("button", { name: "Collapse Search results" }),
     );
@@ -301,7 +492,9 @@ describe("Workspace Search view", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Search" })).toBeDisabled();
+    expect(
+      screen.getByRole("searchbox", { name: "Search text" }),
+    ).toBeDisabled();
     expect(
       screen.getByText("Open a Project to search its files."),
     ).toBeVisible();
@@ -353,10 +546,10 @@ describe("Workspace Search view", () => {
         onOpenMatch={vi.fn()}
       />,
     );
-    fireEvent.change(screen.getByLabelText("Search files"), {
+    fireEvent.change(screen.getByLabelText("Search text"), {
       target: { value: "needle" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    submitWorkspaceSearch();
     expect(
       await screen.findByRole("button", { name: "Continue search" }),
     ).toBeVisible();

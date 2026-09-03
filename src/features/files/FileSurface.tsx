@@ -4,22 +4,20 @@ import { useEditorCaretPublisher } from "../../app/editorCaretStore";
 import { useWorkbenchStore } from "../../app/store";
 import { resourceKey, sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
-import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
-import { FileEditorHeader } from "./FileEditorHeader";
-import { FileEditorNotices } from "./FileEditorNotices";
-import { FileFindBar } from "./FileFindBar";
-import { FileGoToLineBar } from "./FileGoToLineBar";
-import { FileMarkdownPreview } from "./FileMarkdownPreview";
+import type { EditorAdapterHandle } from "./EditorAdapter";
+import {
+  FileSurfaceContent,
+  FileSurfaceResourceState,
+} from "./FileSurfaceContent";
 import { handleFileSurfaceCommandKey } from "./fileSurfaceCommands";
 import { goToLineSelection } from "./goToLine";
-import { canPreviewDiagram, canPreviewMarkdown } from "./markdownPreview";
 import {
   getFileEditorController,
   useFileEditorLifecycle,
   type EditorStateBridge,
 } from "./fileEditorController";
 import { useEditorExternalWatch } from "./editorExternalWatch";
-import { findLiteralMatches, MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
+import { findLiteralMatches } from "./inFileFind";
 import { fileNavigationSelection } from "./fileNavigation";
 import { useLanguageSession } from "../language/languageClient";
 import { useOutlineProjection } from "../language/languageClient";
@@ -309,28 +307,61 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
     !sameResource(editor.resource, resource) ||
     editor.phase === "loading"
   ) {
-    return (
-      <section className="resource-state" aria-live="polite">
-        Loading {path}…
-      </section>
-    );
+    return <FileSurfaceResourceState path={path} />;
   }
   if (editor.phase === "error") {
-    return (
-      <section className="resource-state resource-state--error">
-        <strong>Could not open {path}</strong>
-        <span>{editor.message}</span>
-      </section>
-    );
+    return <FileSurfaceResourceState path={path} error={editor.message} />;
   }
 
-  const conflict = editor.document.conflict;
   return (
-    <section
-      className="file-surface"
-      aria-label={`File editor ${path}`}
-      aria-keyshortcuts="F12"
-      onKeyDown={(event) => {
+    <FileSurfaceContent
+      activeResourceKey={activeResourceKey}
+      dirty={tab.dirty}
+      editor={editor}
+      editorInputRef={editorInputRef}
+      find={
+        findOpen
+          ? {
+              inputRef: findInputRef,
+              query: findQuery,
+              status: findStatus,
+              caseSensitive,
+              hasMatches: findMatches.offsets.length > 0,
+              onQueryChange: (query) => {
+                setFindQuery(query);
+                setMatchCursor({ contextKey: findContextKey, index: 0 });
+              },
+              onMove: moveMatch,
+              onToggleCase: () => {
+                setCaseSensitive((value) => !value);
+                setMatchCursor({ contextKey: findContextKey, index: 0 });
+              },
+              onClose: closeFind,
+            }
+          : null
+      }
+      goTo={
+        goToOpen && !previewing
+          ? {
+              inputRef: goToInputRef,
+              query: goToQuery,
+              status: goToError ? "Enter a line" : "Line or line:column",
+              onQueryChange: (query) => {
+                setGoToQuery(query);
+                setGoToError(false);
+              },
+              onSubmit: submitGoToLine,
+              onClose: closeGoToLine,
+            }
+          : null
+      }
+      languageNavigationStatus={languageNavigationStatus}
+      path={path}
+      previewing={previewing}
+      transitioning={projectTransitioning}
+      onCaretOffset={onCaretOffset}
+      onEditorChange={updateEditorContent}
+      onSurfaceKeyDown={(event) => {
         handleFileSurfaceCommandKey(event, {
           previewing,
           findOpen,
@@ -350,81 +381,13 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
           },
         });
       }}
-    >
-      <FileEditorHeader
-        path={path}
-        lineEnding={editor.document.lineEnding}
-        diskByteLen={editor.document.disk.byteLen}
-        persisting={editor.persisting}
-        dirty={tab.dirty}
-        saving={editor.saving}
-        transitioning={projectTransitioning}
-        canPreview={canPreviewMarkdown(path) || canPreviewDiagram(path)}
-        previewing={previewing}
-        onTogglePreview={() => {
-          setFindOpen(false);
-          setGoToSessionKey("");
-          setPreviewSessionKey((current) =>
-            current === activeResourceKey ? "" : activeResourceKey,
-          );
-        }}
-      />
-      <FileEditorNotices conflict={conflict} message={editor.message} />
-      {languageNavigationStatus ? (
-        <p role="status" className="file-language-navigation-status">
-          {languageNavigationStatus}
-        </p>
-      ) : null}
-      {findOpen && !previewing ? (
-        <FileFindBar
-          inputRef={findInputRef}
-          query={findQuery}
-          status={findStatus}
-          caseSensitive={caseSensitive}
-          hasMatches={findMatches.offsets.length > 0}
-          onQueryChange={(query) => {
-            setFindQuery(query);
-            setMatchCursor({ contextKey: findContextKey, index: 0 });
-          }}
-          onMove={moveMatch}
-          onToggleCase={() => {
-            setCaseSensitive((value) => !value);
-            setMatchCursor({ contextKey: findContextKey, index: 0 });
-          }}
-          onClose={closeFind}
-        />
-      ) : null}
-      {goToOpen && !previewing ? (
-        <FileGoToLineBar
-          inputRef={goToInputRef}
-          query={goToQuery}
-          status={goToError ? "Enter a line" : "Line or line:column"}
-          onQueryChange={(query) => {
-            setGoToQuery(query);
-            setGoToError(false);
-          }}
-          onSubmit={submitGoToLine}
-          onClose={closeGoToLine}
-        />
-      ) : null}
-      {previewing ? (
-        <FileMarkdownPreview
-          source={editor.content}
-          asDiagram={canPreviewDiagram(path) && !canPreviewMarkdown(path)}
-        />
-      ) : (
-        <EditorAdapter
-          key={activeResourceKey}
-          ref={editorInputRef}
-          ariaLabel={`Edit ${path}`}
-          path={path}
-          content={editor.content}
-          maxContentLength={MAX_EDITABLE_CONTENT_BYTES}
-          disabled={editor.saving || projectTransitioning}
-          onChange={updateEditorContent}
-          onCaretOffset={onCaretOffset}
-        />
-      )}
-    </section>
+      onTogglePreview={() => {
+        setFindOpen(false);
+        setGoToSessionKey("");
+        setPreviewSessionKey((current) =>
+          current === activeResourceKey ? "" : activeResourceKey,
+        );
+      }}
+    />
   );
 }

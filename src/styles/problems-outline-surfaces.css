@@ -41,75 +41,94 @@
 
 .problem-card,
 .outline-card {
-  display: flex;
+  display: grid;
   width: 100%;
+  min-height: 28px;
   min-width: 0;
-  align-items: flex-start;
-  gap: 8px;
-  padding: var(--space-2);
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 3px 7px;
   border: 0;
   border-radius: var(--radius-sm);
   color: inherit;
+  font: inherit;
+  font-size: var(--font-size-xs);
   text-align: left;
   background: transparent;
   cursor: pointer;
 }
 
 .problem-card:hover,
-.outline-card:hover {
+.outline-card:hover,
+.problem-card:focus-visible,
+.outline-card:focus-visible {
   background: var(--color-surface-hover);
 }
 
 .problem-card__kind,
 .outline-card__kind {
-  flex: 0 0 auto;
-  padding: 1px 6px;
-  border-radius: var(--radius-pill);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-bold);
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  background: transparent;
 }
 
 .outline-card__kind {
-  color: var(--color-text-primary);
-  background: var(--color-surface-active);
+  color: var(--color-text-muted);
 }
 
 .problem-card--error .problem-card__kind {
-  color: var(--color-text-inverse);
-  background: var(--color-danger);
+  color: var(--color-danger);
 }
 
 .problem-card--warning .problem-card__kind {
-  color: #1a1208;
-  background: var(--color-warning);
+  color: var(--color-warning);
 }
 
 .problem-card--info .problem-card__kind {
-  color: var(--color-text-primary);
-  background: var(--color-surface-active);
+  color: var(--color-accent);
 }
 
 .problem-card__copy,
 .outline-card__copy {
   display: grid;
   min-width: 0;
-  gap: 2px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 6px;
 }
 
-.problem-card__copy span,
-.outline-card__copy span {
+.problem-card__message,
+.outline-card__name {
   overflow: hidden;
+  color: var(--color-text-primary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.problem-card__copy small,
-.outline-card__copy small {
-  overflow: hidden;
+.problem-card__location,
+.outline-card__location {
+  display: flex;
+  min-width: 0;
+  max-width: 112px;
   color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  text-overflow: ellipsis;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.problem-card__location-file,
+.outline-card__location-file {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.problem-card__location-position,
+.outline-card__location-position {
+  flex: 0 0 auto;
 }
 
 .problems-surface__empty,
@@ -118,4 +137,16 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
   line-height: 1.5;
+}
+
+@media (forced-colors: active) {
+  .problem-card__kind,
+  .outline-card__kind {
+    color: CanvasText;
+  }
+
+  .problem-card:focus-visible,
+  .outline-card:focus-visible {
+    outline-color: Highlight;
+  }
 }

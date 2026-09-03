@@ -52,6 +52,7 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
         data-resource-key={resourceKey(rootResource)}
         type="button"
         aria-current={rootSelected ? "page" : undefined}
+        title={root.name}
         onClick={() => selectRoot(root.id)}
       >
         <FileKindIcon path={root.name} entryKind="directory" />
@@ -94,6 +95,7 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
             }
             aria-current={isSelected ? "page" : undefined}
             aria-expanded={directory ? Boolean(expanded[key]) : undefined}
+            title={entry.resource.relativePath}
             style={{ paddingLeft: 9 + entry.depth * 16 }}
             disabled={!directory && !file}
             onClick={() => {

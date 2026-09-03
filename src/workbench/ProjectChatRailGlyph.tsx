@@ -1,32 +1,41 @@
-import { MessageSquare } from "lucide-react";
+import type { AgentRailTrailingState } from "./agentRailStatusView";
 
 export function ProjectChatRailGlyph({
-  working,
-  unread,
-  attention,
+  state,
+  dateTime,
 }: {
-  working: boolean;
-  unread: boolean;
-  attention: boolean;
+  state: AgentRailTrailingState | null;
+  dateTime?: string;
 }) {
-  if (working) {
+  if (!state) return null;
+  const live = state.kind === "working" || state.kind === "recovering";
+  if (state.kind === "time") {
     return (
-      <span className="project-chat__working" aria-label="Working">
-        <span />
-        <span />
-        <span />
-      </span>
+      <time
+        className="project-chat__state project-chat__state--time"
+        dateTime={dateTime}
+      >
+        {state.label}
+      </time>
     );
   }
-  if (unread || attention) {
-    return (
-      <span
-        className={`agent-unread-dot${
-          attention ? " agent-unread-dot--attention" : ""
-        }`}
-        aria-label={unread ? "Unread updates" : "Needs attention"}
-      />
-    );
-  }
-  return <MessageSquare size={14} aria-hidden="true" />;
+  return (
+    <span
+      className={`project-chat__state project-chat__state--${state.kind}`}
+      aria-label={
+        state.kind === "unread"
+          ? "Unread updates"
+          : state.kind === "working"
+            ? "Working"
+            : state.kind === "waiting"
+              ? "Needs attention"
+              : state.label
+      }
+    >
+      {live ? (
+        <span className="project-chat__working" aria-hidden="true" />
+      ) : null}
+      <span>{state.label}</span>
+    </span>
+  );
 }

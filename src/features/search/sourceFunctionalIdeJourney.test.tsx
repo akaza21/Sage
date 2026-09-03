@@ -175,7 +175,18 @@ describe("source-functional IDE journey", () => {
         transitionEpoch={4}
         indexGeneration={1}
         onOpenMatch={(request) =>
-          void useWorkbenchStore.getState().openSearchMatch(request)
+          void useWorkbenchStore.getState().openFileLocation({
+            projectId: request.projectId,
+            transitionEpoch: request.transitionEpoch,
+            resource: request.resource,
+            lineNumber: request.lineNumber,
+            columnNumber: request.columnNumber,
+            selection: {
+              kind: "match",
+              query: request.query,
+              caseSensitive: request.caseSensitive,
+            },
+          })
         }
         gateway={{
           search: async () => ({
@@ -213,12 +224,17 @@ describe("source-functional IDE journey", () => {
         }}
       />,
     );
-    fireEvent.change(screen.getByRole("searchbox", { name: "Search files" }), {
+    const workspaceSearchInput = screen.getByRole("searchbox", {
+      name: "Search text",
+    });
+    fireEvent.change(workspaceSearchInput, {
       target: { value: "let x" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
-    await screen.findByRole("button", { name: /main\.ts/i });
-    fireEvent.click(screen.getByRole("button", { name: /main\.ts/i }));
+    fireEvent.submit(workspaceSearchInput.closest("form")!);
+    const workspaceResult = await screen.findByRole("button", {
+      name: "Open src/main.ts at line 1, column 1",
+    });
+    fireEvent.click(workspaceResult);
     await waitFor(() =>
       expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
         phase: "ready",
@@ -272,6 +288,7 @@ describe("source-functional IDE journey", () => {
       ],
     });
     render(<EditSummary />);
+    expect(screen.queryByRole("button", { name: "Source Control" })).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: "Open diff for src/main.ts" }),
     );

@@ -25,6 +25,13 @@ afterEach(() => {
   Reflect.deleteProperty(Element.prototype, "scrollIntoView");
 });
 
+function openExplorerActions() {
+  fireEvent.click(
+    screen.getByRole("button", { name: "More Explorer actions" }),
+  );
+  return screen.getByRole("menu", { name: "Explorer actions" });
+}
+
 describe("RightSidebar beta tool rail", () => {
   it("exposes only backed Project tools", () => {
     useWorkbenchStore.setState({ sidebarOpen: false });
@@ -48,7 +55,7 @@ describe("RightSidebar beta tool rail", () => {
 
 describe("RightSidebar Search", () => {
   it("searches the active Project and opens a result through the workbench", async () => {
-    const openSearchMatch = vi.fn(async () => undefined);
+    const openFileLocation = vi.fn(async () => undefined);
     const search = vi
       .spyOn(workspaceSearchDesktop, "search")
       .mockResolvedValue({
@@ -100,17 +107,17 @@ describe("RightSidebar Search", () => {
         ],
       },
       nativeTransitionEpoch: 7,
-      openSearchMatch,
+      openFileLocation,
     });
 
     render(<RightSidebar compact={false} />);
-    const query = screen.getByLabelText("Search files");
+    const query = screen.getByLabelText("Search text");
     const form = query.closest("form");
     expect(form).not.toBeNull();
     fireEvent.change(query, {
       target: { value: "needle" },
     });
-    fireEvent.click(within(form!).getByRole("button", { name: "Search" }));
+    fireEvent.submit(form!);
 
     const result = await screen.findByRole("button", {
       name: "Open src/main.ts at line 9, column 3",
@@ -131,14 +138,17 @@ describe("RightSidebar Search", () => {
     );
 
     fireEvent.click(result);
-    expect(openSearchMatch).toHaveBeenCalledWith({
+    expect(openFileLocation).toHaveBeenCalledWith({
       projectId: "project-a",
       transitionEpoch: 7,
       resource: { rootId: "root-a", relativePath: "src/main.ts" },
       lineNumber: 9,
       columnNumber: 3,
-      query: "needle",
-      caseSensitive: false,
+      selection: {
+        kind: "match",
+        query: "needle",
+        caseSensitive: false,
+      },
     });
   });
 });
@@ -852,6 +862,9 @@ describe("RightSidebar Explorer New File", () => {
     fireEvent.click(trigger);
     const input = await screen.findByLabelText("File name");
     expect(input).toHaveFocus();
+    expect(screen.getByRole("dialog", { name: "New File" })).toHaveClass(
+      "new-file-dialog--editor",
+    );
     fireEvent.change(input, { target: { value: "new.ts" } });
     expect(screen.getByText("Path: Root A/src/new.ts")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
@@ -941,6 +954,9 @@ describe("RightSidebar Explorer New Folder", () => {
     fireEvent.click(trigger);
     const input = await screen.findByLabelText("Folder name");
     expect(input).toHaveFocus();
+    expect(screen.getByRole("dialog", { name: "New Folder" })).toHaveClass(
+      "new-file-dialog--editor",
+    );
     fireEvent.change(input, { target: { value: "nested" } });
     expect(screen.getByText("Path: Root B/src/nested")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Create Folder" }));
@@ -1020,7 +1036,9 @@ describe("RightSidebar Explorer Rename File", () => {
     const source = renameState(renameProjectFile);
 
     render(<RightSidebar compact={false} />);
-    const trigger = screen.getByRole("button", { name: "Rename File" });
+    const trigger = within(openExplorerActions()).getByRole("menuitem", {
+      name: "Rename File",
+    });
     fireEvent.click(trigger);
     const input = await screen.findByLabelText("File name");
     expect(input).toHaveFocus();
@@ -1035,7 +1053,9 @@ describe("RightSidebar Explorer Rename File", () => {
     await vi.waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
-    expect(trigger).toHaveFocus();
+    expect(
+      screen.getByRole("button", { name: "More Explorer actions" }),
+    ).toHaveFocus();
   });
 
   it("requires the source File and Diff tabs to be closed", () => {
@@ -1056,12 +1076,59 @@ describe("RightSidebar Explorer Rename File", () => {
     });
 
     render(<RightSidebar compact={false} />);
-    const trigger = screen.getByRole("button", { name: "Rename File" });
-    expect(trigger).toBeDisabled();
-    expect(trigger).toHaveAttribute(
-      "title",
-      "Close the source File and Diff tabs before renaming",
+    const menu = openExplorerActions();
+    expect(
+      within(menu).queryByRole("menuitem", { name: "Rename File" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(menu).getByText(
+        "Close this resource before renaming or recycling it.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("closes instead of retargeting when another file is selected in the same Project", async () => {
+    const renameProjectFile = vi.fn(async () => true);
+    const source = renameState(renameProjectFile);
+    const replacement = { rootId: "root-a", relativePath: "src/other.ts" };
+
+    render(<RightSidebar compact={false} />);
+    fireEvent.click(
+      within(openExplorerActions()).getByRole("menuitem", {
+        name: "Rename File",
+      }),
     );
+    expect(await screen.findByLabelText("File name")).toBeInTheDocument();
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        selectedResource: replacement,
+        directoryListings: {
+          ...state.directoryListings,
+          [resourceKey({ rootId: "root-a", relativePath: "src" })]: {
+            phase: "ready",
+            value: {
+              resource: { rootId: "root-a", relativePath: "src" },
+              entries: [
+                { name: "old.ts", resource: source, kind: "file", byteLen: 9 },
+                {
+                  name: "other.ts",
+                  resource: replacement,
+                  kind: "file",
+                  byteLen: 9,
+                },
+              ],
+              truncated: false,
+            },
+          },
+        },
+      }));
+    });
+
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(renameProjectFile).not.toHaveBeenCalled();
   });
 
   it("keeps its own transition mounted and exposes a native failure", async () => {
@@ -1074,7 +1141,11 @@ describe("RightSidebar Explorer Rename File", () => {
     renameState(initialState.renameProjectFile);
 
     render(<RightSidebar compact={false} />);
-    fireEvent.click(screen.getByRole("button", { name: "Rename File" }));
+    fireEvent.click(
+      within(openExplorerActions()).getByRole("menuitem", {
+        name: "Rename File",
+      }),
+    );
     fireEvent.change(await screen.findByLabelText("File name"), {
       target: { value: "new.ts" },
     });
@@ -1148,13 +1219,95 @@ describe("RightSidebar Explorer folder lifecycle", () => {
     });
 
     render(<RightSidebar compact={false} />);
-    fireEvent.click(screen.getByRole("button", { name: "Rename Folder" }));
+    fireEvent.click(
+      within(openExplorerActions()).getByRole("menuitem", {
+        name: "Rename Folder",
+      }),
+    );
     fireEvent.change(await screen.findByLabelText("Folder name"), {
       target: { value: "renamed" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Rename" }));
 
     expect(renameProjectFolder).toHaveBeenCalledWith(source, "renamed");
+  });
+
+  it("closes instead of retargeting when another empty folder is selected", async () => {
+    const source = { rootId: "root-a", relativePath: "src/empty" };
+    const replacement = { rootId: "root-a", relativePath: "src/other" };
+    const parent = { rootId: "root-a", relativePath: "src" };
+    const renameProjectFolder = vi.fn(async () => true);
+    useWorkbenchStore.setState({
+      sidebarOpen: true,
+      sidebarView: "explorer",
+      project: {
+        id: "project-a",
+        name: "A",
+        roots: [
+          {
+            id: "root-a",
+            name: "Root A",
+            ordinal: 0,
+            availability: "available",
+            message: null,
+          },
+        ],
+      },
+      selectedRootId: "root-a",
+      selectedResource: source,
+      tabs: [],
+      activeEditor: null,
+      directoryListings: {
+        [resourceKey(parent)]: {
+          phase: "ready",
+          value: {
+            resource: parent,
+            truncated: false,
+            entries: [
+              {
+                name: "empty",
+                resource: source,
+                kind: "directory",
+                byteLen: null,
+              },
+              {
+                name: "other",
+                resource: replacement,
+                kind: "directory",
+                byteLen: null,
+              },
+            ],
+          },
+        },
+        [resourceKey(source)]: {
+          phase: "ready",
+          value: { resource: source, truncated: false, entries: [] },
+        },
+        [resourceKey(replacement)]: {
+          phase: "ready",
+          value: { resource: replacement, truncated: false, entries: [] },
+        },
+      },
+      renameProjectFolder,
+      fileRenameError: null,
+      fileRenameInFlight: false,
+      projectTransitioning: false,
+    });
+
+    render(<RightSidebar compact={false} />);
+    fireEvent.click(
+      within(openExplorerActions()).getByRole("menuitem", {
+        name: "Rename Folder",
+      }),
+    );
+    expect(await screen.findByLabelText("Folder name")).toBeInTheDocument();
+
+    act(() => useWorkbenchStore.setState({ selectedResource: replacement }));
+
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(renameProjectFolder).not.toHaveBeenCalled();
   });
 
   it("refreshes the expanded truncated folder instead of an earlier collapsed cache", () => {
@@ -1318,7 +1471,7 @@ describe("RightSidebar Explorer recoverable trash", () => {
     trashState(source, "file", trashProjectResource);
 
     render(<RightSidebar compact={false} />);
-    const trigger = screen.getByRole("button", {
+    const trigger = within(openExplorerActions()).getByRole("menuitem", {
       name: "Move to Recycle Bin",
     });
     fireEvent.click(trigger);
@@ -1359,7 +1512,9 @@ describe("RightSidebar Explorer recoverable trash", () => {
     await vi.waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
-    expect(trigger).toHaveFocus();
+    expect(
+      screen.getByRole("button", { name: "More Explorer actions" }),
+    ).toHaveFocus();
   });
 
   it("allows only a proven-empty folder and blocks an open descendant Diff", async () => {
@@ -1368,10 +1523,9 @@ describe("RightSidebar Explorer recoverable trash", () => {
     trashState(source, "directory", trashProjectResource);
 
     render(<RightSidebar compact={false} />);
-    const trigger = screen.getByRole("button", {
+    const trigger = within(openExplorerActions()).getByRole("menuitem", {
       name: "Move to Recycle Bin",
     });
-    expect(trigger).toBeEnabled();
     fireEvent.click(trigger);
     expect(
       await screen.findByText(/Move this empty folder/),
@@ -1396,14 +1550,61 @@ describe("RightSidebar Explorer recoverable trash", () => {
         ],
       });
     });
-    await vi.waitFor(() => expect(trigger).toBeDisabled());
-    expect(trigger).toHaveAttribute(
-      "title",
-      "Close File and Diff tabs for this resource and its descendants",
-    );
+    const menu = openExplorerActions();
+    expect(
+      within(menu).queryByRole("menuitem", { name: "Move to Recycle Bin" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(menu).getByText(
+        "Close this resource before renaming or recycling it.",
+      ),
+    ).toBeInTheDocument();
   });
 
-  it("focuses the selected parent after the real store transition removes the source", async () => {
+  it("closes instead of retargeting when another file is selected before recycle", async () => {
+    const source = { rootId: "root-b", relativePath: "src/old.ts" };
+    const replacement = { rootId: "root-b", relativePath: "src/other.ts" };
+    const trashProjectResource = vi.fn(async () => true);
+    trashState(source, "file", trashProjectResource);
+    useWorkbenchStore.setState((state) => ({
+      directoryListings: {
+        ...state.directoryListings,
+        [resourceKey({ rootId: "root-b", relativePath: "src" })]: {
+          phase: "ready",
+          value: {
+            resource: { rootId: "root-b", relativePath: "src" },
+            entries: [
+              { name: "old.ts", resource: source, kind: "file", byteLen: 9 },
+              {
+                name: "other.ts",
+                resource: replacement,
+                kind: "file",
+                byteLen: 9,
+              },
+            ],
+            truncated: false,
+          },
+        },
+      },
+    }));
+
+    render(<RightSidebar compact={false} />);
+    fireEvent.click(
+      within(openExplorerActions()).getByRole("menuitem", {
+        name: "Move to Recycle Bin",
+      }),
+    );
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+
+    act(() => useWorkbenchStore.setState({ selectedResource: replacement }));
+
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(trashProjectResource).not.toHaveBeenCalled();
+  });
+
+  it("returns focus to More after the real store transition removes the source", async () => {
     const source = { rootId: "root-b", relativePath: "src/old.ts" };
     const parent = { rootId: "root-b", relativePath: "src" };
     const root = { rootId: "root-b", relativePath: "" };
@@ -1451,7 +1652,9 @@ describe("RightSidebar Explorer recoverable trash", () => {
 
     render(<RightSidebar compact={false} />);
     fireEvent.click(
-      screen.getByRole("button", { name: "Move to Recycle Bin" }),
+      within(openExplorerActions()).getByRole("menuitem", {
+        name: "Move to Recycle Bin",
+      }),
     );
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(
@@ -1463,7 +1666,7 @@ describe("RightSidebar Explorer recoverable trash", () => {
     );
     expect(useWorkbenchStore.getState().selectedResource).toEqual(parent);
     expect(
-      screen.getByRole("treeitem", { name: "Toggle folder src" }),
+      screen.getByRole("button", { name: "More Explorer actions" }),
     ).toHaveFocus();
   });
 
@@ -1477,7 +1680,9 @@ describe("RightSidebar Explorer recoverable trash", () => {
 
     render(<RightSidebar compact={false} />);
     fireEvent.click(
-      screen.getByRole("button", { name: "Move to Recycle Bin" }),
+      within(openExplorerActions()).getByRole("menuitem", {
+        name: "Move to Recycle Bin",
+      }),
     );
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
 

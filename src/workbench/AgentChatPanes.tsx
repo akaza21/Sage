@@ -1,23 +1,33 @@
 import {
   Fragment,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
+import { useStore } from "zustand";
 
-import { pinAcpProjectionIds } from "../app/acpProjectionRegistry";
-import { pinAgentChatOwner } from "../app/agentChatOwner";
+import {
+  acpProjectionStoreFor,
+  pinAcpProjectionIds,
+} from "../app/acpProjectionRegistry";
+import {
+  pinAgentChatOwner,
+  usePinnedAgentChatOwner,
+} from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
 import { pinUnreadAckIds } from "../features/chat/acp/chatUnread";
 import { setHarnessBrowseOwner } from "../features/preview/harnessBrowse";
+import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import { ChatSurface } from "../features/chat/ChatSurface";
 import { AgentChatPane } from "./AgentChatPane";
 import {
   AGENT_CHAT_SPLIT_MAX,
   AGENT_CHAT_SPLIT_MIN,
+  canShowAgentChatSplit,
   resizeAgentChatSplit,
 } from "./agentChatSplit";
 import {
@@ -43,12 +53,21 @@ export function AgentChatPanes({ compact = false }: { compact?: boolean }) {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const activateTab = useWorkbenchStore((state) => state.activateTab);
+  const project = useWorkbenchStore((state) => state.project);
+  const projectGeneration = useWorkbenchStore(
+    (state) => state.projectGeneration,
+  );
+  const projectTransitioning = useWorkbenchStore(
+    (state) => state.projectTransitioning,
+  );
   const [visibleIds, setVisibleIds] = useState<string[]>([]);
   const [splitPercent, setSplitPercent] = useState(
     () => readWorkbenchLayout().agentChatSplitPercent,
   );
   const [resizing, setResizing] = useState(false);
+  const [containerWidth, setContainerWidth] = useState<number | null>(null);
   const panesRef = useRef<HTMLDivElement>(null);
+  const previousFocusedId = usePinnedAgentChatOwner();
   const chatIds = useMemo(() => collectChatTabIds(tabs), [tabs]);
   const nextVisibleIds =
     activeTabId && chatIds.includes(activeTabId)
@@ -58,16 +77,82 @@ export function AgentChatPanes({ compact = false }: { compact?: boolean }) {
     setVisibleIds(nextVisibleIds);
   }
 
-  const focusedId = focusedAgentChatId(chatIds, nextVisibleIds, activeTabId);
-  const displayedIds = compact && focusedId ? [focusedId] : nextVisibleIds;
+  const focusedId = focusedAgentChatId(
+    chatIds,
+    nextVisibleIds,
+    activeTabId,
+    previousFocusedId,
+  );
+  const focusOnly =
+    compact ||
+    (nextVisibleIds.length > 1 &&
+      containerWidth !== null &&
+      !canShowAgentChatSplit(containerWidth));
+  const displayedIds = focusOnly && focusedId ? [focusedId] : nextVisibleIds;
   pinAcpProjectionIds(displayedIds);
   pinUnreadAckIds(displayedIds);
-  pinAgentChatOwner(focusedId);
 
-  useEffect(() => {
-    setHarnessBrowseOwner(focusedId);
-    return () => setHarnessBrowseOwner(null);
+  useLayoutEffect(() => {
+    pinAgentChatOwner(focusedId);
+    return () => pinAgentChatOwner(null);
   }, [focusedId]);
+
+  const focusedProjectionStore = acpProjectionStoreFor(focusedId);
+  const focusedPage = useStore(focusedProjectionStore, (state) => state.page);
+  const focusedScope = useStore(focusedProjectionStore, (state) => state.scope);
+  const focusedOwner = useMemo<AgentArtifactOwner | null>(() => {
+    if (
+      projectTransitioning ||
+      !project ||
+      !focusedPage?.currentSessionId ||
+      !focusedScope ||
+      focusedPage.projectId !== project.id ||
+      focusedPage.chatId !== focusedId ||
+      focusedScope.projectId !== focusedPage.projectId ||
+      focusedScope.chatId !== focusedPage.chatId ||
+      focusedScope.projectGeneration !== String(projectGeneration)
+    ) {
+      return null;
+    }
+    return {
+      projectId: focusedPage.projectId,
+      chatId: focusedPage.chatId,
+      sessionId: focusedPage.currentSessionId,
+    };
+  }, [
+    focusedId,
+    focusedPage,
+    focusedScope,
+    project,
+    projectGeneration,
+    projectTransitioning,
+  ]);
+
+  useLayoutEffect(() => {
+    setHarnessBrowseOwner(focusedOwner);
+    return () => setHarnessBrowseOwner(null);
+  }, [focusedOwner]);
+
+  const hasVisibleChats = nextVisibleIds.length > 0;
+  useLayoutEffect(() => {
+    const panes = panesRef.current;
+    if (!panes || !hasVisibleChats) return;
+
+    const updateWidth = (width: number) => {
+      if (Number.isFinite(width) && width > 0) {
+        setContainerWidth(width);
+      }
+    };
+    updateWidth(panes.getBoundingClientRect().width);
+
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width !== undefined) updateWidth(width);
+    });
+    observer.observe(panes);
+    return () => observer.disconnect();
+  }, [hasVisibleChats]);
 
   useEffect(() => {
     writeWorkbenchLayout({ agentChatSplitPercent: splitPercent });

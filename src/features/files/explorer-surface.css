@@ -1,31 +1,83 @@
-.explorer-add-root {
-  display: inline-flex;
-  width: 24px;
-  height: 24px;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  background: transparent;
-  font-size: var(--font-size-xs);
-  cursor: pointer;
+.explorer-action-menu {
+  position: relative;
+  display: grid;
+  flex: 0 0 auto;
 }
 
-.explorer-add-root span {
+.explorer-action-menu__surface {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 5px);
+  right: 0;
+  display: grid;
+  width: min(220px, calc(100vw - 64px));
+  max-width: calc(100vw - 64px);
+  gap: 2px;
+  padding: 4px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  box-shadow: var(--elevation-popover);
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+}
+
+.explorer-action-menu__surface[hidden] {
   display: none;
 }
 
-.explorer-add-root:hover:not(:disabled) {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
+.sidebar__heading-actions
+  .explorer-action-menu__surface
+  .explorer-action-menu__item {
+  display: grid;
+  width: 100%;
+  height: auto;
+  min-height: 30px;
+  grid-template-columns: 16px minmax(0, 1fr);
+  justify-items: start;
+  gap: 7px;
+  padding: 5px 7px;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+  text-align: left;
 }
 
-.explorer-add-root:disabled {
-  opacity: 0.4;
-  cursor: default;
+.explorer-action-menu__item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-action-menu__reason {
+  margin: 2px;
+  padding: 6px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.4;
+}
+
+@media (forced-colors: active) {
+  .explorer-action-menu__surface {
+    border-color: CanvasText;
+    color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
+  }
+
+  .sidebar__heading-actions
+    .explorer-action-menu__surface
+    .explorer-action-menu__item,
+  .explorer-action-menu__reason {
+    color: CanvasText;
+    forced-color-adjust: auto;
+  }
 }
 
 .tree {

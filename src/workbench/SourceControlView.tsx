@@ -13,14 +13,12 @@ import type {
   GitFileMutationAction,
   RepositoryRef,
   ResourceRef,
-  RootRepositoryStatus,
 } from "../domain/workbench";
-import { RepositoryCommitControl } from "./RepositoryCommitControl";
 import { SourceBranchList } from "./SourceBranchList";
 import { SourceChangeRow } from "./SourceChangeRow";
 import { SourceCommitList } from "./SourceCommitList";
 import { SourceRemoteList } from "./SourceRemoteList";
-import { repositoryPrimaryAction } from "../features/git/primaryAction";
+import { SourceRepositoryControl } from "./SourceRepositoryControl";
 
 function SourceChangeGroups({
   changes,
@@ -101,21 +99,6 @@ function SourceChangeGroups({
   );
 }
 
-function RepositoryIdentity({
-  repository,
-}: {
-  repository: RootRepositoryStatus;
-}) {
-  const tracking = repository.upstream
-    ? `${repository.upstream}${repository.ahead || repository.behind ? ` · ↑${repository.ahead ?? 0} ↓${repository.behind ?? 0}` : ""}`
-    : "No upstream";
-  return (
-    <span className="source-root__identity" title={tracking}>
-      {tracking}
-    </span>
-  );
-}
-
 function disambiguatedRootLabel(
   rootName: string,
   ordinal: number,
@@ -173,7 +156,6 @@ export function SourceControlView() {
     (state) => state.renameLocalBranch,
   );
   const fetchRemote = useWorkbenchStore((state) => state.fetchRemote);
-  const pullRepository = useWorkbenchStore((state) => state.pullRepository);
   const pushRemote = useWorkbenchStore((state) => state.pushRemote);
   const transitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
@@ -302,61 +284,17 @@ export function SourceControlView() {
             projectRoot?.ordinal ?? 0,
             rootNameCounts,
           );
+          const writable =
+            repository.state === "repository" &&
+            (!selectedRepository || isRootRepository(selectedRepository));
           return (
             <section className="source-root" key={repository.rootId}>
-              <div className="source-control-list__group">
-                <span className="source-root__name" title={rootLabel}>
-                  {rootLabel}
-                </span>
-                <span className="source-root__branch">
-                  {repository.branch ??
-                    (repository.state === "notRepository"
-                      ? "Not a repository"
-                      : "Unavailable")}
-                </span>
-              </div>
-              {repository.state === "repository" ? (
-                <div className="source-root__tracking">
-                  <RepositoryIdentity repository={repository} />
-                  {(() => {
-                    const action = repositoryPrimaryAction(repository);
-                    if (!action || action.kind === "commit") return null;
-                    return (
-                      <button
-                        type="button"
-                        className="source-root__primary"
-                        disabled={controlsDisabled || action.reason !== null}
-                        title={
-                          action.reason ??
-                          (action.kind === "pull"
-                            ? "Pull the current upstream"
-                            : `${action.label} using ${action.remote ?? "the staged changes"}`)
-                        }
-                        onClick={() => {
-                          if (action.kind === "pull") {
-                            void pullRepository(repository.rootId);
-                          }
-                          if (
-                            action.kind === "push" ||
-                            action.kind === "publish"
-                          )
-                            void pushRemote(repository.rootId, action.remote);
-                        }}
-                      >
-                        {action.label}
-                      </button>
-                    );
-                  })()}
-                </div>
-              ) : null}
-              {repository.state === "repository" &&
-              (!selectedRepository || isRootRepository(selectedRepository)) ? (
-                <RepositoryCommitControl
-                  repository={repository}
-                  rootLabel={rootLabel}
-                  controlsDisabled={controlsDisabled}
-                />
-              ) : null}
+              <SourceRepositoryControl
+                repository={repository}
+                rootLabel={rootLabel}
+                controlsDisabled={controlsDisabled}
+                writable={writable}
+              />
               <SourceBranchList
                 rootLabel={rootLabel}
                 branch={repository.branch}
@@ -367,27 +305,23 @@ export function SourceControlView() {
                 deleteDisabled={controlsDisabled}
                 renameDisabled={controlsDisabled}
                 onCheckout={
-                  repository.state === "repository" &&
-                  (!selectedRepository || isRootRepository(selectedRepository))
+                  writable
                     ? (name) =>
                         void checkoutLocalBranch(repository.rootId, name)
                     : undefined
                 }
                 onCreate={
-                  repository.state === "repository" &&
-                  (!selectedRepository || isRootRepository(selectedRepository))
+                  writable
                     ? (name) => void createLocalBranch(repository.rootId, name)
                     : undefined
                 }
                 onDelete={
-                  repository.state === "repository" &&
-                  (!selectedRepository || isRootRepository(selectedRepository))
+                  writable
                     ? (name) => void deleteLocalBranch(repository.rootId, name)
                     : undefined
                 }
                 onRename={
-                  repository.state === "repository" &&
-                  (!selectedRepository || isRootRepository(selectedRepository))
+                  writable
                     ? (from, to) =>
                         void renameLocalBranch(repository.rootId, from, to)
                     : undefined
@@ -402,22 +336,15 @@ export function SourceControlView() {
                 rootLabel={rootLabel}
                 remotes={repository.remotes}
                 truncated={repository.remotesTruncated}
-                repository={
-                  repository.state === "repository" &&
-                  (!selectedRepository || isRootRepository(selectedRepository))
-                    ? repository
-                    : undefined
-                }
+                repository={writable ? repository : undefined}
                 transportDisabled={controlsDisabled}
                 onFetch={
-                  repository.state === "repository" &&
-                  (!selectedRepository || isRootRepository(selectedRepository))
+                  writable
                     ? (name) => void fetchRemote(repository.rootId, name)
                     : undefined
                 }
                 onPush={
-                  repository.state === "repository" &&
-                  (!selectedRepository || isRootRepository(selectedRepository))
+                  writable
                     ? (name) => void pushRemote(repository.rootId, name)
                     : undefined
                 }

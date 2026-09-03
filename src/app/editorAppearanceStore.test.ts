@@ -44,4 +44,22 @@ describe("editor appearance persistence projection", () => {
       wordWrap: false,
     });
   });
+
+  it("persists reset defaults as one admitted appearance record", () => {
+    const save = vi
+      .spyOn(getWorkbenchPorts().settings, "setEditorAppearance")
+      .mockResolvedValue(DEFAULT_EDITOR_APPEARANCE);
+    useEditorAppearanceStore.setState({
+      fontSize: 16,
+      tabSize: 8,
+      wordWrap: true,
+    });
+
+    useEditorAppearanceStore.getState().reset();
+
+    expect(useEditorAppearanceStore.getState()).toMatchObject(
+      DEFAULT_EDITOR_APPEARANCE,
+    );
+    expect(save).toHaveBeenCalledWith(DEFAULT_EDITOR_APPEARANCE);
+  });
 });

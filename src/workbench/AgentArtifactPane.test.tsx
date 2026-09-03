@@ -23,13 +23,31 @@ import type {
 } from "../domain/acp";
 import {
   applyBrowseIntent,
+  clearBrowseSession,
   clearBrowseSessions,
-  setHarnessBrowseOwner,
 } from "../features/preview/harnessBrowse";
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
+import {
+  agentArtifactFollowRecordFor,
+  useAgentArtifactFollowStore,
+} from "../app/agentArtifactFollowStore";
+import { clearAgentChatOwner, pinAgentChatOwner } from "../app/agentChatOwner";
+import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import { AgentArtifactPane } from "./AgentArtifactPane";
 
 const initialState = useWorkbenchStore.getState();
+const focusedOwner = {
+  projectId: "project-a",
+  chatId: "chat-focused",
+  sessionId: "session-a",
+} as AgentArtifactOwner;
+
+function admit(tabId: string): void {
+  useAgentArtifactAdmissionStore.getState().admit({
+    owner: focusedOwner,
+    tabId,
+  });
+}
 
 function pageWithEdit(): AcpChatPage {
   const item = {
@@ -107,9 +125,13 @@ function seedFocusedPage(): void {
 }
 
 beforeEach(() => {
+  useAgentArtifactFollowStore.getState().clear();
   seedFocusedPage();
-  setHarnessBrowseOwner("chat-focused");
+  pinAgentChatOwner(focusedOwner.chatId);
   useWorkbenchStore.setState({
+    project: { id: "project-a", name: "Project A", roots: [] },
+    projectGeneration: 0,
+    projectTransitioning: false,
     tabs: [
       {
         id: "chat-focused",
@@ -146,14 +168,16 @@ afterEach(() => {
   cleanup();
   clearBrowseSessions();
   clearAcpProjectionRegistry();
+  clearAgentChatOwner();
   useAgentArtifactAdmissionStore.getState().clear();
+  useAgentArtifactFollowStore.getState().clear();
   useWorkbenchStore.setState(initialState, true);
 });
 
 describe("Agent artifact file chips", () => {
   it("starts empty as a collapsed right-edge resource affordance", () => {
     const onExpandedChange = vi.fn();
-    setHarnessBrowseOwner(null);
+    pinAgentChatOwner(null);
     useWorkbenchStore.setState({
       tabs: [
         {
@@ -196,7 +220,6 @@ describe("Agent artifact file chips", () => {
 
   it("requests expansion when a new Agent file becomes available", () => {
     const onExpandedChange = vi.fn();
-    setHarnessBrowseOwner(null);
     useWorkbenchStore.setState({
       tabs: [
         {
@@ -232,7 +255,7 @@ describe("Agent artifact file chips", () => {
           },
         ],
       }));
-      useAgentArtifactAdmissionStore.getState().admit("file:new");
+      admit("file:new");
     });
 
     expect(onExpandedChange).toHaveBeenCalledWith(true);
@@ -262,7 +285,7 @@ describe("Agent artifact file chips", () => {
 
   it("opens Agent Preview as a loopback browser without the app-script starter", () => {
     applyBrowseIntent({
-      chatId: "chat-focused",
+      owner: focusedOwner,
       url: "http://127.0.0.1:5173/",
     });
     render(<AgentArtifactPane />);
@@ -275,13 +298,101 @@ describe("Agent artifact file chips", () => {
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
   });
 
+  it("keeps a pinned File when Preview arrives and resumes Follow latest", () => {
+    useAgentArtifactFollowStore
+      .getState()
+      .pin(focusedOwner, { kind: "tab", tabId: "file:app" });
+    render(<AgentArtifactPane />);
+
+    expect(screen.getByRole("tab", { name: /app\.ts/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    act(() => {
+      applyBrowseIntent({
+        owner: focusedOwner,
+        url: "http://127.0.0.1:5173/preview",
+      });
+    });
+
+    expect(screen.getByRole("tab", { name: "Preview" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+    const follow = screen.getByRole("button", {
+      name: "Follow latest resource",
+    });
+    expect(follow).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(follow);
+    expect(follow).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("tab", { name: "Preview" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    act(() => clearBrowseSession(focusedOwner));
+    expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
+    expect(screen.getByRole("tab", { name: /app\.ts/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("pins an explicitly selected resource tab for the focused Chat", () => {
+    admit("diff:other");
+    render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: /^other\.ts$/ }));
+
+    expect(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        focusedOwner,
+      ),
+    ).toMatchObject({
+      mode: "pinned",
+      selected: { kind: "tab", tabId: "diff:other" },
+    });
+  });
+
   it("shows an Agent-admitted unmatched tab without edit-summary counters", () => {
-    useAgentArtifactAdmissionStore.getState().admit("diff:other");
+    admit("diff:other");
     render(<AgentArtifactPane />);
 
     const unmatched = screen.getByRole("tab", { name: /^other\.ts$/ });
     expect(within(unmatched).queryByText("+3")).toBeNull();
     expect(within(unmatched).queryByText("-1")).toBeNull();
+  });
+
+  it("hides an admission during Project transition and after session replacement", () => {
+    admit("diff:other");
+    render(<AgentArtifactPane />);
+    expect(screen.getByRole("tab", { name: /^other\.ts$/ })).toBeVisible();
+
+    act(() => useWorkbenchStore.setState({ projectTransitioning: true }));
+    expect(screen.queryByRole("tab", { name: /^other\.ts$/ })).toBeNull();
+
+    act(() =>
+      useWorkbenchStore.setState({
+        projectTransitioning: false,
+        projectGeneration: 1,
+      }),
+    );
+    expect(screen.queryByRole("tab", { name: /^other\.ts$/ })).toBeNull();
+
+    act(() => {
+      useWorkbenchStore.setState({ projectGeneration: 0 });
+      const replacementOwner = {
+        ...focusedOwner,
+        sessionId: "session-new",
+      } as AgentArtifactOwner;
+      acpProjectionStoreFor(focusedOwner.chatId).setState({
+        page: {
+          ...pageWithEdit(),
+          currentSessionId: replacementOwner.sessionId,
+        },
+      });
+    });
+
+    expect(screen.queryByRole("tab", { name: /^other\.ts$/ })).toBeNull();
   });
 
   it("uses language-aware file icons on file tabs and keeps the diff glyph", () => {
@@ -325,8 +436,8 @@ describe("Agent artifact file chips", () => {
       ],
       activeTabId: "chat-focused",
     });
-    useAgentArtifactAdmissionStore.getState().admit("file:readme");
-    useAgentArtifactAdmissionStore.getState().admit("diff:other");
+    admit("file:readme");
+    admit("diff:other");
     render(<AgentArtifactPane />);
 
     expect(
@@ -417,8 +528,8 @@ describe("Agent artifact file chips", () => {
       ],
       activeTabId: "file:app",
     });
-    useAgentArtifactAdmissionStore.getState().admit("file:readme");
-    useAgentArtifactAdmissionStore.getState().admit("diff:other");
+    admit("file:readme");
+    admit("diff:other");
     render(<AgentArtifactPane />);
 
     expect(

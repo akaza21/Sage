@@ -10,7 +10,7 @@ export const AGENT_CENTER_CHAT_SCAN_LIMIT = 64;
 
 export const MAX_AGENT_VISIBLE_CHATS = 2;
 
-export const EDITOR_CANVAS_KINDS = ["file", "diff"] as const;
+export const EDITOR_CANVAS_KINDS = ["file", "diff", "settings"] as const;
 
 export interface AgentCenterScanTab {
   id: string;
@@ -149,9 +149,17 @@ export function focusedAgentChatId(
   chatIds: readonly string[],
   visibleIds: readonly string[],
   activeTabId: string | null,
+  previousFocusedId: string | null = null,
 ): string | null {
   if (activeTabId && listHasId(chatIds, activeTabId)) {
     return activeTabId;
+  }
+  if (
+    previousFocusedId &&
+    listHasId(chatIds, previousFocusedId) &&
+    listHasId(visibleIds, previousFocusedId)
+  ) {
+    return previousFocusedId;
   }
   return visibleIds[0] ?? chatIds[0] ?? null;
 }

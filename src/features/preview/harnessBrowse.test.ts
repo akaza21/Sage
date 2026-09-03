@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { AgentArtifactOwner } from "../../domain/agentArtifact";
 import {
   MAX_HARNESS_BROWSE_HISTORY,
   MAX_HARNESS_BROWSE_SESSIONS,
@@ -8,11 +9,20 @@ import {
   applyBrowseIntent,
   browseBack,
   browseForward,
-  browseHistoryForChat,
-  browseSessionForChat,
+  browseHistoryForOwner,
+  browseSessionForOwner,
+  clearBrowseSession,
   clearBrowseSessions,
   extractAdmittedBrowseUrl,
 } from "./harnessBrowse";
+
+function owner(
+  chatId: string,
+  sessionId = "session-1",
+  projectId = "project-1",
+): AgentArtifactOwner {
+  return { projectId, chatId, sessionId } as AgentArtifactOwner;
+}
 
 describe("fail-closed harness browse admission", () => {
   it("admits loopback HTTP(S) with an explicit port and no credentials", () => {
@@ -53,96 +63,117 @@ describe("fail-closed harness browse admission", () => {
     expect(extractAdmittedBrowseUrl("see https://example.com")).toBeNull();
   });
 
-  it("rejects a foreign session on the same chat and leaves the first URL open", () => {
+  it("gives a replacement session fresh state without evicting another Chat", () => {
     clearBrowseSessions();
+    const oldOwner = owner("chat:scoped", "session-1");
+    const otherOwner = owner("chat:other", "session-1");
+    const replacementOwner = owner("chat:scoped", "session-2");
+    applyBrowseIntent({
+      owner: otherOwner,
+      url: "http://127.0.0.1:3000/other",
+    });
+    applyBrowseIntent({
+      owner: oldOwner,
+      url: "http://127.0.0.1:5173/old",
+    });
     expect(
       applyBrowseIntent({
-        chatId: "chat:scoped",
-        sessionId: "session-1",
-        url: "http://127.0.0.1:5173/",
+        owner: replacementOwner,
+        url: "http://127.0.0.1:4173/new",
       })?.href,
-    ).toBe("http://127.0.0.1:5173/");
-    expect(
-      applyBrowseIntent({
-        chatId: "chat:scoped",
-        sessionId: "session-2",
-        url: "http://127.0.0.1:4173/",
-      }),
-    ).toBeNull();
-    expect(browseSessionForChat("chat:scoped")?.href).toBe(
-      "http://127.0.0.1:5173/",
+    ).toBe("http://127.0.0.1:4173/new");
+    expect(browseSessionForOwner(oldOwner)).toBeNull();
+    expect(browseSessionForOwner(otherOwner)?.href).toBe(
+      "http://127.0.0.1:3000/other",
     );
-    clearBrowseSessions();
+    expect(browseHistoryForOwner(replacementOwner)).toEqual({
+      canBack: false,
+      canForward: false,
+    });
   });
 
-  it("keeps at most two per-chat browse sessions and replaces the oldest", () => {
+  it("keeps at most two exact-owner browse sessions and replaces the oldest", () => {
     clearBrowseSessions();
+    const ownerA = owner("chat:a");
+    const ownerB = owner("chat:b");
+    const ownerC = owner("chat:c");
     expect(MAX_HARNESS_BROWSE_SESSIONS).toBe(2);
     expect(
-      applyBrowseIntent({ chatId: "chat:a", url: "http://127.0.0.1:5173/" })
-        ?.href,
+      applyBrowseIntent({ owner: ownerA, url: "http://127.0.0.1:5173/" })?.href,
     ).toBe("http://127.0.0.1:5173/");
     expect(
-      applyBrowseIntent({ chatId: "chat:b", url: "http://127.0.0.1:4173/" })
-        ?.chatId,
-    ).toBe("chat:b");
+      applyBrowseIntent({ owner: ownerB, url: "http://127.0.0.1:4173/" })
+        ?.owner,
+    ).toEqual(ownerB);
     expect(
-      applyBrowseIntent({ chatId: "chat:c", url: "http://127.0.0.1:3000/" })
-        ?.chatId,
-    ).toBe("chat:c");
-    expect(browseSessionForChat("chat:a")).toBeNull();
-    expect(browseSessionForChat("chat:b")?.href).toBe("http://127.0.0.1:4173/");
-    expect(browseSessionForChat("chat:c")?.href).toBe("http://127.0.0.1:3000/");
+      applyBrowseIntent({ owner: ownerC, url: "http://127.0.0.1:3000/" })
+        ?.owner,
+    ).toEqual(ownerC);
+    expect(browseSessionForOwner(ownerA)).toBeNull();
+    expect(browseSessionForOwner(ownerB)?.href).toBe("http://127.0.0.1:4173/");
+    expect(browseSessionForOwner(ownerC)?.href).toBe("http://127.0.0.1:3000/");
     expect(
-      applyBrowseIntent({ chatId: "chat:c", url: "javascript:alert(1)" }),
+      applyBrowseIntent({ owner: ownerC, url: "javascript:alert(1)" }),
     ).toBeNull();
-    expect(browseSessionForChat("chat:c")?.href).toBe("http://127.0.0.1:3000/");
-    clearBrowseSessions();
+    expect(browseSessionForOwner(ownerC)?.href).toBe("http://127.0.0.1:3000/");
   });
 
-  it("walks a bounded admitted history and drops the forward stack", () => {
+  it("walks a bounded per-owner history and drops the forward stack", () => {
     clearBrowseSessions();
+    const browseOwner = owner("chat:a");
     expect(MAX_HARNESS_BROWSE_HISTORY).toBe(8);
-    applyBrowseIntent({ chatId: "chat:a", url: "http://127.0.0.1:5173/one" });
-    applyBrowseIntent({ chatId: "chat:a", url: "http://127.0.0.1:5173/two" });
+    applyBrowseIntent({
+      owner: browseOwner,
+      url: "http://127.0.0.1:5173/one",
+    });
+    applyBrowseIntent({
+      owner: browseOwner,
+      url: "http://127.0.0.1:5173/two",
+    });
     expect(
-      applyBrowseIntent({ chatId: "chat:a", url: "https://example.com/" }),
+      applyBrowseIntent({ owner: browseOwner, url: "https://example.com/" }),
     ).toBeNull();
-    expect(browseSessionForChat("chat:a")?.href).toBe(
+    expect(browseSessionForOwner(browseOwner)?.href).toBe(
       "http://127.0.0.1:5173/two",
     );
-    expect(browseHistoryForChat("chat:a")).toEqual({
+    expect(browseHistoryForOwner(browseOwner)).toEqual({
       canBack: true,
       canForward: false,
     });
-    expect(browseBack("chat:a")?.href).toBe("http://127.0.0.1:5173/one");
-    expect(browseHistoryForChat("chat:a")).toEqual({
+    expect(browseBack(browseOwner)?.href).toBe("http://127.0.0.1:5173/one");
+    expect(browseHistoryForOwner(browseOwner)).toEqual({
       canBack: false,
       canForward: true,
     });
-    expect(browseForward("chat:a")?.href).toBe("http://127.0.0.1:5173/two");
-    browseBack("chat:a");
-    applyBrowseIntent({ chatId: "chat:a", url: "http://127.0.0.1:5173/three" });
-    expect(browseSessionForChat("chat:a")?.href).toBe(
-      "http://127.0.0.1:5173/three",
-    );
-    expect(browseForward("chat:a")).toBeNull();
-    expect(browseHistoryForChat("chat:a")).toEqual({
-      canBack: true,
-      canForward: false,
+    expect(browseForward(browseOwner)?.href).toBe("http://127.0.0.1:5173/two");
+    browseBack(browseOwner);
+    applyBrowseIntent({
+      owner: browseOwner,
+      url: "http://127.0.0.1:5173/three",
     });
+    expect(browseForward(browseOwner)).toBeNull();
     for (let index = 0; index < 10; index += 1) {
       applyBrowseIntent({
-        chatId: "chat:a",
+        owner: browseOwner,
         url: `http://127.0.0.1:5173/p${index}`,
       });
     }
     let steps = 0;
-    while (browseBack("chat:a")) steps += 1;
+    while (browseBack(browseOwner)) steps += 1;
     expect(steps).toBe(MAX_HARNESS_BROWSE_HISTORY - 1);
-    expect(browseSessionForChat("chat:a")?.href).toBe(
+    expect(browseSessionForOwner(browseOwner)?.href).toBe(
       "http://127.0.0.1:5173/p2",
     );
+  });
+
+  it("closes only the exact Project, Chat, and session tuple", () => {
     clearBrowseSessions();
+    const ownerA = owner("chat:a");
+    const ownerB = owner("chat:b");
+    applyBrowseIntent({ owner: ownerA, url: "http://127.0.0.1:5173/" });
+    applyBrowseIntent({ owner: ownerB, url: "http://127.0.0.1:4173/" });
+    clearBrowseSession(ownerA);
+    expect(browseSessionForOwner(ownerA)).toBeNull();
+    expect(browseSessionForOwner(ownerB)?.href).toBe("http://127.0.0.1:4173/");
   });
 });

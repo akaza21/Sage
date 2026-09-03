@@ -1,0 +1,229 @@
+/*
+ * Editor highlights use one quiet state language. This layer is intentionally
+ * last and Editor-owned so Agent surfaces and shared resource defaults retain
+ * their independent presentation.
+ */
+@media (forced-colors: none) {
+  .workbench--editor,
+  .new-file-dialog--editor,
+  .dirty-dialog--editor {
+    --editor-focus-edge: color-mix(
+      in srgb,
+      var(--color-accent) 68%,
+      transparent
+    );
+    --editor-focus-halo: color-mix(
+      in srgb,
+      var(--color-accent) 12%,
+      transparent
+    );
+    --editor-selection-fill: color-mix(
+      in srgb,
+      var(--color-accent) 12%,
+      var(--color-surface)
+    );
+    --editor-selection-edge: color-mix(
+      in srgb,
+      var(--color-accent) 44%,
+      transparent
+    );
+    --editor-active-fill: color-mix(
+      in srgb,
+      var(--color-accent) 7%,
+      var(--color-surface-hover)
+    );
+    --editor-active-edge: color-mix(
+      in srgb,
+      var(--color-accent) 52%,
+      transparent
+    );
+    --editor-code-selection: var(--color-selection);
+    --editor-find-match-fill: color-mix(
+      in srgb,
+      var(--color-warning) 32%,
+      transparent
+    );
+    --editor-find-match-edge: color-mix(
+      in srgb,
+      var(--color-warning) 72%,
+      transparent
+    );
+    --editor-focus-halo-shadow: 0 0 6px 1px var(--editor-focus-halo);
+    --editor-focus-frame-shadow:
+      inset 0 0 0 1px var(--editor-focus-edge),
+      inset 0 0 6px var(--editor-focus-halo);
+    --focus-ring-width: 1px;
+    --focus-ring-offset: 1px;
+    --focus-ring: var(--focus-ring-width) solid var(--editor-focus-edge);
+    --focus-ring-inset: inset 0 0 0 var(--focus-ring-width)
+      var(--editor-focus-edge);
+  }
+
+  /* Persistent selection: quiet fill, local hairline, no glow. */
+  .workbench--editor .tree__row--selected,
+  .workbench--editor .source-change--selected {
+    background: var(--editor-selection-fill);
+    box-shadow: inset 1px 0 0 var(--editor-selection-edge);
+  }
+
+  .workbench--editor .tab--active {
+    background: var(--editor-selection-fill);
+    box-shadow: inset 0 1px 0 var(--editor-selection-edge);
+  }
+
+  .workbench--editor .activity-rail__button--active,
+  .workbench--editor .title-bar__mode--active {
+    background: var(--editor-active-fill);
+  }
+
+  .workbench--editor .title-bar__mode--active {
+    box-shadow: inset 0 0 0 1px var(--editor-active-edge);
+  }
+
+  .workbench--editor
+    .right-region--leading
+    .activity-rail__button--active::after {
+    width: 1px;
+    height: 22px;
+    background: var(--editor-active-edge);
+  }
+
+  /* Pressed controls remain distinct without reading as keyboard focus. */
+  .workbench--editor .file-header__preview[aria-pressed="true"],
+  .workbench--editor .status-bar__button[aria-pressed="true"],
+  .workbench--editor .editor-find__button[aria-pressed="true"],
+  .workbench--editor
+    .workspace-search__query-actions
+    button[aria-pressed="true"],
+  .workbench--editor .workspace-search__details-toggle[aria-expanded="true"] {
+    color: var(--color-text-primary);
+    background: var(--editor-active-fill);
+    box-shadow: inset 0 -1px 0 var(--editor-active-edge);
+  }
+
+  .workbench--editor
+    :where(
+      button,
+      .tree__row,
+      .root-tree__heading,
+      .source-change,
+      .workspace-search__result,
+      .problem-card,
+      .outline-card
+    ):active:not(:disabled):not(.button--danger):not(
+      .source-change__confirmation-button--danger
+    ) {
+    color: var(--color-text-primary);
+    background: var(--editor-active-fill);
+    box-shadow: inset 0 0 0 1px var(--editor-active-edge);
+  }
+
+  /* Compact fields use their border as the sole edge plus a soft falloff. */
+  .workbench--editor .workspace-search__input:focus-within,
+  .workbench--editor .workspace-search__filters input:focus-visible,
+  .workbench--editor .source-control-selector select:focus-visible,
+  .workbench--editor .source-branch-create__label input:focus-visible,
+  .workbench--editor .source-branch-create__label select:focus-visible,
+  .workbench--editor .repository-commit__label textarea:focus-visible,
+  .workbench--editor .editor-find__query input:focus-visible,
+  .workbench--editor .settings-surface input[type="search"]:focus-visible,
+  .workbench--editor .settings-surface select:focus-visible,
+  .new-file-dialog--editor .new-file-dialog__field input:focus-visible {
+    border-color: var(--editor-focus-edge);
+    outline: 0;
+    box-shadow: var(--editor-focus-halo-shadow);
+  }
+
+  .workbench--editor
+    :where(
+      .explorer-action-menu__item,
+      .workspace-search__file-heading,
+      .workspace-search__result,
+      .problem-card,
+      .outline-card
+    ):focus-visible {
+    outline: 0;
+    background: var(--color-surface-hover);
+    box-shadow: inset 0 0 0 1px var(--editor-focus-edge);
+  }
+
+  /* Bordered actions keep one blue edge instead of stacking border + ring. */
+  .workbench--editor .source-root__primary:focus-visible,
+  .workbench--editor .source-change__resolve:focus-visible {
+    border-color: var(--color-border-strong);
+  }
+
+  .workbench--editor .status-bar__button:focus-visible {
+    border-inline-color: transparent;
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+    box-shadow: none;
+  }
+
+  .workbench--editor .settings-surface__toggle input {
+    accent-color: color-mix(
+      in srgb,
+      var(--color-accent) 72%,
+      var(--color-canvas)
+    );
+  }
+
+  .workbench--editor .settings-surface__toggle input:focus-visible {
+    box-shadow: var(--editor-focus-halo-shadow);
+  }
+
+  /* Large regions receive a contained edge, never a full-panel glow. */
+  .workbench--editor .sidebar:focus-visible {
+    outline: 0;
+    box-shadow: inset 0 0 0 1px var(--editor-focus-edge);
+  }
+
+  .workbench--editor .workbench-sidebar-splitter:focus-visible {
+    outline: 0;
+  }
+
+  .workbench--editor .workbench-sidebar-splitter::after,
+  .workbench--editor .workbench-sidebar-splitter:hover::after,
+  .workbench--editor .workbench-sidebar-splitter--active::after,
+  .workbench--editor .workbench-sidebar-splitter:focus-visible::after {
+    width: 1px;
+  }
+
+  .workbench--editor .workbench-sidebar-splitter:hover::after {
+    background: var(--editor-selection-edge);
+    box-shadow: 0 0 4px var(--editor-focus-halo);
+  }
+
+  .workbench--editor .workbench-sidebar-splitter--active::after,
+  .workbench--editor .workbench-sidebar-splitter:focus-visible::after {
+    background: var(--editor-focus-edge);
+    box-shadow: var(--editor-focus-halo-shadow);
+  }
+
+  /* File and Diff share document syntax; these overrides belong to Editor. */
+  .workbench--editor .resource-document {
+    --resource-document-selection: var(--editor-code-selection);
+  }
+
+  .workbench--editor .editor-input .cm-editor.cm-focused {
+    outline: 0;
+    box-shadow: var(--editor-focus-frame-shadow);
+  }
+
+  .workbench--editor .editor-input .cm-content:focus-visible {
+    outline: 0;
+  }
+
+  /* Search matches remain amber and cannot be confused with selection. */
+  .workbench--editor .workspace-search__preview mark {
+    color: var(--color-text-primary);
+    background: var(--editor-find-match-fill);
+    box-shadow: inset 0 -1px 0 var(--editor-find-match-edge);
+  }
+
+  /* Count badges communicate quantity, not selection. */
+  .workbench--editor .workspace-search__file-count,
+  .workbench--editor .source-change-group > summary span:last-child {
+    background: var(--color-surface-hover);
+  }
+}

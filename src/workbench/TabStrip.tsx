@@ -2,6 +2,7 @@ import {
   GitCompareArrows,
   MessageSquare,
   Plus,
+  Settings,
   TerminalSquare,
   X,
 } from "lucide-react";
@@ -19,7 +20,7 @@ const icons: Record<TabKind, typeof MessageSquare> = {
   search: MessageSquare,
   problems: MessageSquare,
   output: TerminalSquare,
-  settings: MessageSquare,
+  settings: Settings,
 };
 
 export function TabStrip({

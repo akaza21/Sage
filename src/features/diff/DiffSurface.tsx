@@ -35,7 +35,10 @@ export function DiffSurface({ tab }: { tab: WorkbenchTab }) {
   }, [loadDiff, tabResource, tabRepository]);
 
   return (
-    <section className="diff-surface" aria-label={`Diff for ${path}`}>
+    <section
+      className="diff-surface resource-document"
+      aria-label={`Diff for ${path}`}
+    >
       <header className="diff-header">
         <div className="diff-header__path">
           <FileDiff size={16} aria-hidden="true" />

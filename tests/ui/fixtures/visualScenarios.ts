@@ -4,15 +4,20 @@ import {
   pinAcpProjectionIds,
 } from "../../../src/app/acpProjectionRegistry";
 import { useAgentArtifactAdmissionStore } from "../../../src/app/agentArtifactAdmissionStore";
+import { useAgentArtifactFollowStore } from "../../../src/app/agentArtifactFollowStore";
 import { useWorkbenchStore } from "../../../src/app/store";
 import { diffCacheKey } from "../../../src/domain/diffIdentity";
-import { resourceKey } from "../../../src/domain/resourceIdentity";
+import {
+  childResource,
+  resourceKey,
+} from "../../../src/domain/resourceIdentity";
 import type {
   AcpCapabilitySet,
   AcpChatPage,
   AcpItem,
   AgentSessionProjection,
   EntityRevision,
+  HarnessActivityProjection,
   ProjectGeneration,
   ProjectionRevision,
   RuntimeEpoch,
@@ -24,6 +29,7 @@ import type {
   TurnProjection,
   TurnState,
 } from "../../../src/domain/acp";
+import type { AgentArtifactOwner } from "../../../src/domain/agentArtifact";
 import type {
   EditorDocument,
   FileDiff,
@@ -43,7 +49,11 @@ export type VisualScenarioName =
   | "agent-single"
   | "agent-dual"
   | "agent-long"
+  | "agent-activity-family"
+  | "agent-image"
+  | "agent-child-activity"
   | "editor"
+  | "file"
   | "diff"
   | "preview"
   | "error"
@@ -62,7 +72,11 @@ export const VISUAL_SCENARIOS: readonly VisualScenarioDefinition[] = [
   { name: "agent-single", mode: "agent", resource: "empty" },
   { name: "agent-dual", mode: "agent", resource: "empty" },
   { name: "agent-long", mode: "agent", resource: "empty" },
+  { name: "agent-activity-family", mode: "agent", resource: "empty" },
+  { name: "agent-image", mode: "agent", resource: "empty" },
+  { name: "agent-child-activity", mode: "agent", resource: "empty" },
   { name: "editor", mode: "editor", resource: "file" },
+  { name: "file", mode: "agent", resource: "file" },
   { name: "diff", mode: "agent", resource: "diff" },
   { name: "preview", mode: "agent", resource: "preview" },
   { name: "error", mode: "agent", resource: "empty" },
@@ -77,6 +91,22 @@ const RUNTIME_EPOCH = "7" as RuntimeEpoch;
 const SESSION_ID = "visual-session" as SageAgentSessionId;
 const BINDING_ID = "visual-binding";
 const MODEL_ID = "visual-model";
+const VISUAL_AGENT_IMAGE_PNG = [
+  "iVBORw0KGgoAAAANSUhEUgAABLAAAAKjCAMAAAA6bQbyAAAAG1BMVEUOERYUGCAqMUAaHyhMjf+0vcmLlaVo2YPvbWdPEC1lAAAJwElEQVR42u3bOQ6AMAxFwbBz/xNDjZQG4UDMzA1ifb0upQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAoAEgiGABggUgWIBgCRYgWACCBQiWYAGCBSBYgGAJFiBYAIIF",
+  "CJZgAYIFIFiAYAkWIFgAggUIlmABggUgWIBgCRYgWACCBQiWYAGCBSBYgGA5KSBYgGAJFiBYAIIFCJZgAYIFIFiAYAkWIFgAggUIlmABggUgWIBgCRYgWACCBQiWYAGCBSBYgGAJFiBYAIIFCJZgAYIFIFiAYAkWIFgAggUIFoBgAYIlWIBgAQgWIFiCBQgWgGABgiVYgGABCBYgWIIFCBaAYAGCJVhAxmABAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "AAAAAAAA/Rp5XO3WE/yMYAkWCBaCBYIlWIKFYAmWYIFgIVggWIJlvgiWYAkWCBaCBYIlWCBYgiVYIFgIFgiWYIFgCZZggWAhWCBYggWCJViCBYKFYIFgCRYIlmAJFggWggWCJVggWIIlWCBYCBYIlmCBYAmWYIFgIVggWIIFgiUvggWCJViChWAJlmCBYCFYIFiCJVgIlmAJFggW7YM104SACBaCJVgIlmAhWIIlWIIlWAgWgiVYCJZgIViCJViC",
+  "JVgIlmAJlmAhWIKFYAkWgiVYCJZgCZZgCZZgCRaCJVgIlmAhWIIlWIIlWIIlWAiWYCFYgoVgCZZgCZZgCZZgIViChWAJFoIlWIIlWIIlWIKFYAkWgiVYCJZgCZZgCZZgCRaCJVhEBAsES7AECwQLwQLBEiwQLMESLBAsBAsES7BAsARLsECwECwQLMECwRIswQLBQrBAsAQLBEuwBAsES7AECwRLsECwECwQLMESLARLsAQLBAvBAsESLPNFsARL",
+  "sECwECwQLMECwRIswQLBQrBAsAQLBEuwBAsEC8ECwRIsECzB6iVYC7xIsARLsBAswRIsECwEC8ESLMESLARLsAQLBAvBQrAES7AEC8ESLMECwUKwECzBEizBQrAES7BAsIgPFvj8LFiCBYKFYIFgCRYIlmAJFggWggWCJVggWIIlWCBYCBYIlmCBYAmWYIFgIVggWIIFgiVYggWCJViCBYIlWCBYCBYIlmAJFoIlWIIFgoVggWAJlvkiWIIlWCBY",
+  "tAvWCifBEizBQrAEC8FCsARLsBAswRIswUKwBAvBQrAES7AQLMESLMFCsAQLwUKwBEuwECzBEizBQrAES7AEC8ESrLzBAp+fBUuwQLAQLBAswQLBEizBAsFCsECwBAsES7AECwQLwQLBEiwQLMESLBAsBAsES7BAsARLsECwBEuwQLAECwQLwQLBEizBQrAES7BAsBAsECzBMl8ES7AECwQLwQLBEiwQLMESLBAsBAsES7BAsARLsECwECwQLMEC",
+  "wRIswQLBQrBAsAQLBEuwBAsEC8ECwRIsECzBEiwQLAQLBEuwQLAES7BAsBAsECzBAsGSF8ECwRIswUKwBEuwQLAQLBAswRIsBEuwBAsEC8ECwRIsECzBEiwQLAQLBEuwrrbE6q/eP05uBEuwBEuwBEuwBEuwBEuwECzBQrAES7AES7AES7AES7AEC8ESLARLsARLsARLsARLsARLsBAswUKwBEuwBEuwBEuwBEuwBAvBEiwES7AES7AES7AES7AE",
+  "S7AQLMFCsARLsARLsARLsARLsASLu8ECwRIswQLBQrBAsAQLBEuwBAsEC8ECwRIsECzBEiwQLAQLBEuwQLAES7BAsBAsECzBAsESLMECwRIswQLBEiwQLAQLBEuwBAvBEizBAsFCsECwBMt8ESzBEiwQLAQLBEuwQLAES7BAsBAsECzBAsESLMECwUKwQLAECwRLsAQLBAvBAsESLBAswRIsECwECwRLsECwBEuwQLAQLBAswQLBEizBAsFCsECw",
+  "BAsES14ECwRLsAQLwRIswQLBQrBAsARLsBAswRIsECwECwRLsECwBEuwQLAQLBAswQLBEizBAsFCsECwBAsES7AECwQLwQLBEiwQLMESLBAsBAsES7BAsARLsECwECwQLMECwRIswQLBQrBAsAQLBEuwBAsEC8ECwRIsECwECwRLsAQLwRIswQLBQrBAsARLsBAswRIsECwECwRLsECwBEuwQLAQLBAswQLBEizBAsFCsECwBAsES7AECwQLwQLB",
+  "EiwQLMESLBAsBAsES7BAsARLsECwECwQLMECwRIswQLBQrBAsAQLBEuwBAsEC8ECwRIsECwECwRLsAQLwRIswQLBQrBAsARLsBAswRIsECwECwRLsECwBEuwQLAQLBAswQLBEizBAsFCsECwBAsES7AECwQLwQLBEiwQLMESLBAsBAsES7BAsARLsECwECwQLMECwRIswQLBQrBAsAQLBEuwBAsES7AECwRLsECwECwQLMESLARLsAQLBAvBAsES",
+  "LMFCsARLsECwECwQLMECwRIswQLBQrBAsAQLBEuwBAsEC8ECwRIsECzBEiwQLAQLBEuwQLAES7BAsBAsECzBAsESLMECwUKwQLAECwRLsAQLBAvBAsESLBAswRIsECzBEiwQLMECwUKwQLAES7AQLMESLBAsBAsES7AEC8ESLMECwUKwQLAECwRLsAQLBAvBAsESLBAswRIsECwECwRLsECwBEuwQLAQLBAswQLBEizBAsFCsECwBAsES7AECwQL",
+  "wQLBEiwQLMESLBAsBAsES7BAsARLsECwBEuwQLAECwQLwQLBEizBQrAES7BAsBAsECzBEiwES7AECwQLwQLBEiwQLMESLBAsBAsES7BAsARLsECwECwQLMECwRIswQLBQrBAsAQLBEuwBAsEC8ECwRIsECzBEiwQLAQLBEuwQLAES7BAsBAsECzBAsESLMECwRIswQLBEiwQLAQLBEuwBAvBEizBAsFCsECwBEuwECzBEiwQLAQLBEuwQLAES7BA",
+  "sBAsECzBAsESLMECwUKwQLAECwRLsAQLBAvBAsESLBAswRIsECwECwRLsECwBEuwQLAQLBAswQLBEizBAsFCsECwBAsES7AECwRLsAQLBEuwQLAQLBAswRIsBEuwBAsEC8ECwRIswUKwBEuwQLAQLBAswQLBEizBAsFCsECwBAsES7AECwQLwQLBEiwQLMESLBAsBAsES7BAsARLsECwECwQLMECwRIswQLBQrBAsAQLBEuwBAsEC8ECwRIsECwA",
+  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHI4AExmt0aynMpyAAAAAElFTkSuQmCC",
+].join("");
 
 const capabilities: AcpCapabilitySet = {
   schemaVersion: 1,
@@ -199,6 +229,92 @@ function toolItem(
       inputSummary: "Scanning relevant UI modules",
     },
   };
+}
+
+type ToolCallItem = Extract<AcpItem, { kind: "toolCall" }>;
+
+function activityToolItem(
+  input: ItemInput,
+  presentation: ToolCallItem["payload"]["presentation"],
+  state: ToolCallItem["toolState"] = "completed",
+): AcpItem {
+  const identity = itemIdentity(input);
+  const terminal = state !== "pending" && state !== "inProgress";
+  return {
+    ...identity,
+    lifecycle: terminal ? "completed" : "streaming",
+    terminalAt: terminal ? identity.terminalAt : null,
+    kind: "toolCall",
+    toolState: state,
+    payload: {
+      presentation,
+      inputSummary: null,
+    },
+  } as ToolCallItem;
+}
+
+function usageItem(input: ItemInput): AcpItem {
+  return {
+    ...itemIdentity(input),
+    kind: "usage",
+    toolState: null,
+    payload: {
+      inputTokens: 1240,
+      outputTokens: 386,
+      cachedInputTokens: 240,
+      totalTokens: 1626,
+    },
+  } as AcpItem;
+}
+
+function imageItem(input: ItemInput): AcpItem {
+  return {
+    ...itemIdentity(input),
+    kind: "image",
+    toolState: null,
+    payload: {
+      mediaType: "image/png",
+      dataUrl: `data:image/png;base64,${VISUAL_AGENT_IMAGE_PNG}`,
+    },
+  };
+}
+
+function collaborationItem(
+  input: ItemInput,
+  activityId: HarnessActivityProjection["id"],
+  label: string,
+  lifecycle: "streaming" | "completed",
+): AcpItem {
+  return {
+    ...itemIdentity(input),
+    origin: "harnessActivity",
+    activityId,
+    lifecycle,
+    kind: "collaboration",
+    toolState: null,
+    payload: {
+      activityId,
+      label,
+      summary:
+        lifecycle === "streaming"
+          ? "Reviewing the bounded result in the originating Turn."
+          : "The bounded read-only result is ready for review.",
+      receiverLabels: lifecycle === "streaming" ? ["Reviewer"] : [],
+    },
+  };
+}
+
+function unsupportedItem(input: ItemInput): AcpItem {
+  return {
+    ...itemIdentity(input),
+    kind: "unsupported",
+    toolState: null,
+    payload: {
+      category: "extension.future",
+      summary: "A bounded harness activity is available as read-only details.",
+      truncated: true,
+    },
+  } as AcpItem;
 }
 
 function errorItem(input: ItemInput): AcpItem {
@@ -402,6 +518,166 @@ function longPage() {
   return page(chatId, "Long transcript review", turns, "active");
 }
 
+function activityFamilyPage() {
+  const chatId = "visual-chat-activity-family" as SageChatId;
+  const turnId = `visual-turn-${chatId}-1` as SageTurnId;
+  const createdAt = FIXED_NOW - 60_000;
+  const input = (ordinal: number): ItemInput => ({
+    chatId,
+    turnId,
+    ordinal,
+    createdAt: createdAt + ordinal * 1_000,
+  });
+  const items: AcpItem[] = [
+    thoughtItem(
+      input(1),
+      "Comparing the activity family before the final pass.",
+    ),
+    planItem(input(2)),
+    activityToolItem(input(3), {
+      kind: "command",
+      label: "Run focused checks",
+      summary:
+        "npm test -- src/features/chat/acp/ToolItem.test.tsx src/features/chat/acp/TurnActivityItem.test.tsx src/features/chat/acp/AcpChatProjection.test.tsx",
+    }),
+    activityToolItem(
+      input(4),
+      {
+        kind: "search",
+        label: "Search workspace",
+        querySummary: "activity card ownership",
+        resources: [
+          {
+            rootId: ROOT_ID,
+            relativePath: "src/features/chat/acp/ToolItem.tsx",
+          },
+        ],
+      },
+      "inProgress",
+    ),
+    activityToolItem(input(5), {
+      kind: "file",
+      label: "Read file",
+      resources: [
+        {
+          kind: "resource",
+          resource: {
+            rootId: ROOT_ID,
+            relativePath: "src/features/chat/acp/AcpChatProjection.tsx",
+          },
+        },
+      ],
+    }),
+    activityToolItem(input(6), {
+      kind: "web",
+      label: "Review preview",
+      summary: "Opened http://127.0.0.1:1431/",
+    }),
+    activityToolItem(input(7), {
+      kind: "generic",
+      label: "Inspect extension state",
+      summary: "Normalized bounded activity",
+    }),
+    usageItem(input(8)),
+    errorItem(input(9)),
+    unsupportedItem(input(10)),
+  ];
+  return page(
+    chatId,
+    "Activity card polish",
+    [turn(chatId, 1, "running", items)],
+    "active",
+  );
+}
+
+function imagePage() {
+  const chatId = "visual-chat-image" as SageChatId;
+  const turnId = `visual-turn-${chatId}-1` as SageTurnId;
+  const createdAt = FIXED_NOW - 60_000;
+  const input = (ordinal: number): ItemInput => ({
+    chatId,
+    turnId,
+    ordinal,
+    createdAt: createdAt + ordinal * 1_000,
+  });
+  return page(chatId, "Review agent image", [
+    turn(chatId, 1, "completed", [
+      textItem(
+        input(1),
+        "assistant",
+        "Here is the visual result from the completed pass.",
+      ),
+      imageItem(input(2)),
+    ]),
+  ]);
+}
+
+function childActivityPage() {
+  const chatId = "visual-chat-child-activity" as SageChatId;
+  const turnId = `visual-turn-${chatId}-1` as SageTurnId;
+  const createdAt = FIXED_NOW - 60_000;
+  const input = (ordinal: number): ItemInput => ({
+    chatId,
+    turnId,
+    ordinal,
+    createdAt: createdAt + ordinal * 1_000,
+  });
+  const activityIds = [1, 2, 3, 4].map(
+    (level) =>
+      `visual-child-activity-${level}` as HarnessActivityProjection["id"],
+  );
+  const labels = [
+    "Coordinate the independent accessibility review across every visible workbench surface",
+    "Inspect the responsive hierarchy and preserve every admitted child activity relationship",
+    "Verify keyboard disclosure and focus restoration without scheduling any new destination",
+    "Summarize the final read-only collaboration result for the originating conversation",
+  ] as const;
+  const collaborationItems = activityIds.map((activityId, index) =>
+    collaborationItem(
+      input(index + 2),
+      activityId,
+      labels[index],
+      index === 2 ? "streaming" : "completed",
+    ),
+  );
+  const activities = activityIds.map(
+    (activityId, index): HarnessActivityProjection => ({
+      id: activityId,
+      turnId,
+      parentActivityId: index === 0 ? null : activityIds[index - 1],
+      parentItemId:
+        index === 0
+          ? itemIdentity(input(1)).id
+          : collaborationItems[index - 1].id,
+      role: index === 0 ? "root" : "child",
+      lifecycle: index === 2 ? "active" : "completed",
+      depth: index + 1,
+      provenance: {
+        schemaVersion: 1,
+        sourceKind: "collaboration",
+        externalKind: "child",
+        extensionSchemaId: null,
+        safeLabel: "Accessibility review activity",
+      },
+      revision: "1" as EntityRevision,
+    }),
+  );
+  const activityTurn = turn(chatId, 1, "running", [
+    textItem(
+      input(1),
+      "assistant",
+      "The harness reported this bounded child-activity hierarchy.",
+    ),
+    ...collaborationItems,
+  ]);
+  return page(
+    chatId,
+    "Child activity review",
+    [{ ...activityTurn, activities }],
+    "active",
+  );
+}
+
 export interface BuiltVisualScenario extends VisualScenarioDefinition {
   pages: AcpChatPage[];
 }
@@ -422,36 +698,49 @@ export function buildVisualScenario(
           standardPage(
             "visual-chat-secondary",
             "Editor consistency pass",
-            "simple",
+            "waiting",
           ),
         ]
       : name === "agent-long"
         ? [longPage()]
-        : name === "error"
-          ? [
-              standardPage(
-                "visual-chat-error",
-                "Recover a failed preview",
-                "error",
-              ),
-            ]
-          : name === "waiting"
+        : name === "agent-activity-family"
+          ? [activityFamilyPage()]
+          : name === "agent-image"
             ? [
+                imagePage(),
                 standardPage(
-                  "visual-chat-waiting",
-                  "Inspecting workspace",
+                  "visual-chat-image-review",
+                  "Check image result",
                   "waiting",
                 ),
               ]
-            : [
-                standardPage(
-                  `visual-chat-${name}`,
-                  name === "preview"
-                    ? "Preview interaction"
-                    : "Agent navigation polish",
-                  "rich",
-                ),
-              ];
+            : name === "agent-child-activity"
+              ? [childActivityPage()]
+              : name === "error"
+                ? [
+                    standardPage(
+                      "visual-chat-error",
+                      "Recover a failed preview",
+                      "error",
+                    ),
+                  ]
+                : name === "waiting"
+                  ? [
+                      standardPage(
+                        "visual-chat-waiting",
+                        "Inspecting workspace",
+                        "waiting",
+                      ),
+                    ]
+                  : [
+                      standardPage(
+                        `visual-chat-${name}`,
+                        name === "preview"
+                          ? "Preview interaction"
+                          : "Agent navigation polish",
+                        "rich",
+                      ),
+                    ];
   return { ...definition, pages };
 }
 
@@ -472,12 +761,30 @@ function installEditorToolFixtures() {
           diagnostics: [
             {
               resource: fileResource,
+              message: "ChatSurface must remain scoped to the active Chat",
+              severity: "error",
+              startLine: 7,
+              startColumn: 6,
+              endLine: 7,
+              endColumn: 17,
+            },
+            {
+              resource: fileResource,
               message: "maximum should be named maxVisibleChats",
               severity: "warning",
               startLine: 4,
               startColumn: 43,
               endLine: 4,
               endColumn: 50,
+            },
+            {
+              resource: fileResource,
+              message: "Preview stays bounded to the selected Project",
+              severity: "info",
+              startLine: 3,
+              startColumn: 17,
+              endLine: 3,
+              endColumn: 31,
             },
           ],
         }),
@@ -497,6 +804,24 @@ function installEditorToolFixtures() {
               name: "AgentChatPanes",
               kind: "function",
               startLine: 3,
+            },
+            {
+              resource: fileResource,
+              name: "AgentChatPanesWithProjectScopedResourceFollowing",
+              kind: "type",
+              startLine: 3,
+            },
+            {
+              resource: fileResource,
+              name: "visibleChats",
+              kind: "unknown",
+              startLine: 4,
+            },
+            {
+              resource: fileResource,
+              name: "AgentChatPanes.tsx",
+              kind: "file",
+              startLine: 1,
             },
           ],
         }),
@@ -674,6 +999,7 @@ export async function installVisualScenario(name: VisualScenarioName) {
   clearAcpProjectionRegistry();
   clearBrowseSessions();
   useAgentArtifactAdmissionStore.getState().clear();
+  useAgentArtifactFollowStore.getState().clear();
   pinAcpProjectionIds(chatIds);
   installEditorToolFixtures();
 
@@ -721,6 +1047,30 @@ export async function installVisualScenario(name: VisualScenarioName) {
         resource: { rootId: ROOT_ID, relativePath: "README.md" },
         kind: "file" as const,
         byteLen: 2_048,
+      },
+    ],
+    truncated: false,
+  };
+  const srcListing = {
+    resource: { rootId: ROOT_ID, relativePath: "src" },
+    entries: [
+      {
+        name: "workbench",
+        resource: { rootId: ROOT_ID, relativePath: "src/workbench" },
+        kind: "directory" as const,
+        byteLen: null,
+      },
+    ],
+    truncated: false,
+  };
+  const workbenchListing = {
+    resource: { rootId: ROOT_ID, relativePath: "src/workbench" },
+    entries: [
+      {
+        name: "AgentChatPanes.tsx",
+        resource: fileResource,
+        kind: "file" as const,
+        byteLen: editorContent.length,
       },
     ],
     truncated: false,
@@ -814,7 +1164,23 @@ export async function installVisualScenario(name: VisualScenarioName) {
         {
           rootId: ROOT_ID,
           state: "repository",
-          branch: "feat/wave2-ui",
+          branch: "feature/editor-polish",
+          upstream: null,
+          ahead: 0,
+          behind: 0,
+          branches: ["feature/editor-polish", "main", "release/beta"],
+          branchesTruncated: false,
+          recentCommits: [
+            { sha: "b7c12d66aa7de0f0a1", subject: "Polish editor tools" },
+            { sha: "49a0ee42f7d08b93c2", subject: "Keep Git actions truthful" },
+            {
+              sha: "1e8c53a1c51f81f8aa",
+              subject: "Align shared file surfaces",
+            },
+          ],
+          recentCommitsTruncated: false,
+          remotes: ["origin", "upstream"],
+          remotesTruncated: false,
           changes: [
             {
               resource: fileResource,
@@ -838,8 +1204,19 @@ export async function installVisualScenario(name: VisualScenarioName) {
         phase: "ready",
         value: rootListing,
       },
+      [resourceKey(srcListing.resource)]: {
+        phase: "ready",
+        value: srcListing,
+      },
+      [resourceKey(workbenchListing.resource)]: {
+        phase: "ready",
+        value: workbenchListing,
+      },
     },
-    expandedDirectories: {},
+    expandedDirectories: {
+      [resourceKey(srcListing.resource)]: true,
+      [resourceKey(workbenchListing.resource)]: true,
+    },
     diffs: {
       [diffCacheKey(undefined, fileResource)]: {
         phase: "ready",
@@ -860,25 +1237,172 @@ export async function installVisualScenario(name: VisualScenarioName) {
             message: null,
           }
         : null,
+    activateTab: async (tabId: string) => {
+      useWorkbenchStore.setState({ activeTabId: tabId });
+    },
     loadRepositoryInventory: async () => undefined,
     loadDirectory: async () => undefined,
     loadDiff: async () => undefined,
   });
 
-  if (scenario.resource === "diff") {
-    useAgentArtifactAdmissionStore.getState().admit("visual-diff-tab");
+  const selectedOwner = chatIds[0]
+    ? ({
+        projectId: PROJECT_ID,
+        chatId: chatIds[0],
+        sessionId: SESSION_ID,
+      } as AgentArtifactOwner)
+    : null;
+  if (
+    scenario.mode === "agent" &&
+    scenario.resource === "file" &&
+    selectedOwner
+  ) {
+    useAgentArtifactAdmissionStore.getState().admit({
+      owner: selectedOwner,
+      tabId: "visual-file-tab",
+    });
   }
-  setHarnessBrowseOwner(chatIds[0] ?? null);
-  if (scenario.resource === "preview" && chatIds[0]) {
+  if (
+    scenario.mode === "agent" &&
+    scenario.resource === "diff" &&
+    selectedOwner
+  ) {
+    useAgentArtifactAdmissionStore.getState().admit({
+      owner: selectedOwner,
+      tabId: "visual-diff-tab",
+    });
+  }
+  setHarnessBrowseOwner(selectedOwner);
+  if (scenario.resource === "preview" && selectedOwner) {
     applyBrowseIntent({
-      chatId: chatIds[0],
-      sessionId: SESSION_ID,
+      owner: selectedOwner,
       url: `${window.location.origin}/tests/ui/fixtures/preview.html`,
     });
   }
   document.documentElement.dataset.visualScenario = name;
   await new Promise((resolve) =>
     requestAnimationFrame(() => resolve(undefined)),
+  );
+}
+
+export async function installVisualExplorerScrollFixture() {
+  const state = useWorkbenchStore.getState();
+  const workbench = childResource(ROOT_ID, "src/workbench");
+  const key = resourceKey(workbench);
+  const listing = state.directoryListings[key];
+  if (listing?.phase !== "ready") {
+    throw new Error(
+      "Visual Explorer scroll fixture requires workbench listing",
+    );
+  }
+  const filler = Array.from({ length: 40 }, (_, index) => ({
+    name: `fixture-${String(index).padStart(2, "0")}.ts`,
+    resource: childResource(
+      ROOT_ID,
+      `src/workbench/fixture-${String(index).padStart(2, "0")}.ts`,
+    ),
+    kind: "file" as const,
+    byteLen: 40 + index,
+  }));
+  useWorkbenchStore.setState({
+    selectedResource: null,
+    directoryListings: {
+      ...state.directoryListings,
+      [key]: {
+        phase: "ready",
+        value: {
+          ...listing.value,
+          entries: [...filler, ...listing.value.entries],
+        },
+      },
+    },
+  });
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  useWorkbenchStore.setState({ selectedResource: fileResource });
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
+}
+
+export function installVisualExplorerActionFixture() {
+  useWorkbenchStore.setState({
+    selectedResource: childResource(ROOT_ID, "README.md"),
+  });
+}
+
+export function installVisualExplorerUnavailableActionFixture() {
+  useWorkbenchStore.setState({ selectedResource: null });
+}
+
+export async function installVisualAgentArtifactFollowFixture() {
+  const state = useWorkbenchStore.getState();
+  const chats = state.tabs.filter((tab) => tab.kind === "chat");
+  const chatA = chats[0];
+  const chatB = chats[1];
+  if (!chatA || !chatB || state.project?.id !== PROJECT_ID) {
+    throw new Error("Visual Agent artifact fixture requires two Chats");
+  }
+  const ownerA = {
+    projectId: PROJECT_ID,
+    chatId: chatA.id,
+    sessionId: SESSION_ID,
+  } as AgentArtifactOwner;
+  const ownerB = {
+    projectId: PROJECT_ID,
+    chatId: chatB.id,
+    sessionId: SESSION_ID,
+  } as AgentArtifactOwner;
+  const fileTab: WorkbenchTab = {
+    id: "visual-follow-file-tab",
+    kind: "file",
+    title: "AgentChatPanes.tsx",
+    position: chats.length,
+    pinned: false,
+    dirty: false,
+    resource: fileResource,
+  };
+  const diffTab: WorkbenchTab = {
+    ...fileTab,
+    id: "visual-follow-diff-tab",
+    kind: "diff",
+    title: "AgentChatPanes.tsx changes",
+    position: chats.length + 1,
+  };
+  useWorkbenchStore.setState({
+    tabs: [...chats, fileTab, diffTab],
+    activeTabId: fileTab.id,
+    activeEditor: {
+      phase: "ready",
+      resource: fileResource,
+      document: editorDocument(),
+      content: editorContent,
+      revision: 0,
+      persistedRevision: 0,
+      persisting: false,
+      saving: false,
+      message: null,
+    },
+  });
+  useAgentArtifactAdmissionStore.getState().admit({
+    owner: ownerA,
+    tabId: diffTab.id,
+  });
+  useAgentArtifactFollowStore
+    .getState()
+    .pin(ownerA, { kind: "tab", tabId: diffTab.id });
+  useAgentArtifactAdmissionStore.getState().admit({
+    owner: ownerB,
+    tabId: fileTab.id,
+  });
+  useAgentArtifactFollowStore
+    .getState()
+    .pin(ownerB, { kind: "tab", tabId: fileTab.id });
+  applyBrowseIntent({
+    owner: ownerB,
+    url: `${window.location.origin}/tests/ui/fixtures/preview.html`,
+  });
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   );
 }
 
@@ -897,6 +1421,28 @@ export function installVisualRepositoryLoading() {
     repositoryInventoryPhase: "loading",
     repositoryStatusPhase: "loading",
   });
+}
+
+export function installVisualRepositoryPrimaryState(
+  primaryState: "ahead" | "behind" | "diverged",
+) {
+  const divergence = {
+    ahead: { ahead: 2, behind: 0 },
+    behind: { ahead: 0, behind: 1 },
+    diverged: { ahead: 2, behind: 1 },
+  }[primaryState];
+  useWorkbenchStore.setState((state) => ({
+    repositories: {
+      ...state.repositories,
+      roots: state.repositories.roots.map((repository) => ({
+        ...repository,
+        upstream: "origin/feature/editor-polish",
+        changes: [],
+        truncated: false,
+        ...divergence,
+      })),
+    },
+  }));
 }
 
 export function installVisualEmptyEditorTools() {

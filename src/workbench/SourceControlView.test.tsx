@@ -197,7 +197,19 @@ it("shows native-proven identity and dispatches the selected publish action", as
     pushRemote,
   });
   render(<SourceControlView />);
+  expect(
+    screen.getByRole("group", {
+      name: "Root A repository, branch main, no upstream, 0 ahead, 0 behind",
+    }),
+  ).toBeVisible();
+  expect(screen.getByTitle("Branch main")).toBeVisible();
+  expect(screen.getByTitle("No upstream · 0 ahead, 0 behind")).toBeVisible();
   expect(screen.getByText("No upstream")).toBeVisible();
+  expect(
+    screen.queryByRole("form", {
+      name: "Commit staged changes in Root A",
+    }),
+  ).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Publish Branch" }));
   await waitFor(() =>
     expect(pushRemote).toHaveBeenCalledWith("root-a", "origin"),
@@ -243,8 +255,98 @@ it("dispatches Pull for the native-proven behind primary action", async () => {
   });
   render(<SourceControlView />);
 
+  expect(
+    screen.queryByRole("form", {
+      name: "Commit staged changes in Root A",
+    }),
+  ).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Pull" }));
   await waitFor(() => expect(pullRepository).toHaveBeenCalledWith("root-a"));
+});
+
+it("dispatches Push to the remote proven by the current upstream", async () => {
+  const pushRemote = vi.fn(async () => true);
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: {
+      roots: [
+        { ...rootStatus, upstream: "upstream/main", ahead: 2, behind: 0 },
+      ],
+      truncated: false,
+      elapsedMs: 1,
+    },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+    pushRemote,
+  });
+  render(<SourceControlView />);
+
+  expect(screen.getByText("↑2 ↓0")).toBeVisible();
+  expect(
+    screen.queryByRole("form", {
+      name: "Commit staged changes in Root A",
+    }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Push" }));
+  await waitFor(() =>
+    expect(pushRemote).toHaveBeenCalledWith("root-a", "upstream"),
+  );
+});
+
+it("explains why a diverged branch cannot be synced automatically", () => {
+  const reason =
+    "This branch has diverged from its upstream. Sage cannot yet choose a merge or rebase safely.";
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: {
+      roots: [{ ...rootStatus, upstream: "origin/main", ahead: 2, behind: 1 }],
+      truncated: false,
+      elapsedMs: 1,
+    },
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+  render(<SourceControlView />);
+
+  const sync = screen.getByRole("button", { name: "Sync Changes" });
+  expect(sync).toBeDisabled();
+  expect(sync).toHaveAccessibleDescription(reason);
+  expect(screen.getByText(reason)).toBeVisible();
+  expect(
+    screen.queryByRole("form", {
+      name: "Commit staged changes in Root A",
+    }),
+  ).toBeNull();
 });
 
 it("selects a nested repository, opens its Diff, and offers no mutations", async () => {
@@ -486,6 +588,18 @@ it("lists recent commits newest first with a shortened SHA", () => {
 });
 
 it("places the commit control before repository detail lists", () => {
+  const stagedStatus: RootRepositoryStatus = {
+    ...rootStatus,
+    changes: [
+      {
+        resource: { rootId: "root-a", relativePath: "src/app.ts" },
+        indexStatus: "modified",
+        worktreeStatus: "unchanged",
+        additions: 1,
+        deletions: 0,
+      },
+    ],
+  };
   useWorkbenchStore.setState({
     project: {
       id: "project-a",
@@ -500,10 +614,10 @@ it("places the commit control before repository detail lists", () => {
         },
       ],
     },
-    repositories: { roots: [rootStatus], truncated: false, elapsedMs: 1 },
+    repositories: { roots: [stagedStatus], truncated: false, elapsedMs: 1 },
     repositoryRefs: [rootRepository],
     selectedRepository: rootRepository,
-    selectedRepositoryStatus: rootStatus,
+    selectedRepositoryStatus: stagedStatus,
     repositoryInventoryPhase: "ready",
     repositoryStatusPhase: "ready",
     loadRepositoryInventory: vi.fn(async () => undefined),
@@ -684,6 +798,7 @@ it("lists rebase conflicts under a Rebase heading", () => {
   render(<SourceControlView />);
 
   expect(screen.getByText("Rebase")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Publish Branch" })).toBeNull();
   expect(screen.queryByText("Conflicts")).toBeNull();
   expect(
     screen.getByRole("button", { name: "Keep ours for bad.ts in Root A" }),
@@ -1191,9 +1306,10 @@ it("uses the live selected root status after staging a selected root file", asyn
   expect(
     screen.getByRole("button", { name: "Stage src/app.ts in Root A" }),
   ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Publish Branch" })).toBeEnabled();
   expect(
-    screen.getByRole("button", { name: "Commit staged changes in Root A" }),
-  ).toBeDisabled();
+    screen.queryByRole("form", { name: "Commit staged changes in Root A" }),
+  ).toBeNull();
 
   fireEvent.click(
     screen.getByRole("button", { name: "Stage src/app.ts in Root A" }),
@@ -1213,6 +1329,10 @@ it("uses the live selected root status after staging a selected root file", asyn
     expect(
       screen.getByRole("button", { name: "Unstage src/app.ts in Root A" }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Publish Branch" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Commit staged changes in Root A" }),
+    ).toBeDisabled();
   });
   fireEvent.change(screen.getByLabelText("Commit message for Root A"), {
     target: { value: "Stage selected root" },
@@ -1298,6 +1418,7 @@ it("enables Continue rebase after a resolved rebase with no leftover conflicts",
   render(<SourceControlView />);
 
   expect(screen.queryByText("Commit merge")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Publish Branch" })).toBeNull();
   expect(screen.queryByText("Continue rebase stays later.")).toBeNull();
   expect(screen.getByText("Conflicts are resolved.")).toBeInTheDocument();
   expect(

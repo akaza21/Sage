@@ -57,6 +57,22 @@ export async function loadProjectProjection(
   }
   if (!projectId || matchesProjectIntent(get(), generation, projectId)) {
     set({ projectTransitioning: false });
+    const activeResource =
+      (active?.kind === "file" || active?.kind === "diff") && active.resource
+        ? active.resource
+        : null;
+    if (
+      activeResource &&
+      availableRoots.some((root) => root.id === activeResource.rootId)
+    ) {
+      await get().revealFile(activeResource);
+      if (
+        get().projectTransitioning ||
+        (projectId && !matchesProjectIntent(get(), generation, projectId))
+      ) {
+        return;
+      }
+    }
     try {
       await bindWorkspaceNotifyFromState(get);
     } catch {

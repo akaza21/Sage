@@ -67,7 +67,7 @@ describe("Editor visual-reference seam", () => {
       /\.sidebar__heading > button\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px;/s,
     );
     expect(css).toMatch(
-      /\.workspace-search__controls > button\s*\{[^}]*min-height:\s*28px;[^}]*border-radius:\s*var\(--radius-sm\);/s,
+      /\.workspace-search__details-toggle\s*\{[^}]*min-height:\s*28px;[^}]*border-radius:\s*var\(--radius-sm\);/s,
     );
   });
 

@@ -55,7 +55,6 @@ import type {
   NestedRepositoryStatusRequest,
   NestedRepositoryStatusResult,
   ProjectLayoutRequest,
-  ProjectRepositoryStatus,
   ProjectSwitchRequest,
   ProjectTransitionResult,
   RenameChatRequest,

@@ -25,16 +25,22 @@ import {
 } from "./resourceStateHelpers";
 import { resourceTabUpdate } from "./resourceTabs";
 import { useAgentArtifactAdmissionStore } from "./agentArtifactAdmissionStore";
+import { useAgentArtifactFollowStore } from "./agentArtifactFollowStore";
 import type { ResourceState, WorkbenchState } from "./store";
 
-export type ResourceOpenOrigin = "agent" | "editor";
-
-function admitAgentOpenedTab(
-  origin: ResourceOpenOrigin | undefined,
-  tabId: string | null,
-) {
-  if (origin === "agent" && tabId) {
-    useAgentArtifactAdmissionStore.getState().admit(tabId);
+function forgetRemovedResourceAdmissions(
+  before: readonly { id: string; kind: string }[],
+  after: readonly { id: string; kind: string }[],
+): void {
+  const retainedIds = new Set(after.map((tab) => tab.id));
+  for (const tab of before) {
+    if (
+      (tab.kind === "file" || tab.kind === "diff") &&
+      !retainedIds.has(tab.id)
+    ) {
+      useAgentArtifactAdmissionStore.getState().forget(tab.id);
+      useAgentArtifactFollowStore.getState().forgetTab(tab.id);
+    }
   }
 }
 
@@ -47,12 +53,8 @@ export interface ResourceSlice {
   openDiff: (
     resource: ResourceRef,
     repository?: RepositoryRef,
-    origin?: ResourceOpenOrigin,
   ) => Promise<void>;
-  openFile: (
-    resource: ResourceRef,
-    origin?: ResourceOpenOrigin,
-  ) => Promise<void>;
+  openFile: (resource: ResourceRef) => Promise<void>;
   loadDirectory: (resource: ResourceRef, refresh?: boolean) => Promise<void>;
   toggleDirectory: (resource: ResourceRef) => void;
   selectDirectory: (resource: ResourceRef) => void;
@@ -77,7 +79,7 @@ export const createResourceSlice: StateCreator<
   requestGenerations: {},
   requestIntentSequence: 0,
 
-  openDiff: async (resource, repository, origin) => {
+  openDiff: async (resource, repository) => {
     const generation = get().projectGeneration;
     const projectId = get().project?.id;
     if (
@@ -103,20 +105,21 @@ export const createResourceSlice: StateCreator<
     ) {
       return;
     }
+    const tabsBeforeOpen = get().tabs;
     set((state) => resourceTabUpdate(state, "diff", resource, repository));
+    forgetRemovedResourceAdmissions(tabsBeforeOpen, get().tabs);
     const tab = get().tabs.find(
       (candidate) => candidate.id === get().activeTabId,
     );
     if (tab?.kind !== "diff" || !sameResource(tab.resource, resource)) {
       return;
     }
-    admitAgentOpenedTab(origin, tab.id);
     set({ activeEditor: null });
     void get().loadDiff(resource, tab.repository ?? repository);
     void get().revealFile(resource);
   },
 
-  openFile: async (resource, origin) => {
+  openFile: async (resource) => {
     const generation = get().projectGeneration;
     const projectId = get().project?.id;
     if (
@@ -135,7 +138,6 @@ export const createResourceSlice: StateCreator<
     );
     if (existing) {
       await get().activateTab(existing.id);
-      admitAgentOpenedTab(origin, existing.id);
       return;
     }
     try {
@@ -150,14 +152,15 @@ export const createResourceSlice: StateCreator<
     ) {
       return;
     }
+    const tabsBeforeOpen = get().tabs;
     set((state) => resourceTabUpdate(state, "file", resource));
+    forgetRemovedResourceAdmissions(tabsBeforeOpen, get().tabs);
     const tab = get().tabs.find(
       (candidate) => candidate.id === get().activeTabId,
     );
     if (tab?.kind !== "file" || !sameResource(tab.resource, resource)) {
       return;
     }
-    admitAgentOpenedTab(origin, tab.id);
     set({ activeEditor: null });
     await get().loadEditor(resource);
     void get().revealFile(resource);

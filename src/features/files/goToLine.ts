@@ -44,7 +44,6 @@ export function goToLineSelection(content: string, raw: string) {
   }
   return fileNavigationSelection(content, {
     ...parsed,
-    query: "",
-    caseSensitive: true,
+    selection: { kind: "caret" },
   });
 }

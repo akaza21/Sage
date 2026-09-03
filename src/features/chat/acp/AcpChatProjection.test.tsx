@@ -14,11 +14,18 @@ import type {
   TurnProjection,
 } from "../../../domain/acp";
 import {
-  browseSessionForChat,
+  browseSessionForOwner,
   clearBrowseSessions,
 } from "../../preview/harnessBrowse";
+import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 import { MAX_AGENT_EDIT_SUMMARY_FILES } from "./agentEditSummary";
 import { AcpChatProjection } from "./AcpChatProjection";
+
+const browseOwner = {
+  projectId: "project-1",
+  chatId: "chat-1",
+  sessionId: "session-1",
+} as AgentArtifactOwner;
 
 afterEach(() => {
   cleanup();
@@ -229,7 +236,9 @@ describe("AcpChatProjection", () => {
     const { container } = render(<AcpChatProjection page={next} active />);
     const image = container.querySelector("img.acp-image__src");
     expect(image).toHaveAttribute("src", `data:image/png;base64,${png}`);
-    expect(image).toHaveAttribute("alt", "");
+    expect(
+      screen.getByRole("img", { name: "Image provided by the agent" }),
+    ).toBe(image);
   });
 
   it("does not render an img for svg, oversize, or http image payloads", () => {
@@ -311,7 +320,7 @@ describe("AcpChatProjection", () => {
       } as AcpItem,
     ];
     render(<AcpChatProjection page={next} active />);
-    expect(browseSessionForChat("chat-1")?.href).toBe(
+    expect(browseSessionForOwner(browseOwner)?.href).toBe(
       "http://127.0.0.1:5173/app",
     );
   });
@@ -348,7 +357,7 @@ describe("AcpChatProjection", () => {
       } as AcpItem,
     ];
     render(<AcpChatProjection page={next} active />);
-    expect(browseSessionForChat("chat-1")).toBeNull();
+    expect(browseSessionForOwner(browseOwner)).toBeNull();
   });
 
   it("keeps cancellation out of the transcript projection", () => {
@@ -429,7 +438,7 @@ describe("AcpChatProjection", () => {
       } as AcpItem,
     ];
     render(<AcpChatProjection page={next} active focused={false} />);
-    expect(browseSessionForChat("chat-1")).toBeNull();
+    expect(browseSessionForOwner(browseOwner)).toBeNull();
     expect(screen.getByText("Normalized answer")).toBeInTheDocument();
   });
 
@@ -519,11 +528,20 @@ describe("AcpChatProjection", () => {
     expect(within(summary).getAllByText("-1")).toHaveLength(2);
     expect(within(summary).getAllByText("—")).toHaveLength(2);
     expect(
-      within(summary).getByRole("button", { name: "Accept" }),
+      within(summary).getByRole("button", { name: "Mark reviewed" }),
     ).toBeEnabled();
     expect(
-      within(summary).getByRole("button", { name: "Discard" }),
+      within(summary).getByRole("button", { name: "Needs follow-up" }),
     ).toBeEnabled();
+    expect(summary).toHaveTextContent(
+      "This records review status only. It does not apply or revert files.",
+    );
+    expect(
+      within(summary).queryByRole("button", { name: "Accept" }),
+    ).toBeNull();
+    expect(
+      within(summary).queryByRole("button", { name: "Discard" }),
+    ).toBeNull();
   });
 
   it("selecting_a_changed_file_opens_the_existing_per_file_diff", () => {
@@ -881,6 +899,64 @@ describe("AcpChatProjection", () => {
       <AcpChatProjection page={nested} active onOpenResource={openResource} />,
     );
     expect(activityDisclosure).toHaveFocus();
+  });
+
+  it("keeps historical-session resource and browse rows non-interactive", () => {
+    const historical = page("completed");
+    historical.currentSessionId = "session-new" as never;
+    historical.turns[0].items = [
+      activityItem("historical-file", "historical", {
+        origin: "primary",
+        activityId: null,
+        kind: "toolCall",
+        toolState: "completed",
+        payload: {
+          presentation: {
+            kind: "file",
+            label: "Read source",
+            resources: [
+              {
+                kind: "resource",
+                resource: { rootId: "root-a", relativePath: "src/main.ts" },
+              },
+            ],
+          },
+          inputSummary: null,
+        },
+      }),
+      activityItem("historical-web", "historical", {
+        origin: "primary",
+        activityId: null,
+        kind: "toolCall",
+        toolState: "completed",
+        payload: {
+          presentation: {
+            kind: "web",
+            label: "sage.browse",
+            summary: "http://127.0.0.1:5173/old",
+          },
+          inputSummary: null,
+        },
+      }),
+    ];
+    const openResource = vi.fn();
+
+    render(
+      <AcpChatProjection
+        page={historical}
+        active
+        onOpenResource={openResource}
+      />,
+    );
+
+    expect(screen.getByText("main.ts")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Open file src/main.ts" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Open in Sage browser" }),
+    ).toBeNull();
+    expect(openResource).not.toHaveBeenCalled();
   });
 
   it("renders a collapsible Thought only from thoughtSummary using the session clock", async () => {

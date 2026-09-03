@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { WorkbenchTab } from "../domain/workbench";
+import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
 import { clearUnreadAcks } from "../features/chat/acp/chatUnread";
 import { AgentChatPane } from "./AgentChatPane";
 
@@ -12,6 +13,7 @@ const liveSnapshot = {
   streaming: true,
   waiting: false,
   working: true,
+  statusTone: "working" as const,
 };
 
 const idleSnapshot = {
@@ -21,6 +23,7 @@ const idleSnapshot = {
   streaming: false,
   waiting: false,
   working: false,
+  statusTone: "idle" as const,
 };
 
 const neverStartedSnapshot = {
@@ -30,9 +33,20 @@ const neverStartedSnapshot = {
   streaming: false,
   waiting: false,
   working: false,
+  statusTone: "idle" as const,
 };
 
-let snapshot = { ...liveSnapshot };
+const failedSnapshot = {
+  chatId: "chat-2",
+  statusLabel: "Failed",
+  latestText: "The turn failed.",
+  streaming: false,
+  waiting: false,
+  working: false,
+  statusTone: "failed" as const,
+};
+
+let snapshot: ChatLiveSnapshot = { ...liveSnapshot };
 
 vi.mock("../features/chat/acp/useAcpChatLiveSnapshot", () => ({
   useAcpChatLiveSnapshot: () => snapshot,
@@ -67,6 +81,17 @@ describe("AgentChatPane unread dot", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Running");
     expect(screen.getByText("focused chat")).toBeInTheDocument();
     expect(screen.queryByText("Working on the diff")).toBeNull();
+    expect(screen.getByText("Second chat")).toHaveClass(
+      "agent-chat-pane__title",
+    );
+  });
+
+  it("projects failed status through a stable semantic tone", () => {
+    snapshot = { ...failedSnapshot };
+    render(
+      <AgentChatPane tab={tab} focused={false} onFocus={() => undefined} />,
+    );
+    expect(screen.getByRole("status")).toHaveClass("agent-chat-chip--failed");
   });
 
   it("hides the unread dot on an unfocused never-started idle pane", () => {

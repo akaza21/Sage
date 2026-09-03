@@ -109,7 +109,7 @@ export function TitleBar({
             type="button"
             title="Open settings"
             aria-label="Open settings"
-            onClick={openSettings}
+            onClick={() => void openSettings()}
           >
             <Settings size={14} aria-hidden="true" />
           </button>

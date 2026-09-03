@@ -10,7 +10,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createAcp04Ui } from "../../../scripts/source-functional-acp04-live-probe.mjs";
-import { clearAcpProjectionRegistry } from "../../app/acpProjectionRegistry";
+import {
+  acpProjectionStoreFor,
+  clearAcpProjectionRegistry,
+} from "../../app/acpProjectionRegistry";
 import {
   clearAgentChatOwner,
   pinAgentChatOwner,
@@ -116,7 +119,7 @@ function projection(): AcpChatPage {
     chatId: "chat-a",
     title: "Durable chat",
     projectionRevision: "2",
-    currentSessionId: null,
+    currentSessionId: "session-a",
     sessions: [{ id: "session-a", ordinal: 0 }] as never,
     turns: [
       {
@@ -1171,9 +1174,38 @@ describe("ChatSurface ACP resource integration", () => {
     const openFile = vi.fn().mockResolvedValue(undefined);
     const openDiff = vi.fn().mockResolvedValue(undefined);
     useWorkbenchStore.setState({
+      project: {
+        id: "project-a",
+        name: "Project A",
+        roots: [
+          {
+            id: "root-a",
+            name: "A",
+            ordinal: 0,
+            availability: "available",
+            message: null,
+          },
+          {
+            id: "root-b",
+            name: "B",
+            ordinal: 1,
+            availability: "available",
+            message: null,
+          },
+        ],
+      },
+      projectGeneration: 0,
       projectTransitioning: false,
       openFile,
       openDiff,
+    });
+    acpProjectionStoreFor("chat-a").setState({
+      scope: {
+        projectId: "project-a",
+        projectGeneration: "0",
+        chatId: "chat-a",
+      } as never,
+      page: hooks.page,
     });
 
     render(<ChatSurface />);
@@ -1181,24 +1213,17 @@ describe("ChatSurface ACP resource integration", () => {
       screen.getByRole("button", { name: "Open file src/main.ts" }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Open diff root-b / src/main.ts" }),
+      screen.getByRole("button", { name: "Open diff B / src/main.ts" }),
     );
 
-    expect(openFile).toHaveBeenCalledWith(
-      {
-        rootId: "root-a",
-        relativePath: "src/main.ts",
-      },
-      "agent",
-    );
-    expect(openDiff).toHaveBeenCalledWith(
-      {
-        rootId: "root-b",
-        relativePath: "src/main.ts",
-      },
-      undefined,
-      "agent",
-    );
+    expect(openFile).toHaveBeenCalledWith({
+      rootId: "root-a",
+      relativePath: "src/main.ts",
+    });
+    expect(openDiff).toHaveBeenCalledWith({
+      rootId: "root-b",
+      relativePath: "src/main.ts",
+    });
   });
 
   it("passes frontend retention incompleteness into the ACP edit summary", () => {
@@ -1279,7 +1304,7 @@ describe("ChatSurface ACP resource integration", () => {
         name: "Open diff for legacy/change.ts",
       }),
     );
-    expect(openDiff).toHaveBeenCalledWith(resource, undefined, "agent");
+    expect(openDiff).toHaveBeenCalledWith(resource);
   });
 
   it("hides ACP and legacy resource actions during project transition", () => {

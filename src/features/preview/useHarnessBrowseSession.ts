@@ -2,25 +2,26 @@ import { useSyncExternalStore } from "react";
 
 import {
   type HarnessBrowseSession,
-  browseSessionForChat,
+  browseSessionForOwner,
   harnessBrowseOwner,
   subscribeBrowseSessions,
 } from "./harnessBrowse";
+import type { AgentArtifactOwner } from "../../domain/agentArtifact";
 
 function subscribe(onStoreChange: () => void): () => void {
   return subscribeBrowseSessions(onStoreChange);
 }
 
 export function useHarnessBrowseSession(
-  chatId: string | null,
+  owner: AgentArtifactOwner | null,
 ): HarnessBrowseSession | null {
   return useSyncExternalStore(
     subscribe,
-    () => (chatId ? browseSessionForChat(chatId) : null),
+    () => (owner ? browseSessionForOwner(owner) : null),
     () => null,
   );
 }
 
-export function useHarnessBrowseOwner(): string | null {
+export function useHarnessBrowseOwner(): AgentArtifactOwner | null {
   return useSyncExternalStore(subscribe, harnessBrowseOwner, () => null);
 }

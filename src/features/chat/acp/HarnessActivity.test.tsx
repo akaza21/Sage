@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem, HarnessActivityProjection } from "../../../domain/acp";
@@ -8,6 +14,8 @@ afterEach(cleanup);
 
 describe("HarnessActivity", () => {
   it("groups bounded child items in a roving keyboard tree", () => {
+    const activityLabel =
+      "Coordinate the independent accessibility review across every visible workbench surface";
     const activity = {
       id: "activity-1",
       turnId: "turn-1",
@@ -21,7 +29,7 @@ describe("HarnessActivity", () => {
         sourceKind: "tool",
         externalKind: "child",
         extensionSchemaId: null,
-        safeLabel: "Harness child",
+        safeLabel: activityLabel,
       },
       revision: "1",
     } as HarnessActivityProjection;
@@ -45,15 +53,18 @@ describe("HarnessActivity", () => {
     const { rerender } = render(
       <HarnessActivity activity={activity} items={[firstItem, secondItem]} />,
     );
-    const disclosure = screen.getByText("Harness child").closest("summary");
+    const activityLabelElement = screen.getByText(activityLabel);
+    const disclosure = activityLabelElement.closest("summary");
     expect(disclosure).not.toBeNull();
-    expect(screen.getByRole("status", { name: "Completed" })).toHaveTextContent(
-      "Completed",
-    );
+    expect(activityLabelElement).toHaveAttribute("title", activityLabel);
+    expect(within(disclosure!).getByText("Child activity")).toBeInTheDocument();
+    const status = screen.getByRole("status", { name: "Completed" });
+    expect(status).toHaveTextContent("Completed");
+    expect(status).toHaveAttribute("data-lifecycle", "completed");
     fireEvent.click(disclosure!);
     expect(
       screen.getByRole("group", {
-        name: "Harness activity: Harness child",
+        name: `Harness activity: ${activityLabel}`,
         description: "Bounded read-only child activity in the originating Turn",
       }),
     ).toBeInTheDocument();
@@ -89,7 +100,7 @@ describe("HarnessActivity", () => {
     rerender(<HarnessActivity activity={activity} items={[secondItem]} />);
     expect(screen.getByRole("treeitem")).toHaveAttribute("tabindex", "0");
     expect(
-      screen.getByText("Harness-owned child activity · depth 2"),
+      screen.getByText("Harness-owned child activity · level 2"),
     ).toBeInTheDocument();
   });
 });

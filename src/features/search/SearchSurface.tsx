@@ -9,14 +9,27 @@ export function SearchSurface() {
   const projectGeneration = useWorkbenchStore(
     (state) => state.projectGeneration,
   );
-  const openSearchMatch = useWorkbenchStore((state) => state.openSearchMatch);
+  const openFileLocation = useWorkbenchStore((state) => state.openFileLocation);
 
   return (
     <WorkspaceSearchView
       projectId={projectId}
       transitionEpoch={transitionEpoch}
       indexGeneration={projectGeneration}
-      onOpenMatch={(request) => void openSearchMatch(request)}
+      onOpenMatch={(request) =>
+        void openFileLocation({
+          projectId: request.projectId,
+          transitionEpoch: request.transitionEpoch,
+          resource: request.resource,
+          lineNumber: request.lineNumber,
+          columnNumber: request.columnNumber,
+          selection: {
+            kind: "match",
+            query: request.query,
+            caseSensitive: request.caseSensitive,
+          },
+        })
+      }
     />
   );
 }

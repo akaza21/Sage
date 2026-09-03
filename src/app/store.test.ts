@@ -1833,7 +1833,7 @@ describe("workbench resource and project navigation", () => {
     expect(resourceKey(left)).not.toBe(resourceKey(right));
   });
 
-  it("opens the exact root-qualified Search match without losing a dirty editor", async () => {
+  it("opens the exact root-qualified match without losing a dirty editor", async () => {
     const left = resource("src/main.rs", "root-a");
     const right = resource("src/main.rs", "root-b");
     const leftTab: WorkbenchTab = {
@@ -1876,14 +1876,17 @@ describe("workbench resource and project navigation", () => {
       },
     });
 
-    await useWorkbenchStore.getState().openSearchMatch({
+    await useWorkbenchStore.getState().openFileLocation({
       projectId: "project-a",
       transitionEpoch: 0,
       resource: right,
       lineNumber: 1,
       columnNumber: 4,
-      query: "needle",
-      caseSensitive: false,
+      selection: {
+        kind: "match",
+        query: "needle",
+        caseSensitive: false,
+      },
     });
 
     expect(snapshot).toHaveBeenCalledWith(
@@ -1901,8 +1904,11 @@ describe("workbench resource and project navigation", () => {
         resource: right,
         lineNumber: 1,
         columnNumber: 4,
-        query: "needle",
-        caseSensitive: false,
+        selection: {
+          kind: "match",
+          query: "needle",
+          caseSensitive: false,
+        },
       },
     });
     expect(
@@ -1910,19 +1916,18 @@ describe("workbench resource and project navigation", () => {
     ).toMatchObject({ dirty: true, resource: left });
   });
 
-  it("retires Search navigation when its Project intent becomes stale", async () => {
+  it("retires file-location navigation when its Project intent becomes stale", async () => {
     const target = resource("src/stale.ts");
     const pending = deferred<EditorDocument>();
     vi.spyOn(editorPort, "openEditorDocument").mockReturnValue(pending.promise);
 
-    const navigation = useWorkbenchStore.getState().openSearchMatch({
+    const navigation = useWorkbenchStore.getState().openFileLocation({
       projectId: "project-a",
       transitionEpoch: 0,
       resource: target,
       lineNumber: 2,
       columnNumber: 3,
-      query: "needle",
-      caseSensitive: true,
+      selection: { kind: "caret" },
     });
     await vi.waitFor(() =>
       expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
@@ -3676,6 +3681,153 @@ describe("workbench resource and project navigation", () => {
 
     expect(useWorkbenchStore.getState().project?.id).toBe("project-b");
     expect(bootstrap).not.toHaveBeenCalled();
+  });
+
+  it.each(["file", "diff"] as const)(
+    "reveals the restored nested active %s after a Project switch without replacing a folder selection",
+    async (kind) => {
+      const restored = snapshotB();
+      const target = resource("src/workbench/AgentChatPanes.tsx", "root-b");
+      const selectedFolder = resource("src", "root-b");
+      const active: WorkbenchTab = {
+        id: `${kind}:restored-nested`,
+        kind,
+        title: "AgentChatPanes.tsx",
+        position: 1,
+        pinned: false,
+        dirty: false,
+        resource: target,
+      };
+      restored.tabs = [...restored.tabs, active];
+      restored.activeTabId = active.id;
+      restored.selectedResource = selectedFolder;
+      vi.spyOn(projectPort, "switchProject").mockResolvedValue({
+        committed: true,
+        transitionEpoch: 1,
+        snapshot: restored,
+        recoveryError: null,
+      });
+      const listDirectory = vi
+        .spyOn(projectPort, "listDirectory")
+        .mockImplementation(async (requested) => ({
+          resource: requested,
+          entries: [],
+          truncated: false,
+        }));
+      if (kind === "file") {
+        vi.spyOn(editorPort, "openEditorDocument").mockResolvedValue(
+          document(target, "restored", 0, false),
+        );
+      } else {
+        vi.spyOn(repositoryPort, "getFileDiff").mockResolvedValue({
+          resource: target,
+          binary: false,
+          truncated: false,
+          hunks: [],
+        });
+      }
+
+      await useWorkbenchStore.getState().switchProject("project-b");
+
+      expect(useWorkbenchStore.getState().selectedResource).toEqual(
+        selectedFolder,
+      );
+      expect(useWorkbenchStore.getState().expandedDirectories).toMatchObject({
+        [resourceKey(resource("src", "root-b"))]: true,
+        [resourceKey(resource("src/workbench", "root-b"))]: true,
+      });
+      expect(listDirectory).toHaveBeenCalledWith(resource("src", "root-b"));
+      expect(listDirectory).toHaveBeenCalledWith(
+        resource("src/workbench", "root-b"),
+      );
+    },
+  );
+
+  it("reveals a restored nested File after the initial bootstrap", async () => {
+    const restored = snapshotB();
+    const target = resource("src/restored.ts", "root-b");
+    const active: WorkbenchTab = {
+      id: "file:bootstrap-restored",
+      kind: "file",
+      title: "restored.ts",
+      position: 1,
+      pinned: false,
+      dirty: false,
+      resource: target,
+    };
+    restored.tabs = [...restored.tabs, active];
+    restored.activeTabId = active.id;
+    vi.spyOn(projectPort, "getBootstrapSnapshot").mockResolvedValue(restored);
+    vi.spyOn(projectPort, "listDirectory").mockImplementation(
+      async (requested) => ({
+        resource: requested,
+        entries: [],
+        truncated: false,
+      }),
+    );
+    vi.spyOn(editorPort, "openEditorDocument").mockResolvedValue(
+      document(target, "restored", 0, false),
+    );
+
+    await useWorkbenchStore.getState().initialize();
+
+    expect(useWorkbenchStore.getState().expandedDirectories).toMatchObject({
+      [resourceKey(resource("src", "root-b"))]: true,
+    });
+  });
+
+  it("does not bind the outgoing Project when a new transition starts during restored-file reveal", async () => {
+    const restored = snapshotB();
+    const target = resource("src/restored.ts", "root-b");
+    const active: WorkbenchTab = {
+      id: "file:reveal-race",
+      kind: "file",
+      title: "restored.ts",
+      position: 1,
+      pinned: false,
+      dirty: false,
+      resource: target,
+    };
+    restored.tabs = [...restored.tabs, active];
+    restored.activeTabId = active.id;
+    vi.spyOn(projectPort, "switchProject").mockResolvedValue({
+      committed: true,
+      transitionEpoch: 1,
+      snapshot: restored,
+      recoveryError: null,
+    });
+    const parentListing = deferred<DirectoryListing>();
+    vi.spyOn(projectPort, "listDirectory").mockImplementation(
+      async (requested) => {
+        if (requested.relativePath === "src") return parentListing.promise;
+        return { resource: requested, entries: [], truncated: false };
+      },
+    );
+    vi.spyOn(editorPort, "openEditorDocument").mockResolvedValue(
+      document(target, "restored", 0, false),
+    );
+    const watch = vi
+      .spyOn(projectPort, "watchWorkspaceNotify")
+      .mockResolvedValue({ generation: 1 });
+
+    const switching = useWorkbenchStore.getState().switchProject("project-b");
+    await vi.waitFor(() =>
+      expect(
+        useWorkbenchStore.getState().expandedDirectories[
+          resourceKey(resource("src", "root-b"))
+        ],
+      ).toBe(true),
+    );
+    useWorkbenchStore.setState({ projectTransitioning: true });
+    parentListing.resolve({
+      resource: resource("src", "root-b"),
+      entries: [],
+      truncated: false,
+    });
+    await switching;
+
+    expect(watch).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().projectTransitioning).toBe(true);
   });
 
   it.each(["switch", "create", "addRoot"] as const)(

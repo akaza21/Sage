@@ -20,12 +20,11 @@ import {
   sessionRailFingerprint,
   sessionRailGitLabel,
   sessionRailLive,
-  sessionRailStatusLabel,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
 import {
   agentRailAgeStamp,
-  classifyAgentRailSection,
+  agentRailTrailingState,
 } from "./agentRailStatusView";
 import { agentRailClockMs } from "./agentRailViewPrefs";
 import { ProjectChatRailGlyph } from "./ProjectChatRailGlyph";
@@ -42,7 +41,6 @@ export function ProjectChatNavigation({
   showUpdated = true,
   showBranch = true,
   hideArchived = false,
-  attentionMark = false,
 }: {
   projectId: string;
   chats: AgentRailChat[];
@@ -186,7 +184,6 @@ export function ProjectChatNavigation({
           );
         }
         const focused = selected && tab.id === activeTabId;
-        const statusLabel = sessionRailStatusLabel(tab.status);
         const fingerprint = sessionRailFingerprint(tab.status);
         if (focused && fingerprint.length > 0) {
           ackSessionRailUnread(tab.id, fingerprint);
@@ -196,14 +193,6 @@ export function ProjectChatNavigation({
           status: tab.status,
           seenFingerprint: seenSessionRailFingerprint(tab.id),
         });
-        const railSection = classifyAgentRailSection({
-          status: tab.status,
-          unread,
-        });
-        const working = railSection === "working";
-        const attention =
-          tab.status === "waiting" ||
-          (railSection === "attention" && attentionMark);
         const branchLabel = showBranch ? gitLabel : "";
         const stamp = showUpdated
           ? agentRailAgeStamp({
@@ -212,9 +201,18 @@ export function ProjectChatNavigation({
               nowMs: agentRailClockMs(),
             })
           : "";
+        const trailingState = agentRailTrailingState({
+          status: tab.status,
+          unread,
+          stamp,
+        });
+        const updatedDateTime =
+          tab.updatedAt && Number.isFinite(tab.updatedAt)
+            ? new Date(tab.updatedAt).toISOString()
+            : undefined;
         return (
           <div
-            className={`project-chat-row${selected ? "" : " project-chat-row--foreign"}`}
+            className={`project-chat-row${focused ? " project-chat-row--active" : ""}${selected ? "" : " project-chat-row--foreign"}`}
             key={tab.id}
           >
             <button
@@ -235,10 +233,10 @@ export function ProjectChatNavigation({
                 void openRailChat(projectId, tab.id);
               }}
             >
-              <ProjectChatRailGlyph
-                working={working}
-                unread={unread}
-                attention={attention}
+              <MessageSquare
+                className="project-chat__identity"
+                size={14}
+                aria-hidden="true"
               />
               <span className="project-chat__copy">
                 <span className="project-chat__title">
@@ -253,15 +251,8 @@ export function ProjectChatNavigation({
                     />
                   ) : null}
                 </span>
-                {statusLabel ? (
-                  <span
-                    className={`project-chat__status project-chat__status--${tab.status ?? "idle"}`}
-                  >
-                    {statusLabel}
-                  </span>
-                ) : null}
-                {stamp || branchLabel || workspaceLabel ? (
-                  <span className="project-chat__meta">
+                {branchLabel || workspaceLabel ? (
+                  <span className="project-chat__context" aria-hidden="true">
                     {workspaceLabel ? (
                       <span className="project-chat__workspace">
                         {workspaceLabel}
@@ -276,42 +267,38 @@ export function ProjectChatNavigation({
                   </span>
                 ) : null}
               </span>
-              {stamp ? (
-                <time
-                  className="project-chat__age"
-                  dateTime={
-                    tab.updatedAt && Number.isFinite(tab.updatedAt)
-                      ? new Date(tab.updatedAt).toISOString()
-                      : undefined
-                  }
-                >
-                  {stamp}
-                </time>
-              ) : null}
             </button>
-            <ProjectChatActionMenu
-              chatTitle={displayTitle}
-              pinned={tab.pinned}
-              open={actionMenuChatId === tab.id}
-              disabled={projectTransitioning}
-              archiveDisabled={projectTransitioning || chatTabs.length <= 1}
-              destinations={moveDestinations}
-              onOpenChange={(open) => setActionMenuChatId(open ? tab.id : null)}
-              onPin={() => void pinChat(tab.id, projectId)}
-              onRename={() => {
-                setRenameError(null);
-                setRenameDraft(displayTitle);
-                setRenamingChatId(tab.id);
-              }}
-              onMove={(targetProjectId) =>
-                void moveChat(tab.id, targetProjectId, projectId)
-              }
-              onArchive={() => void archiveChat(tab.id, projectId)}
-              triggerRef={(node) => {
-                if (node) renameTriggerRefs.current.set(tab.id, node);
-                else renameTriggerRefs.current.delete(tab.id);
-              }}
-            />
+            <div className="project-chat__trailing">
+              <ProjectChatRailGlyph
+                state={trailingState}
+                dateTime={updatedDateTime}
+              />
+              <ProjectChatActionMenu
+                chatTitle={displayTitle}
+                pinned={tab.pinned}
+                open={actionMenuChatId === tab.id}
+                disabled={projectTransitioning}
+                archiveDisabled={projectTransitioning || chatTabs.length <= 1}
+                destinations={moveDestinations}
+                onOpenChange={(open) =>
+                  setActionMenuChatId(open ? tab.id : null)
+                }
+                onPin={() => void pinChat(tab.id, projectId)}
+                onRename={() => {
+                  setRenameError(null);
+                  setRenameDraft(displayTitle);
+                  setRenamingChatId(tab.id);
+                }}
+                onMove={(targetProjectId) =>
+                  void moveChat(tab.id, targetProjectId, projectId)
+                }
+                onArchive={() => void archiveChat(tab.id, projectId)}
+                triggerRef={(node) => {
+                  if (node) renameTriggerRefs.current.set(tab.id, node);
+                  else renameTriggerRefs.current.delete(tab.id);
+                }}
+              />
+            </div>
           </div>
         );
       })}

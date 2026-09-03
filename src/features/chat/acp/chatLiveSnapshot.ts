@@ -3,9 +3,12 @@ import { terminalTurnStates, turnStateLabels } from "./statusSemantics";
 
 export const MAX_LIVE_SNAPSHOT_TEXT = 280;
 
+export type ChatLiveStatusTone = "idle" | "working" | "waiting" | "failed";
+
 export type ChatLiveSnapshot = {
   chatId: string;
   statusLabel: string;
+  statusTone: ChatLiveStatusTone;
   latestText: string;
   streaming: boolean;
   waiting: boolean;
@@ -24,6 +27,11 @@ const workingStates = new Set<TurnProjection["state"]>([
   "waitingModel",
   "waitingTool",
   "cancelling",
+]);
+
+const failedStates = new Set<TurnProjection["state"]>([
+  "failed",
+  "deliveryUnknown",
 ]);
 
 function currentTurn(page: AcpChatPage): TurnProjection | null {
@@ -76,6 +84,7 @@ export function projectChatLiveSnapshot(
     return {
       chatId,
       statusLabel: "Idle",
+      statusTone: "idle",
       latestText: "",
       streaming: false,
       waiting: false,
@@ -85,6 +94,13 @@ export function projectChatLiveSnapshot(
   return {
     chatId,
     statusLabel: turnStateLabels[turn.state],
+    statusTone: failedStates.has(turn.state)
+      ? "failed"
+      : waitingStates.has(turn.state)
+        ? "waiting"
+        : workingStates.has(turn.state)
+          ? "working"
+          : "idle",
     latestText: capLiveText(latestTextItem(turn)),
     streaming: isStreaming(turn, turn.items),
     waiting: waitingStates.has(turn.state),

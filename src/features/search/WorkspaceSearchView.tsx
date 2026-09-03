@@ -1,12 +1,11 @@
 import {
-  CaseSensitive,
+  ChevronDown,
+  ChevronRight,
   ChevronsUpDown,
-  FileSearch,
   LoaderCircle,
   RefreshCw,
-  X,
 } from "lucide-react";
-import { useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useMemo, useState, type KeyboardEvent } from "react";
 
 import {
   type WorkspaceSearchGateway,
@@ -18,6 +17,7 @@ import { WORKSPACE_SEARCH_LIMITS } from "./workspaceSearchLimits";
 import { workspaceSearchDesktop } from "./workspaceSearchDesktop";
 import { useWorkspaceSearch } from "./useWorkspaceSearch";
 import { searchResultFileName } from "./searchResultCard";
+import { WorkspaceSearchCommandBar } from "./WorkspaceSearchCommandBar";
 import { FileKindIcon } from "../files/FileKindIcon";
 
 interface WorkspaceSearchViewProps {
@@ -42,20 +42,91 @@ function highlightPreview(
   preview: string,
   query: string,
   caseSensitive: boolean,
+  wholeWord: boolean,
+  occurrenceIndex: number,
 ) {
   const source = preview || "(empty line)";
   if (!query) return source;
-  const index = caseSensitive
-    ? source.indexOf(query)
-    : source.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
-  if (index < 0) return source;
+  const ranges = literalPreviewMatchRanges(
+    source,
+    query,
+    caseSensitive,
+    wholeWord,
+  );
+  const target = ranges[occurrenceIndex];
+  if (!target) return source;
   return (
     <>
-      {source.slice(0, index)}
-      <mark>{source.slice(index, index + query.length)}</mark>
-      {source.slice(index + query.length)}
+      {source.slice(0, target.start)}
+      <mark>{source.slice(target.start, target.end)}</mark>
+      {source.slice(target.end)}
     </>
   );
+}
+
+interface PreviewMatchRange {
+  start: number;
+  end: number;
+}
+
+const wordCharacterPattern = /^[\p{L}\p{N}_]$/u;
+
+function isWordCharacter(character: string | undefined) {
+  return character !== undefined && wordCharacterPattern.test(character);
+}
+
+function hasWordBoundaries(source: string, { start, end }: PreviewMatchRange) {
+  const before = [...source.slice(0, start)].at(-1);
+  const after = [...source.slice(end)][0];
+  return !isWordCharacter(before) && !isWordCharacter(after);
+}
+
+function foldWithOrigin(source: string) {
+  let folded = "";
+  const origin: PreviewMatchRange[] = [];
+  for (let start = 0; start < source.length;) {
+    const codePoint = source.codePointAt(start);
+    if (codePoint === undefined) break;
+    const character = String.fromCodePoint(codePoint);
+    const end = start + character.length;
+    const foldedCharacter = character.toLowerCase();
+    folded += foldedCharacter;
+    for (let index = 0; index < foldedCharacter.length; index += 1) {
+      origin.push({ start, end });
+    }
+    start = end;
+  }
+  return { folded, origin };
+}
+
+function literalPreviewMatchRanges(
+  source: string,
+  query: string,
+  caseSensitive: boolean,
+  wholeWord: boolean,
+) {
+  const foldedSource = caseSensitive
+    ? { folded: source, origin: null }
+    : foldWithOrigin(source);
+  const foldedQuery = caseSensitive ? query : foldWithOrigin(query).folded;
+  if (!foldedQuery) return [];
+
+  const ranges: PreviewMatchRange[] = [];
+  let offset = 0;
+  while (offset <= foldedSource.folded.length - foldedQuery.length) {
+    const foldedStart = foldedSource.folded.indexOf(foldedQuery, offset);
+    if (foldedStart < 0) break;
+    const foldedEnd = foldedStart + foldedQuery.length;
+    const range = foldedSource.origin
+      ? {
+          start: foldedSource.origin[foldedStart].start,
+          end: foldedSource.origin[foldedEnd - 1].end,
+        }
+      : { start: foldedStart, end: foldedEnd };
+    if (!wholeWord || hasWordBoundaries(source, range)) ranges.push(range);
+    offset = foldedEnd;
+  }
+  return ranges;
 }
 
 export function WorkspaceSearchView({
@@ -85,11 +156,6 @@ export function WorkspaceSearchView({
   const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    void submit();
-  }
 
   function openMatch(match: WorkspaceSearchMatch) {
     const response = state.response;
@@ -170,86 +236,22 @@ export function WorkspaceSearchView({
           </button>
         </span>
       </div>
-      <form className="workspace-search__form" onSubmit={handleSubmit}>
-        <label className="workspace-search__input">
-          <FileSearch size={14} aria-hidden="true" />
-          <span className="sr-only">Search files</span>
-          <input
-            type="search"
-            aria-label="Search files"
-            maxLength={512}
-            placeholder="Search files"
-            value={state.query}
-            disabled={!projectId}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          {state.query ? (
-            <button
-              type="button"
-              aria-label="Clear Search"
-              onClick={() => setQuery("")}
-            >
-              <X size={13} aria-hidden="true" />
-            </button>
-          ) : null}
-        </label>
-        <div className="workspace-search__controls">
-          <label className="workspace-search__case">
-            <input
-              type="checkbox"
-              checked={state.caseSensitive}
-              disabled={!projectId || state.phase === "searching"}
-              onChange={(event) => setCaseSensitive(event.target.checked)}
-            />
-            <CaseSensitive size={15} aria-hidden="true" />
-            Match case
-          </label>
-          <label className="workspace-search__case">
-            <input
-              type="checkbox"
-              aria-label="Match whole word"
-              checked={state.wholeWord}
-              disabled={!projectId || state.phase === "searching"}
-              onChange={(event) => setWholeWord(event.target.checked)}
-            />
-            <span aria-hidden="true">ab</span>
-            Match whole word
-          </label>
-          {state.phase === "searching" ? (
-            <button type="button" onClick={cancel}>
-              Cancel
-            </button>
-          ) : (
-            <button type="submit" disabled={!projectId || !state.query.trim()}>
-              Search
-            </button>
-          )}
-        </div>
-        <div className="workspace-search__filters">
-          <label>
-            <span>Files to include</span>
-            <input
-              type="text"
-              aria-label="Files to include"
-              placeholder="e.g. src/**/*.ts, tests/**/*.ts"
-              value={state.includePatternText}
-              disabled={!projectId || state.phase === "searching"}
-              onChange={(event) => setIncludePatternText(event.target.value)}
-            />
-          </label>
-          <label>
-            <span>Files to exclude</span>
-            <input
-              type="text"
-              aria-label="Files to exclude"
-              placeholder="e.g. **/generated/**"
-              value={state.excludePatternText}
-              disabled={!projectId || state.phase === "searching"}
-              onChange={(event) => setExcludePatternText(event.target.value)}
-            />
-          </label>
-        </div>
-      </form>
+      <WorkspaceSearchCommandBar
+        projectId={projectId}
+        searching={state.phase === "searching"}
+        query={state.query}
+        caseSensitive={state.caseSensitive}
+        wholeWord={state.wholeWord}
+        includePatternText={state.includePatternText}
+        excludePatternText={state.excludePatternText}
+        onQueryChange={setQuery}
+        onCaseSensitiveChange={setCaseSensitive}
+        onWholeWordChange={setWholeWord}
+        onIncludePatternTextChange={setIncludePatternText}
+        onExcludePatternTextChange={setExcludePatternText}
+        onSearch={() => void submit()}
+        onCancel={cancel}
+      />
 
       <div className="workspace-search__body" aria-live="polite">
         {!projectId ? (
@@ -305,15 +307,25 @@ export function WorkspaceSearchView({
                 {groups.map(([key, fileMatches]) => {
                   const first = fileMatches[0];
                   const collapsed = collapsedPaths.has(key);
+                  const relativePath = first.resource.relativePath;
+                  const fileName =
+                    searchResultFileName(relativePath) || relativePath;
+                  const directory = relativePath
+                    .slice(
+                      0,
+                      Math.max(0, relativePath.length - fileName.length),
+                    )
+                    .replace(/[\\/]$/, "");
+                  const rootName =
+                    rootNames.get(first.resource.rootId) ?? "Root";
                   return (
                     <section className="workspace-search__file-group" key={key}>
                       <button
                         className="workspace-search__file-heading"
                         type="button"
                         aria-expanded={!collapsed}
-                        aria-label="Toggle result group"
-                        aria-description={first.resource.relativePath}
-                        title={first.resource.relativePath}
+                        aria-label={`${collapsed ? "Expand" : "Collapse"} results for ${relativePath}`}
+                        title={relativePath}
                         onClick={() =>
                           setCollapsedPaths((current) => {
                             const next = new Set(current);
@@ -323,12 +335,23 @@ export function WorkspaceSearchView({
                           })
                         }
                       >
-                        <FileKindIcon
-                          path={first.resource.relativePath}
-                          entryKind="file"
-                        />
-                        <span>{first.resource.relativePath}</span>
-                        <span>{fileMatches.length}</span>
+                        {collapsed ? (
+                          <ChevronRight size={14} aria-hidden="true" />
+                        ) : (
+                          <ChevronDown size={14} aria-hidden="true" />
+                        )}
+                        <FileKindIcon path={relativePath} entryKind="file" />
+                        <span className="workspace-search__file-identity">
+                          <strong>{fileName}</strong>
+                          <span>
+                            {directory
+                              ? `${rootName} › ${directory}`
+                              : rootName}
+                          </span>
+                        </span>
+                        <span className="workspace-search__file-count">
+                          {fileMatches.length}
+                        </span>
                       </button>
                       {!collapsed
                         ? fileMatches.map((match, index) => (
@@ -345,35 +368,23 @@ export function WorkspaceSearchView({
                                   handleMatchKeyDown(event, match)
                                 }
                               >
-                                <FileKindIcon
-                                  path={match.resource.relativePath}
-                                  entryKind="file"
-                                />
-                                <span className="workspace-search__copy">
-                                  <span
-                                    className="workspace-search__path"
-                                    title={match.resource.relativePath}
-                                  >
-                                    <strong>
-                                      {searchResultFileName(
-                                        match.resource.relativePath,
-                                      ) || match.resource.relativePath}
-                                    </strong>
-                                    <span>
-                                      {rootNames.get(match.resource.rootId) ??
-                                        "Root"}
-                                    </span>
-                                  </span>
-                                  <span className="workspace-search__preview">
-                                    {highlightPreview(
-                                      match.preview,
-                                      state.response?.query ?? "",
-                                      state.caseSensitive,
-                                    )}
-                                  </span>
-                                </span>
                                 <span className="workspace-search__position">
                                   {match.lineNumber}:{match.columnNumber}
+                                </span>
+                                <span className="workspace-search__preview">
+                                  {highlightPreview(
+                                    match.preview,
+                                    state.response?.query ?? "",
+                                    state.caseSensitive,
+                                    state.wholeWord,
+                                    fileMatches
+                                      .slice(0, index)
+                                      .filter(
+                                        (candidate) =>
+                                          candidate.lineNumber ===
+                                          match.lineNumber,
+                                      ).length,
+                                  )}
                                 </span>
                               </button>
                             </div>

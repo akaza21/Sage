@@ -58,9 +58,9 @@ import {
   type RepositoryInventorySlice,
 } from "./repositoryInventorySlice";
 import {
-  createSearchNavigationSlice,
-  type SearchNavigationSlice,
-} from "./searchNavigationSlice";
+  createFileNavigationSlice,
+  type FileNavigationSlice,
+} from "./fileNavigationSlice";
 import { closeWorkbenchTab } from "./tabClosing";
 
 export type SidebarView =
@@ -88,7 +88,7 @@ export interface WorkbenchState
     RepositoryMutationSlice,
     ResourceSlice,
     ResourceTrashSlice,
-    SearchNavigationSlice {
+    FileNavigationSlice {
   phase: "booting" | "ready" | "error";
   error: string | null;
   projects: ProjectListItem[];
@@ -117,7 +117,7 @@ export interface WorkbenchState
   refreshRepository: () => Promise<void>;
   setSidebarView: (view: SidebarView) => void;
   toggleSidebar: () => void;
-  openSettings: () => void;
+  openSettings: () => Promise<void>;
 }
 
 const emptyRepositories: ProjectRepositoryStatus = {
@@ -131,6 +131,7 @@ function errorMessage(error: unknown): string {
 }
 
 export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
+  let settingsReturnTabId: string | null = null;
   return {
     phase: "booting",
     error: null,
@@ -165,7 +166,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createRepositoryInventorySlice(set, get, store),
     ...createRepositoryMutationSlice(set, get, store),
     ...createResourceSlice(set, get, store),
-    ...createSearchNavigationSlice(set, get, store),
+    ...createFileNavigationSlice(set, get, store),
     ...createEditorSlice(set, get, store),
     ...createFileCreateSlice(set, get, store),
     ...createFileRenameSlice(set, get, store),
@@ -251,10 +252,53 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
       }
     },
 
-    closeTab: (tabId) => closeWorkbenchTab(set, get, tabId),
+    closeTab: (tabId) => {
+      const preferredNextTabId =
+        tabId === "settings:appearance" ? settingsReturnTabId : null;
+      closeWorkbenchTab(set, get, tabId, preferredNextTabId);
+      if (
+        tabId === "settings:appearance" &&
+        !get().tabs.some((tab) => tab.id === tabId)
+      ) {
+        settingsReturnTabId = null;
+      }
+    },
 
-    openSettings: () => {
+    openSettings: async () => {
       const id = "settings:appearance";
+      const sourceActiveTabId = get().activeTabId;
+      const sourceActiveTab = get().tabs.find(
+        (tab) => tab.id === sourceActiveTabId,
+      );
+      if (sourceActiveTab?.id === id) return;
+      const sourceProjectId = get().project?.id ?? null;
+      const sourceGeneration = get().projectGeneration;
+      try {
+        await get().flushActiveEditor();
+      } catch (error) {
+        if (
+          get().projectGeneration === sourceGeneration &&
+          (get().project?.id ?? null) === sourceProjectId &&
+          get().activeTabId === sourceActiveTabId
+        ) {
+          set({ error: errorMessage(error) });
+        }
+        return;
+      }
+      if (
+        get().projectTransitioning ||
+        get().fileRenameInFlight ||
+        get().resourceTrashInFlight ||
+        get().projectGeneration !== sourceGeneration ||
+        (get().project?.id ?? null) !== sourceProjectId ||
+        get().activeTabId !== sourceActiveTabId
+      ) {
+        return;
+      }
+      settingsReturnTabId =
+        sourceActiveTab?.kind === "file" || sourceActiveTab?.kind === "diff"
+          ? sourceActiveTab.id
+          : null;
       if (!get().tabs.some((tab) => tab.id === id)) {
         set((state) => ({
           tabs: [

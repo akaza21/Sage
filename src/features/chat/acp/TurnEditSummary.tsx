@@ -196,15 +196,18 @@ export function TurnEditSummary({
             disabled={recording !== null}
             onClick={() => void recordDisposition("accepted")}
           >
-            {recording === "accepted" ? "Accepting…" : "Accept"}
+            {recording === "accepted" ? "Recording…" : "Mark reviewed"}
           </button>
           <button
             type="button"
             disabled={recording !== null}
             onClick={() => void recordDisposition("rejected")}
           >
-            {recording === "rejected" ? "Discarding…" : "Discard"}
+            {recording === "rejected" ? "Recording…" : "Needs follow-up"}
           </button>
+          <span>
+            This records review status only. It does not apply or revert files.
+          </span>
         </div>
       ) : null}
       {dispositionError ? (

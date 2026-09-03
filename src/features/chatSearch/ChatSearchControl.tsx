@@ -1,13 +1,8 @@
 import { Search } from "lucide-react";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
+import { ModalDialog } from "../../ui/ModalDialog";
 import { MAX_CHAT_SEARCH_QUERY_BYTES } from "./chatSearchDomain";
 import { projectChatSearchDesktop } from "./chatSearchDesktop";
 import {
@@ -61,7 +56,6 @@ export function ChatSearchControl() {
   const requestGeneration = useRef(0);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const focusReturnRef = useRef<(() => void) | null>(null);
-  const dialogRef = useRef<HTMLDialogElement | null>(null);
 
   const close = (restoreFocus = true) => {
     requestGeneration.current += 1;
@@ -89,23 +83,6 @@ export function ChatSearchControl() {
       }
     });
   }, [open, scope]);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!open || !dialog) return;
-    if (typeof dialog.showModal === "function") {
-      if (!dialog.open) dialog.showModal();
-    } else {
-      dialog.setAttribute("open", "");
-    }
-    return () => {
-      if (typeof dialog.close === "function" && dialog.open) {
-        dialog.close();
-      } else {
-        dialog.removeAttribute("open");
-      }
-    };
-  }, [open]);
 
   const openSearch = (searchProjectId?: string) => {
     const state = useWorkbenchStore.getState();
@@ -222,35 +199,6 @@ export function ChatSearchControl() {
     setError(null);
   };
 
-  const containFocus = (event: KeyboardEvent<HTMLDialogElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      close();
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusable = Array.from(
-      event.currentTarget.querySelectorAll<HTMLElement>(
-        'input:not([disabled]), select:not([disabled]), button:not([disabled]), [role="option"]:not([aria-disabled="true"])',
-      ),
-    );
-    const first = focusable[0];
-    const last = focusable.at(-1);
-    if (!first || !last) {
-      event.preventDefault();
-    } else if (
-      event.shiftKey &&
-      (document.activeElement === first ||
-        !event.currentTarget.contains(document.activeElement))
-    ) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
-
   const folders = chatSearchFolderOptions(projects);
 
   return (
@@ -268,16 +216,10 @@ export function ChatSearchControl() {
         Search chats
       </button>
       {open && scope ? (
-        <dialog
-          ref={dialogRef}
-          className="dirty-dialog chat-search-dialog"
-          aria-modal="true"
-          aria-labelledby="chat-search-title"
-          onCancel={(event) => {
-            event.preventDefault();
-            close();
-          }}
-          onKeyDown={containFocus}
+        <ModalDialog
+          className="chat-search-dialog"
+          labelledBy="chat-search-title"
+          onDismiss={() => close()}
         >
           <form className="chat-search-dialog__form" onSubmit={submit}>
             <h2 id="chat-search-title">Search Chats</h2>
@@ -380,7 +322,7 @@ export function ChatSearchControl() {
               </div>
             ) : null}
           </form>
-        </dialog>
+        </ModalDialog>
       ) : null}
     </>
   );

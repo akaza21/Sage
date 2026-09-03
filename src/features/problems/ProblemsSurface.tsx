@@ -1,4 +1,7 @@
+import { CircleX, Info, TriangleAlert } from "lucide-react";
+
 import { useWorkbenchStore } from "../../app/store";
+import { resourceTitle } from "../../domain/resourceIdentity";
 import { useDiagnosticProjection } from "../language/languageClient";
 import {
   countProblemKinds,
@@ -7,6 +10,10 @@ import {
 } from "./problemCard";
 
 export function ProblemsSurface() {
+  const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
+  const transitionEpoch = useWorkbenchStore(
+    (state) => state.nativeTransitionEpoch,
+  );
   const resource = useWorkbenchStore(
     (state) => state.tabs.find((tab) => tab.id === state.activeTabId)?.resource,
   );
@@ -35,6 +42,13 @@ export function ProblemsSurface() {
         <ul className="problems-surface__list">
           {report.diagnostics.map((diagnostic, index) => {
             const kind = problemSeverityLabel(diagnostic.severity);
+            const Icon =
+              diagnostic.severity === "error"
+                ? CircleX
+                : diagnostic.severity === "warning"
+                  ? TriangleAlert
+                  : Info;
+            const shortResource = resourceTitle(diagnostic.resource);
             return (
               <li
                 key={`${diagnostic.startLine}:${diagnostic.startColumn}:${index}`}
@@ -42,19 +56,37 @@ export function ProblemsSurface() {
                 <button
                   className={`problem-card problem-card--${diagnostic.severity}`}
                   type="button"
-                  onClick={() =>
-                    void useWorkbenchStore
-                      .getState()
-                      .openFile(diagnostic.resource)
-                  }
+                  aria-label={`${kind}: ${diagnostic.message}. ${diagnostic.resource.relativePath}, line ${diagnostic.startLine}, column ${diagnostic.startColumn}`}
+                  title={`${diagnostic.message} — ${diagnostic.resource.relativePath}:${diagnostic.startLine}:${diagnostic.startColumn}`}
+                  onClick={() => {
+                    if (!projectId) return;
+                    void useWorkbenchStore.getState().openFileLocation({
+                      projectId,
+                      transitionEpoch,
+                      resource: diagnostic.resource,
+                      lineNumber: diagnostic.startLine,
+                      columnNumber: diagnostic.startColumn,
+                      selection: { kind: "caret" },
+                    });
+                  }}
                 >
-                  <span className="problem-card__kind">{kind}</span>
+                  <span className="problem-card__kind" aria-hidden="true">
+                    <Icon size={14} strokeWidth={2} />
+                  </span>
                   <span className="problem-card__copy">
-                    <span>{diagnostic.message}</span>
-                    <small>
-                      {diagnostic.resource.relativePath}:{diagnostic.startLine}
+                    <span className="problem-card__message">
+                      {diagnostic.message}
+                    </span>
+                    <small className="problem-card__location">
+                      <span className="problem-card__location-file">
+                        {shortResource}
+                      </span>
+                      <span className="problem-card__location-position">
+                        :{diagnostic.startLine}:{diagnostic.startColumn}
+                      </span>
                     </small>
                   </span>
+                  <span className="sr-only">{kind}</span>
                 </button>
               </li>
             );

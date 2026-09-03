@@ -37,12 +37,6 @@ export function AgentChatPane({
     onFocus();
   }
 
-  const tone = snapshot.waiting
-    ? "waiting"
-    : snapshot.working
-      ? "working"
-      : "idle";
-
   return (
     <section
       className={`agent-chat-pane${focused ? " agent-chat-pane--focused" : ""}`}
@@ -59,10 +53,10 @@ export function AgentChatPane({
           {unread ? (
             <span className="agent-unread-dot" aria-label="Unread updates" />
           ) : null}
-          {title}
+          <span className="agent-chat-pane__title">{title}</span>
         </button>
         <span
-          className={`agent-chat-chip agent-chat-chip--${tone}`}
+          className={`agent-chat-chip agent-chat-chip--${snapshot.statusTone}`}
           role="status"
         >
           {snapshot.statusLabel}

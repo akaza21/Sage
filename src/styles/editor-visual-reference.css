@@ -64,8 +64,7 @@
   background: var(--color-panel);
 }
 
-.workbench--editor .active-canvas,
-.workbench--editor .file-surface {
+.workbench--editor .active-canvas {
   background: var(--color-panel);
 }
 
@@ -84,7 +83,6 @@
   border-radius: var(--radius-sm);
 }
 
-.workbench--editor .file-header,
 .workbench--editor .problems-surface__header,
 .workbench--editor .outline-surface__header {
   min-height: 36px;
@@ -100,12 +98,7 @@
 }
 
 .workbench--editor .workspace-search__input button,
-.workbench--editor .workspace-search__controls button {
-  min-height: 28px;
-  border-radius: var(--radius-sm);
-}
-
-.workbench--editor .workspace-search__controls > button {
+.workbench--editor .workspace-search__details-toggle {
   min-height: 28px;
   border-radius: var(--radius-sm);
 }
@@ -176,10 +169,9 @@
   box-shadow: var(--focus-ring-inset);
 }
 
-.workbench--editor .source-control-list__group {
-  min-height: 28px;
+.workbench--editor .source-root__summary {
+  min-height: 32px;
   padding: 4px 6px;
-  text-transform: none;
 }
 
 .workbench--editor .source-group-label {
@@ -332,29 +324,6 @@
 
   .workbench--editor .center-region[aria-hidden="true"] {
     margin-left: min(280px, calc(100% - 160px));
-  }
-
-  .workbench--editor .file-header {
-    gap: 8px;
-    padding: 0 8px;
-  }
-
-  .workbench--editor .file-header__metadata,
-  .workbench--editor .file-breadcrumb__item:not(:last-child),
-  .workbench--editor .file-breadcrumb__item:last-child .lucide-chevron-right {
-    display: none;
-  }
-
-  .workbench--editor .file-header__path {
-    flex: 1 1 auto;
-  }
-
-  .workbench--editor .file-header__actions {
-    gap: 4px;
-  }
-
-  .workbench--editor .file-header__actions .button--compact {
-    padding: 0 7px;
   }
 }
 

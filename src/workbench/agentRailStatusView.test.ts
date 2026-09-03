@@ -8,6 +8,7 @@ import {
   AGENT_RAIL_SHOW_FIELDS,
   MAX_AGENT_RAIL_STATUS_SECTION,
   agentRailAgeStamp,
+  agentRailTrailingState,
   classifyAgentRailSection,
   groupAgentRailByStatus,
 } from "./agentRailStatusView";
@@ -36,6 +37,9 @@ describe("agent rail status grouping", () => {
       classifyAgentRailSection({ status: "recovering", unread: false }),
     ).toBe("working");
     expect(classifyAgentRailSection({ status: "waiting", unread: false })).toBe(
+      "attention",
+    );
+    expect(classifyAgentRailSection({ status: "failed", unread: false })).toBe(
       "attention",
     );
     expect(classifyAgentRailSection({ status: "complete", unread: true })).toBe(
@@ -68,6 +72,13 @@ describe("agent rail status grouping", () => {
             position: 2,
             status: "complete",
           },
+          {
+            id: "chat-failed",
+            title: "Failed after review",
+            pinned: false,
+            position: 3,
+            status: "failed",
+          },
         ]),
         folder("cross", [
           {
@@ -93,6 +104,7 @@ describe("agent rail status grouping", () => {
     expect(sections[0]?.groups[0]?.chats.map((chat) => chat.id)).toEqual([
       "chat-wait",
       "chat-done",
+      "chat-failed",
     ]);
     expect(sections[1]?.groups[0]?.chats.map((chat) => chat.id)).toEqual([
       "chat-run",
@@ -163,5 +175,33 @@ describe("agent rail status grouping", () => {
     ).toBe("53d");
     expect(agentRailAgeStamp({ live: true, nowMs: now })).toBe("now");
     expect(agentRailAgeStamp({ live: false, nowMs: now })).toBe("");
+  });
+
+  it("chooses one trailing state in attention, activity, unread, then time order", () => {
+    expect(
+      agentRailTrailingState({ status: "failed", unread: true, stamp: "now" }),
+    ).toEqual({ kind: "failed", label: "Failed" });
+    expect(
+      agentRailTrailingState({ status: "waiting", unread: true, stamp: "now" }),
+    ).toEqual({ kind: "waiting", label: "Waiting" });
+    expect(
+      agentRailTrailingState({ status: "working", unread: true, stamp: "now" }),
+    ).toEqual({ kind: "working", label: "Working\u2026" });
+    expect(
+      agentRailTrailingState({
+        status: "recovering",
+        unread: true,
+        stamp: "now",
+      }),
+    ).toEqual({ kind: "recovering", label: "Recovering" });
+    expect(
+      agentRailTrailingState({ status: "complete", unread: true, stamp: "6h" }),
+    ).toEqual({ kind: "unread", label: "Unread" });
+    expect(
+      agentRailTrailingState({ status: "idle", unread: false, stamp: "6h" }),
+    ).toEqual({ kind: "time", label: "6h" });
+    expect(
+      agentRailTrailingState({ status: "idle", unread: false, stamp: "" }),
+    ).toBeNull();
   });
 });

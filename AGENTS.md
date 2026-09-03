@@ -6,7 +6,8 @@
 - Agent mode allows a bounded pair of side-by-side visible chats (max 2).
   That owner restatement supersedes “one primary tab strip and no automatic
   splits” for Agent chat panes only.
-- Editor mode keeps one File / Diff tab strip and no automatic splits.
+- Editor mode keeps one File / Diff / Settings tab strip and no automatic
+  splits. Settings is the only non-resource tab admitted to this strip.
 - The title bar owns a two-mode Agent / Editor window toggle (Devin-style
   D0). Do not reopen this decision.
 - Agent view: project and persistent chat navigation live on the left; the
@@ -14,8 +15,9 @@
   chat’s files, diffs, and in-app browser Preview. There is no Explorer /
   Search / Git / Problems / Outline chrome in Agent mode.
 - Editor view is a pure editor: Explorer, Search, Git, Problems, and Outline
-  live on the left tool rail; the center is the File / Diff tab strip. There
-  is no project/chat navigation and no persistent chat-as-primary.
+  live on the left tool rail; the center is the File / Diff / Settings tab
+  strip. There is no project/chat navigation and no persistent
+  chat-as-primary.
 - Files, diffs, and previews opened in Agent are the same workbench
   resources as Editor mode.
 - Agent edits appear inside the originating Chat as a bounded file summary.

@@ -9,7 +9,13 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
+import {
+  acpProjectionStoreFor,
+  clearAcpProjectionRegistry,
+} from "../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../app/store";
+import type { AcpChatPage, ProjectGeneration } from "../domain/acp";
+import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import { Workbench } from "./Workbench";
 
 vi.mock("../features/chat/ChatSurface", () => ({
@@ -25,10 +31,36 @@ vi.mock("./useCompactWorkbenchLayout", () => ({
 
 const initialState = useWorkbenchStore.getState();
 const project = { id: "project-a", name: "A", roots: [] };
+const artifactOwner = {
+  projectId: "project-a",
+  chatId: "chat:b",
+  sessionId: "session-b",
+} as AgentArtifactOwner;
+
+function seedArtifactOwner(): void {
+  const store = acpProjectionStoreFor(artifactOwner.chatId);
+  const scope = {
+    projectId: artifactOwner.projectId,
+    projectGeneration: "0" as ProjectGeneration,
+    chatId: artifactOwner.chatId,
+  };
+  store.getState().activateScope(scope);
+  store.getState().applyAuthoritativePage(scope, {
+    projectId: artifactOwner.projectId,
+    chatId: artifactOwner.chatId,
+    title: "Chat B",
+    projectionRevision: "1",
+    currentSessionId: artifactOwner.sessionId,
+    sessions: [],
+    turns: [],
+    nextCursor: null,
+  } as unknown as AcpChatPage);
+}
 
 afterEach(() => {
   cleanup();
   compactViewport = false;
+  clearAcpProjectionRegistry();
   useAgentArtifactAdmissionStore.getState().clear();
   useWorkbenchStore.setState(initialState, true);
 });
@@ -87,6 +119,7 @@ describe("compact workbench window mode seam", () => {
 
   it("opens new Agent resources on the right while tabs change", async () => {
     compactViewport = true;
+    seedArtifactOwner();
     const activateTab = vi.fn(async (tabId: string) => {
       useWorkbenchStore.setState({ activeTabId: tabId });
     });
@@ -117,7 +150,10 @@ describe("compact workbench window mode seam", () => {
       loadEditor: vi.fn(async () => undefined),
       activateTab,
     });
-    useAgentArtifactAdmissionStore.getState().admit("file:a");
+    useAgentArtifactAdmissionStore.getState().admit({
+      owner: artifactOwner,
+      tabId: "file:a",
+    });
     const { container } = render(createElement(Workbench));
     const center = container.querySelector(".center-region");
     expect(center).toHaveAttribute("inert");
