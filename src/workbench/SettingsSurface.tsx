@@ -49,6 +49,7 @@ export function SettingsSurface() {
           <span>Search settings</span>
           <input
             autoFocus
+            className="input"
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -72,6 +73,7 @@ export function SettingsSurface() {
               <small>Default: {DEFAULT_EDITOR_APPEARANCE.fontSize}px</small>
             </div>
             <select
+              className="select"
               id="editor-font-size"
               value={fontSize}
               onChange={(event) =>
@@ -96,6 +98,7 @@ export function SettingsSurface() {
               <small>Default: {DEFAULT_EDITOR_APPEARANCE.tabSize} spaces</small>
             </div>
             <select
+              className="select"
               id="editor-tab-size"
               value={tabSize}
               onChange={(event) =>
@@ -138,7 +141,12 @@ export function SettingsSurface() {
             </label>
           </div>
           <footer className="settings-surface__footer">
-            <button type="button" disabled={atDefaults} onClick={reset}>
+            <button
+              className="button button--compact"
+              type="button"
+              disabled={atDefaults}
+              onClick={reset}
+            >
               Reset Editor Appearance
             </button>
           </footer>

@@ -133,26 +133,6 @@
   background: var(--color-surface-active);
 }
 
-.button--compact {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 28px;
-  padding: 0 9px;
-  font-size: var(--font-size-xs);
-}
-
-.button--primary {
-  border-color: var(--color-accent);
-  background: var(--color-accent-muted);
-}
-
-.button--danger {
-  border-color: var(--color-danger);
-  color: var(--color-danger);
-  background: var(--color-danger-muted);
-}
-
 .editor-notice {
   display: flex;
   align-items: center;

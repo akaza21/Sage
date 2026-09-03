@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./app/App";
 import "./styles/global.css";
+import "./styles/shared-controls.css";
 import "./styles/editor-activity-bar.css";
 import "./features/files/explorer-surface.css";
 import "./features/search/workspace-search.css";

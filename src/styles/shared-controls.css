@@ -1,0 +1,217 @@
+.button,
+.input,
+.select {
+  min-height: var(--control-height-default);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  font: inherit;
+  transition:
+    border-color var(--motion-duration-fast) ease,
+    background-color var(--motion-duration-fast) ease,
+    box-shadow var(--motion-duration-fast) ease;
+}
+
+.button {
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.button--compact {
+  display: inline-flex;
+  min-height: var(--control-height-compact);
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  font-size: var(--font-size-xs);
+}
+
+.button--primary {
+  border-color: var(--color-accent);
+  background: var(--color-accent-muted);
+}
+
+.button--danger {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  background: var(--color-danger-muted);
+}
+
+.input,
+.select {
+  width: 100%;
+  min-width: 0;
+  padding: 0 var(--space-2);
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.input--compact,
+.select--compact {
+  min-height: var(--control-height-compact);
+  font-size: var(--font-size-xs);
+}
+
+.select {
+  color-scheme: dark;
+}
+
+.select option {
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+}
+
+.menu-popover {
+  --menu-focus-edge: var(--color-focus-ring);
+  --menu-selected-fill: var(--color-accent-muted);
+
+  position: fixed;
+  z-index: 80;
+  display: grid;
+  width: min(260px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  max-height: min(320px, calc(100vh - 16px));
+  gap: 2px;
+  padding: 4px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  box-shadow: var(--elevation-popover);
+  animation: menu-popover-enter var(--motion-duration-fast) ease-out;
+}
+
+.menu-popover[hidden] {
+  display: none;
+}
+
+.menu-item {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-height-compact);
+  align-items: center;
+  gap: 7px;
+  padding: 4px 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 4px;
+  color: var(--color-text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item > :where(span, strong) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-item:hover:not(:disabled):not([aria-disabled="true"]) {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.menu-item:focus-visible {
+  outline: 0;
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+  box-shadow: inset 0 0 0 1px var(--menu-focus-edge);
+}
+
+.menu-item[aria-checked="true"],
+.menu-item[aria-selected="true"] {
+  color: var(--color-text-primary);
+  background: var(--menu-selected-fill);
+}
+
+.menu-item:disabled,
+.menu-item[aria-disabled="true"] {
+  cursor: default;
+  opacity: var(--opacity-disabled);
+}
+
+.menu-group-label {
+  margin: 5px 6px 2px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.menu-group {
+  display: grid;
+  gap: 2px;
+}
+
+.menu-empty {
+  margin: 0;
+  padding: 6px 7px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+
+@keyframes menu-popover-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (forced-colors: active) {
+  .button,
+  .input,
+  .select,
+  .menu-popover {
+    border-color: ButtonText;
+    color: ButtonText;
+    background: Canvas;
+    box-shadow: none;
+  }
+
+  .menu-item {
+    color: CanvasText;
+    forced-color-adjust: auto;
+  }
+
+  .menu-item:focus-visible,
+  .menu-item[aria-checked="true"],
+  .menu-item[aria-selected="true"] {
+    color: HighlightText;
+    background: Highlight;
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .input,
+  .select {
+    transition: none;
+  }
+
+  .menu-popover {
+    animation: none;
+  }
+}

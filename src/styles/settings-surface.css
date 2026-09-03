@@ -95,16 +95,9 @@
   font-size: var(--font-size-xs);
 }
 
-.settings-surface select,
-.settings-surface input[type="search"] {
+.settings-surface .select,
+.settings-surface .input {
   width: 100%;
-  min-height: 32px;
-  padding: 0 8px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  color: inherit;
-  background: var(--color-surface);
-  font: inherit;
 }
 
 .settings-surface__toggle {
@@ -127,27 +120,6 @@
   display: flex;
   justify-content: flex-end;
   padding-top: 18px;
-}
-
-.settings-surface__footer button {
-  min-height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-secondary);
-  background: var(--color-surface);
-  font: inherit;
-  cursor: pointer;
-}
-
-.settings-surface__footer button:hover:not(:disabled) {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
-}
-
-.settings-surface__footer button:disabled {
-  cursor: default;
-  opacity: 0.45;
 }
 
 @media (max-width: 760px) {
@@ -176,9 +148,9 @@
 }
 
 @media (forced-colors: active) {
-  .settings-surface select,
-  .settings-surface input[type="search"],
-  .settings-surface__footer button {
+  .settings-surface .select,
+  .settings-surface .input,
+  .settings-surface__footer .button {
     border-color: ButtonText;
   }
 

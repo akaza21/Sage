@@ -6,7 +6,8 @@
 @media (forced-colors: none) {
   .workbench--editor,
   .new-file-dialog--editor,
-  .dirty-dialog--editor {
+  .dirty-dialog--editor,
+  .menu-popover--editor {
     --editor-focus-edge: color-mix(
       in srgb,
       var(--color-accent) 68%,
@@ -57,6 +58,8 @@
     --focus-ring: var(--focus-ring-width) solid var(--editor-focus-edge);
     --focus-ring-inset: inset 0 0 0 var(--focus-ring-width)
       var(--editor-focus-edge);
+    --menu-focus-edge: var(--editor-focus-edge);
+    --menu-selected-fill: var(--editor-selection-fill);
   }
 
   /* Persistent selection: quiet fill, local hairline, no glow. */

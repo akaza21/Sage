@@ -587,7 +587,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
 
     await more.focus();
     await more.press("Enter");
-    const menu = explorer.getByRole("menu", { name: "Explorer actions" });
+    const menu = page.getByRole("menu", { name: "Explorer actions" });
     await expect(menu).toBeVisible();
     await expect(menu.getByRole("menuitem")).toHaveText([
       "Add folder root",
@@ -638,12 +638,12 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     expect(
       await menu.evaluate((node) => {
         const menuBounds = node.getBoundingClientRect();
-        const sidebarBounds = node.closest(".sidebar")?.getBoundingClientRect();
         return Boolean(
-          sidebarBounds &&
-          menuBounds.left >= sidebarBounds.left &&
-          menuBounds.right <= sidebarBounds.right &&
-          menuBounds.bottom <= Math.min(sidebarBounds.bottom, innerHeight),
+          menuBounds.left >= 8 &&
+          menuBounds.right <= innerWidth - 8 &&
+          menuBounds.top >= 8 &&
+          menuBounds.bottom <= innerHeight - 8 &&
+          node.scrollWidth <= node.clientWidth,
         );
       }),
     ).toBe(true);
@@ -1851,11 +1851,11 @@ test.describe("Wave 2 200% zoom state", () => {
     expect(
       await explorerMenu.evaluate((node) => {
         const menuBounds = node.getBoundingClientRect();
-        const sidebarBounds = node.closest(".sidebar")?.getBoundingClientRect();
         return Boolean(
-          sidebarBounds &&
-          menuBounds.left >= sidebarBounds.left &&
-          menuBounds.right <= sidebarBounds.right &&
+          menuBounds.left >= 8 &&
+          menuBounds.right <= innerWidth - 8 &&
+          menuBounds.top >= 8 &&
+          menuBounds.bottom <= innerHeight - 8 &&
           node.scrollWidth <= node.clientWidth,
         );
       }),

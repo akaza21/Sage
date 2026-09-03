@@ -3,7 +3,10 @@
  * The mode boundary is intentional: Agent keeps its reading-oriented palette,
  * while Editor uses compact, neutral workbench planes.
  */
-.workbench--editor {
+.workbench--editor,
+.new-file-dialog--editor,
+.dirty-dialog--editor,
+.menu-popover--editor {
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
@@ -12,7 +15,10 @@
 }
 
 @media (forced-colors: none) {
-  .workbench--editor {
+  .workbench--editor,
+  .new-file-dialog--editor,
+  .dirty-dialog--editor,
+  .menu-popover--editor {
     --color-canvas: #141414;
     --color-panel: #141414;
     --color-surface: #232323;

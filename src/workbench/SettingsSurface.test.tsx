@@ -21,9 +21,13 @@ describe("SettingsSurface", () => {
     expect(screen.getByText("Default: 13px")).toBeInTheDocument();
     expect(screen.getByText("Default: 2 spaces")).toBeInTheDocument();
     expect(screen.getByText("Default: Off")).toBeInTheDocument();
+    expect(screen.getByRole("searchbox")).toHaveClass("input");
+    expect(screen.getByLabelText("Font size")).toHaveClass("select");
+    expect(screen.getByLabelText("Tab size")).toHaveClass("select");
     const reset = screen.getByRole("button", {
       name: "Reset Editor Appearance",
     });
+    expect(reset).toHaveClass("button", "button--compact");
     expect(reset).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Font size"), {
       target: { value: "16" },

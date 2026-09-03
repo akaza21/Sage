@@ -226,6 +226,58 @@ it("keeps pin state visible and restores focus from one chat actions menu", () =
   expect(actionTrigger).toHaveFocus();
 });
 
+it("roves through chat actions and dismisses the menu on Tab", () => {
+  seedChats();
+  render(
+    <ProjectChatNavigation
+      projectId="project-a"
+      chats={currentChats()}
+      selected
+    />,
+  );
+
+  expect(document.querySelector('[role="menu"]')).toBeNull();
+  openChatActions("Alpha");
+  const menu = screen.getByRole("menu", { name: "Actions for Alpha" });
+  const pin = screen.getByRole("menuitem", { name: "Pin chat" });
+  const move = screen.getByRole("menuitem", { name: "Move to project" });
+  const rename = screen.getByRole("menuitem", { name: "Rename chat" });
+  const archive = screen.getByRole("menuitem", { name: "Archive chat" });
+
+  expect(pin).toHaveFocus();
+  expect(pin).toHaveAttribute("tabindex", "0");
+  expect(move).toHaveAttribute("tabindex", "-1");
+  expect(rename).toHaveAttribute("tabindex", "-1");
+
+  fireEvent.keyDown(menu, { key: "ArrowDown" });
+  expect(move).toHaveFocus();
+  fireEvent.keyDown(menu, { key: "End" });
+  expect(archive).toHaveFocus();
+  fireEvent.keyDown(menu, { key: "Tab" });
+
+  expect(screen.queryByRole("menu", { name: "Actions for Alpha" })).toBeNull();
+  expect(document.querySelector('[role="menu"]')).toBeNull();
+});
+
+it("dismisses chat actions on an outside pointer without stealing focus", () => {
+  seedChats();
+  render(
+    <ProjectChatNavigation
+      projectId="project-a"
+      chats={currentChats()}
+      selected
+    />,
+  );
+
+  openChatActions("Alpha");
+  const outside = screen.getByTitle("Open chat Beta");
+  outside.focus();
+  fireEvent.pointerDown(outside);
+
+  expect(screen.queryByRole("menu", { name: "Actions for Alpha" })).toBeNull();
+  expect(outside).toHaveFocus();
+});
+
 it("pins a chat and offers a move popover without Add folder root", () => {
   seedChats();
   const pinChat = vi.fn(async () => undefined);
@@ -305,7 +357,9 @@ it("pins and moves a chat that belongs to another project folder", () => {
   expect(moveChat).toHaveBeenCalledWith("chat:a", "project-b", "project-a");
   openChatActions("Alpha");
   fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-  fireEvent.change(screen.getByLabelText("New name for Alpha"), {
+  const renameInput = screen.getByLabelText("New name for Alpha");
+  expect(renameInput).toHaveFocus();
+  fireEvent.change(renameInput, {
     target: { value: "Research" },
   });
   fireEvent.submit(

@@ -20,31 +20,35 @@ describe("Agent rail stylesheet seam", () => {
     expect(surfaceCss).toMatch(/^\.agent-rail-filter__menu\b/m);
   });
 
-  it("uses the compact chrome ramp for rail labels", async () => {
-    const surfaceCss = await readFile(
-      resolve("src/styles/agent-rail-surface.css"),
-      "utf8",
-    );
+  it("reuses the shared menu classes without nesting a select", async () => {
+    const [component, surfaceCss] = await Promise.all([
+      readFile(resolve("src/workbench/AgentRailFilterMenu.tsx"), "utf8"),
+      readFile(resolve("src/styles/agent-rail-surface.css"), "utf8"),
+    ]);
 
     expect(surfaceCss).toMatch(
       /\.agent-rail-status__header\s*\{[^}]*font-size:\s*var\(--font-size-xs\);/s,
     );
-    expect(surfaceCss).toMatch(
-      /\.agent-rail-filter__menu button,[\s\S]*?\.agent-rail-filter__select\s*\{[^}]*font-size:\s*var\(--font-size-sm\);/s,
+    expect(component).toContain('className="menu-item"');
+    expect(component).toContain('className="menu-group-label"');
+    expect(component).not.toContain("<select");
+    expect(component).toContain('role="menuitemradio"');
+    expect(surfaceCss).not.toMatch(
+      /\.agent-rail-filter__menu\s*\{[^}]*position:\s*absolute/s,
     );
   });
 
   it("keeps the rail filter trigger and menu actions on consistent targets", async () => {
-    const surfaceCss = await readFile(
-      resolve("src/styles/agent-rail-surface.css"),
-      "utf8",
-    );
+    const [component, surfaceCss] = await Promise.all([
+      readFile(resolve("src/workbench/AgentRailFilterMenu.tsx"), "utf8"),
+      readFile(resolve("src/styles/agent-rail-surface.css"), "utf8"),
+    ]);
 
     expect(surfaceCss).toMatch(
       /\.agent-rail-filter__trigger\s*\{[^}]*width:\s*var\(--control-height-compact\);[^}]*height:\s*var\(--control-height-compact\);/s,
     );
-    expect(surfaceCss).toMatch(
-      /\.agent-rail-filter__menu button,[\s\S]*?\.agent-rail-filter__select\s*\{[^}]*min-height:\s*var\(--control-height-compact\);/s,
-    );
+    expect(component).toContain("<MenuPopover");
+    expect(component).toContain("trapFocus");
+    expect(component).toContain('aria-haspopup="menu"');
   });
 });

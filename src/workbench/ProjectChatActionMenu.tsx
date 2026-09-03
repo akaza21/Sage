@@ -9,8 +9,9 @@ import {
   Pin,
   PinOff,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 
+import { MenuPopover } from "../ui/MenuPopover";
 import type { AgentChatMoveDestination } from "./agentChatRail";
 
 export function ProjectChatActionMenu({
@@ -41,15 +42,9 @@ export function ProjectChatActionMenu({
   triggerRef: (node: HTMLButtonElement | null) => void;
 }) {
   const localTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [openingFocus, setOpeningFocus] = useState<"first" | "last">("first");
   const [moving, setMoving] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    menuRef.current
-      ?.querySelector<HTMLButtonElement>("[role='menuitem']")
-      ?.focus();
-  }, [moving, open]);
+  const menuId = useId();
 
   const closeAndRestoreFocus = () => {
     setMoving(false);
@@ -72,134 +67,121 @@ export function ProjectChatActionMenu({
         className="project-chat__actions"
         type="button"
         aria-label={`Chat actions for ${chatTitle}`}
+        aria-controls={menuId}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}
         onClick={() => {
-          if (!open) setMoving(false);
+          setOpeningFocus("first");
+          setMoving(false);
           onOpenChange(!open);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+          event.preventDefault();
+          setOpeningFocus(event.key === "ArrowUp" ? "last" : "first");
+          setMoving(false);
+          onOpenChange(true);
         }}
       >
         <MoreHorizontal size={15} aria-hidden="true" />
       </button>
-      {open ? (
-        <div
-          ref={menuRef}
-          className="project-chat-actions__menu"
-          role="menu"
-          aria-label={`Actions for ${chatTitle}`}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              event.stopPropagation();
-              closeAndRestoreFocus();
-              return;
-            }
-            if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-              return;
-            }
-            event.preventDefault();
-            event.stopPropagation();
-            const items = Array.from(
-              event.currentTarget.querySelectorAll<HTMLButtonElement>(
-                "button[role='menuitem']:not(:disabled)",
-              ),
-            );
-            if (items.length === 0) return;
-            const currentIndex = items.indexOf(
-              document.activeElement as HTMLButtonElement,
-            );
-            const nextIndex =
-              event.key === "Home"
-                ? 0
-                : event.key === "End"
-                  ? items.length - 1
-                  : event.key === "ArrowDown"
-                    ? (currentIndex + 1) % items.length
-                    : (currentIndex - 1 + items.length) % items.length;
-            items[nextIndex]?.focus();
-          }}
-        >
-          {moving ? (
-            <>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => setMoving(false)}
-              >
-                <ArrowLeft size={14} aria-hidden="true" />
-                <span>Back</span>
-              </button>
-              <div className="project-chat-actions__label">Move to project</div>
-              {destinations.length === 0 ? (
-                <p className="project-chat-actions__empty">
-                  No other project available.
-                </p>
+      <MenuPopover
+        id={menuId}
+        open={open}
+        ariaLabel={`Actions for ${chatTitle}`}
+        className="project-chat-actions__menu"
+        focusKey={moving}
+        initialFocus={openingFocus}
+        triggerRef={localTriggerRef}
+        onDismiss={() => {
+          setMoving(false);
+          onOpenChange(false);
+        }}
+      >
+        {moving ? (
+          <>
+            <button
+              className="menu-item"
+              type="button"
+              role="menuitem"
+              onClick={() => setMoving(false)}
+            >
+              <ArrowLeft size={14} aria-hidden="true" />
+              <span>Back</span>
+            </button>
+            <div className="menu-group-label">Move to project</div>
+            {destinations.length === 0 ? (
+              <p className="menu-empty">No other project available.</p>
+            ) : (
+              destinations.map((destination) => (
+                <button
+                  key={destination.id}
+                  className="menu-item"
+                  type="button"
+                  role="menuitem"
+                  aria-label={`Move chat to ${destination.name}`}
+                  onClick={() => completeAction(() => onMove(destination.id))}
+                >
+                  {destination.kind === "local" ? (
+                    <Laptop size={14} aria-hidden="true" />
+                  ) : (
+                    <Folder size={14} aria-hidden="true" />
+                  )}
+                  <span>{destination.name}</span>
+                </button>
+              ))
+            )}
+          </>
+        ) : (
+          <>
+            <button
+              className="menu-item"
+              type="button"
+              role="menuitem"
+              onClick={() => completeAction(onPin)}
+            >
+              {pinned ? (
+                <PinOff size={14} aria-hidden="true" />
               ) : (
-                destinations.map((destination) => (
-                  <button
-                    key={destination.id}
-                    type="button"
-                    role="menuitem"
-                    aria-label={`Move chat to ${destination.name}`}
-                    onClick={() => completeAction(() => onMove(destination.id))}
-                  >
-                    {destination.kind === "local" ? (
-                      <Laptop size={14} aria-hidden="true" />
-                    ) : (
-                      <Folder size={14} aria-hidden="true" />
-                    )}
-                    <span>{destination.name}</span>
-                  </button>
-                ))
+                <Pin size={14} aria-hidden="true" />
               )}
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => completeAction(onPin)}
-              >
-                {pinned ? (
-                  <PinOff size={14} aria-hidden="true" />
-                ) : (
-                  <Pin size={14} aria-hidden="true" />
-                )}
-                <span>{pinned ? "Unpin chat" : "Pin chat"}</span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => setMoving(true)}
-              >
-                <FolderInput size={14} aria-hidden="true" />
-                <span>Move to project</span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  onOpenChange(false);
-                  onRename();
-                }}
-              >
-                <Pencil size={14} aria-hidden="true" />
-                <span>Rename chat</span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                disabled={archiveDisabled}
-                onClick={() => completeAction(onArchive)}
-              >
-                <Archive size={14} aria-hidden="true" />
-                <span>Archive chat</span>
-              </button>
-            </>
-          )}
-        </div>
-      ) : null}
+              <span>{pinned ? "Unpin chat" : "Pin chat"}</span>
+            </button>
+            <button
+              className="menu-item"
+              type="button"
+              role="menuitem"
+              onClick={() => setMoving(true)}
+            >
+              <FolderInput size={14} aria-hidden="true" />
+              <span>Move to project</span>
+            </button>
+            <button
+              className="menu-item"
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onOpenChange(false);
+                onRename();
+              }}
+            >
+              <Pencil size={14} aria-hidden="true" />
+              <span>Rename chat</span>
+            </button>
+            <button
+              className="menu-item"
+              type="button"
+              role="menuitem"
+              disabled={archiveDisabled}
+              onClick={() => completeAction(onArchive)}
+            >
+              <Archive size={14} aria-hidden="true" />
+              <span>Archive chat</span>
+            </button>
+          </>
+        )}
+      </MenuPopover>
     </div>
   );
 }

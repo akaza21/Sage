@@ -1,5 +1,7 @@
 import { ListFilter } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
+
+import { MenuPopover } from "../ui/MenuPopover";
 
 import {
   AGENT_RAIL_GROUPINGS,
@@ -7,7 +9,6 @@ import {
   AGENT_RAIL_SHOW_FIELDS,
   AGENT_RAIL_STATUS_LABELS,
   AGENT_RAIL_STATUS_SECTIONS,
-  type AgentRailStatusFilter,
 } from "./agentRailStatusView";
 import {
   collapseAllAgentRailSections,
@@ -34,124 +35,174 @@ export function AgentRailFilterMenu({
 }) {
   const prefs = useAgentRailViewPrefs();
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [openingFocus, setOpeningFocus] = useState<"first" | "last">("first");
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuId = useId();
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointer);
-    return () => window.removeEventListener("pointerdown", onPointer);
-  }, [open]);
+  const closeAndRestoreFocus = useCallback(() => {
+    setOpen(false);
+    queueMicrotask(() => triggerRef.current?.focus());
+  }, []);
 
   return (
-    <div className="agent-rail-filter" ref={rootRef}>
+    <div className="agent-rail-filter">
       <button
+        ref={triggerRef}
         className="agent-rail-filter__trigger"
         type="button"
         aria-label="Chat list options"
+        aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={menuId}
         title="Chat list options"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          setOpeningFocus("first");
+          setOpen((value) => !value);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+          event.preventDefault();
+          setOpeningFocus(event.key === "ArrowUp" ? "last" : "first");
+          setOpen(true);
+        }}
       >
         <ListFilter size={14} aria-hidden="true" />
       </button>
-      {open ? (
+      <MenuPopover
+        id={menuId}
+        open={open}
+        ariaLabel="Chat list options"
+        className="agent-rail-filter__menu"
+        initialFocus={openingFocus}
+        trapFocus
+        triggerRef={triggerRef}
+        onDismiss={() => setOpen(false)}
+      >
         <div
-          className="agent-rail-filter__menu"
-          id={menuId}
-          role="menu"
-          aria-label="Chat list options"
+          className="menu-group"
+          role="group"
+          aria-labelledby={`${menuId}-grouping`}
         >
-          <p className="agent-rail-filter__heading">Grouping</p>
+          <p id={`${menuId}-grouping`} className="menu-group-label">
+            Grouping
+          </p>
           {AGENT_RAIL_GROUPINGS.map((grouping) => (
             <button
+              className="menu-item"
               key={grouping}
               type="button"
               role="menuitemradio"
+              tabIndex={-1}
               aria-checked={prefs.grouping === grouping}
               onClick={() => setAgentRailGrouping(grouping)}
             >
               {groupingLabels[grouping]}
             </button>
           ))}
-          <p className="agent-rail-filter__heading">Ordering</p>
+        </div>
+        <div
+          className="menu-group"
+          role="group"
+          aria-labelledby={`${menuId}-ordering`}
+        >
+          <p id={`${menuId}-ordering`} className="menu-group-label">
+            Ordering
+          </p>
           {AGENT_RAIL_ORDERINGS.map((ordering) => (
             <button
+              className="menu-item"
               key={ordering}
               type="button"
               role="menuitemradio"
+              tabIndex={-1}
               aria-checked={prefs.ordering === ordering}
               onClick={() => setAgentRailOrdering(ordering)}
             >
               {orderingLabels[ordering]}
             </button>
           ))}
-          <p className="agent-rail-filter__heading">Show</p>
+        </div>
+        <div
+          className="menu-group"
+          role="group"
+          aria-labelledby={`${menuId}-show`}
+        >
+          <p id={`${menuId}-show`} className="menu-group-label">
+            Show
+          </p>
           {AGENT_RAIL_SHOW_FIELDS.map((field) => (
             <button
+              className="menu-item"
               key={field}
               type="button"
               role="menuitemcheckbox"
+              tabIndex={-1}
               aria-checked={prefs.show[field]}
               onClick={() => setAgentRailShowField(field, !prefs.show[field])}
             >
               {showLabels[field]}
             </button>
           ))}
-          <p className="agent-rail-filter__heading">Filters</p>
-          <label className="agent-rail-filter__select">
-            Status
-            <select
-              aria-label="Filter by status"
-              value={prefs.statusFilter}
-              onChange={(event) =>
-                setAgentRailStatusFilter(
-                  event.currentTarget.value as AgentRailStatusFilter,
-                )
-              }
-            >
-              <option value="all">All</option>
-              {AGENT_RAIL_STATUS_SECTIONS.map((id) => (
-                <option key={id} value={id}>
-                  {AGENT_RAIL_STATUS_LABELS[id]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            aria-checked={prefs.showArchived}
-            onClick={() => setAgentRailShowArchived(!prefs.showArchived)}
-          >
-            Archived
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              collapseAllAgentRailSections(AGENT_RAIL_STATUS_SECTIONS);
-              setOpen(false);
-            }}
-          >
-            Collapse All
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              onMarkAllRead();
-              setOpen(false);
-            }}
-          >
-            Mark All as Read
-          </button>
         </div>
-      ) : null}
+        <div
+          className="menu-group"
+          role="group"
+          aria-labelledby={`${menuId}-filters`}
+        >
+          <p id={`${menuId}-filters`} className="menu-group-label">
+            Filters
+          </p>
+          {(["all", ...AGENT_RAIL_STATUS_SECTIONS] as const).map((status) => (
+            <button
+              key={status}
+              className="menu-item"
+              type="button"
+              role="menuitemradio"
+              tabIndex={-1}
+              aria-checked={prefs.statusFilter === status}
+              onClick={() => setAgentRailStatusFilter(status)}
+            >
+              {status === "all"
+                ? "All statuses"
+                : AGENT_RAIL_STATUS_LABELS[status]}
+            </button>
+          ))}
+        </div>
+        <button
+          className="menu-item"
+          type="button"
+          role="menuitemcheckbox"
+          tabIndex={-1}
+          aria-checked={prefs.showArchived}
+          onClick={() => setAgentRailShowArchived(!prefs.showArchived)}
+        >
+          Archived
+        </button>
+        <button
+          className="menu-item"
+          type="button"
+          role="menuitem"
+          tabIndex={-1}
+          onClick={() => {
+            collapseAllAgentRailSections(AGENT_RAIL_STATUS_SECTIONS);
+            closeAndRestoreFocus();
+          }}
+        >
+          Collapse All
+        </button>
+        <button
+          className="menu-item"
+          type="button"
+          role="menuitem"
+          tabIndex={-1}
+          onClick={() => {
+            onMarkAllRead();
+            closeAndRestoreFocus();
+          }}
+        >
+          Mark All as Read
+        </button>
+      </MenuPopover>
     </div>
   );
 }

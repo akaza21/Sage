@@ -346,7 +346,7 @@ it("keeps folder grouping by default and omits Cursor-only rail fields", () => {
   });
   render(<LeftSidebar />);
   expect(screen.getByText("Projects")).toBeInTheDocument();
-  expect(screen.queryByText("Needs Attention")).toBeNull();
+  expect(screen.queryByRole("menuitemradio", { name: "Status" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Chat list options" }));
   expect(
     screen.getByRole("menu", { name: "Chat list options" }),

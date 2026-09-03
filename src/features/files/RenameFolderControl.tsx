@@ -78,7 +78,7 @@ export function RenameFolderControl({
   return (
     <>
       <button
-        className="explorer-action-menu__item"
+        className="menu-item explorer-action-menu__item"
         type="button"
         role="menuitem"
         tabIndex={-1}

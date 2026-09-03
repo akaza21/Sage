@@ -4,6 +4,17 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("Editor visual-reference seam", () => {
+  it("keeps portaled Editor surfaces on the Editor palette", async () => {
+    const css = await readFile(
+      resolve("src/styles/editor-visual-reference.css"),
+      "utf8",
+    );
+
+    expect(css).toMatch(
+      /\.workbench--editor,\s*\.new-file-dialog--editor,\s*\.dirty-dialog--editor,\s*\.menu-popover--editor\s*\{/,
+    );
+  });
+
   it("loads one Editor-scoped finish layer with the frozen neutral roles", async () => {
     const [entry, css] = await Promise.all([
       readFile(resolve("src/main.tsx"), "utf8"),
@@ -60,9 +71,7 @@ describe("Editor visual-reference seam", () => {
     const radiusProjection = css.indexOf("--radius-sm: 4px");
     expect(radiusProjection).toBeGreaterThan(-1);
     expect(radiusProjection).toBeLessThan(forcedColorsNone);
-    expect(css).toMatch(
-      /\.workbench--editor\s*\{[^}]*font-family:\s*var\(--font-family-ui\);/s,
-    );
+    expect(css).toContain("font-family: var(--font-family-ui);");
     expect(css).toMatch(
       /\.sidebar__heading > button\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px;/s,
     );
