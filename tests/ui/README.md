@@ -5,6 +5,52 @@ It loads the normal Vite application and then installs bounded, deterministic
 fixture state through `fixtures/visualScenarios.ts`. The fixture is not imported
 by production code and does not replace native acceptance.
 
+## Structure (Q-07 surface split)
+
+The lane keeps the same 57 tests, test titles, screenshot names, snapshot
+directory (`workbench.visual.spec.ts-snapshots/`), clock/locale/font/reflow
+settlement, and accessibility/viewport/DPR/reduced-motion behavior as the
+pre-split `workbench.visual.ts` + `agent-resource-shell.visual.ts` pair.
+No baseline PNG changed in the split.
+
+| Surface | Playwright spec | Fixture owner |
+| --- | --- | --- |
+| Agent | `agent.visual.ts` (conversation, dual/single/long Chat, activity, image, child activity, Agent accessibility/responsive states) | `fixtures/surfaces/agentVisualFixtures.ts` |
+| Editor shell | `editor.visual.ts` (Explorer, Find, Settings, Source Control, welcome, Editor narrow/forced-colors/zoom) | `fixtures/surfaces/editorVisualFixtures.ts` |
+| Editor tools | `editor-tools.visual.ts` (Search, Problems, Outline, control states, focus/selection/resizer language, row containment at zoom) | `fixtures/surfaces/editorVisualFixtures.ts` |
+| Resources | `resource.visual.ts` (File, Diff, Preview, the folded V6a right-resource shell, artifact follow/pin, cross-mode parity) | `fixtures/surfaces/resourceVisualFixtures.ts` |
+| Recovery | `recovery.visual.ts` (failed/error and waiting/running Turn states) | `fixtures/surfaces/recoveryVisualFixtures.ts` |
+
+Shared code is limited to parameterized, mode-neutral browser primitives in
+`shared/visualBrowserPrimitives.ts` (fixed clock, workbench layout,
+navigation, font/reflow settlement, transcript settlement,
+viewport-overflow probe, canonical screenshot). It owns no scenario
+registry, no mode branches, no landmark or surface assertions, and
+registers no tests. Each surface owns its registry slice, landmarks,
+branches, and probes in a co-located helper: `agentVisualHelpers.ts`
+(Agent landmarks, activity/image/child-activity assertions, Agent
+canonical runner), `editorVisualHelpers.ts` (Editor landmarks, Find
+containment, Editor canonical runner), and `resourceVisualHelpers.ts`
+(Agent-mode scenario opener, File/Diff resource-state installers, and
+containment probes). Each spec
+file iterates the authoritative `fixtures/visualScenarioCatalog.ts`
+catalogue filtered to its slice and registers its own `test()` entries,
+so Playwright attribution stays with the owning lane. Fixture truth is
+layered as `fixtures/visualScenarioTypes.ts` (scenario names, modes,
+and the disjoint surface slices), `fixtures/visualScenarioCatalog.ts`
+(ordered catalogue plus `scenarioSurface`), `fixtures/visualFixtureIds.ts`,
+`fixtures/visualItemBuilders.ts`, `fixtures/visualChatPages.ts`,
+`fixtures/visualDocumentFixtures.ts`, `fixtures/visualWorkbenchState.ts`, and
+`fixtures/visualScenarioShell.ts` (scenario dispatch plus workbench install);
+Editor-tool installation lives in
+`fixtures/surfaces/editorVisualFixtures.ts`.
+`fixtures/visualScenarios.ts` is a single-route compatibility entrypoint
+exposing only the dynamically consumed `installVisualScenario`; every
+other member is imported from its authoritative module directly.
+`fixtures/visualScenarioOwnership.test.ts` proves the slices are explicit,
+disjoint, complete, deterministic, and duplicate-free, and asserts the
+barrel's exact export-key allowlist so future leakage fails.
+
 ## Commands
 
 ```powershell

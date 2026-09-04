@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { buildVisualScenario, VISUAL_SCENARIOS } from "./visualScenarios";
+import { VISUAL_SCENARIOS } from "./visualScenarioCatalog";
+import { buildVisualScenario } from "./visualScenarioShell";
 
 describe("visual scenario contract", () => {
   it("keeps the Wave 2 scenario matrix explicit and reviewable", () => {

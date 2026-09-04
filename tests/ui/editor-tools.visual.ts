@@ -1,0 +1,549 @@
+import { expect, test } from "@playwright/test";
+
+import {
+  expectNoViewportOverflow,
+  openScenario,
+} from "./shared/visualBrowserPrimitives";
+
+test.describe("Wave 2 accessibility and responsive states", () => {
+  test("shows selected, pressed, disabled, dirty, and confirmation states", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    const workbench = await openScenario(page, "editor", "editor");
+    await page.evaluate(async () => {
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      fixtures.installVisualDirtyEditor();
+    });
+
+    await expect(
+      page.getByRole("status", {
+        name: "Unsaved changes. Press Control or Command plus S to save.",
+      }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Discard" })).toHaveCount(0);
+
+    await expect(page.getByTitle("Indentation")).toHaveText("Spaces: 2");
+    await expect(
+      page.getByRole("group", { name: "Editor appearance" }),
+    ).toHaveCount(0);
+
+    const sourceControl = page.getByRole("button", {
+      name: "Source Control",
+      exact: true,
+    });
+    await sourceControl.click();
+    await expect(sourceControl).toHaveAttribute("aria-expanded", "true");
+
+    const sourceTools = page.getByLabel("Source Control project tools", {
+      exact: true,
+    });
+    await expect(
+      sourceTools.getByRole("button", { name: "Publish Branch", exact: true }),
+    ).toBeVisible();
+    await expect(
+      sourceTools.getByRole("form", {
+        name: "Commit staged changes in Sage",
+      }),
+    ).toHaveCount(0);
+
+    const discard = sourceTools.getByRole("button", {
+      name: /Discard unstaged changes to src\/workbench\/AgentChatPanes\.tsx/,
+    });
+    await discard.hover();
+    await expect(discard).toHaveCSS("background-color", "rgb(42, 42, 42)");
+    await discard.click();
+    const confirmation = sourceTools.getByRole("group", {
+      name: /Confirm discard of src\/workbench\/AgentChatPanes\.tsx/,
+    });
+    await expect(confirmation).toBeVisible();
+    const cancel = confirmation.getByRole("button", {
+      name: /Cancel discard/,
+    });
+    await expect(cancel).toBeVisible();
+    await cancel.focus();
+    await expect(cancel).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    const confirmDiscard = confirmation.getByRole("button", {
+      name: /Confirm discard/,
+    });
+    await expect(confirmDiscard).toBeFocused();
+    await expect(page.locator(":focus-visible")).toHaveCount(1);
+
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("editor-control-states.png");
+
+    for (const state of ["ahead", "behind", "diverged"] as const) {
+      await page.evaluate(async (primaryState) => {
+        const fixtures =
+          await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+        fixtures.installVisualRepositoryPrimaryState(primaryState);
+      }, state);
+      const label =
+        state === "ahead"
+          ? "Push"
+          : state === "behind"
+            ? "Pull"
+            : "Sync Changes";
+      const action = sourceTools.getByRole("button", {
+        name: label,
+        exact: true,
+      });
+      await expect(action).toBeVisible();
+      if (state === "diverged") await expect(action).toBeDisabled();
+    }
+    await expect(sourceTools).toContainText(
+      "Sage cannot yet choose a merge or rebase safely.",
+    );
+  });
+
+  test("keeps Editor Source Control errors distinct", async ({ page }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    const workbench = await openScenario(page, "editor", "editor");
+    await page.evaluate(async () => {
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      fixtures.installVisualRepositoryLoading();
+    });
+
+    await page
+      .getByRole("button", { name: "Source Control", exact: true })
+      .click();
+    const sourceTools = page.getByLabel("Source Control project tools", {
+      exact: true,
+    });
+    await expect(sourceTools.getByRole("status")).toContainText(
+      "Loading repository status",
+    );
+    await expect(workbench).toHaveScreenshot(
+      "editor-source-control-loading.png",
+    );
+    await page.evaluate(async () => {
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      fixtures.installVisualRepositoryError();
+    });
+    await expect(sourceTools.getByRole("alert")).toContainText(
+      "Could not refresh repository inventory.",
+    );
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("editor-source-control-error.png");
+  });
+
+  test("keeps Editor Search compact and visually stable", async ({ page }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    const workbench = await openScenario(page, "editor", "editor");
+
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    const searchTools = page.getByLabel("Search project tools", {
+      exact: true,
+    });
+    await searchTools.getByRole("searchbox").fill("AgentChatPanes");
+    await searchTools.getByRole("searchbox").press("Enter");
+    await expect(
+      searchTools.getByRole("button", {
+        name: "Open src/workbench/AgentChatPanes.tsx at line 3, column 17",
+      }),
+    ).toBeVisible();
+    await expect(searchTools).toContainText(
+      "export function AgentChatPanes() {",
+    );
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("editor-search-populated.png");
+  });
+
+  test("keeps Editor Search empty state bounded", async ({ page }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    const workbench = await openScenario(page, "editor", "editor");
+
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    const searchTools = page.getByLabel("Search project tools", {
+      exact: true,
+    });
+    await expect(searchTools).toContainText(
+      "Search all roots in the active Project.",
+    );
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("editor-search.png");
+  });
+
+  test("keeps Editor Problems cards bounded", async ({ page }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    const workbench = await openScenario(page, "editor", "editor");
+
+    await page.getByRole("button", { name: "Problems", exact: true }).click();
+    const problemsTools = page.getByLabel("Problems project tools", {
+      exact: true,
+    });
+    await expect(
+      problemsTools.getByRole("heading", { name: "Problems" }),
+    ).toBeVisible();
+    await expect(problemsTools.getByText("3 Problems")).toBeVisible();
+    const problem = problemsTools.getByRole("button", {
+      name: "Flag: maximum should be named maxVisibleChats. src/workbench/AgentChatPanes.tsx, line 4, column 43",
+    });
+    await expect(problem).toBeVisible();
+    await expect(problem).toHaveAttribute(
+      "title",
+      "maximum should be named maxVisibleChats — src/workbench/AgentChatPanes.tsx:4:43",
+    );
+    await expect(problemsTools.locator(".problem-card")).toHaveCount(3);
+    await expect(problem).toContainText("AgentChatPanes.tsx:4:43");
+    const problemPosition = problem.locator(".problem-card__location-position");
+    await expect(problemPosition).toHaveText(":4:43");
+    await expect(problemPosition).toBeInViewport();
+    await problem.click();
+    await expect(page.getByTitle("Caret position")).toHaveText("Ln 4, Col 43");
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("editor-problems-populated.png");
+  });
+
+  test("keeps Editor Problems empty state bounded", async ({ page }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    const workbench = await openScenario(page, "editor", "editor");
+    await page.evaluate(async () => {
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      fixtures.installVisualEmptyEditorTools();
+    });
+
+    await page.getByRole("button", { name: "Problems", exact: true }).click();
+    const problemsTools = page.getByLabel("Problems project tools", {
+      exact: true,
+    });
+    await expect(problemsTools).toContainText(
+      "No problems for the active File.",
+    );
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("editor-problems.png");
+  });
+
+  test("keeps Editor Outline cards bounded", async ({ page }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    const workbench = await openScenario(page, "editor", "editor");
+
+    await page.getByRole("button", { name: "Outline", exact: true }).click();
+    const outlineTools = page.getByLabel("Outline project tools", {
+      exact: true,
+    });
+    await expect(
+      outlineTools.getByRole("heading", { name: "Outline" }),
+    ).toBeVisible();
+    await expect(outlineTools.getByText("4 Symbols")).toBeVisible();
+    const symbol = outlineTools.getByRole("button", {
+      name: "Function: AgentChatPanes. src/workbench/AgentChatPanes.tsx, line 3, column 1",
+    });
+    await expect(symbol).toBeVisible();
+    await expect(symbol).toHaveAttribute(
+      "title",
+      "AgentChatPanes — src/workbench/AgentChatPanes.tsx:3:1",
+    );
+    await expect(outlineTools.locator(".outline-card")).toHaveCount(4);
+    await expect(
+      outlineTools.getByRole("button", {
+        name: "Type: AgentChatPanesWithProjectScopedResourceFollowing. src/workbench/AgentChatPanes.tsx, line 3, column 1",
+      }),
+    ).toHaveAttribute(
+      "title",
+      "AgentChatPanesWithProjectScopedResourceFollowing — src/workbench/AgentChatPanes.tsx:3:1",
+    );
+    const symbolPosition = symbol.locator(".outline-card__location-position");
+    await expect(symbolPosition).toHaveText(":3:1");
+    await expect(symbolPosition).toBeInViewport();
+    await symbol.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTitle("Caret position")).toHaveText("Ln 3, Col 1");
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("editor-outline-populated.png");
+  });
+
+  test("keeps Editor Outline empty state bounded", async ({ page }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    const workbench = await openScenario(page, "editor", "editor");
+    await page.evaluate(async () => {
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      fixtures.installVisualEmptyEditorTools();
+    });
+
+    await page.getByRole("button", { name: "Outline", exact: true }).click();
+    const outlineTools = page.getByLabel("Outline project tools", {
+      exact: true,
+    });
+    await expect(outlineTools).toContainText("No symbols for the active File.");
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("editor-outline.png");
+  });
+
+  test("keeps Editor focus, selection, and resize highlights subtle", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    const workbench = await openScenario(page, "editor", "editor");
+
+    const selectedFile = page
+      .getByRole("tree", { name: "Project files" })
+      .getByRole("treeitem", {
+        name: "Open file src/workbench/AgentChatPanes.tsx",
+      });
+    const activeTab = page.getByRole("tab", {
+      name: /AgentChatPanes\.tsx/,
+    });
+    const explorerActivity = page.getByRole("button", {
+      name: "Explorer",
+      exact: true,
+    });
+    const persistentStates = await page.evaluate(() => {
+      const workbenchNode =
+        document.querySelector<HTMLElement>(".workbench--editor");
+      const selected = document.querySelector<HTMLElement>(
+        ".workbench--editor .tree__row--selected",
+      );
+      const tab = document.querySelector<HTMLElement>(
+        ".workbench--editor .tab--active",
+      );
+      const activity = document.querySelector<HTMLElement>(
+        ".workbench--editor .activity-rail__button--active",
+      );
+      if (!workbenchNode || !selected || !tab || !activity) return null;
+      return {
+        focusWidth: getComputedStyle(workbenchNode)
+          .getPropertyValue("--focus-ring-width")
+          .trim(),
+        selectedShadow: getComputedStyle(selected).boxShadow,
+        tabShadow: getComputedStyle(tab).boxShadow,
+        activityIndicatorWidth: getComputedStyle(activity, "::after").width,
+      };
+    });
+    expect(persistentStates).not.toBeNull();
+    expect(persistentStates!.focusWidth).toBe("1px");
+    expect(persistentStates!.selectedShadow).toContain("1px");
+    expect(persistentStates!.selectedShadow).not.toContain("2px");
+    expect(persistentStates!.tabShadow).toContain("1px");
+    expect(persistentStates!.activityIndicatorWidth).toBe("1px");
+    await expect(selectedFile).toBeVisible();
+    await expect(activeTab).toHaveAttribute("aria-selected", "true");
+    await expect(explorerActivity).toHaveAttribute("aria-expanded", "true");
+
+    const editorContent = page.getByRole("textbox", {
+      name: "Edit src/workbench/AgentChatPanes.tsx",
+    });
+    await editorContent.focus();
+    await expect(page.locator(".file-surface .cm-editor")).toHaveClass(
+      /cm-focused/,
+    );
+    const editorFocus = await page.locator(".file-surface").evaluate((file) => {
+      const frame = file.querySelector<HTMLElement>(".cm-editor");
+      const content = file.querySelector<HTMLElement>(".cm-content");
+      if (!frame || !content) return null;
+      return {
+        frameOutline: getComputedStyle(frame).outlineWidth,
+        frameShadow: getComputedStyle(frame).boxShadow,
+        contentOutline: getComputedStyle(content).outlineWidth,
+      };
+    });
+    expect(editorFocus).not.toBeNull();
+    expect(editorFocus!.frameOutline).toBe("0px");
+    expect(editorFocus!.frameShadow).not.toBe("none");
+    expect(editorFocus!.contentOutline).toBe("0px");
+
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    const searchTools = page.getByLabel("Search project tools", {
+      exact: true,
+    });
+    const searchbox = searchTools.getByRole("searchbox");
+    await searchbox.focus();
+    const queryFocus = await searchTools
+      .locator(".workspace-search__input")
+      .evaluate((input) => {
+        const style = getComputedStyle(input);
+        return {
+          borderWidth: style.borderTopWidth,
+          borderColor: style.borderTopColor,
+          shadow: style.boxShadow,
+        };
+      });
+    expect(queryFocus.borderWidth).toBe("1px");
+    expect(queryFocus.shadow).not.toBe("none");
+    expect(queryFocus.borderColor).not.toContain("255, 255, 255");
+
+    await searchTools
+      .getByRole("button", { name: "Show Search filters" })
+      .click();
+    const include = searchTools.getByRole("textbox", {
+      name: "Files to include",
+    });
+    await include.focus();
+    const filterFocus = await include.evaluate((input) => {
+      const style = getComputedStyle(input);
+      return {
+        borderWidth: style.borderTopWidth,
+        borderColor: style.borderTopColor,
+        outlineWidth: style.outlineWidth,
+        shadow: style.boxShadow,
+      };
+    });
+    expect(filterFocus).toMatchObject({
+      borderWidth: "1px",
+      outlineWidth: "0px",
+    });
+    expect(filterFocus.shadow).not.toBe("none");
+    expect(filterFocus.borderColor).not.toContain("255, 255, 255");
+
+    const matchCase = searchTools.getByRole("button", { name: "Match case" });
+    await matchCase.click();
+    await expect(matchCase).toHaveAttribute("aria-pressed", "true");
+    const pressed = await matchCase.evaluate((button) => {
+      const style = getComputedStyle(button);
+      return { background: style.backgroundColor, shadow: style.boxShadow };
+    });
+    expect(pressed.background).not.toBe("rgb(42, 75, 109)");
+    await expect
+      .poll(() =>
+        matchCase.evaluate((button) => getComputedStyle(button).boxShadow),
+      )
+      .toContain("1px");
+
+    const splitter = page.getByRole("separator", {
+      name: "Resize Editor tool rail",
+    });
+    const bounds = await splitter.boundingBox();
+    expect(bounds).not.toBeNull();
+    await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + 80);
+    await searchTools
+      .getByRole("textbox", { name: "Files to exclude" })
+      .focus();
+    await page.keyboard.press("Tab");
+    await expect(splitter).toBeFocused();
+    const focusedSplitter = await splitter.evaluate((node) => {
+      const host = getComputedStyle(node);
+      const line = getComputedStyle(node, "::after");
+      return {
+        focusVisible: node.matches(":focus-visible"),
+        outlineStyle: host.outlineStyle,
+        lineWidth: line.width,
+        lineColor: line.backgroundColor,
+        lineShadow: line.boxShadow,
+      };
+    });
+    expect(focusedSplitter).toMatchObject({
+      focusVisible: true,
+      outlineStyle: "none",
+      lineWidth: "1px",
+    });
+    expect(focusedSplitter.lineColor).not.toBe("rgba(0, 0, 0, 0)");
+    expect(focusedSplitter.lineColor).not.toContain("255, 255, 255");
+    expect(focusedSplitter.lineShadow).not.toBe("none");
+
+    await page.mouse.down();
+    await expect(splitter).toHaveClass(/workbench-sidebar-splitter--active/);
+    await expect(workbench).toHaveScreenshot("editor-resizer-states.png");
+    await page.mouse.up();
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect
+      .poll(() =>
+        matchCase.evaluate(
+          (button) => getComputedStyle(button).transitionDuration,
+        ),
+      )
+      .toBe("0s");
+  });
+
+  test("keeps Editor planes and resize boundaries intentional", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    await openScenario(page, "editor", "editor");
+
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const activity = document.querySelector<HTMLElement>(
+            ".workbench--editor .activity-rail",
+          );
+          const sidebar = document.querySelector<HTMLElement>(
+            '.workbench--editor .sidebar[aria-label="Explorer project tools"]',
+          );
+          const splitter = document.querySelector<HTMLElement>(
+            ".workbench--editor .workbench-sidebar-splitter",
+          );
+          const center = document.querySelector<HTMLElement>(
+            ".workbench--editor .center-region",
+          );
+          if (!activity || !sidebar || !splitter || !center) return null;
+          const activityStyle = getComputedStyle(activity);
+          const sidebarStyle = getComputedStyle(sidebar);
+          const splitterStyle = getComputedStyle(splitter);
+          const splitterLine = getComputedStyle(splitter, "::after");
+          const centerStyle = getComputedStyle(center);
+          return {
+            activityBackground: activityStyle.backgroundColor,
+            activityWidth: activity.getBoundingClientRect().width,
+            centerBackground: centerStyle.backgroundColor,
+            centerBorder: centerStyle.borderColor,
+            centerRadius: centerStyle.borderRadius,
+            sidebarBackground: sidebarStyle.backgroundColor,
+            sidebarBorder: sidebarStyle.borderColor,
+            sidebarRadius: sidebarStyle.borderRadius,
+            splitterLine: splitterLine.backgroundColor,
+            splitterWidth: splitterStyle.width,
+          };
+        }),
+      )
+      .toEqual({
+        activityBackground: "rgb(20, 20, 20)",
+        activityWidth: 48,
+        centerBackground: "rgb(20, 20, 20)",
+        centerBorder: "rgb(36, 36, 36)",
+        centerRadius: "6px",
+        sidebarBackground: "rgb(20, 20, 20)",
+        sidebarBorder: "rgb(36, 36, 36)",
+        sidebarRadius: "6px",
+        splitterLine: "rgba(0, 0, 0, 0)",
+        splitterWidth: "8px",
+      });
+  });
+});
+
+test.describe("Wave 2 200% zoom state", () => {
+  test.use({
+    viewport: { width: 690, height: 440 },
+    deviceScaleFactor: 2,
+  });
+
+  test("keeps Problems and Outline rows contained at 200% zoom", async ({
+    page,
+  }) => {
+    await openScenario(page, "editor", "editor");
+
+    await page.getByRole("button", { name: "Problems", exact: true }).click();
+    const problems = page
+      .getByLabel("Problems project tools", { exact: true })
+      .locator(".problem-card");
+    await expect(problems).toHaveCount(3);
+    expect(
+      await problems.evaluateAll((rows) =>
+        rows.every(
+          (row) => row.clientWidth > 0 && row.scrollWidth <= row.clientWidth,
+        ),
+      ),
+    ).toBe(true);
+
+    await page.getByRole("button", { name: "Outline", exact: true }).click();
+    const symbols = page
+      .getByLabel("Outline project tools", { exact: true })
+      .locator(".outline-card");
+    await expect(symbols).toHaveCount(4);
+    expect(
+      await symbols.evaluateAll((rows) =>
+        rows.every(
+          (row) => row.clientWidth > 0 && row.scrollWidth <= row.clientWidth,
+        ),
+      ),
+    ).toBe(true);
+    await expectNoViewportOverflow(page);
+  });
+});
