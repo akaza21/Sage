@@ -27,7 +27,11 @@
 }
 
 .title-bar__start {
+  display: flex;
+  min-width: 0;
   grid-area: start;
+  align-items: center;
+  gap: 14px;
 }
 
 .title-bar__logo {
@@ -232,7 +236,7 @@
   height: 100%;
   flex: 0 0 var(--control-height-compact);
   border-left: 1px solid var(--color-border-subtle);
-  border-radius: 0;
+  border-radius: var(--radius-none);
 }
 
 .right-region {

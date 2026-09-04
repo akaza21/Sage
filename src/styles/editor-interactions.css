@@ -95,13 +95,8 @@
 }
 
 .workbench--editor .status-bar__button {
+  min-width: 28px;
   border-inline: 1px solid transparent;
-}
-
-.workbench--editor .status-bar__button:focus-visible {
-  border-inline-color: var(--color-focus-ring);
-  outline: 0;
-  box-shadow: var(--focus-ring-inset);
 }
 
 .workbench--editor .source-change__discard-confirmation {

@@ -143,6 +143,31 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(sidebarSplitter).toHaveCount(1);
     await expect(chatSplitter).toHaveCount(1);
     expect(
+      await page.evaluate(() => {
+        const chatRow =
+          document.querySelector<HTMLElement>(".project-chat-row");
+        const chat = document.querySelector<HTMLElement>(".project-chat");
+        const working = document.querySelector<HTMLElement>(
+          ".project-chat__working",
+        );
+        const splitter = document.querySelector<HTMLElement>(
+          ".agent-chat-splitter",
+        );
+        if (!chatRow || !chat || !working || !splitter) return null;
+        return {
+          chat: getComputedStyle(chat).borderRadius,
+          chatRow: getComputedStyle(chatRow).borderRadius,
+          splitter: getComputedStyle(splitter, "::after").borderRadius,
+          working: getComputedStyle(working).borderRadius,
+        };
+      }),
+    ).toEqual({
+      chat: "6px",
+      chatRow: "6px",
+      splitter: "999px",
+      working: "50%",
+    });
+    expect(
       await sidebarSplitter.evaluate(
         (node) => getComputedStyle(node, "::after").width,
       ),

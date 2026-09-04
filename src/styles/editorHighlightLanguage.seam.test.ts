@@ -5,9 +5,10 @@ import { describe, expect, it } from "vitest";
 
 describe("Editor highlight language seam", () => {
   it("loads one normal-color Editor-owned highlight layer last", async () => {
-    const [entry, css] = await Promise.all([
+    const [entry, css, visualCss] = await Promise.all([
       readFile(resolve("src/main.tsx"), "utf8"),
       readFile(resolve("src/styles/editor-highlight-language.css"), "utf8"),
+      readFile(resolve("src/styles/editor-visual-reference.css"), "utf8"),
     ]);
 
     expect(entry).toContain('import "./styles/editor-highlight-language.css"');
@@ -15,31 +16,39 @@ describe("Editor highlight language seam", () => {
       entry.indexOf("settings-surface.css"),
     );
     expect(css).toContain("@media (forced-colors: none)");
-    expect(css).toContain("--highlight-focus-edge: color-mix(");
-    expect(css).toContain("--highlight-focus-halo: color-mix(");
-    expect(css).toContain("--editor-focus-edge: var(--highlight-focus-edge)");
-    expect(css).toContain("--editor-focus-halo: var(--highlight-focus-halo)");
-    expect(css).toContain(
+    expect(visualCss).toContain("--highlight-focus-edge: color-mix(");
+    expect(visualCss).toContain("--highlight-focus-halo: color-mix(");
+    expect(visualCss).toContain(
+      "--editor-focus-edge: var(--highlight-focus-edge)",
+    );
+    expect(visualCss).toContain(
+      "--editor-focus-halo: var(--highlight-focus-halo)",
+    );
+    expect(visualCss).toContain(
       "--editor-selection-fill: var(--highlight-selection-fill)",
     );
-    expect(css).toContain(
+    expect(visualCss).toContain(
       "--editor-selection-edge: var(--highlight-selection-edge)",
     );
-    expect(css).toContain("--editor-active-fill: var(--highlight-active-fill)");
-    expect(css).toContain("--editor-active-edge: var(--highlight-active-edge)");
-    expect(css).toContain(
+    expect(visualCss).toContain(
+      "--editor-active-fill: var(--highlight-active-fill)",
+    );
+    expect(visualCss).toContain(
+      "--editor-active-edge: var(--highlight-active-edge)",
+    );
+    expect(visualCss).toContain(
       "--editor-focus-halo-shadow: var(--highlight-focus-halo-shadow)",
     );
-    expect(css).toContain(
+    expect(visualCss).toContain(
       "--editor-focus-frame-shadow: var(--highlight-focus-frame-shadow)",
     );
-    expect(css).toContain(
+    expect(visualCss).toContain(
       "--focus-ring: var(--focus-ring-width) solid var(--highlight-focus-edge)",
     );
-    expect(css).toContain(
+    expect(visualCss).toContain(
       "--focus-ring-inset: inset 0 0 0 var(--focus-ring-width)",
     );
-    expect(css).toContain("--editor-code-selection:");
+    expect(visualCss).toContain("--editor-code-selection:");
     expect(css).not.toContain("--focus-ring-width:");
     expect(css).not.toContain("--focus-ring-offset:");
     expect(css).not.toMatch(/@keyframes|animation:/);
@@ -51,10 +60,11 @@ describe("Editor highlight language seam", () => {
   });
 
   it("projects the highlight roles across every Editor control family", async () => {
-    const css = await readFile(
-      resolve("src/styles/editor-highlight-language.css"),
-      "utf8",
-    );
+    const [css, activityCss, visualCss] = await Promise.all([
+      readFile(resolve("src/styles/editor-highlight-language.css"), "utf8"),
+      readFile(resolve("src/styles/editor-activity-bar.css"), "utf8"),
+      readFile(resolve("src/styles/editor-visual-reference.css"), "utf8"),
+    ]);
 
     for (const selector of [
       ".workspace-search__input:focus-within",
@@ -62,7 +72,6 @@ describe("Editor highlight language seam", () => {
       ".workspace-search__query-actions",
       'button[aria-pressed="true"]',
       ".title-bar__mode--active",
-      ".activity-rail__button--active",
       ".tab--active",
       ".tree__row--selected",
       ".explorer-action-menu__item",
@@ -72,17 +81,18 @@ describe("Editor highlight language seam", () => {
       ".source-control-selector select:focus-visible",
       ".repository-commit__label",
       "textarea:focus-visible",
-      ".workbench-sidebar-splitter--active::after",
       ".sidebar:focus-visible",
       ".editor-input .cm-editor.cm-focused",
       ".editor-input .cm-content:focus-visible",
       ".editor-find__query input:focus-visible",
       '.settings-surface input[type="search"]:focus-visible',
       ".settings-surface select:focus-visible",
-      ".new-file-dialog--editor",
-      ".dirty-dialog--editor",
     ]) {
       expect(css).toContain(selector);
     }
+    expect(css).toContain(".activity-rail__button--active");
+    expect(activityCss).toContain(".workbench-sidebar-splitter--active::after");
+    expect(visualCss).toContain(".new-file-dialog--editor");
+    expect(visualCss).toContain(".dirty-dialog--editor");
   });
 });

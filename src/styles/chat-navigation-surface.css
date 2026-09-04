@@ -4,7 +4,7 @@
   min-width: 0;
   grid-template-columns: minmax(0, 1fr) minmax(28px, auto);
   align-items: center;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
 }
 
 .project-chat-row--foreign {
@@ -24,7 +24,7 @@
   height: 24px;
   padding: 0 8px;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
@@ -40,12 +40,23 @@
   position: relative;
   display: flex;
   width: 100%;
+  min-width: 0;
   height: 32px;
   align-items: center;
   gap: 7px;
   padding: 0 4px 0 8px;
-  border-radius: 5px 0 0 5px;
+  border-radius: var(--radius-sm);
+  border: 0;
+  color: var(--color-text-secondary);
+  background: transparent;
   font-size: var(--font-size-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-chat:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .project-chat-row .project-chat {
@@ -75,7 +86,7 @@
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   color: var(--color-text-muted);
   background: transparent;
   cursor: pointer;
@@ -165,7 +176,7 @@
   height: 24px;
   padding: 0 6px;
   border: 1px solid var(--color-accent);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   color: var(--color-text-primary);
   outline: none;
   background: var(--color-surface-active);
@@ -260,7 +271,7 @@
   width: 5px;
   height: 5px;
   flex: 0 0 auto;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: var(--color-accent);
   content: "";
 }
@@ -269,7 +280,7 @@
   width: 6px;
   height: 6px;
   flex: 0 0 auto;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: var(--color-accent);
   animation: sage-working-pulse 1.4s ease-in-out infinite;
 }
@@ -318,7 +329,7 @@
   margin: 6px;
   padding: 9px;
   border: 1px dashed var(--color-border-strong);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   color: var(--color-text-secondary);
   background: transparent;
   font-size: var(--font-size-sm);
@@ -342,7 +353,7 @@
   width: 23px;
   height: 23px;
   place-items: center;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   color: var(--color-accent-hover);
   background: var(--color-accent-muted);
   font-size: var(--font-size-xs);

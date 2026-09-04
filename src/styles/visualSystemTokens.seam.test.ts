@@ -18,6 +18,11 @@ describe("Wave 2 visual-system tokens", () => {
     expect(rootBlock).toMatch(/--color-panel:\s*#141820;/);
     expect(rootBlock).toMatch(/--color-surface:\s*#1a1f28;/);
     expect(rootBlock).toMatch(/--color-text-primary:\s*#e8edf5;/);
+    expect(rootBlock).toMatch(/--color-status-foreground:\s*#fff;/);
+    expect(rootBlock).toMatch(/--color-file-script:\s*#4c8dff;/);
+    expect(rootBlock).toMatch(/--color-file-python:\s*#e2b66b;/);
+    expect(rootBlock).toMatch(/--color-file-rust:\s*#ef9a9a;/);
+    expect(rootBlock).toMatch(/--color-file-media:\s*#7aa9ff;/);
     expect(rootBlock).toMatch(/--color-accent:\s*#4c8dff;/);
     expect(rootBlock).toMatch(
       /--color-focus-ring:\s*var\(--color-accent-hover\);/,
@@ -28,6 +33,7 @@ describe("Wave 2 visual-system tokens", () => {
     expect(rootBlock).toMatch(/--color-danger:\s*#ef9a9a;/);
     expect(rootBlock).toMatch(/--color-overlay:\s*rgb\(0 0 0 \/ 0\.52\);/);
     expect(rootBlock).toMatch(/--color-diff-delete:\s*#ef6d67;/);
+    expect(rootBlock).toMatch(/--color-file-data:\s*#d7c078;/);
     expect(rootBlock).toMatch(/--bg:\s*var\(--color-canvas\);/);
     expect(rootBlock).toMatch(/--surface:\s*var\(--color-panel\);/);
     expect(rootBlock).toMatch(/--text:\s*var\(--color-text-primary\);/);
@@ -52,6 +58,9 @@ describe("Wave 2 visual-system tokens", () => {
     expect(rootBlock).toMatch(/--radius-sm:\s*6px;/);
     expect(rootBlock).toMatch(/--radius-md:\s*8px;/);
     expect(rootBlock).toMatch(/--radius-lg:\s*12px;/);
+    expect(rootBlock).toMatch(/--radius-pill:\s*999px;/);
+    expect(rootBlock).toMatch(/--radius-none:\s*0;/);
+    expect(rootBlock).toMatch(/--radius-circle:\s*50%;/);
     expect(rootBlock).toMatch(/--icon-size-sm:\s*14px;/);
     expect(rootBlock).toMatch(/--icon-size-md:\s*16px;/);
     expect(rootBlock).toMatch(/--icon-size-lg:\s*20px;/);

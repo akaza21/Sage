@@ -36,15 +36,16 @@ describe("Editor visual-reference seam", () => {
   });
 
   it("keeps framed parts, resize affordances, and compact panes bounded", async () => {
-    const [css, resizeSource, workbenchSource, windowModeCss] =
+    const [css, activityCss, resizeSource, workbenchSource, windowModeCss] =
       await Promise.all([
         readFile(resolve("src/styles/editor-visual-reference.css"), "utf8"),
+        readFile(resolve("src/styles/editor-activity-bar.css"), "utf8"),
         readFile(resolve("src/workbench/workbenchSidebarResize.ts"), "utf8"),
         readFile(resolve("src/workbench/Workbench.tsx"), "utf8"),
         readFile(resolve("src/workbench/workbench-window-mode.css"), "utf8"),
       ]);
 
-    expect(css).toMatch(
+    expect(activityCss).toMatch(
       /\.workbench--editor \.sidebar\s*\{[^}]*border:\s*1px solid var\(--color-border-subtle\);[^}]*border-radius:\s*var\(--radius-md\);/s,
     );
     expect(css).toMatch(

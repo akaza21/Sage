@@ -40,25 +40,66 @@
     --color-selection: var(--doc-selection);
     --elevation-popover: var(--doc-elevation-popover);
     --elevation-floating: var(--doc-elevation-floating);
+    /* Re-evaluate shared highlights against the Editor colour projection. */
+    --highlight-focus-edge: color-mix(
+      in srgb,
+      var(--color-accent) 68%,
+      transparent
+    );
+    --highlight-focus-halo: color-mix(
+      in srgb,
+      var(--color-accent) 12%,
+      transparent
+    );
+    --highlight-selection-fill: color-mix(
+      in srgb,
+      var(--color-accent) 12%,
+      var(--color-surface)
+    );
+    --highlight-selection-edge: color-mix(
+      in srgb,
+      var(--color-accent) 44%,
+      transparent
+    );
+    --highlight-active-fill: color-mix(
+      in srgb,
+      var(--color-accent) 7%,
+      var(--color-surface-hover)
+    );
+    --highlight-active-edge: color-mix(
+      in srgb,
+      var(--color-accent) 52%,
+      transparent
+    );
+    --highlight-focus-halo-shadow: 0 0 6px 1px var(--highlight-focus-halo);
+    --highlight-focus-frame-shadow:
+      inset 0 0 0 1px var(--highlight-focus-edge),
+      inset 0 0 6px var(--highlight-focus-halo);
+    --editor-focus-edge: var(--highlight-focus-edge);
+    --editor-focus-halo: var(--highlight-focus-halo);
+    --editor-selection-fill: var(--highlight-selection-fill);
+    --editor-selection-edge: var(--highlight-selection-edge);
+    --editor-active-fill: var(--highlight-active-fill);
+    --editor-active-edge: var(--highlight-active-edge);
+    --editor-code-selection: var(--color-selection);
+    --editor-find-match-fill: color-mix(
+      in srgb,
+      var(--color-warning) 32%,
+      transparent
+    );
+    --editor-find-match-edge: color-mix(
+      in srgb,
+      var(--color-warning) 72%,
+      transparent
+    );
+    --editor-focus-halo-shadow: var(--highlight-focus-halo-shadow);
+    --editor-focus-frame-shadow: var(--highlight-focus-frame-shadow);
+    --focus-ring: var(--focus-ring-width) solid var(--highlight-focus-edge);
+    --focus-ring-inset: inset 0 0 0 var(--focus-ring-width)
+      var(--highlight-focus-edge);
+    --menu-focus-edge: var(--editor-focus-edge);
+    --menu-selected-fill: var(--editor-selection-fill);
   }
-}
-
-.workbench--editor .workbench__body,
-.workbench--editor .right-region--leading {
-  background: var(--color-canvas);
-}
-
-.workbench--editor .sidebar {
-  margin: var(--space-1) 0 var(--space-1) var(--space-1);
-  overflow: auto;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--color-panel);
-}
-
-.workbench--editor .sidebar:focus-visible {
-  outline: 0;
-  box-shadow: var(--focus-ring-inset);
 }
 
 .workbench--editor .center-region {
@@ -78,11 +119,6 @@
 .workbench--editor .tab-strip,
 .workbench--editor .tab {
   background: var(--color-panel);
-}
-
-.workbench--editor .tab--active {
-  background: var(--color-surface);
-  box-shadow: inset 0 1px 0 var(--color-accent);
 }
 
 .workbench--editor .title-bar__search {
@@ -109,7 +145,6 @@
   border-radius: var(--radius-sm);
 }
 
-.workbench--editor .activity-rail__button,
 .workbench--editor .sidebar__heading-actions button,
 .workbench--editor .sidebar__heading > button,
 .workbench--editor .tree__row,
@@ -145,10 +180,6 @@
   cursor: default;
 }
 
-.workbench--editor .tree__row--selected {
-  box-shadow: inset 2px 0 0 var(--color-accent);
-}
-
 .workbench--editor .source-control-list {
   padding: 4px;
 }
@@ -167,12 +198,6 @@
   color: var(--color-text-primary);
   background: var(--color-surface);
   font-size: var(--font-size-xs);
-}
-
-.workbench--editor .source-control-selector select:focus-visible {
-  border-color: var(--color-focus-ring);
-  outline: 0;
-  box-shadow: var(--focus-ring-inset);
 }
 
 .workbench--editor .source-root__summary {
@@ -293,10 +318,6 @@
   background: var(--color-canvas);
 }
 
-.workbench--editor .status-bar__button {
-  min-width: 28px;
-}
-
 .workbench--editor .placeholder-surface h1 {
   margin-top: 10px;
   font-size: var(--font-size-lg);
@@ -307,10 +328,6 @@
 }
 
 @media (max-width: 760px) {
-  .workbench--editor .workbench__body {
-    grid-template-columns: var(--editor-activity-width) minmax(0, 1fr);
-  }
-
   .workbench--editor .right-region--leading .sidebar {
     top: var(--space-1);
     right: auto;
@@ -334,7 +351,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workbench--editor .activity-rail__button,
   .workbench--editor .sidebar__heading-actions button,
   .workbench--editor .sidebar__heading > button,
   .workbench--editor .tree__row,
@@ -346,7 +362,6 @@
 }
 
 @media (forced-colors: active) {
-  .workbench--editor .sidebar,
   .workbench--editor .center-region {
     border-color: CanvasText;
   }

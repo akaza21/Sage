@@ -5,6 +5,7 @@ import process from "node:process";
 
 import { cargoPackageFeatureErrors } from "./ade0006a-package-policy.mjs";
 import { acpTransportParityErrors } from "./acp-transport-parity.mjs";
+import { cssHygienePolicyErrors } from "./css-hygiene-policy.mjs";
 import {
   cssHighlightPolicyErrors,
   discoverSourceFilesWithCssBound,
@@ -780,6 +781,9 @@ const productionFiles = [
 
 const productionCssFiles = sourceInventory.cssFiles.map(canonicalRelative);
 for (const error of await cssHighlightPolicyErrors(root, productionCssFiles)) {
+  fail(error);
+}
+for (const error of await cssHygienePolicyErrors(root, productionCssFiles)) {
   fail(error);
 }
 

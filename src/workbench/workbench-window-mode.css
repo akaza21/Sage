@@ -1,10 +1,3 @@
-.title-bar__start {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 14px;
-}
-
 .title-bar__modes {
   display: flex;
   gap: 2px;
@@ -55,6 +48,7 @@
   grid-template-columns:
     calc(var(--sidebar-width) + var(--editor-activity-width))
     minmax(0, 1fr);
+  background: var(--color-canvas);
 }
 
 .workbench--agent .workbench__body {
@@ -99,7 +93,7 @@
   bottom: 0;
   left: 3px;
   width: 2px;
-  border-radius: 2px;
+  border-radius: var(--radius-pill);
   background: var(--color-border-subtle);
   content: "";
 }
@@ -132,6 +126,12 @@
   .workbench-sidebar-splitter:focus-visible::after {
     background: Highlight;
     box-shadow: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .workbench--editor .workbench__body {
+    grid-template-columns: var(--editor-activity-width) minmax(0, 1fr);
   }
 }
 

@@ -181,8 +181,7 @@
   background: var(--color-surface-hover);
 }
 
-.acp-code-block pre,
-.acp-tool-command {
+.acp-code-block pre {
   overflow: auto;
   margin: 0;
   padding: var(--space-3);
@@ -193,4 +192,33 @@
   line-height: 1.6;
   tab-size: 2;
   white-space: pre;
+}
+
+@media (max-width: 640px) {
+  .acp-chat-projection {
+    width: 100%;
+    gap: var(--space-4);
+  }
+
+  .acp-turn + .acp-turn {
+    padding-top: var(--space-4);
+  }
+
+  .acp-message--user {
+    max-width: 92%;
+  }
+
+  .acp-turn__header,
+  .acp-permission header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+}
+
+@media (forced-colors: active) {
+  .acp-message--user,
+  .acp-code-block {
+    border-color: CanvasText;
+  }
 }

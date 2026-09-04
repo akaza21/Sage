@@ -3,72 +3,12 @@
  * last and Editor-owned so Agent surfaces and shared resource defaults retain
  * their independent presentation.
  */
-@media (forced-colors: none) {
-  .workbench--editor,
-  .new-file-dialog--editor,
-  .dirty-dialog--editor,
-  .menu-popover--editor {
-    /* Re-evaluate the shared formulas against Editor's local colour roles. */
-    --highlight-focus-edge: color-mix(
-      in srgb,
-      var(--color-accent) 68%,
-      transparent
-    );
-    --highlight-focus-halo: color-mix(
-      in srgb,
-      var(--color-accent) 12%,
-      transparent
-    );
-    --highlight-selection-fill: color-mix(
-      in srgb,
-      var(--color-accent) 12%,
-      var(--color-surface)
-    );
-    --highlight-selection-edge: color-mix(
-      in srgb,
-      var(--color-accent) 44%,
-      transparent
-    );
-    --highlight-active-fill: color-mix(
-      in srgb,
-      var(--color-accent) 7%,
-      var(--color-surface-hover)
-    );
-    --highlight-active-edge: color-mix(
-      in srgb,
-      var(--color-accent) 52%,
-      transparent
-    );
-    --highlight-focus-halo-shadow: 0 0 6px 1px var(--highlight-focus-halo);
-    --highlight-focus-frame-shadow:
-      inset 0 0 0 1px var(--highlight-focus-edge),
-      inset 0 0 6px var(--highlight-focus-halo);
-    --editor-focus-edge: var(--highlight-focus-edge);
-    --editor-focus-halo: var(--highlight-focus-halo);
-    --editor-selection-fill: var(--highlight-selection-fill);
-    --editor-selection-edge: var(--highlight-selection-edge);
-    --editor-active-fill: var(--highlight-active-fill);
-    --editor-active-edge: var(--highlight-active-edge);
-    --editor-code-selection: var(--color-selection);
-    --editor-find-match-fill: color-mix(
-      in srgb,
-      var(--color-warning) 32%,
-      transparent
-    );
-    --editor-find-match-edge: color-mix(
-      in srgb,
-      var(--color-warning) 72%,
-      transparent
-    );
-    --editor-focus-halo-shadow: var(--highlight-focus-halo-shadow);
-    --editor-focus-frame-shadow: var(--highlight-focus-frame-shadow);
-    --focus-ring: var(--focus-ring-width) solid var(--highlight-focus-edge);
-    --focus-ring-inset: inset 0 0 0 var(--focus-ring-width)
-      var(--highlight-focus-edge);
-    --menu-focus-edge: var(--editor-focus-edge);
-    --menu-selected-fill: var(--editor-selection-fill);
-  }
+.workbench--editor .activity-rail__button--active {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
 
+@media (forced-colors: none) {
   /* Persistent selection: quiet fill, local hairline, no glow. */
   .workbench--editor .tree__row--selected,
   .workbench--editor .source-change--selected {
@@ -81,21 +21,13 @@
     box-shadow: inset 0 1px 0 var(--editor-selection-edge);
   }
 
-  .workbench--editor .activity-rail__button--active,
-  .workbench--editor .title-bar__mode--active {
+  .workbench--editor .activity-rail__button--active {
     background: var(--editor-active-fill);
   }
 
   .workbench--editor .title-bar__mode--active {
+    background: var(--editor-active-fill);
     box-shadow: inset 0 0 0 1px var(--editor-active-edge);
-  }
-
-  .workbench--editor
-    .right-region--leading
-    .activity-rail__button--active::after {
-    width: 1px;
-    height: 22px;
-    background: var(--editor-active-edge);
   }
 
   /* Pressed controls remain distinct without reading as keyboard focus. */
@@ -189,24 +121,6 @@
 
   .workbench--editor .workbench-sidebar-splitter:focus-visible {
     outline: 0;
-  }
-
-  .workbench--editor .workbench-sidebar-splitter::after,
-  .workbench--editor .workbench-sidebar-splitter:hover::after,
-  .workbench--editor .workbench-sidebar-splitter--active::after,
-  .workbench--editor .workbench-sidebar-splitter:focus-visible::after {
-    width: 1px;
-  }
-
-  .workbench--editor .workbench-sidebar-splitter:hover::after {
-    background: var(--editor-selection-edge);
-    box-shadow: 0 0 4px var(--editor-focus-halo);
-  }
-
-  .workbench--editor .workbench-sidebar-splitter--active::after,
-  .workbench--editor .workbench-sidebar-splitter:focus-visible::after {
-    background: var(--editor-focus-edge);
-    box-shadow: var(--editor-focus-halo-shadow);
   }
 
   /* File and Diff share document syntax; these overrides belong to Editor. */

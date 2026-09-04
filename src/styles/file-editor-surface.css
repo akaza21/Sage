@@ -62,15 +62,15 @@
 
 .file-kind-icon--typescript,
 .file-kind-icon--javascript {
-  color: #4c8dff;
+  color: var(--color-file-script);
 }
 
 .file-kind-icon--python {
-  color: #e2b66b;
+  color: var(--color-file-python);
 }
 
 .file-kind-icon--rust {
-  color: #ef9a9a;
+  color: var(--color-file-rust);
 }
 
 .file-kind-icon--markdown,
@@ -81,7 +81,7 @@
 
 .file-kind-icon--json,
 .file-kind-icon--table {
-  color: #d7c078;
+  color: var(--color-file-data);
 }
 
 .file-kind-icon--lock {
@@ -90,7 +90,7 @@
 
 .file-kind-icon--image,
 .file-kind-icon--notebook {
-  color: #7aa9ff;
+  color: var(--color-file-media);
 }
 
 .file-header__metadata {

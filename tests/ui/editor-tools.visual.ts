@@ -54,6 +54,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     });
     await discard.hover();
     await expect(discard).toHaveCSS("background-color", "rgb(42, 42, 42)");
+    await expect(discard).toHaveCSS("border-radius", "4px");
     await discard.click();
     const confirmation = sourceTools.getByRole("group", {
       name: /Confirm discard of src\/workbench\/AgentChatPanes\.tsx/,
@@ -63,6 +64,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       name: /Cancel discard/,
     });
     await expect(cancel).toBeVisible();
+    await expect(cancel).toHaveCSS("border-radius", "4px");
     await cancel.focus();
     await expect(cancel).toBeFocused();
     await page.keyboard.press("Shift+Tab");

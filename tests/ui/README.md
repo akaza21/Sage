@@ -143,6 +143,58 @@ inherited Node-budget boundary (31/44 passed, 13 unrelated Windows-assumption
 failures). Production policy reports only the four inherited Rust size
 findings.
 
+Q-05 adds a bounded, dependency-free production-CSS hygiene policy and eight
+Node parser cases. The test-first inventory found 32 cross-file selector
+owners, 26 raw radius declarations, and six production colour literals; the
+ticket's earlier 31-selector preflight had missed the multiline
+`.workbench--editor` selector. The candidate inventory is now 0/0/0. The policy
+shares the existing bounded CSS discovery, caps input at 128 regular files,
+512 KiB per file, and 4 MiB total, and rejects malformed input deterministically.
+It treats repeated selectors within one file as intentional, ignores keyframe
+steps, comments, strings, and custom-property names, and reports both owners for
+every cross-file collision.
+
+The existing Agent dual-Chat and Editor control-state Playwright tests now also
+assert the resolved canonical radius values; no scenario was added. The Q-05
+worker did not run `test:ui` or update snapshots in WSL. The independently
+reviewed normalized-base control is commit
+`75fa3cc4a4fcb86a4323bc0028a6d48ea6e54582`. The exact base plus uncommitted
+Q-05 candidate passed all 21 forced-update tests, then the restored accepted
+baseline set passed the complete Windows Chromium matrix: 59/59 in 49.2
+seconds.
+
+Exactly 15 candidate PNGs were inspected at original resolution, accepted, and
+copied into the WSL checkout: `agent-activity-family`, `agent-child-activity`,
+`agent-dual`, `agent-dual-medium`, `agent-forced-colors`, `agent-image`,
+`agent-keyboard-focus`, `agent-long`, `agent-reduced-motion`,
+`agent-resource-empty`, `agent-single`, `editor-control-states`, `error`,
+`preview`, and `waiting`. Together they occupy 1,009,398 bytes.
+
+The primary intended Agent delta is removal of the legacy active Chat-row shape:
+normally 64 changed pixels within x20–239/y178–210, 46 in forced colors, with
+`agent-dual-medium` shifted to y212–244. `agent-dual` changes 104 pixels within
+(20,178)–(459,814), `agent-single` changes 75 within (20,178)–(676,793), and
+`preview` changes 86 within (20,92)–(1308,793). Their extra pixels are tiny
+native select/input corner raster variation: the Harness/Model chips and Preview
+address retain unchanged computed radius roles and byte-identical unrelated CSS.
+`editor-control-states` changes 190 pixels within (188,508)–(302,541), confined
+to the confirmation-control corners.
+
+`file`, `diff`, `agent-diff-loading`, `agent-file-error`, `agent-file-ready`, and
+`agent-diff-ready` were intentionally not refreshed. File and Diff showed only
+unrelated 15-pixel native-control raster jitter; the other four were stable. The
+verifier restored all six normalized baselines before the final 59/59 run.
+Original-resolution inspection of every accepted PNG found no clipping,
+overflow, thick ring, invented action, or File/Diff colour drift. Windows pixel
+evidence is complete; independent Q-05 acceptance remains pending.
+
+Q-05 WSL evidence is 19 focused Vitest files / 51 tests, eight policy tests, a
+2,089-module build producing 130,582-byte CSS (19,846 gzip-9) and 615,688-byte
+entry JavaScript (170,782 gzip-9), and 193 Vitest files / 1,191 tests before the
+inherited Node-budget boundary (32/45 passed, the same 13 Windows-assumption
+failures). Production policy reaches the same four inherited Rust size
+findings and reports no CSS-hygiene finding.
+
 ## Deliberate limits
 
 - The tracked baselines are Windows Chromium only.

@@ -49,6 +49,7 @@
   width: 100%;
   grid-template-columns: var(--editor-activity-width) minmax(0, 1fr);
   border-right: 0;
+  background: var(--color-canvas);
 }
 
 .workbench--editor .right-region--leading.right-region--collapsed {
@@ -65,10 +66,10 @@
 .workbench--editor .activity-rail__button {
   width: 40px;
   border-radius: var(--radius-sm);
-}
-
-.workbench--editor .activity-rail__button--active {
-  background: var(--color-surface-hover);
+  transition:
+    color var(--motion-duration-fast) ease,
+    background-color var(--motion-duration-fast) ease,
+    border-color var(--motion-duration-fast) ease;
 }
 
 .workbench--editor
@@ -76,10 +77,14 @@
   .activity-rail__button--active::after {
   width: 2px;
   height: 24px;
-  border-radius: 0;
+  border-radius: var(--radius-none);
 }
 
 .workbench--editor .sidebar {
+  margin: var(--space-1) 0 var(--space-1) var(--space-1);
+  overflow: auto;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
   background: var(--color-panel);
 }
 
@@ -104,7 +109,45 @@
   background: var(--color-focus-ring);
 }
 
+@media (forced-colors: none) {
+  .workbench--editor
+    .right-region--leading
+    .activity-rail__button--active::after {
+    width: 1px;
+    height: 22px;
+    background: var(--editor-active-edge);
+  }
+
+  .workbench--editor .workbench-sidebar-splitter::after,
+  .workbench--editor .workbench-sidebar-splitter:hover::after,
+  .workbench--editor .workbench-sidebar-splitter--active::after,
+  .workbench--editor .workbench-sidebar-splitter:focus-visible::after {
+    width: 1px;
+  }
+
+  .workbench--editor .workbench-sidebar-splitter:hover::after {
+    background: var(--editor-selection-edge);
+    box-shadow: 0 0 4px var(--editor-focus-halo);
+  }
+
+  .workbench--editor .workbench-sidebar-splitter--active::after,
+  .workbench--editor .workbench-sidebar-splitter:focus-visible::after {
+    background: var(--editor-focus-edge);
+    box-shadow: var(--editor-focus-halo-shadow);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workbench--editor .activity-rail__button {
+    transition-duration: 0ms;
+  }
+}
+
 @media (forced-colors: active) {
+  .workbench--editor .sidebar {
+    border-color: CanvasText;
+  }
+
   .activity-rail__button--active::after {
     background: Highlight;
   }

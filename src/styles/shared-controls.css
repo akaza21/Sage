@@ -104,7 +104,7 @@
   padding: 4px 7px;
   overflow: hidden;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
   background: transparent;
   font: inherit;

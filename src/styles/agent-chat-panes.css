@@ -23,7 +23,7 @@
   bottom: 0;
   left: 3px;
   width: 2px;
-  border-radius: 2px;
+  border-radius: var(--radius-pill);
   background: var(--color-border-subtle);
   content: "";
 }
@@ -145,7 +145,7 @@
   width: 7px;
   height: 7px;
   flex: 0 0 auto;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: var(--color-accent);
   outline: var(--focus-ring-width) solid
     color-mix(in srgb, var(--color-accent) 18%, transparent);
