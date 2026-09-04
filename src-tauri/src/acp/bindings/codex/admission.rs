@@ -1,17 +1,12 @@
 #[cfg(all(test, windows))]
 use std::collections::VecDeque;
 use std::{
-    fs::File,
-    io::Read,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
 
-use sha2::{Digest, Sha256};
-
 use super::{
     authority::{CodexAuthorityPrerequisite, CodexLaunchEnvironment},
-    installed_role::SignedInstalledRole,
     manifest::MetadataValidatedPacket,
     reproduction::ReproducedPackagePrerequisite,
 };
@@ -56,266 +51,6 @@ struct ObservedEntrypoint {
     environment: Vec<(String, String)>,
 }
 
-impl AdmittedCodexBinding {
-    fn admit_signed_installed_role(
-        packet: MetadataValidatedPacket,
-        role: SignedInstalledRole,
-        reproduced: ReproducedPackagePrerequisite,
-        authority: CodexAuthorityPrerequisite,
-        environment: CodexLaunchEnvironment,
-    ) -> Result<Self, CodexAdmissionUnavailable> {
-        let expected_artifact = packet
-            .physical_artifact_claims()
-            .next()
-            .map(|(_, relative_path)| relative_path)
-            .ok_or(CodexAdmissionUnavailable::IndependentAdmission)?;
-        if role.binding_id != packet.metadata().binding_id
-            || role.artifact_relative_path != expected_artifact
-        {
-            return Err(CodexAdmissionUnavailable::IndependentAdmission);
-        }
-        let entrypoint = entrypoint_identity(&packet)?;
-        let artifact_digest = packet.metadata().entrypoint.sha256.clone();
-        let harness_version = packet.metadata().codex_runtime_version.clone();
-        let binding = Self {
-            packet,
-            reproduced: Some(reproduced),
-            authority: Some(authority),
-            environment: Some(environment),
-            entrypoint,
-            observed: None,
-            binding_digest: BINDING_DIGEST,
-            binding_digest_hex: BINDING_DIGEST_HEX.into(),
-            artifact_digest,
-            harness_version,
-            #[cfg(all(test, windows))]
-            journey_test_entrypoint: None,
-            #[cfg(all(test, windows))]
-            journey_test_cases: None,
-            #[cfg(all(test, windows))]
-            _cleanup: None,
-        };
-        binding.revalidate()?;
-        Ok(binding)
-    }
-
-    pub(crate) fn admit_observed(
-        executable: PathBuf,
-        version: String,
-    ) -> Result<Self, CodexAdmissionUnavailable> {
-        if version.is_empty() || version.len() > 512 {
-            return Err(CodexAdmissionUnavailable::IndependentAdmission);
-        }
-        let packet = crate::acp::bindings::codex::parse_packet_metadata(include_bytes!(
-            "../../../../testdata/acp/codex/candidate-windows.json"
-        ))
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-        let entrypoint = observed_entrypoint_identity(&executable)?;
-        let binding_digest = observed_binding_digest(&entrypoint);
-        let artifact_digest = sha256_hex(entrypoint.sha256);
-        let binding_digest_hex = sha256_hex(binding_digest);
-        let environment = observed_environment(&entrypoint.path)?;
-        Ok(Self {
-            packet,
-            reproduced: None,
-            authority: None,
-            environment: None,
-            entrypoint,
-            observed: Some(ObservedEntrypoint { environment }),
-            binding_digest,
-            binding_digest_hex,
-            artifact_digest,
-            harness_version: version,
-            #[cfg(all(test, windows))]
-            journey_test_entrypoint: None,
-            #[cfg(all(test, windows))]
-            journey_test_cases: None,
-            #[cfg(all(test, windows))]
-            _cleanup: None,
-        })
-    }
-
-    pub(crate) fn revalidate(&self) -> Result<(), CodexAdmissionUnavailable> {
-        if let Some(observed) = &self.observed {
-            let current = observed_entrypoint_identity(&self.entrypoint.path)?;
-            return (current.sha256 == self.entrypoint.sha256
-                && current.byte_len == self.entrypoint.byte_len
-                && observed.environment == observed_environment(&self.entrypoint.path)?)
-            .then_some(())
-            .ok_or(CodexAdmissionUnavailable::Drift);
-        }
-        self.reproduced
-            .as_ref()
-            .ok_or(CodexAdmissionUnavailable::Drift)?
-            .revalidate(&self.packet)
-            .map_err(|_| CodexAdmissionUnavailable::Drift)?;
-        self.authority
-            .as_ref()
-            .ok_or(CodexAdmissionUnavailable::Drift)?
-            .revalidate(
-                &self.packet,
-                self.reproduced
-                    .as_ref()
-                    .ok_or(CodexAdmissionUnavailable::Drift)?,
-            )
-            .map_err(|_| CodexAdmissionUnavailable::Drift)?;
-        self.environment
-            .as_ref()
-            .ok_or(CodexAdmissionUnavailable::Drift)?
-            .revalidate(&self.packet)
-            .map_err(|_| CodexAdmissionUnavailable::Drift)?;
-        let current = entrypoint_identity(&self.packet)?;
-        if current.path != self.entrypoint.path
-            || current.sha256 != self.entrypoint.sha256
-            || current.byte_len != self.entrypoint.byte_len
-            || self.packet.metadata().binding_id != BINDING_ID
-            || <[u8; 32]>::from(Sha256::digest(BINDING_DIGEST_INPUT)) != BINDING_DIGEST
-        {
-            return Err(CodexAdmissionUnavailable::Drift);
-        }
-        Ok(())
-    }
-
-    pub(crate) fn binding_id(&self) -> &str {
-        BINDING_ID
-    }
-
-    pub(crate) fn binding_digest(&self) -> [u8; 32] {
-        self.binding_digest
-    }
-
-    pub(crate) fn binding_digest_hex(&self) -> &str {
-        &self.binding_digest_hex
-    }
-
-    pub(crate) fn artifact_digest(&self) -> &str {
-        &self.artifact_digest
-    }
-
-    pub(crate) fn harness_version(&self) -> &str {
-        &self.harness_version
-    }
-
-    pub(crate) fn is_observed(&self) -> bool {
-        self.observed.is_some()
-    }
-
-    pub(crate) fn entrypoint(&self) -> &EntrypointIdentity {
-        &self.entrypoint
-    }
-
-    /// The Windows journey uses the already-built ACP fixture only after this
-    /// binding has passed normal admission revalidation. This deliberately
-    /// does not alter the admitted packet, its digest, or the signed role.
-    #[cfg(all(test, windows))]
-    pub(crate) fn journey_test_entrypoint(&self) -> Option<&EntrypointIdentity> {
-        self.journey_test_entrypoint.as_ref()
-    }
-
-    #[cfg(all(test, windows))]
-    pub(crate) fn next_journey_test_case(&self) -> Option<&'static str> {
-        self.journey_test_cases
-            .as_ref()?
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .pop_front()
-    }
-
-    pub(crate) fn packet(&self) -> &MetadataValidatedPacket {
-        &self.packet
-    }
-
-    pub(crate) fn environment(&self) -> &CodexLaunchEnvironment {
-        self.environment
-            .as_ref()
-            .expect("managed environment is not available for observed Codex")
-    }
-
-    pub(crate) fn launch_environment(&self) -> &[(String, String)] {
-        self.observed
-            .as_ref()
-            .map(|observed| observed.environment.as_slice())
-            .unwrap_or_else(|| self.environment().entries())
-    }
-
-    pub(crate) fn capability_ceiling(
-        &self,
-    ) -> Result<crate::acp::intent::CapabilitySnapshotV1, CodexAdmissionUnavailable> {
-        use crate::acp::{
-            contract::{RequiredText, SchemaVersionV1},
-            intent::CapabilitySnapshotV1,
-        };
-
-        let value = self.packet.capability_ceiling();
-        Ok(CapabilitySnapshotV1 {
-            schema_version: SchemaVersionV1,
-            protocol_version: RequiredText::new("protocolVersion", &value.protocol_identity)
-                .map_err(|_| CodexAdmissionUnavailable::Drift)?,
-            new_session: value.new_session,
-            resume_session: value.resume_session,
-            load_session: value.load_session,
-            close_session: value.close_session,
-            prompt: value.prompt,
-            cancel: value.cancel,
-            native_session_fork: false,
-            active_turn_steer: false,
-            child_conversation_projection: value.child_conversation_projection,
-            child_transcript_read: false,
-            collaboration_event_projection: value.collaboration_event_projection,
-            multi_root_extension_schema_id: None,
-            model_count: 0,
-            config_count: 0,
-        })
-    }
-}
-
-fn observed_entrypoint_identity(
-    path: &std::path::Path,
-) -> Result<EntrypointIdentity, CodexAdmissionUnavailable> {
-    const MAX_OBSERVED_EXECUTABLE_BYTES: u64 = 512 * 1024 * 1024;
-    let path = path
-        .canonicalize()
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let metadata = path
-        .metadata()
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > MAX_OBSERVED_EXECUTABLE_BYTES
-    {
-        return Err(CodexAdmissionUnavailable::IndependentAdmission);
-    }
-    let mut file =
-        File::open(&path).map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let mut digest = Sha256::new();
-    let mut chunk = [0_u8; 64 * 1024];
-    loop {
-        let read = file
-            .read(&mut chunk)
-            .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-        if read == 0 {
-            break;
-        }
-        digest.update(&chunk[..read]);
-    }
-    Ok(EntrypointIdentity {
-        path,
-        sha256: digest.finalize().into(),
-        byte_len: metadata.len(),
-    })
-}
-
-fn observed_binding_digest(entrypoint: &EntrypointIdentity) -> [u8; 32] {
-    let mut digest = Sha256::new();
-    digest.update(b"sage:observed-codex-app-server:v1:");
-    digest.update(entrypoint.path.as_os_str().as_encoded_bytes());
-    digest.update(entrypoint.sha256);
-    digest.update(entrypoint.byte_len.to_le_bytes());
-    digest.finalize().into()
-}
-
-fn sha256_hex(digest: [u8; 32]) -> String {
-    digest.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
 fn observed_environment(
     entrypoint: &std::path::Path,
 ) -> Result<Vec<(String, String)>, CodexAdmissionUnavailable> {
@@ -329,8 +64,7 @@ fn observed_environment(
             "XDG_DATA_HOME",
             "XDG_STATE_HOME",
         ];
-        return KEYS
-            .iter()
+        KEYS.iter()
             .filter_map(|key| {
                 std::env::var(key)
                     .ok()
@@ -345,7 +79,7 @@ fn observed_environment(
                 }
                 entries.push(entry);
                 Ok(entries)
-            });
+            })
     }
     #[cfg(windows)]
     {
@@ -394,64 +128,26 @@ fn observed_environment(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum CodexAdmissionUnavailable {
-    #[error("Codex Harness Admission is unavailable on this platform")]
-    Platform,
-    #[error("the workstation can only observe the Codex Authenticode role")]
-    ObservationOnly,
-    #[error("the exact Codex Binding has not completed independent Harness Admission")]
-    IndependentAdmission,
-    #[error("the admitted Codex Binding changed after admission")]
-    Drift,
-}
+mod record;
+mod report;
+mod verify;
 
-#[path = "admission/registration.rs"]
+pub(crate) use report::CodexAdmissionUnavailable;
+#[cfg(all(test, windows))]
+use verify::entrypoint_identity;
+
 mod registration;
 pub(crate) use registration::{
     CodexBindingRegistration, CodexRegistrationAuthority, CodexRegistrationState,
 };
 
-fn entrypoint_identity(
-    packet: &MetadataValidatedPacket,
-) -> Result<EntrypointIdentity, CodexAdmissionUnavailable> {
-    let entrypoint = &packet.metadata().entrypoint;
-    Ok(EntrypointIdentity {
-        path: entrypoint.path.clone(),
-        sha256: decode_sha256(&entrypoint.sha256)?,
-        byte_len: entrypoint.byte_len,
-    })
-}
-
-fn decode_sha256(value: &str) -> Result<[u8; 32], CodexAdmissionUnavailable> {
-    if value.len() != 64 {
-        return Err(CodexAdmissionUnavailable::Drift);
-    }
-    let mut digest = [0_u8; 32];
-    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
-        digest[index] = (hex_nibble(pair[0])? << 4) | hex_nibble(pair[1])?;
-    }
-    Ok(digest)
-}
-
-fn hex_nibble(value: u8) -> Result<u8, CodexAdmissionUnavailable> {
-    match value {
-        b'0'..=b'9' => Ok(value - b'0'),
-        b'a'..=b'f' => Ok(value - b'a' + 10),
-        _ => Err(CodexAdmissionUnavailable::Drift),
-    }
-}
-
-#[path = "admission/startup.rs"]
 mod startup;
 pub(crate) use startup::startup_codex_binding_registration;
 
 #[cfg(test)]
-#[path = "admission/test_registration.rs"]
 mod test_registration;
 
 #[cfg(all(test, windows))]
-#[path = "admission/authenticate_tests.rs"]
 mod authenticate_tests;
 
 #[cfg(test)]
@@ -477,6 +173,26 @@ mod tests {
         fs::write(&path, b"changed-codex").expect("change test executable");
         assert_eq!(binding.revalidate(), Err(CodexAdmissionUnavailable::Drift));
         fs::remove_file(path).expect("remove test executable");
+    }
+
+    #[test]
+    fn admission_failure_reports_remain_redacted_and_stable() {
+        assert_eq!(
+            CodexAdmissionUnavailable::Platform.to_string(),
+            "Codex Harness Admission is unavailable on this platform"
+        );
+        assert_eq!(
+            CodexAdmissionUnavailable::ObservationOnly.to_string(),
+            "the workstation can only observe the Codex Authenticode role"
+        );
+        assert_eq!(
+            CodexAdmissionUnavailable::IndependentAdmission.to_string(),
+            "the exact Codex Binding has not completed independent Harness Admission"
+        );
+        assert_eq!(
+            CodexAdmissionUnavailable::Drift.to_string(),
+            "the admitted Codex Binding changed after admission"
+        );
     }
 
     #[test]
