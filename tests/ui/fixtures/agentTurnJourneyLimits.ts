@@ -1,0 +1,5 @@
+export const MAX_SCRIPTED_EVENTS = 40;
+export const MAX_CAPTURED_REQUESTS = 16;
+export const MAX_DEFERRED_CALLS = 4;
+export const MAX_PROJECTION_LISTENERS = 16;
+export const MAX_COMPOSER_HISTORY = 40;

@@ -1013,6 +1013,22 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
   });
 
+  it("does not steal focus when a background Chat becomes terminal", () => {
+    pinAgentChatOwner("chat-foreground");
+    const { rerender } = render(<ChatSurface chatId="chat-background" />);
+    const foregroundControl = document.createElement("button");
+    document.body.append(foregroundControl);
+    foregroundControl.focus();
+
+    setTurnState("completed");
+    rerender(<ChatSurface chatId="chat-background" />);
+
+    expect(foregroundControl).toHaveFocus();
+    expect(
+      screen.getByRole("textbox", { name: "Message agent" }),
+    ).not.toHaveFocus();
+  });
+
   it("exposes the authoritative session close as a semantic control", () => {
     setTurnState("completed");
     hooks.page = {
