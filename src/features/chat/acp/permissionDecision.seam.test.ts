@@ -52,6 +52,8 @@ describe("permission decision seam", () => {
         projectId: "project-1",
         chatId: "chat-1",
         sessionId: "session-1",
+        turnId: "turn-1",
+        runtimeEpoch: "1",
         requestId: "request-1",
         decision: "deny",
         state: "declinePending",

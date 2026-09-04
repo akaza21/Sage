@@ -11,6 +11,8 @@ use crate::acp::{
     limits::LIMITS,
 };
 
+mod request_identity_tests;
+
 pub(super) fn setup() -> Connection {
     let connection = Connection::open_in_memory().unwrap();
     connection.execute_batch(

@@ -41,17 +41,35 @@ function safeMessage(value: unknown): string | null {
 
 function safePermissionDecision(
   value: unknown,
+  request: ResolvePermissionDecisionRequest,
 ): ResolvePermissionDecisionResponse | null {
   if (!isRecord(value)) return null;
   const projectId = safeIdentifier(value.projectId);
   const chatId = safeIdentifier(value.chatId);
   const sessionId = safeIdentifier(value.sessionId);
+  const turnId = safeIdentifier(value.turnId);
+  const runtimeEpoch = safeCounter(value.runtimeEpoch, false);
   const requestId = safeIdentifier(value.requestId);
+  const expectedState = {
+    ask: "asked",
+    allowOnce: "allowPending",
+    deny: "declinePending",
+  }[request.decision];
   if (
     !projectId ||
     !chatId ||
     !sessionId ||
+    !turnId ||
+    !runtimeEpoch ||
     !requestId ||
+    projectId !== request.projectId ||
+    chatId !== request.chatId ||
+    sessionId !== request.sessionId ||
+    turnId !== request.turnId ||
+    runtimeEpoch !== request.runtimeEpoch ||
+    requestId !== request.requestId ||
+    value.decision !== request.decision ||
+    value.state !== expectedState ||
     !isOneOf(value.decision, ["ask", "allowOnce", "deny"] as const) ||
     !isOneOf(value.state, [
       "received",
@@ -71,6 +89,8 @@ function safePermissionDecision(
     projectId,
     chatId,
     sessionId,
+    turnId,
+    runtimeEpoch,
     requestId,
     decision: value.decision,
     state: value.state,
@@ -314,7 +334,7 @@ export const acpDesktop = {
       "resolve_permission_decision",
       request,
     );
-    const safe = safePermissionDecision(response);
+    const safe = safePermissionDecision(response, request);
     if (!safe) {
       throw new AcpDesktopError({
         kind: "internal",
