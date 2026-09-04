@@ -22,8 +22,8 @@ mod state;
 mod trust_root;
 
 // Codex Responses dynamic function names cannot contain dots. This alias is
-// confined to the Codex adapter; the curated Preview wire label stays
-// `sage.browse` for all existing host-tool consumers.
+// confined to the Codex adapter; shared consumers use the ACP extension method
+// `_sage/browse`.
 const CODEX_BROWSE_TOOL_NAME: &str = "sage_browse";
 
 pub(crate) use admission::{

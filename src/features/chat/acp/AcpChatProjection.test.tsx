@@ -312,7 +312,7 @@ describe("AcpChatProjection", () => {
         payload: {
           presentation: {
             kind: "web",
-            label: "sage.browse",
+            label: "_sage/browse",
             summary: "http://127.0.0.1:5173/app",
           },
           inputSummary: null,
@@ -430,7 +430,7 @@ describe("AcpChatProjection", () => {
         payload: {
           presentation: {
             kind: "web",
-            label: "sage.browse",
+            label: "_sage/browse",
             summary: "http://127.0.0.1:5173/app",
           },
           inputSummary: null,
@@ -932,7 +932,7 @@ describe("AcpChatProjection", () => {
         payload: {
           presentation: {
             kind: "web",
-            label: "sage.browse",
+            label: "_sage/browse",
             summary: "http://127.0.0.1:5173/old",
           },
           inputSummary: null,

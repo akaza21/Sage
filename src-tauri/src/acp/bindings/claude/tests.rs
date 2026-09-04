@@ -739,7 +739,7 @@ fn fetch_tool_retains_only_an_admitted_loopback_browse_url() {
                 "sessionUpdate": "tool_call",
                 "toolCallId": "browse-1",
                 "kind": "fetch",
-                "title": "sage.browse",
+                "title": "_sage/browse",
                 "status": "pending",
                 "locations": [{"url": "http://127.0.0.1:5173/app"}],
                 "rawInput": {"url": "https://example.com/secret"}

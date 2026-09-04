@@ -71,7 +71,7 @@ function webTool(
     payload: {
       presentation: {
         kind: "web",
-        label: "sage.browse",
+        label: "_sage/browse",
         summary,
       },
       inputSummary: null,
