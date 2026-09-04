@@ -72,7 +72,7 @@
   height: 6px;
   border-radius: var(--radius-pill);
   background: var(--color-success);
-  box-shadow: 0 0 0 3px var(--color-success-muted);
+  box-shadow: 0 0 6px 1px var(--color-success-muted);
 }
 
 .message-list {
@@ -219,6 +219,10 @@
 }
 
 @media (forced-colors: active) {
+  .session-state__dot {
+    box-shadow: 0 0 0 3px var(--color-success-muted);
+  }
+
   .project-intro,
   .message--user,
   .chat-follow-end {

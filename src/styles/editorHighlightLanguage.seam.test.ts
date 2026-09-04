@@ -15,13 +15,33 @@ describe("Editor highlight language seam", () => {
       entry.indexOf("settings-surface.css"),
     );
     expect(css).toContain("@media (forced-colors: none)");
-    expect(css).toContain("--editor-focus-edge:");
-    expect(css).toContain("--editor-focus-halo:");
-    expect(css).toContain("--editor-selection-fill:");
-    expect(css).toContain("--editor-selection-edge:");
-    expect(css).toContain("--editor-active-fill:");
-    expect(css).toContain("--editor-active-edge:");
+    expect(css).toContain("--highlight-focus-edge: color-mix(");
+    expect(css).toContain("--highlight-focus-halo: color-mix(");
+    expect(css).toContain("--editor-focus-edge: var(--highlight-focus-edge)");
+    expect(css).toContain("--editor-focus-halo: var(--highlight-focus-halo)");
+    expect(css).toContain(
+      "--editor-selection-fill: var(--highlight-selection-fill)",
+    );
+    expect(css).toContain(
+      "--editor-selection-edge: var(--highlight-selection-edge)",
+    );
+    expect(css).toContain("--editor-active-fill: var(--highlight-active-fill)");
+    expect(css).toContain("--editor-active-edge: var(--highlight-active-edge)");
+    expect(css).toContain(
+      "--editor-focus-halo-shadow: var(--highlight-focus-halo-shadow)",
+    );
+    expect(css).toContain(
+      "--editor-focus-frame-shadow: var(--highlight-focus-frame-shadow)",
+    );
+    expect(css).toContain(
+      "--focus-ring: var(--focus-ring-width) solid var(--highlight-focus-edge)",
+    );
+    expect(css).toContain(
+      "--focus-ring-inset: inset 0 0 0 var(--focus-ring-width)",
+    );
     expect(css).toContain("--editor-code-selection:");
+    expect(css).not.toContain("--focus-ring-width:");
+    expect(css).not.toContain("--focus-ring-offset:");
     expect(css).not.toMatch(/@keyframes|animation:/);
     expect(css).not.toMatch(/(?:#fff(?:fff)?\b|\bwhite\b)/i);
     expect(css).not.toContain(".workbench--agent");

@@ -5,8 +5,8 @@
 }
 
 .sidebar:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -2px;
+  outline: 0;
+  box-shadow: var(--focus-ring-inset);
 }
 
 .sidebar__heading {
@@ -64,6 +64,14 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   line-height: 1.45;
+}
+
+@media (forced-colors: active) {
+  .sidebar:focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: -2px;
+    box-shadow: none;
+  }
 }
 
 .source-control-list {

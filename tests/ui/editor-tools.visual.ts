@@ -309,6 +309,12 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       );
       if (!workbenchNode || !selected || !tab || !activity) return null;
       return {
+        focusEdge: getComputedStyle(workbenchNode)
+          .getPropertyValue("--highlight-focus-edge")
+          .trim(),
+        focusHalo: getComputedStyle(workbenchNode)
+          .getPropertyValue("--highlight-focus-halo")
+          .trim(),
         focusWidth: getComputedStyle(workbenchNode)
           .getPropertyValue("--focus-ring-width")
           .trim(),
@@ -318,6 +324,10 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       };
     });
     expect(persistentStates).not.toBeNull();
+    expect(persistentStates!.focusEdge).toContain("color-mix");
+    expect(persistentStates!.focusEdge).toContain("transparent");
+    expect(persistentStates!.focusHalo).toContain("color-mix");
+    expect(persistentStates!.focusHalo).toContain("transparent");
     expect(persistentStates!.focusWidth).toBe("1px");
     expect(persistentStates!.selectedShadow).toContain("1px");
     expect(persistentStates!.selectedShadow).not.toContain("2px");

@@ -58,13 +58,25 @@ describe("Wave 2 visual-system tokens", () => {
   });
 
   it("defines one focus, elevation, disabled, and motion contract", () => {
-    expect(rootBlock).toMatch(/--focus-ring-width:\s*2px;/);
-    expect(rootBlock).toMatch(/--focus-ring-offset:\s*2px;/);
+    expect(rootBlock).toMatch(/--highlight-focus-edge:\s*color-mix\(/);
+    expect(rootBlock).toMatch(/--highlight-focus-halo:\s*color-mix\(/);
+    expect(rootBlock).toMatch(/--highlight-selection-fill:\s*color-mix\(/);
+    expect(rootBlock).toMatch(/--highlight-selection-edge:\s*color-mix\(/);
+    expect(rootBlock).toMatch(/--highlight-active-fill:\s*color-mix\(/);
+    expect(rootBlock).toMatch(/--highlight-active-edge:\s*color-mix\(/);
     expect(rootBlock).toMatch(
-      /--focus-ring:\s*var\(--focus-ring-width\) solid var\(--color-focus-ring\);/,
+      /--highlight-focus-halo-shadow:\s*0 0 6px 1px var\(--highlight-focus-halo\);/,
     );
     expect(rootBlock).toMatch(
-      /--focus-ring-inset:\s*inset 0 0 0 var\(--focus-ring-width\)\s*var\(--color-focus-ring\);/,
+      /--highlight-focus-frame-shadow:\s*inset 0 0 0 1px var\(--highlight-focus-edge\),\s*inset 0 0 6px var\(--highlight-focus-halo\);/,
+    );
+    expect(rootBlock).toMatch(/--focus-ring-width:\s*1px;/);
+    expect(rootBlock).toMatch(/--focus-ring-offset:\s*1px;/);
+    expect(rootBlock).toMatch(
+      /--focus-ring:\s*var\(--focus-ring-width\) solid var\(--highlight-focus-edge\);/,
+    );
+    expect(rootBlock).toMatch(
+      /--focus-ring-inset:\s*inset 0 0 0 var\(--focus-ring-width\)\s*var\(--highlight-focus-edge\);/,
     );
     expect(rootBlock).toMatch(/--opacity-disabled:\s*0\.45;/);
     expect(rootBlock).toMatch(/--motion-duration-fast:\s*100ms;/);
@@ -87,7 +99,7 @@ describe("Wave 2 visual-system tokens", () => {
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*--motion-duration-fast:\s*0ms;[\s\S]*--motion-duration-normal:\s*0ms;/,
     );
     expect(visualSystemSource).toMatch(
-      /@media \(forced-colors: active\)[\s\S]*--color-canvas:\s*Canvas;[\s\S]*--color-focus-ring:\s*Highlight;[\s\S]*--elevation-popover:\s*none;/,
+      /@media \(forced-colors: active\)[\s\S]*--color-canvas:\s*Canvas;[\s\S]*--color-focus-ring:\s*Highlight;[\s\S]*--highlight-focus-edge:\s*Highlight;[\s\S]*--highlight-focus-halo-shadow:\s*none;[\s\S]*--focus-ring-width:\s*2px;[\s\S]*--elevation-popover:\s*none;/,
     );
   });
 });

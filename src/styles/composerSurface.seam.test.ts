@@ -46,4 +46,21 @@ describe("Composer surface stylesheet seam", () => {
     );
     expect(surfaceCss).not.toMatch(/transform:\s*translate/);
   });
+
+  it("uses the shared soft focus treatment and a system forced-colors edge", async () => {
+    const surfaceCss = await readFile(
+      resolve("src/styles/composer-surface.css"),
+      "utf8",
+    );
+
+    expect(surfaceCss).toMatch(
+      /\.composer:focus-within\s*\{[^}]*border-color:\s*var\(--highlight-focus-edge\);[^}]*box-shadow:\s*var\(--highlight-focus-halo-shadow\),\s*var\(--elevation-popover\);/s,
+    );
+    expect(surfaceCss).not.toMatch(
+      /\.composer:focus-within\s*\{[^}]*0\s+0\s+0\s+var\(--focus-ring-offset\)/s,
+    );
+    expect(surfaceCss).toMatch(
+      /@media \(forced-colors:\s*active\)\s*\{[\s\S]*?\.composer:focus-within\s*\{[^}]*border-color:\s*Highlight;[^}]*outline:\s*2px solid Highlight;[^}]*outline-offset:\s*-2px;[^}]*box-shadow:\s*none;/s,
+    );
+  });
 });

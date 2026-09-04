@@ -13,10 +13,8 @@
 }
 
 .composer:focus-within {
-  border-color: var(--color-focus-ring);
-  box-shadow:
-    0 0 0 var(--focus-ring-offset) var(--color-accent-muted),
-    var(--elevation-popover);
+  border-color: var(--highlight-focus-edge);
+  box-shadow: var(--highlight-focus-halo-shadow), var(--elevation-popover);
 }
 
 .composer textarea {
@@ -295,5 +293,12 @@
   .select-control--chip,
   .send-button {
     border: 1px solid CanvasText;
+  }
+
+  .composer:focus-within {
+    border-color: Highlight;
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+    box-shadow: none;
   }
 }

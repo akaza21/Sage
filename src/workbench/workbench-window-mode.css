@@ -105,14 +105,34 @@
 }
 
 .workbench-sidebar-splitter:hover::after,
-.workbench-sidebar-splitter--active::after,
-.workbench-sidebar-splitter:focus-visible::after {
+.workbench-sidebar-splitter--active::after {
   background: var(--color-accent);
 }
 
 .workbench-sidebar-splitter:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -2px;
+  outline: 0;
+}
+
+.workbench-sidebar-splitter:focus-visible::after {
+  width: var(--focus-ring-width);
+  background: var(--highlight-focus-edge);
+  box-shadow: var(--highlight-focus-halo-shadow);
+}
+
+@media (forced-colors: active) {
+  .workbench-sidebar-splitter::after {
+    width: 2px;
+  }
+
+  .workbench-sidebar-splitter:focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: -2px;
+  }
+
+  .workbench-sidebar-splitter:focus-visible::after {
+    background: Highlight;
+    box-shadow: none;
+  }
 }
 
 .agent-artifact-pane {

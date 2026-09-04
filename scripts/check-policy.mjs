@@ -5,6 +5,10 @@ import process from "node:process";
 
 import { cargoPackageFeatureErrors } from "./ade0006a-package-policy.mjs";
 import { acpTransportParityErrors } from "./acp-transport-parity.mjs";
+import {
+  cssHighlightPolicyErrors,
+  discoverSourceFilesWithCssBound,
+} from "./css-highlight-policy.mjs";
 import { workbenchTransportParityErrors } from "./workbench-transport-parity.mjs";
 
 const root = process.cwd();
@@ -762,8 +766,9 @@ if (
   );
 }
 
+const sourceInventory = await discoverSourceFilesWithCssBound(root);
 const productionFiles = [
-  ...(await filesBelow("src")),
+  ...sourceInventory.files,
   ...(await filesBelow("src-tauri/src")),
 ].filter(
   (file) =>
@@ -772,6 +777,11 @@ const productionFiles = [
     !/(?:^|[\\/])tests(?:[\\/]|\.rs$)/u.test(file) &&
     !/(?:^|[\\/])[^\\/]+_tests\.rs$/u.test(file),
 );
+
+const productionCssFiles = sourceInventory.cssFiles.map(canonicalRelative);
+for (const error of await cssHighlightPolicyErrors(root, productionCssFiles)) {
+  fail(error);
+}
 
 const productionLineExceptions = new Map([
   [

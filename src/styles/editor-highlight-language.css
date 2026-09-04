@@ -8,36 +8,47 @@
   .new-file-dialog--editor,
   .dirty-dialog--editor,
   .menu-popover--editor {
-    --editor-focus-edge: color-mix(
+    /* Re-evaluate the shared formulas against Editor's local colour roles. */
+    --highlight-focus-edge: color-mix(
       in srgb,
       var(--color-accent) 68%,
       transparent
     );
-    --editor-focus-halo: color-mix(
+    --highlight-focus-halo: color-mix(
       in srgb,
       var(--color-accent) 12%,
       transparent
     );
-    --editor-selection-fill: color-mix(
+    --highlight-selection-fill: color-mix(
       in srgb,
       var(--color-accent) 12%,
       var(--color-surface)
     );
-    --editor-selection-edge: color-mix(
+    --highlight-selection-edge: color-mix(
       in srgb,
       var(--color-accent) 44%,
       transparent
     );
-    --editor-active-fill: color-mix(
+    --highlight-active-fill: color-mix(
       in srgb,
       var(--color-accent) 7%,
       var(--color-surface-hover)
     );
-    --editor-active-edge: color-mix(
+    --highlight-active-edge: color-mix(
       in srgb,
       var(--color-accent) 52%,
       transparent
     );
+    --highlight-focus-halo-shadow: 0 0 6px 1px var(--highlight-focus-halo);
+    --highlight-focus-frame-shadow:
+      inset 0 0 0 1px var(--highlight-focus-edge),
+      inset 0 0 6px var(--highlight-focus-halo);
+    --editor-focus-edge: var(--highlight-focus-edge);
+    --editor-focus-halo: var(--highlight-focus-halo);
+    --editor-selection-fill: var(--highlight-selection-fill);
+    --editor-selection-edge: var(--highlight-selection-edge);
+    --editor-active-fill: var(--highlight-active-fill);
+    --editor-active-edge: var(--highlight-active-edge);
     --editor-code-selection: var(--color-selection);
     --editor-find-match-fill: color-mix(
       in srgb,
@@ -49,15 +60,11 @@
       var(--color-warning) 72%,
       transparent
     );
-    --editor-focus-halo-shadow: 0 0 6px 1px var(--editor-focus-halo);
-    --editor-focus-frame-shadow:
-      inset 0 0 0 1px var(--editor-focus-edge),
-      inset 0 0 6px var(--editor-focus-halo);
-    --focus-ring-width: 1px;
-    --focus-ring-offset: 1px;
-    --focus-ring: var(--focus-ring-width) solid var(--editor-focus-edge);
+    --editor-focus-halo-shadow: var(--highlight-focus-halo-shadow);
+    --editor-focus-frame-shadow: var(--highlight-focus-frame-shadow);
+    --focus-ring: var(--focus-ring-width) solid var(--highlight-focus-edge);
     --focus-ring-inset: inset 0 0 0 var(--focus-ring-width)
-      var(--editor-focus-edge);
+      var(--highlight-focus-edge);
     --menu-focus-edge: var(--editor-focus-edge);
     --menu-selected-fill: var(--editor-selection-fill);
   }

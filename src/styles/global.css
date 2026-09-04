@@ -152,11 +152,45 @@
   --radius-pill: 999px;
   --elevation-popover: 0 8px 24px rgb(0 0 0 / 0.32);
   --elevation-floating: 0 16px 48px rgb(0 0 0 / 0.24);
-  --focus-ring-width: 2px;
-  --focus-ring-offset: 2px;
-  --focus-ring: var(--focus-ring-width) solid var(--color-focus-ring);
+  --highlight-focus-edge: color-mix(
+    in srgb,
+    var(--color-accent) 68%,
+    transparent
+  );
+  --highlight-focus-halo: color-mix(
+    in srgb,
+    var(--color-accent) 12%,
+    transparent
+  );
+  --highlight-selection-fill: color-mix(
+    in srgb,
+    var(--color-accent) 12%,
+    var(--color-surface)
+  );
+  --highlight-selection-edge: color-mix(
+    in srgb,
+    var(--color-accent) 44%,
+    transparent
+  );
+  --highlight-active-fill: color-mix(
+    in srgb,
+    var(--color-accent) 7%,
+    var(--color-surface-hover)
+  );
+  --highlight-active-edge: color-mix(
+    in srgb,
+    var(--color-accent) 52%,
+    transparent
+  );
+  --highlight-focus-halo-shadow: 0 0 6px 1px var(--highlight-focus-halo);
+  --highlight-focus-frame-shadow:
+    inset 0 0 0 1px var(--highlight-focus-edge),
+    inset 0 0 6px var(--highlight-focus-halo);
+  --focus-ring-width: 1px;
+  --focus-ring-offset: 1px;
+  --focus-ring: var(--focus-ring-width) solid var(--highlight-focus-edge);
   --focus-ring-inset: inset 0 0 0 var(--focus-ring-width)
-    var(--color-focus-ring);
+    var(--highlight-focus-edge);
   --opacity-disabled: 0.45;
   --motion-duration-fast: 100ms;
   --motion-duration-normal: 160ms;
@@ -456,6 +490,16 @@ textarea:disabled,
     --color-accent-muted: Canvas;
     --color-accent-foreground: HighlightText;
     --color-focus-ring: Highlight;
+    --highlight-focus-edge: Highlight;
+    --highlight-focus-halo: transparent;
+    --highlight-selection-fill: Highlight;
+    --highlight-selection-edge: Highlight;
+    --highlight-active-fill: Highlight;
+    --highlight-active-edge: Highlight;
+    --highlight-focus-halo-shadow: none;
+    --highlight-focus-frame-shadow: none;
+    --focus-ring-width: 2px;
+    --focus-ring-offset: 2px;
     --color-success: CanvasText;
     --color-success-muted: Canvas;
     --color-warning: CanvasText;

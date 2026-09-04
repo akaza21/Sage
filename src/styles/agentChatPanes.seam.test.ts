@@ -32,4 +32,40 @@ describe("Agent Chat panes stylesheet seam", () => {
       /@media \(forced-colors: active\)[\s\S]*?\.agent-chat-pane--focused \.agent-chat-pane__header\s*\{[^}]*outline:\s*2px solid Highlight;/,
     );
   });
+
+  it("keeps idle splitter rails at two pixels and narrows only keyboard focus", async () => {
+    const [panesCss, modeCss, globalCss] = await Promise.all([
+      readFile(resolve("src/styles/agent-chat-panes.css"), "utf8"),
+      readFile(resolve("src/workbench/workbench-window-mode.css"), "utf8"),
+      readFile(resolve("src/styles/global.css"), "utf8"),
+    ]);
+
+    for (const [css, family] of [
+      [panesCss, "agent-chat-splitter"],
+      [modeCss, "workbench-sidebar-splitter"],
+    ] as const) {
+      expect(css).toMatch(
+        new RegExp(
+          `\\.${family}::after\\s*\\{[^}]*left:\\s*3px;[^}]*width:\\s*2px;`,
+          "s",
+        ),
+      );
+      expect(css).toMatch(
+        new RegExp(
+          `\\.${family}:focus-visible::after\\s*\\{[^}]*width:\\s*var\\(--focus-ring-width\\);[^}]*background:\\s*var\\(--highlight-focus-edge\\);[^}]*box-shadow:\\s*var\\(--highlight-focus-halo-shadow\\);`,
+          "s",
+        ),
+      );
+      expect(css).toMatch(
+        new RegExp(
+          `@media \\(forced-colors:\\s*active\\)\\s*\\{[\\s\\S]*?\\.${family}::after\\s*\\{[^}]*width:\\s*2px;[^}]*\\}[\\s\\S]*?\\.${family}:focus-visible::after\\s*\\{[^}]*background:\\s*Highlight;[^}]*box-shadow:\\s*none;`,
+          "s",
+        ),
+      );
+    }
+
+    expect(globalCss).toMatch(
+      /@media \(forced-colors:\s*active\)[\s\S]*?--focus-ring-width:\s*2px;/,
+    );
+  });
 });
