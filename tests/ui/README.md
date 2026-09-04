@@ -7,11 +7,12 @@ by production code and does not replace native acceptance.
 
 ## Structure (Q-07 surface split)
 
-The lane keeps the same 57 tests, test titles, screenshot names, snapshot
+The Q-07 split kept the existing test titles, screenshot names, snapshot
 directory (`workbench.visual.spec.ts-snapshots/`), clock/locale/font/reflow
-settlement, and accessibility/viewport/DPR/reduced-motion behavior as the
-pre-split `workbench.visual.ts` + `agent-resource-shell.visual.ts` pair.
-No baseline PNG changed in the split.
+settlement, and accessibility/viewport/DPR/reduced-motion behavior from the
+pre-split `workbench.visual.ts` + `agent-resource-shell.visual.ts` pair. AV-03
+extends the lane to 59 tests with two named Agent-ready baselines; no existing
+baseline PNG changed.
 
 | Surface | Playwright spec | Fixture owner |
 | --- | --- | --- |
@@ -64,7 +65,7 @@ npm run test:ui:update
 reviewing the intended change. Failure screenshots and Playwright error context
 are written below `output/playwright/`, which is ignored by Git.
 
-The lane runs 57 tests serially with a fixed clock, locale, timezone, font wait,
+The lane runs 59 tests serially with a fixed clock, locale, timezone, font wait,
 disabled screenshot animations, hidden carets, and explicit transcript
 follow-end settlement. Screenshots are scoped to `main.workbench`; role
 assertions verify important landmarks and controls before capture. Every
@@ -76,7 +77,7 @@ responsive case also rejects document-level horizontal overflow.
 | --- | --- |
 | Agent | Single Chat, dual Chat, measured-width focused-Chat fallback, a bounded 14-turn transcript, the complete Thought/Plan/tool/usage/error/unknown activity family, a bounded accessible inline image, and a keyboard-disclosed read-only child-activity hierarchy across levels one through four |
 | Editor | Explorer plus active-file restoration inside its real scroll viewport, a compact selection-aware More menu with keyboard/dialog focus handoff and plain unavailable reasons, the functional welcome surface, compact in-file Find, Settings, populated/empty Search, Source Control with repository identity, one state-derived primary action, loading/error and complete control-interaction states, populated/empty Problems and Outline with exact mouse/keyboard source navigation and 200%-zoom row containment, tabs, breadcrumbs, CodeMirror, dirty/save status, status bar, and one restrained translucent highlight language across focus, selection, active controls, and the resizer |
-| Resources | Agent File, Agent Diff, safe inline image, loopback Preview, one truthful collapsed resource toggle, expanded empty plus announced File/Diff loading/error states, cross-mode File/Diff palette parity, and exact per-Chat Follow latest / pinned-resource restoration |
+| Resources | Agent File, Agent Diff, safe inline image, loopback Preview, one truthful collapsed resource toggle, expanded empty plus announced File/Diff loading/error states, cross-mode File/Diff token-authority parity (computed canvas/header/panel/code/gutter/divider/active-line/caret/selection/add/delete-foreground/muted/syntax roles plus same-size document-region pixels), Agent file-ready/diff-ready states, and exact per-Chat Follow latest / pinned-resource restoration |
 | Recovery | Failed Turn and waiting/running Turn |
 | Accessibility | Forced colors, reduced motion, keyboard focus-visible, keyboard-opened Agent resources with focus return, announced resource status/alerts, 1px non-white Editor focus and selection edges without stacked CodeMirror outlines, Explorer menu traversal and focus return, full accessible child-activity labels, and disclosure-only hierarchy navigation |
 | Responsive | 720x560 narrow window and a 1380x880 device emulated at 200% zoom, including empty/File/Diff Agent resource states, compact Explorer action-menu and four-level child-activity containment |
@@ -92,14 +93,20 @@ while the native walkthrough remains responsible for WebView integration.
 npm packages have approximately 18.5 MB of unpacked JavaScript in total and are
 not part of the Vite production bundle. Chromium installation is separate from
 `npm ci`; on the Windows authoring machine the Chromium and headless-shell cache
-occupied 731,309,635 bytes (about 697 MiB) outside the repository. The 40
-integrated-candidate PNG baselines occupy 2,389,415 bytes.
+occupied 731,309,635 bytes (about 697 MiB) outside the repository. The 42
+integrated-candidate PNG baselines occupy 2,564,639 bytes.
 
 A warm integrated-candidate Windows run completed in about 50 seconds. This
 lane is purposely not included in `npm run check`: the existing CI matrix is
 not a Windows pixel environment, and the browser download is materially larger
 than the normal frontend check. A future merge gate should run
 `npm run test:ui` on pinned Windows Chromium infrastructure.
+
+AV-03 adds `agent-file-ready` and `agent-diff-ready` Windows baselines plus a
+same-size document-region pixel comparison between Agent and Editor (locator
+clips, exact buffer equality, no new pixel library or tolerance exception).
+Existing `file`/`diff` full-workbench baselines keep their meaning and stay
+byte-identical because token values are unchanged.
 
 ## Deliberate limits
 

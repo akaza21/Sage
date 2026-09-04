@@ -110,27 +110,84 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await page.setViewportSize({ width: 1380, height: 880 });
     await openScenario(page, "editor", "editor");
 
+    // Authority names for the document syntax palette declared once in
+    // global.css. Values are read live below, never assumed from source.
+    const docSyntaxTokens = [
+      "--doc-syntax-meta",
+      "--doc-syntax-keyword",
+      "--doc-syntax-atom",
+      "--doc-syntax-literal",
+      "--doc-syntax-string",
+      "--doc-syntax-regexp",
+      "--doc-syntax-variable-definition",
+      "--doc-syntax-variable-local",
+      "--doc-syntax-type",
+      "--doc-syntax-class",
+      "--doc-syntax-variable-special",
+      "--doc-syntax-property-definition",
+      "--doc-syntax-comment",
+      "--doc-syntax-invalid",
+    ];
+
     const readFileAppearance = async (target: Page) => {
       await expect(target.locator(".file-surface .cm-gutters")).toBeVisible();
-      return target.locator(".file-surface").evaluate((surface) => {
+      // Highlight spans carry the runtime's generated classes, so wait for
+      // any classed span inside a rendered line: actually-rendered syntax.
+      await expect(
+        target
+          .locator(".file-surface .cm-content .cm-line span[class]")
+          .first(),
+      ).toBeVisible();
+      return target.locator(".file-surface").evaluate((surface, tokens) => {
         const header = surface.querySelector<HTMLElement>(".file-header");
         const editor = surface.querySelector<HTMLElement>(".editor-input");
         const content = surface.querySelector<HTMLElement>(".cm-content");
         const gutters = surface.querySelector<HTMLElement>(".cm-gutters");
-        if (!header || !editor || !content || !gutters) {
+        const activeLine = surface.querySelector<HTMLElement>(".cm-activeLine");
+        if (!header || !editor || !content || !gutters || !activeLine) {
           throw new Error("File appearance probe could not find the document");
         }
         const selectionStyle = getComputedStyle(content, "::selection");
+        const codeColor = getComputedStyle(editor).color;
+        const highlight = Array.from(
+          content.querySelectorAll(".cm-line span[class]"),
+        )
+          .map((node) => ({
+            text: (node as HTMLElement).textContent ?? "",
+            color: getComputedStyle(node as HTMLElement).color,
+          }))
+          .filter((span) => span.color !== codeColor);
+        highlight.sort((a, b) =>
+          a.color < b.color
+            ? -1
+            : a.color > b.color
+              ? 1
+              : a.text < b.text
+                ? -1
+                : 1,
+        );
+        const probe = surface.ownerDocument.createElement("span");
+        surface.appendChild(probe);
+        const authority = tokens.map((token) => {
+          probe.style.setProperty("color", `var(${token})`);
+          return getComputedStyle(probe).color;
+        });
+        probe.remove();
         return {
           canvas: getComputedStyle(surface).backgroundColor,
-          text: getComputedStyle(editor).color,
+          text: codeColor,
           header: getComputedStyle(header).backgroundColor,
           headerHeight: header.getBoundingClientRect().height,
           gutter: getComputedStyle(gutters).color,
+          gutterDivider: getComputedStyle(gutters).borderRightColor,
+          activeLine: getComputedStyle(activeLine).backgroundColor,
+          caret: getComputedStyle(content).caretColor,
           selection: selectionStyle.backgroundColor,
           selectionText: selectionStyle.color,
+          syntaxHighlight: highlight,
+          syntaxAuthority: authority,
         };
-      });
+      }, docSyntaxTokens);
     };
 
     const editorAppearance = await readFileAppearance(page);
@@ -226,6 +283,19 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await agentFind.getByRole("button", { name: "Close find" }).click();
 
     expect(agentAppearance).toEqual(editorAppearance);
+    // Actually-rendered highlight spans: non-empty, multi-role, identical
+    // across modes, and every color resolves from the live token authority.
+    expect(agentAppearance.syntaxHighlight.length).toBeGreaterThan(0);
+    expect(agentAppearance.syntaxHighlight.length).toBeLessThan(500);
+    expect(
+      new Set(agentAppearance.syntaxHighlight.map((span) => span.color)).size,
+    ).toBeGreaterThanOrEqual(2);
+    expect(agentAppearance.syntaxAuthority).toEqual(
+      editorAppearance.syntaxAuthority,
+    );
+    for (const span of agentAppearance.syntaxHighlight) {
+      expect(agentAppearance.syntaxAuthority).toContain(span.color);
+    }
     expect(customAgentAppearance).toEqual(customEditorAppearance);
     expect(customEditorAppearance).toMatchObject({
       fontSize: "16px",
@@ -256,7 +326,25 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         const removed = surface.querySelector<HTMLElement>(
           ".diff-line--removed",
         );
-        if (!header || !toolbar || !code || !gutter || !added || !removed) {
+        const addCount = surface.querySelector<HTMLElement>(
+          ".diff-header__counts span:first-child",
+        );
+        const deleteCount = surface.querySelector<HTMLElement>(
+          ".diff-header__counts span:last-child",
+        );
+        const hunkHeader =
+          surface.querySelector<HTMLElement>(".diff-hunk__header");
+        if (
+          !header ||
+          !toolbar ||
+          !code ||
+          !gutter ||
+          !added ||
+          !removed ||
+          !addCount ||
+          !deleteCount ||
+          !hunkHeader
+        ) {
           throw new Error("Diff appearance probe could not find the document");
         }
         return {
@@ -267,8 +355,13 @@ test.describe("Wave 2 accessibility and responsive states", () => {
           toolbarHeight: toolbar.getBoundingClientRect().height,
           text: getComputedStyle(code).color,
           gutter: getComputedStyle(gutter).color,
+          gutterDivider: getComputedStyle(gutter).borderRightColor,
           added: getComputedStyle(added).backgroundColor,
           removed: getComputedStyle(removed).backgroundColor,
+          addForeground: getComputedStyle(addCount).color,
+          deleteForeground: getComputedStyle(deleteCount).color,
+          hunkForeground: getComputedStyle(hunkHeader).color,
+          hunkBackground: getComputedStyle(hunkHeader).backgroundColor,
           selection: getComputedStyle(code, "::selection").backgroundColor,
           selectionText: getComputedStyle(code, "::selection").color,
         };
@@ -285,10 +378,105 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const agentDiffAppearance = await readDiffAppearance(agentDiffPage);
 
     expect(agentDiffAppearance).toEqual(editorDiffAppearance);
+    expect(agentDiffAppearance.addForeground).not.toBe(
+      agentDiffAppearance.text,
+    );
+    expect(agentDiffAppearance.deleteForeground).not.toBe(
+      agentDiffAppearance.text,
+    );
+
+    const compareDocumentRegion = async (
+      first: Page,
+      second: Page,
+      selector: string,
+    ) => {
+      const firstBox = await first
+        .locator(selector)
+        .evaluate((node) => node.getBoundingClientRect().toJSON());
+      const secondBox = await second
+        .locator(selector)
+        .evaluate((node) => node.getBoundingClientRect().toJSON());
+      const width = Math.floor(Math.min(firstBox.width, secondBox.width, 480));
+      const height = Math.floor(
+        Math.min(firstBox.height, secondBox.height, 400),
+      );
+      expect(width).toBeGreaterThanOrEqual(200);
+      expect(height).toBeGreaterThanOrEqual(120);
+      const [firstBytes, secondBytes] = await Promise.all([
+        first.screenshot({
+          clip: {
+            x: firstBox.x,
+            y: firstBox.y,
+            width,
+            height,
+          },
+        }),
+        second.screenshot({
+          clip: {
+            x: secondBox.x,
+            y: secondBox.y,
+            width,
+            height,
+          },
+        }),
+      ]);
+      expect(secondBytes).toEqual(firstBytes);
+    };
+
+    await compareDocumentRegion(
+      editorDiffPage,
+      agentDiffPage,
+      ".diff-surface .diff-editor",
+    );
     await expectNoViewportOverflow(editorDiffPage);
     await expectNoViewportOverflow(agentDiffPage);
     await editorDiffPage.close();
     await agentDiffPage.close();
+
+    const editorFilePixelPage = await context.newPage();
+    await editorFilePixelPage.setViewportSize({ width: 1380, height: 880 });
+    await openScenario(editorFilePixelPage, "editor", "editor");
+    const agentFilePixelPage = await context.newPage();
+    await agentFilePixelPage.setViewportSize({ width: 1380, height: 880 });
+    await openScenario(agentFilePixelPage, "file", "agent");
+    await compareDocumentRegion(
+      editorFilePixelPage,
+      agentFilePixelPage,
+      ".file-surface .editor-input",
+    );
+    await expectNoViewportOverflow(editorFilePixelPage);
+    await expectNoViewportOverflow(agentFilePixelPage);
+    await editorFilePixelPage.close();
+    await agentFilePixelPage.close();
+  });
+});
+
+test.describe("AV-03 Agent document ready baselines", () => {
+  test.use({ viewport: { width: 1380, height: 880 } });
+
+  test("agent-file-ready stays visually stable", async ({ page }) => {
+    const workbench = await openAgentScenario(page, "file");
+    await expect(
+      page.getByRole("textbox", {
+        name: "Edit src/workbench/AgentChatPanes.tsx",
+      }),
+    ).toBeVisible();
+    await expect(
+      page.locator(".file-surface .cm-content .cm-line span[class]").first(),
+    ).toBeVisible();
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("agent-file-ready.png");
+  });
+
+  test("agent-diff-ready stays visually stable", async ({ page }) => {
+    const workbench = await openAgentScenario(page, "diff");
+    await expect(
+      page.getByRole("table", { name: "Unified file diff" }),
+    ).toBeVisible();
+    await expect(page.locator(".diff-line--added").first()).toBeVisible();
+    await expect(page.locator(".diff-line--removed").first()).toBeVisible();
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("agent-diff-ready.png");
   });
 });
 

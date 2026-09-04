@@ -16,18 +16,22 @@ describe("Editor visual-reference seam", () => {
   });
 
   it("loads one Editor-scoped finish layer with the frozen neutral roles", async () => {
-    const [entry, css] = await Promise.all([
+    const [entry, css, global] = await Promise.all([
       readFile(resolve("src/main.tsx"), "utf8"),
       readFile(resolve("src/styles/editor-visual-reference.css"), "utf8"),
+      readFile(resolve("src/styles/global.css"), "utf8"),
     ]);
 
     expect(entry).toMatch(
       /import ["']\.\/styles\/editor-visual-reference\.css["'];/,
     );
     expect(css).toContain("@media (forced-colors: none)");
-    expect(css).toContain("--color-canvas: #141414");
-    expect(css).toContain("--color-border-subtle: #242424");
-    expect(css).toContain("--color-accent: #4c9df3");
+    expect(css).toContain("--color-canvas: var(--doc-canvas)");
+    expect(css).toContain("--color-border-subtle: var(--doc-border-subtle)");
+    expect(css).toContain("--color-accent: var(--doc-accent)");
+    expect(global).toMatch(/--doc-canvas\s*:\s*[^;]+;/);
+    expect(global).toMatch(/--doc-border-subtle\s*:\s*[^;]+;/);
+    expect(global).toMatch(/--doc-accent\s*:\s*[^;]+;/);
     expect(css).not.toMatch(/^:root\b/m);
   });
 

@@ -1,5 +1,9 @@
 import { undo } from "@codemirror/commands";
-import { syntaxTree } from "@codemirror/language";
+import {
+  defaultHighlightStyle,
+  syntaxTree,
+  type TagStyle,
+} from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -194,5 +198,120 @@ describe("CodeMirrorEditorRuntime appearance", () => {
 
     expect(parent.querySelector(".cm-gutters")).toBe(gutter);
     runtime.destroy();
+  });
+});
+
+describe("documentSyntaxHighlightStyle token wiring", () => {
+  const syntaxTokens = [
+    "--doc-syntax-meta",
+    "--doc-syntax-keyword",
+    "--doc-syntax-atom",
+    "--doc-syntax-literal",
+    "--doc-syntax-string",
+    "--doc-syntax-regexp",
+    "--doc-syntax-variable-definition",
+    "--doc-syntax-variable-local",
+    "--doc-syntax-type",
+    "--doc-syntax-class",
+    "--doc-syntax-variable-special",
+    "--doc-syntax-property-definition",
+    "--doc-syntax-comment",
+    "--doc-syntax-invalid",
+  ];
+
+  function tokenDrivenColors(): string[] {
+    const found: string[] = [];
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList | undefined;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
+      for (const rule of Array.from(rules)) {
+        if (!(rule instanceof CSSStyleRule)) {
+          continue;
+        }
+        const color = rule.style.getPropertyValue("color");
+        if (color.includes("var(--doc-syntax-")) {
+          found.push(color);
+        }
+      }
+    }
+    return found;
+  }
+
+  async function expectDefaultSpecDrift(
+    mutate: (specs: readonly TagStyle[]) => readonly TagStyle[],
+  ) {
+    vi.resetModules();
+    vi.doMock("@codemirror/language", async (importOriginal) => {
+      const actual = (await importOriginal()) as Record<string, unknown> & {
+        defaultHighlightStyle: typeof defaultHighlightStyle;
+      };
+      return {
+        ...actual,
+        defaultHighlightStyle: {
+          specs: mutate(actual.defaultHighlightStyle.specs),
+        },
+      };
+    });
+    try {
+      await expect(import("./CodeMirrorEditorRuntime")).rejects.toThrow(
+        /refusing to mis-map token colors/,
+      );
+    } finally {
+      vi.doUnmock("@codemirror/language");
+      vi.resetModules();
+    }
+  }
+
+  it("mounts token-driven syntax declarations for every syntax token", () => {
+    const { runtime } = runtimeForPath("notes.txt");
+    const colors = tokenDrivenColors();
+    for (const token of syntaxTokens) {
+      expect(colors.join("\n")).toContain(`var(${token})`);
+    }
+    runtime.destroy();
+  });
+
+  it("mounts no raw default palette colors", () => {
+    const { runtime } = runtimeForPath("notes.txt");
+    const colors = tokenDrivenColors();
+    expect(colors.length).toBeGreaterThan(0);
+    for (const color of colors) {
+      expect(color).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    }
+    runtime.destroy();
+  });
+
+  it("fails closed when the installed default spec count drifts", () => {
+    return expectDefaultSpecDrift(() => [
+      { tag: defaultHighlightStyle.specs[0].tag, color: "currentColor" },
+    ]);
+  });
+
+  it("rejects a same-count reorder of specs with matching style shapes", () => {
+    return expectDefaultSpecDrift((specs) => {
+      const reordered = [...specs];
+      [reordered[11], reordered[12]] = [reordered[12], reordered[11]];
+      return reordered;
+    });
+  });
+
+  it("rejects drift in a non-color style value", () => {
+    return expectDefaultSpecDrift((specs) =>
+      specs.map((spec, index) =>
+        index === 1 ? { ...spec, textDecoration: "overline" } : spec,
+      ),
+    );
+  });
+
+  it("rejects drift in a default palette value", () => {
+    return expectDefaultSpecDrift((specs) =>
+      specs.map((spec, index) =>
+        index === 6 ? { ...spec, color: "currentColor" } : spec,
+      ),
+    );
   });
 });

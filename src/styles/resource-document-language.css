@@ -2,17 +2,45 @@
  * Files and Diffs are one workbench resource in both window modes. Their
  * surrounding chrome may differ, but the document itself owns one palette,
  * density, selection treatment, and compact geometry.
+ *
+ * Colour authority lives in global.css as --doc-* / --diff-* tokens. This
+ * sheet only aliases generic surface roles to that authority. Document
+ * syntax colors are driven from --doc-syntax-* through the CodeMirror
+ * highlight style in CodeMirrorEditorRuntime.ts (same tags, order, and
+ * non-color treatments as the library default; only color sources change).
+ * No raw colour lives here.
  */
 .resource-document {
   --resource-document-header-height: 36px;
-  --resource-document-code-foreground: CanvasText;
-  --resource-document-gutter-foreground: CanvasText;
-  --resource-document-gutter-divider: CanvasText;
-  --resource-document-active-line: Canvas;
-  --resource-document-caret: CanvasText;
-  --resource-document-selection: Highlight;
-  --resource-document-selection-foreground: HighlightText;
-  --resource-document-error-foreground: CanvasText;
+  --resource-document-code-foreground: var(--doc-code-foreground);
+  --resource-document-gutter-foreground: var(--doc-gutter-foreground);
+  --resource-document-gutter-divider: var(--doc-gutter-divider);
+  --resource-document-active-line: var(--doc-active-line);
+  --resource-document-caret: var(--doc-caret);
+  --resource-document-selection: var(--doc-selection-background);
+  --resource-document-selection-foreground: var(--doc-selection-foreground);
+  --resource-document-error-foreground: var(--doc-error-foreground);
+  --color-canvas: var(--doc-canvas);
+  --color-panel: var(--doc-panel);
+  --color-surface: var(--doc-surface);
+  --color-surface-hover: var(--doc-surface-hover);
+  --color-surface-active: var(--doc-surface-active);
+  --color-surface-selected: var(--doc-surface-selected);
+  --color-border-subtle: var(--doc-border-subtle);
+  --color-border-strong: var(--doc-border-strong);
+  --color-text-primary: var(--doc-text-primary);
+  --color-text-secondary: var(--doc-text-secondary);
+  --color-text-muted: var(--doc-text-muted);
+  --color-text-disabled: var(--doc-text-disabled);
+  --color-accent: var(--doc-accent);
+  --color-accent-hover: var(--doc-accent-hover);
+  --color-accent-muted: var(--doc-accent-muted);
+  --color-focus-ring: var(--doc-focus-ring);
+  --color-selection: var(--doc-selection);
+  --color-diff-add: var(--diff-add);
+  --color-diff-add-muted: var(--diff-add-muted);
+  --color-diff-delete: var(--diff-delete);
+  --color-diff-delete-muted: var(--diff-delete-muted);
 }
 
 @media (forced-colors: none) {
@@ -20,30 +48,5 @@
     --radius-sm: 4px;
     --radius-md: 6px;
     --radius-lg: 8px;
-    --color-canvas: #141414;
-    --color-panel: #141414;
-    --color-surface: #232323;
-    --color-surface-hover: #2a2a2a;
-    --color-surface-active: #2a4b6d;
-    --color-surface-selected: #2a4b6d;
-    --color-border-subtle: #242424;
-    --color-border-strong: #2a2a2a;
-    --color-text-primary: #c5c5c5;
-    --color-text-secondary: #adadad;
-    --color-text-muted: #858585;
-    --color-text-disabled: #656565;
-    --color-accent: #4c9df3;
-    --color-accent-hover: #75b4f7;
-    --color-accent-muted: #2a4b6d;
-    --color-focus-ring: #4c9df3;
-    --color-selection: #264f78;
-    --resource-document-code-foreground: #cbd1ca;
-    --resource-document-gutter-foreground: #667067;
-    --resource-document-gutter-divider: rgb(255 255 255 / 0.045);
-    --resource-document-active-line: rgb(255 255 255 / 0.035);
-    --resource-document-caret: #e1e7df;
-    --resource-document-selection: #264f78;
-    --resource-document-selection-foreground: #f4f7fb;
-    --resource-document-error-foreground: #efb3ae;
   }
 }
