@@ -63,6 +63,7 @@ pub(super) enum DenyStage {
 
 pub(super) struct DenyIntent {
     pub(super) replay: bool,
+    pub(super) cancelled: bool,
     pub(super) stage: DenyStage,
 }
 
@@ -318,6 +319,13 @@ impl HarnessAdapter for OmpRuntime {
         }
     }
 
+    fn cancel_permission(
+        &mut self,
+        request_id: &crate::acp::contract::SageServerRequestId,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.prepare_permission_cancel(request_id)
+    }
+
     fn ingest(
         &mut self,
         frame: &Frame,
@@ -349,7 +357,7 @@ impl HarnessAdapter for OmpRuntime {
         token: EgressToken,
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
-        if token.deny_request().is_some() {
+        if token.deny_request().is_some() || token.cancelled_permission_request().is_some() {
             return self.resolve_deny(token, resolution);
         }
         let id = token

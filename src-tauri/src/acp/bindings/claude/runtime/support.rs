@@ -81,6 +81,26 @@ pub(super) fn denial(
     ))
 }
 
+pub(super) fn cancelled_permission(
+    request_id: &crate::acp::contract::SageServerRequestId,
+    wire_id: &Value,
+) -> Result<AdapterEgress, AdapterRuntimeError> {
+    let bytes = serde_json::to_vec(&serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": wire_id,
+        "result": { "outcome": { "outcome": "cancelled" } },
+    }))
+    .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+    let frame =
+        OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+    let external = ExternalId::new("permissionRequest", request_id.as_str())
+        .map_err(|_| AdapterRuntimeError::PermissionIntent)?;
+    Ok(AdapterEgress::new(
+        frame,
+        EgressToken::permission_cancel(external),
+    ))
+}
+
 pub(super) fn permission_identity(
     value: Option<&Value>,
 ) -> Result<(ExternalId, String, Value), AdapterRuntimeError> {

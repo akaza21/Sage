@@ -467,6 +467,9 @@ fn mandatory_denial_is_correlated_replay_bounded_and_fail_closed() {
     );
 }
 
+#[path = "cancel_contract_tests.rs"]
+mod cancel_contract_tests;
+
 #[test]
 fn malformed_and_plus_one_models_fail_closed() {
     let mut malformed = fixture_runtime(10);

@@ -589,3 +589,6 @@ fn admitted_session_can_request_sage_browse_during_a_turn() {
         .expect("foreign session");
     assert!(foreign.events().is_empty());
 }
+
+#[path = "cancel_contract_tests.rs"]
+mod cancel_contract_tests;

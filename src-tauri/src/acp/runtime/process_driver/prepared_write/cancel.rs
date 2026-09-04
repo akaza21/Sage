@@ -66,7 +66,7 @@ where
         Ok(self)
     }
 
-    pub(crate) fn dispatch_cancel(
+    pub(crate) async fn dispatch_cancel(
         mut self,
         intent: &HostCancelIntent,
     ) -> Result<Self, Box<PreparedWriteFailure<Self>>> {
@@ -102,30 +102,36 @@ where
             };
         loop {
             self.cancel_attempts = self.cancel_attempts.saturating_add(1);
-            let progress = self.turn.driver.dispatch_cancel(CancelIntent {
-                project_id: intent.owner.project_id.clone(),
-                chat_id: intent.owner.chat_id.clone(),
-                session_id: intent.owner.session_id.clone(),
-                runtime_epoch: intent.owner.runtime_epoch,
-                turn_id: intent.turn_id.clone(),
-                client_message_id: client_message_id.clone(),
-            });
+            let progress = self
+                .turn
+                .driver
+                .dispatch_cancel(CancelIntent {
+                    project_id: intent.owner.project_id.clone(),
+                    chat_id: intent.owner.chat_id.clone(),
+                    session_id: intent.owner.session_id.clone(),
+                    runtime_epoch: intent.owner.runtime_epoch,
+                    turn_id: intent.turn_id.clone(),
+                    client_message_id: client_message_id.clone(),
+                })
+                .await;
             match progress {
                 Ok(progress)
-                    if progress.written_frames == 1 && progress.zero_byte_failures == 0 =>
+                    if progress.written_frames == progress.cancelled_permission_frames + 1
+                        && progress.zero_byte_failures == 0 =>
                 {
                     self.cancel_wire = CancelWireState::Complete;
                     return Ok(self);
                 }
                 Ok(progress)
-                    if progress.written_frames == 0
+                    if progress.written_frames == progress.cancelled_permission_frames
                         && progress.zero_byte_failures == 1
                         && self.cancel_attempts < 2 =>
                 {
                     continue;
                 }
                 Ok(progress)
-                    if progress.written_frames == 0 && progress.zero_byte_failures == 1 =>
+                    if progress.written_frames == progress.cancelled_permission_frames
+                        && progress.zero_byte_failures == 1 =>
                 {
                     let _ = self.turn.driver.request_host_termination();
                     return Err(Box::new(PreparedWriteFailure {

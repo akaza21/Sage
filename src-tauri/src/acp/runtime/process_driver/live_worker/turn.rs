@@ -290,7 +290,7 @@ where
             if intent.owner == context.owner
                 && intent.turn_id == *active.turn.dispatch.turn_id() =>
         {
-            match active.dispatch_cancel(intent) {
+            match active.dispatch_cancel(intent).await {
                 Ok(active) => {
                     envelope.respond(Ok(WorkerReply::Unit));
                     FirstTurnWorkerState::Active(active)

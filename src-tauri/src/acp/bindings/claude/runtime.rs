@@ -88,6 +88,7 @@ struct DenialRecord {
 enum PermissionReply {
     AllowOnce,
     Deny,
+    Cancelled,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -191,6 +192,18 @@ impl HarnessAdapter for ClaudeRuntime {
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.command_inner(command)
+    }
+
+    fn cancel_permission(
+        &mut self,
+        request_id: &crate::acp::contract::SageServerRequestId,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let record = self
+            .denials
+            .get(request_id.as_str())
+            .filter(|record| record.state == DenialState::Pending)
+            .ok_or(AdapterRuntimeError::PermissionIntent)?;
+        cancelled_permission(request_id, &record.wire_id)
     }
 
     fn ingest(

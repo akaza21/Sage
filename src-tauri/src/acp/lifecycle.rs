@@ -260,6 +260,7 @@ pub enum ServerRequestState {
     ResponseQueued,
     ResolvedAllowed,
     ResolvedDeclined,
+    Cancelled,
 }
 
 impl ServerRequestState {
@@ -268,9 +269,11 @@ impl ServerRequestState {
             (self, next),
             (
                 Self::Received,
-                Self::Asked | Self::AllowPending | Self::DeclinePending
-            ) | (Self::Asked, Self::AllowPending | Self::DeclinePending)
-                | (Self::AllowPending, Self::AllowCommitted)
+                Self::Asked | Self::AllowPending | Self::DeclinePending | Self::Cancelled
+            ) | (
+                Self::Asked,
+                Self::AllowPending | Self::DeclinePending | Self::Cancelled
+            ) | (Self::AllowPending, Self::AllowCommitted)
                 | (Self::AllowCommitted, Self::ResponseQueued)
                 | (Self::DeclinePending, Self::DeclineCommitted)
                 | (Self::DeclineCommitted, Self::ResponseQueued)
@@ -281,7 +284,10 @@ impl ServerRequestState {
         )
     }
     pub fn is_terminal(self) -> bool {
-        matches!(self, Self::ResolvedAllowed | Self::ResolvedDeclined)
+        matches!(
+            self,
+            Self::ResolvedAllowed | Self::ResolvedDeclined | Self::Cancelled
+        )
     }
 }
 
@@ -316,6 +322,10 @@ impl ActivityLifecycle {
         )
     }
 }
+
+#[cfg(test)]
+#[path = "tests/cancelled_permission_tests.rs"]
+mod cancelled_permission_tests;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalUpdate {

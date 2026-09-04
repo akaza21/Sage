@@ -48,34 +48,39 @@ export function getPermissionStatus(item: PermissionItem) {
     item.lifecycle === "failed" && item.toolState === "failed";
   const declined = item.payload.state === "resolvedDeclined";
   const allowed = item.payload.state === "resolvedAllowed";
+  const cancelled = item.payload.state === "cancelled";
   const allowing =
     item.payload.state === "allowPending" ||
     item.payload.state === "allowCommitted";
   const asking = item.payload.state === "asked";
   const visual = failedClosed
     ? "Failed closed"
-    : allowed
-      ? "Allowed once"
-      : allowing
-        ? "Allowing once"
-        : declined || item.payload.state === "declineCommitted"
-          ? "Declined"
-          : asking
-            ? "Asking again"
-            : item.payload.state === "responseQueued"
-              ? "Responding"
-              : item.payload.state === "declinePending"
-                ? "Declining"
-                : "Waiting for approval";
+    : cancelled
+      ? "Cancelled"
+      : allowed
+        ? "Allowed once"
+        : allowing
+          ? "Allowing once"
+          : declined || item.payload.state === "declineCommitted"
+            ? "Declined"
+            : asking
+              ? "Asking again"
+              : item.payload.state === "responseQueued"
+                ? "Responding"
+                : item.payload.state === "declinePending"
+                  ? "Declining"
+                  : "Waiting for approval";
   return {
     visual,
     accessible: failedClosed
       ? "Permission failed closed"
-      : allowed
-        ? "Permission allowed once"
-        : declined
-          ? "Permission declined"
-          : visual,
-    terminal: failedClosed || declined || allowed,
+      : cancelled
+        ? "Permission cancelled"
+        : allowed
+          ? "Permission allowed once"
+          : declined
+            ? "Permission declined"
+            : visual,
+    terminal: failedClosed || declined || allowed || cancelled,
   };
 }

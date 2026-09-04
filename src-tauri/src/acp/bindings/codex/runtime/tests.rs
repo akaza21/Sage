@@ -1639,3 +1639,6 @@ fn harness_neutral_batches_enforce_count_and_actual_byte_limits() {
         Err(AdapterRuntimeError::BatchBytes)
     ));
 }
+
+#[path = "cancel_contract_tests.rs"]
+mod cancel_contract_tests;

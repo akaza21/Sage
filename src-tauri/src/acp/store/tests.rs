@@ -11,6 +11,8 @@ use crate::acp::{
     limits::LIMITS,
 };
 
+#[path = "cancelled_permission_tests.rs"]
+mod cancelled_permission_tests;
 mod request_identity_tests;
 
 pub(super) fn setup() -> Connection {

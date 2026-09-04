@@ -47,6 +47,7 @@ impl OmpRuntime {
             request_id.as_str().to_owned(),
             DenyIntent {
                 replay,
+                cancelled: false,
                 stage: if replay {
                     DenyStage::Committed
                 } else {
@@ -64,21 +65,33 @@ impl OmpRuntime {
         &mut self,
         token: &EgressToken,
     ) -> Result<(), AdapterRuntimeError> {
-        let (request_id, replay) = token
+        let (request_id, replay, cancelled) = token
             .deny_request()
+            .map(|(id, replay)| (id, replay, false))
+            .or_else(|| {
+                token
+                    .cancelled_permission_request()
+                    .map(|id| (id, false, true))
+            })
             .ok_or(AdapterRuntimeError::EgressIntent)?;
         let intent = self
             .denials
             .get_mut(request_id)
             .ok_or(AdapterRuntimeError::EgressIntent)?;
-        if intent.replay != replay {
+        if intent.replay != replay || intent.cancelled != cancelled {
             return Err(AdapterRuntimeError::EgressIntent);
         }
         match intent.stage {
             DenyStage::Prepared if !replay => {
-                self.translator
-                    .permission_decline_committed(request_id)
-                    .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+                if cancelled {
+                    self.translator
+                        .permission_cancel_committed(request_id)
+                        .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+                } else {
+                    self.translator
+                        .permission_decline_committed(request_id)
+                        .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+                }
                 intent.stage = DenyStage::Committed;
                 Ok(())
             }
@@ -92,8 +105,14 @@ impl OmpRuntime {
         token: EgressToken,
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
-        let (request_id, replay) = token
+        let (request_id, replay, cancelled) = token
             .deny_request()
+            .map(|(id, replay)| (id, replay, false))
+            .or_else(|| {
+                token
+                    .cancelled_permission_request()
+                    .map(|id| (id, false, true))
+            })
             .ok_or(AdapterRuntimeError::EgressIntent)?;
         if matches!(
             resolution,
@@ -109,7 +128,7 @@ impl OmpRuntime {
             .denials
             .get_mut(request_id)
             .ok_or(AdapterRuntimeError::EgressIntent)?;
-        if intent.replay != replay {
+        if intent.replay != replay || intent.cancelled != cancelled {
             return Err(AdapterRuntimeError::EgressIntent);
         }
         match (intent.stage, resolution) {
@@ -123,5 +142,39 @@ impl OmpRuntime {
             }
             _ => Err(AdapterRuntimeError::EgressIntent),
         }
+    }
+
+    pub(in crate::acp::bindings::omp::runtime) fn prepare_permission_cancel(
+        &mut self,
+        request_id: &crate::acp::contract::SageServerRequestId,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let external = ExternalId::new("permissionRequest", request_id.as_str())
+            .map_err(|_| AdapterRuntimeError::PermissionIntent)?;
+        let outbound = self
+            .translator
+            .permission_cancel_prepared(external.as_str())
+            .map_err(|_| AdapterRuntimeError::PermissionIntent)?;
+        let frame = super::outbound_frame(&outbound.line)
+            .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+        match self.denials.get_mut(external.as_str()) {
+            Some(intent) if intent.stage == DenyStage::Prepared && !intent.replay => {
+                intent.cancelled = true;
+            }
+            Some(_) => return Err(AdapterRuntimeError::PermissionIntent),
+            None => {
+                self.denials.insert(
+                    external.as_str().to_owned(),
+                    DenyIntent {
+                        replay: false,
+                        cancelled: true,
+                        stage: DenyStage::Prepared,
+                    },
+                );
+            }
+        }
+        Ok(AdapterEgress::new(
+            frame,
+            EgressToken::permission_cancel(external),
+        ))
     }
 }

@@ -24,10 +24,14 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         now_millis: i64,
     ) -> Result<(), AdapterPumpError> {
         self.ensure_live()?;
-        let Some(pending) = self.pending_permission.as_ref() else {
+        let Some(pending) = self
+            .pending_permissions
+            .iter()
+            .find(|pending| &pending.intent.request_id == request_id)
+        else {
             return Err(AdapterPumpError::Intent);
         };
-        if &pending.intent.request_id != request_id || pending.decision.is_some() {
+        if pending.decision.is_some() {
             return Err(AdapterPumpError::Intent);
         }
         if decision == crate::acp::runtime::permissions::PermissionDecision::Ask {
@@ -78,32 +82,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             .await
             .map_err(|_| AdapterPumpError::TeardownRequired)?;
         let pending = self
-            .pending_permission
-            .as_mut()
+            .pending_permissions
+            .iter_mut()
+            .find(|pending| &pending.intent.request_id == request_id)
             .ok_or(AdapterPumpError::TeardownRequired)?;
         pending.decision = Some(decision);
         self.publish_revision(revision)
-    }
-
-    pub(crate) fn queue_cancel(
-        &mut self,
-        session_id: &SageAgentSessionId,
-        epoch: RuntimeEpoch,
-        turn_id: &SageTurnId,
-        client_message_id: &RequiredText<512>,
-    ) -> Result<QueueDisposition, AdapterPumpError> {
-        self.ensure_live()?;
-        let active = &self.intent.active_turn;
-        if session_id != &self.intent.session_id
-            || epoch != self.intent.runtime_epoch
-            || turn_id != &active.turn_id
-            || client_message_id != &active.client_message_id
-            || self.terminal.is_some()
-        {
-            return Err(AdapterPumpError::NoActiveTurn);
-        }
-        let egress = self.adapter.command(AdapterCommand::Cancel)?;
-        self.enqueue(egress)
     }
 
     pub(crate) fn queue_prompt(
@@ -160,7 +144,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         }
         if disposition == FlushDisposition::Written
             && let Some(request) = written_permission
-            && let Some(pending) = self.pending_permission.as_mut()
+            && let Some(pending) = self
+                .pending_permissions
+                .iter_mut()
+                .find(|pending| pending.intent.external_request_id.as_str() == request)
             && matches!(
                 pending.decision,
                 Some(
@@ -186,9 +173,14 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         &mut self,
         now_millis: i64,
     ) -> Result<bool, AdapterPumpError> {
-        let Some(pending) = self.pending_permission.as_ref() else {
+        let Some(index) = self
+            .pending_permissions
+            .iter()
+            .position(|pending| pending.written)
+        else {
             return Ok(false);
         };
+        let pending = &self.pending_permissions[index];
         if !pending.written {
             return Ok(false);
         }
@@ -219,7 +211,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 return Err(AdapterPumpError::TeardownRequired);
             }
         };
-        self.pending_permission = None;
+        self.pending_permissions.swap_remove(index);
         self.publish_revision(revision)?;
         Ok(true)
     }

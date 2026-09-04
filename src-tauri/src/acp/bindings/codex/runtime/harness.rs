@@ -4,6 +4,7 @@ use crate::acp::{
         AdapterBatch, AdapterCommand, AdapterEgress, AdapterRuntimeError, EgressResolution,
         EgressToken, HarnessAdapter, ResourceMapper,
     },
+    intent::ExternalId,
     lifecycle::ServerRequestState,
     runtime::{later_permission::resolve_later_permission, permissions::PermissionDecision},
     transport::{Frame, OutboundFrame, request_payload_digest},
@@ -99,6 +100,23 @@ impl HarnessAdapter for CodexRuntime {
         result
     }
 
+    fn cancel_permission(
+        &mut self,
+        request_id: &crate::acp::contract::SageServerRequestId,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let bytes = self
+            .inner
+            .cancelled_permission_response(request_id.as_str())
+            .map_err(|_| AdapterRuntimeError::PermissionIntent)?;
+        let frame = OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
+        let external = ExternalId::new("permissionRequest", request_id.as_str())
+            .map_err(|_| AdapterRuntimeError::PermissionIntent)?;
+        Ok(AdapterEgress::new(
+            frame,
+            EgressToken::permission_cancel(external),
+        ))
+    }
+
     fn ingest(
         &mut self,
         frame: &Frame,
@@ -118,6 +136,12 @@ impl HarnessAdapter for CodexRuntime {
     }
 
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
+        if let Some(request_id) = token.cancelled_permission_request() {
+            return self
+                .inner
+                .advance_permission(request_id, ServerRequestState::Cancelled)
+                .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown);
+        }
         let Some((request_id, replay)) = token.deny_request() else {
             return Err(AdapterRuntimeError::EgressIntent);
         };
@@ -170,6 +194,20 @@ impl HarnessAdapter for CodexRuntime {
             return self
                 .inner
                 .advance_permission(request_id, next)
+                .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown);
+        }
+        if let Some(request_id) = token.cancelled_permission_request() {
+            if matches!(
+                resolution,
+                EgressResolution::QueueRejected
+                    | EgressResolution::WriteZeroBytes
+                    | EgressResolution::DeliveryUnknown
+            ) {
+                return Err(AdapterRuntimeError::MandatoryDenyTeardown);
+            }
+            return self
+                .inner
+                .advance_permission(request_id, ServerRequestState::Cancelled)
                 .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown);
         }
         let Some((request_id, replay)) = token.deny_request() else {

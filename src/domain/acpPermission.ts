@@ -9,7 +9,8 @@ export type PermissionState =
   | "declineCommitted"
   | "responseQueued"
   | "resolvedAllowed"
-  | "resolvedDeclined";
+  | "resolvedDeclined"
+  | "cancelled";
 
 export interface ResolvePermissionDecisionRequest {
   projectId: string;

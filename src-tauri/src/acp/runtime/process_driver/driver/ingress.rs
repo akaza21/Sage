@@ -81,6 +81,7 @@ where
             ControlMessage::Prompt(intent) => self.prompt(intent).map(DriverStep::Progress),
             ControlMessage::Cancel(intent) => self
                 .cancel(intent, DispatchSource::Cancel)
+                .await
                 .map(DriverStep::Progress),
             ControlMessage::Worker(envelope) => Ok(DriverStep::YieldWorker {
                 progress: DriverProgress::default(),
@@ -144,7 +145,7 @@ where
                 self.flush_all_ingress(DispatchSource::Ingress, now_millis, &mut progress)
                     .await?;
             }
-            if let Some(envelope) = self.dispatch_urgent(mailbox, &mut progress)? {
+            if let Some(envelope) = self.dispatch_urgent(mailbox, &mut progress).await? {
                 return Ok(DriverStep::YieldWorker { progress, envelope });
             }
             produced = match self.pump.drain_stdout_deferred(now_millis).await {
@@ -187,7 +188,7 @@ where
         Ok(progress)
     }
 
-    fn dispatch_urgent(
+    async fn dispatch_urgent(
         &mut self,
         mailbox: &DriverMailbox,
         progress: &mut DriverProgress,
@@ -195,9 +196,11 @@ where
         while let Some(control) = mailbox.try_pop_control() {
             match control {
                 ControlMessage::Cancel(intent) => {
-                    match self.cancel(intent, DispatchSource::Cancel) {
+                    match self.cancel(intent, DispatchSource::Cancel).await {
                         Ok(current) => {
                             progress.written_frames += current.written_frames;
+                            progress.cancelled_permission_frames +=
+                                current.cancelled_permission_frames;
                             progress.zero_byte_failures += current.zero_byte_failures;
                         }
                         Err(DriverError::RejectedIntent | DriverError::IdentityMismatch) => {

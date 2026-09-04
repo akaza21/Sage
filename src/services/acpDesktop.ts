@@ -81,6 +81,7 @@ function safePermissionDecision(
       "responseQueued",
       "resolvedAllowed",
       "resolvedDeclined",
+      "cancelled",
     ] as const)
   ) {
     return null;

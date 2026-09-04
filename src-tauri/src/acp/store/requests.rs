@@ -49,6 +49,7 @@ pub(super) fn receive_permission_request_in(
         let (lifecycle, tool_state) = match existing.state.as_str() {
             "resolvedDeclined" => ("completed", "declined"),
             "resolvedAllowed" => ("completed", "completed"),
+            "cancelled" => ("completed", "cancelled"),
             _ => ("started", "waitingForApproval"),
         };
         super::permission_item::verify_pair(transaction, intent, lifecycle, tool_state)?;
