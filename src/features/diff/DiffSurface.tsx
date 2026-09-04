@@ -5,6 +5,7 @@ import { useWorkbenchStore } from "../../app/store";
 import { diffCacheKey } from "../../domain/diffIdentity";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { DiffLineKind, WorkbenchTab } from "../../domain/workbench";
+import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 
 const linePrefix: Record<DiffLineKind, string> = {
   context: " ",
@@ -51,20 +52,17 @@ export function DiffSurface({ tab }: { tab: WorkbenchTab }) {
       </header>
       <div className="diff-toolbar">
         <span>Working tree changes</span>
-        <span className="diff-toolbar__hint">
-          Explorer focused this file automatically
-        </span>
+        <span className="diff-toolbar__hint">Read-only</span>
       </div>
       {!diff || diff.phase === "loading" ? (
-        <div className="resource-state" aria-live="polite">
-          Loading diff…
-        </div>
+        <ResourceStateNotice state="loading" title="Loading diff…" />
       ) : null}
       {diff?.phase === "error" ? (
-        <div className="resource-state resource-state--error">
-          <strong>Could not load this diff</strong>
-          <span>{diff.message}</span>
-        </div>
+        <ResourceStateNotice
+          state="error"
+          title="Could not load this diff"
+          detail={diff.message}
+        />
       ) : null}
       {diff?.phase === "ready" ? (
         <div

@@ -203,7 +203,12 @@ describe("Agent artifact file chips", () => {
       name: "Open files, changes, and preview",
     });
     expect(expand).toBeVisible();
-    expect(screen.queryByText("Nothing open")).toBeNull();
+    expect(within(expand).queryByText("Files")).toBeNull();
+    expect(within(expand).queryByText("Changes")).toBeNull();
+    expect(within(expand).queryByText("Preview")).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "No resources yet" }),
+    ).toBeNull();
 
     fireEvent.click(expand);
     expect(onExpandedChange).toHaveBeenLastCalledWith(true);
@@ -211,11 +216,30 @@ describe("Agent artifact file chips", () => {
     rerender(
       <AgentArtifactPane expanded onExpandedChange={onExpandedChange} />,
     );
-    expect(screen.getByText("Nothing open")).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "No resources yet" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "Files, changes, and previews from this Chat will appear here.",
+      ),
+    ).toBeVisible();
     fireEvent.keyDown(screen.getByLabelText("Agent artifacts"), {
       key: "Escape",
     });
     expect(onExpandedChange).toHaveBeenLastCalledWith(false);
+
+    rerender(
+      <AgentArtifactPane
+        expanded={false}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Open files, changes, and preview",
+      }),
+    ).toHaveFocus();
   });
 
   it("requests expansion when a new Agent file becomes available", () => {
@@ -267,7 +291,7 @@ describe("Agent artifact file chips", () => {
     expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
     expect(
       screen.getByText(
-        "Files, diffs, and browser previews from this Chat open here.",
+        "Files, changes, and previews from this Chat will appear here.",
       ),
     ).toBeInTheDocument();
   });
