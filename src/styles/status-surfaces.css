@@ -33,6 +33,10 @@
   color: var(--color-danger);
 }
 
+.resource-state--idle {
+  color: var(--color-text-muted);
+}
+
 .resource-state--error .resource-state__icon,
 .resource-state--error .resource-state__title {
   color: var(--color-danger);

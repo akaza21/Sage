@@ -5,13 +5,17 @@ import { diffCacheKey } from "../../../../src/domain/diffIdentity";
 import { useWorkbenchStore } from "../../../../src/app/store";
 import { useAgentArtifactAdmissionStore } from "../../../../src/app/agentArtifactAdmissionStore";
 import { useAgentArtifactFollowStore } from "../../../../src/app/agentArtifactFollowStore";
-import { applyBrowseIntent } from "../../../../src/features/preview/harnessBrowse";
+import {
+  applyBrowseIntent,
+  clearBrowseSessions,
+} from "../../../../src/features/preview/harnessBrowse";
 
 import { standardPage } from "../visualChatPages";
 import {
   editorContent,
   editorDocument,
   fileResource,
+  visualDiff,
 } from "../visualDocumentFixtures";
 import { PROJECT_ID, SESSION_ID } from "../visualFixtureIds";
 import type {
@@ -148,6 +152,99 @@ export async function installVisualAgentArtifactFollowFixture() {
     owner: ownerB,
     url: `${window.location.origin}/tests/ui/fixtures/preview.html`,
   });
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
+}
+
+export async function installVisualAgentPreviewIdleFixture() {
+  const state = useWorkbenchStore.getState();
+  const chats = state.tabs.filter((tab) => tab.kind === "chat");
+  const chat = chats[0];
+  if (!chat || state.project?.id !== PROJECT_ID) {
+    throw new Error("Visual Preview idle fixture requires a Chat");
+  }
+  const owner = {
+    projectId: PROJECT_ID,
+    chatId: chat.id,
+    sessionId: SESSION_ID,
+  } as AgentArtifactOwner;
+  clearBrowseSessions();
+  useAgentArtifactFollowStore.getState().pin(owner, { kind: "preview" });
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
+}
+
+const LONG_PATH =
+  "src/workbench/nested/panels/with/very/long/directory/names/for/ellipsis/AgentChatPanes.tsx";
+
+export async function installVisualAgentLongPathFixture() {
+  const state = useWorkbenchStore.getState();
+  const chats = state.tabs.filter((tab) => tab.kind === "chat");
+  const chat = chats[0];
+  if (!chat || state.project?.id !== PROJECT_ID) {
+    throw new Error("Visual long-path fixture requires a Chat");
+  }
+  const owner = {
+    projectId: PROJECT_ID,
+    chatId: chat.id,
+    sessionId: SESSION_ID,
+  } as AgentArtifactOwner;
+  const longResource = { rootId: "visual-root", relativePath: LONG_PATH };
+  const fileTab: WorkbenchTab = {
+    id: "visual-long-file-tab",
+    kind: "file",
+    title: "AgentChatPanes.tsx",
+    position: state.tabs.length,
+    pinned: false,
+    dirty: false,
+    resource: longResource,
+  };
+  const diffTab: WorkbenchTab = {
+    id: "visual-long-diff-tab",
+    kind: "diff",
+    title: "AgentChatPanes.tsx",
+    position: state.tabs.length + 1,
+    pinned: false,
+    dirty: false,
+    resource: longResource,
+  };
+  useWorkbenchStore.setState({
+    tabs: [...state.tabs, fileTab, diffTab],
+  });
+  const longDocument = { ...editorDocument(), resource: longResource };
+  useWorkbenchStore.setState({
+    activeEditor: {
+      phase: "ready",
+      resource: longResource,
+      document: longDocument,
+      content: editorContent,
+      revision: 0,
+      persistedRevision: 0,
+      persisting: false,
+      saving: false,
+      message: null,
+    },
+    diffs: {
+      ...useWorkbenchStore.getState().diffs,
+      [diffCacheKey(undefined, longResource)]: {
+        phase: "ready",
+        value: { ...visualDiff, resource: longResource },
+      },
+    },
+  });
+  useAgentArtifactAdmissionStore.getState().admit({
+    owner,
+    tabId: fileTab.id,
+  });
+  useAgentArtifactAdmissionStore.getState().admit({
+    owner,
+    tabId: diffTab.id,
+  });
+  useAgentArtifactFollowStore
+    .getState()
+    .pin(owner, { kind: "tab", tabId: fileTab.id });
   await new Promise<void>((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   );

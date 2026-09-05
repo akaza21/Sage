@@ -32,6 +32,15 @@ import {
   type AgentArtifactOwner,
 } from "../domain/agentArtifact";
 
+function artifactTabParts(tab: {
+  resource?: { relativePath?: string };
+  title: string;
+}): [string, string, string] {
+  const full = tab.resource?.relativePath ?? tab.title;
+  const base = full.split("/").at(-1) ?? full;
+  return [full, base, full.slice(0, full.length - base.length)];
+}
+
 export function AgentArtifactPane({
   expanded = true,
   focusOnExpand = false,
@@ -114,9 +123,9 @@ export function AgentArtifactPane({
   const availableTargets = useMemo<AgentArtifactTarget[]>(
     () => [
       ...artifacts.map((tab) => ({ kind: "tab" as const, tabId: tab.id })),
-      ...(previewOpen ? [{ kind: "preview" as const }] : []),
+      ...(focusedOwner !== null ? [{ kind: "preview" as const }] : []),
     ],
-    [artifacts, previewOpen],
+    [artifacts, focusedOwner],
   );
   const followRecord = agentArtifactFollowRecordFor(
     followRecords,
@@ -155,7 +164,7 @@ export function AgentArtifactPane({
       .reconcile(focusedOwner, availableTargets);
   }, [availableTargets, focusedOwner]);
 
-  const hasResources = artifacts.length > 0 || previewOpen;
+  const hasResources = artifacts.length > 0 || focusedOwner !== null;
   const resourceKeys = useMemo(
     () =>
       new Set([
@@ -186,6 +195,11 @@ export function AgentArtifactPane({
   }, [expanded, focusOnExpand]);
 
   if (!expanded) {
+    const collapsedCount = artifacts.length;
+    const collapsedLabel =
+      collapsedCount > 0
+        ? `Open files, changes, and preview, ${collapsedCount} ${collapsedCount === 1 ? "resource" : "resources"}`
+        : "Open files, changes, and preview";
     return (
       <aside
         ref={paneRef}
@@ -196,11 +210,20 @@ export function AgentArtifactPane({
           ref={edgeTriggerRef}
           className="agent-artifact-pane__edge-action"
           type="button"
-          aria-label="Open files, changes, and preview"
-          title="Open resources"
+          aria-label={collapsedLabel}
+          title={
+            collapsedCount > 0
+              ? `Open resources (${collapsedCount})`
+              : "Open resources"
+          }
           onClick={() => onExpandedChange?.(true)}
         >
           <PanelRightOpen size={17} strokeWidth={1.8} aria-hidden="true" />
+          {collapsedCount > 0 ? (
+            <span className="agent-artifact-pane__count" aria-hidden="true">
+              {collapsedCount}
+            </span>
+          ) : null}
         </button>
       </aside>
     );
@@ -232,6 +255,8 @@ export function AgentArtifactPane({
                   tab,
                   focusedOwner ? focusedPage : null,
                 );
+                const [fullPath, basename, directory] = artifactTabParts(tab);
+                const accessibleName = `${tab.kind === "file" ? "File" : "Diff"} ${fullPath}`;
                 return (
                   <div
                     className={`tab ${selected ? "tab--active" : ""}`}
@@ -243,6 +268,8 @@ export function AgentArtifactPane({
                       type="button"
                       role="tab"
                       aria-selected={selected}
+                      aria-label={accessibleName}
+                      title={fullPath}
                       onClick={() => {
                         if (focusedOwner) {
                           useAgentArtifactFollowStore
@@ -267,7 +294,10 @@ export function AgentArtifactPane({
                           aria-hidden="true"
                         />
                       )}
-                      <span>{tab.title}</span>
+                      <span className="tab__path" aria-hidden="true">
+                        <span className="tab__dir">{directory}</span>
+                        <span className="tab__basename">{basename}</span>
+                      </span>
                       {tab.dirty === true ? (
                         <span className="tab__dirty" title="Unsaved changes" />
                       ) : null}
@@ -293,7 +323,7 @@ export function AgentArtifactPane({
                   </div>
                 );
               })}
-              {previewOpen ? (
+              {focusedOwner !== null ? (
                 <div
                   className={`tab ${previewSelected ? "tab--active" : ""}`}
                   role="presentation"
@@ -303,6 +333,7 @@ export function AgentArtifactPane({
                     type="button"
                     role="tab"
                     aria-selected={previewSelected}
+                    aria-label="Preview"
                     onClick={() => {
                       if (focusedOwner) {
                         useAgentArtifactFollowStore
@@ -350,7 +381,7 @@ export function AgentArtifactPane({
         </button>
       </header>
       <div className="agent-artifact-pane__canvas">
-        {previewSelected && previewOpen ? (
+        {previewSelected ? (
           <div className="agent-preview-stack">
             <HarnessBrowserSurface owner={focusedOwner} />
           </div>

@@ -205,6 +205,7 @@
 }
 
 .agent-artifact-pane__edge-action {
+  position: relative;
   display: grid;
   width: 100%;
   height: 44px;
@@ -221,6 +222,58 @@
 .agent-artifact-pane__edge-action:hover {
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
+}
+
+.agent-artifact-pane__count {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  min-width: 16px;
+  height: 16px;
+  place-items: center;
+  padding: 0 4px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-active);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.agent-artifact-pane .tab__path {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: baseline;
+}
+
+.agent-artifact-pane .tab__dir {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-artifact-pane .tab__basename {
+  flex: 0 0 auto;
+}
+
+.agent-artifact-pane .tab {
+  min-width: 232px;
+  flex: 0 0 auto;
+}
+
+.agent-artifact-pane .tab__activate span.tab__path {
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.agent-artifact-pane .tab__activate span.tab__basename {
+  overflow: hidden;
+  text-overflow: clip;
 }
 
 .agent-artifact-pane__empty-state {
@@ -245,7 +298,9 @@
   min-width: 0;
   min-height: 0;
   height: 100%;
-  grid-template-rows: 36px auto minmax(0, 1fr);
+  /* AV-01: header token only — no document palette aliases. */
+  --resource-document-header-height: 36px;
+  grid-template-rows: var(--resource-document-header-height) auto minmax(0, 1fr);
 }
 
 .harness-browser__chrome {
@@ -256,6 +311,7 @@
   padding: 0 8px;
   border-bottom: 1px solid var(--color-border-subtle);
   background: var(--color-panel);
+  grid-row: 1;
 }
 
 .harness-browser__address {
@@ -265,7 +321,7 @@
 
 .harness-browser__address input {
   width: 100%;
-  height: 24px;
+  height: var(--control-height-compact);
   padding: 0 8px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
@@ -280,8 +336,8 @@
 
 .harness-browser__chrome button {
   display: inline-flex;
-  width: 26px;
-  height: 26px;
+  width: var(--control-height-compact);
+  height: var(--control-height-compact);
   align-items: center;
   justify-content: center;
   border: 0;
@@ -300,6 +356,7 @@
   padding: 4px 10px;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
+  grid-row: 2;
 }
 
 .harness-browser__frame {
@@ -307,4 +364,9 @@
   height: 100%;
   border: 0;
   background: var(--color-canvas);
+  grid-row: 3;
+}
+
+.harness-browser > .resource-state {
+  grid-row: 3;
 }

@@ -11,8 +11,8 @@ The Q-07 split kept the existing test titles, screenshot names, snapshot
 directory (`workbench.visual.spec.ts-snapshots/`), clock/locale/font/reflow
 settlement, and accessibility/viewport/DPR/reduced-motion behavior from the
 pre-split `workbench.visual.ts` + `agent-resource-shell.visual.ts` pair. AV-03
-extends the lane to 59 tests with two named Agent-ready baselines; no existing
-baseline PNG changed.
+extended that checkpoint to 59 tests with two named Agent-ready baselines; the
+current AV-01 acceptance is recorded below.
 
 | Surface | Playwright spec | Fixture owner |
 | --- | --- | --- |
@@ -65,7 +65,7 @@ npm run test:ui:update
 reviewing the intended change. Failure screenshots and Playwright error context
 are written below `output/playwright/`, which is ignored by Git.
 
-The lane runs 59 tests serially with a fixed clock, locale, timezone, font wait,
+The lane runs 62 tests serially with a fixed clock, locale, timezone, font wait,
 disabled screenshot animations, hidden carets, and explicit transcript
 follow-end settlement. Screenshots are scoped to `main.workbench`; role
 assertions verify important landmarks and controls before capture. Every
@@ -93,8 +93,8 @@ while the native walkthrough remains responsible for WebView integration.
 npm packages have approximately 18.5 MB of unpacked JavaScript in total and are
 not part of the Vite production bundle. Chromium installation is separate from
 `npm ci`; on the Windows authoring machine the Chromium and headless-shell cache
-occupied 731,309,635 bytes (about 697 MiB) outside the repository. The 42
-integrated-candidate PNG baselines occupy 2,560,893 bytes.
+occupied 731,309,635 bytes (about 697 MiB) outside the repository. The 45
+tracked PNG baselines occupy 2,818,111 bytes.
 
 After the Advisor return, the technical owner approved a bounded AV-04 revision
 that restored the two-pixel idle splitter pseudo-lines while retaining the
@@ -111,6 +111,25 @@ same-size document-region pixel comparison between Agent and Editor (locator
 clips, exact buffer equality, no new pixel library or tolerance exception).
 Existing `file`/`diff` full-workbench baselines keep their meaning and stay
 byte-identical because token values are unchanged.
+
+AV-01 adds `agent-preview-idle`, `agent-preview-active`, and
+`agent-artifacts-long-paths` Windows baselines through the Resource-owned
+`resource.visual.ts` shell plus `resourceVisualFixtures.ts` idle/long-path
+installers. The idle canvas uses the shared neutral `ResourceStateNotice`
+(`status`, no loader/alert icon); active reuses the existing loopback iframe;
+long-path tabs keep the basename visible with the full path in the accessible
+name. The root-owned Windows verifier accepted three new AV-01 PNGs and eight
+attributable existing refreshes: `agent-resource-empty`, `agent-file-error`,
+`agent-diff-loading`, `agent-file-ready`, `agent-diff-ready`, `file`, `diff`,
+and `preview`. The refresh passed 11/11; the subsequent Windows Chromium
+no-update run passed 67/67 (62 visual plus five behavioral) with zero
+skips/flakes/retries. Exact image identities are external consolidation
+evidence in
+`/home/username/projects/sage-consolidation/execution/manifests/AV01-WINDOWS-BASELINES-20260905T1516Z.sha256`;
+raw Windows evidence is recorded externally at
+`/home/username/projects/sage-consolidation/execution/test-evidence/AV01-WINDOWS-INSPECT.md`.
+This does not cover native WebView, signed package, macOS, operating-system
+assistive technology, or performance acceptance.
 
 AV-04 adds one Node policy file (43 → 44 files) containing seven dependency-free
 cases for normal, multiline, and color-first thick rings; nested forced-colors

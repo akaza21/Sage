@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe("HarnessBrowserSurface", () => {
-  it("shows the admitted loopback page for that chat and refuses a missing session", () => {
+  it("shows the admitted loopback page for that chat and keeps per-Chat idle isolation", () => {
     applyBrowseIntent({
       owner: ownerA,
       url: "http://127.0.0.1:5173/app",
@@ -36,7 +36,37 @@ describe("HarnessBrowserSurface", () => {
 
     rerender(<HarnessBrowserSurface owner={ownerB} />);
     expect(screen.queryByTitle("Sage browser")).toBeNull();
-    expect(screen.getByText(/Loopback HTTP\(S\) only/i)).toBeInTheDocument();
+    expect(screen.getByText("Preview is idle")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Preview shows loopback development servers started from this Chat/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("renders idle as a quiet status notice without a loader or alert icon", () => {
+    render(<HarnessBrowserSurface owner={ownerA} />);
+
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveClass("resource-state--idle");
+    expect(notice.querySelector("svg")).toBeNull();
+    expect(screen.getByText("Preview is idle")).toBeInTheDocument();
+    expect(screen.queryByTitle("Sage browser")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Reload preview" }),
+    ).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Close browser" })).toBeNull();
+  });
+
+  it("renders unavailable when no Chat owns Preview", () => {
+    render(<HarnessBrowserSurface owner={null} />);
+
+    expect(screen.queryByTitle("Sage browser")).toBeNull();
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveClass("resource-state--idle");
+    expect(notice.querySelector("svg")).toBeNull();
+    expect(screen.getByText("Preview unavailable")).toBeInTheDocument();
+    expect(screen.getByLabelText("Preview address")).toBeDisabled();
   });
 
   it("opens an admitted address and refuses public HTTPS", () => {
@@ -96,6 +126,17 @@ describe("HarnessBrowserSurface", () => {
     ]);
   });
 
+  it("keeps idle chrome order without a Close control", () => {
+    render(<HarnessBrowserSurface owner={ownerA} />);
+
+    const chrome = screen.getByRole("region", { name: "Sage browser" });
+    expect(
+      Array.from(chrome.querySelectorAll("button, input")).map((element) =>
+        element.getAttribute("aria-label"),
+      ),
+    ).toEqual(["Back", "Forward", "Preview address", "Reload preview"]);
+  });
+
   it("walks admitted back and forward without leaving Sage", () => {
     applyBrowseIntent({
       owner: ownerA,
@@ -134,5 +175,17 @@ describe("HarnessBrowserSurface", () => {
     render(<HarnessBrowserSurface owner={ownerA} />);
     fireEvent.click(screen.getByRole("button", { name: "Close browser" }));
     expect(screen.queryByTitle("Sage browser")).toBeNull();
+    expect(screen.getByText("Preview is idle")).toBeInTheDocument();
+  });
+
+  it("returns focus to the Preview address after closing", () => {
+    applyBrowseIntent({
+      owner: ownerA,
+      url: "http://127.0.0.1:4173/",
+    });
+    render(<HarnessBrowserSurface owner={ownerA} />);
+    fireEvent.click(screen.getByRole("button", { name: "Close browser" }));
+    expect(screen.getByLabelText("Preview address")).toHaveFocus();
+    expect(screen.getByText("Preview is idle")).toBeInTheDocument();
   });
 });

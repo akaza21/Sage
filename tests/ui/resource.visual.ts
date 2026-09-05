@@ -88,7 +88,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         .filter({ hasText: "Agent navigation polish" }),
     ).toHaveAttribute("aria-pressed", "true");
     await expect(
-      resources.getByRole("tab", { name: /AgentChatPanes\.tsx changes/ }),
+      resources.getByRole("tab", {
+        name: "Diff src/workbench/AgentChatPanes.tsx",
+      }),
     ).toHaveAttribute("aria-selected", "true");
 
     await rail
@@ -661,4 +663,290 @@ test.describe("V6a Agent resource shell at 200%", () => {
       await exerciseResourceStates(page, resource);
     });
   }
+});
+
+test.describe("AV-01 right pane Preview chrome shell", () => {
+  test.use({ viewport: { width: 1_380, height: 880 } });
+
+  test("agent-preview-idle stays visually stable", async ({ page }) => {
+    const workbench = await openAgentScenario(page, "preview");
+    await page.evaluate(async () => {
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts");
+      await fixtures.installVisualAgentPreviewIdleFixture();
+    });
+    const resources = page.getByRole("complementary", {
+      name: "Agent artifacts",
+    });
+    await expect(
+      resources.getByRole("tab", { name: "Preview" }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      resources.getByRole("status").filter({ hasText: "Preview is idle" }),
+    ).toBeVisible();
+    await expect(
+      resources.getByRole("button", { name: "Back" }),
+    ).toBeDisabled();
+    await expect(
+      resources.getByRole("button", { name: "Reload preview" }),
+    ).toBeDisabled();
+    const idleGeometry = await resources.evaluate((root) => {
+      const browser = root.querySelector<HTMLElement>(".harness-browser");
+      const chrome = root.querySelector<HTMLElement>(
+        ".harness-browser__chrome",
+      );
+      const button = root.querySelector<HTMLElement>(
+        ".harness-browser__chrome button",
+      );
+      const input = root.querySelector<HTMLElement>(
+        ".harness-browser__address input",
+      );
+      const body = root.querySelector<HTMLElement>(
+        ".harness-browser > .resource-state",
+      );
+      const denied = root.querySelector<HTMLElement>(
+        ".harness-browser__denied",
+      );
+      if (!browser || !chrome || !button || !input || !body) {
+        throw new Error("Preview chrome geometry probe missing");
+      }
+      return {
+        chromeHeight: chrome.getBoundingClientRect().height,
+        buttonHeight: getComputedStyle(button).height,
+        inputHeight: getComputedStyle(input).height,
+        browser: browser.getBoundingClientRect().toJSON(),
+        chrome: chrome.getBoundingClientRect().toJSON(),
+        body: body.getBoundingClientRect().toJSON(),
+        denied: denied ? denied.getBoundingClientRect().toJSON() : null,
+      };
+    });
+    expect(idleGeometry.chromeHeight).toBe(36);
+    expect(idleGeometry.buttonHeight).toBe("28px");
+    expect(idleGeometry.inputHeight).toBe("28px");
+    expect(idleGeometry.denied).toBeNull();
+    expect(idleGeometry.body.y).toBeGreaterThanOrEqual(
+      idleGeometry.chrome.y + idleGeometry.chrome.height - 1,
+    );
+    expect(idleGeometry.body.y + idleGeometry.body.height).toBeLessThanOrEqual(
+      idleGeometry.browser.y + idleGeometry.browser.height + 1,
+    );
+    const idleAddress = resources.getByRole("textbox", {
+      name: "Preview address",
+    });
+    await idleAddress.fill("https://example.com/");
+    await idleAddress.press("Enter");
+    await expect(
+      resources.getByRole("alert").filter({
+        hasText: "Only loopback HTTP(S) with a port",
+      }),
+    ).toBeVisible();
+    expect(await page.getByTitle("Sage browser").count()).toBe(0);
+    const idleDenied = await resources.evaluate((root) => {
+      const browser = root.querySelector<HTMLElement>(".harness-browser");
+      const chrome = root.querySelector<HTMLElement>(
+        ".harness-browser__chrome",
+      );
+      const denied = root.querySelector<HTMLElement>(
+        ".harness-browser__denied",
+      );
+      const body = root.querySelector<HTMLElement>(
+        ".harness-browser > .resource-state",
+      );
+      if (!browser || !chrome || !denied || !body) {
+        throw new Error("Preview denied-row probe missing");
+      }
+      return {
+        browser: browser.getBoundingClientRect().toJSON(),
+        chrome: chrome.getBoundingClientRect().toJSON(),
+        denied: denied.getBoundingClientRect().toJSON(),
+        body: body.getBoundingClientRect().toJSON(),
+      };
+    });
+    expect(idleDenied.denied.y).toBeGreaterThanOrEqual(
+      idleDenied.chrome.y + idleDenied.chrome.height - 1,
+    );
+    expect(idleDenied.body.y).toBeGreaterThanOrEqual(
+      idleDenied.denied.y + idleDenied.denied.height - 1,
+    );
+    expect(idleDenied.body.y + idleDenied.body.height).toBeLessThanOrEqual(
+      idleDenied.browser.y + idleDenied.browser.height + 1,
+    );
+    await idleAddress.fill("");
+    await expect(resources.locator(".harness-browser__denied")).toHaveCount(0);
+    await expect(
+      resources.getByRole("status").filter({ hasText: "Preview is idle" }),
+    ).toBeVisible();
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("agent-preview-idle.png");
+  });
+
+  test("agent-preview-active stays visually stable", async ({ page }) => {
+    const workbench = await openAgentScenario(page, "preview");
+    const resources = page.getByRole("complementary", {
+      name: "Agent artifacts",
+    });
+    await expect(
+      resources.getByRole("tab", { name: "Preview" }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTitle("Sage browser")).toBeVisible();
+    await expect(
+      resources.getByRole("textbox", { name: "Preview address" }),
+    ).toBeVisible();
+    const activeGeometry = await resources.evaluate((root) => {
+      const browser = root.querySelector<HTMLElement>(".harness-browser");
+      const chrome = root.querySelector<HTMLElement>(
+        ".harness-browser__chrome",
+      );
+      const button = root.querySelector<HTMLElement>(
+        ".harness-browser__chrome button",
+      );
+      const input = root.querySelector<HTMLElement>(
+        ".harness-browser__address input",
+      );
+      const body = root.querySelector<HTMLElement>(".harness-browser__frame");
+      const denied = root.querySelector<HTMLElement>(
+        ".harness-browser__denied",
+      );
+      if (!browser || !chrome || !button || !input || !body) {
+        throw new Error("Preview chrome geometry probe missing");
+      }
+      return {
+        chromeHeight: chrome.getBoundingClientRect().height,
+        buttonHeight: getComputedStyle(button).height,
+        inputHeight: getComputedStyle(input).height,
+        browser: browser.getBoundingClientRect().toJSON(),
+        chrome: chrome.getBoundingClientRect().toJSON(),
+        body: body.getBoundingClientRect().toJSON(),
+        denied: denied ? denied.getBoundingClientRect().toJSON() : null,
+      };
+    });
+    expect(activeGeometry.chromeHeight).toBe(36);
+    expect(activeGeometry.buttonHeight).toBe("28px");
+    expect(activeGeometry.inputHeight).toBe("28px");
+    expect(activeGeometry.denied).toBeNull();
+    expect(activeGeometry.body.y).toBeGreaterThanOrEqual(
+      activeGeometry.chrome.y + activeGeometry.chrome.height - 1,
+    );
+    expect(
+      activeGeometry.body.y + activeGeometry.body.height,
+    ).toBeLessThanOrEqual(
+      activeGeometry.browser.y + activeGeometry.browser.height + 1,
+    );
+    const activeAddress = resources.getByRole("textbox", {
+      name: "Preview address",
+    });
+    const activeHref = await activeAddress.inputValue();
+    await activeAddress.fill("https://example.com/");
+    await activeAddress.press("Enter");
+    await expect(
+      resources.getByRole("alert").filter({
+        hasText: "Only loopback HTTP(S) with a port",
+      }),
+    ).toBeVisible();
+    expect(await page.getByTitle("Sage browser").getAttribute("src")).toBe(
+      activeHref,
+    );
+    const activeDenied = await resources.evaluate((root) => {
+      const browser = root.querySelector<HTMLElement>(".harness-browser");
+      const chrome = root.querySelector<HTMLElement>(
+        ".harness-browser__chrome",
+      );
+      const denied = root.querySelector<HTMLElement>(
+        ".harness-browser__denied",
+      );
+      const body = root.querySelector<HTMLElement>(".harness-browser__frame");
+      if (!browser || !chrome || !denied || !body) {
+        throw new Error("Preview denied-row probe missing");
+      }
+      return {
+        browser: browser.getBoundingClientRect().toJSON(),
+        chrome: chrome.getBoundingClientRect().toJSON(),
+        denied: denied.getBoundingClientRect().toJSON(),
+        body: body.getBoundingClientRect().toJSON(),
+      };
+    });
+    expect(activeDenied.denied.y).toBeGreaterThanOrEqual(
+      activeDenied.chrome.y + activeDenied.chrome.height - 1,
+    );
+    expect(activeDenied.body.y).toBeGreaterThanOrEqual(
+      activeDenied.denied.y + activeDenied.denied.height - 1,
+    );
+    expect(activeDenied.body.y + activeDenied.body.height).toBeLessThanOrEqual(
+      activeDenied.browser.y + activeDenied.browser.height + 1,
+    );
+    await activeAddress.fill(activeHref);
+    await expect(resources.locator(".harness-browser__denied")).toHaveCount(0);
+    expect(await page.getByTitle("Sage browser").getAttribute("src")).toBe(
+      activeHref,
+    );
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("agent-preview-active.png");
+  });
+
+  test("agent-artifacts-long-paths stays visually stable", async ({ page }) => {
+    const workbench = await openAgentScenario(page, "file");
+    await page.evaluate(async () => {
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts");
+      await fixtures.installVisualAgentLongPathFixture();
+    });
+    const resources = page.getByRole("complementary", {
+      name: "Agent artifacts",
+    });
+    const longPath =
+      "src/workbench/nested/panels/with/very/long/directory/names/for/ellipsis/AgentChatPanes.tsx";
+    const assertLongTabLegible = async (tabName: string) => {
+      const tab = resources.getByRole("tab", { name: tabName });
+      await tab.click();
+      await expect(tab).toHaveAttribute("aria-selected", "true");
+      if (tabName.startsWith("File ")) {
+        await expect(
+          page
+            .locator(
+              ".agent-artifact-pane__canvas .file-surface .cm-content .cm-line",
+            )
+            .first(),
+        ).toBeVisible();
+      } else {
+        await expect(
+          resources.getByRole("table", { name: "Unified file diff" }),
+        ).toBeVisible();
+      }
+      await tab.scrollIntoViewIfNeeded();
+      await expect(tab).toBeVisible();
+      const legibility = await tab.evaluate((element) => {
+        const basename = element.querySelector<HTMLElement>(".tab__basename");
+        const dir = element.querySelector<HTMLElement>(".tab__dir");
+        const scroller = element.closest<HTMLElement>(".tab-strip__scroll");
+        if (!basename || !dir || !scroller) {
+          throw new Error("Long-path tab structure probe missing");
+        }
+        const box = element.getBoundingClientRect();
+        const baseBox = basename.getBoundingClientRect();
+        const scrollBox = scroller.getBoundingClientRect();
+        return {
+          basenameText: basename.textContent,
+          dirEllipsis: getComputedStyle(dir).textOverflow,
+          basenameFitsOwnBox: basename.scrollWidth <= basename.clientWidth + 1,
+          basenameInsideTab:
+            baseBox.left >= box.left - 1 && baseBox.right <= box.right + 1,
+          tabInsideScroller:
+            box.left >= scrollBox.left - 1 && box.right <= scrollBox.right + 1,
+        };
+      });
+      expect(legibility.basenameText).toBe("AgentChatPanes.tsx");
+      expect(legibility.dirEllipsis).toBe("ellipsis");
+      expect(legibility.basenameFitsOwnBox).toBe(true);
+      expect(legibility.basenameInsideTab).toBe(true);
+      expect(legibility.tabInsideScroller).toBe(true);
+    };
+    await assertLongTabLegible(`File ${longPath}`);
+    await assertLongTabLegible(`Diff ${longPath}`);
+    await resources.getByRole("tab", { name: `File ${longPath}` }).click();
+    await expect(
+      resources.getByRole("tab", { name: `File ${longPath}` }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("agent-artifacts-long-paths.png");
+  });
 });

@@ -285,15 +285,24 @@ describe("Agent artifact file chips", () => {
     expect(onExpandedChange).toHaveBeenCalledWith(true);
   });
 
-  it("keeps Preview closed until the focused Chat opens an admitted browse session", () => {
+  it("keeps an idle Preview tab reachable without a browse session", () => {
     render(<AgentArtifactPane />);
 
-    expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
     expect(
       screen.getByText(
         "Files, changes, and previews from this Chat will appear here.",
       ),
     ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    expect(screen.getByText("Preview is idle")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Preview shows loopback development servers started from this Chat/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByTitle("Sage browser")).toBeNull();
   });
 
   it("shows +3 −1 on a matched file tab and hides an Editor-only unmatched tab", () => {
@@ -302,9 +311,9 @@ describe("Agent artifact file chips", () => {
     const matched = screen.getByRole("tab", { name: /app\.ts/ });
     expect(within(matched).getByText("+3")).toBeInTheDocument();
     expect(within(matched).getByText("-1")).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: /^other\.ts$/ })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /other\.ts$/ })).toBeNull();
 
-    expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
   });
 
   it("opens Agent Preview as a loopback browser without the app-script starter", () => {
@@ -354,17 +363,17 @@ describe("Agent artifact file chips", () => {
       "true",
     );
     act(() => clearBrowseSession(focusedOwner));
-    expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
-    expect(screen.getByRole("tab", { name: /app\.ts/ })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "Preview" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
+    expect(screen.getByText("Preview is idle")).toBeInTheDocument();
   });
 
   it("pins an explicitly selected resource tab for the focused Chat", () => {
     admit("diff:other");
     render(<AgentArtifactPane />);
-    fireEvent.click(screen.getByRole("tab", { name: /^other\.ts$/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /other\.ts$/ }));
 
     expect(
       agentArtifactFollowRecordFor(
@@ -381,7 +390,7 @@ describe("Agent artifact file chips", () => {
     admit("diff:other");
     render(<AgentArtifactPane />);
 
-    const unmatched = screen.getByRole("tab", { name: /^other\.ts$/ });
+    const unmatched = screen.getByRole("tab", { name: /other\.ts$/ });
     expect(within(unmatched).queryByText("+3")).toBeNull();
     expect(within(unmatched).queryByText("-1")).toBeNull();
   });
@@ -389,10 +398,10 @@ describe("Agent artifact file chips", () => {
   it("hides an admission during Project transition and after session replacement", () => {
     admit("diff:other");
     render(<AgentArtifactPane />);
-    expect(screen.getByRole("tab", { name: /^other\.ts$/ })).toBeVisible();
+    expect(screen.getByRole("tab", { name: /other\.ts$/ })).toBeVisible();
 
     act(() => useWorkbenchStore.setState({ projectTransitioning: true }));
-    expect(screen.queryByRole("tab", { name: /^other\.ts$/ })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /other\.ts$/ })).toBeNull();
 
     act(() =>
       useWorkbenchStore.setState({
@@ -400,7 +409,7 @@ describe("Agent artifact file chips", () => {
         projectGeneration: 1,
       }),
     );
-    expect(screen.queryByRole("tab", { name: /^other\.ts$/ })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /other\.ts$/ })).toBeNull();
 
     act(() => {
       useWorkbenchStore.setState({ projectGeneration: 0 });
@@ -416,7 +425,7 @@ describe("Agent artifact file chips", () => {
       });
     });
 
-    expect(screen.queryByRole("tab", { name: /^other\.ts$/ })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /other\.ts$/ })).toBeNull();
   });
 
   it("uses language-aware file icons on file tabs and keeps the diff glyph", () => {
@@ -476,7 +485,7 @@ describe("Agent artifact file chips", () => {
     ).not.toBeNull();
     expect(
       screen
-        .getByRole("tab", { name: /^other\.ts$/ })
+        .getByRole("tab", { name: /other\.ts$/ })
         .querySelector(".file-kind-icon"),
     ).toBeNull();
   });
@@ -567,11 +576,11 @@ describe("Agent artifact file chips", () => {
       ),
     ).toBeNull();
     expect(
-      within(screen.getByRole("tab", { name: /^other\.ts$/ })).queryByTitle(
+      within(screen.getByRole("tab", { name: /other\.ts$/ })).queryByTitle(
         "Unsaved changes",
       ),
     ).toBeNull();
-    expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
   });
 
   it("closes an Agent artifact without adding a close control to Preview", () => {
@@ -580,5 +589,169 @@ describe("Agent artifact file chips", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close app.ts" }));
     expect(screen.queryByRole("tab", { name: /app\.ts/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Close Preview" })).toBeNull();
+  });
+
+  it("exposes full paths in accessible tab names with basename-visible middle ellipsis", () => {
+    admit("diff:other");
+    render(<AgentArtifactPane />);
+
+    const fileTab = screen.getByRole("tab", { name: "File src/app.ts" });
+    expect(fileTab).toHaveAttribute("title", "src/app.ts");
+    const filePath = fileTab.querySelector(".tab__path");
+    expect(filePath).not.toBeNull();
+    expect(filePath?.querySelector(".tab__dir")?.textContent).toBe("src/");
+    expect(filePath?.querySelector(".tab__basename")?.textContent).toBe(
+      "app.ts",
+    );
+
+    const diffTab = screen.getByRole("tab", { name: "Diff src/other.ts" });
+    expect(diffTab).toHaveAttribute("title", "src/other.ts");
+    expect(diffTab.querySelector(".tab__basename")?.textContent).toBe(
+      "other.ts",
+    );
+  });
+
+  it("names the collapsed toggle with a truthful File/Diff count badge", () => {
+    const onExpandedChange = vi.fn();
+    render(
+      <AgentArtifactPane
+        expanded={false}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+
+    const toggle = screen.getByRole("button", {
+      name: "Open files, changes, and preview, 1 resource",
+    });
+    expect(toggle).toHaveAttribute("title", "Open resources (1)");
+    expect(within(toggle).getByText("1")).toBeInTheDocument();
+  });
+
+  it("moves Preview through idle -> active -> close -> idle in the actual pane", () => {
+    render(<AgentArtifactPane />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    expect(screen.getByText("Preview is idle")).toBeInTheDocument();
+
+    act(() => {
+      applyBrowseIntent({
+        owner: focusedOwner,
+        url: "http://127.0.0.1:5173/app",
+      });
+    });
+    expect(screen.getByTitle("Sage browser")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:5173/app",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Close browser" }));
+    expect(screen.queryByTitle("Sage browser")).toBeNull();
+    expect(screen.getByText("Preview is idle")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Preview" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("keeps Preview sessions isolated per Chat in the actual pane", () => {
+    const secondOwner = {
+      projectId: "project-a",
+      chatId: "chat-second",
+      sessionId: "session-b",
+    } as AgentArtifactOwner;
+    pinAcpProjectionIds(["chat-focused", "chat-second"]);
+    const secondStore = acpProjectionStoreFor("chat-second");
+    const secondScope = {
+      projectId: "project-a" as SageProjectId,
+      projectGeneration: "0" as ProjectGeneration,
+      chatId: "chat-second" as SageChatId,
+    };
+    secondStore.getState().activateScope(secondScope);
+    expect(
+      secondStore.getState().applyAuthoritativePage(secondScope, {
+        projectId: "project-a",
+        chatId: "chat-second",
+        title: "Second",
+        projectionRevision: "1",
+        currentSessionId: "session-b",
+        sessions: [{ id: "session-b", ordinal: 1 }],
+        turns: [],
+        nextCursor: null,
+      } as unknown as AcpChatPage),
+    ).toBe("accepted");
+    useWorkbenchStore.setState((state) => ({
+      tabs: [
+        ...state.tabs,
+        {
+          id: "chat-second",
+          kind: "chat",
+          title: "Second",
+          position: 3,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+    }));
+    applyBrowseIntent({
+      owner: focusedOwner,
+      url: "http://127.0.0.1:5173/focused",
+    });
+    applyBrowseIntent({
+      owner: secondOwner,
+      url: "http://127.0.0.1:5174/second",
+    });
+    render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    expect(screen.getByTitle("Sage browser")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:5173/focused",
+    );
+
+    act(() => {
+      pinAgentChatOwner(secondOwner.chatId);
+    });
+    expect(screen.getByTitle("Sage browser")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:5174/second",
+    );
+    expect(screen.queryByTitle("Sage browser")?.getAttribute("src")).not.toBe(
+      "http://127.0.0.1:5173/focused",
+    );
+
+    act(() => {
+      pinAgentChatOwner(focusedOwner.chatId);
+    });
+    expect(screen.getByTitle("Sage browser")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:5173/focused",
+    );
+  });
+
+  it("keeps Preview chrome order and returns focus when collapsing", () => {
+    const onExpandedChange = vi.fn();
+    applyBrowseIntent({
+      owner: focusedOwner,
+      url: "http://127.0.0.1:5173/app",
+    });
+    render(<AgentArtifactPane expanded onExpandedChange={onExpandedChange} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+
+    const chrome = screen.getByRole("region", { name: "Sage browser" });
+    expect(
+      Array.from(chrome.querySelectorAll("button, input")).map((element) =>
+        element.getAttribute("aria-label"),
+      ),
+    ).toEqual([
+      "Back",
+      "Forward",
+      "Preview address",
+      "Reload preview",
+      "Close browser",
+    ]);
+
+    fireEvent.keyDown(screen.getByLabelText("Agent artifacts"), {
+      key: "Escape",
+    });
+    expect(onExpandedChange).toHaveBeenLastCalledWith(false);
   });
 });

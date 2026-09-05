@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, RotateCw, X } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 
 import {
   applyBrowseIntent,
@@ -10,6 +10,7 @@ import {
 } from "./harnessBrowse";
 import { useHarnessBrowseSession } from "./useHarnessBrowseSession";
 import type { AgentArtifactOwner } from "../../domain/agentArtifact";
+import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 
 export function HarnessBrowserSurface({
   owner,
@@ -27,6 +28,7 @@ export function HarnessBrowserSurface({
   } | null>(null);
   const [denied, setDenied] = useState(false);
   const [frameEpoch, setFrameEpoch] = useState(0);
+  const addressRef = useRef<HTMLInputElement | null>(null);
   const draft =
     override && override.href === sessionHref ? override.draft : sessionHref;
 
@@ -69,11 +71,13 @@ export function HarnessBrowserSurface({
         </button>
         <form className="harness-browser__address" onSubmit={submitAddress}>
           <input
+            ref={addressRef}
             aria-label="Preview address"
             aria-invalid={denied || undefined}
             spellCheck={false}
             value={draft}
             placeholder="http://127.0.0.1:port/"
+            disabled={!owner}
             onChange={(event) => {
               setOverride({
                 href: sessionHref,
@@ -97,7 +101,10 @@ export function HarnessBrowserSurface({
             type="button"
             aria-label="Close browser"
             title="Close browser"
-            onClick={() => clearBrowseSession(owner)}
+            onClick={() => {
+              clearBrowseSession(owner);
+              addressRef.current?.focus();
+            }}
           >
             <X size={13} aria-hidden="true" />
           </button>
@@ -117,10 +124,18 @@ export function HarnessBrowserSurface({
           sandbox="allow-scripts allow-same-origin allow-forms"
           referrerPolicy="no-referrer"
         />
+      ) : owner ? (
+        <ResourceStateNotice
+          state="idle"
+          title="Preview is idle"
+          detail="Preview shows loopback development servers started from this Chat. Only loopback HTTP(S) with a port; public sites stay closed."
+        />
       ) : (
-        <p className="sidebar__empty">
-          Loopback HTTP(S) only. Public sites stay closed.
-        </p>
+        <ResourceStateNotice
+          state="idle"
+          title="Preview unavailable"
+          detail="Select a Chat to preview loopback development servers."
+        />
       )}
     </section>
   );
