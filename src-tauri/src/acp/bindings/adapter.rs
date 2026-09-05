@@ -144,6 +144,9 @@ enum EgressIntent {
         request_id: ExternalId,
         replay: bool,
     },
+    PermissionCancel {
+        request_id: ExternalId,
+    },
     PermissionAllow {
         request_id: ExternalId,
     },
@@ -174,8 +177,12 @@ impl EgressToken {
         Self(EgressIntent::PermissionAllow { request_id })
     }
 
+    pub(crate) fn permission_cancel(request_id: ExternalId) -> Self {
+        Self(EgressIntent::PermissionCancel { request_id })
+    }
+
     pub(crate) fn is_mandatory(&self) -> bool {
-        matches!(self.0, EgressIntent::MandatoryDeny { .. })
+        self.deny_request().is_some() || self.cancelled_permission_request().is_some()
     }
 
     pub(crate) fn is_control(&self) -> bool {
@@ -184,6 +191,7 @@ impl EgressToken {
             EgressIntent::CancelRequest(_)
                 | EgressIntent::CancelNotification
                 | EgressIntent::MandatoryDeny { .. }
+                | EgressIntent::PermissionCancel { .. }
                 | EgressIntent::PermissionAllow { .. }
         )
     }
@@ -211,6 +219,13 @@ impl EgressToken {
         }
     }
 
+    pub(crate) fn cancelled_permission_request(&self) -> Option<&str> {
+        match &self.0 {
+            EgressIntent::PermissionCancel { request_id } => Some(request_id.as_str()),
+            _ => None,
+        }
+    }
+
     pub(crate) fn is_notification(&self) -> bool {
         matches!(
             self.0,
@@ -219,10 +234,7 @@ impl EgressToken {
     }
 
     pub(crate) fn is_cancel(&self) -> bool {
-        matches!(
-            self.0,
-            EgressIntent::CancelRequest(_) | EgressIntent::CancelNotification
-        )
+        self.is_control() && (self.request_id().is_some() || self.is_notification())
     }
 }
 
@@ -367,6 +379,12 @@ impl AdapterBatchBuilder {
 pub(crate) trait HarnessAdapter {
     fn capabilities(&self) -> Option<CapabilitySnapshotV1>;
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError>;
+    fn cancel_permission(
+        &mut self,
+        _request_id: &SageServerRequestId,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
     fn ingest(
         &mut self,
         frame: &Frame,

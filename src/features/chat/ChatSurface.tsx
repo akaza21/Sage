@@ -168,7 +168,12 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     } else if (priorId && !priorTurn) {
       priorActiveTurnId.current = null;
     }
-    if (terminalFocusTurnId.current && !actionBusy && !projectTransitioning) {
+    if (
+      focused &&
+      terminalFocusTurnId.current &&
+      !actionBusy &&
+      !projectTransitioning
+    ) {
       const composer = composerRef.current;
       const statuses =
         surfaceRef.current?.querySelectorAll<HTMLElement>("[data-turn-status]");
@@ -179,7 +184,14 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       target?.focus();
       if (target) terminalFocusTurnId.current = null;
     }
-  }, [acpPage, activeAcpTurn, actionBusy, canPrompt, projectTransitioning]);
+  }, [
+    acpPage,
+    activeAcpTurn,
+    actionBusy,
+    canPrompt,
+    focused,
+    projectTransitioning,
+  ]);
 
   function submit(event: FormEvent) {
     event.preventDefault();

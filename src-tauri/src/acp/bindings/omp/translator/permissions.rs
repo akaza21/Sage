@@ -25,6 +25,7 @@ pub(super) struct PermissionIntent {
 pub(super) struct ResolvedPermission {
     pub tool_call_id: ExternalId,
     pub response_line: String,
+    pub cancelled: bool,
 }
 
 impl OmpTranslator {
@@ -72,10 +73,14 @@ impl OmpTranslator {
         let tool_call_id = external_id(tool.get("toolCallId"))?;
         if let Some(existing) = self.resolved_permissions.get(&request_key) {
             return if existing.tool_call_id == tool_call_id {
-                Ok(vec![AdapterEvent::PermissionDeclinePending {
-                    request_id: RequiredText::new("requestId", request_key)?,
-                    tool_call_id,
-                }])
+                if existing.cancelled {
+                    Ok(vec![AdapterEvent::IgnoredDuplicate])
+                } else {
+                    Ok(vec![AdapterEvent::PermissionDeclinePending {
+                        request_id: RequiredText::new("requestId", request_key)?,
+                        tool_call_id,
+                    }])
+                }
             } else {
                 Err(TranslationError::Correlation)
             };
@@ -196,6 +201,7 @@ impl OmpTranslator {
             ResolvedPermission {
                 tool_call_id: intent.tool_call_id.clone(),
                 response_line: response_line.clone(),
+                cancelled: false,
             },
         );
         Ok(PermissionResponse {
@@ -215,6 +221,58 @@ impl OmpTranslator {
                 update_mode: ItemUpdateMode::Replace,
             },
         })
+    }
+
+    pub(crate) fn permission_cancel_prepared(
+        &self,
+        request_id: &str,
+    ) -> Result<Outbound, TranslationError> {
+        let intent = self
+            .pending_permissions
+            .get(request_id)
+            .ok_or(TranslationError::Correlation)?;
+        Ok(Outbound {
+            request_id: None,
+            line: decline_line(&intent.raw_request_id)?,
+        })
+    }
+
+    pub(crate) fn permission_cancel_committed(
+        &mut self,
+        request_id: &str,
+    ) -> Result<(), TranslationError> {
+        let intent = self
+            .pending_permissions
+            .remove(request_id)
+            .ok_or(TranslationError::Correlation)?;
+        let active = self.active.as_mut().ok_or(TranslationError::StaleIntent)?;
+        let current = active
+            .tools
+            .get(intent.tool_call_id.as_str())
+            .copied()
+            .ok_or(TranslationError::Correlation)?;
+        if current != ToolState::WaitingForApproval {
+            return Err(TranslationError::ToolTransition);
+        }
+        active.tools.insert(
+            intent.tool_call_id.as_str().to_owned(),
+            ToolState::Cancelled,
+        );
+        if self.resolved_permissions.len() == MAX_PERMISSION_REQUESTS
+            && let Some(oldest) = self.resolved_permissions.keys().next().cloned()
+        {
+            self.resolved_permissions.remove(&oldest);
+        }
+        let response_line = decline_line(&intent.raw_request_id)?;
+        self.resolved_permissions.insert(
+            request_id.to_owned(),
+            ResolvedPermission {
+                tool_call_id: intent.tool_call_id,
+                response_line,
+                cancelled: true,
+            },
+        );
+        Ok(())
     }
 }
 

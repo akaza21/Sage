@@ -9,12 +9,15 @@ export type PermissionState =
   | "declineCommitted"
   | "responseQueued"
   | "resolvedAllowed"
-  | "resolvedDeclined";
+  | "resolvedDeclined"
+  | "cancelled";
 
 export interface ResolvePermissionDecisionRequest {
   projectId: string;
   chatId: string;
   sessionId: string;
+  turnId: string;
+  runtimeEpoch: string;
   requestId: string;
   decision: PermissionDecision;
 }
@@ -23,6 +26,8 @@ export interface ResolvePermissionDecisionResponse {
   projectId: string;
   chatId: string;
   sessionId: string;
+  turnId: string;
+  runtimeEpoch: string;
   requestId: string;
   decision: PermissionDecision;
   state: PermissionState;

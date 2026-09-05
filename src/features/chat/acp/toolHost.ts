@@ -6,7 +6,7 @@ import { applyAgentFileIntent, type AgentFileIntent } from "./agentFileOps";
 
 export const CURATED_READ_TOOL_NAME = "sage.read_text" as const;
 export const CURATED_APPLY_FILE_TOOL_NAME = "sage.apply_file" as const;
-export const CURATED_BROWSE_TOOL_NAME = "sage.browse" as const;
+export const CURATED_BROWSE_TOOL_NAME = "_sage/browse" as const;
 
 export interface ToolHost {
   canInvoke(toolId: string): boolean;

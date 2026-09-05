@@ -108,6 +108,7 @@ fn terminalize_permission_item(
     let tool_state = match command.state {
         crate::acp::lifecycle::ServerRequestState::ResolvedAllowed => "completed",
         crate::acp::lifecycle::ServerRequestState::ResolvedDeclined => "declined",
+        crate::acp::lifecycle::ServerRequestState::Cancelled => "cancelled",
         _ => {
             return Err(StoreError::InvalidTransition {
                 resource: "request",
@@ -146,6 +147,7 @@ fn verify_terminal_item(
     let tool_state = match command.state {
         crate::acp::lifecycle::ServerRequestState::ResolvedAllowed => "completed",
         crate::acp::lifecycle::ServerRequestState::ResolvedDeclined => "declined",
+        crate::acp::lifecycle::ServerRequestState::Cancelled => "cancelled",
         _ => {
             return Err(StoreError::InvalidTransition {
                 resource: "request",

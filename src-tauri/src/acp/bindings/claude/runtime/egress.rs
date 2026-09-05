@@ -5,6 +5,24 @@ impl ClaudeRuntime {
         &mut self,
         token: &EgressToken,
     ) -> Result<(), AdapterRuntimeError> {
+        if let Some(request_id) = token.cancelled_permission_request() {
+            let record = self
+                .denials
+                .get_mut(request_id)
+                .filter(|record| record.state == DenialState::Pending)
+                .ok_or(AdapterRuntimeError::MandatoryDenyTeardown)?;
+            let active = self
+                .active
+                .as_mut()
+                .ok_or(AdapterRuntimeError::MandatoryDenyTeardown)?;
+            active
+                .translator
+                .permission_cancel_committed(&record.translator_id)
+                .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+            record.reply = PermissionReply::Cancelled;
+            record.state = DenialState::Committed;
+            return Ok(());
+        }
         let Some((request_id, replay)) = token.deny_request() else {
             return Err(AdapterRuntimeError::EgressIntent);
         };
@@ -97,6 +115,31 @@ impl ClaudeRuntime {
                 .ok_or(AdapterRuntimeError::EgressIntent)?;
             record.state = match (resolution, record.state) {
                 (EgressResolution::Queued, DenialState::Pending | DenialState::Queued) => {
+                    DenialState::Queued
+                }
+                (EgressResolution::Written, DenialState::Queued | DenialState::Written) => {
+                    DenialState::Written
+                }
+                _ => return Err(AdapterRuntimeError::EgressIntent),
+            };
+            return Ok(());
+        }
+        if let Some(request_id) = token.cancelled_permission_request() {
+            if matches!(
+                resolution,
+                EgressResolution::QueueRejected
+                    | EgressResolution::WriteZeroBytes
+                    | EgressResolution::DeliveryUnknown
+            ) {
+                return Err(AdapterRuntimeError::MandatoryDenyTeardown);
+            }
+            let record = self
+                .denials
+                .get_mut(request_id)
+                .filter(|record| record.reply == PermissionReply::Cancelled)
+                .ok_or(AdapterRuntimeError::EgressIntent)?;
+            record.state = match (resolution, record.state) {
+                (EgressResolution::Queued, DenialState::Committed | DenialState::Queued) => {
                     DenialState::Queued
                 }
                 (EgressResolution::Written, DenialState::Queued | DenialState::Written) => {

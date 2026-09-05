@@ -281,8 +281,15 @@ fn initialize_advertises_curated_host_tools_including_browse() {
     let value: Value = serde_json::from_slice(egress.frame().payload()).expect("json");
     assert_eq!(value["method"], "initialize");
     assert_eq!(
-        value["params"]["clientCapabilities"]["availableTools"],
-        json!(["sage.read_text", "sage.apply_file", "sage.browse"])
+        value["params"]["clientCapabilities"],
+        json!({"_meta":{"sage":{"tools":[
+            "sage.read_text", "sage.apply_file", "_sage/browse"
+        ]}}})
+    );
+    assert!(
+        value["params"]["clientCapabilities"]
+            .get("availableTools")
+            .is_none()
     );
     assert!(value["params"]["clientCapabilities"].get("fs").is_none());
 }
@@ -533,7 +540,7 @@ fn foreign_session_malformed_and_unknown_messages_are_deterministic() {
 }
 
 #[test]
-fn admitted_session_can_request_sage_browse_during_a_turn() {
+fn admitted_session_can_request_namespaced_sage_browse_during_a_turn() {
     let mut runtime = ClaudeRuntime::fixture();
     ready(&mut runtime);
     let (_id, token) = prompt(&mut runtime);
@@ -543,7 +550,7 @@ fn admitted_session_can_request_sage_browse_during_a_turn() {
     let opened = runtime
         .ingest(
             &frame(json!({
-                "jsonrpc":"2.0","id":"browse-1","method":"sage.browse",
+                "jsonrpc":"2.0","id":"browse-1","method":"_sage/browse",
                 "params":{"sessionId":"claude-session-1","url":"http://127.0.0.1:5173/app"}
             })),
             &Mapper,
@@ -567,7 +574,7 @@ fn admitted_session_can_request_sage_browse_during_a_turn() {
     let rejected = runtime
         .ingest(
             &frame(json!({
-                "jsonrpc":"2.0","id":"browse-2","method":"sage.browse",
+                "jsonrpc":"2.0","id":"browse-2","method":"_sage/browse",
                 "params":{"sessionId":"claude-session-1","url":"https://example.com/"}
             })),
             &Mapper,
@@ -581,7 +588,7 @@ fn admitted_session_can_request_sage_browse_during_a_turn() {
     let foreign = runtime
         .ingest(
             &frame(json!({
-                "jsonrpc":"2.0","id":"browse-3","method":"sage.browse",
+                "jsonrpc":"2.0","id":"browse-3","method":"_sage/browse",
                 "params":{"sessionId":"other-session","url":"http://127.0.0.1:4173/"}
             })),
             &Mapper,
@@ -589,3 +596,8 @@ fn admitted_session_can_request_sage_browse_during_a_turn() {
         .expect("foreign session");
     assert!(foreign.events().is_empty());
 }
+
+#[path = "cancel_contract_tests.rs"]
+mod cancel_contract_tests;
+#[path = "p01_tests.rs"]
+mod p01_tests;

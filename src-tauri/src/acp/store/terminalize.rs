@@ -68,7 +68,7 @@ pub(crate) fn terminalize_epoch(
     let requests = count(
         transaction,
         "server_requests",
-        "state NOT IN ('resolvedAllowed','resolvedDeclined')",
+        "state NOT IN ('resolvedAllowed','resolvedDeclined','cancelled')",
         session,
         epoch,
     )?;
@@ -206,7 +206,7 @@ fn precheck_descendants(
     let requests = count(
         transaction,
         "server_requests",
-        "state NOT IN ('resolvedAllowed','resolvedDeclined')",
+        "state NOT IN ('resolvedAllowed','resolvedDeclined','cancelled')",
         session,
         epoch,
     )?;

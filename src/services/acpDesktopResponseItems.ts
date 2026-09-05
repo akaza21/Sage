@@ -284,6 +284,7 @@ export function safeItem(value: unknown): AcpItem | null {
           "responseQueued",
           "resolvedAllowed",
           "resolvedDeclined",
+          "cancelled",
         ] as const)
         ? null
         : {

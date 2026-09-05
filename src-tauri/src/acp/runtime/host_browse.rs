@@ -10,7 +10,7 @@ use crate::acp::intent::NormalizedPayload;
 
 pub(crate) const CURATED_READ_TOOL_NAME: &str = "sage.read_text";
 pub(crate) const CURATED_APPLY_FILE_TOOL_NAME: &str = "sage.apply_file";
-pub(crate) const CURATED_BROWSE_TOOL_NAME: &str = "sage.browse";
+pub(crate) const CURATED_BROWSE_TOOL_NAME: &str = "_sage/browse";
 pub(crate) const MAX_HARNESS_BROWSE_URL_BYTES: usize = 2048;
 pub(crate) const MAX_HARNESS_BROWSE_SESSIONS: usize = 2;
 
@@ -56,7 +56,7 @@ pub(crate) fn is_advertised_host_tool(name: &str) -> bool {
 }
 
 pub(crate) fn advertised_host_client_capabilities() -> Value {
-    json!({ "availableTools": advertised_host_tools() })
+    json!({ "_meta": { "sage": { "tools": advertised_host_tools() } } })
 }
 
 pub(crate) fn admit_browse_url(raw: &str) -> Option<String> {

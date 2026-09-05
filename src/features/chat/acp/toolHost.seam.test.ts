@@ -18,10 +18,12 @@ describe("curated read tool-host seam", () => {
 
     expect(CURATED_READ_TOOL_NAME).toBe("sage.read_text");
     expect(CURATED_APPLY_FILE_TOOL_NAME).toBe("sage.apply_file");
-    expect(CURATED_BROWSE_TOOL_NAME).toBe("sage.browse");
+    expect(CURATED_BROWSE_TOOL_NAME).toBe("_sage/browse");
     expect(toolHost.canInvoke("sage.read_text")).toBe(true);
     expect(toolHost.canInvoke("sage.apply_file")).toBe(true);
-    expect(toolHost.canInvoke("sage.browse")).toBe(true);
+    expect(toolHost.canInvoke("_sage/browse")).toBe(true);
+    expect(toolHost.canInvoke("sage.browse")).toBe(false);
+    expect(toolHost.canInvoke("sage_browse")).toBe(false);
     expect(toolHost.canInvoke("sage.write_text")).toBe(false);
     expect(toolHost.canInvoke("shell")).toBe(false);
     expect(toolHost.canInvoke("codex.exec")).toBe(false);
@@ -46,7 +48,7 @@ describe("curated read tool-host seam", () => {
     expect(source).not.toMatch(/write_text|shell|codex|claude|oh-my-pi/i);
   });
 
-  it("dispatches sage.browse through the curated host-tool invoke", async () => {
+  it("dispatches _sage/browse through the curated host-tool invoke", async () => {
     const { browseSessionForOwner, clearBrowseSessions } =
       await import("../../preview/harnessBrowse");
     clearBrowseSessions();
@@ -57,7 +59,7 @@ describe("curated read tool-host seam", () => {
       sessionId: "session-1",
     } as AgentArtifactOwner;
     expect(
-      toolHost.invoke("sage.browse", {
+      toolHost.invoke("_sage/browse", {
         owner,
         url: "http://127.0.0.1:5173/app",
       })?.href,
@@ -72,7 +74,7 @@ describe("curated read tool-host seam", () => {
       }),
     ).toBeNull();
     expect(
-      toolHost.invoke("sage.browse", {
+      toolHost.invoke("_sage/browse", {
         owner,
         url: "https://example.com/",
       }),

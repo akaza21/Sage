@@ -7,20 +7,36 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         actual_bytes: usize,
         egress: Vec<AdapterEgress>,
     ) -> Result<(), AdapterPumpError> {
-        let mut new_permission = None;
+        let permission_limit = LIMITS.queues.server_requests_per_session as usize;
+        let mut new_permissions = Vec::new();
+        new_permissions
+            .try_reserve_exact(permission_limit)
+            .map_err(|_| AdapterPumpError::BatchCapacity)?;
         for event in &durable {
             if let DurableAdapterEvent::PermissionRequest { intent, .. } = event {
-                if new_permission.is_some() || self.pending_permission.is_some() {
+                if self
+                    .pending_permissions
+                    .len()
+                    .checked_add(new_permissions.len())
+                    .is_none_or(|count| count >= permission_limit)
+                {
                     self.teardown = true;
                     return Err(AdapterPumpError::TeardownRequired);
                 }
-                new_permission = Some(intent.clone());
+                new_permissions.push(intent.clone());
             }
         }
         let terminal = durable.iter().rev().find_map(|event| match event {
             DurableAdapterEvent::Turn { state, .. } if state.is_terminal() => Some(*state),
             _ => None,
         });
+        if terminal.is_some()
+            && (!self.pending_permissions.is_empty() || !new_permissions.is_empty())
+        {
+            self.pending.clear();
+            self.teardown = true;
+            return Err(AdapterPumpError::TeardownRequired);
+        }
         let committed = if durable.is_empty() {
             None
         } else {
@@ -41,9 +57,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             return Err(AdapterPumpError::TeardownRequired);
         }
 
-        let permission_wait_path = new_permission.is_some();
-        if let Some(intent) = new_permission.take() {
-            self.pending_permission = Some(PendingPermission {
+        let permission_wait_path = !new_permissions.is_empty();
+        for intent in new_permissions {
+            self.pending_permissions.push(PendingPermission {
                 intent,
                 written: false,
                 decision: None,

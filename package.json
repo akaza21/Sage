@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest run",
+    "test": "vitest run --exclude tests/ui/**/*.spec.ts",
     "test:ui": "playwright test --config playwright.config.ts",
     "test:ui:update": "playwright test --config playwright.config.ts --update-snapshots",
     "test:budgets": "node --test --test-concurrency=1 scripts/*.node-test.mjs",

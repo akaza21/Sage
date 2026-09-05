@@ -77,6 +77,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             && !self.projection_recovery_required
             && self.terminal.is_some()
             && self.pending.is_empty()
+            && self.pending_permissions.is_empty()
             && self.decoder_frame_aligned
             && data_empty
             && control_empty

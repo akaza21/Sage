@@ -216,7 +216,7 @@ fn artifact_paths_addons_and_bun_are_mechanically_bounded() {
 }
 
 #[test]
-fn initialize_stays_deny_only_and_incoming_sage_browse_fails_closed() {
+fn initialize_stays_deny_only_and_all_browse_extensions_fail_closed() {
     let mut translator = translator(11);
     let request = translator.begin(Operation::Initialize).unwrap().remove(0);
     let value: Value = serde_json::from_str(request.line.trim()).expect("initialize");
@@ -234,6 +234,7 @@ fn initialize_stays_deny_only_and_incoming_sage_browse_fails_closed() {
             .get("availableTools")
             .is_none()
     );
+    assert!(value["params"]["clientCapabilities"].get("_meta").is_none());
     translator
         .ingest(
             &rpc_result(
@@ -245,13 +246,15 @@ fn initialize_stays_deny_only_and_incoming_sage_browse_fails_closed() {
         .unwrap();
     new_session(&mut translator);
     begin_prompt(&mut translator);
-    assert!(matches!(
-        translator.ingest(
-            br#"{"jsonrpc":"2.0","id":"browse-1","method":"sage.browse","params":{"url":"http://127.0.0.1:5173/"}}"#,
-            &FixtureResources,
-        ),
-        Err(TranslationError::UnexpectedMethod)
-    ));
+    for method in ["_sage/browse", "sage.browse", "sage_browse"] {
+        let frame = format!(
+            r#"{{"jsonrpc":"2.0","id":"browse-1","method":"{method}","params":{{"url":"http://127.0.0.1:5173/"}}}}"#
+        );
+        assert!(matches!(
+            translator.ingest(frame.as_bytes(), &FixtureResources),
+            Err(TranslationError::UnexpectedMethod)
+        ));
+    }
 }
 
 #[test]

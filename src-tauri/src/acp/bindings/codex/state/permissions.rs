@@ -54,13 +54,16 @@ impl CodexAdapter {
                 | ServerRequestState::ResolvedDeclined => {
                     PermissionRegistration::DuplicateCommitted(existing.response.clone())
                 }
+                ServerRequestState::Cancelled => PermissionRegistration::DuplicatePending,
             });
         }
         if self.permission_requests.len() >= LIMITS.queues.server_requests_per_session as usize {
             let Some(index) = self.permission_requests.iter().position(|entry| {
                 matches!(
                     entry.state,
-                    ServerRequestState::ResolvedAllowed | ServerRequestState::ResolvedDeclined
+                    ServerRequestState::ResolvedAllowed
+                        | ServerRequestState::ResolvedDeclined
+                        | ServerRequestState::Cancelled
                 )
             }) else {
                 return Err(AdapterError::PermissionTeardownRequired);
@@ -106,6 +109,28 @@ impl CodexAdapter {
         next: ServerRequestState,
     ) -> Result<(), AdapterError> {
         self.advance_permission(request_id, next)
+    }
+
+    /// Returns the exact native app-server approval response retained at
+    /// ingress. Command/file approvals decline; granular permission requests
+    /// return an empty permission set. The separate turn/interrupt request is
+    /// still emitted by `CodexAdapter::cancel`; ACP wire is never synthesized.
+    pub(crate) fn cancelled_permission_response(
+        &self,
+        request_id: &str,
+    ) -> Result<Vec<u8>, AdapterError> {
+        let entry = self
+            .permission_requests
+            .iter()
+            .find(|entry| entry.id == request_id)
+            .ok_or(AdapterError::PermissionTeardownRequired)?;
+        if !matches!(
+            entry.state,
+            ServerRequestState::Received | ServerRequestState::Asked
+        ) {
+            return Err(AdapterError::PermissionTeardownRequired);
+        }
+        Ok(entry.response.clone())
     }
 
     pub(crate) fn resolve_pending_permission(

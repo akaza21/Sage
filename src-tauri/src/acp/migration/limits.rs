@@ -88,7 +88,10 @@ pub(super) fn preflight_original_schema(
         preflight(connection, live)?;
     } else if matches!(
         schema,
-        SchemaClass::CurrentV5 | SchemaClass::CurrentV6 | SchemaClass::CurrentV7
+        SchemaClass::CurrentV5
+            | SchemaClass::CurrentV6
+            | SchemaClass::CurrentV7
+            | SchemaClass::CurrentV8
     ) {
         verify_file_envelope(live)?;
     } else {

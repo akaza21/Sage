@@ -222,7 +222,7 @@ where
                 self.cancel_committed = true;
             }
             if !self.cancel_dispatched && !self.cancel_delivery_ambiguous {
-                self.active = match self.active.dispatch_cancel(&cancel) {
+                self.active = match self.active.dispatch_cancel(&cancel).await {
                     Ok(active) => active,
                     Err(write) => {
                         let mut write = *write;

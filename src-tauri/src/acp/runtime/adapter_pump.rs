@@ -22,6 +22,7 @@ use crate::acp::{
 
 mod activity;
 mod batch_journal;
+mod cancel;
 mod coalescer;
 mod commit;
 mod completion;
@@ -201,7 +202,7 @@ pub(crate) struct AdapterPump<A, J, R> {
     durable_turn_cursor: Option<AdapterTurnCursor>,
     teardown: bool,
     projection_recovery_required: bool,
-    pending_permission: Option<PendingPermission>,
+    pending_permissions: Vec<PendingPermission>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -213,6 +214,7 @@ struct PendingPermission {
 
 pub(crate) struct AdapterPumpAdmission {
     egress: ReservedQueue<AdapterEgress>,
+    pending_permissions: Vec<PendingPermission>,
 }
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
@@ -233,7 +235,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         if intent.runtime_epoch == RuntimeEpoch::ZERO || intent.binding_digest == [0; 32] {
             return Err(AdapterPumpError::Intent);
         }
-        Ok(AdapterPumpAdmission { egress: queue()? })
+        Ok(AdapterPumpAdmission {
+            egress: queue()?,
+            pending_permissions: pending_permission_slots()?,
+        })
     }
 
     pub(crate) fn from_admission(
@@ -259,7 +264,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             durable_turn_cursor: None,
             teardown: false,
             projection_recovery_required: false,
-            pending_permission: None,
+            pending_permissions: admission.pending_permissions,
         }
     }
 
@@ -280,7 +285,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             resources,
             publisher,
             intent,
-            AdapterPumpAdmission { egress },
+            AdapterPumpAdmission {
+                egress,
+                pending_permissions: pending_permission_slots()?,
+            },
         ))
     }
 
@@ -364,9 +372,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     fn ensure_live(&self) -> Result<(), AdapterPumpError> {
         if self.teardown
             || self
-                .pending_permission
-                .as_ref()
-                .is_some_and(|permission| permission.written)
+                .pending_permissions
+                .iter()
+                .any(|permission| permission.written)
         {
             Err(AdapterPumpError::TeardownRequired)
         } else {
@@ -383,6 +391,14 @@ fn queue() -> Result<ReservedQueue<AdapterEgress>, AdapterPumpError> {
         LIMITS.queues.egress_control_bytes_inside_total as usize,
     )
     .map_err(|_| AdapterPumpError::Backpressure)
+}
+
+fn pending_permission_slots() -> Result<Vec<PendingPermission>, AdapterPumpError> {
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(LIMITS.queues.server_requests_per_session as usize)
+        .map_err(|_| AdapterPumpError::BatchCapacity)?;
+    Ok(values)
 }
 
 fn hex(bytes: &[u8]) -> String {

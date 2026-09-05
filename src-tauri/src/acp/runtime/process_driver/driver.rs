@@ -182,12 +182,12 @@ where
         Ok(progress)
     }
 
-    pub(crate) fn dispatch_cancel(
+    pub(crate) async fn dispatch_cancel(
         &mut self,
         intent: CancelIntent,
     ) -> Result<DriverProgress, DriverError> {
         self.ensure_running()?;
-        self.cancel(intent, DispatchSource::Cancel)
+        self.cancel(intent, DispatchSource::Cancel).await
     }
 
     pub(crate) fn dispatch_close_session(&mut self) -> Result<DriverProgress, DriverError> {
@@ -245,7 +245,7 @@ where
         }
     }
 
-    fn cancel(
+    async fn cancel(
         &mut self,
         intent: CancelIntent,
         source: DispatchSource,
@@ -253,7 +253,29 @@ where
         if !intent.matches_owner(&self.owner) {
             return Err(DriverError::IdentityMismatch);
         }
-        match self.pump.queue_cancel(
+        let cancelled_permission_frames = match self
+            .pump
+            .queue_cancelled_permissions(
+                &intent.session_id,
+                intent.runtime_epoch,
+                &intent.turn_id,
+                &intent.client_message_id,
+                self.clock.now_millis(),
+            )
+            .await
+        {
+            Ok(count) => count,
+            Err(AdapterPumpError::NoActiveTurn | AdapterPumpError::Intent) => {
+                return Err(DriverError::RejectedIntent);
+            }
+            Err(error) => return Err(self.pump_error(error)),
+        };
+        let mut progress = DriverProgress {
+            cancelled_permission_frames,
+            ..DriverProgress::default()
+        };
+        self.flush_all(source, &mut progress)?;
+        match self.pump.queue_cancel_notification(
             &intent.session_id,
             intent.runtime_epoch,
             &intent.turn_id,
@@ -265,7 +287,6 @@ where
             }
             Err(error) => return Err(self.pump_error(error)),
         }
-        let mut progress = DriverProgress::default();
         self.flush_all(source, &mut progress)?;
         Ok(progress)
     }

@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/ui",
-  testMatch: "**/*.visual.ts",
+  testMatch: ["**/*.visual.ts", "**/agent-turn-journeys.spec.ts"],
   snapshotPathTemplate:
     "{testDir}/workbench.visual.spec.ts-snapshots/{arg}-{projectName}-{platform}{ext}",
   fullyParallel: false,

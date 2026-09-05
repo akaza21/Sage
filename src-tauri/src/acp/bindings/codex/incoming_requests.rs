@@ -6,7 +6,7 @@ use crate::acp::{
     contract::SafeText,
     intent::{NormalizedPayload, ToolCategory},
     limits::LIMITS,
-    runtime::host_browse::{CURATED_BROWSE_TOOL_NAME, admit_browse_url},
+    runtime::host_browse::admit_browse_url,
 };
 
 use super::super::CODEX_BROWSE_TOOL_NAME;
@@ -105,7 +105,7 @@ fn dynamic_tool_call(
     adapter.expect_turn(turn).map_err(identity)?;
     let _call_id = text(params, "callId", 512)?;
     let tool = text(params, "tool", 128)?;
-    if tool != CURATED_BROWSE_TOOL_NAME && tool != CODEX_BROWSE_TOOL_NAME {
+    if tool != CODEX_BROWSE_TOOL_NAME {
         return Err(IngressError::UnsupportedServerRequest);
     }
     let args = params

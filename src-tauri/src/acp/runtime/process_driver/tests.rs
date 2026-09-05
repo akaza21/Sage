@@ -113,6 +113,31 @@ impl HarnessAdapter for FakeAdapter {
         ))
     }
 
+    fn cancel_permission(
+        &mut self,
+        request_id: &SageServerRequestId,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.shared
+            .0
+            .lock()
+            .expect("shared")
+            .commands
+            .push("cancelPermission");
+        let external = ExternalId::new("permissionRequest", request_id.as_str())
+            .map_err(|_| AdapterRuntimeError::PermissionIntent)?;
+        Ok(AdapterEgress::new(
+            OutboundFrame::new(
+                format!(
+                    r#"{{"id":"{}","result":{{"outcome":{{"outcome":"cancelled"}}}}}}"#,
+                    request_id.as_str()
+                )
+                .into_bytes(),
+            )
+            .map_err(|_| AdapterRuntimeError::Frame)?,
+            EgressToken::permission_cancel(external),
+        ))
+    }
+
     fn ingest(
         &mut self,
         _: &Frame,
@@ -1091,3 +1116,6 @@ fn runtime() -> tokio::runtime::Runtime {
         .build()
         .expect("runtime")
 }
+
+#[path = "cancel_permission_tests.rs"]
+mod cancel_permission_tests;

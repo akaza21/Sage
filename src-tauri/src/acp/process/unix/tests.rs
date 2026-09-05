@@ -13,8 +13,8 @@ use crate::{
     acp::{
         contract::{ProjectGeneration, SageProjectId, SageRootId},
         process::{
-            ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, ProcessDeadlines,
-            TreeCapacityPool, TreeLimits,
+            ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchError, LaunchSpec,
+            ProcessDeadlines, RequiredContainment, TreeCapacityPool, TreeExit, TreeLimits,
         },
     },
     project_registry::ProjectRootAuthority,
@@ -83,5 +83,20 @@ fn cooperative_supervisor_terminates_the_admitted_root_before_releasing_capacity
         control.terminate_zero(TreeExit::Cancelled),
         Ok((TreeExit::Cancelled, _))
     ));
+    assert_eq!(pool.usage(), (0, 0));
+}
+
+#[test]
+fn cooperative_supervisor_rejects_artifact_drift_before_spawn_and_releases_capacity() {
+    let mut spec = shell_spec("exit 0");
+    spec.artifact.sha256[0] ^= 0xff;
+    let pool = TreeCapacityPool::isolated_ade_0006a();
+    let failure = match launch(&spec, pool.try_acquire(spec.limits.descendants).unwrap()) {
+        Ok(_) => panic!("artifact drift must fail before spawn"),
+        Err(failure) => failure,
+    };
+
+    assert_eq!(failure.error(), LaunchError::IdentityMismatch);
+    assert!(failure.into_zero_process().is_ok());
     assert_eq!(pool.usage(), (0, 0));
 }

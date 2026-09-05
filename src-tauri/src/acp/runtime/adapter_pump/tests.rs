@@ -77,6 +77,27 @@ impl HarnessAdapter for FakeAdapter {
         ))
     }
 
+    fn cancel_permission(
+        &mut self,
+        request_id: &SageServerRequestId,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.shared.0.lock().unwrap().log.push("prepareCancel");
+        let external = ExternalId::new("permissionRequest", request_id.as_str())
+            .map_err(|_| AdapterRuntimeError::PermissionIntent)?;
+        let frame = OutboundFrame::new(
+            format!(
+                r#"{{"jsonrpc":"2.0","id":"{}","result":{{"outcome":{{"outcome":"cancelled"}}}}}}"#,
+                request_id.as_str()
+            )
+            .into_bytes(),
+        )
+        .map_err(|_| AdapterRuntimeError::Frame)?;
+        Ok(AdapterEgress::new(
+            frame,
+            EgressToken::permission_cancel(external),
+        ))
+    }
+
     fn ingest(
         &mut self,
         _: &Frame,
@@ -174,6 +195,7 @@ impl AdapterBatchJournal for FakeJournal {
         let label = match request_state {
             ServerRequestState::ResponseQueued => "responseQueued",
             ServerRequestState::ResolvedDeclined => "resolvedDeclined",
+            ServerRequestState::Cancelled => "cancelled",
             _ => "unexpectedRequestState",
         };
         let mut state = self.shared.0.lock().unwrap();
@@ -753,7 +775,7 @@ fn paired_deny_ingress_does_not_tear_down_the_common_pump() {
 fn cancellation_requires_the_exact_live_turn_tuple() {
     let (mut pump, shared) = build_pump(Vec::new());
     assert!(matches!(
-        pump.queue_cancel(
+        pump.queue_cancel_notification(
             &session("foreign"),
             RuntimeEpoch::new(1).unwrap(),
             &turn("one"),
@@ -763,7 +785,7 @@ fn cancellation_requires_the_exact_live_turn_tuple() {
     ));
     assert!(shared.0.lock().unwrap().commands.is_empty());
     assert_eq!(
-        pump.queue_cancel(
+        pump.queue_cancel_notification(
             &session("one"),
             RuntimeEpoch::new(1).unwrap(),
             &turn("one"),
@@ -784,7 +806,7 @@ fn data_saturation_reserves_the_control_lane_for_cancel() {
         Err(AdapterPumpError::Backpressure)
     ));
     assert_eq!(
-        pump.queue_cancel(
+        pump.queue_cancel_notification(
             &session("one"),
             RuntimeEpoch::new(1).unwrap(),
             &turn("one"),
@@ -808,7 +830,7 @@ fn cancellation_is_rejected_after_the_durable_terminal() {
         )]);
         pump.push_stdout_chunk(b"{}\n", 1).await.unwrap();
         assert!(matches!(
-            pump.queue_cancel(
+            pump.queue_cancel_notification(
                 &session("one"),
                 RuntimeEpoch::new(1).unwrap(),
                 &turn("one"),
@@ -1362,3 +1384,9 @@ fn runtime() -> tokio::runtime::Runtime {
         .build()
         .unwrap()
 }
+
+#[path = "cancel_tests.rs"]
+mod cancel_tests;
+
+#[path = "completion_tests.rs"]
+mod completion_tests;

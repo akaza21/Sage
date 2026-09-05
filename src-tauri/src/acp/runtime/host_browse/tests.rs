@@ -6,13 +6,15 @@ use super::*;
 fn curated_host_tools_advertise_browse_without_harness_names() {
     assert_eq!(CURATED_READ_TOOL_NAME, "sage.read_text");
     assert_eq!(CURATED_APPLY_FILE_TOOL_NAME, "sage.apply_file");
-    assert_eq!(CURATED_BROWSE_TOOL_NAME, "sage.browse");
-    assert!(is_advertised_host_tool("sage.browse"));
+    assert_eq!(CURATED_BROWSE_TOOL_NAME, "_sage/browse");
+    assert!(is_advertised_host_tool("_sage/browse"));
     assert!(is_advertised_host_tool("sage.read_text"));
     assert!(is_advertised_host_tool("sage.apply_file"));
     assert!(!is_advertised_host_tool("sage.write_text"));
     assert!(!is_advertised_host_tool("shell"));
     assert!(!is_advertised_host_tool("codex.exec"));
+    assert!(!is_advertised_host_tool("sage.browse"));
+    assert!(!is_advertised_host_tool("sage_browse"));
     assert!(!is_advertised_host_tool("claude.browse"));
     let source = include_str!("../host_browse.rs");
     assert!(!source.to_ascii_lowercase().contains("codex"));
@@ -21,12 +23,15 @@ fn curated_host_tools_advertise_browse_without_harness_names() {
 }
 
 #[test]
-fn initialize_capabilities_advertise_curated_available_tools() {
+fn initialize_capabilities_advertise_only_namespaced_curated_tools() {
     let capabilities = advertised_host_client_capabilities();
     assert_eq!(
-        capabilities["availableTools"],
-        json!(["sage.read_text", "sage.apply_file", "sage.browse"])
+        capabilities,
+        json!({"_meta":{"sage":{"tools":[
+            "sage.read_text", "sage.apply_file", "_sage/browse"
+        ]}}})
     );
+    assert!(capabilities.get("availableTools").is_none());
     assert!(capabilities.get("fs").is_none());
     assert!(capabilities.get("terminal").is_none());
     assert!(!is_advertised_host_tool("sage.write_text"));
@@ -171,12 +176,14 @@ fn browse_cap_replaces_the_oldest_chat() {
 #[test]
 fn host_browse_request_is_session_scoped_and_fail_closed() {
     let admitted = parse_host_browse_request(
-        "sage.browse",
+        "_sage/browse",
         json!({"sessionId":"session-1","url":"http://127.0.0.1:5173/"}).as_object(),
     )
     .expect("request");
     assert!(host_browse_session_matches(&admitted, "session-1"));
     assert!(!host_browse_session_matches(&admitted, "session-2"));
+    assert!(parse_host_browse_request("sage.browse", json!({}).as_object()).is_none());
+    assert!(parse_host_browse_request("sage_browse", json!({}).as_object()).is_none());
     assert!(parse_host_browse_request("fs/read_text_file", json!({}).as_object()).is_none());
     assert_eq!(
         admit_browse_url("http://127.0.0.1:5173/app").as_deref(),
@@ -188,7 +195,7 @@ fn host_browse_request_is_session_scoped_and_fail_closed() {
     );
     let update = json!({
         "kind":"fetch",
-        "title":"sage.browse",
+        "title":"_sage/browse",
         "locations":[{"url":"http://127.0.0.1:4173/preview"}],
         "rawInput":{"url":"https://example.com/secret"}
     });

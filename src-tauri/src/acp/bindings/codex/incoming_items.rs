@@ -81,7 +81,7 @@ fn dynamic_tool(
     lifecycle: ItemLifecycle,
 ) -> Result<ItemNormalization, IngressError> {
     let label = text(item, "tool", 128)?;
-    if label == CURATED_BROWSE_TOOL_NAME || label == CODEX_BROWSE_TOOL_NAME {
+    if label == CODEX_BROWSE_TOOL_NAME {
         let href = item
             .get("arguments")
             .and_then(Value::as_object)
@@ -96,6 +96,9 @@ fn dynamic_tool(
             CURATED_BROWSE_TOOL_NAME,
             Some(href),
         );
+    }
+    if label == CURATED_BROWSE_TOOL_NAME || label == "sage.browse" {
+        return Err(IngressError::UnsupportedServerRequest);
     }
     tool(item, lifecycle, ToolCategory::Other, "Tool")
 }
@@ -398,7 +401,7 @@ mod tests {
         assert!(matches!(
             payload,
             NormalizedPayload::ToolCall { category: ToolCategory::Web, label, input_summary: Some(summary) }
-                if label.as_str() == "sage.browse" && summary.as_str() == "http://127.0.0.1:43124/proof"
+                if label.as_str() == "_sage/browse" && summary.as_str() == "http://127.0.0.1:43124/proof"
         ));
     }
 }

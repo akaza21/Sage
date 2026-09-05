@@ -49,6 +49,7 @@ pub(crate) struct DriverProgress {
     pub(crate) accepted_frames: usize,
     pub(crate) deferred_flushes: usize,
     pub(crate) written_frames: usize,
+    pub(crate) cancelled_permission_frames: usize,
     pub(crate) zero_byte_failures: usize,
     pub(crate) rejected_controls: usize,
 }

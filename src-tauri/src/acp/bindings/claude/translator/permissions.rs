@@ -130,4 +130,38 @@ impl ClaudeTranslator {
             },
         })
     }
+
+    pub(crate) fn permission_cancel_committed(
+        &mut self,
+        request_id: &str,
+    ) -> Result<AdapterEvent, TranslationError> {
+        let tool_id = self
+            .permissions
+            .remove(request_id)
+            .ok_or(TranslationError::ForeignId)?;
+        let current = self
+            .tools
+            .get(&tool_id)
+            .copied()
+            .ok_or(TranslationError::OrphanToolUpdate)?;
+        transition_tool(current, ToolState::Cancelled)?;
+        self.tools.insert(tool_id.clone(), ToolState::Cancelled);
+        if self.resolved_permissions.len() >= MAX_PERMISSION_REQUESTS
+            && let Some(oldest) = self.resolved_permissions.keys().next().cloned()
+        {
+            self.resolved_permissions.remove(&oldest);
+        }
+        self.resolved_permissions
+            .insert(request_id.to_owned(), tool_id.clone());
+        Ok(AdapterEvent::Item {
+            external_key: RequiredText::new("externalItemId", tool_id)?,
+            lifecycle: ItemLifecycle::Completed,
+            tool_state: Some(ToolState::Cancelled),
+            payload: NormalizedPayload::ToolUpdateResult {
+                category: ToolCategory::Other,
+                label: SafeText::new("toolLabel", "Claude tool")?,
+                output_summary: Some(SafeText::new("toolOutput", "Permission cancelled")?),
+            },
+        })
+    }
 }

@@ -1774,37 +1774,35 @@ fn unsupported_server_request_requires_runtime_teardown() {
 
 #[test]
 fn codex_dynamic_browse_call_returns_only_admitted_loopback_text() {
-    for tool in ["sage_browse", "sage.browse"] {
-        let mut adapter = adapter();
-        ready(&mut adapter);
-        arm_turn(&mut adapter, 2, "client-dynamic-browse");
-        let started = json!({"method":"turn/started","params":{
-            "threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}
-        }});
-        adapter
-            .ingest(&serde_json::to_vec(&started).unwrap(), &Mapper)
-            .unwrap();
-        let request = json!({"id":"browse-request-1","method":"item/tool/call","params":{
-            "threadId":"thread-1","turnId":"turn-1","callId":"browse-call-1",
-            "tool":tool,"arguments":{"url":"http://127.0.0.1:43124/proof"}
-        }});
-        let IngressDisposition::Events(events) = adapter
-            .ingest(&serde_json::to_vec(&request).unwrap(), &Mapper)
-            .unwrap()
-        else {
-            panic!()
-        };
-        let [IncomingEvent::HostToolReply { bytes }] = events.as_slice() else {
-            panic!()
-        };
-        assert_eq!(
-            serde_json::from_slice::<Value>(bytes).unwrap(),
-            json!({"id":"browse-request-1","result":{
-                "success":true,
-                "contentItems":[{"type":"inputText","text":"http://127.0.0.1:43124/proof"}]
-            }})
-        );
-    }
+    let mut candidate = adapter();
+    ready(&mut candidate);
+    arm_turn(&mut candidate, 2, "client-dynamic-browse");
+    let started = json!({"method":"turn/started","params":{
+        "threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}
+    }});
+    candidate
+        .ingest(&serde_json::to_vec(&started).unwrap(), &Mapper)
+        .unwrap();
+    let request = json!({"id":"browse-request-1","method":"item/tool/call","params":{
+        "threadId":"thread-1","turnId":"turn-1","callId":"browse-call-1",
+        "tool":"sage_browse","arguments":{"url":"http://127.0.0.1:43124/proof"}
+    }});
+    let IngressDisposition::Events(events) = candidate
+        .ingest(&serde_json::to_vec(&request).unwrap(), &Mapper)
+        .unwrap()
+    else {
+        panic!()
+    };
+    let [IncomingEvent::HostToolReply { bytes }] = events.as_slice() else {
+        panic!()
+    };
+    assert_eq!(
+        serde_json::from_slice::<Value>(bytes).unwrap(),
+        json!({"id":"browse-request-1","result":{
+            "success":true,
+            "contentItems":[{"type":"inputText","text":"http://127.0.0.1:43124/proof"}]
+        }})
+    );
 
     let mut adapter = adapter();
     ready(&mut adapter);
@@ -1824,6 +1822,9 @@ fn codex_dynamic_browse_call_returns_only_admitted_loopback_text() {
         Err(AdapterError::Ingress(IngressError::Malformed))
     ));
 }
+
+#[path = "p01_tests.rs"]
+mod p01_tests;
 
 #[test]
 fn all_outgoing_lifecycle_methods_are_exact_and_bounded() {

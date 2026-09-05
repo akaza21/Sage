@@ -1,12 +1,12 @@
 use super::*;
 
-pub(super) fn apply_through_v8(connection: &mut Connection) -> AppResult<()> {
+pub(super) fn apply_through_v9(connection: &mut Connection) -> AppResult<()> {
     let versions = connection
-        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 9")?
+        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 10")?
         .query_map([], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     if versions.is_empty()
-        || versions.len() > 7
+        || versions.len() > 8
         || versions
             .iter()
             .enumerate()
@@ -29,13 +29,18 @@ pub(super) fn apply_through_v8(connection: &mut Connection) -> AppResult<()> {
     }
     if last < 6 {
         apply_v6_and_v7_atomically(connection)?;
-        return apply_v8(connection);
+        apply_v8(connection)?;
+        return apply_v9(connection);
     }
     if last < 7 {
         apply_v7(connection)?;
-        return apply_v8(connection);
+        apply_v8(connection)?;
+        return apply_v9(connection);
     }
-    apply_v8(connection)
+    if last < 8 {
+        apply_v8(connection)?;
+    }
+    apply_v9(connection)
 }
 
 pub(super) fn apply_v5(connection: &mut Connection) -> AppResult<()> {
@@ -95,6 +100,24 @@ pub(super) fn apply_v8(connection: &mut Connection) -> AppResult<()> {
     with_foreign_keys_disabled(connection, |connection| {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         apply_v8_steps(&transaction)?;
+        verify_v8_foreign_keys(&transaction)?;
+        transaction.commit()?;
+        Ok(())
+    })?;
+    verify_reached(connection, SchemaClass::CurrentV8)
+}
+
+pub(super) fn apply_v9(connection: &mut Connection) -> AppResult<()> {
+    with_foreign_keys_disabled(connection, |connection| {
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute_batch(V9)?;
+        #[cfg(test)]
+        super::test_failpoint::hit("v8-to-v9-after-schema")?;
+        transaction.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (9, ?1)",
+            [now_millis()],
+        )?;
+        transaction.pragma_update(None, "user_version", 9)?;
         verify_v8_foreign_keys(&transaction)?;
         transaction.commit()?;
         Ok(())
@@ -177,12 +200,13 @@ fn verify_v7_foreign_keys(transaction: &rusqlite::Transaction<'_>) -> AppResult<
     Ok(())
 }
 
-pub(super) fn build_fresh_v8(connection: &mut Connection) -> AppResult<()> {
+pub(super) fn build_fresh_v9(connection: &mut Connection) -> AppResult<()> {
     connection.execute_batch(INITIAL)?;
     connection.execute_batch(V2)?;
     connection.execute_batch(V3)?;
     project_migration::migrate(connection)?;
     apply_v5(connection)?;
     apply_v6_and_v7_atomically(connection)?;
-    apply_v8(connection)
+    apply_v8(connection)?;
+    apply_v9(connection)
 }

@@ -5,8 +5,8 @@ use crate::acp::{
     contract::RequiredText,
     lifecycle::{ItemLifecycle, ToolState},
     runtime::host_browse::{
-        admit_browse_url, browse_tool_payload, host_browse_session_matches,
-        parse_host_browse_request,
+        CURATED_BROWSE_TOOL_NAME, admit_browse_url, browse_tool_payload,
+        host_browse_session_matches, parse_host_browse_request,
     },
     transport::OutboundFrame,
 };
@@ -38,7 +38,10 @@ impl ClaudeRuntime {
         };
         let external_key = RequiredText::new(
             "externalItemId",
-            format!("sage.browse:{}", wire_id.as_str().unwrap_or("host")),
+            format!(
+                "{CURATED_BROWSE_TOOL_NAME}:{}",
+                wire_id.as_str().unwrap_or("host")
+            ),
         )
         .map_err(|_| AdapterRuntimeError::Frame)?;
         let item = SharedEvent::Item {

@@ -1,3 +1,4 @@
+use super::super::installed_role::SignedInstalledRole;
 use super::*;
 use sha2::{Digest, Sha256};
 use std::io::Read;
