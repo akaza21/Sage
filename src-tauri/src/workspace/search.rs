@@ -2,6 +2,7 @@ pub(crate) mod command;
 mod contained_file;
 mod engine;
 mod engine_continue;
+mod engine_walk;
 mod file_scan;
 mod helper_process;
 mod helper_protocol;
