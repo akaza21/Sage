@@ -176,17 +176,26 @@ function buildRequest(command, environment, controlPipe, controlNonce) {
 
 function responseError(command, response, signal) {
   let code = "command-failed";
+  if (response.teardown?.kind === "msvc-vctip-termination-unconfirmed") {
+    code = "windows-job-vctip-termination-unconfirmed";
+  }
   if (response.reason === "command-timeout") code = "command-timeout";
   if (response.reason === "command-aborted") code = "command-aborted";
   if (response.reason === "output-overflow") code = "output-overflow";
   if (!response.settled || response.reason === "tree-repopulated") {
     code = "windows-job-settlement-unconfirmed";
   }
-  return new CheckProcessError(`${command.label} failed in its Windows Job`, {
-    code,
-    settled: response.settled,
-    cause: code === "command-aborted" ? signal.reason : undefined,
-  });
+  const error = new CheckProcessError(
+    `${command.label} failed in its Windows Job`,
+    {
+      code,
+      settled: response.settled,
+      cause: code === "command-aborted" ? signal.reason : undefined,
+    },
+  );
+  error.exitCode = response.exitCode;
+  error.teardown = response.teardown;
+  return error;
 }
 
 export function executeWindowsCargoJobCommand(
@@ -246,14 +255,14 @@ export function executeWindowsCargoJobCommand(
       controlSocket?.destroy();
       controlServer.close();
     };
-    const finish = (error) => {
+    const finish = (error, result) => {
       if (finished) return;
       finished = true;
       clearTimeout(wrapperTimer);
       signal.removeEventListener("abort", abort);
       closeControl();
       if (error) reject(error);
-      else resolve();
+      else resolve(result);
     };
     const unavailable = (cause) =>
       finish(
@@ -321,9 +330,14 @@ export function executeWindowsCargoJobCommand(
         }
         try {
           const result = await frames;
-          if (!result.settled || result.reason || result.exitCode !== 0) {
+          if (
+            !result.settled ||
+            result.reason ||
+            result.exitCode !== 0 ||
+            result.teardown?.kind === "msvc-vctip-termination-unconfirmed"
+          ) {
             finish(responseError(command, result, signal));
-          } else finish();
+          } else finish(null, result);
         } catch (cause) {
           unavailable(cause);
         }

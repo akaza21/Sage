@@ -103,6 +103,9 @@ function Invoke-CargoValidationJob {
     $stdoutTask = $stdout.CopyToAsync($stdoutCapture)
     $stderrTask = $stderr.CopyToAsync($stderrCapture)
     $reason = $null
+    $rootExitCode = $null
+    $teardown = $null
+    $teardownChecked = $false
     while ([DateTime]::UtcNow -lt $DeadlineUtc) {
       if ($abortTask.IsCompleted -and $abortTask.Result -eq "ABORT $ControlNonce") {
         $reason = "command-aborted"
@@ -112,8 +115,18 @@ function Invoke-CargoValidationJob {
         $reason = "output-overflow"
         break
       }
+      if (-not $teardownChecked -and -not $job.RootRunning) {
+        # Capture the root outcome before the only compiled-in child teardown.
+        # A successful teardown never turns a nonzero Cargo result into success.
+        if ($null -eq $rootExitCode) { $rootExitCode = $job.ExitCode() }
+        $teardownChecked = $true
+        $teardown = $job.TryTeardownVerifiedVctip()
+      }
       if ($job.ActiveProcesses() -eq 0) { break }
       Start-Sleep -Milliseconds 10
+    }
+    if ($null -eq $rootExitCode -and -not $job.RootRunning) {
+      $rootExitCode = $job.ExitCode()
     }
     if ($null -eq $reason -and $job.ActiveProcesses() -ne 0) {
       $reason = "command-timeout"
@@ -132,7 +145,7 @@ function Invoke-CargoValidationJob {
       $settled = $false
     }
     $activeProcesses = [uint32]$job.ActiveProcesses()
-    $exitCode = $job.ExitCode()
+    $exitCode = if ($null -ne $rootExitCode) { $rootExitCode } else { $job.ExitCode() }
     $remaining = [Math]::Max(
       1, [int]($settlementDeadline - [DateTime]::UtcNow).TotalMilliseconds
     )
@@ -152,6 +165,7 @@ function Invoke-CargoValidationJob {
       activeProcesses = [int]$activeProcesses
       exitCode = $exitCode
       reason = $reason
+      teardown = $teardown
     }
   } finally {
     if ($null -ne $control) { $control.Dispose() }

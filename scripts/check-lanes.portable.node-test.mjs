@@ -42,6 +42,7 @@ test("Windows Cargo frame parser rejects reordered and post-proof frames", async
     activeProcesses: 0,
     exitCode: 0,
     reason: null,
+    teardown: null,
   };
   const data = {
     type: "data",
@@ -67,6 +68,80 @@ test("Windows Cargo frame parser rejects reordered and post-proof frames", async
         discardStream(),
       ),
       /invalid Job protocol frame|frame followed terminal proof/u,
+    );
+  }
+});
+
+// origin: Q01_VCTIP_TEARDOWN "portable protocol receipt validation"
+test("Windows Cargo frame parser accepts only the exact VCTIP teardown receipt", async () => {
+  const requestNonce = "vctip-receipt-nonce";
+  const base = {
+    type: "proof",
+    schemaVersion: 1,
+    requestNonce,
+    sequence: 0,
+    settled: true,
+    treeBoundaryVerified: true,
+    activeProcesses: 0,
+    exitCode: 7,
+    reason: null,
+  };
+  const receipt = {
+    kind: "verified-msvc-vctip",
+    imagePath:
+      "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\VCTIP.EXE",
+    originalFilename: "VCTIP.EXE",
+    imageSizeBytes: 335328,
+    sha256: "e175c981ca866689bf8f8d9bd5ba1e71e2eb1c9d389de555744b0cb439250996",
+    fileVersion: "14.44.35228.0",
+    productVersion: "14.44.35228.0",
+    singletonPid: 29_084,
+    rootExited: true,
+    jobMembershipVerified: true,
+    terminationExitCodeRequested: 0x53475654,
+    terminationExitCodeObserved: 0x53475654,
+  };
+  const unconfirmed = {
+    ...receipt,
+    kind: "msvc-vctip-termination-unconfirmed",
+    terminationObservation: "wait-timeout",
+  };
+  delete unconfirmed.terminationExitCodeObserved;
+  for (const teardown of [null, receipt, unconfirmed]) {
+    const proof = await consumeWindowsCargoJobFrames(
+      Readable.from([
+        Buffer.from(`${JSON.stringify({ ...base, teardown })}\n`),
+      ]),
+      { label: "protocol", maximumLineBytes: 32, maximumOutputBytes: 32 },
+      requestNonce,
+      discardStream(),
+      discardStream(),
+    );
+    assert.deepEqual(proof.teardown, teardown);
+  }
+  for (const teardown of [
+    { ...receipt, kind: "other" },
+    { ...receipt, sha256: receipt.sha256.toUpperCase() },
+    { ...receipt, fileVersion: "14.44.35229.0" },
+    { ...receipt, unexpected: true },
+    Object.fromEntries(
+      Object.entries(receipt).filter(([key]) => key !== "productVersion"),
+    ),
+    { ...receipt, singletonPid: 0 },
+    { ...unconfirmed, terminationObservation: "other" },
+    { ...unconfirmed, terminationExitCodeObserved: 0x53475654 },
+  ]) {
+    await assert.rejects(
+      consumeWindowsCargoJobFrames(
+        Readable.from([
+          Buffer.from(`${JSON.stringify({ ...base, teardown })}\n`),
+        ]),
+        { label: "protocol", maximumLineBytes: 32, maximumOutputBytes: 32 },
+        requestNonce,
+        discardStream(),
+        discardStream(),
+      ),
+      /invalid VCTIP teardown receipt/u,
     );
   }
 });

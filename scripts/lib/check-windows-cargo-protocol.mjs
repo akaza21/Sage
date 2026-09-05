@@ -3,6 +3,82 @@ import { TextDecoder } from "node:util";
 const MAX_PROTOCOL_LINE_BYTES = 8 * 1_024;
 const MAX_PROTOCOL_FRAME_BYTES = 4 * 1_024;
 const MAX_RENDER_CHARS = 4 * MAX_PROTOCOL_FRAME_BYTES;
+const VCTIP_TEARDOWN_EXIT_CODE = 0x53475654;
+const VCTIP_TEARDOWN = Object.freeze({
+  fileVersion: "14.44.35228.0",
+  imagePath:
+    "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\VCTIP.EXE",
+  imageSizeBytes: 335328,
+  kind: "verified-msvc-vctip",
+  originalFilename: "VCTIP.EXE",
+  productVersion: "14.44.35228.0",
+  sha256: "e175c981ca866689bf8f8d9bd5ba1e71e2eb1c9d389de555744b0cb439250996",
+});
+
+function hasExactKeys(value, keys) {
+  const actual = Object.keys(value).sort();
+  return (
+    actual.length === keys.length &&
+    actual.every((key, index) => key === keys[index])
+  );
+}
+
+function validatedTeardown(receipt) {
+  if (receipt === null) return null;
+  const identityKeys = [
+    "fileVersion",
+    "imagePath",
+    "imageSizeBytes",
+    "jobMembershipVerified",
+    "kind",
+    "originalFilename",
+    "productVersion",
+    "rootExited",
+    "sha256",
+    "singletonPid",
+    "terminationExitCodeObserved",
+    "terminationExitCodeRequested",
+  ];
+  const exactIdentity =
+    receipt &&
+    typeof receipt === "object" &&
+    receipt.imagePath === VCTIP_TEARDOWN.imagePath &&
+    receipt.originalFilename === VCTIP_TEARDOWN.originalFilename &&
+    receipt.imageSizeBytes === VCTIP_TEARDOWN.imageSizeBytes &&
+    receipt.sha256 === VCTIP_TEARDOWN.sha256 &&
+    receipt.fileVersion === VCTIP_TEARDOWN.fileVersion &&
+    receipt.productVersion === VCTIP_TEARDOWN.productVersion &&
+    receipt.rootExited === true &&
+    receipt.jobMembershipVerified === true &&
+    Number.isSafeInteger(receipt.singletonPid) &&
+    receipt.singletonPid >= 1 &&
+    receipt.singletonPid <= 0xffff_ffff &&
+    receipt.terminationExitCodeRequested === VCTIP_TEARDOWN_EXIT_CODE;
+  if (
+    !receipt ||
+    typeof receipt !== "object" ||
+    !hasExactKeys(receipt, identityKeys) ||
+    receipt.kind !== VCTIP_TEARDOWN.kind ||
+    !exactIdentity ||
+    receipt.terminationExitCodeObserved !== VCTIP_TEARDOWN_EXIT_CODE
+  ) {
+    const unconfirmedKeys = identityKeys
+      .filter((key) => key !== "terminationExitCodeObserved")
+      .concat("terminationObservation")
+      .sort();
+    if (
+      receipt.kind !== "msvc-vctip-termination-unconfirmed" ||
+      !hasExactKeys(receipt, unconfirmedKeys) ||
+      !exactIdentity ||
+      !["wait-failed", "wait-timeout", "exit-code-unconfirmed"].includes(
+        receipt.terminationObservation,
+      )
+    ) {
+      throw new Error("invalid VCTIP teardown receipt");
+    }
+  }
+  return receipt;
+}
 
 function decodeBase64(value, maximumBytes) {
   if (
@@ -147,10 +223,12 @@ function validatedProof(result, requestNonce, sequence) {
     !Number.isSafeInteger(result.activeProcesses) ||
     (result.settled && result.activeProcesses !== 0) ||
     !Number.isSafeInteger(result.exitCode) ||
-    !reasons.includes(result.reason)
+    !reasons.includes(result.reason) ||
+    !("teardown" in result)
   ) {
     throw new Error("invalid Job proof response");
   }
+  validatedTeardown(result.teardown);
   return result;
 }
 

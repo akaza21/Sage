@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace SageValidation {
@@ -146,11 +148,44 @@ namespace SageValidation {
     const uint JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x00000800;
     const uint JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK = 0x00001000;
     const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
+    const uint PROCESS_TERMINATE = 0x0001;
+    const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    const uint SYNCHRONIZE = 0x00100000;
+    const uint WAIT_OBJECT_0 = 0;
+    const uint WAIT_TIMEOUT = 0x00000102;
+    const int JobObjectBasicProcessIdList = 3;
+    const int MaximumJobProcessIds = 256;
     const int JobObjectBasicAccountingInformation = 1;
     const int JobObjectExtendedLimitInformation = 9;
+    const uint VCTIP_TERMINATION_EXIT_CODE = 0x53475654;
+    const uint VCTIP_TERMINATION_WAIT_MS = 2000;
+    const string VCTIP_PATH = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\VCTIP.EXE";
+    const string VCTIP_FILENAME = "VCTIP.EXE";
+    const long VCTIP_SIZE = 335328;
+    const string VCTIP_SHA256 = "e175c981ca866689bf8f8d9bd5ba1e71e2eb1c9d389de555744b0cb439250996";
+    const string VCTIP_VERSION = "14.44.35228.0";
     IntPtr job;
     IntPtr process;
     uint rootProcessId;
+#if SAGE_VCTIP_JOB_TESTS
+    // Test-only state is per Job instance, never global, and is absent from
+    // production compilation. It permits regressions to exercise the retained
+    // handle/race path without adding a request-controlled production seam.
+    uint vctipTestMember;
+    string vctipTestNaturalExitTriggerPath;
+    uint vctipTestNaturalExitHooks;
+    int vctipTestNaturalExitCode = -1;
+#if SAGE_VCTIP_JOB_TEST_WAIT_FAILED
+    uint vctipTestUnconfirmedObservation = 1;
+#elif SAGE_VCTIP_JOB_TEST_WAIT_TIMEOUT
+    uint vctipTestUnconfirmedObservation = 2;
+#elif SAGE_VCTIP_JOB_TEST_EXIT_UNCONFIRMED
+    uint vctipTestUnconfirmedObservation = 3;
+#else
+    uint vctipTestUnconfirmedObservation;
+#endif
+    uint vctipTestTerminationAttempts;
+#endif
 
     CargoJob(IntPtr job, IntPtr process, uint rootProcessId) {
       this.job = job;
@@ -315,7 +350,13 @@ namespace SageValidation {
     }
     public uint RootProcessId { get { return rootProcessId; } }
     public bool RootRunning {
-      get { return WaitForSingleObject(process, 0) == 0x00000102; }
+      get {
+        uint wait = WaitForSingleObject(process, 0);
+        if (wait == WAIT_TIMEOUT) return true;
+        if (wait == WAIT_OBJECT_0) return false;
+        NativeFailure("WaitForSingleObject");
+        return false;
+      }
     }
     public int ExitCode() {
       uint code;
@@ -324,6 +365,201 @@ namespace SageValidation {
     }
     public void Terminate() {
       if (!TerminateJobObject(job, 1)) NativeFailure("TerminateJobObject");
+    }
+#if SAGE_VCTIP_JOB_TESTS
+    internal void EnableVctipTeardownTestAdapter(
+      uint member, uint unconfirmedObservation, string naturalExitTriggerPath
+    ) {
+      if (member == 0 || unconfirmedObservation > 3 ||
+          (naturalExitTriggerPath != null &&
+           (!Path.IsPathRooted(naturalExitTriggerPath) || naturalExitTriggerPath.Length > 32767)))
+        throw new ArgumentException("vctip-test-adapter-invalid");
+      vctipTestMember = member;
+      vctipTestUnconfirmedObservation = unconfirmedObservation;
+      vctipTestNaturalExitTriggerPath = naturalExitTriggerPath;
+    }
+    internal uint VctipTeardownTestTerminationAttempts {
+      get { return vctipTestTerminationAttempts; }
+    }
+    internal uint VctipTeardownTestNaturalExitHooks {
+      get { return vctipTestNaturalExitHooks; }
+    }
+    internal int VctipTeardownTestNaturalExitCode {
+      get { return vctipTestNaturalExitCode; }
+    }
+    internal int VctipTeardownTestJobProcessCount {
+      get {
+        uint[] processIds;
+        return TryJobProcessIds(out processIds) ? processIds.Length : -1;
+      }
+    }
+#endif
+    // This is deliberately compiled into the helper rather than supplied by a
+    // request, environment variable, or caller allowlist. Any MSVC update must
+    // obtain a separately reviewed identity before it can match.
+    public object TryTeardownVerifiedVctip() {
+      uint candidate;
+      if (!RootExited() || !TrySingletonJobMember(out candidate)) return null;
+      IntPtr member = OpenProcess(
+        PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | SYNCHRONIZE,
+        false, candidate
+      );
+      if (member == IntPtr.Zero) return null;
+      try {
+        if (!MatchesVerifiedVctip(member, candidate)) return null;
+        // Revalidate every mutable fact while retaining this one private handle.
+        if (!RootExited() || !TrySingletonJobMember(out candidate) ||
+            !MatchesVerifiedVctip(member, candidate)) return null;
+        // Count only an actual targeted TerminateProcess call in test builds.
+#if SAGE_VCTIP_JOB_TESTS
+        vctipTestTerminationAttempts++;
+#endif
+        if (!TerminateProcess(member, VCTIP_TERMINATION_EXIT_CODE))
+          throw new InvalidOperationException("vctip-termination-request-failed");
+#if SAGE_VCTIP_JOB_TESTS
+        if (vctipTestUnconfirmedObservation == 1)
+          return UnconfirmedVctipTeardown("wait-failed", candidate);
+        if (vctipTestUnconfirmedObservation == 2)
+          return UnconfirmedVctipTeardown("wait-timeout", candidate);
+#endif
+        uint waited = WaitForSingleObject(member, VCTIP_TERMINATION_WAIT_MS);
+        if (waited != WAIT_OBJECT_0) return UnconfirmedVctipTeardown(
+          waited == WAIT_TIMEOUT ? "wait-timeout" : "wait-failed", candidate
+        );
+#if SAGE_VCTIP_JOB_TESTS
+        if (vctipTestUnconfirmedObservation == 3)
+          return UnconfirmedVctipTeardown("exit-code-unconfirmed", candidate);
+#endif
+        uint observed;
+        if (!GetExitCodeProcess(member, out observed) || observed != VCTIP_TERMINATION_EXIT_CODE)
+          return UnconfirmedVctipTeardown("exit-code-unconfirmed", candidate);
+        return new VctipTeardownReceipt {
+          kind = "verified-msvc-vctip",
+          imagePath = VCTIP_PATH,
+          originalFilename = VCTIP_FILENAME,
+          imageSizeBytes = VCTIP_SIZE,
+          sha256 = VCTIP_SHA256,
+          fileVersion = VCTIP_VERSION,
+          productVersion = VCTIP_VERSION,
+          singletonPid = candidate,
+          rootExited = true,
+          jobMembershipVerified = true,
+          terminationExitCodeRequested = VCTIP_TERMINATION_EXIT_CODE,
+          terminationExitCodeObserved = observed
+        };
+      } finally {
+        CloseIfPresent(member);
+      }
+    }
+    VctipTeardownUnconfirmed UnconfirmedVctipTeardown(string observation, uint candidate) {
+      return new VctipTeardownUnconfirmed {
+        kind = "msvc-vctip-termination-unconfirmed",
+        imagePath = VCTIP_PATH,
+        originalFilename = VCTIP_FILENAME,
+        imageSizeBytes = VCTIP_SIZE,
+        sha256 = VCTIP_SHA256,
+        fileVersion = VCTIP_VERSION,
+        productVersion = VCTIP_VERSION,
+        singletonPid = candidate,
+        rootExited = true,
+        jobMembershipVerified = true,
+        terminationExitCodeRequested = VCTIP_TERMINATION_EXIT_CODE,
+        terminationObservation = observation
+      };
+    }
+    bool RootExited() {
+      return WaitForSingleObject(process, 0) == WAIT_OBJECT_0;
+    }
+    bool TrySingletonJobMember(out uint member) {
+      member = 0;
+      uint[] processIds;
+      if (!TryJobProcessIds(out processIds) || processIds.Length != 1 ||
+          processIds[0] == 0 || processIds[0] == rootProcessId) return false;
+      member = processIds[0];
+      return true;
+    }
+    bool TryJobProcessIds(out uint[] processIds) {
+      processIds = null;
+      uint returned;
+      int capacity = 8 + IntPtr.Size * MaximumJobProcessIds;
+      IntPtr buffer = Marshal.AllocHGlobal(capacity);
+      try {
+        if (!QueryInformationJobObjectProcessList(job, JobObjectBasicProcessIdList,
+          buffer, (uint)capacity, out returned)) return false;
+        uint assigned = unchecked((uint)Marshal.ReadInt32(buffer, 0));
+        uint listed = unchecked((uint)Marshal.ReadInt32(buffer, 4));
+        long bytes = 8L + (long)listed * IntPtr.Size;
+        if (returned < 8 || returned > capacity || assigned != listed ||
+            listed > MaximumJobProcessIds || bytes != returned) return false;
+        var values = new uint[(int)listed];
+        for (int index = 0; index < values.Length; index++) {
+          long raw = IntPtr.Size == 8
+            ? Marshal.ReadInt64(buffer, 8 + index * IntPtr.Size)
+            : unchecked((uint)Marshal.ReadInt32(buffer, 8 + index * IntPtr.Size));
+          if (raw < 1 || raw > UInt32.MaxValue || values.Take(index).Contains((uint)raw))
+            return false;
+          values[index] = (uint)raw;
+        }
+        processIds = values;
+        return true;
+      } finally {
+        Marshal.FreeHGlobal(buffer);
+      }
+    }
+    bool MatchesVerifiedVctip(IntPtr member, uint candidate) {
+      uint processId = GetProcessId(member);
+      bool inJob;
+      if (processId != candidate || !IsProcessInJob(member, job, out inJob) || !inJob)
+        return false;
+#if SAGE_VCTIP_JOB_TESTS
+      if (vctipTestMember == 0) vctipTestMember = candidate;
+      if (candidate == vctipTestMember) {
+        if (vctipTestNaturalExitTriggerPath != null) {
+          if (vctipTestNaturalExitHooks != 0)
+            throw new InvalidOperationException("vctip-test-natural-exit-repeated");
+          File.WriteAllText(vctipTestNaturalExitTriggerPath, "exit");
+          vctipTestNaturalExitHooks++;
+          if (WaitForSingleObject(member, 1000) != WAIT_OBJECT_0)
+            throw new InvalidOperationException("vctip-test-natural-exit-unobserved");
+          uint naturalExitCode;
+          if (!GetExitCodeProcess(member, out naturalExitCode) || naturalExitCode != 0)
+            throw new InvalidOperationException("vctip-test-natural-exit-invalid");
+          vctipTestNaturalExitCode = 0;
+          vctipTestNaturalExitTriggerPath = null;
+        }
+        return true;
+      }
+#endif
+      string imagePath;
+      if (!TryImagePath(member, out imagePath) ||
+          !String.Equals(imagePath, VCTIP_PATH, StringComparison.OrdinalIgnoreCase) ||
+          !String.Equals(Path.GetFileName(imagePath), VCTIP_FILENAME, StringComparison.OrdinalIgnoreCase))
+        return false;
+      try {
+        var info = new FileInfo(imagePath);
+        var version = FileVersionInfo.GetVersionInfo(imagePath);
+        if (info.Length != VCTIP_SIZE ||
+            !String.Equals(version.OriginalFilename, VCTIP_FILENAME, StringComparison.Ordinal) ||
+            !String.Equals(version.FileVersion, VCTIP_VERSION, StringComparison.Ordinal) ||
+            !String.Equals(version.ProductVersion, VCTIP_VERSION, StringComparison.Ordinal)) return false;
+        using (var file = File.OpenRead(imagePath))
+        using (var sha256 = SHA256.Create()) {
+          string hash = BitConverter.ToString(sha256.ComputeHash(file)).Replace("-", "").ToLowerInvariant();
+          return String.Equals(hash, VCTIP_SHA256, StringComparison.Ordinal);
+        }
+      } catch {
+        return false;
+      }
+    }
+    static bool TryImagePath(IntPtr handle, out string imagePath) {
+      var value = new StringBuilder(32768);
+      uint length = (uint)value.Capacity;
+      if (!QueryFullProcessImageName(handle, 0, value, ref length) || length == 0) {
+        imagePath = null;
+        return false;
+      }
+      imagePath = value.ToString();
+      return true;
     }
     public void Dispose() {
       IntPtr processHandle = process; process = IntPtr.Zero; CloseIfPresent(processHandle);
@@ -346,10 +582,39 @@ namespace SageValidation {
     [StructLayout(LayoutKind.Sequential)] struct IO_COUNTERS { public ulong a,b,c,d,e,f; }
     [StructLayout(LayoutKind.Sequential)] struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION { public BASIC_LIMIT BasicLimitInformation; public IO_COUNTERS IoInfo; public UIntPtr a,b,c,d; }
     [StructLayout(LayoutKind.Sequential)] struct JOBOBJECT_BASIC_ACCOUNTING_INFORMATION { public long a,b,c,d; public uint e,f,ActiveProcesses,h; }
+    public sealed class VctipTeardownReceipt {
+      public string kind { get; set; }
+      public string imagePath { get; set; }
+      public string originalFilename { get; set; }
+      public long imageSizeBytes { get; set; }
+      public string sha256 { get; set; }
+      public string fileVersion { get; set; }
+      public string productVersion { get; set; }
+      public uint singletonPid { get; set; }
+      public bool rootExited { get; set; }
+      public bool jobMembershipVerified { get; set; }
+      public uint terminationExitCodeRequested { get; set; }
+      public uint terminationExitCodeObserved { get; set; }
+    }
+    public sealed class VctipTeardownUnconfirmed {
+      public string kind { get; set; }
+      public string imagePath { get; set; }
+      public string originalFilename { get; set; }
+      public long imageSizeBytes { get; set; }
+      public string sha256 { get; set; }
+      public string fileVersion { get; set; }
+      public string productVersion { get; set; }
+      public uint singletonPid { get; set; }
+      public bool rootExited { get; set; }
+      public bool jobMembershipVerified { get; set; }
+      public uint terminationExitCodeRequested { get; set; }
+      public string terminationObservation { get; set; }
+    }
     [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr CreateJobObject(IntPtr a,string b);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetInformationJobObject(IntPtr a,int b,ref JOBOBJECT_EXTENDED_LIMIT_INFORMATION c,uint d);
     [DllImport("kernel32.dll", EntryPoint="QueryInformationJobObject", SetLastError=true)] static extern bool QueryInformationJobObjectLimits(IntPtr a,int b,ref JOBOBJECT_EXTENDED_LIMIT_INFORMATION c,uint d,out uint e);
     [DllImport("kernel32.dll", EntryPoint="QueryInformationJobObject", SetLastError=true)] static extern bool QueryInformationJobObjectAccounting(IntPtr a,int b,ref JOBOBJECT_BASIC_ACCOUNTING_INFORMATION c,uint d,out uint e);
+    [DllImport("kernel32.dll", EntryPoint="QueryInformationJobObject", SetLastError=true)] static extern bool QueryInformationJobObjectProcessList(IntPtr a,int b,IntPtr c,uint d,out uint e);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr a,IntPtr b);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool TerminateJobObject(IntPtr a,uint b);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool CreatePipe(out IntPtr a,out IntPtr b,ref SECURITY_ATTRIBUTES c,uint d);
@@ -363,6 +628,10 @@ namespace SageValidation {
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool TerminateProcess(IntPtr a,uint b);
     [DllImport("kernel32.dll", SetLastError=true)] static extern uint WaitForSingleObject(IntPtr a,uint b);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetExitCodeProcess(IntPtr a,out uint b);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr OpenProcess(uint a,bool b,uint c);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern uint GetProcessId(IntPtr a);
+    [DllImport("kernel32.dll", SetLastError=true)] [return: MarshalAs(UnmanagedType.Bool)] static extern bool IsProcessInJob(IntPtr a,IntPtr b,out bool c);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] [return: MarshalAs(UnmanagedType.Bool)] static extern bool QueryFullProcessImageName(IntPtr a,uint b,StringBuilder c,ref uint d);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool CloseHandle(IntPtr a);
   }
 }
