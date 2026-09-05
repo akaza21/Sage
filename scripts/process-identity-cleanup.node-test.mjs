@@ -3,7 +3,6 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import test from "node:test";
 
-const windowsOnly = { skip: process.platform !== "win32" };
 const powershell = path.join(
   process.env.SystemRoot ?? "C:\\Windows",
   "System32",
@@ -57,11 +56,8 @@ function Invoke-TestFootprintTree($rootIdentity,$knownIdentities,$snapshotProvid
 };
 `;
 
-test(
-  "post-kill root PID reuse is audit-only after an exact successful root stop",
-  windowsOnly,
-  () => {
-    const observed = runPowerShellFixture(`${commonFixture}
+test("post-kill root PID reuse is audit-only after an exact successful root stop", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
 [void](Add-FootprintRememberedIdentity $store $childRow);
 $script:rootAlive=$true;$script:childAlive=$true;$script:rootStopped=$false;$script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:stops=@();
 $snapshot={
@@ -75,20 +71,16 @@ $clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script
 $result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
 [ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds);stops=@($script:stops)}|ConvertTo-Json -Compress
 `);
-    assert.deepEqual(observed, {
-      identityLost: false,
-      remaining: [],
-      reused: [101],
-      stops: [202, 101],
-    });
-  },
-);
+  assert.deepEqual(observed, {
+    identityLost: false,
+    remaining: [],
+    reused: [101],
+    stops: [202, 101],
+  });
+});
 
-test(
-  "root PID reuse before exact root termination remains fatal",
-  windowsOnly,
-  () => {
-    const observed = runPowerShellFixture(`${commonFixture}
+test("root PID reuse before exact root termination remains fatal", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
 $script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:stops=@();
 $snapshot={return @($reusedRootRow)};
 $stop={param([int]$processId)$script:stops+=$processId};
@@ -96,20 +88,16 @@ $clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script
 $result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
 [ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds);stops=@($script:stops)}|ConvertTo-Json -Compress
 `);
-    assert.deepEqual(observed, {
-      identityLost: true,
-      remaining: [],
-      reused: [101],
-      stops: [],
-    });
-  },
-);
+  assert.deepEqual(observed, {
+    identityLost: true,
+    remaining: [],
+    reused: [101],
+    stops: [],
+  });
+});
 
-test(
-  "an exact remembered descendant that survives root termination remains nonzero",
-  windowsOnly,
-  () => {
-    const observed = runPowerShellFixture(`${commonFixture}
+test("an exact remembered descendant that survives root termination remains nonzero", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
 [void](Add-FootprintRememberedIdentity $store $childRow);
 $script:rootAlive=$true;$script:rootStopped=$false;$script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:stops=@();
 $snapshot={
@@ -122,20 +110,16 @@ $clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script
 $result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
 [ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds);stops=@($script:stops)}|ConvertTo-Json -Compress
 `);
-    assert.deepEqual(observed, {
-      identityLost: false,
-      remaining: [202],
-      reused: [101],
-      stops: [202, 101],
-    });
-  },
-);
+  assert.deepEqual(observed, {
+    identityLost: false,
+    remaining: [202],
+    reused: [101],
+    stops: [202, 101],
+  });
+});
 
-test(
-  "a failed exact root stop cannot establish post-kill reuse authority",
-  windowsOnly,
-  () => {
-    const observed = runPowerShellFixture(`${commonFixture}
+test("a failed exact root stop cannot establish post-kill reuse authority", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
 $script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:stops=@();
 $snapshot={return @($rootRow)};
 $stop={param([int]$processId)$script:stops+=$processId;throw 'injected stop failure'};
@@ -143,15 +127,11 @@ $clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script
 $failed=$false;try{[void](Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay)}catch{$failed=$_.Exception.Message -match 'injected stop failure'};
 [ordered]@{failed=$failed;stops=@($script:stops)}|ConvertTo-Json -Compress
 `);
-    assert.deepEqual(observed, { failed: true, stops: [101] });
-  },
-);
+  assert.deepEqual(observed, { failed: true, stops: [101] });
+});
 
-test(
-  "a matching candidate that exits between revalidation and stop reaches terminal zero",
-  windowsOnly,
-  () => {
-    const observed = runPowerShellFixture(`${commonFixture}
+test("a matching candidate that exits between revalidation and stop reaches terminal zero", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
 $script:rootAlive=$true;$script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:stops=@();
 $snapshot={if($script:rootAlive){return @($rootRow)};return @()};
 $stop={param([int]$processId)$script:stops+=$processId;$script:rootAlive=$false;throw 'process not found'};
@@ -159,11 +139,10 @@ $clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script
 $result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
 [ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds);stops=@($script:stops)}|ConvertTo-Json -Compress
 `);
-    assert.deepEqual(observed, {
-      identityLost: false,
-      remaining: [],
-      reused: [],
-      stops: [101],
-    });
-  },
-);
+  assert.deepEqual(observed, {
+    identityLost: false,
+    remaining: [],
+    reused: [],
+    stops: [101],
+  });
+});

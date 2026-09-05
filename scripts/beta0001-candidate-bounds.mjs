@@ -96,11 +96,12 @@ function assertPlain(metadata) {
 }
 
 function assertPlainDirectory(metadata) {
-  if (
-    !metadata.isDirectory() ||
-    metadata.isSymbolicLink() ||
-    metadata.nlink !== 1n
-  ) {
+  // Directory link counts reflect filesystem structure (an ordinary empty
+  // Linux directory already reports nlink 2), never evidence of a
+  // regular-file hardlink. Only the symlink/junction and directory-shape
+  // checks below may reject an evidence root. Regular-file hardlink
+  // rejection stays in assertPlain via nlink === 1n.
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
     reject("evidence-link");
   }
 }

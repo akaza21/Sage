@@ -598,84 +598,80 @@ test("installed smoke rejects runner mutation after artifact handoff authenticat
   }
 });
 
-test(
-  "real PowerShell preflight settles an unsigned candidate without installer mutation",
-  { skip: process.platform !== "win32" },
-  async () => {
-    const root = mkdtempSync(path.join(tmpdir(), "sage-installed-preflight-"));
-    try {
-      const source = stageInstalledSmokeTestSource(root);
-      const installerPath = path.join(root, "unsigned-setup.exe");
-      const installedPath = path.join(root, "projected-sage.exe");
-      writeFileSync(installerPath, "unsigned installer fixture");
-      writeFileSync(installedPath, "projected executable fixture");
-      const gitPath = execFileSync("where.exe", ["git.exe"], {
-        encoding: "utf8",
-        windowsHide: true,
-      })
-        .split(/\r?\n/u)
-        .find(Boolean);
-      assert.ok(gitPath);
-      const installer = fileIdentity(installerPath);
-      const installed = fileIdentity(installedPath);
-      const powershell = path.join(
-        process.env.SystemRoot ?? "C:\\Windows",
-        "System32",
-        "WindowsPowerShell",
-        "v1.0",
-        "powershell.exe",
-      );
-      const handoff = {
-        ...source,
-        receiptBytes: Buffer.from("preflight-package-receipt"),
-        receipt: {
-          buildIdentity: {
-            powershell: {
-              executableSha256: fileIdentity(powershell).sha256,
-            },
-          },
-          participants: {
-            candidate: {
-              installers: [{ kind: "nsis", installedExecutable: installed }],
-            },
+test("real PowerShell preflight settles an unsigned candidate without installer mutation", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-installed-preflight-"));
+  try {
+    const source = stageInstalledSmokeTestSource(root);
+    const installerPath = path.join(root, "unsigned-setup.exe");
+    const installedPath = path.join(root, "projected-sage.exe");
+    writeFileSync(installerPath, "unsigned installer fixture");
+    writeFileSync(installedPath, "projected executable fixture");
+    const gitPath = execFileSync("where.exe", ["git.exe"], {
+      encoding: "utf8",
+      windowsHide: true,
+    })
+      .split(/\r?\n/u)
+      .find(Boolean);
+    assert.ok(gitPath);
+    const installer = fileIdentity(installerPath);
+    const installed = fileIdentity(installedPath);
+    const powershell = path.join(
+      process.env.SystemRoot ?? "C:\\Windows",
+      "System32",
+      "WindowsPowerShell",
+      "v1.0",
+      "powershell.exe",
+    );
+    const handoff = {
+      ...source,
+      receiptBytes: Buffer.from("preflight-package-receipt"),
+      receipt: {
+        buildIdentity: {
+          powershell: {
+            executableSha256: fileIdentity(powershell).sha256,
           },
         },
-        artifacts: {
+        participants: {
           candidate: {
-            installerArtifacts: { nsis: installer },
-            installedExecutables: { nsis: installed },
+            installers: [{ kind: "nsis", installedExecutable: installed }],
           },
         },
-        tools: {
-          node: fileIdentity(process.execPath),
-          git: fileIdentity(gitPath),
-          powershell: fileIdentity(powershell),
+      },
+      artifacts: {
+        candidate: {
+          installerArtifacts: { nsis: installer },
+          installedExecutables: { nsis: installed },
         },
-      };
-      const receipt = await runAuthenticatedInstalledSmoke({
-        handoff,
-        campaignId: "unsigned-preflight-01",
-        outputDirectory: path.join(root, "output"),
-        expectedSignerThumbprint: "f".repeat(40),
-      });
-      assert.equal(receipt.result, "blocked", JSON.stringify(receipt));
-      assert.equal(receipt.failure.phase, "prerequisites");
-      assert.equal(
-        receipt.prerequisites.authenticode,
-        false,
-        "unsigned fixture must never reach install",
-      );
-      assert.equal(
-        readFileSync(path.join(root, "output", "receipt.json"), "utf8").length >
-          0,
-        true,
-      );
-      assert.equal(existsSync(path.join(root, "output", "installed")), false);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  },
-);
+      },
+      tools: {
+        node: fileIdentity(process.execPath),
+        git: fileIdentity(gitPath),
+        powershell: fileIdentity(powershell),
+      },
+    };
+    const receipt = await runAuthenticatedInstalledSmoke({
+      handoff,
+      campaignId: "unsigned-preflight-01",
+      outputDirectory: path.join(root, "output"),
+      expectedSignerThumbprint: "f".repeat(40),
+    });
+    assert.equal(receipt.result, "blocked", JSON.stringify(receipt));
+    assert.equal(receipt.failure.phase, "prerequisites");
+    assert.equal(
+      receipt.prerequisites.authenticode,
+      false,
+      "unsigned fixture must never reach install",
+    );
+    assert.equal(
+      readFileSync(path.join(root, "output", "receipt.json"), "utf8").length >
+        0,
+      true,
+    );
+    assert.equal(existsSync(path.join(root, "output", "installed")), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function assertionKeysForTest() {
   return [

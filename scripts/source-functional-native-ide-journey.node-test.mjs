@@ -1644,24 +1644,20 @@ test("Node identity requires a canonical path with only plain ancestors", () => 
   );
 });
 
-test(
-  "Windows verbatim executable paths match their canonical filesystem form",
-  { skip: process.platform !== "win32" },
-  () => {
-    const expected = { bytes: 456, sha256: "e".repeat(64) };
-    const verbatim = `\\\\?\\${process.execPath}`;
-    const actual = validatePlainCanonicalExecutable(verbatim, expected, {
-      lstatSync: () => ({ isSymbolicLink: () => false }),
-      realpathSync: (current) =>
-        current.startsWith("\\\\?\\") ? current.slice(4) : current,
-      validateBinding: (current, binding) => {
-        assert.equal(current, verbatim);
-        return binding;
-      },
-    });
-    assert.deepEqual(actual, { path: verbatim, ...expected });
-  },
-);
+test("Windows verbatim executable paths match their canonical filesystem form", () => {
+  const expected = { bytes: 456, sha256: "e".repeat(64) };
+  const verbatim = `\\\\?\\${process.execPath}`;
+  const actual = validatePlainCanonicalExecutable(verbatim, expected, {
+    lstatSync: () => ({ isSymbolicLink: () => false }),
+    realpathSync: (current) =>
+      current.startsWith("\\\\?\\") ? current.slice(4) : current,
+    validateBinding: (current, binding) => {
+      assert.equal(current, verbatim);
+      return binding;
+    },
+  });
+  assert.deepEqual(actual, { path: verbatim, ...expected });
+});
 
 test("bounded Playwright helper settles overflow and timeout when child never closes", async () => {
   for (const mode of ["overflow", "timeout"]) {
@@ -1737,41 +1733,37 @@ test("bounded tool releases an identity handshake only after exact capture", asy
   assert.equal(await pending, "");
 });
 
-test(
-  "Windows bounded tool handshake preserves quoted cmd arguments after exact capture",
-  { skip: process.platform !== "win32" },
-  async () => {
-    const root = mkdtempSync(
-      path.join(tmpdir(), "sage bounded handshake with spaces-"),
+test("Windows bounded tool handshake preserves quoted cmd arguments after exact capture", async () => {
+  const root = mkdtempSync(
+    path.join(tmpdir(), "sage bounded handshake with spaces-"),
+  );
+  const fixture = path.join(root, "Codex Fixture.cmd");
+  const command = path.join(process.env.SystemRoot, "System32", "cmd.exe");
+  try {
+    writeFileSync(fixture, "@echo off\r\necho codex-cli 0.146.0\r\n", "utf8");
+    const output = await runBoundedTool(
+      command,
+      [
+        "/d",
+        "/s",
+        "/c",
+        `set /p "SAGE_ACP04_ACK=" && call "${fixture}" --version`,
+      ],
+      Date.now() + 15_000,
+      root,
+      {
+        commandRole: "codex-version-preflight",
+        expectedExecutablePath: command,
+        identityHandshake: "captured-owner\r\n",
+        maxOutputBytes: 4096,
+        windowsVerbatimArguments: true,
+      },
     );
-    const fixture = path.join(root, "Codex Fixture.cmd");
-    const command = path.join(process.env.SystemRoot, "System32", "cmd.exe");
-    try {
-      writeFileSync(fixture, "@echo off\r\necho codex-cli 0.146.0\r\n", "utf8");
-      const output = await runBoundedTool(
-        command,
-        [
-          "/d",
-          "/s",
-          "/c",
-          `set /p "SAGE_ACP04_ACK=" && call "${fixture}" --version`,
-        ],
-        Date.now() + 15_000,
-        root,
-        {
-          commandRole: "codex-version-preflight",
-          expectedExecutablePath: command,
-          identityHandshake: "captured-owner\r\n",
-          maxOutputBytes: 4096,
-          windowsVerbatimArguments: true,
-        },
-      );
-      assert.equal(output.trim(), "codex-cli 0.146.0");
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  },
-);
+    assert.equal(output.trim(), "codex-cli 0.146.0");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("identity capture failure releases the handshake gate and retains quarantine", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-tool-handshake-"));

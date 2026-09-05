@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
   link,
+  mkdir,
   mkdtemp,
   readFile,
   rm,
@@ -520,6 +521,27 @@ test("unsafe linked junction hardlink escaped and Windows-alias paths never ente
     );
   } finally {
     await close(paths);
+  }
+});
+
+test("ordinary evidence directory with structure link count reads successfully", async () => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "beta0001-candidate-ordinary-dir-"),
+  );
+  const id = "git.basic";
+  await writeFile(path.join(root, `${id}.json`), "{}");
+  // An ordinary directory's link count reflects filesystem structure, not a
+  // regular-file hardlink: entering a subdirectory must not reject the root.
+  await mkdir(path.join(root, "structure"));
+  try {
+    const bytes = await readBoundedPlainEvidenceFile({
+      root,
+      id,
+      maximumBytes: 2,
+    });
+    assert.equal(bytes.toString("utf8"), "{}");
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
 

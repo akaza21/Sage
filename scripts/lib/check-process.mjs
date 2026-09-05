@@ -37,9 +37,12 @@ export function findExecutable(
   return undefined;
 }
 
-function repositoryIdentity(repositoryRoot) {
+function repositoryIdentity(repositoryRoot, platform = process.platform) {
+  // Windows-shaped roots must resolve with Windows semantics even when the
+  // lane host is POSIX; on a real win32 host path.win32 is path itself.
+  const pathModule = platform === "win32" ? path.win32 : path;
   return createHash("sha256")
-    .update(path.resolve(repositoryRoot).toLowerCase())
+    .update(pathModule.resolve(repositoryRoot).toLowerCase())
     .digest("hex")
     .slice(0, 12);
 }
@@ -51,14 +54,15 @@ export function buildRustEnvironment({
   sccachePath,
   windowsDDriveAvailable = platform === "win32" && existsSync("D:\\"),
 }) {
+  const pathModule = platform === "win32" ? path.win32 : path;
   const selectedTarget =
     environment.SAGE_CARGO_TARGET_DIR ??
     (windowsDDriveAvailable
-      ? path.join(
+      ? pathModule.join(
           "C:\\SageCaches\\cargo-target",
-          `${path.basename(repositoryRoot)}-${repositoryIdentity(repositoryRoot)}`,
+          `${pathModule.basename(repositoryRoot)}-${repositoryIdentity(repositoryRoot, platform)}`,
         )
-      : path.join(repositoryRoot, "src-tauri", "target"));
+      : pathModule.join(repositoryRoot, "src-tauri", "target"));
   const selectedSccache =
     sccachePath ?? findExecutable("sccache", { environment, platform });
   const result = { CARGO_TARGET_DIR: selectedTarget };
