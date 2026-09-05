@@ -1,7 +1,17 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { AcpItem } from "../../../domain/acp";
+import type {
+  AcpItem,
+  EntityRevision,
+  RuntimeEpoch,
+  SageAgentSessionId,
+  SageChatId,
+  SageItemId,
+  SagePermissionRequestId,
+  SageProjectId,
+  SageTurnId,
+} from "../../../domain/acp";
 import { PermissionItem } from "./PermissionItem";
 import { getPermissionStatus } from "./statusSemantics";
 
@@ -11,24 +21,24 @@ type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
 function cancelledPermission(): PermissionProjectionItem {
   return {
-    id: "permission-cancelled",
-    projectId: "project-1",
-    chatId: "chat-1",
-    sessionId: "session-1",
-    turnId: "turn-1",
-    runtimeEpoch: "1",
+    id: "permission-cancelled" as SageItemId,
+    projectId: "project-1" as SageProjectId,
+    chatId: "chat-1" as SageChatId,
+    sessionId: "session-1" as SageAgentSessionId,
+    turnId: "turn-1" as SageTurnId,
+    runtimeEpoch: "1" as RuntimeEpoch,
     ordinal: 1,
     origin: "primary",
     activityId: null,
     lifecycle: "completed",
-    revision: "1",
+    revision: "1" as EntityRevision,
     createdAt: 1,
     updatedAt: 2,
     terminalAt: 2,
     kind: "permissionRequest",
     toolState: "cancelled",
     payload: {
-      requestId: "request-1",
+      requestId: "request-1" as SagePermissionRequestId,
       state: "cancelled",
       label: "Write requested",
       summary: "The owning turn ended before the request was answered.",
