@@ -1,0 +1,86 @@
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { useWorkbenchStore } from "../../app/store";
+import { diffCacheKey } from "../../domain/diffIdentity";
+import type { WorkbenchTab } from "../../domain/workbench";
+import { DiffSurface } from "./DiffSurface";
+
+const resource = { rootId: "root-a", relativePath: "src/app.ts" };
+const tab: WorkbenchTab = {
+  id: "diff:src/app.ts",
+  kind: "diff",
+  title: "app.ts",
+  position: 1,
+  pinned: false,
+  dirty: false,
+  resource,
+};
+const cacheKey = diffCacheKey(undefined, resource);
+const initialState = useWorkbenchStore.getState();
+
+afterEach(() => {
+  cleanup();
+  useWorkbenchStore.setState(initialState, true);
+});
+
+describe("DiffSurface resource states", () => {
+  it("moves from an announced load through an alert to a ready read-only diff", () => {
+    const loadDiff = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      repositories: { roots: [], truncated: false, elapsedMs: 0 },
+      diffs: { [cacheKey]: { phase: "loading" } },
+      loadDiff,
+    });
+
+    render(<DiffSurface tab={tab} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Loading diff…");
+    expect(screen.getByText("Read-only")).toBeVisible();
+    expect(screen.queryByText(/Explorer focused/i)).toBeNull();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        diffs: {
+          [cacheKey]: { phase: "error", message: "Diff unavailable." },
+        },
+      });
+    });
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Could not load this diff",
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Diff unavailable.");
+
+    act(() => {
+      useWorkbenchStore.setState({
+        diffs: {
+          [cacheKey]: {
+            phase: "ready",
+            value: {
+              resource,
+              binary: false,
+              truncated: false,
+              hunks: [
+                {
+                  header: "@@ -1 +1 @@",
+                  lines: [
+                    { kind: "removed", oldLine: 1, newLine: null, text: "old" },
+                    { kind: "added", oldLine: null, newLine: 1, text: "new" },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      });
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      screen.getByRole("table", { name: "Unified file diff" }),
+    ).toBeVisible();
+    expect(loadDiff).toHaveBeenCalledOnce();
+  });
+});

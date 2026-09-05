@@ -129,7 +129,7 @@
 
 .agent-artifact-pane--collapsed {
   grid-template-rows: minmax(0, 1fr);
-  border-left: 1px solid var(--color-border-subtle);
+  box-shadow: inset 1px 0 var(--color-border-subtle);
 }
 
 .agent-artifact-pane__header {
@@ -187,10 +187,12 @@
 .agent-artifact-pane__edge-action {
   display: grid;
   width: 100%;
-  align-content: start;
-  gap: 8px;
-  padding: 8px 3px;
+  height: 44px;
+  place-items: center;
+  align-self: start;
+  padding: 0;
   border: 0;
+  border-bottom: 1px solid var(--color-border-subtle);
   color: var(--color-text-muted);
   background: var(--color-panel);
   cursor: pointer;
@@ -201,17 +203,8 @@
   background: var(--color-surface-hover);
 }
 
-.agent-artifact-pane__edge-action > span {
-  display: grid;
-  justify-items: center;
-  gap: 2px;
-}
-
-.agent-artifact-pane__edge-action small {
-  max-width: 100%;
-  overflow: hidden;
-  font-size: var(--font-size-xs);
-  text-overflow: ellipsis;
+.agent-artifact-pane__empty-state {
+  padding-inline: 28px;
 }
 
 .agent-artifact-pane__canvas {

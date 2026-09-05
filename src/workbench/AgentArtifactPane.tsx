@@ -3,10 +3,11 @@ import {
   Files,
   GitCompareArrows,
   PanelRightClose,
+  PanelRightOpen,
   Pin,
   X,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef } from "react";
 import { useStore } from "zustand";
 
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
@@ -48,6 +49,7 @@ export function AgentArtifactPane({
   const paneRef = useRef<HTMLElement | null>(null);
   const edgeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const previousExpanded = useRef(expanded);
+  const emptyTitleId = useId();
   const admissions = useAgentArtifactAdmissionStore(
     (state) => state.admissions,
   );
@@ -195,20 +197,10 @@ export function AgentArtifactPane({
           className="agent-artifact-pane__edge-action"
           type="button"
           aria-label="Open files, changes, and preview"
+          title="Open resources"
           onClick={() => onExpandedChange?.(true)}
         >
-          <span>
-            <Files size={16} aria-hidden="true" />
-            <small>Files</small>
-          </span>
-          <span>
-            <GitCompareArrows size={16} aria-hidden="true" />
-            <small>Changes</small>
-          </span>
-          <span>
-            <Eye size={16} aria-hidden="true" />
-            <small>Preview</small>
-          </span>
+          <PanelRightOpen size={17} strokeWidth={1.8} aria-hidden="true" />
         </button>
       </aside>
     );
@@ -367,9 +359,15 @@ export function AgentArtifactPane({
           ? renderFileOrDiffCanvas(activeArtifact)
           : null}
         {!previewSelected && !activeArtifact ? (
-          <section className="placeholder-surface">
-            <h1>Nothing open</h1>
-            <p>Files, diffs, and browser previews from this Chat open here.</p>
+          <section
+            className="placeholder-surface agent-artifact-pane__empty-state"
+            aria-labelledby={emptyTitleId}
+          >
+            <span className="placeholder-surface__icon" aria-hidden="true">
+              <Files size={19} strokeWidth={1.7} />
+            </span>
+            <h1 id={emptyTitleId}>No resources yet</h1>
+            <p>Files, changes, and previews from this Chat will appear here.</p>
           </section>
         ) : null}
       </div>

@@ -118,7 +118,7 @@ describe("FileSurface document language", () => {
     const fileRegion = () =>
       screen.getByRole("region", { name: `File editor ${path}` });
     expect(fileRegion()).toHaveClass("file-surface", "resource-document");
-    expect(screen.getByText(`Loading ${path}…`)).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent(`Loading ${path}…`);
 
     act(() => {
       useWorkbenchStore.setState({
@@ -130,10 +130,17 @@ describe("FileSurface document language", () => {
       });
     });
     expect(fileRegion()).toHaveClass("file-surface", "resource-document");
-    expect(screen.getByText(`Could not open ${path}`)).toBeVisible();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      `Could not open ${path}`,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The file is unavailable.",
+    );
 
     act(() => setReadyEditor());
     expect(fileRegion()).toHaveClass("file-surface", "resource-document");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 

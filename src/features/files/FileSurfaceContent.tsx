@@ -1,5 +1,6 @@
 import type { KeyboardEventHandler, RefObject } from "react";
 
+import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 import type { ActiveEditorState } from "./fileEditorController";
 import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
 import { FileEditorHeader } from "./FileEditorHeader";
@@ -25,14 +26,13 @@ export function FileSurfaceResourceState({
       aria-label={`File editor ${path}`}
     >
       {error === undefined ? (
-        <div className="resource-state" aria-live="polite">
-          Loading {path}…
-        </div>
+        <ResourceStateNotice state="loading" title={`Loading ${path}…`} />
       ) : (
-        <div className="resource-state resource-state--error">
-          <strong>Could not open {path}</strong>
-          <span>{error}</span>
-        </div>
+        <ResourceStateNotice
+          state="error"
+          title={`Could not open ${path}`}
+          detail={error}
+        />
       )}
     </section>
   );

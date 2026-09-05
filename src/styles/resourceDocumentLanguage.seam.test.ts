@@ -10,6 +10,7 @@ describe("shared File and Diff document language", () => {
       fileSurface,
       fileSurfaceContent,
       diffSurface,
+      resourceStateNotice,
       language,
       fileStyles,
       diffStyles,
@@ -19,6 +20,7 @@ describe("shared File and Diff document language", () => {
       readFile(resolve("src/features/files/FileSurface.tsx"), "utf8"),
       readFile(resolve("src/features/files/FileSurfaceContent.tsx"), "utf8"),
       readFile(resolve("src/features/diff/DiffSurface.tsx"), "utf8"),
+      readFile(resolve("src/ui/ResourceStateNotice.tsx"), "utf8"),
       readFile(resolve("src/styles/resource-document-language.css"), "utf8"),
       readFile(resolve("src/styles/file-editor-surface.css"), "utf8"),
       readFile(resolve("src/styles/diff-surface.css"), "utf8"),
@@ -32,8 +34,10 @@ describe("shared File and Diff document language", () => {
     expect(
       fileSurfaceContent.match(/className="file-surface resource-document"/g),
     ).toHaveLength(2);
-    expect(fileSurfaceContent).toContain(
-      'className="resource-state resource-state--error"',
+    expect(fileSurfaceContent).toContain("<ResourceStateNotice");
+    expect(diffSurface).toContain("<ResourceStateNotice");
+    expect(resourceStateNotice).toContain(
+      "className={`resource-state resource-state--${state}`}",
     );
     expect(diffSurface).toContain('className="diff-surface resource-document"');
     expect(language).toContain("@media (forced-colors: none)");

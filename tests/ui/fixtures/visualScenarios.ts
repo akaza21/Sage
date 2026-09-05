@@ -61,6 +61,8 @@ export type VisualScenarioName =
 
 export type VisualScenarioMode = "agent" | "editor";
 export type VisualScenarioResource = "empty" | "file" | "diff" | "preview";
+export type VisualAgentResourceState =
+  "diff-error" | "diff-loading" | "file-error" | "file-loading";
 
 export interface VisualScenarioDefinition {
   name: VisualScenarioName;
@@ -1283,6 +1285,47 @@ export async function installVisualScenario(name: VisualScenarioName) {
   await new Promise((resolve) =>
     requestAnimationFrame(() => resolve(undefined)),
   );
+}
+
+export async function installVisualAgentResourceState(
+  state: VisualAgentResourceState,
+) {
+  const current = useWorkbenchStore.getState();
+  const expectedKind = state.startsWith("file") ? "file" : "diff";
+  const resourceTab = current.tabs.find((tab) => tab.kind === expectedKind);
+  if (!resourceTab?.resource) {
+    throw new Error(`Visual ${expectedKind} state requires its resource tab`);
+  }
+
+  if (expectedKind === "file") {
+    useWorkbenchStore.setState({
+      activeEditor:
+        state === "file-loading"
+          ? { phase: "loading", resource: resourceTab.resource }
+          : {
+              phase: "error",
+              resource: resourceTab.resource,
+              message: "The file is temporarily unavailable.",
+            },
+    });
+  } else {
+    const key = diffCacheKey(resourceTab.repository, resourceTab.resource);
+    useWorkbenchStore.setState({
+      diffs: {
+        ...current.diffs,
+        [key]:
+          state === "diff-loading"
+            ? { phase: "loading" }
+            : {
+                phase: "error",
+                message: "The comparison is temporarily unavailable.",
+              },
+      },
+    });
+  }
+
+  document.documentElement.dataset.visualResourceState = state;
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 export async function installVisualExplorerScrollFixture() {
