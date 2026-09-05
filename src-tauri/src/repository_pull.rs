@@ -122,12 +122,24 @@ mod tests {
         git(&source, &["init", "-q", "-b", "main"]);
         git(&source, &["config", "user.email", "sage@example.invalid"]);
         git(&source, &["config", "user.name", "Sage Test"]);
+        git(&source, &["config", "core.autocrlf", "false"]);
         fs::write(source.join("tracked.txt"), "one\n").unwrap();
         git(&source, &["add", "--", "tracked.txt"]);
         git(&source, &["commit", "-q", "-m", "initial"]);
         git(&source, &["remote", "add", "origin", &remote_path(&bare)]);
         git(&source, &["push", "-q", "-u", "origin", "main"]);
-        git(&dest, &["clone", "-q", &remote_path(&bare), "."]);
+        git(
+            &dest,
+            &[
+                "clone",
+                "-c",
+                "core.autocrlf=false",
+                "-q",
+                &remote_path(&bare),
+                ".",
+            ],
+        );
+        git(&dest, &["config", "core.autocrlf", "false"]);
         fs::write(source.join("tracked.txt"), "two\n").unwrap();
         git(&source, &["add", "--", "tracked.txt"]);
         git(&source, &["commit", "-q", "-m", "incoming"]);

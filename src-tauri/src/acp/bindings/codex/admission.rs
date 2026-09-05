@@ -168,7 +168,7 @@ mod tests {
         fs::write(&path, b"observed-codex").expect("test executable");
         let binding = AdmittedCodexBinding::admit_observed(path.clone(), "codex 1.2.3".into())
             .expect("observed executable admission");
-        assert_eq!(binding.entrypoint().path, path);
+        assert_eq!(binding.entrypoint().path, path.canonicalize().unwrap());
         binding.revalidate().expect("unchanged executable");
         fs::write(&path, b"changed-codex").expect("change test executable");
         assert_eq!(binding.revalidate(), Err(CodexAdmissionUnavailable::Drift));

@@ -118,7 +118,10 @@ mod tests {
         ));
         let binding = registration.refresh().unwrap();
         assert!(binding.is_observed());
-        assert_eq!(binding.entrypoint().path, executable);
+        assert_eq!(
+            binding.entrypoint().path,
+            executable.canonicalize().unwrap()
+        );
         fs::remove_file(executable).unwrap();
     }
 }

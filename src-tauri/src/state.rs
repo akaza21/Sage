@@ -172,6 +172,8 @@ impl AppState {
         database: Database,
         binding: crate::acp::service::CharacterizationBinding,
     ) -> AppResult<Self> {
+        let settings = SettingsStore::in_memory()?;
+        settings.editor_appearance()?;
         let trash_recovery = crate::resource_trash_commands::recover_pending_at_startup(&database)?;
         let transition_epoch = trash_recovery
             .as_ref()
@@ -186,6 +188,7 @@ impl AppState {
                 })?;
         Ok(Self {
             database,
+            settings,
             acp,
             harnesses: HarnessCatalog::with_codex_registration_and_characterization(codex),
             editor_operations: EditorOperationCoordinator::default(),
