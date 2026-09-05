@@ -10,6 +10,18 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 namespace SageFootprint {
+  public sealed class NativeJobCleanupPendingException : Exception {
+    public NativeJobBoundary Owner { get; private set; }
+    public bool CleanupPending { get { return true; } }
+    public Exception OriginalFailure { get; private set; }
+
+    internal NativeJobCleanupPendingException(NativeJobBoundary owner, Exception originalFailure, Exception cleanupFailure)
+      : base("Native Job startup cleanup could not prove that its created root was reaped.", cleanupFailure) {
+      Owner = owner;
+      OriginalFailure = originalFailure;
+    }
+  }
+
   public sealed class NativeJobBoundary : IDisposable {
     const uint CREATE_SUSPENDED = 0x00000004;
     const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
@@ -19,9 +31,30 @@ namespace SageFootprint {
     const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
     const int JobObjectBasicAccountingInformation = 1;
     const int JobObjectExtendedLimitInformation = 9;
+    const uint WAIT_OBJECT_0 = 0x00000000;
+    const uint WAIT_TIMEOUT = 0x00000102;
+    const uint WAIT_FAILED = 0xFFFFFFFF;
 
-    IntPtr job;
+    IntPtr job, process;
+    bool assigned;
     public int ProcessId { get; private set; }
+    public string RootCommandLine { get; private set; }
+
+    enum StartupFault { None, InvalidateJobBeforeAssign, FailAfterAssignBeforeResume }
+
+    sealed class StartupFaultState {
+      internal readonly StartupFault Fault;
+      internal int ProcessId;
+      internal long CreationFileTime;
+      internal string ImagePath;
+      internal string CommandLine;
+      internal bool Reaped;
+      internal StartupFaultState(StartupFault fault) { Fault = fault; }
+    }
+
+    sealed class StartupFaultException : InvalidOperationException {
+      internal StartupFaultException(string message) : base(message) {}
+    }
 
     NativeJobBoundary(IntPtr handle) { job = handle; }
 
@@ -31,6 +64,15 @@ namespace SageFootprint {
       string workingDirectory,
       string[] environmentEntries,
       uint activeProcessLimit
+    ) { return StartCore(executable, arguments, workingDirectory, environmentEntries, activeProcessLimit, new StartupFaultState(StartupFault.None)); }
+
+    static NativeJobBoundary StartCore(
+      string executable,
+      string[] arguments,
+      string workingDirectory,
+      string[] environmentEntries,
+      uint activeProcessLimit,
+      StartupFaultState fault
     ) {
       if (String.IsNullOrWhiteSpace(executable) || arguments == null ||
           arguments.Length > 32 ||
@@ -44,13 +86,14 @@ namespace SageFootprint {
       var boundary = new NativeJobBoundary(job);
       PROCESS_INFORMATION process = new PROCESS_INFORMATION();
       IntPtr environment = IntPtr.Zero;
-      bool resumed = false;
+      bool resumed = false, owned = false;
       try {
         boundary.Configure(activeProcessLimit);
         environment = Marshal.StringToHGlobalUni(EnvironmentBlock(environmentEntries));
         var startup = new STARTUPINFO();
         startup.cb = Marshal.SizeOf(typeof(STARTUPINFO));
         var commandLine = new StringBuilder(BuildCommandLine(executable, arguments));
+        boundary.RootCommandLine = commandLine.ToString();
         if (!CreateProcess(
           executable,
           commandLine,
@@ -63,16 +106,40 @@ namespace SageFootprint {
           ref startup,
           out process
         )) throw NativeFailure("CreateProcessW");
-        if (!AssignProcessToJobObject(job, process.hProcess))
-          throw NativeFailure("AssignProcessToJobObject");
+        boundary.process = process.hProcess;
+        process.hProcess = IntPtr.Zero;
+        owned = true;
         boundary.ProcessId = checked((int)process.dwProcessId);
+        fault.ProcessId = boundary.ProcessId;
+        long exitFt, kernelFt, userFt;
+        if (fault.Fault != StartupFault.None && !GetProcessTimes(boundary.process, out fault.CreationFileTime, out exitFt, out kernelFt, out userFt))
+          throw NativeFailure("GetProcessTimes");
+        if (fault.Fault != StartupFault.None) {
+          fault.ImagePath = boundary.RootImagePath();
+          fault.CommandLine = boundary.RootCommandLine;
+        }
+        IntPtr assignmentJob = fault.Fault == StartupFault.InvalidateJobBeforeAssign ? IntPtr.Zero : boundary.job;
+        if (!AssignProcessToJobObject(assignmentJob, boundary.process))
+          throw NativeFailure("AssignProcessToJobObject");
+        boundary.assigned = true;
+        if (fault.Fault == StartupFault.FailAfterAssignBeforeResume)
+          throw new StartupFaultException("Test-only assigned pre-resume startup failure.");
         if (ResumeThread(process.hThread) == UInt32.MaxValue)
           throw NativeFailure("ResumeThread");
         resumed = true;
         return boundary;
-      } catch {
-        if (process.hProcess != IntPtr.Zero) TerminateJobObject(job, 1);
-        boundary.Dispose();
+      } catch (Exception launchError) {
+        if (!owned) {
+          try { boundary.Dispose(); } catch {}
+          throw;
+        }
+        try {
+          boundary.CleanupCreatedRoot(launchError);
+          fault.Reaped = true;
+        } catch (NativeJobCleanupPendingException) { throw; }
+        catch (Exception cleanupError) {
+          throw new InvalidOperationException("Native Job launch cleanup failed after launch failure (" + launchError.GetType().Name + ": " + launchError.Message + "): " + cleanupError.Message, launchError);
+        }
         throw;
       } finally {
         if (environment != IntPtr.Zero) Marshal.FreeHGlobal(environment);
@@ -82,8 +149,101 @@ namespace SageFootprint {
       }
     }
 
+#if SAGE_FOOTPRINT_JOB_TESTS
+    public sealed class StartupFailureProof {
+      public int ProcessId { get; internal set; }
+      public long CreationFileTime { get; internal set; }
+      public string ImagePath { get; internal set; }
+      public string CommandLine { get; internal set; }
+      public bool Reaped { get; internal set; }
+    }
+
+    // This adapter exists only in the separately compiled native test assembly.
+    public static StartupFailureProof StartForStartupFailureTest(string executable, string[] arguments, string workingDirectory, string[] environmentEntries, uint activeProcessLimit, int failurePoint) {
+      StartupFault fault;
+      if (failurePoint == 1) fault = StartupFault.InvalidateJobBeforeAssign;
+      else if (failurePoint == 2) fault = StartupFault.FailAfterAssignBeforeResume;
+      else throw new ArgumentException("Invalid test-only failure point.");
+      var state = new StartupFaultState(fault);
+      try { StartCore(executable, arguments, workingDirectory, environmentEntries, activeProcessLimit, state); }
+      catch (Exception error) {
+        bool expected = fault == StartupFault.InvalidateJobBeforeAssign
+          ? error is Win32Exception && error.Message.IndexOf("AssignProcessToJobObject", StringComparison.Ordinal) >= 0
+          : error is StartupFaultException;
+        if (!expected) throw;
+        if (state.ProcessId == 0 || state.CreationFileTime == 0 || !state.Reaped)
+          throw new InvalidOperationException("Production startup path did not return a reaped root proof.");
+        return new StartupFailureProof { ProcessId = state.ProcessId, CreationFileTime = state.CreationFileTime, ImagePath = state.ImagePath, CommandLine = state.CommandLine, Reaped = true };
+      }
+      throw new InvalidOperationException("Test-only startup failure was not observed.");
+    }
+#endif
+
     public static string QuoteArgumentForTest(string argument) {
       return QuoteArgument(argument);
+    }
+
+    public void CleanupCreatedRoot(Exception originalFailure) {
+      if (process == IntPtr.Zero)
+        throw new ObjectDisposedException("NativeJobBoundary", "Created-root cleanup has no retained process handle.");
+      Exception terminationFailure = null;
+      try {
+        bool terminated = assigned ? TerminateJobObject(job, 1) : TerminateProcess(process, 1);
+        if (!terminated) terminationFailure = NativeFailure(assigned ? "TerminateJobObject" : "TerminateProcess");
+      } catch (Exception error) { terminationFailure = error; }
+
+      Exception firstWaitFailure;
+      if (WaitForReap(5000, out firstWaitFailure)) {
+        DisposeAfterReap();
+        if (terminationFailure != null)
+          throw new InvalidOperationException("Created-root cleanup reaped the root but its termination request failed.", terminationFailure);
+        return;
+      }
+
+      Exception closeJobFailure = null;
+      if (assigned) {
+        try { CloseJobForCleanup(); } catch (Exception error) { closeJobFailure = error; }
+        Exception secondWaitFailure = null;
+        if (closeJobFailure == null && WaitForReap(5000, out secondWaitFailure)) {
+          DisposeAfterReap();
+          if (terminationFailure != null)
+            throw new InvalidOperationException("Created-root cleanup reaped the root after Job close but its termination request failed.", terminationFailure);
+          return;
+        }
+        if (closeJobFailure == null) firstWaitFailure = secondWaitFailure;
+      }
+
+      Exception cleanupFailure = new AggregateException("Created-root cleanup did not prove reaping while retaining the original process handle.",
+        terminationFailure ?? new InvalidOperationException("Created-root termination did not succeed."),
+        firstWaitFailure ?? new InvalidOperationException("Created-root wait did not signal."),
+        closeJobFailure ?? new InvalidOperationException(assigned ? "Job close did not produce a signaled root." : "Unassigned root did not signal."));
+      throw new NativeJobCleanupPendingException(this, originalFailure, cleanupFailure);
+    }
+
+    bool WaitForReap(uint milliseconds, out Exception failure) {
+      uint wait = WaitForSingleObject(process, milliseconds);
+      if (wait == WAIT_OBJECT_0) { failure = null; return true; }
+      if (wait == WAIT_TIMEOUT) { failure = new TimeoutException("Created-root cleanup timed out waiting for its retained process handle."); return false; }
+      if (wait == WAIT_FAILED) { failure = NativeFailure("WaitForSingleObject"); return false; }
+      failure = new InvalidOperationException("Created-root cleanup observed an unexpected wait status.");
+      return false;
+    }
+
+    void CloseJobForCleanup() {
+      IntPtr ownedJob = job;
+      if (ownedJob == IntPtr.Zero) throw new ObjectDisposedException("NativeJobBoundary", "Created-root cleanup has no Job handle.");
+      if (!CloseHandle(ownedJob)) throw NativeFailure("CloseHandle(Job)");
+      job = IntPtr.Zero;
+    }
+
+    void DisposeAfterReap() {
+      IntPtr ownedProcess = process;
+      if (ownedProcess != IntPtr.Zero && !CloseHandle(ownedProcess)) throw NativeFailure("CloseHandle(Process)");
+      process = IntPtr.Zero;
+      IntPtr ownedJob = job;
+      if (ownedJob != IntPtr.Zero && !CloseHandle(ownedJob)) throw NativeFailure("CloseHandle(Job)");
+      job = IntPtr.Zero;
+      GC.SuppressFinalize(this);
     }
 
     static string BuildCommandLine(string executable, string[] arguments) {
@@ -132,6 +292,45 @@ namespace SageFootprint {
     public void Terminate() {
       EnsureOpen();
       if (!TerminateJobObject(job, 1)) throw NativeFailure("TerminateJobObject");
+    }
+
+    public bool RootRunning() {
+      EnsureOpen();
+      if (process == IntPtr.Zero) throw new ObjectDisposedException("NativeJobBoundary");
+      uint wait = WaitForSingleObject(process, 0);
+      if (wait == WAIT_OBJECT_0) return false;
+      if (wait == WAIT_TIMEOUT) return true;
+      if (wait == WAIT_FAILED) throw NativeFailure("WaitForSingleObject");
+      throw new InvalidOperationException("Native Job wait returned an unexpected status.");
+    }
+
+    public int RootExitCode() {
+      EnsureOpen();
+      if (process == IntPtr.Zero) throw new ObjectDisposedException("NativeJobBoundary");
+      uint wait = WaitForSingleObject(process, 0);
+      if (wait == WAIT_TIMEOUT) throw new InvalidOperationException("Native Job root is still running.");
+      if (wait == WAIT_FAILED) throw NativeFailure("WaitForSingleObject");
+      if (wait != WAIT_OBJECT_0) throw new InvalidOperationException("Native Job wait returned an unexpected status.");
+      uint code;
+      if (!GetExitCodeProcess(process, out code)) throw NativeFailure("GetExitCodeProcess");
+      return unchecked((int)code);
+    }
+
+    public long RootCreationFileTime() {
+      EnsureOpen();
+      if (process == IntPtr.Zero) throw new ObjectDisposedException("NativeJobBoundary");
+      long creation, exit, kernel, user;
+      if (!GetProcessTimes(process, out creation, out exit, out kernel, out user)) throw NativeFailure("GetProcessTimes");
+      return creation;
+    }
+
+    public string RootImagePath() {
+      EnsureOpen();
+      if (process == IntPtr.Zero) throw new ObjectDisposedException("NativeJobBoundary");
+      var image = new StringBuilder(32768);
+      int length = image.Capacity;
+      if (!QueryFullProcessImageName(process, 0, image, ref length)) throw NativeFailure("QueryFullProcessImageName");
+      return image.ToString();
     }
 
     void Configure(uint activeProcessLimit) {
@@ -183,8 +382,9 @@ namespace SageFootprint {
     }
 
     public void Dispose() {
-      IntPtr handle = job;
-      job = IntPtr.Zero;
+      IntPtr ownedProcess = process; process = IntPtr.Zero;
+      if (ownedProcess != IntPtr.Zero) CloseHandle(ownedProcess);
+      IntPtr handle = job; job = IntPtr.Zero;
       if (handle != IntPtr.Zero) CloseHandle(handle);
       GC.SuppressFinalize(this);
     }
@@ -282,6 +482,11 @@ namespace SageFootprint {
     static extern uint ResumeThread(IntPtr thread);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool TerminateJobObject(IntPtr job, uint exitCode);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern bool TerminateProcess(IntPtr process, uint exitCode);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetExitCodeProcess(IntPtr process, out uint exitCode);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetProcessTimes(IntPtr process, out long creation, out long exit, out long kernel, out long user);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError=true)] static extern bool QueryFullProcessImageName(IntPtr process, uint flags, StringBuilder image, ref int length);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool CloseHandle(IntPtr handle);
   }
@@ -314,8 +519,22 @@ function Start-FootprintJobProcess {
   try {
     $process = [Diagnostics.Process]::GetProcessById($boundary.ProcessId)
   } catch {
-    try { $boundary.Terminate() } finally { $boundary.Dispose() }
-    throw
+    $admissionFailure = $_.Exception
+    try { $running = $boundary.RootRunning() } catch {
+      try { $boundary.CleanupCreatedRoot($admissionFailure) } catch [SageFootprint.NativeJobCleanupPendingException] {
+        $pending = $_.Exception
+        try { $pending.Owner.CleanupCreatedRoot($pending.OriginalFailure) } catch { throw }
+      }
+      throw $admissionFailure
+    }
+    if ($running) {
+      try { $boundary.CleanupCreatedRoot($admissionFailure) } catch [SageFootprint.NativeJobCleanupPendingException] {
+        $pending = $_.Exception
+        try { $pending.Owner.CleanupCreatedRoot($pending.OriginalFailure) } catch { throw }
+      }
+      throw $admissionFailure
+    }
+    $process = $null
   }
   return [ordered]@{
     process = $process
@@ -339,9 +558,11 @@ function Stop-FootprintJobProcess {
   $observationDeadline = $closeRequestedTick + $observationTicks
   try {
     try {
-      $Process.Refresh()
-      if (-not $Process.HasExited -and $Process.MainWindowHandle -ne [IntPtr]::Zero) {
-        [void]$Process.CloseMainWindow()
+      if ($null -ne $Process) {
+        $Process.Refresh()
+        if (-not $Process.HasExited -and $Process.MainWindowHandle -ne [IntPtr]::Zero) {
+          [void]$Process.CloseMainWindow()
+        }
       }
     } catch {
       # Job accounting remains authoritative when the root exits first.

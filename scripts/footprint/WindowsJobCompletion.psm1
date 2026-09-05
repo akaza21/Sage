@@ -29,10 +29,14 @@ function Wait-FootprintJobProcess {
       }
       Start-Sleep -Milliseconds 10
     }
-    $Process.Refresh()
-    if (-not $Process.HasExited) { throw "Native Job root remained live after zero membership." }
+    if ($Boundary.RootRunning()) { throw "Native Job root remained live after zero membership." }
+    try {
+      $exitCode = [int]$Boundary.RootExitCode()
+    } catch {
+      throw "Native Job root exit is unavailable: $($_.Exception.Message)"
+    }
     return [ordered]@{
-      exitCode = [int]$Process.ExitCode
+      exitCode = $exitCode
       forced = $false
       exited = $true
       treeBoundaryVerified = $true
