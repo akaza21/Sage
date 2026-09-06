@@ -1,4 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { createElement, StrictMode } from "react";
+
+import { clearAcpProjectionRegistry } from "../../../src/app/acpProjectionRegistry";
+import { useWorkbenchStore } from "../../../src/app/store";
+import { AgentArtifactPane } from "../../../src/workbench/AgentArtifactPane";
+import { AgentChatPanes } from "../../../src/workbench/AgentChatPanes";
+import { Workbench } from "../../../src/workbench/Workbench";
+import {
+  applyBrowseIntent,
+  browseSessionForOwner,
+  clearBrowseSessions,
+  harnessBrowseOwner,
+  setHarnessBrowseOwner,
+  type HarnessBrowseOwner,
+} from "../../../src/features/preview/harnessBrowse";
 
 import {
   AGENT_VISUAL_SCENARIOS,
@@ -14,8 +30,15 @@ import { buildRecoveryPages } from "./surfaces/recoveryVisualFixtures";
 import { buildResourcePages } from "./surfaces/resourceVisualFixtures";
 import {
   installVisualAgentArtifactFollowFixture,
+  installVisualAgentPreviewIdleFixture,
   installVisualAgentResourceState,
 } from "./surfaces/resourceVisualFixtures";
+import {
+  GENERATION,
+  PROJECT_ID,
+  RUNTIME_EPOCH,
+  SESSION_ID,
+} from "./visualFixtureIds";
 import {
   installVisualDirtyEditor,
   installVisualEmptyEditorCanvas,
@@ -28,7 +51,49 @@ import {
   installVisualRepositoryPrimaryState,
 } from "./surfaces/editorVisualFixtures";
 import * as barrel from "./visualScenarios";
-import { buildVisualScenario } from "./visualScenarioShell";
+import {
+  buildVisualScenario,
+  installVisualScenario,
+} from "./visualScenarioShell";
+
+const initialState = useWorkbenchStore.getState();
+
+function visualPreviewUrl(): string {
+  const port = window.location.port || "1420";
+  return `http://127.0.0.1:${port}/tests/ui/fixtures/preview.html`;
+}
+
+beforeEach(() => {
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    return window.setTimeout(() => callback(performance.now()), 0);
+  });
+  vi.stubGlobal("cancelAnimationFrame", (handle: number) => {
+    window.clearTimeout(handle);
+  });
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: vi.fn(),
+  });
+  vi.stubGlobal("matchMedia", () => ({
+    matches: false,
+    media: "",
+    onchange: null,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+});
+
+afterEach(() => {
+  cleanup();
+  clearBrowseSessions();
+  clearAcpProjectionRegistry();
+  useWorkbenchStore.setState(initialState, true);
+  Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+  vi.unstubAllGlobals();
+});
 
 const SLICES = {
   agent: AGENT_VISUAL_SCENARIOS,
@@ -158,5 +223,163 @@ describe("visual scenario surface ownership", () => {
     ]) {
       expect(typeof installer).toBe("function");
     }
+  });
+
+  it("seeds Preview with an admitted full owner and preserves two visible Chats", async () => {
+    await installVisualScenario("agent-dual");
+    const chats = useWorkbenchStore
+      .getState()
+      .tabs.filter((tab) => tab.kind === "chat");
+    const first = chats[0];
+    const second = chats[1];
+    if (!first || !second)
+      throw new Error("Visual fixture requires two Chats.");
+    const firstOwner = harnessBrowseOwner();
+    expect(firstOwner).toEqual({
+      projectId: PROJECT_ID,
+      projectGeneration: GENERATION,
+      transitionEpoch: 0,
+      chatId: first.id,
+      sessionId: SESSION_ID,
+      runtimeEpoch: RUNTIME_EPOCH,
+    });
+    if (!firstOwner) throw new Error("Visual browse owner was absent.");
+    expect(
+      applyBrowseIntent({
+        owner: firstOwner,
+        url: visualPreviewUrl(),
+      }),
+    ).not.toBeNull();
+    const secondOwner: HarnessBrowseOwner = {
+      ...firstOwner,
+      chatId: second.id as HarnessBrowseOwner["chatId"],
+    };
+    setHarnessBrowseOwner(secondOwner, [first.id, second.id]);
+    expect(
+      applyBrowseIntent({
+        owner: secondOwner,
+        url: `${visualPreviewUrl()}?chat=2`,
+      }),
+    ).not.toBeNull();
+    expect(browseSessionForOwner(firstOwner)?.href).toContain("preview.html");
+    expect(browseSessionForOwner(secondOwner)?.href).toContain("chat=2");
+  });
+
+  it("admits the Preview scenario's authoritative owner before its browse intent", async () => {
+    const scenario = buildVisualScenario("preview");
+    const chat = scenario.pages[0];
+    if (!chat) throw new Error("Preview fixture requires a Chat.");
+    await installVisualScenario("preview");
+    const owner = harnessBrowseOwner();
+    expect(owner).toEqual({
+      projectId: PROJECT_ID,
+      projectGeneration: GENERATION,
+      transitionEpoch: 0,
+      chatId: chat.chatId,
+      sessionId: SESSION_ID,
+      runtimeEpoch: RUNTIME_EPOCH,
+    });
+    if (!owner) throw new Error("Preview fixture browse owner was absent.");
+    expect(browseSessionForOwner(owner)?.href).toBe(visualPreviewUrl());
+  });
+
+  it("keeps the Preview fixture owner and selected tab through mounted Chat handoff", async () => {
+    const view = render(
+      createElement(
+        "div",
+        null,
+        createElement(AgentChatPanes),
+        createElement(AgentArtifactPane),
+      ),
+    );
+    await installVisualScenario("preview");
+    await waitFor(() =>
+      expect(harnessBrowseOwner()).toMatchObject({
+        projectId: PROJECT_ID,
+        projectGeneration: GENERATION,
+        transitionEpoch: 0,
+        sessionId: SESSION_ID,
+        runtimeEpoch: RUNTIME_EPOCH,
+      }),
+    );
+    await waitFor(() =>
+      expect(view.getByRole("tab", { name: "Preview" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
+    await waitFor(() =>
+      expect(view.getByTitle("Sage browser")).toBeInTheDocument(),
+    );
+  });
+
+  it("reapplies Preview browse only after the StrictMode Workbench shell establishes its owner", async () => {
+    localStorage.setItem(
+      "sage.workbench.layout.v1",
+      JSON.stringify({
+        editorToolRailWidth: 264,
+        agentChatSplitPercent: 50,
+        windowMode: "agent",
+      }),
+    );
+    const view = render(
+      createElement(StrictMode, null, createElement(Workbench)),
+    );
+    await waitFor(() =>
+      expect(view.container.querySelector(".agent-chat-panes")).not.toBeNull(),
+    );
+    await act(async () => {
+      await installVisualScenario("preview");
+    });
+    await waitFor(() =>
+      expect(view.getByRole("tab", { name: "Preview" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
+    await waitFor(() =>
+      expect(view.getByTitle("Sage browser")).toBeInTheDocument(),
+    );
+  });
+
+  it("keeps Preview selected and idle after the mounted fixture clears browsing", async () => {
+    const view = render(
+      createElement(
+        "div",
+        null,
+        createElement(AgentChatPanes),
+        createElement(AgentArtifactPane),
+      ),
+    );
+    await installVisualScenario("preview");
+    await installVisualAgentPreviewIdleFixture();
+    await waitFor(() =>
+      expect(view.getByRole("tab", { name: "Preview" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
+    expect(view.getByText("Preview is idle")).toBeInTheDocument();
+  });
+
+  it("seeds the resource follow fixture's second Chat browse owner before intent", async () => {
+    await installVisualScenario("agent-dual");
+    const chats = useWorkbenchStore
+      .getState()
+      .tabs.filter((tab) => tab.kind === "chat");
+    const second = chats[1];
+    if (!second) throw new Error("Visual fixture requires a second Chat.");
+    await installVisualAgentArtifactFollowFixture();
+    const owner = harnessBrowseOwner();
+    expect(owner).toEqual({
+      projectId: PROJECT_ID,
+      projectGeneration: GENERATION,
+      transitionEpoch: 0,
+      chatId: second.id,
+      sessionId: SESSION_ID,
+      runtimeEpoch: RUNTIME_EPOCH,
+    });
+    if (!owner) throw new Error("Follow fixture browse owner was absent.");
+    expect(browseSessionForOwner(owner)?.href).toBe(visualPreviewUrl());
   });
 });

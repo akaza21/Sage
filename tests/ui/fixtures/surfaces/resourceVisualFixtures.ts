@@ -1,5 +1,6 @@
 import type { AcpChatPage } from "../../../../src/domain/acp";
 import type { AgentArtifactOwner } from "../../../../src/domain/agentArtifact";
+import type { HarnessBrowseOwner } from "../../../../src/features/preview/harnessBrowse";
 import type { WorkbenchTab } from "../../../../src/domain/workbench";
 import { diffCacheKey } from "../../../../src/domain/diffIdentity";
 import { useWorkbenchStore } from "../../../../src/app/store";
@@ -8,6 +9,7 @@ import { useAgentArtifactFollowStore } from "../../../../src/app/agentArtifactFo
 import {
   applyBrowseIntent,
   clearBrowseSessions,
+  setHarnessBrowseOwner,
 } from "../../../../src/features/preview/harnessBrowse";
 
 import { standardPage } from "../visualChatPages";
@@ -17,11 +19,38 @@ import {
   fileResource,
   visualDiff,
 } from "../visualDocumentFixtures";
-import { PROJECT_ID, SESSION_ID } from "../visualFixtureIds";
+import {
+  GENERATION,
+  PROJECT_ID,
+  RUNTIME_EPOCH,
+  SESSION_ID,
+} from "../visualFixtureIds";
 import type {
   VisualAgentResourceState,
   VisualScenarioName,
 } from "../visualScenarioTypes";
+
+const VISUAL_NATIVE_TRANSITION_EPOCH = 0;
+
+function artifactOwner(
+  chatId: AgentArtifactOwner["chatId"],
+): AgentArtifactOwner {
+  return { projectId: PROJECT_ID, chatId, sessionId: SESSION_ID };
+}
+
+function browseOwner(chatId: HarnessBrowseOwner["chatId"]): HarnessBrowseOwner {
+  return {
+    ...artifactOwner(chatId),
+    projectGeneration: GENERATION,
+    transitionEpoch: VISUAL_NATIVE_TRANSITION_EPOCH,
+    runtimeEpoch: RUNTIME_EPOCH,
+  };
+}
+
+function visualPreviewUrl(): string {
+  const port = window.location.port || "1420";
+  return `http://127.0.0.1:${port}/tests/ui/fixtures/preview.html`;
+}
 
 export function buildResourcePages(
   name: VisualScenarioName,
@@ -93,16 +122,9 @@ export async function installVisualAgentArtifactFollowFixture() {
   if (!chatA || !chatB || state.project?.id !== PROJECT_ID) {
     throw new Error("Visual Agent artifact fixture requires two Chats");
   }
-  const ownerA = {
-    projectId: PROJECT_ID,
-    chatId: chatA.id,
-    sessionId: SESSION_ID,
-  } as AgentArtifactOwner;
-  const ownerB = {
-    projectId: PROJECT_ID,
-    chatId: chatB.id,
-    sessionId: SESSION_ID,
-  } as AgentArtifactOwner;
+  const ownerA = artifactOwner(chatA.id as AgentArtifactOwner["chatId"]);
+  const ownerB = artifactOwner(chatB.id as AgentArtifactOwner["chatId"]);
+  const browseOwnerB = browseOwner(chatB.id as HarnessBrowseOwner["chatId"]);
   const fileTab: WorkbenchTab = {
     id: "visual-follow-file-tab",
     kind: "file",
@@ -148,9 +170,10 @@ export async function installVisualAgentArtifactFollowFixture() {
   useAgentArtifactFollowStore
     .getState()
     .pin(ownerB, { kind: "tab", tabId: fileTab.id });
+  setHarnessBrowseOwner(browseOwnerB, [chatA.id, chatB.id]);
   applyBrowseIntent({
-    owner: ownerB,
-    url: `${window.location.origin}/tests/ui/fixtures/preview.html`,
+    owner: browseOwnerB,
+    url: visualPreviewUrl(),
   });
   await new Promise<void>((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
@@ -164,12 +187,10 @@ export async function installVisualAgentPreviewIdleFixture() {
   if (!chat || state.project?.id !== PROJECT_ID) {
     throw new Error("Visual Preview idle fixture requires a Chat");
   }
-  const owner = {
-    projectId: PROJECT_ID,
-    chatId: chat.id,
-    sessionId: SESSION_ID,
-  } as AgentArtifactOwner;
+  const owner = artifactOwner(chat.id as AgentArtifactOwner["chatId"]);
+  const previewOwner = browseOwner(chat.id as HarnessBrowseOwner["chatId"]);
   clearBrowseSessions();
+  setHarnessBrowseOwner(previewOwner, [chat.id]);
   useAgentArtifactFollowStore.getState().pin(owner, { kind: "preview" });
   await new Promise<void>((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
@@ -186,11 +207,7 @@ export async function installVisualAgentLongPathFixture() {
   if (!chat || state.project?.id !== PROJECT_ID) {
     throw new Error("Visual long-path fixture requires a Chat");
   }
-  const owner = {
-    projectId: PROJECT_ID,
-    chatId: chat.id,
-    sessionId: SESSION_ID,
-  } as AgentArtifactOwner;
+  const owner = artifactOwner(chat.id as AgentArtifactOwner["chatId"]);
   const longResource = { rootId: "visual-root", relativePath: LONG_PATH };
   const fileTab: WorkbenchTab = {
     id: "visual-long-file-tab",

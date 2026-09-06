@@ -8,10 +8,20 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
+import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { pinnedAgentChatOwner } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
+import type { AcpChatPage, ProjectionRevision } from "../domain/acp";
 import type { WorkbenchTab } from "../domain/workbench";
 import { AgentChatPanes } from "./AgentChatPanes";
+import {
+  applyBrowseIntent,
+  browseSessionForOwner,
+  clearBrowseSessions,
+  harnessBrowseOwner,
+  setHarnessBrowseOwner,
+  type HarnessBrowseOwner,
+} from "../features/preview/harnessBrowse";
 
 let resizeCallback: ResizeObserverCallback | null = null;
 const disconnect = vi.fn();
@@ -67,9 +77,30 @@ function reportCenterWidth(width: number) {
   });
 }
 
+function seedPreviewOwner(chatId: string, sessionId: string): void {
+  const store = acpProjectionStoreFor(chatId);
+  const scope = {
+    projectId: "project-a",
+    projectGeneration: "7",
+    chatId,
+  } as never;
+  store.getState().activateScope(scope);
+  store.getState().applyAuthoritativePage(scope, {
+    projectId: "project-a",
+    chatId,
+    title: chatId,
+    projectionRevision: "1",
+    currentSessionId: sessionId,
+    sessions: [{ id: sessionId, runtimeEpoch: "3" }],
+    turns: [],
+    nextCursor: null,
+  } as never);
+}
+
 beforeEach(() => {
   localStorage.clear();
   clearAcpProjectionRegistry();
+  clearBrowseSessions();
   disconnect.mockClear();
   resizeCallback = null;
   vi.stubGlobal(
@@ -99,6 +130,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  clearBrowseSessions();
   clearAcpProjectionRegistry();
   vi.unstubAllGlobals();
   useWorkbenchStore.setState(initialState, true);
@@ -139,6 +171,49 @@ describe("AgentChatPanes measured focus-only fallback", () => {
     const view = render(<AgentChatPanes />);
     view.unmount();
     expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains both visible Chat browse sessions across a focused page update", () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projectGeneration: 7,
+      nativeTransitionEpoch: 7,
+      projectTransitioning: false,
+    });
+    seedPreviewOwner("chat:a", "session-a");
+    seedPreviewOwner("chat:b", "session-b");
+    const ownerA: HarnessBrowseOwner = {
+      projectId: "project-a" as HarnessBrowseOwner["projectId"],
+      projectGeneration: "7" as HarnessBrowseOwner["projectGeneration"],
+      transitionEpoch: 7,
+      chatId: "chat:a" as HarnessBrowseOwner["chatId"],
+      sessionId: "session-a" as HarnessBrowseOwner["sessionId"],
+      runtimeEpoch: "3" as HarnessBrowseOwner["runtimeEpoch"],
+    };
+    const ownerB: HarnessBrowseOwner = {
+      ...ownerA,
+      chatId: "chat:b" as HarnessBrowseOwner["chatId"],
+      sessionId: "session-b" as HarnessBrowseOwner["sessionId"],
+    };
+    render(<AgentChatPanes />);
+    expect(harnessBrowseOwner()).toEqual(ownerB);
+    setHarnessBrowseOwner(ownerA, ["chat:a", "chat:b"]);
+    applyBrowseIntent({ owner: ownerA, url: "http://127.0.0.1:4173/a" });
+    setHarnessBrowseOwner(ownerB, ["chat:a", "chat:b"]);
+    applyBrowseIntent({ owner: ownerB, url: "http://127.0.0.1:4173/b" });
+
+    const focused = acpProjectionStoreFor("chat:b");
+    const scope = focused.getState().scope;
+    const page = focused.getState().page;
+    if (!scope || !page) throw new Error("Focused Chat projection was absent.");
+    const updatedPage: AcpChatPage = {
+      ...page,
+      projectionRevision: "2" as ProjectionRevision,
+    };
+    focused.getState().applyAuthoritativePage(scope, updatedPage);
+
+    expect(browseSessionForOwner(ownerA)?.href).toBe("http://127.0.0.1:4173/a");
+    expect(browseSessionForOwner(ownerB)?.href).toBe("http://127.0.0.1:4173/b");
   });
 
   it("keeps Chat B focused while its shared Editor resource becomes active", () => {

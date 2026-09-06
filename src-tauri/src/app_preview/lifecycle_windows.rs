@@ -1,62 +1,130 @@
-use std::{os::windows::io::AsRawHandle, process::Child, time::Duration};
-
-use windows_sys::Win32::{
-    Foundation::CloseHandle,
-    System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
-        SetInformationJobObject, TerminateJobObject,
-    },
-    System::Threading::WaitForSingleObject,
+use std::{
+    fs::File,
+    path::Path,
+    time::{Duration, Instant},
 };
 
-pub(crate) struct PreviewJob(windows_sys::Win32::Foundation::HANDLE);
-const CHILD_EXIT_WAIT: Duration = Duration::from_secs(5);
+use crate::acp::process::{PreviewLaunchFailure, PreviewWindowsProcess};
 
-// SAFETY: The HANDLE is an owned Windows job object used only while the registry mutex is held.
-// The OS handle may be signaled from any thread, and we never share the raw pointer without
-// that lock.
-unsafe impl Send for PreviewJob {}
-
-impl PreviewJob {
-    pub(crate) fn new(child: &Child) -> Result<Self, ()> {
-        let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
-        if job.is_null() {
-            return Err(());
-        }
-        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        let configured = unsafe {
-            SetInformationJobObject(
-                job,
-                JobObjectExtendedLimitInformation,
-                std::ptr::addr_of!(limits).cast(),
-                std::mem::size_of_val(&limits) as u32,
-            ) != 0
-        };
-        let assigned =
-            configured && unsafe { AssignProcessToJobObject(job, child.as_raw_handle() as _) != 0 };
-        if assigned {
-            Ok(Self(job))
-        } else {
-            unsafe {
-                TerminateJobObject(job, 1);
-                CloseHandle(job);
-            }
-            Err(())
-        }
+pub(super) fn reserve_recovery_slot(registry: &mut super::lifecycle::Registry) -> bool {
+    if registry.recovery_slot_reserved {
+        return false;
     }
-
-    pub(crate) fn terminate(&self) {
-        unsafe {
-            TerminateJobObject(self.0, 1);
-            WaitForSingleObject(self.0, CHILD_EXIT_WAIT.as_millis() as u32);
+    let available = if let Some(recovery) = registry.retained_recovery.as_mut() {
+        if recovery.retry_zero().is_ok() {
+            registry.retained_recovery.take();
+            true
+        } else {
+            false
         }
+    } else {
+        true
+    };
+    registry.recovery_slot_reserved = available;
+    available
+}
+
+pub(super) fn retain_recovery(
+    registry: &mut super::lifecycle::Registry,
+    failure: PreviewLaunchFailure,
+) {
+    let PreviewLaunchFailure::Retained(recovery) = failure else {
+        registry.recovery_slot_reserved = false;
+        return;
+    };
+    debug_assert!(registry.retained_recovery.is_none());
+    registry.retained_recovery = Some(recovery);
+    registry.recovery_slot_reserved = false;
+}
+
+pub(super) fn release_recovery_slot(registry: &mut super::lifecycle::Registry) {
+    registry.recovery_slot_reserved = false;
+}
+
+#[cfg(test)]
+pub(crate) fn retain_recovery_for_test(
+    recovery: crate::acp::process::PreviewLaunchRecovery,
+) -> Result<(), crate::acp::process::LaunchError> {
+    let mut incoming = Some(recovery);
+    let retained = super::lifecycle_registry::with_registry(|registry| {
+        if registry.retained_recovery.is_some() || !registry.recovery_slot_reserved {
+            return false;
+        }
+        retain_recovery(
+            registry,
+            crate::acp::process::PreviewLaunchFailure::Retained(
+                incoming.take().expect("test recovery must remain owned"),
+            ),
+        );
+        true
+    });
+    if retained {
+        Ok(())
+    } else {
+        let mut recovery = incoming.expect("unretained test recovery must remain owned");
+        if recovery.retry_zero().is_err() {
+            let _ = recovery.retry_zero();
+        }
+        drop(recovery);
+        Err(crate::acp::process::LaunchError::ContainmentFailure)
     }
 }
 
-impl Drop for PreviewJob {
-    fn drop(&mut self) {
-        unsafe { CloseHandle(self.0) };
+#[cfg(test)]
+pub(crate) fn reserve_recovery_slot_for_test() -> bool {
+    super::lifecycle_registry::with_registry(reserve_recovery_slot)
+}
+
+#[cfg(test)]
+pub(crate) fn retained_recovery_for_test() -> bool {
+    super::lifecycle_registry::with_registry(|registry| registry.retained_recovery.is_some())
+}
+
+#[cfg(test)]
+pub(crate) fn release_recovery_slot_for_test() {
+    super::lifecycle_registry::with_registry(release_recovery_slot);
+}
+
+#[cfg(test)]
+pub(crate) fn cleanup_retained_recovery_for_test() {
+    super::lifecycle_registry::with_registry(|registry| {
+        registry.recovery_slot_reserved = false;
+        if let Some(mut recovery) = registry.retained_recovery.take() {
+            if recovery.retry_zero().is_err() {
+                let _ = recovery.retry_zero();
+            }
+            drop(recovery);
+        }
+    });
+}
+
+pub(crate) struct PreviewProcess(PreviewWindowsProcess);
+
+// SAFETY: the adapter owns its exact process and Job handles and is only
+// accessed under the Preview registry mutex.
+unsafe impl Send for PreviewProcess {}
+
+impl PreviewProcess {
+    pub(crate) fn launch(
+        package_root: &Path,
+        script: &'static str,
+    ) -> Result<(Self, File, File), PreviewLaunchFailure> {
+        PreviewWindowsProcess::launch_curated_npm(package_root, script)
+            .map(|(process, stdout, stderr)| (Self(process), stdout, stderr))
+    }
+
+    pub(crate) fn terminate_and_wait_zero(&self) -> bool {
+        self.0
+            .terminate_and_wait_zero(
+                Instant::now()
+                    + Duration::from_millis(
+                        crate::acp::limits::PREVIEW_LIMITS.process_termination_deadline_ms,
+                    ),
+            )
+            .is_ok()
+    }
+
+    pub(crate) fn exited(&self) -> bool {
+        self.0.exited().unwrap_or(false)
     }
 }

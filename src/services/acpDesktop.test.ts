@@ -420,4 +420,80 @@ describe("ACP desktop bridge", () => {
     dispose();
     expect(unlisten).toHaveBeenCalledOnce();
   });
+
+  it("routes only the exact native Preview projection and leaves ACP notices compatible", async () => {
+    setDesktopRuntime(true);
+    const unlisten = vi.fn();
+    let receive: ((event: { payload: unknown }) => void) | null = null;
+    listenMock.mockImplementation(async (_name, callback) => {
+      receive = callback;
+      return unlisten;
+    });
+    const onPreview = vi.fn();
+    const dispose =
+      await acpDesktop.subscribePreviewProjectionChanges(onPreview);
+    const send = receive as unknown as (event: { payload: unknown }) => void;
+    const preview = {
+      projectId: "project-a",
+      projectGeneration: "7",
+      transitionEpoch: 7,
+      chatId: "chat-a",
+      sessionId: "session-a",
+      runtimeEpoch: "3",
+      previewRevision: "9223372036854775807",
+      phase: "idle",
+      failure: null,
+      target: null,
+      origin: null,
+    };
+    send({ payload: { kind: "preview", preview } });
+    send({
+      payload: {
+        kind: "preview",
+        preview: { ...preview, transitionEpoch: "7" },
+      },
+    });
+    send({
+      payload: {
+        kind: "preview",
+        preview: { ...preview, projectGeneration: "8" },
+      },
+    });
+    send({
+      payload: {
+        kind: "preview",
+        preview: {
+          ...preview,
+          target: {
+            projectId: "project-a",
+            projectGeneration: "8",
+            expectedTransitionEpoch: 7,
+            chatId: "chat-a",
+            sessionId: "session-a",
+            runtimeEpoch: "3",
+            rootId: "root-a",
+            scriptName: "dev",
+          },
+        },
+      },
+    });
+    send({
+      payload: {
+        kind: "preview",
+        preview: { ...preview, phase: "idle", failure: "healthTimeout" },
+      },
+    });
+    send({
+      payload: {
+        projectId: "project-a",
+        chatId: "chat-a",
+        sessionId: "session-a",
+        projectionRevision: "2",
+      },
+    });
+    expect(onPreview).toHaveBeenCalledTimes(1);
+    expect(onPreview).toHaveBeenCalledWith({ kind: "preview", preview });
+    dispose();
+    expect(unlisten).toHaveBeenCalledOnce();
+  });
 });

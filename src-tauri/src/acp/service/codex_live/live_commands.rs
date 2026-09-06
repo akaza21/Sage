@@ -244,7 +244,11 @@ impl AcpService {
         let deadline = Instant::now()
             + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
         match self.converge_closed_shutdown(&owner, &host, authority, recovering, deadline) {
-            Ok(()) => Ok(outcome),
+            Ok(()) => {
+                crate::app_preview_commands::retire_preview_runtime_owner(&owner)
+                    .map_err(|_| CodexSessionError::Recovery)?;
+                Ok(outcome)
+            }
             Err(authority) => {
                 let _ = self.runtime.mark_recovery(&owner);
                 self.retain_live_recovery(LiveHostRecovery {

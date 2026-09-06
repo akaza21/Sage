@@ -25,6 +25,8 @@ import {
   applyBrowseIntent,
   clearBrowseSession,
   clearBrowseSessions,
+  setHarnessBrowseOwner,
+  type HarnessBrowseOwner,
 } from "../features/preview/harnessBrowse";
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
 import {
@@ -41,6 +43,14 @@ const focusedOwner = {
   chatId: "chat-focused",
   sessionId: "session-a",
 } as AgentArtifactOwner;
+const previewOwner = {
+  projectId: "project-a",
+  projectGeneration: "0",
+  transitionEpoch: 0,
+  chatId: "chat-focused",
+  sessionId: "session-a",
+  runtimeEpoch: "3",
+} as HarnessBrowseOwner;
 
 function admit(tabId: string): void {
   useAgentArtifactAdmissionStore.getState().admit({
@@ -128,6 +138,7 @@ beforeEach(() => {
   useAgentArtifactFollowStore.getState().clear();
   seedFocusedPage();
   pinAgentChatOwner(focusedOwner.chatId);
+  setHarnessBrowseOwner(previewOwner, ["chat-focused", "chat-second"]);
   useWorkbenchStore.setState({
     project: { id: "project-a", name: "Project A", roots: [] },
     projectGeneration: 0,
@@ -318,7 +329,7 @@ describe("Agent artifact file chips", () => {
 
   it("opens Agent Preview as a loopback browser without the app-script starter", () => {
     applyBrowseIntent({
-      owner: focusedOwner,
+      owner: previewOwner,
       url: "http://127.0.0.1:5173/",
     });
     render(<AgentArtifactPane />);
@@ -343,7 +354,7 @@ describe("Agent artifact file chips", () => {
     );
     act(() => {
       applyBrowseIntent({
-        owner: focusedOwner,
+        owner: previewOwner,
         url: "http://127.0.0.1:5173/preview",
       });
     });
@@ -362,7 +373,7 @@ describe("Agent artifact file chips", () => {
       "aria-selected",
       "true",
     );
-    act(() => clearBrowseSession(focusedOwner));
+    act(() => clearBrowseSession(previewOwner));
     expect(screen.getByRole("tab", { name: "Preview" })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -635,7 +646,7 @@ describe("Agent artifact file chips", () => {
 
     act(() => {
       applyBrowseIntent({
-        owner: focusedOwner,
+        owner: previewOwner,
         url: "http://127.0.0.1:5173/app",
       });
     });
@@ -656,9 +667,12 @@ describe("Agent artifact file chips", () => {
   it("keeps Preview sessions isolated per Chat in the actual pane", () => {
     const secondOwner = {
       projectId: "project-a",
+      projectGeneration: "0",
+      transitionEpoch: 0,
       chatId: "chat-second",
       sessionId: "session-b",
-    } as AgentArtifactOwner;
+      runtimeEpoch: "3",
+    } as HarnessBrowseOwner;
     pinAcpProjectionIds(["chat-focused", "chat-second"]);
     const secondStore = acpProjectionStoreFor("chat-second");
     const secondScope = {
@@ -693,14 +707,16 @@ describe("Agent artifact file chips", () => {
       ],
     }));
     applyBrowseIntent({
-      owner: focusedOwner,
+      owner: previewOwner,
       url: "http://127.0.0.1:5173/focused",
     });
+    setHarnessBrowseOwner(secondOwner, ["chat-focused", "chat-second"]);
     applyBrowseIntent({
       owner: secondOwner,
       url: "http://127.0.0.1:5174/second",
     });
     render(<AgentArtifactPane />);
+    setHarnessBrowseOwner(previewOwner, ["chat-focused", "chat-second"]);
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
     expect(screen.getByTitle("Sage browser")).toHaveAttribute(
       "src",
@@ -709,6 +725,7 @@ describe("Agent artifact file chips", () => {
 
     act(() => {
       pinAgentChatOwner(secondOwner.chatId);
+      setHarnessBrowseOwner(secondOwner, ["chat-focused", "chat-second"]);
     });
     expect(screen.getByTitle("Sage browser")).toHaveAttribute(
       "src",
@@ -720,6 +737,7 @@ describe("Agent artifact file chips", () => {
 
     act(() => {
       pinAgentChatOwner(focusedOwner.chatId);
+      setHarnessBrowseOwner(previewOwner, ["chat-focused", "chat-second"]);
     });
     expect(screen.getByTitle("Sage browser")).toHaveAttribute(
       "src",
@@ -730,7 +748,7 @@ describe("Agent artifact file chips", () => {
   it("keeps Preview chrome order and returns focus when collapsing", () => {
     const onExpandedChange = vi.fn();
     applyBrowseIntent({
-      owner: focusedOwner,
+      owner: previewOwner,
       url: "http://127.0.0.1:5173/app",
     });
     render(<AgentArtifactPane expanded onExpandedChange={onExpandedChange} />);

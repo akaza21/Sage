@@ -1,20 +1,34 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { HarnessBrowserSurface } from "./HarnessBrowserSurface";
-import { applyBrowseIntent, clearBrowseSessions } from "./harnessBrowse";
-import type { AgentArtifactOwner } from "../../domain/agentArtifact";
+import {
+  applyBrowseIntent,
+  clearBrowseSessions,
+  setHarnessBrowseOwner,
+  type HarnessBrowseOwner,
+} from "./harnessBrowse";
 
 const ownerA = {
   projectId: "project-1",
   chatId: "chat:a",
   sessionId: "session-1",
-} as AgentArtifactOwner;
+  projectGeneration: "1",
+  transitionEpoch: 1,
+  runtimeEpoch: "1",
+} as HarnessBrowseOwner;
 const ownerB = {
   projectId: "project-1",
   chatId: "chat:b",
   sessionId: "session-1",
-} as AgentArtifactOwner;
+  projectGeneration: "1",
+  transitionEpoch: 1,
+  runtimeEpoch: "1",
+} as HarnessBrowseOwner;
+
+beforeEach(() => {
+  setHarnessBrowseOwner(ownerA, [ownerA.chatId, ownerB.chatId]);
+});
 
 afterEach(() => {
   cleanup();

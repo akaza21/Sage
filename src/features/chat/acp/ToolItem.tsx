@@ -3,7 +3,10 @@ import { useId } from "react";
 import { useAgentArtifactFollowStore } from "../../../app/agentArtifactFollowStore";
 import type { AcpItem, SafeResourceLocation } from "../../../domain/acp";
 import type { ResourceRef } from "../../../domain/workbench";
-import { extractAdmittedBrowseUrl } from "../../preview/harnessBrowse";
+import {
+  extractAdmittedBrowseUrl,
+  harnessBrowseOwner,
+} from "../../preview/harnessBrowse";
 import { ChatFileChip } from "./FileChip";
 import { chatFileChipBasename } from "./chatFileChip";
 import { CURATED_BROWSE_TOOL_NAME, createToolHost } from "./toolHost";
@@ -120,11 +123,16 @@ function Presentation({
               type="button"
               className="acp-resource-action"
               onClick={() => {
-                const owner = {
-                  projectId: item.projectId,
-                  chatId: item.chatId,
-                  sessionId: item.sessionId,
-                };
+                const owner = harnessBrowseOwner();
+                if (
+                  !owner ||
+                  owner.projectId !== item.projectId ||
+                  owner.chatId !== item.chatId ||
+                  owner.sessionId !== item.sessionId ||
+                  owner.runtimeEpoch !== item.runtimeEpoch
+                ) {
+                  return;
+                }
                 const opened = createToolHost().invoke(
                   CURATED_BROWSE_TOOL_NAME,
                   {

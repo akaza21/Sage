@@ -17,6 +17,8 @@ import type {
   SendAcpTurnRequest,
   StartAcpSessionRequest,
 } from "../domain/acp";
+import type { PreviewProjectionChangedEvent } from "../domain/previewProjection";
+import { subscribePreviewProjectionChanges } from "./acpDesktopPreview";
 import {
   isOneOf,
   isRecord,
@@ -371,6 +373,12 @@ export const acpDesktop = {
       const normalized = safeProjectionChanged(event.payload);
       if (normalized) onChange(normalized);
     });
+  },
+
+  async subscribePreviewProjectionChanges(
+    onChange: (event: PreviewProjectionChangedEvent) => void,
+  ): Promise<() => void> {
+    return subscribePreviewProjectionChanges(onChange);
   },
 };
 

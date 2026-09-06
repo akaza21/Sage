@@ -163,6 +163,7 @@
         "src-tauri/src/acp/intent.rs",
         "src-tauri/src/acp/lifecycle.rs",
         "src-tauri/src/acp/limits.rs",
+        "src-tauri/src/acp/limits/preview.rs",
         "src-tauri/src/acp/projection.rs",
         "src-tauri/src/acp/semantic_ingress.rs",
         "src/domain/acp.ts"

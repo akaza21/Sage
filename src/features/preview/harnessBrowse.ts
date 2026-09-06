@@ -1,8 +1,4 @@
-import type { AgentArtifactOwner } from "../../domain/agentArtifact";
-import {
-  agentArtifactOwnerKey,
-  sameAgentArtifactOwner,
-} from "../../domain/agentArtifact";
+import type { PreviewProjectionOwner } from "../../domain/previewProjection";
 
 export const MAX_HARNESS_BROWSE_URL_BYTES = 2048;
 export const MAX_HARNESS_BROWSE_SESSIONS = 2;
@@ -13,12 +9,14 @@ export type HarnessBrowseUrl = {
 };
 
 export type HarnessBrowseIntent = {
-  owner: AgentArtifactOwner;
+  owner: HarnessBrowseOwner;
   url: string;
 };
 
+export type HarnessBrowseOwner = PreviewProjectionOwner;
+
 export type HarnessBrowseSession = {
-  owner: AgentArtifactOwner;
+  owner: HarnessBrowseOwner;
   href: string;
   revision: number;
 };
@@ -41,7 +39,8 @@ const EMPTY_HISTORY: HarnessBrowseHistory = {
 const URL_IN_TEXT = /https?:\/\/[^\s<>"'`]+/gu;
 
 let nextRevision = 1;
-let owner: AgentArtifactOwner | null = null;
+let owner: HarnessBrowseOwner | null = null;
+let visibleChatIds = new Set<string>();
 const sessions = new Map<string, HarnessBrowseSession>();
 const histories = new Map<string, BrowseHistoryStack>();
 const listeners = new Set<() => void>();
@@ -65,7 +64,7 @@ function hasForbiddenControlChars(raw: string): boolean {
 export function admitHarnessBrowseUrl(raw: string): HarnessBrowseUrl | null {
   if (
     raw.length === 0 ||
-    raw.length > MAX_HARNESS_BROWSE_URL_BYTES ||
+    new TextEncoder().encode(raw).byteLength > MAX_HARNESS_BROWSE_URL_BYTES ||
     hasForbiddenControlChars(raw)
   ) {
     return null;
@@ -93,7 +92,10 @@ export function admitHarnessBrowseUrl(raw: string): HarnessBrowseUrl | null {
 export function extractAdmittedBrowseUrl(
   text: string,
 ): HarnessBrowseUrl | null {
-  if (text.length === 0 || text.length > MAX_HARNESS_BROWSE_URL_BYTES) {
+  if (
+    text.length === 0 ||
+    new TextEncoder().encode(text).byteLength > MAX_HARNESS_BROWSE_URL_BYTES
+  ) {
     return null;
   }
   const matches = text.match(URL_IN_TEXT) ?? [];
@@ -131,11 +133,39 @@ function recordHistory(key: string, href: string): void {
   existing.index = existing.hrefs.length - 1;
 }
 
+function ownerKey(owner: HarnessBrowseOwner | null | undefined): string | null {
+  if (!owner) return null;
+  return JSON.stringify([
+    owner.projectId,
+    owner.projectGeneration,
+    owner.transitionEpoch,
+    owner.chatId,
+    owner.sessionId,
+    owner.runtimeEpoch,
+  ]);
+}
+
+function sameOwner(
+  left: HarnessBrowseOwner | null | undefined,
+  right: HarnessBrowseOwner | null | undefined,
+): boolean {
+  return Boolean(
+    left &&
+    right &&
+    left.projectId === right.projectId &&
+    left.projectGeneration === right.projectGeneration &&
+    left.transitionEpoch === right.transitionEpoch &&
+    left.chatId === right.chatId &&
+    left.sessionId === right.sessionId &&
+    left.runtimeEpoch === right.runtimeEpoch,
+  );
+}
+
 function moveHistory(
-  browseOwner: AgentArtifactOwner,
+  browseOwner: HarnessBrowseOwner,
   delta: -1 | 1,
 ): HarnessBrowseSession | null {
-  const key = agentArtifactOwnerKey(browseOwner);
+  const key = ownerKey(browseOwner);
   if (!key) return null;
   const existing = sessions.get(key);
   const stack = histories.get(key);
@@ -156,12 +186,22 @@ function moveHistory(
   return session;
 }
 
-function forgetSupersededChatSessions(nextOwner: AgentArtifactOwner): void {
+function retainVisibleChats(): void {
   for (const [key, session] of sessions) {
+    if (!visibleChatIds.has(session.owner.chatId)) {
+      sessions.delete(key);
+      histories.delete(key);
+    }
+  }
+}
+
+function retainOwnerScope(nextOwner: HarnessBrowseOwner): void {
+  for (const [key, session] of sessions) {
+    const current = session.owner;
     if (
-      session.owner.projectId === nextOwner.projectId &&
-      session.owner.chatId === nextOwner.chatId &&
-      session.owner.sessionId !== nextOwner.sessionId
+      current.projectId !== nextOwner.projectId ||
+      current.projectGeneration !== nextOwner.projectGeneration ||
+      current.transitionEpoch !== nextOwner.transitionEpoch
     ) {
       sessions.delete(key);
       histories.delete(key);
@@ -172,11 +212,16 @@ function forgetSupersededChatSessions(nextOwner: AgentArtifactOwner): void {
 export function applyBrowseIntent(
   intent: HarnessBrowseIntent,
 ): HarnessBrowseSession | null {
-  const key = agentArtifactOwnerKey(intent.owner);
-  if (!key) return null;
+  const key = ownerKey(intent.owner);
+  if (
+    !key ||
+    !sameOwner(intent.owner, owner) ||
+    !visibleChatIds.has(intent.owner.chatId)
+  ) {
+    return null;
+  }
   const admitted = admitHarnessBrowseUrl(intent.url);
   if (!admitted) return null;
-  forgetSupersededChatSessions(intent.owner);
   const existing = sessions.get(key);
   if (existing?.href === admitted.href) {
     recordHistory(key, admitted.href);
@@ -188,10 +233,13 @@ export function applyBrowseIntent(
     revision: nextRevision,
   };
   nextRevision += 1;
-  if (!existing && sessions.size >= MAX_HARNESS_BROWSE_SESSIONS) {
+  const chatSessions = [...sessions.entries()].filter(
+    ([, candidate]) => candidate.owner.chatId === intent.owner.chatId,
+  );
+  if (!existing && chatSessions.length >= MAX_HARNESS_BROWSE_SESSIONS) {
     let oldestKey: string | null = null;
     let oldestRevision = Number.MAX_SAFE_INTEGER;
-    for (const [candidateKey, candidate] of sessions) {
+    for (const [candidateKey, candidate] of chatSessions) {
       if (candidate.revision < oldestRevision) {
         oldestRevision = candidate.revision;
         oldestKey = candidateKey;
@@ -209,42 +257,52 @@ export function applyBrowseIntent(
 }
 
 export function browseHistoryForOwner(
-  browseOwner: AgentArtifactOwner,
+  browseOwner: HarnessBrowseOwner,
 ): HarnessBrowseHistory {
-  const key = agentArtifactOwnerKey(browseOwner);
+  const key = ownerKey(browseOwner);
   return key ? historyFlags(histories.get(key)) : EMPTY_HISTORY;
 }
 
 export function browseBack(
-  browseOwner: AgentArtifactOwner,
+  browseOwner: HarnessBrowseOwner,
 ): HarnessBrowseSession | null {
   return moveHistory(browseOwner, -1);
 }
 
 export function browseForward(
-  browseOwner: AgentArtifactOwner,
+  browseOwner: HarnessBrowseOwner,
 ): HarnessBrowseSession | null {
   return moveHistory(browseOwner, 1);
 }
 
 export function setHarnessBrowseOwner(
-  nextOwner: AgentArtifactOwner | null,
+  nextOwner: HarnessBrowseOwner | null,
+  nextVisibleChatIds: readonly string[] = nextOwner ? [nextOwner.chatId] : [],
 ): void {
-  const key = agentArtifactOwnerKey(nextOwner);
+  const key = ownerKey(nextOwner);
   const next = key ? nextOwner : null;
-  if (sameAgentArtifactOwner(next, owner) || (!next && !owner)) return;
+  const visible = new Set(nextVisibleChatIds.slice(0, 2));
+  if (!next || !visible.has(next.chatId)) visible.clear();
+  const changed =
+    !sameOwner(next, owner) ||
+    visible.size !== visibleChatIds.size ||
+    [...visible].some((id) => !visibleChatIds.has(id));
+  if (!changed) return;
+  if (next) retainOwnerScope(next);
   owner = next;
+  visibleChatIds = visible;
+  retainVisibleChats();
   emitBrowseSessions();
 }
 
-export function harnessBrowseOwner(): AgentArtifactOwner | null {
+export function harnessBrowseOwner(): HarnessBrowseOwner | null {
   return owner;
 }
 
 export function browseSessionForOwner(
-  browseOwner: AgentArtifactOwner,
+  browseOwner: HarnessBrowseOwner,
 ): HarnessBrowseSession | null {
-  const key = agentArtifactOwnerKey(browseOwner);
+  const key = ownerKey(browseOwner);
   return key ? (sessions.get(key) ?? null) : null;
 }
 
@@ -255,8 +313,8 @@ export function subscribeBrowseSessions(listener: () => void): () => void {
   };
 }
 
-export function clearBrowseSession(browseOwner: AgentArtifactOwner): void {
-  const key = agentArtifactOwnerKey(browseOwner);
+export function clearBrowseSession(browseOwner: HarnessBrowseOwner): void {
+  const key = ownerKey(browseOwner);
   if (!key) return;
   const hadHistory = histories.delete(key);
   if (!sessions.delete(key) && !hadHistory) return;
@@ -269,11 +327,18 @@ export function clearBrowseSessions(): void {
   sessions.clear();
   histories.clear();
   owner = null;
+  visibleChatIds.clear();
   if (hadSessions || hadOwner) emitBrowseSessions();
 }
 
-export function listBrowseSessions(): HarnessBrowseSession[] {
+export function listBrowseSessions(
+  visibleChatIds: readonly string[] = [],
+): HarnessBrowseSession[] {
+  const visible = new Set(visibleChatIds.slice(0, 2));
   return [...sessions.values()]
+    .filter(
+      (session) => visible.size === 0 || visible.has(session.owner.chatId),
+    )
     .sort((left, right) => left.revision - right.revision)
-    .slice(0, MAX_HARNESS_BROWSE_SESSIONS);
+    .slice(0, 4);
 }

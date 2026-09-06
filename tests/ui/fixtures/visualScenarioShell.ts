@@ -20,7 +20,10 @@ import type {
   BuiltVisualScenario,
   VisualScenarioName,
 } from "./visualScenarioTypes";
-import { applyVisualWorkbenchState } from "./visualWorkbenchState";
+import {
+  applyVisualWorkbenchState,
+  reapplyVisualPreviewBrowseIntent,
+} from "./visualWorkbenchState";
 
 export function buildVisualScenario(
   name: VisualScenarioName,
@@ -74,4 +77,5 @@ export async function installVisualScenario(name: VisualScenarioName) {
   await new Promise((resolve) =>
     requestAnimationFrame(() => resolve(undefined)),
   );
+  reapplyVisualPreviewBrowseIntent(scenario);
 }

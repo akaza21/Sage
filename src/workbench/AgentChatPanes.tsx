@@ -21,7 +21,7 @@ import {
 import { useWorkbenchStore } from "../app/store";
 import { pinUnreadAckIds } from "../features/chat/acp/chatUnread";
 import { setHarnessBrowseOwner } from "../features/preview/harnessBrowse";
-import type { AgentArtifactOwner } from "../domain/agentArtifact";
+import type { HarnessBrowseOwner } from "../features/preview/harnessBrowse";
 import { ChatSurface } from "../features/chat/ChatSurface";
 import { AgentChatPane } from "./AgentChatPane";
 import {
@@ -57,6 +57,9 @@ export function AgentChatPanes({ compact = false }: { compact?: boolean }) {
   const projectGeneration = useWorkbenchStore(
     (state) => state.projectGeneration,
   );
+  const nativeTransitionEpoch = useWorkbenchStore(
+    (state) => state.nativeTransitionEpoch,
+  );
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
@@ -88,7 +91,10 @@ export function AgentChatPanes({ compact = false }: { compact?: boolean }) {
     (nextVisibleIds.length > 1 &&
       containerWidth !== null &&
       !canShowAgentChatSplit(containerWidth));
-  const displayedIds = focusOnly && focusedId ? [focusedId] : nextVisibleIds;
+  const displayedIds = useMemo(
+    () => (focusOnly && focusedId ? [focusedId] : nextVisibleIds),
+    [focusOnly, focusedId, nextVisibleIds],
+  );
   pinAcpProjectionIds(displayedIds);
   pinUnreadAckIds(displayedIds);
 
@@ -100,12 +106,19 @@ export function AgentChatPanes({ compact = false }: { compact?: boolean }) {
   const focusedProjectionStore = acpProjectionStoreFor(focusedId);
   const focusedPage = useStore(focusedProjectionStore, (state) => state.page);
   const focusedScope = useStore(focusedProjectionStore, (state) => state.scope);
-  const focusedOwner = useMemo<AgentArtifactOwner | null>(() => {
+  const focusedOwner = useMemo<HarnessBrowseOwner | null>(() => {
+    const session = focusedPage?.sessions.find(
+      (candidate) => candidate.id === focusedPage.currentSessionId,
+    );
     if (
       projectTransitioning ||
       !project ||
       !focusedPage?.currentSessionId ||
       !focusedScope ||
+      !session?.runtimeEpoch ||
+      !Number.isSafeInteger(nativeTransitionEpoch) ||
+      nativeTransitionEpoch < 0 ||
+      projectGeneration !== nativeTransitionEpoch ||
       focusedPage.projectId !== project.id ||
       focusedPage.chatId !== focusedId ||
       focusedScope.projectId !== focusedPage.projectId ||
@@ -116,22 +129,25 @@ export function AgentChatPanes({ compact = false }: { compact?: boolean }) {
     }
     return {
       projectId: focusedPage.projectId,
+      projectGeneration: focusedScope.projectGeneration,
+      transitionEpoch: nativeTransitionEpoch,
       chatId: focusedPage.chatId,
       sessionId: focusedPage.currentSessionId,
+      runtimeEpoch: session.runtimeEpoch,
     };
   }, [
     focusedId,
     focusedPage,
     focusedScope,
+    nativeTransitionEpoch,
     project,
     projectGeneration,
     projectTransitioning,
   ]);
 
   useLayoutEffect(() => {
-    setHarnessBrowseOwner(focusedOwner);
-    return () => setHarnessBrowseOwner(null);
-  }, [focusedOwner]);
+    setHarnessBrowseOwner(focusedOwner, displayedIds);
+  }, [displayedIds, focusedOwner]);
 
   const hasVisibleChats = nextVisibleIds.length > 0;
   useLayoutEffect(() => {

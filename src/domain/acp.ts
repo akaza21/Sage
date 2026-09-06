@@ -14,6 +14,7 @@ type Brand<Value, Name extends string> = Value & {
 };
 
 export type SageProjectId = Brand<string, "SageProjectId">;
+export type SageRootId = Brand<string, "SageRootId">;
 export type SageChatId = Brand<string, "SageChatId">;
 export type SageAgentSessionId = Brand<string, "SageAgentSessionId">;
 export type SageTurnId = Brand<string, "SageTurnId">;

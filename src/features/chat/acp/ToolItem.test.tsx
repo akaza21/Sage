@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   agentArtifactFollowRecordFor,
@@ -9,6 +9,8 @@ import type { AcpItem } from "../../../domain/acp";
 import {
   browseSessionForOwner,
   clearBrowseSessions,
+  setHarnessBrowseOwner,
+  type HarnessBrowseOwner,
 } from "../../preview/harnessBrowse";
 import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 import { ToolItem } from "./ToolItem";
@@ -25,6 +27,14 @@ const browseOwner = {
   chatId: "chat-1",
   sessionId: "session-1",
 } as AgentArtifactOwner;
+const previewOwner = {
+  ...browseOwner,
+  projectGeneration: "1",
+  transitionEpoch: 1,
+  runtimeEpoch: "1",
+} as HarnessBrowseOwner;
+
+beforeEach(() => setHarnessBrowseOwner(previewOwner, [previewOwner.chatId]));
 
 function tool(
   presentation: ToolProjectionItem["payload"]["presentation"],
@@ -237,7 +247,7 @@ describe("ToolItem", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Open in Sage browser" }),
     );
-    expect(browseSessionForOwner(browseOwner)?.href).toBe(
+    expect(browseSessionForOwner(previewOwner)?.href).toBe(
       "http://127.0.0.1:5173/app",
     );
     expect(
@@ -262,7 +272,7 @@ describe("ToolItem", () => {
     expect(
       screen.queryByRole("button", { name: "Open in Sage browser" }),
     ).toBeNull();
-    expect(browseSessionForOwner(browseOwner)).toBeNull();
+    expect(browseSessionForOwner(previewOwner)).toBeNull();
     expect(useAgentArtifactFollowStore.getState().records).toEqual([]);
   });
 

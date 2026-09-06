@@ -1,4 +1,5 @@
 import type { AgentArtifactOwner } from "../../../src/domain/agentArtifact";
+import type { HarnessBrowseOwner } from "../../../src/features/preview/harnessBrowse";
 import type { WorkbenchTab } from "../../../src/domain/workbench";
 import { diffCacheKey } from "../../../src/domain/diffIdentity";
 import { resourceKey } from "../../../src/domain/resourceIdentity";
@@ -6,6 +7,7 @@ import { useWorkbenchStore } from "../../../src/app/store";
 import { useAgentArtifactAdmissionStore } from "../../../src/app/agentArtifactAdmissionStore";
 import {
   applyBrowseIntent,
+  harnessBrowseOwner,
   setHarnessBrowseOwner,
 } from "../../../src/features/preview/harnessBrowse";
 
@@ -13,8 +15,10 @@ import type { BuiltVisualScenario } from "./visualScenarioTypes";
 import {
   BINDING_ID,
   FIXED_NOW,
+  GENERATION,
   MODEL_ID,
   PROJECT_ID,
+  RUNTIME_EPOCH,
   ROOT_ID,
   SESSION_ID,
 } from "./visualFixtureIds";
@@ -24,6 +28,43 @@ import {
   fileResource,
   visualDiff,
 } from "./visualDocumentFixtures";
+
+const VISUAL_NATIVE_TRANSITION_EPOCH = 0;
+
+function artifactOwner(
+  chatId: AgentArtifactOwner["chatId"],
+): AgentArtifactOwner {
+  return { projectId: PROJECT_ID, chatId, sessionId: SESSION_ID };
+}
+
+function browseOwner(chatId: HarnessBrowseOwner["chatId"]): HarnessBrowseOwner {
+  return {
+    ...artifactOwner(chatId),
+    projectGeneration: GENERATION,
+    transitionEpoch: VISUAL_NATIVE_TRANSITION_EPOCH,
+    runtimeEpoch: RUNTIME_EPOCH,
+  };
+}
+
+function visualPreviewUrl(): string {
+  const port = window.location.port || "1420";
+  return `http://127.0.0.1:${port}/tests/ui/fixtures/preview.html`;
+}
+
+function sameBrowseOwner(
+  left: HarnessBrowseOwner | null,
+  right: HarnessBrowseOwner,
+): boolean {
+  return Boolean(
+    left &&
+    left.projectId === right.projectId &&
+    left.projectGeneration === right.projectGeneration &&
+    left.transitionEpoch === right.transitionEpoch &&
+    left.chatId === right.chatId &&
+    left.sessionId === right.sessionId &&
+    left.runtimeEpoch === right.runtimeEpoch,
+  );
+}
 
 export function applyVisualWorkbenchState(
   scenario: BuiltVisualScenario,
@@ -140,8 +181,8 @@ export function applyVisualWorkbenchState(
         },
       ],
     },
-    projectGeneration: 0,
-    nativeTransitionEpoch: 0,
+    projectGeneration: VISUAL_NATIVE_TRANSITION_EPOCH,
+    nativeTransitionEpoch: VISUAL_NATIVE_TRANSITION_EPOCH,
     projectTransitioning: false,
     tabs,
     archivedChats: [],
@@ -259,38 +300,48 @@ export function applyVisualWorkbenchState(
     loadDiff: async () => undefined,
   });
 
-  const selectedOwner = chatIds[0]
-    ? ({
-        projectId: PROJECT_ID,
-        chatId: chatIds[0],
-        sessionId: SESSION_ID,
-      } as AgentArtifactOwner)
-    : null;
+  const selectedArtifactOwner = chatIds[0] ? artifactOwner(chatIds[0]) : null;
+  const selectedBrowseOwner = chatIds[0] ? browseOwner(chatIds[0]) : null;
   if (
     scenario.mode === "agent" &&
     scenario.resource === "file" &&
-    selectedOwner
+    selectedArtifactOwner
   ) {
     useAgentArtifactAdmissionStore.getState().admit({
-      owner: selectedOwner,
+      owner: selectedArtifactOwner,
       tabId: "visual-file-tab",
     });
   }
   if (
     scenario.mode === "agent" &&
     scenario.resource === "diff" &&
-    selectedOwner
+    selectedArtifactOwner
   ) {
     useAgentArtifactAdmissionStore.getState().admit({
-      owner: selectedOwner,
+      owner: selectedArtifactOwner,
       tabId: "visual-diff-tab",
     });
   }
-  setHarnessBrowseOwner(selectedOwner);
-  if (scenario.resource === "preview" && selectedOwner) {
+  setHarnessBrowseOwner(selectedBrowseOwner, chatIds.slice(0, 2));
+  if (scenario.resource === "preview" && selectedBrowseOwner) {
     applyBrowseIntent({
-      owner: selectedOwner,
-      url: `${window.location.origin}/tests/ui/fixtures/preview.html`,
+      owner: selectedBrowseOwner,
+      url: visualPreviewUrl(),
     });
+  }
+}
+
+export function reapplyVisualPreviewBrowseIntent(
+  scenario: BuiltVisualScenario,
+): void {
+  if (scenario.resource !== "preview") return;
+  const chatId = scenario.pages[0]?.chatId;
+  if (!chatId) throw new Error("Visual Preview fixture requires a Chat.");
+  const expectedOwner = browseOwner(chatId);
+  if (!sameBrowseOwner(harnessBrowseOwner(), expectedOwner)) {
+    throw new Error("Visual Preview fixture owner was not established.");
+  }
+  if (!applyBrowseIntent({ owner: expectedOwner, url: visualPreviewUrl() })) {
+    throw new Error("Visual Preview fixture browse intent was not admitted.");
   }
 }

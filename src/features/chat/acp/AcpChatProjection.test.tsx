@@ -5,7 +5,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AcpChatPage,
@@ -16,16 +16,22 @@ import type {
 import {
   browseSessionForOwner,
   clearBrowseSessions,
+  setHarnessBrowseOwner,
 } from "../../preview/harnessBrowse";
-import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
+import type { HarnessBrowseOwner } from "../../preview/harnessBrowse";
 import { MAX_AGENT_EDIT_SUMMARY_FILES } from "./agentEditSummary";
 import { AcpChatProjection } from "./AcpChatProjection";
 
 const browseOwner = {
   projectId: "project-1",
+  projectGeneration: "1",
+  transitionEpoch: 1,
   chatId: "chat-1",
   sessionId: "session-1",
-} as AgentArtifactOwner;
+  runtimeEpoch: "2",
+} as HarnessBrowseOwner;
+
+beforeEach(() => setHarnessBrowseOwner(browseOwner, [browseOwner.chatId]));
 
 afterEach(() => {
   cleanup();
@@ -49,7 +55,7 @@ function page(state: TurnProjection["state"]): AcpChatPage {
     title: "Durable chat",
     projectionRevision: "12",
     currentSessionId: "session-1",
-    sessions: [],
+    sessions: [{ id: "session-1", runtimeEpoch: "2" }] as never,
     nextCursor: null,
     turns: [
       {

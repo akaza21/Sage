@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
+import type { HarnessBrowseOwner } from "../../preview/harnessBrowse";
 
 import {
   CURATED_APPLY_FILE_TOOL_NAME,
@@ -49,15 +49,22 @@ describe("curated read tool-host seam", () => {
   });
 
   it("dispatches _sage/browse through the curated host-tool invoke", async () => {
-    const { browseSessionForOwner, clearBrowseSessions } =
-      await import("../../preview/harnessBrowse");
+    const {
+      browseSessionForOwner,
+      clearBrowseSessions,
+      setHarnessBrowseOwner,
+    } = await import("../../preview/harnessBrowse");
     clearBrowseSessions();
     const toolHost = createToolHost();
     const owner = {
       projectId: "project:invoke",
+      projectGeneration: "1",
+      transitionEpoch: 1,
       chatId: "chat:invoke",
       sessionId: "session-1",
-    } as AgentArtifactOwner;
+      runtimeEpoch: "1",
+    } as HarnessBrowseOwner;
+    setHarnessBrowseOwner(owner, [owner.chatId]);
     expect(
       toolHost.invoke("_sage/browse", {
         owner,

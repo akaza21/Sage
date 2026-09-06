@@ -24,7 +24,10 @@ import { useWorkbenchStore } from "../app/store";
 import { agentArtifactVisible } from "./agentArtifactAdmission";
 import { FileKindIcon } from "../features/files/FileKindIcon";
 import { HarnessBrowserSurface } from "../features/preview/HarnessBrowserSurface";
-import { useHarnessBrowseSession } from "../features/preview/useHarnessBrowseSession";
+import {
+  useHarnessBrowseOwner,
+  useHarnessBrowseSession,
+} from "../features/preview/useHarnessBrowseSession";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { renderFileOrDiffCanvas } from "./surfaceRegistry";
 import {
@@ -32,10 +35,9 @@ import {
   type AgentArtifactOwner,
 } from "../domain/agentArtifact";
 
-function artifactTabParts(tab: {
-  resource?: { relativePath?: string };
-  title: string;
-}): [string, string, string] {
+type ArtifactTab = { resource?: { relativePath?: string }; title: string };
+
+function artifactTabParts(tab: ArtifactTab) {
   const full = tab.resource?.relativePath ?? tab.title;
   const base = full.split("/").at(-1) ?? full;
   return [full, base, full.slice(0, full.length - base.length)];
@@ -117,7 +119,8 @@ export function AgentArtifactPane({
       ),
     [admissions, focusedOwner, focusedPage, tabs],
   );
-  const browseSession = useHarnessBrowseSession(focusedOwner);
+  const browseOwner = useHarnessBrowseOwner();
+  const browseSession = useHarnessBrowseSession(browseOwner);
   const browseRevision = browseSession?.revision ?? 0;
   const previewOpen = browseSession !== null;
   const availableTargets = useMemo<AgentArtifactTarget[]>(
@@ -383,7 +386,7 @@ export function AgentArtifactPane({
       <div className="agent-artifact-pane__canvas">
         {previewSelected ? (
           <div className="agent-preview-stack">
-            <HarnessBrowserSurface owner={focusedOwner} />
+            <HarnessBrowserSurface owner={browseOwner} />
           </div>
         ) : null}
         {!previewSelected && activeArtifact

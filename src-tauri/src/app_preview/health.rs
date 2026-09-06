@@ -6,12 +6,14 @@ use std::{
 
 use serde::Serialize;
 
+use crate::acp::limits::PREVIEW_LIMITS;
+
 use super::{
     discovery::PreviewTargetRef,
     url::{normalized_origin, parse_allowed_preview_url},
 };
 
-const HEALTH_TIMEOUT: Duration = Duration::from_millis(750);
+const HEALTH_TIMEOUT: Duration = Duration::from_millis(PREVIEW_LIMITS.health_probe_timeout_ms);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]

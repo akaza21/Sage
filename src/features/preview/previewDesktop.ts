@@ -1,12 +1,14 @@
-export type PreviewScriptName = "dev" | "start";
+import type {
+  PreviewProjectionOwner,
+  PreviewTargetRef,
+} from "../../domain/previewProjection";
 
-export type PreviewTargetRef = {
-  projectId: string;
-  projectGeneration: number;
-  expectedTransitionEpoch: number;
-  rootId: string;
-  scriptName: PreviewScriptName;
-};
+export type { PreviewTargetRef } from "../../domain/previewProjection";
+
+export type PreviewDiscoveryRequest = Omit<
+  PreviewProjectionOwner,
+  "transitionEpoch"
+> & { expectedTransitionEpoch: number };
 
 export type PreviewDiscoveryResponse = {
   projectId: string;
@@ -30,6 +32,8 @@ type PreviewFailure = {
   resource?: string;
 };
 
+const MAX_COUNTER = "9223372036854775807";
+
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -38,26 +42,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isSafeCounter(value: unknown): value is number {
-  return (
-    typeof value === "number" &&
-    Number.isSafeInteger(value) &&
-    value >= 0 &&
-    value <= 9_007_199_254_740_991
-  );
-}
-
-function isIdentifier(value: unknown): value is string {
+function safeIdentifier(value: unknown): value is string {
   return (
     typeof value === "string" &&
     value.length > 0 &&
     value.length <= 512 &&
-    !value.includes("\0")
+    !value.includes("\0") &&
+    new TextEncoder().encode(value).byteLength <= 512
+  );
+}
+
+function safeCounter(value: unknown, allowZero: boolean): value is string {
+  return (
+    typeof value === "string" &&
+    /^(0|[1-9][0-9]{0,18})$/.test(value) &&
+    !(value.length === 19 && value > MAX_COUNTER) &&
+    (allowZero || value !== "0")
   );
 }
 
 function isLoopbackOrigin(value: unknown): value is string {
-  if (typeof value !== "string" || value.length === 0 || value.length > 2048) {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    new TextEncoder().encode(value).byteLength > 2048
+  ) {
     return false;
   }
   try {
@@ -66,7 +75,7 @@ function isLoopbackOrigin(value: unknown): value is string {
       (url.protocol === "http:" || url.protocol === "https:") &&
       url.username === "" &&
       url.password === "" &&
-      ["127.0.0.1", "[::1]"].includes(url.hostname) &&
+      (url.hostname === "127.0.0.1" || url.hostname === "[::1]") &&
       url.port !== ""
     );
   } catch {
@@ -75,22 +84,40 @@ function isLoopbackOrigin(value: unknown): value is string {
 }
 
 function assertTarget(value: unknown): asserts value is PreviewTargetRef {
-  if (!isRecord(value))
-    throw new PreviewDesktopError(invalid("Preview target is invalid."));
   if (
-    !isIdentifier(value.projectId) ||
-    !isSafeCounter(value.projectGeneration) ||
-    !isSafeCounter(value.expectedTransitionEpoch) ||
-    !isIdentifier(value.rootId) ||
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "projectId",
+      "projectGeneration",
+      "expectedTransitionEpoch",
+      "chatId",
+      "sessionId",
+      "runtimeEpoch",
+      "rootId",
+      "scriptName",
+    ]) ||
+    !safeIdentifier(value.projectId) ||
+    !safeCounter(value.projectGeneration, true) ||
+    !safeEpoch(value.expectedTransitionEpoch) ||
+    value.projectGeneration !== String(value.expectedTransitionEpoch) ||
+    !safeIdentifier(value.chatId) ||
+    !safeIdentifier(value.sessionId) ||
+    !safeCounter(value.runtimeEpoch, false) ||
+    !safeIdentifier(value.rootId) ||
     (value.scriptName !== "dev" && value.scriptName !== "start")
   ) {
     throw new PreviewDesktopError(invalid("Preview target is invalid."));
   }
-  if ("origin" in value && !isLoopbackOrigin(value.origin)) {
-    throw new PreviewDesktopError(
-      invalid("Preview origins must be loopback HTTP(S) URLs."),
-    );
-  }
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  const actual = Object.keys(value);
+  return (
+    actual.length === keys.length && actual.every((key) => keys.includes(key))
+  );
 }
 
 function sameTarget(left: PreviewTargetRef, right: PreviewTargetRef): boolean {
@@ -98,9 +125,39 @@ function sameTarget(left: PreviewTargetRef, right: PreviewTargetRef): boolean {
     left.projectId === right.projectId &&
     left.projectGeneration === right.projectGeneration &&
     left.expectedTransitionEpoch === right.expectedTransitionEpoch &&
+    left.chatId === right.chatId &&
+    left.sessionId === right.sessionId &&
+    left.runtimeEpoch === right.runtimeEpoch &&
     left.rootId === right.rootId &&
     left.scriptName === right.scriptName
   );
+}
+
+function assertRequest(
+  value: unknown,
+): asserts value is PreviewDiscoveryRequest {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "projectId",
+      "projectGeneration",
+      "expectedTransitionEpoch",
+      "chatId",
+      "sessionId",
+      "runtimeEpoch",
+    ]) ||
+    !safeIdentifier(value.projectId) ||
+    !safeCounter(value.projectGeneration, true) ||
+    !safeEpoch(value.expectedTransitionEpoch) ||
+    Number(value.projectGeneration) !== value.expectedTransitionEpoch ||
+    !safeIdentifier(value.chatId) ||
+    !safeIdentifier(value.sessionId) ||
+    !safeCounter(value.runtimeEpoch, false)
+  ) {
+    throw new PreviewDesktopError(
+      invalid("Preview request identity is invalid."),
+    );
+  }
 }
 
 function invalid(message: string): PreviewFailure {
@@ -108,21 +165,21 @@ function invalid(message: string): PreviewFailure {
 }
 
 function safeFailure(value: unknown): PreviewFailure {
-  if (isRecord(value) && typeof value.message === "string") {
-    if (
-      value.kind === "invalidRequest" ||
+  if (
+    isRecord(value) &&
+    typeof value.message === "string" &&
+    value.message.length > 0 &&
+    new TextEncoder().encode(value.message).byteLength <= 8192 &&
+    (value.kind === "invalidRequest" ||
       value.kind === "conflict" ||
       value.kind === "unavailable" ||
-      value.kind === "internal"
-    ) {
-      return {
-        kind: value.kind,
-        message: value.message,
-        ...(typeof value.resource === "string"
-          ? { resource: value.resource }
-          : {}),
-      };
-    }
+      value.kind === "internal")
+  ) {
+    return {
+      kind: value.kind,
+      message: value.message,
+      ...(safeIdentifier(value.resource) ? { resource: value.resource } : {}),
+    };
   }
   return { kind: "internal", message: "The Preview request failed safely." };
 }
@@ -150,33 +207,57 @@ async function invokePreview<T>(command: string, request: object): Promise<T> {
 }
 
 export async function discoverPreviewTargets(
-  request: Pick<
-    PreviewTargetRef,
-    "projectId" | "projectGeneration" | "expectedTransitionEpoch"
-  >,
+  request: PreviewDiscoveryRequest,
 ): Promise<PreviewDiscoveryResponse> {
-  assertTarget({ ...request, rootId: "discovery", scriptName: "dev" });
+  assertRequest(request);
+  const exactRequest: PreviewDiscoveryRequest = {
+    projectId: request.projectId,
+    projectGeneration: request.projectGeneration,
+    expectedTransitionEpoch: request.expectedTransitionEpoch,
+    chatId: request.chatId,
+    sessionId: request.sessionId,
+    runtimeEpoch: request.runtimeEpoch,
+  };
   const response = await invokePreview<unknown>(
     "discover_preview_targets",
-    request,
+    exactRequest,
   );
   if (!isRecord(response) || !Array.isArray(response.targets)) {
     throw new PreviewDesktopError(
       invalid("Preview discovery returned an invalid response."),
     );
   }
-  for (const target of response.targets) assertTarget(target);
+  response.targets.forEach(assertTarget);
   if (
-    response.projectId !== request.projectId ||
-    response.transitionEpoch !== request.expectedTransitionEpoch ||
+    response.projectId !== exactRequest.projectId ||
+    response.transitionEpoch !== exactRequest.expectedTransitionEpoch ||
     response.targets.length > 16 ||
-    typeof response.truncated !== "boolean"
+    typeof response.truncated !== "boolean" ||
+    !response.targets.every(
+      (target) =>
+        target.projectId === exactRequest.projectId &&
+        target.projectGeneration === exactRequest.projectGeneration &&
+        target.expectedTransitionEpoch ===
+          exactRequest.expectedTransitionEpoch &&
+        target.chatId === exactRequest.chatId &&
+        target.sessionId === exactRequest.sessionId &&
+        target.runtimeEpoch === exactRequest.runtimeEpoch,
+    )
   ) {
     throw new PreviewDesktopError(
       invalid("Preview discovery returned an invalid response."),
     );
   }
   return response as PreviewDiscoveryResponse;
+}
+
+function safeEpoch(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 0 &&
+    value <= Number.MAX_SAFE_INTEGER
+  );
 }
 
 export async function getPreviewHealth(
@@ -187,7 +268,8 @@ export async function getPreviewHealth(
   if (
     !isRecord(response) ||
     response.ref === undefined ||
-    typeof response.healthy !== "boolean"
+    typeof response.healthy !== "boolean" ||
+    (response.origin !== null && !isLoopbackOrigin(response.origin))
   ) {
     throw new PreviewDesktopError(
       invalid("Preview health returned an invalid response."),
@@ -197,11 +279,6 @@ export async function getPreviewHealth(
   if (!sameTarget(response.ref, ref)) {
     throw new PreviewDesktopError(
       invalid("Preview health returned an invalid response."),
-    );
-  }
-  if (response.origin !== null && !isLoopbackOrigin(response.origin)) {
-    throw new PreviewDesktopError(
-      invalid("Preview health returned a non-loopback origin."),
     );
   }
   return response as PreviewHealthResponse;

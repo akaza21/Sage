@@ -9,13 +9,13 @@ import {
   clearBrowseSession,
 } from "./harnessBrowse";
 import { useHarnessBrowseSession } from "./useHarnessBrowseSession";
-import type { AgentArtifactOwner } from "../../domain/agentArtifact";
+import type { HarnessBrowseOwner } from "./harnessBrowse";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 
 export function HarnessBrowserSurface({
   owner,
 }: {
-  owner: AgentArtifactOwner | null;
+  owner: HarnessBrowseOwner | null;
 }) {
   const session = useHarnessBrowseSession(owner);
   const history = owner

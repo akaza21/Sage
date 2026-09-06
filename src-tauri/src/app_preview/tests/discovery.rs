@@ -1,0 +1,206 @@
+use std::fs;
+
+use super::super::{discovery::discover, origin::loopback_origin};
+use super::discovery_request;
+use crate::{acp::limits::PREVIEW_LIMITS, project_registry::RootRecord};
+
+#[test]
+fn loopback_origins_allow_http_and_https_literals_only() {
+    assert_eq!(
+        loopback_origin("http://127.0.0.1:5173").unwrap(),
+        "http://127.0.0.1:5173"
+    );
+    assert_eq!(
+        loopback_origin("https://[::1]:3443").unwrap(),
+        "https://[::1]:3443"
+    );
+    for rejected in [
+        "http://example.com:80",
+        "http://localhost:3000",
+        "file:///tmp/index.html",
+        "http://127.0.0.1",
+    ] {
+        assert!(
+            loopback_origin(rejected).is_err(),
+            "{rejected} must be rejected"
+        );
+    }
+}
+
+#[test]
+fn discovery_rejects_no_roots_without_exposing_paths() {
+    let response = discover(&discovery_request("project-preview", 0, 0), Vec::new()).unwrap();
+    assert!(response.targets.is_empty());
+    assert!(!response.truncated);
+}
+
+#[test]
+fn discovery_returns_only_curated_scripts_without_package_paths() {
+    let root = std::env::temp_dir().join(format!("sage-preview-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(root.join("nested")).unwrap();
+    fs::create_dir_all(root.join("node_modules/ignored")).unwrap();
+    fs::write(
+        root.join("package.json"),
+        r#"{"scripts":{"dev":"vite","test":"vitest"}}"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("nested/package.json"),
+        r#"{"scripts":{"start":"next start","build":"next build"}}"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("node_modules/ignored/package.json"),
+        r#"{"scripts":{"dev":"must not appear"}}"#,
+    )
+    .unwrap();
+    let request = discovery_request("project-preview", 4, 4);
+    let response = discover(&request, vec![root_record(&request, &root)]).unwrap();
+    assert_eq!(response.targets.len(), 2);
+    assert!(
+        response
+            .targets
+            .iter()
+            .all(|target| matches!(target.script_name.as_str(), "dev" | "start"))
+    );
+    assert!(
+        !serde_json::to_string(&response)
+            .unwrap()
+            .contains(&*root.to_string_lossy())
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovery_stops_at_the_package_cap() {
+    let root = std::env::temp_dir().join(format!("sage-preview-cap-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    for index in 0..PREVIEW_LIMITS.packages_per_root {
+        fs::create_dir_all(root.join(format!("package-{index}"))).unwrap();
+        fs::write(
+            root.join(format!("package-{index}/package.json")),
+            r#"{"scripts":{"dev":"vite"}}"#,
+        )
+        .unwrap();
+    }
+    let request = discovery_request("project-preview", 4, 4);
+    assert!(
+        !discover(&request, vec![root_record(&request, &root)])
+            .unwrap()
+            .truncated
+    );
+    fs::create_dir_all(root.join("package-plus-one")).unwrap();
+    fs::write(
+        root.join("package-plus-one/package.json"),
+        r#"{"scripts":{"dev":"vite"}}"#,
+    )
+    .unwrap();
+    assert!(
+        discover(&request, vec![root_record(&request, &root)])
+            .unwrap()
+            .truncated
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovery_truncates_a_directory_at_the_entry_cap() {
+    let root =
+        std::env::temp_dir().join(format!("sage-preview-entry-cap-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    for index in 0..PREVIEW_LIMITS.directory_entries {
+        fs::write(root.join(format!("file-{index}")), "").unwrap();
+    }
+    let request = discovery_request("project-preview", 4, 4);
+    assert!(
+        !discover(&request, vec![root_record(&request, &root)])
+            .unwrap()
+            .truncated
+    );
+    fs::write(root.join("file-plus-one"), "").unwrap();
+    assert!(
+        discover(&request, vec![root_record(&request, &root)])
+            .unwrap()
+            .truncated
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovery_admits_exact_directory_count_and_truncates_plus_one() {
+    let root = std::env::temp_dir().join(format!(
+        "sage-preview-directory-cap-{}",
+        uuid::Uuid::new_v4()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    for index in 0..(PREVIEW_LIMITS.directories_per_root - 1) {
+        fs::create_dir(root.join(format!("directory-{index:03}"))).unwrap();
+    }
+    let request = discovery_request("project-preview", 4, 4);
+    assert!(
+        !discover(&request, vec![root_record(&request, &root)])
+            .unwrap()
+            .truncated
+    );
+    fs::create_dir(root.join("directory-plus-one")).unwrap();
+    assert!(
+        discover(&request, vec![root_record(&request, &root)])
+            .unwrap()
+            .truncated
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovery_admits_exact_manifest_and_script_bytes_and_rejects_plus_one() {
+    let root =
+        std::env::temp_dir().join(format!("sage-preview-byte-caps-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let request = discovery_request("project-preview", 4, 4);
+    let exact_script = "x".repeat(PREVIEW_LIMITS.script_bytes as usize);
+    let mut exact_manifest = format!(r#"{{"scripts":{{"dev":"{exact_script}"}}}}"#);
+    exact_manifest
+        .push_str(&" ".repeat(PREVIEW_LIMITS.manifest_bytes as usize - exact_manifest.len()));
+    fs::write(root.join("package.json"), &exact_manifest).unwrap();
+    assert_eq!(
+        discover(&request, vec![root_record(&request, &root)])
+            .unwrap()
+            .targets
+            .len(),
+        1
+    );
+    fs::write(root.join("package.json"), format!("{exact_manifest} ")).unwrap();
+    assert!(
+        discover(&request, vec![root_record(&request, &root)])
+            .unwrap()
+            .targets
+            .is_empty()
+    );
+    fs::write(
+        root.join("package.json"),
+        format!(
+            r#"{{"scripts":{{"dev":"{}"}}}}"#,
+            "x".repeat(PREVIEW_LIMITS.script_bytes as usize + 1)
+        ),
+    )
+    .unwrap();
+    assert!(
+        discover(&request, vec![root_record(&request, &root)])
+            .unwrap()
+            .targets
+            .is_empty()
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn root_record(
+    request: &super::super::discovery::PreviewDiscoveryRequest,
+    root: &std::path::Path,
+) -> RootRecord {
+    RootRecord {
+        id: "root-preview".into(),
+        project_id: request.project_id.as_str().into(),
+        absolute_path: root.to_owned(),
+        ordinal: 0,
+    }
+}

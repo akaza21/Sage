@@ -1,42 +1,36 @@
-use std::{
-    collections::BTreeMap,
-    io::Read,
-    process::{Child, ChildStderr, ChildStdout, Command, Stdio},
-    sync::mpsc,
-    thread,
-    time::{Duration, Instant},
+#[cfg(test)]
+pub(crate) use super::lifecycle_active::stop;
+pub(crate) use super::lifecycle_active::{health_observed, stop_observed};
+pub(crate) use super::lifecycle_cleanup::retire_runtime_owner;
+pub(crate) use super::lifecycle_cleanup::stop_before_epoch;
+#[cfg(test)]
+pub(crate) use super::lifecycle_cleanup::stop_before_epoch_observed;
+#[cfg(test)]
+pub(super) use super::lifecycle_process::{
+    test_channel_slots_admitted, test_deadline_millis_admitted, test_drainer_count_admitted,
+    test_startup_output_bytes_admitted,
 };
-
-use serde::Serialize;
-
+pub(super) use super::lifecycle_registry::{ActivePreview, Registry, StartingPreview};
+#[cfg(test)]
+pub(super) use super::lifecycle_slot::{CleanupTestStep, test_cleanup_occupied};
+pub(super) use super::lifecycle_slot::{cleanup_owned_preview, stop_starting};
+pub(super) use super::lifecycle_start::starting_exited;
+pub(crate) use super::lifecycle_start::{
+    fail_start_after_reservation, fail_start_without_child, finish_start,
+};
 use super::{
     discovery::{PreviewDiscoveryRequest, PreviewTargetRef},
     error::PreviewError,
-    health, lifecycle_registry,
-    url::{normalized_origin, parse_allowed_preview_url},
+    lifecycle_process::ManagedChild,
+    lifecycle_registry,
+    projection::{PreviewFailure, PreviewPhase, PreviewProjection, PreviewProjectionOwner},
 };
-
-const STARTUP_WAIT: Duration = Duration::from_secs(5);
-const MAX_STARTUP_OUTPUT_BYTES: usize = 4096;
-
-struct ActivePreview {
-    target: PreviewTargetRef,
-    origin: String,
-    child: ManagedChild,
-}
-
-struct StartingPreview {
-    target: PreviewTargetRef,
-    child: ManagedChild,
-}
-
-#[derive(Default)]
-pub(super) struct Registry {
-    discovered: BTreeMap<PreviewTargetRef, std::path::PathBuf>,
-    starting: Option<StartingPreview>,
-    active: Option<ActivePreview>,
-}
-
+use serde::Serialize;
+use std::io::Read;
+#[cfg(not(windows))]
+use std::process::{Command, Stdio};
+pub(crate) type PreviewObserver<'a> =
+    dyn Fn(&PreviewProjection) -> Result<(), PreviewError> + Send + Sync + 'a;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PreviewStartResponse {
@@ -44,25 +38,215 @@ pub(crate) struct PreviewStartResponse {
     pub ref_: PreviewTargetRef,
     pub origin: String,
 }
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PreviewStopResponse {
     #[serde(rename = "ref")]
     pub ref_: PreviewTargetRef,
 }
-
 pub(crate) struct PreviewStartReservation {
-    target: PreviewTargetRef,
-    stdout: ChildStdout,
-    stderr: ChildStderr,
+    pub(super) target: PreviewTargetRef,
+    pub(super) stdout: Box<dyn Read + Send>,
+    pub(super) stderr: Box<dyn Read + Send>,
 }
-
+pub(crate) fn begin_discovery(
+    request: &PreviewDiscoveryRequest,
+    observer: &PreviewObserver<'_>,
+) -> Result<(), PreviewError> {
+    transition_for_owner(
+        PreviewProjectionOwner::from_discovery(request),
+        PreviewPhase::Discovering,
+        None,
+        None,
+        None,
+        observer,
+    )
+}
+pub(crate) fn finish_discovery(
+    request: &PreviewDiscoveryRequest,
+    targets: Vec<(PreviewTargetRef, std::path::PathBuf)>,
+    observer: &PreviewObserver<'_>,
+) -> Result<(), PreviewError> {
+    let missing = targets.is_empty();
+    lifecycle_registry::with_registry(|registry| {
+        ensure_owner(registry, &PreviewProjectionOwner::from_discovery(request))?;
+        transition_locked(
+            registry,
+            PreviewPhase::Idle,
+            missing.then_some(PreviewFailure::ScriptMissing),
+            None,
+            None,
+            observer,
+        )?;
+        registry.discovered.clear();
+        registry.discovered.extend(targets);
+        Ok(())
+    })
+}
+pub(crate) fn begin_start(
+    target: &PreviewTargetRef,
+    observer: &PreviewObserver<'_>,
+) -> Result<(), PreviewError> {
+    let owner = PreviewProjectionOwner::from_target(target);
+    lifecycle_registry::with_registry(|registry| {
+        ensure_owner(registry, &owner)?;
+        let phase_busy = registry.projection.as_ref().is_some_and(|projection| {
+            matches!(
+                projection.phase,
+                PreviewPhase::Starting
+                    | PreviewPhase::WaitingForOrigin
+                    | PreviewPhase::HealthChecking
+                    | PreviewPhase::Active
+                    | PreviewPhase::Stopping
+            )
+        });
+        if registry.active.is_some()
+            || registry.starting.is_some()
+            || registry.cleanup.is_some()
+            || phase_busy
+        {
+            record_failure_locked(registry, PreviewFailure::Conflict, observer)?;
+            return Err(PreviewError::conflict(
+                "activePreview",
+                "A Preview target is already active.",
+            ));
+        }
+        if !registry.discovered.contains_key(target) {
+            transition_locked(
+                registry,
+                PreviewPhase::Starting,
+                None,
+                Some(target.clone()),
+                None,
+                observer,
+            )?;
+            transition_locked(
+                registry,
+                PreviewPhase::HealthFailed,
+                Some(PreviewFailure::ScriptMissing),
+                Some(target.clone()),
+                None,
+                observer,
+            )?;
+            return Err(PreviewError::conflict(
+                "previewTarget",
+                "Preview target must be discovered before it can start.",
+            ));
+        }
+        transition_locked(
+            registry,
+            PreviewPhase::Starting,
+            None,
+            Some(target.clone()),
+            None,
+            observer,
+        )
+    })
+}
+pub(crate) fn mark_waiting_for_origin(
+    target: &PreviewTargetRef,
+    observer: &PreviewObserver<'_>,
+) -> Result<(), PreviewError> {
+    transition_for_owner(
+        PreviewProjectionOwner::from_target(target),
+        PreviewPhase::WaitingForOrigin,
+        None,
+        Some(target.clone()),
+        None,
+        observer,
+    )
+}
+pub(super) fn transition_for_owner(
+    owner: PreviewProjectionOwner,
+    phase: PreviewPhase,
+    failure: Option<PreviewFailure>,
+    target: Option<PreviewTargetRef>,
+    origin: Option<String>,
+    observer: &PreviewObserver<'_>,
+) -> Result<(), PreviewError> {
+    lifecycle_registry::with_registry(|registry| {
+        let current = if registry.projection.as_ref().map(|value| &value.owner) == Some(&owner) {
+            registry
+                .projection
+                .as_ref()
+                .cloned()
+                .ok_or_else(|| PreviewError::internal("Preview projection is unavailable."))?
+        } else {
+            if registry.active.is_some()
+                || registry.starting.is_some()
+                || registry.cleanup.is_some()
+            {
+                return Err(PreviewError::conflict(
+                    "activePreview",
+                    "A foreign Preview owner is active.",
+                ));
+            }
+            PreviewProjection::initial(owner)?
+        };
+        let mut next = current.advance(phase, failure, origin)?;
+        next.target = target.or(current.target);
+        // Observer rejection is a veto: neither a fresh owner nor a phase
+        // advance becomes visible until its observer accepted this exact value.
+        observer(&next)?;
+        registry.projection = Some(next);
+        Ok(())
+    })
+}
+pub(super) fn ensure_owner(
+    registry: &Registry,
+    owner: &PreviewProjectionOwner,
+) -> Result<(), PreviewError> {
+    if registry.projection.as_ref().map(|value| &value.owner) == Some(owner) {
+        Ok(())
+    } else {
+        Err(PreviewError::conflict(
+            "previewOwner",
+            "Preview owner is stale.",
+        ))
+    }
+}
+pub(super) fn transition_locked(
+    registry: &mut Registry,
+    phase: PreviewPhase,
+    failure: Option<PreviewFailure>,
+    target: Option<PreviewTargetRef>,
+    origin: Option<String>,
+    observer: &PreviewObserver<'_>,
+) -> Result<(), PreviewError> {
+    let current = registry
+        .projection
+        .as_ref()
+        .ok_or_else(|| PreviewError::internal("Preview projection is unavailable."))?;
+    let mut next = current.advance(phase, failure, origin)?;
+    next.target = target.or_else(|| current.target.clone());
+    observer(&next)?;
+    registry.projection = Some(next);
+    Ok(())
+}
+fn record_failure_locked(
+    registry: &mut Registry,
+    failure: PreviewFailure,
+    observer: &PreviewObserver<'_>,
+) -> Result<(), PreviewError> {
+    let current = registry
+        .projection
+        .as_ref()
+        .ok_or_else(|| PreviewError::internal("Preview projection is unavailable."))?;
+    let next = current.with_failure(failure)?;
+    observer(&next)?;
+    registry.projection = Some(next);
+    Ok(())
+}
+#[cfg(test)]
 pub(crate) fn replace_discovered(
-    _request: &PreviewDiscoveryRequest,
+    request: &PreviewDiscoveryRequest,
     targets: Vec<(PreviewTargetRef, std::path::PathBuf)>,
 ) {
     lifecycle_registry::with_registry(|registry| {
+        if registry.active.is_none() && registry.starting.is_none() && registry.cleanup.is_none() {
+            registry.projection =
+                PreviewProjection::initial(PreviewProjectionOwner::from_discovery(request)).ok();
+        }
         registry.discovered.clear();
         registry.discovered.extend(targets);
     });
@@ -71,20 +255,54 @@ pub(crate) fn replace_discovered(
 pub(crate) fn reserve_start(
     target: PreviewTargetRef,
 ) -> Result<PreviewStartReservation, PreviewError> {
-    let (stdout, stderr) = {
-        lifecycle_registry::with_registry(|registry| {
-            if registry.active.is_some() || registry.starting.is_some() {
-                return Err(PreviewError::conflict(
-                    "activePreview",
-                    "A Preview target is already active.",
+    let (stdout, stderr) = lifecycle_registry::with_registry(|registry| {
+        if !settle_unsettled_drainers_locked(registry) {
+            return Err(PreviewError::internal(
+                "Preview output drainers did not settle before their deadline.",
+            ));
+        }
+        if registry.active.is_some() || registry.starting.is_some() || registry.cleanup.is_some() {
+            return Err(PreviewError::conflict(
+                "activePreview",
+                "A Preview target is already active.",
+            ));
+        }
+        ensure_owner(registry, &PreviewProjectionOwner::from_target(&target))?;
+        let package_root = registry.discovered.get(&target).cloned().ok_or_else(|| {
+            PreviewError::conflict(
+                "previewTarget",
+                "Preview target must be discovered before it can start.",
+            )
+        })?;
+        #[cfg(windows)]
+        let (child, stdout, stderr) = {
+            if !super::lifecycle_windows::reserve_recovery_slot(registry) {
+                return Err(PreviewError::internal(
+                    "Preview retained process recovery has not converged to zero.",
                 ));
             }
-            let package_root = registry.discovered.get(&target).cloned().ok_or_else(|| {
-                PreviewError::conflict(
-                    "previewTarget",
-                    "Preview target must be discovered before it can start.",
-                )
-            })?;
+            let (child, stdout, stderr) = match super::lifecycle_windows::PreviewProcess::launch(
+                &package_root,
+                target.script_name.as_str(),
+            ) {
+                Ok(value) => value,
+                Err(failure) => {
+                    super::lifecycle_windows::retain_recovery(registry, failure);
+                    return Err(PreviewError::Unavailable {
+                        message: "Preview could not start its curated package script.".into(),
+                    });
+                }
+            };
+            super::lifecycle_windows::release_recovery_slot(registry);
+            (
+                ManagedChild::reserved(child),
+                Box::new(stdout) as Box<dyn Read + Send>,
+                Box::new(stderr) as Box<dyn Read + Send>,
+            )
+        };
+        #[cfg(not(windows))]
+        let (child, stdout, stderr) = {
+            use super::lifecycle_process::kill_and_reap_unreserved;
             let mut command = Command::new(npm_executable());
             command
                 .args(["run", target.script_name.as_str()])
@@ -95,33 +313,35 @@ pub(crate) fn reserve_start(
             #[cfg(unix)]
             {
                 use std::os::unix::process::CommandExt;
-
-                // A preview script conventionally forks npm and a dev server.
-                // Its own process group gives cancellation one bounded owner.
                 command.process_group(0);
             }
-            let mut child = command.spawn().map_err(|_| PreviewError::Unavailable {
+            let mut raw_child = command.spawn().map_err(|_| PreviewError::Unavailable {
                 message: "Preview could not start its curated package script.".into(),
             })?;
-            let stdout = child.stdout.take().expect("preview stdout was piped");
-            let stderr = child.stderr.take().expect("preview stderr was piped");
-            let child = match ManagedChild::reserve(child) {
-                Ok(child) => child,
-                Err(mut child) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(PreviewError::Unavailable {
-                        message: "Preview could not reserve its process tree.".into(),
-                    });
-                }
-            };
-            registry.starting = Some(StartingPreview {
-                target: target.clone(),
+            let stdout = raw_child.stdout.take().ok_or_else(|| {
+                let _ = kill_and_reap_unreserved(&mut raw_child);
+                PreviewError::internal("Preview stdout ownership was unavailable.")
+            })?;
+            let stderr = raw_child.stderr.take().ok_or_else(|| {
+                let _ = kill_and_reap_unreserved(&mut raw_child);
+                PreviewError::internal("Preview stderr ownership was unavailable.")
+            })?;
+            let child = ManagedChild::reserve(raw_child).map_err(|mut raw_child| {
+                let _ = kill_and_reap_unreserved(&mut raw_child);
+                PreviewError::internal("Preview could not reserve its process tree.")
+            })?;
+            (
                 child,
-            });
-            Ok((stdout, stderr))
-        })?
-    };
+                Box::new(stdout) as Box<dyn Read + Send>,
+                Box::new(stderr) as Box<dyn Read + Send>,
+            )
+        };
+        registry.starting = Some(StartingPreview {
+            target: target.clone(),
+            child,
+        });
+        Ok((stdout, stderr))
+    })?;
     Ok(PreviewStartReservation {
         target,
         stdout,
@@ -129,281 +349,60 @@ pub(crate) fn reserve_start(
     })
 }
 
-pub(crate) fn finish_start(
-    PreviewStartReservation {
-        target,
-        stdout,
-        stderr,
-    }: PreviewStartReservation,
-) -> Result<PreviewStartResponse, PreviewError> {
-    let origin = wait_for_loopback_server(stdout, stderr);
-    let Some(origin) = origin else {
-        stop_starting(&target);
-        return Err(PreviewError::Unavailable {
-            message: "Preview script did not expose a healthy loopback server in time.".into(),
-        });
-    };
-    let (promoted, child_to_stop) = {
-        lifecycle_registry::with_registry(|registry| {
-            let still_current = registry
-                .starting
-                .as_ref()
-                .is_some_and(|starting| matches_target(&starting.target, &target))
-                && registry.discovered.contains_key(&target)
-                && registry.active.is_none();
-            if still_current {
-                let StartingPreview { child, .. } =
-                    registry.starting.take().expect("starting preview");
-                registry.active = Some(ActivePreview {
-                    target: target.clone(),
-                    origin: origin.clone(),
-                    child,
-                });
-                (true, None)
-            } else if registry
-                .starting
-                .as_ref()
-                .is_some_and(|starting| matches_target(&starting.target, &target))
-            {
-                let child = registry
-                    .starting
-                    .take()
-                    .expect("matching starting preview")
-                    .child;
-                (false, Some(child))
-            } else {
-                (false, None)
-            }
-        })
-    };
-    if let Some(mut child) = child_to_stop {
-        stop_child(&mut child);
-    }
-    if !promoted {
-        return Err(PreviewError::conflict(
-            "activePreview",
-            "A Preview target is already active.",
-        ));
-    }
-    Ok(PreviewStartResponse {
-        ref_: target,
-        origin,
-    })
-}
-
-pub(crate) fn health(target: &PreviewTargetRef) -> Option<String> {
+pub(super) fn retain_unsettled_drainers(drainers: Vec<std::thread::JoinHandle<()>>) {
     lifecycle_registry::with_registry(|registry| {
-        let active = registry.active.as_mut()?;
-        if !matches_target(&active.target, target) {
-            return None;
-        }
-        if active.child.child.try_wait().ok().flatten().is_some() {
-            registry.active = None;
-            return None;
-        }
-        if health::get(Some(&active.origin)) {
-            Some(active.origin.clone())
-        } else {
-            None
-        }
-    })
-}
-
-pub(crate) fn stop(target: &PreviewTargetRef) -> Result<PreviewStopResponse, PreviewError> {
-    let mut child = lifecycle_registry::with_registry(|registry| {
-        if registry
-            .active
-            .as_ref()
-            .is_some_and(|active| matches_target(&active.target, target))
-        {
-            Ok(registry
-                .active
-                .take()
-                .expect("matching active preview")
-                .child)
-        } else if registry
-            .starting
-            .as_ref()
-            .is_some_and(|starting| matches_target(&starting.target, target))
-        {
-            Ok(registry
-                .starting
-                .take()
-                .expect("matching starting preview")
-                .child)
-        } else if registry.active.is_some() || registry.starting.is_some() {
-            Err(PreviewError::conflict(
-                "previewTarget",
-                "Preview target is not active.",
-            ))
-        } else {
-            Err(PreviewError::conflict(
-                "activePreview",
-                "No Preview target is active.",
-            ))
-        }
-    })?;
-    stop_child(&mut child);
-    Ok(PreviewStopResponse {
-        ref_: target.clone(),
-    })
-}
-
-pub(crate) fn stop_before_epoch(new_epoch: u64) {
-    let active = {
-        lifecycle_registry::with_registry(|registry| {
-            registry
-                .discovered
-                .retain(|target, _| target.expected_transition_epoch >= new_epoch);
-            let should_stop_starting = registry
-                .starting
-                .as_ref()
-                .is_some_and(|starting| starting.target.expected_transition_epoch < new_epoch);
-            if should_stop_starting {
-                let starting = registry.starting.as_mut().expect("starting preview");
-                stop_child(&mut starting.child);
-                registry.starting = None;
-            }
-            match registry.active.take() {
-                Some(active) if active.target.expected_transition_epoch < new_epoch => Some(active),
-                Some(active) => {
-                    registry.active = Some(active);
-                    None
-                }
-                None => None,
-            }
-        })
-    };
-    if let Some(mut active) = active {
-        stop_child(&mut active.child);
-    }
-}
-
-fn stop_starting(target: &PreviewTargetRef) {
-    lifecycle_registry::with_registry(|registry| {
-        if registry
-            .starting
-            .as_ref()
-            .is_some_and(|starting| matches_target(&starting.target, target))
-        {
-            let starting = registry.starting.as_mut().expect("starting preview");
-            stop_child(&mut starting.child);
-            registry.starting = None;
-        }
+        // A reservation is consumed once, and new reservations are refused
+        // while this registry slot is nonempty. Retain every handle even if an
+        // invariant violation reaches here; dropping would detach a drainer.
+        registry.unsettled_drainers.extend(drainers);
     });
 }
 
-fn matches_target(left: &PreviewTargetRef, right: &PreviewTargetRef) -> bool {
-    left.project_id == right.project_id
-        && left.project_generation == right.project_generation
-        && left.expected_transition_epoch == right.expected_transition_epoch
-        && left.root_id == right.root_id
-        && left.script_name == right.script_name
-}
-
-struct ManagedChild {
-    child: Child,
-    #[cfg(unix)]
-    process_group: i32,
-    #[cfg(windows)]
-    job: super::lifecycle_windows::PreviewJob,
-}
-
-impl ManagedChild {
-    fn reserve(child: Child) -> Result<Self, Child> {
-        #[cfg(windows)]
-        {
-            match super::lifecycle_windows::PreviewJob::new(&child) {
-                Ok(job) => Ok(Self { child, job }),
-                Err(()) => Err(child),
-            }
-        }
-        #[cfg(not(windows))]
-        {
-            let Ok(process_group) = i32::try_from(child.id()) else {
-                return Err(child);
-            };
-            Ok(Self {
-                child,
-                process_group,
-            })
+fn settle_unsettled_drainers_locked(registry: &mut Registry) -> bool {
+    if registry.unsettled_drainers.is_empty() {
+        return true;
+    }
+    let drainers = std::mem::take(&mut registry.unsettled_drainers);
+    match super::lifecycle_process::join_unattached_drainers_before(
+        drainers,
+        std::time::Instant::now()
+            + std::time::Duration::from_millis(
+                crate::acp::limits::PREVIEW_LIMITS.process_termination_deadline_ms,
+            ),
+    ) {
+        Ok(()) => true,
+        Err(drainers) => {
+            registry.unsettled_drainers = drainers;
+            false
         }
     }
 }
 
-fn stop_child(child: &mut ManagedChild) {
-    #[cfg(windows)]
-    child.job.terminate();
-    #[cfg(unix)]
-    terminate_process_group(child.process_group);
-    #[cfg(not(unix))]
-    let _ = child.child.kill();
-    let _ = child.child.wait();
+pub(super) fn matches_target(left: &PreviewTargetRef, right: &PreviewTargetRef) -> bool {
+    left == right
 }
 
-#[cfg(unix)]
-fn terminate_process_group(process_group: i32) {
-    const SIGKILL: i32 = 9;
-    unsafe extern "C" {
-        fn kill(pid: i32, signal: i32) -> i32;
-    }
-    // SAFETY: a negative pid targets only the group created for this owned
-    // preview root; the child id was range-checked when the group was stored.
-    let _ = unsafe { kill(-process_group, SIGKILL) };
+pub(super) fn stop_child(child: &mut ManagedChild) -> Result<(), PreviewError> {
+    child.terminate_and_reap().then_some(()).ok_or_else(|| {
+        PreviewError::internal("Preview process tree did not terminate before its deadline.")
+    })
 }
 
+#[cfg(test)]
+pub(super) fn test_owned_child_count() -> usize {
+    lifecycle_registry::with_registry(|registry| {
+        usize::from(registry.starting.is_some())
+            + usize::from(registry.active.is_some())
+            + usize::from(registry.cleanup.is_some())
+    })
+}
+
+#[cfg(test)]
+pub(super) fn test_projection() -> Option<PreviewProjection> {
+    lifecycle_registry::with_registry(|registry| registry.projection.clone())
+}
+
+#[cfg(not(windows))]
 fn npm_executable() -> &'static str {
-    if cfg!(windows) { "npm.cmd" } else { "npm" }
-}
-
-fn wait_for_loopback_server(
-    stdout: impl Read + Send + 'static,
-    stderr: impl Read + Send + 'static,
-) -> Option<String> {
-    let (sender, receiver) = mpsc::sync_channel(1);
-    drain_preview_output(stdout, sender.clone());
-    drain_preview_output(stderr, sender);
-    let deadline = Instant::now() + STARTUP_WAIT;
-    let origin = receiver.recv_timeout(STARTUP_WAIT).ok()?;
-    while Instant::now() < deadline {
-        if health::get(Some(&origin)) {
-            return Some(origin);
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-    None
-}
-
-fn drain_preview_output(mut reader: impl Read + Send + 'static, sender: mpsc::SyncSender<String>) {
-    thread::spawn(move || {
-        let mut bytes = [0_u8; 1024];
-        let mut prefix = String::new();
-        let mut notified = false;
-        while let Ok(read) = reader.read(&mut bytes) {
-            if read == 0 {
-                break;
-            }
-            prefix.push_str(&String::from_utf8_lossy(&bytes[..read]));
-            if prefix.len() > MAX_STARTUP_OUTPUT_BYTES {
-                prefix.drain(..prefix.len() - MAX_STARTUP_OUTPUT_BYTES);
-            }
-            if !notified && let Some(origin) = parse_loopback_origin_from_output(&prefix) {
-                let _ = sender.send(origin);
-                notified = true;
-            }
-        }
-    });
-}
-
-fn parse_loopback_origin_from_output(output: &str) -> Option<String> {
-    for token in output.split(|character: char| {
-        character.is_whitespace() || matches!(character, '\'' | '\"' | '(' | ')' | ',')
-    }) {
-        let start = token.find("http").unwrap_or(token.len());
-        let candidate = token.get(start..)?;
-        if let Ok(url) = parse_allowed_preview_url(candidate.trim_end_matches(['/', '.', ':'])) {
-            return Some(normalized_origin(&url));
-        }
-    }
-    None
+    "npm"
 }

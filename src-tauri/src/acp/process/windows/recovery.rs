@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use windows_sys::Win32::System::Threading::{ResumeThread, TerminateProcess};
+use windows_sys::Win32::System::Threading::ResumeThread;
 
 use super::artifact::VerifiedArtifact;
 #[cfg(feature = "acp-fixture")]
@@ -12,7 +12,8 @@ use super::authority::{RunningTree, TreeAuthority};
 use super::io::{StderrDrain, StdinEndpoint, StdoutEndpoint};
 use super::job::JobBoundary;
 use super::native::NativeHandle;
-use super::{LaunchError, LaunchSpec, TreeCapacityLease, wait_until};
+use super::suspended::terminate_and_reap_exact;
+use super::{LaunchError, LaunchSpec, TreeCapacityLease};
 use crate::acp::process::SpawnTimingReceipt;
 use crate::acp::process::platform::LaunchFailure;
 use crate::acp::process::supervisor::{LaunchFailureTracker, ZeroProcessToken};
@@ -258,22 +259,18 @@ impl StartedRecovery {
             .process
             .as_ref()
             .ok_or(LaunchError::ContainmentFailure)?;
-        if self.assigned_to_job {
-            let _ = self.job.terminate();
-        }
-        // SAFETY: the retained root handle is valid. This fallback also covers
-        // failures that occur before successful Job assignment.
-        unsafe { TerminateProcess(process.raw(), 1) };
         let deadline = {
             let native_deadline = Instant::now() + self.deadline;
             self.absolute_cleanup_deadline
                 .map_or(native_deadline, |absolute| native_deadline.min(absolute))
         };
-        wait_until(process.raw(), deadline)?;
-        if self.assigned_to_job {
-            self.job
-                .wait_for_zero(self.active_process_limit, deadline)?;
-        }
+        terminate_and_reap_exact(
+            &self.job,
+            process.raw(),
+            self.assigned_to_job,
+            u64::from(self.active_process_limit),
+            deadline,
+        )?;
         if let Some(stderr) = self.stderr.as_ref() {
             stderr.wait_until(deadline)?;
         }

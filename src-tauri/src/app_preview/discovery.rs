@@ -1,41 +1,59 @@
 use std::{
     collections::BTreeSet,
-    fs,
+    fs::{self, File},
+    io::Read,
     path::{Path, PathBuf},
 };
 
 use serde::{Deserialize, Serialize};
 
-use crate::project_registry::RootRecord;
+use crate::{
+    acp::{
+        contract::{
+            ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
+            SageRootId,
+        },
+        limits::PREVIEW_LIMITS,
+    },
+    project_registry::RootRecord,
+};
 
-use super::{error::PreviewError, lifecycle};
+use super::error::PreviewError;
+#[cfg(test)]
+use super::lifecycle;
 
-const MAX_DEPTH: usize = 4;
-const MAX_PACKAGES_PER_ROOT: usize = 8;
-const MAX_TARGETS_PER_PROJECT: usize = 16;
-const MAX_DIRECTORIES_PER_ROOT: usize = 256;
-const MAX_PACKAGE_BYTES: u64 = 256 * 1024;
-const MAX_SAFE_JAVASCRIPT_INTEGER: u64 = 9_007_199_254_740_991;
+const MAX_DEPTH: usize = PREVIEW_LIMITS.discovery_depth as usize;
+const MAX_PACKAGES_PER_ROOT: usize = PREVIEW_LIMITS.packages_per_root as usize;
+const MAX_TARGETS_PER_PROJECT: usize = PREVIEW_LIMITS.targets_per_project as usize;
+const MAX_DIRECTORIES_PER_ROOT: usize = PREVIEW_LIMITS.directories_per_root as usize;
+const MAX_DIRECTORY_ENTRIES: usize = PREVIEW_LIMITS.directory_entries as usize;
+const MAX_PACKAGE_BYTES: u64 = PREVIEW_LIMITS.manifest_bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct PreviewDiscoveryRequest {
-    pub project_id: String,
-    pub project_generation: u64,
+    pub project_id: SageProjectId,
+    pub project_generation: ProjectGeneration,
     pub expected_transition_epoch: u64,
+    pub chat_id: SageChatId,
+    pub session_id: SageAgentSessionId,
+    pub runtime_epoch: RuntimeEpoch,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct PreviewTargetRef {
-    pub project_id: String,
-    pub project_generation: u64,
+    pub project_id: SageProjectId,
+    pub project_generation: ProjectGeneration,
     pub expected_transition_epoch: u64,
-    pub root_id: String,
+    pub chat_id: SageChatId,
+    pub session_id: SageAgentSessionId,
+    pub runtime_epoch: RuntimeEpoch,
+    pub root_id: SageRootId,
     pub script_name: PreviewScriptName,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum PreviewScriptName {
     Dev,
@@ -54,7 +72,7 @@ impl PreviewScriptName {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PreviewDiscoveryResponse {
-    pub project_id: String,
+    pub project_id: SageProjectId,
     pub transition_epoch: u64,
     pub targets: Vec<PreviewTargetRef>,
     pub truncated: bool,
@@ -63,9 +81,8 @@ pub(crate) struct PreviewDiscoveryResponse {
 pub(crate) fn validate_discovery_request(
     request: &PreviewDiscoveryRequest,
 ) -> Result<(), PreviewError> {
-    if !valid_identifier(&request.project_id)
-        || request.project_generation > MAX_SAFE_JAVASCRIPT_INTEGER
-        || request.expected_transition_epoch > MAX_SAFE_JAVASCRIPT_INTEGER
+    if request.expected_transition_epoch > PREVIEW_LIMITS.transition_epoch_max
+        || request.project_generation.get() != request.expected_transition_epoch
     {
         return Err(PreviewError::invalid(
             "Preview request identity is invalid.",
@@ -79,24 +96,27 @@ pub(crate) fn validate_target(target: &PreviewTargetRef) -> Result<(), PreviewEr
         project_id: target.project_id.clone(),
         project_generation: target.project_generation,
         expected_transition_epoch: target.expected_transition_epoch,
+        chat_id: target.chat_id.clone(),
+        session_id: target.session_id.clone(),
+        runtime_epoch: target.runtime_epoch,
     })?;
-    if !valid_identifier(&target.root_id) {
-        return Err(PreviewError::invalid("Preview target root is invalid."));
-    }
     Ok(())
 }
 
-fn valid_identifier(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 512
-        && !value.contains('\0')
-        && !value.chars().any(char::is_control)
-}
-
+#[cfg(test)]
 pub(crate) fn discover(
     request: &PreviewDiscoveryRequest,
     roots: Vec<RootRecord>,
 ) -> Result<PreviewDiscoveryResponse, PreviewError> {
+    let (response, mappings) = discover_uninstalled(request, roots)?;
+    lifecycle::replace_discovered(request, mappings);
+    Ok(response)
+}
+
+pub(crate) fn discover_uninstalled(
+    request: &PreviewDiscoveryRequest,
+    roots: Vec<RootRecord>,
+) -> Result<(PreviewDiscoveryResponse, Vec<(PreviewTargetRef, PathBuf)>), PreviewError> {
     let mut targets = Vec::new();
     let mut mappings = Vec::new();
     let mut truncated = false;
@@ -125,36 +145,37 @@ pub(crate) fn discover(
                     project_id: request.project_id.clone(),
                     project_generation: request.project_generation,
                     expected_transition_epoch: request.expected_transition_epoch,
-                    root_id: root.id.clone(),
+                    chat_id: request.chat_id.clone(),
+                    session_id: request.session_id.clone(),
+                    runtime_epoch: request.runtime_epoch,
+                    root_id: SageRootId::parse(root.id.clone())
+                        .map_err(|_| PreviewError::internal("Preview root identity is invalid."))?,
                     script_name,
                 };
-                mappings.push((
-                    target.clone(),
-                    package
-                        .parent()
-                        .expect("package file has parent")
-                        .to_owned(),
-                ));
-                targets.push(target);
-                if targets.len() == MAX_TARGETS_PER_PROJECT {
+                let Some(package_root) = package.parent() else {
                     truncated = true;
-                    break 'roots;
-                }
+                    continue;
+                };
+                mappings.push((target.clone(), package_root.to_owned()));
+                targets.push(target);
             }
         }
     }
-    lifecycle::replace_discovered(request, mappings);
-    Ok(PreviewDiscoveryResponse {
-        project_id: request.project_id.clone(),
-        transition_epoch: request.expected_transition_epoch,
-        targets,
-        truncated,
-    })
+    Ok((
+        PreviewDiscoveryResponse {
+            project_id: request.project_id.clone(),
+            transition_epoch: request.expected_transition_epoch,
+            targets,
+            truncated,
+        },
+        mappings,
+    ))
 }
 
 fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
     let mut packages = Vec::new();
     let mut pending = vec![(root.to_owned(), 0_usize)];
+    let mut admitted_directories = 1_usize;
     let mut visited = 0_usize;
     let mut truncated = false;
     while let Some((directory, depth)) = pending.pop() {
@@ -174,9 +195,11 @@ fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
                 continue;
             }
         };
-        let mut entry_count = 0_usize;
-        for entry in entries.take(MAX_DIRECTORIES_PER_ROOT) {
-            entry_count += 1;
+        for (entry_count, entry) in entries.take(MAX_DIRECTORY_ENTRIES + 1).enumerate() {
+            if entry_count == MAX_DIRECTORY_ENTRIES {
+                truncated = true;
+                break;
+            }
             if packages.len() == MAX_PACKAGES_PER_ROOT {
                 truncated = true;
                 break;
@@ -198,16 +221,14 @@ fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
             }
             if file_type.is_file() && name == "package.json" {
                 packages.push(entry.path());
-                if packages.len() == MAX_PACKAGES_PER_ROOT {
-                    truncated = true;
-                    break;
-                }
             } else if file_type.is_dir() && depth < MAX_DEPTH && !skipped_directory(name) {
-                pending.push((entry.path(), depth + 1));
+                if admitted_directories == MAX_DIRECTORIES_PER_ROOT {
+                    truncated = true;
+                } else {
+                    admitted_directories += 1;
+                    pending.push((entry.path(), depth + 1));
+                }
             }
-        }
-        if entry_count == MAX_DIRECTORIES_PER_ROOT {
-            truncated = true;
         }
     }
     Ok((packages, truncated))
@@ -237,13 +258,21 @@ fn is_reparse_point(_entry: &fs::DirEntry, file_type: &fs::FileType) -> bool {
 }
 
 fn package_scripts(path: &Path) -> Result<Vec<PreviewScriptName>, PreviewError> {
-    let metadata = fs::metadata(path)
+    let file = File::open(path)
+        .map_err(|_| PreviewError::internal("Preview package manifest could not be opened."))?;
+    let metadata = file
+        .metadata()
         .map_err(|_| PreviewError::internal("Preview package metadata could not be read."))?;
     if metadata.len() > MAX_PACKAGE_BYTES {
         return Ok(Vec::new());
     }
-    let bytes = fs::read(path)
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_PACKAGE_BYTES + 1)
+        .read_to_end(&mut bytes)
         .map_err(|_| PreviewError::internal("Preview package manifest could not be read."))?;
+    if bytes.len() as u64 > MAX_PACKAGE_BYTES {
+        return Ok(Vec::new());
+    }
     let value: serde_json::Value = serde_json::from_slice(&bytes)
         .map_err(|_| PreviewError::invalid("Preview package manifest is invalid."))?;
     let Some(scripts) = value.get("scripts").and_then(serde_json::Value::as_object) else {
@@ -257,10 +286,47 @@ fn package_scripts(path: &Path) -> Result<Vec<PreviewScriptName>, PreviewError> 
         if scripts
             .get(name)
             .and_then(serde_json::Value::as_str)
-            .is_some_and(|value| !value.trim().is_empty() && value.len() <= 4096)
+            .is_some_and(|value| {
+                !value.trim().is_empty() && value.len() <= PREVIEW_LIMITS.script_bytes as usize
+            })
         {
             result.push(script);
         }
     }
     Ok(result)
+}
+
+#[cfg(test)]
+pub(super) fn test_depth_admitted(value: u64) -> bool {
+    value <= PREVIEW_LIMITS.discovery_depth
+}
+
+#[cfg(test)]
+pub(super) fn test_package_count_admitted(value: u64) -> bool {
+    value <= PREVIEW_LIMITS.packages_per_root
+}
+
+#[cfg(test)]
+pub(super) fn test_directory_count_admitted(value: u64) -> bool {
+    value <= PREVIEW_LIMITS.directories_per_root
+}
+
+#[cfg(test)]
+pub(super) fn test_manifest_bytes_admitted(value: u64) -> bool {
+    value <= PREVIEW_LIMITS.manifest_bytes
+}
+
+#[cfg(test)]
+pub(super) fn test_target_count_admitted(value: u64) -> bool {
+    value <= PREVIEW_LIMITS.targets_per_project
+}
+
+#[cfg(test)]
+pub(super) fn test_directory_entries_admitted(value: u64) -> bool {
+    value <= PREVIEW_LIMITS.directory_entries
+}
+
+#[cfg(test)]
+pub(super) fn test_script_bytes_admitted(value: u64) -> bool {
+    value <= PREVIEW_LIMITS.script_bytes
 }

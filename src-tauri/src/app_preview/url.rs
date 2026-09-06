@@ -1,8 +1,9 @@
 use url::Url;
 
 use super::error::PreviewError;
+use crate::acp::limits::PREVIEW_LIMITS;
 
-pub(crate) const MAX_PREVIEW_URL_BYTES: usize = 2048;
+pub(crate) const MAX_PREVIEW_URL_BYTES: usize = PREVIEW_LIMITS.url_bytes as usize;
 
 pub(crate) fn parse_allowed_preview_url(raw: &str) -> Result<Url, PreviewError> {
     if raw.is_empty()
@@ -39,6 +40,6 @@ pub(crate) fn normalized_origin(url: &Url) -> String {
         "{}://{}:{}",
         url.scheme(),
         host,
-        url.port().expect("validated port")
+        url.port().unwrap_or_default()
     )
 }

@@ -2,18 +2,18 @@ import { useSyncExternalStore } from "react";
 
 import {
   type HarnessBrowseSession,
+  type HarnessBrowseOwner,
   browseSessionForOwner,
   harnessBrowseOwner,
   subscribeBrowseSessions,
 } from "./harnessBrowse";
-import type { AgentArtifactOwner } from "../../domain/agentArtifact";
 
 function subscribe(onStoreChange: () => void): () => void {
   return subscribeBrowseSessions(onStoreChange);
 }
 
 export function useHarnessBrowseSession(
-  owner: AgentArtifactOwner | null,
+  owner: HarnessBrowseOwner | null,
 ): HarnessBrowseSession | null {
   return useSyncExternalStore(
     subscribe,
@@ -22,6 +22,6 @@ export function useHarnessBrowseSession(
   );
 }
 
-export function useHarnessBrowseOwner(): AgentArtifactOwner | null {
+export function useHarnessBrowseOwner(): HarnessBrowseOwner | null {
   return useSyncExternalStore(subscribe, harnessBrowseOwner, () => null);
 }

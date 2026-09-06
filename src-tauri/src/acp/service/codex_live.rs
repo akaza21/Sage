@@ -127,7 +127,13 @@ fn observe_runner(
     runner.observe_exit_once(move |exit| {
         #[cfg(any(debug_assertions, feature = "diagnostics"))]
         identity.clear_exact(&owner);
-        if exit == LiveRunnerExit::Failed {
+        // The runner invokes this observer only after its own finish path has
+        // reached terminal process handling. Retire only this exact runtime
+        // owner before releasing any active-operation capacity; a newer
+        // Preview owner cannot match these branded owner fields.
+        let preview_retired =
+            crate::app_preview_commands::retire_preview_runtime_owner(&owner).is_ok();
+        if exit == LiveRunnerExit::Failed || !preview_retired {
             if let Some(slot) = slot.upgrade() {
                 let _ = slot.mark_recovery(&owner);
             }

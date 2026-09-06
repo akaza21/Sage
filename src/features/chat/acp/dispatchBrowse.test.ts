@@ -1,12 +1,13 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../../domain/acp";
 import {
   browseSessionForOwner,
   clearBrowseSessions,
+  setHarnessBrowseOwner,
+  type HarnessBrowseOwner,
 } from "../../preview/harnessBrowse";
 import { dispatchBrowseFromAcpPage } from "./dispatchBrowse";
-import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 
 afterEach(() => {
   clearBrowseSessions();
@@ -19,7 +20,7 @@ function page(items: AcpItem[], chatId = "chat-1"): AcpChatPage {
     title: "Browse chat",
     projectionRevision: "1",
     currentSessionId: "session-1",
-    sessions: [],
+    sessions: [{ id: "session-1", runtimeEpoch: "1" }] as never,
     nextCursor: null,
     turns: [
       {
@@ -39,13 +40,20 @@ function page(items: AcpItem[], chatId = "chat-1"): AcpChatPage {
   } as unknown as AcpChatPage;
 }
 
-function ownerFor(chatId: string): AgentArtifactOwner {
+function ownerFor(chatId: string): HarnessBrowseOwner {
   return {
     projectId: "project-1",
+    projectGeneration: "1",
+    transitionEpoch: 1,
     chatId,
     sessionId: "session-1",
-  } as AgentArtifactOwner;
+    runtimeEpoch: "1",
+  } as HarnessBrowseOwner;
 }
+
+beforeEach(() =>
+  setHarnessBrowseOwner(ownerFor("chat-1"), ["chat-1", "chat-a"]),
+);
 
 function webTool(
   summary: string | null,
@@ -99,6 +107,7 @@ describe("ACP curated browse dispatch", () => {
   });
 
   it("scopes browse to the current chat and session", () => {
+    setHarnessBrowseOwner(ownerFor("chat-a"), ["chat-a"]);
     dispatchBrowseFromAcpPage(
       page([webTool("http://127.0.0.1:4173/a")], "chat-a"),
     );
@@ -112,19 +121,33 @@ describe("ACP curated browse dispatch", () => {
     expect(browseSessionForOwner(ownerFor("chat-b"))).toBeNull();
   });
 
-  it("respects the two-chat browse cap", () => {
+  it("rejects a historical runtime item from the current session", () => {
+    const current = page([webTool("http://127.0.0.1:4173/current")]);
+    current.turns[0].items[0].runtimeEpoch = "0" as AcpItem["runtimeEpoch"];
+    dispatchBrowseFromAcpPage(current);
+    expect(browseSessionForOwner(ownerFor("chat-1"))).toBeNull();
+
+    const staleTurn = page([webTool("http://127.0.0.1:4173/stale-turn")]);
+    staleTurn.turns[0].runtimeEpoch = "0" as TurnProjection["runtimeEpoch"];
+    dispatchBrowseFromAcpPage(staleTurn);
+    expect(browseSessionForOwner(ownerFor("chat-1"))).toBeNull();
+  });
+
+  it("keeps browse sessions isolated across Chats", () => {
+    setHarnessBrowseOwner(ownerFor("chat-a"), ["chat-a", "chat-b"]);
     dispatchBrowseFromAcpPage(
       page([webTool("http://127.0.0.1:5173/")], "chat-a"),
     );
+    setHarnessBrowseOwner(ownerFor("chat-b"), ["chat-a", "chat-b"]);
     dispatchBrowseFromAcpPage(
       page([webTool("http://127.0.0.1:4173/")], "chat-b"),
     );
     dispatchBrowseFromAcpPage(
       page([webTool("http://127.0.0.1:3000/")], "chat-c"),
     );
-    expect(browseSessionForOwner(ownerFor("chat-a"))).toBeNull();
-    expect(browseSessionForOwner(ownerFor("chat-c"))?.href).toBe(
-      "http://127.0.0.1:3000/",
+    expect(browseSessionForOwner(ownerFor("chat-a"))?.href).toBe(
+      "http://127.0.0.1:5173/",
     );
+    expect(browseSessionForOwner(ownerFor("chat-c"))).toBeNull();
   });
 });

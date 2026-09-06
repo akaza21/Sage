@@ -12,6 +12,10 @@ mod unix;
 mod windows;
 #[cfg(windows)]
 pub(crate) use windows::monotonic_tick;
+#[cfg(windows)]
+pub(crate) use windows::{
+    PreviewJobBoundary, PreviewLaunchFailure, PreviewLaunchRecovery, PreviewWindowsProcess,
+};
 
 #[cfg(all(test, not(windows)))]
 pub(crate) use unix::launch_fixture_for_test;
@@ -91,6 +95,9 @@ pub(crate) fn launch_fixture_for_test(runtime_epoch: u64) -> RunningTree {
     let pool = TreeCapacityPool::isolated_ade_0006a();
     PlatformSupervisor::launch(&spec, pool.try_acquire(spec.limits.descendants).unwrap()).unwrap()
 }
+
+#[cfg(all(test, windows))]
+pub(crate) use windows::retained_preview_recovery_with_retry_fault_for_test;
 
 #[cfg(test)]
 mod tests;

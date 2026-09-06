@@ -1,5 +1,8 @@
 import type { AcpChatPage, AcpItem } from "../../../domain/acp";
-import { extractAdmittedBrowseUrl } from "../../preview/harnessBrowse";
+import {
+  extractAdmittedBrowseUrl,
+  harnessBrowseOwner,
+} from "../../preview/harnessBrowse";
 import { CURATED_BROWSE_TOOL_NAME, createToolHost } from "./toolHost";
 
 function toolBrowseUrl(item: AcpItem): string | null {
@@ -20,7 +23,7 @@ function toolBrowseUrl(item: AcpItem): string | null {
 export function dispatchBrowseFromAcpPage(
   page: Pick<
     AcpChatPage,
-    "projectId" | "chatId" | "currentSessionId" | "turns"
+    "projectId" | "chatId" | "currentSessionId" | "sessions" | "turns"
   >,
 ): void {
   const host = createToolHost();
@@ -31,23 +34,35 @@ export function dispatchBrowseFromAcpPage(
   ) {
     return;
   }
+  const owner = harnessBrowseOwner();
+  const currentSession = page.sessions.find(
+    (session) => session.id === page.currentSessionId,
+  );
+  if (
+    !owner ||
+    owner.projectId !== page.projectId ||
+    owner.chatId !== page.chatId ||
+    owner.sessionId !== page.currentSessionId ||
+    currentSession?.runtimeEpoch !== owner.runtimeEpoch
+  ) {
+    return;
+  }
   for (const turn of page.turns) {
     for (const item of turn.items) {
       if (
         item.projectId !== page.projectId ||
         item.chatId !== page.chatId ||
-        item.sessionId !== page.currentSessionId
+        item.sessionId !== page.currentSessionId ||
+        turn.sessionId !== page.currentSessionId ||
+        turn.runtimeEpoch !== owner.runtimeEpoch ||
+        item.runtimeEpoch !== owner.runtimeEpoch
       ) {
         continue;
       }
       const url = toolBrowseUrl(item);
       if (!url) continue;
       host.invoke(CURATED_BROWSE_TOOL_NAME, {
-        owner: {
-          projectId: page.projectId,
-          chatId: page.chatId,
-          sessionId: page.currentSessionId,
-        },
+        owner,
         url,
       });
     }
