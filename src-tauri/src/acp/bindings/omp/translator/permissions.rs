@@ -217,6 +217,7 @@ impl OmpTranslator {
                     category: crate::acp::intent::ToolCategory::Other,
                     label: SafeText::new("toolLabel", "OMP tool")?,
                     output_summary: Some(SafeText::new("toolOutput", "Permission declined")?),
+                    locations: Default::default(),
                 },
                 update_mode: ItemUpdateMode::Replace,
             },

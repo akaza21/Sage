@@ -1,11 +1,4 @@
-import {
-  Eye,
-  Files,
-  GitCompareArrows,
-  PanelRightClose,
-  Pin,
-  X,
-} from "lucide-react";
+import { Files, PanelRightClose } from "lucide-react";
 import {
   useEffect,
   useId,
@@ -29,19 +22,16 @@ import { orderedTabs } from "../app/tabState";
 import { useWorkbenchStore } from "../app/store";
 import { agentArtifactVisible } from "./agentArtifactAdmission";
 import { AgentArtifactCollapsedPane } from "./AgentArtifactCollapsedPane";
-import {
-  activeArtifactForTarget,
-  artifactTabParts,
-} from "./agentArtifactTabPresentation";
+import { artifactChipStatsForTab } from "./artifactChipStats";
+import { activeArtifactForTarget } from "./agentArtifactTabPresentation";
+import { AgentArtifactTabStrip } from "./AgentArtifactTabStrip";
 import { agentPreviewControllerOwner } from "./agentPreviewControllerOwner";
 import { useAgentArtifactFollowLifecycle } from "./useAgentArtifactFollowLifecycle";
-import { FileKindIcon } from "../features/files/FileKindIcon";
 import { AgentPreviewSurface } from "../features/preview/AgentPreviewSurface";
 import {
   useHarnessBrowseOwner,
   useHarnessBrowseSession,
 } from "../features/preview/useHarnessBrowseSession";
-import { artifactChipStatsForTab } from "./artifactChipStats";
 import { renderFileOrDiffCanvas } from "./surfaceRegistry";
 import {
   agentArtifactOwnerKey,
@@ -172,6 +162,10 @@ export function AgentArtifactPane({
     />
   );
   const activeArtifact = activeArtifactForTarget(artifacts, selectedTarget);
+  const focusedRuntimeEpoch =
+    focusedPage?.sessions.find(
+      (session) => session.id === focusedOwner?.sessionId,
+    )?.runtimeEpoch ?? null;
 
   useAgentArtifactFollowLifecycle({
     availableTargets,
@@ -231,6 +225,10 @@ export function AgentArtifactPane({
           hasResources ? "" : " agent-artifact-pane--empty"
         }`}
         aria-label="Agent artifacts"
+        data-owner-project-id={focusedOwner?.projectId}
+        data-owner-chat-id={focusedOwner?.chatId}
+        data-owner-session-id={focusedOwner?.sessionId}
+        data-owner-runtime-epoch={focusedRuntimeEpoch ?? undefined}
         tabIndex={focusOnExpand ? -1 : undefined}
         onKeyDown={(event) => {
           if (event.key !== "Escape") return;
@@ -240,136 +238,20 @@ export function AgentArtifactPane({
       >
         <header className="agent-artifact-pane__header">
           {hasResources ? (
-            <nav className="tab-strip" aria-label="Agent artifact tabs">
-              <div className="tab-strip__scroll">
-                {artifacts.map((tab) => {
-                  const selected =
-                    selectedTarget?.kind === "tab" &&
-                    tab.id === selectedTarget.tabId;
-                  const stats = artifactChipStatsForTab(
-                    tab,
-                    focusedOwner ? focusedPage : null,
-                  );
-                  const [fullPath, basename, directory] = artifactTabParts(tab);
-                  const accessibleName = `${tab.kind === "file" ? "File" : "Diff"} ${fullPath}`;
-                  return (
-                    <div
-                      className={`tab ${selected ? "tab--active" : ""}`}
-                      key={tab.id}
-                      role="presentation"
-                    >
-                      <button
-                        className="tab__activate"
-                        type="button"
-                        role="tab"
-                        aria-selected={selected}
-                        aria-label={accessibleName}
-                        title={fullPath}
-                        onClick={() => {
-                          if (focusedOwner) {
-                            useAgentArtifactFollowStore
-                              .getState()
-                              .pin(focusedOwner, {
-                                kind: "tab",
-                                tabId: tab.id,
-                              });
-                          }
-                          void activateTab(tab.id);
-                        }}
-                      >
-                        {tab.kind === "file" ? (
-                          <FileKindIcon
-                            path={tab.resource?.relativePath ?? tab.title}
-                            size={15}
-                          />
-                        ) : (
-                          <GitCompareArrows
-                            size={15}
-                            strokeWidth={1.8}
-                            aria-hidden="true"
-                          />
-                        )}
-                        <span className="tab__path" aria-hidden="true">
-                          <span className="tab__dir">{directory}</span>
-                          <span className="tab__basename">{basename}</span>
-                        </span>
-                        {tab.dirty === true ? (
-                          <span
-                            className="tab__dirty"
-                            title="Unsaved changes"
-                          />
-                        ) : null}
-                        {stats?.additionsLabel ? (
-                          <span className="tab__count tab__count--add">
-                            {stats.additionsLabel}
-                          </span>
-                        ) : null}
-                        {stats?.deletionsLabel ? (
-                          <span className="tab__count tab__count--del">
-                            {stats.deletionsLabel}
-                          </span>
-                        ) : null}
-                      </button>
-                      <button
-                        className="tab__close"
-                        type="button"
-                        aria-label={`Close ${tab.title}`}
-                        onClick={() => closeTab(tab.id)}
-                      >
-                        <X size={14} aria-hidden="true" />
-                      </button>
-                    </div>
-                  );
-                })}
-                {focusedOwner !== null ? (
-                  <div
-                    className={`tab ${previewSelected ? "tab--active" : ""}`}
-                    role="presentation"
-                  >
-                    <button
-                      className="tab__activate"
-                      type="button"
-                      role="tab"
-                      aria-selected={previewSelected}
-                      aria-label="Preview"
-                      onClick={() => {
-                        if (focusedOwner) {
-                          useAgentArtifactFollowStore
-                            .getState()
-                            .pin(focusedOwner, { kind: "preview" });
-                        }
-                      }}
-                    >
-                      <Eye size={15} strokeWidth={1.8} aria-hidden="true" />
-                      <span>Preview</span>
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </nav>
+            <AgentArtifactTabStrip
+              artifacts={artifacts}
+              selectedTarget={selectedTarget}
+              focusedOwner={focusedOwner}
+              focusedPage={focusedPage}
+              previewSelected={previewSelected}
+              record={record}
+              availableTargets={availableTargets}
+              activateTab={activateTab}
+              closeTab={closeTab}
+            />
           ) : (
             <strong>Files, changes, and preview</strong>
           )}
-          {focusedOwner && record && availableTargets.length > 1 ? (
-            <button
-              className="agent-artifact-pane__follow"
-              type="button"
-              aria-label="Follow latest resource"
-              aria-pressed={record.mode === "follow"}
-              title={
-                record.mode === "follow"
-                  ? "Following the newest resource from this Chat"
-                  : "Resume following the newest resource from this Chat"
-              }
-              onClick={() =>
-                useAgentArtifactFollowStore
-                  .getState()
-                  .followLatest(focusedOwner)
-              }
-            >
-              <Pin size={15} aria-hidden="true" />
-            </button>
-          ) : null}
           <button
             className="agent-artifact-pane__collapse"
             type="button"

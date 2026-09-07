@@ -10,15 +10,14 @@ use uuid::Uuid;
 
 use super::*;
 use crate::{
-    domain::{
-        FileRenameOutcome, ProjectLayoutRequest, RenameProjectFileRequest, ResourceRef,
-        WorkbenchTab,
-    },
+    domain::{ProjectLayoutRequest, RenameProjectFileRequest, ResourceRef, WorkbenchTab},
     editor_coordination::EditorOperationKind,
     persistence::{Database, now_millis},
-    project_commands::persist_project_layout_inner,
     state::AppState,
 };
+
+#[cfg(windows)]
+use crate::{domain::FileRenameOutcome, project_commands::persist_project_layout_inner};
 
 struct Fixture {
     root: std::path::PathBuf,

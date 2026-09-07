@@ -1108,6 +1108,340 @@ fn initialize_session_prompt_stream_tool_usage_cancel_and_terminal_are_normalize
 }
 
 #[test]
+fn sparse_command_updates_preserve_and_explicitly_clear_typed_fields_on_one_item() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+
+    let initial = runtime
+        .ingest(
+            &frame(json!({"method":"item/started","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"command-1","type":"commandExecution","status":"inProgress",
+                    "aggregatedOutput":"\"Bearer\",  \t\r\nopaque-command-credential path=C:\\private file:///secret",
+                    "commandActions":[{
+                        "type":"read","command":"cat src/lib.rs","name":"read source",
+                        "path":"C:\\repo\\src\\lib.rs"
+                    }]
+                }
+            }})),
+            &Mapper,
+        )
+        .expect("initial command");
+    let AdapterEvent::Item {
+        id: first_id,
+        payload,
+        ..
+    } = &initial.events()[0]
+    else {
+        panic!("initial command item")
+    };
+    assert!(matches!(
+        payload,
+        NormalizedPayload::ToolCall {
+            input_summary: None,
+            output_summary: Some(output),
+            locations,
+            ..
+        } if !output.as_str().contains("opaque-command-credential")
+            && !output.as_str().contains("private")
+            && !output.as_str().contains("file:///")
+            && locations.as_slice().len() == 1
+    ));
+    let patched = runtime
+        .ingest(
+            &frame(json!({"method":"item/started","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"command-1","type":"commandExecution","status":"inProgress",
+                    "aggregatedOutput":"\"Bearer:\",  \t\r\nopaque-command-credential path=C:\\private file:///secret"
+                }
+            }})),
+            &Mapper,
+        )
+        .expect("same-status command patch");
+    let AdapterEvent::Item {
+        id: patched_id,
+        payload,
+        ..
+    } = &patched.events()[0]
+    else {
+        panic!("patched command item")
+    };
+    assert_eq!(
+        first_id, patched_id,
+        "same external command remains one item"
+    );
+    assert!(matches!(
+        payload,
+        NormalizedPayload::ToolCall {
+            input_summary: None,
+            output_summary: Some(output),
+            locations,
+            ..
+        } if !output.as_str().contains("opaque-command-credential")
+            && !output.as_str().contains("private")
+            && !output.as_str().contains("file:///")
+            && locations.as_slice().len() == 1
+    ));
+    let preserved = runtime
+        .ingest(
+            &frame(json!({"method":"item/started","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"command-1","type":"commandExecution","status":"inProgress"
+                }
+            }})),
+            &Mapper,
+        )
+        .expect("sparse command");
+    let AdapterEvent::Item { payload, .. } = &preserved.events()[0] else {
+        panic!("preserved command item")
+    };
+    assert!(matches!(
+        payload,
+        NormalizedPayload::ToolCall {
+            input_summary: None,
+            output_summary: Some(output),
+            locations,
+            ..
+        } if !output.as_str().contains("opaque-command-credential")
+            && !output.as_str().contains("private")
+            && !output.as_str().contains("file:///")
+            && locations.as_slice().len() == 1
+    ));
+
+    let cleared = runtime
+        .ingest(
+            &frame(json!({"method":"item/started","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"command-1","type":"commandExecution","status":"inProgress",
+                    "aggregatedOutput":null,"commandActions":[]
+                }
+            }})),
+            &Mapper,
+        )
+        .expect("explicit clear");
+    let AdapterEvent::Item {
+        id: cleared_id,
+        payload,
+        ..
+    } = &cleared.events()[0]
+    else {
+        panic!("cleared command item")
+    };
+    assert_eq!(first_id, cleared_id, "clear patches the same command item");
+    assert!(matches!(
+        payload,
+        NormalizedPayload::ToolCall { input_summary: None, locations, .. }
+            if locations.as_slice().is_empty()
+    ));
+}
+
+#[test]
+fn command_snapshots_reject_foreign_or_retired_turns_without_borrowing_prior_content() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    runtime
+        .ingest(
+            &frame(json!({"method":"item/started","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"command-1","type":"commandExecution","status":"inProgress",
+                    "aggregatedOutput":"turn one only"
+                }
+            }})),
+            &Mapper,
+        )
+        .expect("first command");
+    assert!(matches!(
+        runtime.ingest(
+            &frame(json!({"method":"item/started","params":{
+                "threadId":"foreign-thread","turnId":"turn-1","item":{
+                    "id":"command-1","type":"commandExecution","status":"inProgress"
+                }
+            }})),
+            &Mapper,
+        ),
+        Err(AdapterRuntimeError::Operation)
+    ));
+    runtime
+        .ingest(
+            &frame(json!({"method":"turn/completed","params":{
+                "threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}
+            }})),
+            &Mapper,
+        )
+        .expect("first terminal");
+    let old = runtime
+        .ingest(
+            &frame(json!({"method":"item/started","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"command-1","type":"commandExecution","status":"inProgress"
+                }
+            }})),
+            &Mapper,
+        )
+        .expect("old turn is ignored");
+    assert!(matches!(old.events(), [AdapterEvent::IgnoredLate]));
+
+    let next = runtime
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Start a separate turn").expect("prompt"),
+            client_message_id: RequiredText::new("client", "client-2").expect("client"),
+        })
+        .expect("next turn");
+    let next_id = request_id(&next);
+    runtime
+        .ingest(
+            &frame(json!({"id":next_id,"result":{"turn":{"id":"turn-2"}}})),
+            &Mapper,
+        )
+        .expect("next turn response");
+    let next_item = runtime
+        .ingest(
+            &frame(json!({"method":"item/started","params":{
+                "threadId":"thread-1","turnId":"turn-2","item":{
+                    "id":"command-1","type":"commandExecution","status":"inProgress"
+                }
+            }})),
+            &Mapper,
+        )
+        .expect("new-turn command");
+    assert!(matches!(
+        next_item.events(),
+        [AdapterEvent::Item {
+            payload: NormalizedPayload::ToolCall { input_summary: None, locations, .. },
+            ..
+        }] if locations.as_slice().is_empty()
+    ));
+}
+
+#[test]
+fn command_output_deltas_use_one_safe_scoped_snapshot_and_flush_only_on_terminal() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+
+    let started = runtime
+        .ingest(
+            &frame(json!({"method":"item/started","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"command-delta","type":"commandExecution","status":"inProgress",
+                    "commandActions":[{
+                        "type":"read","command":"type src\\lib.rs","name":"read source",
+                        "path":"C:\\repo\\src\\lib.rs"
+                    }]
+                }
+            }})),
+            &Mapper,
+        )
+        .expect("tracked empty command");
+    let AdapterEvent::Item {
+        id: command_id,
+        payload: NormalizedPayload::ToolCall { locations, .. },
+        ..
+    } = &started.events()[0]
+    else {
+        panic!("typed command start")
+    };
+    assert_eq!(locations.as_slice().len(), 1);
+
+    let prefix = runtime
+        .ingest(
+            &frame(json!({"method":"item/commandExecution/outputDelta","params":{
+                "threadId":"thread-1","turnId":"turn-1","itemId":"command-delta","delta":"Bearer"
+            }})),
+            &Mapper,
+        )
+        .expect("bearer prefix");
+    assert!(matches!(
+        prefix.events(),
+        [AdapterEvent::Item {
+            id,
+            payload: NormalizedPayload::ToolUpdateResult { output_summary: None, locations, .. },
+            ..
+        }] if id == command_id && locations.as_slice().len() == 1
+    ));
+
+    let credential = runtime
+        .ingest(
+            &frame(json!({"method":"item/commandExecution/outputDelta","params":{
+                "threadId":"thread-1","turnId":"turn-1","itemId":"command-delta","delta":" opaque-credential "
+            }})),
+            &Mapper,
+        )
+        .expect("bearer completion");
+    let credential_debug = format!("{:?}", credential.events());
+    assert!(!credential_debug.contains("opaque-credential"));
+    assert!(credential_debug.contains("[redacted]"));
+
+    runtime
+        .ingest(
+            &frame(json!({"method":"item/commandExecution/outputDelta","params":{
+                "threadId":"thread-1","turnId":"turn-1","itemId":"command-delta","delta":"C:\\Users"
+            }})),
+            &Mapper,
+        )
+        .expect("path prefix");
+    let path = runtime
+        .ingest(
+            &frame(json!({"method":"item/commandExecution/outputDelta","params":{
+                "threadId":"thread-1","turnId":"turn-1","itemId":"command-delta","delta":"\\private "
+            }})),
+            &Mapper,
+        )
+        .expect("path completion");
+    let path_debug = format!("{:?}", path.events());
+    assert!(!path_debug.contains("Users"));
+    assert!(!path_debug.contains("private"));
+    assert!(path_debug.contains("[path]"));
+
+    let terminal = runtime
+        .ingest(
+            &frame(json!({"method":"item/completed","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"command-delta","type":"commandExecution","status":"completed"
+                }
+            }})),
+            &Mapper,
+        )
+        .expect("omitted terminal aggregate flushes preserved safe output");
+    assert!(matches!(
+        terminal.events(),
+        [AdapterEvent::Item { id, lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed, .. }]
+            if id == command_id
+    ));
+    let late = runtime
+        .ingest(
+            &frame(
+                json!({"method":"item/commandExecution/outputDelta","params":{
+                    "threadId":"thread-1","turnId":"turn-1","itemId":"command-delta","delta":"late "
+                }}),
+            ),
+            &Mapper,
+        )
+        .expect("late output is ignored");
+    assert!(matches!(late.events(), [AdapterEvent::IgnoredLate]));
+    assert!(matches!(
+        runtime.ingest(
+            &frame(json!({"method":"item/commandExecution/outputDelta","params":{
+                "threadId":"thread-1","turnId":"turn-1","itemId":"unknown-command","delta":"never "
+            }})),
+            &Mapper,
+        ),
+        Err(AdapterRuntimeError::Operation)
+    ));
+    assert!(matches!(
+        runtime.ingest(
+            &frame(json!({"method":"item/commandExecution/outputDelta","params":{
+                "threadId":"foreign-thread","turnId":"turn-1","itemId":"unknown-command","delta":"never "
+            }})),
+            &Mapper,
+        ),
+        Err(AdapterRuntimeError::Operation)
+    ));
+}
+
+#[test]
 fn streaming_deltas_emit_complete_snapshots_and_plus_one_poison_clears_buffers() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);

@@ -6,7 +6,7 @@ use crate::{
 use super::{FileRenameCommit, Workspace};
 
 impl Workspace {
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) fn rename_empty_folder(
         &self,
         source: &ResourceRef,

@@ -719,11 +719,19 @@ if ($JourneyKind -eq "acp04-live") {
 $codex = $null
 $codexBytes = $null
 $codexSha256 = $null
+$gitExecutable = $null
+$gitBytes = $null
+$gitSha256 = $null
 if ($JourneyKind -eq "acp04-live" -or $JourneyKind -eq "av01-preview") {
   $codexCommand = @(Get-Command codex.cmd -CommandType Application -ErrorAction Stop) | Select-Object -First 1
   $codex = Require-PlainCanonicalFile $codexCommand.Source "Codex launcher"
   $codexBytes = (Get-Item -LiteralPath $codex -Force).Length
   $codexSha256 = (Get-FileHash -LiteralPath $codex -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($JourneyKind -eq "av01-preview") {
+    $gitExecutable = Require-PlainCanonicalFile (Get-Command git -CommandType Application -ErrorAction Stop).Source "Git"
+    $gitBytes = (Get-Item -LiteralPath $gitExecutable -Force).Length
+    $gitSha256 = (Get-FileHash -LiteralPath $gitExecutable -Algorithm SHA256).Hash.ToLowerInvariant()
+  }
 }
 Import-Module (Join-Path $PSScriptRoot "footprint/ProcessIdentity.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "footprint/DisposableProfile.psm1") -Force
@@ -837,6 +845,7 @@ try {
       "--executable-bytes", "$preLaunchExecutableBytes", "--executable-sha256", $preLaunchExecutableSha256,
       "--node-bytes", "$preLaunchNodeBytes", "--node-sha256", $preLaunchNodeSha256,
       "--codex-path", $codex, "--codex-bytes", "$codexBytes", "--codex-sha256", $codexSha256,
+      "--git-path", $gitExecutable, "--git-bytes", "$gitBytes", "--git-sha256", $gitSha256,
       "--profile-root", $profile, "--profile-identity-artifact", $profileIdentityArtifact,
       "--sage-stdout-log", $sageStdoutLog, "--sage-stderr-log", $sageStderrLog,
       "--sage-process-id", "$($sageRuntime.identity.processId)",

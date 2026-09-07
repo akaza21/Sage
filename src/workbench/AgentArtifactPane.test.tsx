@@ -1096,6 +1096,14 @@ describe("Agent artifact file chips", () => {
         .getByRole("tab", { name: /app\.ts/ })
         .querySelector(".file-kind-icon--typescript"),
     ).not.toBeNull();
+    expect(screen.getByRole("tab", { name: /app\.ts/ })).toHaveAttribute(
+      "data-resource-root-id",
+      "root-a",
+    );
+    expect(screen.getByRole("tab", { name: /app\.ts/ })).toHaveAttribute(
+      "data-resource-relative-path",
+      "src/app.ts",
+    );
     expect(
       screen
         .getByRole("tab", { name: /README\.md/ })

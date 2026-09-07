@@ -38,12 +38,11 @@ pub(super) fn spawn_editor_watch(
                     emit_if_active(&app, &resource, generation, &cancelled, kind);
                 }
             });
-            if result.is_err() {
-                if let Some(kind) =
+            if result.is_err()
+                && let Some(kind) =
                     super::editor_watch_failure_resync(cancelled.load(Ordering::Acquire))
-                {
-                    emit_if_active(&app, &resource, generation, &cancelled, kind);
-                }
+            {
+                emit_if_active(&app, &resource, generation, &cancelled, kind);
             }
             super::finish_watch(&resource, generation);
         })

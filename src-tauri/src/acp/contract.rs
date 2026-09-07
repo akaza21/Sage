@@ -247,6 +247,12 @@ counter!(EntityRevision);
 #[serde(transparent)]
 pub struct BoundedVec<T, const MAX: usize>(Vec<T>);
 
+impl<T, const MAX: usize> Default for BoundedVec<T, MAX> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
+
 impl<T, const MAX: usize> BoundedVec<T, MAX> {
     pub fn new(field: &'static str, values: Vec<T>) -> Result<Self, ContractError> {
         if values.len() > MAX {

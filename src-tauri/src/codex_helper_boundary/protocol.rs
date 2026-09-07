@@ -1,4 +1,5 @@
 use sha2::{Digest, Sha256};
+#[cfg(windows)]
 use uuid::Uuid;
 
 pub const REQUEST_PAYLOAD_BYTES_MAX: usize = 128 * 1024;
@@ -65,6 +66,7 @@ pub struct HelperIdentity {
 pub struct OneShotSecret([u8; 32]);
 
 impl OneShotSecret {
+    #[cfg(windows)]
     pub(crate) fn generate() -> Self {
         let mut bytes = [0_u8; 32];
         bytes[..16].copy_from_slice(Uuid::new_v4().as_bytes());
@@ -157,6 +159,7 @@ impl SealedRequest {
 
 pub(crate) struct AuthenticatedRequest<'a> {
     pub(crate) caller_pid: u32,
+    #[cfg(windows)]
     pub(crate) caller_sid_sha256: [u8; 32],
     pub(crate) nonce: [u8; 16],
     pub(crate) helper: HelperIdentity,
@@ -199,6 +202,7 @@ pub(crate) fn decode_request<'a>(
     }
     Ok(AuthenticatedRequest {
         caller_pid,
+        #[cfg(windows)]
         caller_sid_sha256: copy_array(&bytes[13..45])?,
         nonce: copy_array(&bytes[45..61])?,
         helper,

@@ -27,10 +27,6 @@ impl FixtureClock {
     pub(in crate::acp::fixture) fn new(now_millis: i64) -> Self {
         Self(AtomicI64::new(now_millis))
     }
-
-    pub(in crate::acp::fixture) fn set(&self, now_millis: i64) {
-        self.0.store(now_millis, Ordering::SeqCst);
-    }
 }
 
 impl DriverClock for FixtureClock {

@@ -1,10 +1,19 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  appendFileSync,
+  closeSync,
+  fstatSync,
   mkdirSync,
   mkdtempSync,
+  lstatSync,
+  openSync,
+  readSync,
   readFileSync,
+  renameSync,
   rmSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { connect } from "node:net";
@@ -17,6 +26,7 @@ import test from "node:test";
 import {
   createAv01PreviewReceipt,
   parseAv01PreviewArguments,
+  readAv01PreviewObservationForTest,
   validateAv01FixtureProcessAbsence,
   validateAv01FixtureProcessCapture,
   validatePendingAv01PreviewReceipt,
@@ -36,6 +46,12 @@ import {
   runAv01PreviewJourney,
   validatePreviewSnapshot,
 } from "./source-functional-av01-preview-probe.mjs";
+import {
+  ACP04_FILE_TAB_SNAPSHOT,
+  ACP04_FILE_TURN_SNAPSHOT,
+  runReadOnlyPackageJsonTurn,
+  validateReadOnlyFileProof,
+} from "./source-functional-acp04-file-turn.mjs";
 
 const SHA = "a".repeat(64);
 const GIT = "b".repeat(40);
@@ -47,6 +63,14 @@ const FIXTURE_CAPTURE = Object.freeze({
   executablePath: "C:\\fixture\\node.exe",
   creationDate: "2026-09-07T12:00:00.000Z",
   sageProcessId: 4100,
+});
+
+const OBSERVATION_IO = Object.freeze({
+  closeSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
 });
 
 function root() {
@@ -111,6 +135,9 @@ function argumentsFor(directory, overrides = {}) {
     "codex-path": path.join(directory, "codex.cmd"),
     "codex-bytes": "100",
     "codex-sha256": SHA,
+    "git-path": path.join(directory, "git.exe"),
+    "git-bytes": "100",
+    "git-sha256": SHA,
     "profile-root": path.join(directory, "profile"),
     "profile-identity-artifact": path.join(
       directory,
@@ -365,58 +392,78 @@ test("AV01 pending receipt binds the exact captured identity to its absence proo
     const runtime = path.join(directory, "powershell.exe");
     writeFileSync(helper, "# helper identity is source-bound\n");
     writeFileSync(runtime, "runtime\n");
+    writeFileSync(path.join(directory, "av01-preview.png"), "png");
+    const options = {
+      fixture: {
+        path: fixture,
+        case: "starting-active",
+        processHelper: helper,
+      },
+      sageProcess: {
+        processId: 4100,
+        creationDate: "2026-09-07T11:59:00.000Z",
+      },
+      executable: { path: "C:\\source\\sage.exe", bytes: 1, sha256: SHA },
+      powershell: {
+        path: runtime,
+        bytes: Buffer.byteLength("runtime\n"),
+        sha256: createHash("sha256").update("runtime\n").digest("hex"),
+      },
+      node: { path: process.execPath, bytes: 1, sha256: SHA },
+      codex: { path: "C:\\source\\codex.cmd", bytes: 1, sha256: SHA },
+      source: { commit: GIT, tree: GIT },
+      runtimeMode: "tauri-dev-split",
+      frontendReady: true,
+      port: 9229,
+      expectedOrigin: "http://127.0.0.1:1431/",
+      output: directory,
+    };
+    const observation = {
+      startedAt: "2026-09-07T12:00:00.000Z",
+      completedAt: "2026-09-07T12:01:00.000Z",
+      modeA: {
+        state: {
+          phase: "complete",
+          projectId: "project-a",
+          chatId: "chat-a",
+          sessionId: "session-a",
+          runtimeEpoch: "1",
+        },
+      },
+      fileProof: {
+        schemaVersion: 1,
+        turnId: "turn-3",
+        itemId: "item-command",
+        projectId: "project-a",
+        chatId: "chat-a",
+        sessionId: "session-a",
+        runtimeEpoch: "1",
+        rootId: "fixture-root",
+        relativePath: "package.json",
+        actionEnabled: true,
+        selectedReadyFile: true,
+        observedAt: "2026-09-07T12:00:30.000Z",
+      },
+      fixtureBefore: readAv01PreviewFixtureIdentity(fixture, "starting-active"),
+      fixtureAfter: readAv01PreviewFixtureIdentity(fixture, "starting-active"),
+      gitBefore: { commit: GIT, tree: GIT },
+      gitAfter: { commit: GIT, tree: GIT },
+      preview: {
+        case: "starting-active",
+        finalPhase: "active",
+        activeFrameUrl: "http://127.0.0.1:41234/",
+        manualOrigin: null,
+        fixtureProcess: FIXTURE_CAPTURE,
+        fixtureRetirement: { ...FIXTURE_CAPTURE, absent: true },
+      },
+    };
     writeFileSync(
       path.join(directory, "av01-preview-observation.json"),
-      "{}\n",
+      `${JSON.stringify(observation, null, 2)}\n`,
     );
-    writeFileSync(path.join(directory, "av01-preview.png"), "png");
     const receipt = createAv01PreviewReceipt(
-      {
-        fixture: {
-          path: fixture,
-          case: "starting-active",
-          processHelper: helper,
-        },
-        sageProcess: {
-          processId: 4100,
-          creationDate: "2026-09-07T11:59:00.000Z",
-        },
-        executable: { path: "C:\\source\\sage.exe", bytes: 1, sha256: SHA },
-        powershell: {
-          path: runtime,
-          bytes: Buffer.byteLength("runtime\n"),
-          sha256: createHash("sha256").update("runtime\n").digest("hex"),
-        },
-        node: { path: process.execPath, bytes: 1, sha256: SHA },
-        codex: { path: "C:\\source\\codex.cmd", bytes: 1, sha256: SHA },
-        source: { commit: GIT, tree: GIT },
-        runtimeMode: "tauri-dev-split",
-        frontendReady: true,
-        port: 9229,
-        expectedOrigin: "http://127.0.0.1:1431/",
-        output: directory,
-      },
-      {
-        startedAt: "2026-09-07T12:00:00.000Z",
-        completedAt: "2026-09-07T12:01:00.000Z",
-        modeA: {
-          state: {
-            phase: "complete",
-            projectId: "project-a",
-            chatId: "chat-a",
-            sessionId: "session-a",
-            runtimeEpoch: "1",
-          },
-        },
-        preview: {
-          case: "starting-active",
-          finalPhase: "active",
-          activeFrameUrl: "http://127.0.0.1:41234/",
-          manualOrigin: null,
-          fixtureProcess: FIXTURE_CAPTURE,
-          fixtureRetirement: { ...FIXTURE_CAPTURE, absent: true },
-        },
-      },
+      options,
+      observation,
       { id: "canonical-page" },
       ["av01-preview-observation.json", "av01-preview.png"],
       { connectionCount: 1, maxInFlight: 1, requestCount: 12 },
@@ -426,6 +473,64 @@ test("AV01 pending receipt binds the exact captured identity to its absence proo
         .fixtureProcess.processId,
       FIXTURE_CAPTURE.processId,
     );
+    const observationArtifact = receipt.artifacts.find(
+      ({ name }) => name === "av01-preview-observation.json",
+    );
+    const screenshotArtifact = receipt.artifacts.find(
+      ({ name }) => name === "av01-preview.png",
+    );
+    const screenshotPath = path.join(directory, "av01-preview.png");
+    unlinkSync(screenshotPath);
+    assert.throws(
+      () =>
+        validatePendingAv01PreviewReceipt(
+          { ...receipt, artifacts: [observationArtifact, observationArtifact] },
+          directory,
+        ),
+      /av01-preview-pending-invalid/,
+    );
+    writeFileSync(screenshotPath, "png");
+    assert.throws(
+      () =>
+        validatePendingAv01PreviewReceipt(
+          { ...receipt, artifacts: [screenshotArtifact, screenshotArtifact] },
+          directory,
+        ),
+      /av01-preview-pending-invalid/,
+    );
+    assert.throws(
+      () =>
+        validatePendingAv01PreviewReceipt(
+          { ...receipt, artifacts: [observationArtifact] },
+          directory,
+        ),
+      /av01-preview-pending-invalid/,
+    );
+    assert.throws(
+      () =>
+        validatePendingAv01PreviewReceipt(
+          {
+            ...receipt,
+            artifacts: [
+              observationArtifact,
+              { ...screenshotArtifact, name: "unrecognized-artifact" },
+            ],
+          },
+          directory,
+        ),
+      /av01-preview-pending-invalid/,
+    );
+    writeFileSync(screenshotPath, "corrupt-png");
+    assert.throws(
+      () => validatePendingAv01PreviewReceipt(receipt, directory),
+      /av01-preview-pending-invalid/,
+    );
+    unlinkSync(screenshotPath);
+    assert.throws(
+      () => validatePendingAv01PreviewReceipt(receipt, directory),
+      /av01-preview-pending-invalid/,
+    );
+    writeFileSync(screenshotPath, "png");
     const mismatched = {
       ...receipt,
       preview: {
@@ -440,9 +545,529 @@ test("AV01 pending receipt binds the exact captured identity to its absence proo
       () => validatePendingAv01PreviewReceipt(mismatched, directory),
       /av01-preview-pending-invalid/,
     );
+    for (const mutate of [
+      (value) => ({
+        ...value,
+        fileProof: { ...value.fileProof, fixtureFilesSha256: SHA },
+      }),
+      (value) => ({
+        ...value,
+        fixtureGit: { ...value.fixtureGit, tree: "d".repeat(40) },
+      }),
+      (value) => ({
+        ...value,
+        fileProof: {
+          ...value.fileProof,
+          fixtureGit: { commit: "d".repeat(40), tree: GIT },
+        },
+      }),
+      (value) => ({
+        ...value,
+        fileProof: { ...value.fileProof, forged: true },
+      }),
+      (value) => ({
+        ...value,
+        fileProof: {
+          ...value.fileProof,
+          observations: {
+            ...value.fileProof.observations,
+            gitAfter: { commit: "d".repeat(40), tree: GIT },
+          },
+        },
+      }),
+    ]) {
+      assert.throws(
+        () => validatePendingAv01PreviewReceipt(mutate(receipt), directory),
+        /av01-preview-pending-invalid/,
+      );
+    }
+    const digest = (value) =>
+      createHash("sha256").update(JSON.stringify(value)).digest("hex");
+    const forgedFiles = [];
+    const forgedGit = { commit: "d".repeat(40), tree: "e".repeat(40) };
+    const internallyConsistentFixture = {
+      ...receipt,
+      fixture: { ...receipt.fixture, files: forgedFiles },
+      fileProof: {
+        ...receipt.fileProof,
+        fixtureFilesSha256: digest(forgedFiles),
+        observations: {
+          ...receipt.fileProof.observations,
+          fixtureBeforeSha256: digest(forgedFiles),
+          fixtureAfterSha256: digest(forgedFiles),
+        },
+      },
+    };
+    const internallyConsistentGit = {
+      ...receipt,
+      fixtureGit: forgedGit,
+      fileProof: {
+        ...receipt.fileProof,
+        fixtureGit: forgedGit,
+        observations: {
+          ...receipt.fileProof.observations,
+          gitBefore: forgedGit,
+          gitAfter: forgedGit,
+        },
+      },
+    };
+    for (const forged of [
+      internallyConsistentFixture,
+      internallyConsistentGit,
+    ]) {
+      assert.throws(
+        () => validatePendingAv01PreviewReceipt(forged, directory),
+        /av01-preview-pending-invalid/,
+      );
+    }
+    for (const mutateObservation of [
+      () => ({}),
+      () => ({
+        ...observation,
+        fixtureAfter: { ...observation.fixtureAfter, nonce: SHA },
+      }),
+      () => ({
+        ...observation,
+        gitAfter: { commit: SHA.slice(0, 40), tree: GIT },
+      }),
+      () => ({
+        ...observation,
+        fileProof: { ...observation.fileProof, rootId: "other-root" },
+      }),
+    ]) {
+      writeFileSync(
+        path.join(directory, "av01-preview-observation.json"),
+        `${JSON.stringify(mutateObservation())}\n`,
+      );
+      assert.throws(
+        () => validatePendingAv01PreviewReceipt(receipt, directory),
+        /av01-preview-pending-invalid/,
+      );
+    }
+    const observationPath = path.join(
+      directory,
+      "av01-preview-observation.json",
+    );
+    writeFileSync(observationPath, `${JSON.stringify(observation)}\n`);
+    assert.throws(
+      () => validatePendingAv01PreviewReceipt(receipt, directory),
+      /av01-preview-pending-invalid/,
+    );
+    writeFileSync(observationPath, "");
+    assert.throws(
+      () => validatePendingAv01PreviewReceipt(receipt, directory),
+      /av01-preview-pending-invalid/,
+    );
+    const linkedObservation = path.join(directory, "linked-observation.json");
+    writeFileSync(linkedObservation, JSON.stringify(observation));
+    unlinkSync(observationPath);
+    symlinkSync(linkedObservation, observationPath);
+    assert.throws(
+      () => validatePendingAv01PreviewReceipt(receipt, directory),
+      /av01-preview-pending-invalid/,
+    );
+    unlinkSync(observationPath);
+    const serialized = Buffer.from(JSON.stringify(observation));
+    const exact = Buffer.concat([
+      serialized,
+      Buffer.alloc(512 * 1024 - serialized.length, 0x20),
+    ]);
+    const boundedReceipt = {
+      ...receipt,
+      artifacts: receipt.artifacts.map((entry) =>
+        entry.name === "av01-preview-observation.json"
+          ? {
+              ...entry,
+              bytes: exact.length,
+              sha256: createHash("sha256").update(exact).digest("hex"),
+            }
+          : entry,
+      ),
+    };
+    writeFileSync(observationPath, exact);
+    assert.doesNotThrow(() =>
+      validatePendingAv01PreviewReceipt(boundedReceipt, directory),
+    );
+    const over = Buffer.concat([exact, Buffer.from(" ")]);
+    writeFileSync(observationPath, over);
+    const overReceipt = {
+      ...boundedReceipt,
+      artifacts: boundedReceipt.artifacts.map((entry) =>
+        entry.name === "av01-preview-observation.json"
+          ? {
+              ...entry,
+              bytes: over.length,
+              sha256: createHash("sha256").update(over).digest("hex"),
+            }
+          : entry,
+      ),
+    };
+    assert.throws(
+      () => validatePendingAv01PreviewReceipt(overReceipt, directory),
+      /av01-preview-pending-invalid/,
+    );
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("AV01 observation reads stay descriptor-bound across short reads, growth, and replacement", () => {
+  const directory = root();
+  const observationPath = path.join(directory, "av01-preview-observation.json");
+  try {
+    const bytes = Buffer.from('{"bounded":true}\n');
+    writeFileSync(observationPath, bytes);
+    const declared = {
+      name: "av01-preview-observation.json",
+      bytes: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    };
+    let closes = 0;
+    const shortReads = {
+      ...OBSERVATION_IO,
+      closeSync(descriptor) {
+        closes += 1;
+        closeSync(descriptor);
+      },
+      readSync(descriptor, buffer, offset, length, position) {
+        return readSync(
+          descriptor,
+          buffer,
+          offset,
+          Math.min(length, 3),
+          position,
+        );
+      },
+    };
+    assert.deepEqual(
+      readAv01PreviewObservationForTest(directory, declared, shortReads),
+      { bounded: true },
+    );
+    assert.equal(closes, 1);
+
+    let grew = false;
+    const growth = {
+      ...OBSERVATION_IO,
+      readSync(descriptor, buffer, offset, length, position) {
+        const count = readSync(
+          descriptor,
+          buffer,
+          offset,
+          Math.min(length, 3),
+          position,
+        );
+        if (!grew) {
+          grew = true;
+          appendFileSync(observationPath, "x");
+        }
+        return count;
+      },
+    };
+    assert.throws(
+      () => readAv01PreviewObservationForTest(directory, declared, growth),
+      /av01-preview-pending-invalid/,
+    );
+
+    writeFileSync(observationPath, bytes);
+    let replaced = false;
+    const replacement = {
+      ...OBSERVATION_IO,
+      readSync(descriptor, buffer, offset, length, position) {
+        const count = readSync(
+          descriptor,
+          buffer,
+          offset,
+          Math.min(length, 3),
+          position,
+        );
+        if (!replaced) {
+          replaced = true;
+          const retired = path.join(directory, "retired-observation.json");
+          renameSync(observationPath, retired);
+          writeFileSync(observationPath, bytes);
+        }
+        return count;
+      },
+    };
+    assert.throws(
+      () => readAv01PreviewObservationForTest(directory, declared, replacement),
+      /av01-preview-pending-invalid/,
+    );
+
+    writeFileSync(observationPath, bytes);
+    let errorCloses = 0;
+    const readError = {
+      ...OBSERVATION_IO,
+      closeSync(descriptor) {
+        errorCloses += 1;
+        closeSync(descriptor);
+      },
+      readSync() {
+        throw new Error("injected read failure");
+      },
+    };
+    assert.throws(
+      () => readAv01PreviewObservationForTest(directory, declared, readError),
+      /av01-preview-pending-invalid/,
+    );
+    assert.equal(errorCloses, 1);
+
+    writeFileSync(observationPath, bytes);
+    let overflowed = false;
+    const overflow = {
+      ...OBSERVATION_IO,
+      readSync(descriptor, buffer, offset, length, position) {
+        const count = readSync(
+          descriptor,
+          buffer,
+          offset,
+          Math.min(length, 3),
+          position,
+        );
+        if (!overflowed) {
+          overflowed = true;
+          appendFileSync(observationPath, Buffer.alloc(512 * 1024, 0x20));
+        }
+        return count;
+      },
+    };
+    assert.throws(
+      () => readAv01PreviewObservationForTest(directory, declared, overflow),
+      /av01-preview-pending-invalid/,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("collector third turn dispatches only one typed package.json File action and requires its ready owner tab", async () => {
+  const owner = {
+    phase: "complete",
+    projectId: "project-a",
+    chatId: "chat-a",
+    sessionId: "session-a",
+    runtimeEpoch: "1",
+    turnIds: ["turn-1", "turn-2"],
+  };
+  const turns = (third = null) => [
+    {
+      id: "turn-1",
+      sessionId: "session-a",
+      runtimeEpoch: "1",
+      ordinal: "1",
+      state: "Completed",
+      items: [],
+      actions: [],
+    },
+    {
+      id: "turn-2",
+      sessionId: "session-a",
+      runtimeEpoch: "1",
+      ordinal: "2",
+      state: "Completed",
+      items: [],
+      actions: [],
+    },
+    ...(third ? [third] : []),
+  ];
+  const completed = {
+    id: "turn-3",
+    sessionId: "session-a",
+    runtimeEpoch: "1",
+    ordinal: "3",
+    state: "Completed",
+    items: [
+      {
+        id: "item-user",
+        role: "user",
+        readOnlyPrompt: true,
+      },
+    ],
+    actions: [
+      {
+        itemId: "item-command",
+        rootId: "fixture-root",
+        relativePath: "package.json",
+        enabled: true,
+      },
+    ],
+  };
+  const snapshots = [
+    {
+      projectId: "project-a",
+      chatId: "chat-a",
+      currentSessionId: "session-a",
+      expectedRootId: "fixture-root",
+      projectionRevision: "2",
+      composerEnabled: true,
+      failures: [],
+      turns: turns(),
+    },
+    {
+      projectId: "project-a",
+      chatId: "chat-a",
+      currentSessionId: "session-a",
+      expectedRootId: "fixture-root",
+      projectionRevision: "3",
+      composerEnabled: true,
+      failures: [],
+      turns: turns(),
+    },
+    {
+      projectId: "project-a",
+      chatId: "chat-a",
+      currentSessionId: "session-a",
+      expectedRootId: "fixture-root",
+      projectionRevision: "3",
+      composerEnabled: true,
+      failures: [],
+      turns: turns(completed),
+    },
+    {
+      projectId: "project-a",
+      chatId: "chat-a",
+      currentSessionId: "session-a",
+      expectedRootId: "fixture-root",
+      projectionRevision: "3",
+      composerEnabled: true,
+      failures: [],
+      turns: turns(completed),
+    },
+  ];
+  const expressions = [];
+  const proof = await runReadOnlyPackageJsonTurn(
+    {
+      async evaluate(expression) {
+        expressions.push(expression);
+        if (expression === ACP04_FILE_TURN_SNAPSHOT) return snapshots.shift();
+        if (expression === ACP04_FILE_TAB_SNAPSHOT)
+          return {
+            projectId: "project-a",
+            chatId: "chat-a",
+            sessionId: "session-a",
+            runtimeEpoch: "1",
+            ready: true,
+            tabs: [
+              {
+                rootId: "fixture-root",
+                relativePath: "package.json",
+                selected: true,
+              },
+            ],
+          };
+        return true;
+      },
+    },
+    Date.now() + 2_000,
+    owner,
+  );
+  assert.equal(proof.turnId, "turn-3");
+  assert.equal(proof.relativePath, "package.json");
+  assert.equal(expressions.includes(ACP04_FILE_TAB_SNAPSHOT), true);
+  assert.throws(
+    () => validateReadOnlyFileProof({ ...proof, rootId: "" }),
+    /acp04-file-turn-proof-invalid/,
+  );
+});
+
+test("collector rejects candidate roots, duplicate actions, and post-click owner epoch churn", async () => {
+  const owner = {
+    phase: "complete",
+    projectId: "project-a",
+    chatId: "chat-a",
+    sessionId: "session-a",
+    runtimeEpoch: "1",
+    turnIds: ["turn-1", "turn-2"],
+  };
+  const snapshot = (actions) => ({
+    projectId: owner.projectId,
+    chatId: owner.chatId,
+    currentSessionId: owner.sessionId,
+    expectedRootId: "fixture-root",
+    projectionRevision: "3",
+    composerEnabled: true,
+    failures: [],
+    turns: [
+      ...["turn-1", "turn-2"].map((id, index) => ({
+        id,
+        sessionId: owner.sessionId,
+        runtimeEpoch: owner.runtimeEpoch,
+        ordinal: String(index + 1),
+        state: "Completed",
+        items: [],
+        actions: [],
+      })),
+      {
+        id: "turn-3",
+        sessionId: owner.sessionId,
+        runtimeEpoch: owner.runtimeEpoch,
+        ordinal: "3",
+        state: "Completed",
+        items: [{ id: "user-3", role: "user", readOnlyPrompt: true }],
+        actions,
+      },
+    ],
+  });
+  const action = (rootId = "fixture-root") => ({
+    itemId: "command-3",
+    rootId,
+    relativePath: "package.json",
+    enabled: true,
+  });
+  const cdpFor = (snapshots, tab) => ({
+    async evaluate(expression) {
+      if (expression === ACP04_FILE_TURN_SNAPSHOT) return snapshots.shift();
+      if (expression === ACP04_FILE_TAB_SNAPSHOT) return tab;
+      return true;
+    },
+  });
+  for (const [actions, error] of [
+    [[action("foreign-root")], /acp04-file-turn-resource-mismatch/],
+    [
+      [action(), { ...action(), itemId: "command-4" }],
+      /acp04-file-turn-action-ambiguous/,
+    ],
+  ]) {
+    await assert.rejects(
+      runReadOnlyPackageJsonTurn(
+        cdpFor([snapshot([]), snapshot(actions)]),
+        Date.now() + 100,
+        owner,
+      ),
+      error,
+    );
+  }
+  await assert.rejects(
+    runReadOnlyPackageJsonTurn(
+      cdpFor([snapshot([]), snapshot([action()]), snapshot([action()])], {
+        projectId: owner.projectId,
+        chatId: owner.chatId,
+        sessionId: owner.sessionId,
+        runtimeEpoch: "2",
+        ready: true,
+        tabs: [
+          {
+            rootId: "fixture-root",
+            relativePath: "package.json",
+            selected: true,
+          },
+        ],
+      }),
+      // This assertion needs time for the post-click tab snapshot, not a
+      // production journey deadline. Keep it bounded while allowing the
+      // intended owner/epoch check to run deterministically under load.
+      Date.now() + 1_000,
+      owner,
+    ),
+    /file-turn-owner-churn/,
+  );
+  await assert.rejects(
+    runReadOnlyPackageJsonTurn(cdpFor([], null), Date.now() + 100, {
+      ...owner,
+      runtimeEpoch: "123456789012345678901",
+    }),
+    /acp04-file-turn-mode-a-invalid/,
+  );
 });
 
 test("healthy fixture delays then serves its nonce marker; failed and exited cases do not fabricate it", async () => {
@@ -500,6 +1125,8 @@ test("collector selectors are rendered-only and snapshot validation bounds ambig
   assert.equal(AV01_PREVIEW_UI.openPreview.includes("invoke"), false);
   assert.equal(AV01_PREVIEW_UI.selectFile.includes("invoke"), false);
   assert.equal(AV01_PREVIEW_SNAPSHOT.includes("__TAURI"), false);
+  assert.equal(AV01_PREVIEW_SNAPSHOT.includes("innerText"), false);
+  assert.equal(ACP04_FILE_TURN_SNAPSHOT.includes("[..."), false);
   assert.match(
     previewManualOriginAction("http://127.0.0.1:32123/"),
     /Preview address/,

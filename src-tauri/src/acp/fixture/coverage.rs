@@ -17,7 +17,6 @@ const PATH_BOUND_CHILD_CASES: &[&str] = &[
     "native-activity-child-text",
     "native-activity-foreign-parent",
 ];
-const OPEN_HOST_CASES: &[&str] = &[];
 const OPEN_CHILD_CASES: &[&str] = &[];
 
 #[test]
@@ -52,7 +51,6 @@ fn foundation_literal_observer_registry_is_exact_and_nonoverlapping() {
     let host = collect_unique(host_families, FrozenOwner::Host);
     let child = collect_unique(child_families, FrozenOwner::Child);
     assert!(host.is_disjoint(&child));
-    assert_eq!(host.len(), 105, "registered host literal observers changed");
     assert_eq!(
         child.len(),
         54,
@@ -64,15 +62,11 @@ fn foundation_literal_observer_registry_is_exact_and_nonoverlapping() {
         .filter(|case| case.owner == FrozenOwner::Host && case.phase == FrozenPhase::Foundation)
         .map(|case| case.id)
         .collect::<BTreeSet<_>>();
-    assert!(host.is_subset(&expected_host));
-    let unregistered_host = expected_host
-        .difference(&host)
-        .copied()
-        .collect::<BTreeSet<_>>();
-    assert_eq!(
-        unregistered_host,
-        OPEN_HOST_CASES.iter().copied().collect::<BTreeSet<_>>(),
-        "update the host observer registry and open coverage ledger together"
+    assert_platform_host_obligations(
+        &host,
+        &expected_host,
+        host::EXPLICIT_WINDOWS_ONLY_CASE_IDS,
+        host::MIGRATION_PLATFORM_OBLIGATIONS,
     );
 
     let expected_child = FROZEN_CASES
@@ -93,6 +87,144 @@ fn foundation_literal_observer_registry_is_exact_and_nonoverlapping() {
     assert_eq!(
         unregistered, declared_unregistered,
         "update the child observer registry and frozen coverage accounting together"
+    );
+}
+
+fn assert_platform_host_obligations(
+    registered_host: &BTreeSet<&'static str>,
+    expected_host: &BTreeSet<&'static str>,
+    explicit_windows_only_case_ids: &[&'static str],
+    migration_platform_obligations: &[host::PlatformObligation],
+) {
+    let explicit_windows_only = explicit_windows_only_case_ids
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        explicit_windows_only.len(),
+        explicit_windows_only_case_ids.len(),
+        "duplicate explicit Windows-only Foundation exclusion"
+    );
+    let obligation_ids = migration_platform_obligations
+        .iter()
+        .map(|obligation| {
+            assert!(
+                !obligation.unavailable_native_mechanism.is_empty()
+                    && !obligation.windows_observer.is_empty()
+                    && !obligation.portable_counterparts.is_empty(),
+                "platform obligation must name its unavailable mechanism, Windows observer, and portable counterpart"
+            );
+            let portable_counterparts = obligation
+                .portable_counterparts
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>();
+            assert_eq!(
+                portable_counterparts.len(),
+                obligation.portable_counterparts.len(),
+                "duplicate portable counterpart for {}",
+                obligation.case_id
+            );
+            obligation.case_id
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        obligation_ids.len(),
+        migration_platform_obligations.len(),
+        "duplicate platform obligation row"
+    );
+    #[cfg(not(windows))]
+    assert_eq!(
+        obligation_ids, explicit_windows_only,
+        "every explicit Windows-only Foundation case needs one named platform obligation"
+    );
+    assert!(
+        registered_host.is_disjoint(&explicit_windows_only),
+        "registered and explicit Windows-only Foundation cases must be disjoint"
+    );
+    let accounted_host = registered_host
+        .union(&explicit_windows_only)
+        .copied()
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        accounted_host, *expected_host,
+        "registered host observers plus explicit Windows-only obligations must exactly cover the frozen Foundation Host set"
+    );
+    #[cfg(windows)]
+    {
+        assert!(
+            explicit_windows_only.is_empty(),
+            "Windows must execute every frozen Foundation Host observer"
+        );
+        assert_eq!(
+            obligation_ids,
+            [
+                "migration-backup-failpoint-rollback",
+                "migration-retirement-prefixes",
+            ]
+            .into_iter()
+            .collect(),
+            "Windows retains the named portable counterparts while executing the frozen literal observers"
+        );
+    }
+}
+
+#[test]
+fn duplicate_platform_obligation_rows_are_rejected() {
+    let obligations = [
+        host::PlatformObligation {
+            case_id: "migration-backup-failpoint-rollback",
+            unavailable_native_mechanism: "identity-bound replacement publication",
+            windows_observer: "fixture_backup_failpoint_observation",
+            portable_counterparts: &[
+                "portable_retained_backup_survives_build_failure_then_retry_publishes",
+            ],
+        },
+        host::PlatformObligation {
+            case_id: "migration-backup-failpoint-rollback",
+            unavailable_native_mechanism: "identity-bound replacement publication",
+            windows_observer: "fixture_backup_failpoint_observation",
+            portable_counterparts: &[
+                "portable_retained_backup_survives_build_failure_then_retry_publishes",
+            ],
+        },
+    ];
+    let expected = ["migration-backup-failpoint-rollback"]
+        .into_iter()
+        .collect();
+    let registered = BTreeSet::new();
+    assert!(
+        std::panic::catch_unwind(|| {
+            assert_platform_host_obligations(
+                &registered,
+                &expected,
+                &["migration-backup-failpoint-rollback"],
+                &obligations,
+            );
+        })
+        .is_err()
+    );
+}
+
+#[test]
+fn duplicate_explicit_windows_only_exclusions_are_rejected() {
+    let expected = ["migration-backup-failpoint-rollback"]
+        .into_iter()
+        .collect();
+    let registered = BTreeSet::new();
+    assert!(
+        std::panic::catch_unwind(|| {
+            assert_platform_host_obligations(
+                &registered,
+                &expected,
+                &[
+                    "migration-backup-failpoint-rollback",
+                    "migration-backup-failpoint-rollback",
+                ],
+                &[],
+            );
+        })
+        .is_err()
     );
 }
 

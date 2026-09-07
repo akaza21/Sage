@@ -198,15 +198,16 @@ fn notice_kind_for_action(action: u32) -> Option<EditorExternalWatchKind> {
     }
 }
 
+#[cfg(test)]
 fn notice_kind_for_path(
     watched_file_name: &str,
     changed_file_name: &str,
     action: u32,
 ) -> Option<EditorExternalWatchKind> {
-    if !watched_file_name.eq_ignore_ascii_case(changed_file_name) {
-        return None;
-    }
-    notice_kind_for_action(action)
+    watched_file_name
+        .eq_ignore_ascii_case(changed_file_name)
+        .then(|| notice_kind_for_action(action))
+        .flatten()
 }
 
 #[cfg(any(test, target_os = "macos", target_os = "linux"))]

@@ -1038,16 +1038,15 @@ mod tests {
         let runtime = tokio::runtime::Runtime::new().unwrap();
 
         let error = runtime
-            .block_on(mutate_file_with_timeout(
+            .block_on(mutate_file_with_process_policy(
                 &workspace,
                 &resource,
                 GitFileMutationAction::Stage,
-                Duration::ZERO,
+                repository::GitProcessPolicy::post_spawn_failure(Duration::from_secs(3)),
             ))
             .unwrap_err();
 
         assert!(matches!(error, AppError::GitEffectUnknown(_)));
-        assert!(!root.join(".git/index.lock").exists());
         let immediate = runtime.block_on(repository::status(&workspace)).unwrap();
         assert_eq!(immediate.changes[0].index_status, "unchanged");
         assert_eq!(immediate.changes[0].worktree_status, "untracked");

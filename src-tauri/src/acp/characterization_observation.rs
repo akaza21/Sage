@@ -2,16 +2,23 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CharacterizationObservationEvent {
+    #[cfg(windows)]
     InitializeWriteStarted(u64),
     ReadyCommitted,
+    #[cfg(windows)]
     PromptWriteCompleted(u64),
     FirstNormalizedItemAccepted,
+    #[cfg(windows)]
     CancelReceived(u64),
+    #[cfg(windows)]
     CancelWriteCompleted(u64),
     CancelTerminalCommitted,
+    #[cfg(windows)]
     CloseReceived,
+    #[cfg(windows)]
     JobZero,
     CloseCommitted,
+    #[cfg(windows)]
     Invalid,
 }
 
@@ -25,6 +32,7 @@ pub(crate) struct CharacterizationObservation {
 }
 
 impl CharacterizationObservation {
+    #[cfg(windows)]
     pub(crate) fn new(sink: Arc<dyn CharacterizationObservationSink>) -> Self {
         Self { sink }
     }

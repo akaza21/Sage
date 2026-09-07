@@ -454,6 +454,89 @@ fn chat_page_rejects_a_persisted_resource_from_a_foreign_root() {
 }
 
 #[test]
+fn chat_page_projects_legacy_and_current_command_tool_rows_and_rejects_foreign_tool_roots() {
+    fn seed(connection: &mut Connection, intent: &str) -> SageAgentSessionId {
+        let started = start_session(connection, start(0, intent)).unwrap();
+        connection.execute("INSERT INTO session_runtime_epochs VALUES('project-one','chat-one',?1,1,'exited',NULL,0,1,'fixture')",[started.session_id.as_str()]).unwrap();
+        connection.execute("INSERT INTO turns VALUES('turn-command','project-one','chat-one',?1,1,0,'turn-intent','completed','correlated',0,1,1,1)",[started.session_id.as_str()]).unwrap();
+        started.session_id
+    }
+    fn insert(
+        connection: &Connection,
+        session: &SageAgentSessionId,
+        id: &str,
+        ordinal: i64,
+        kind: &str,
+        payload: &str,
+    ) {
+        let digest = super::facts::hex_digest(payload.as_bytes());
+        connection.execute("INSERT INTO items VALUES(?1,'project-one','chat-one',?2,'turn-command',1,?3,'primary',NULL,?4,'completed','completed',NULL,?5,?6,?7,0,1,1,1)",params![id,session.as_str(),ordinal,kind,payload,payload.len() as i64,digest]).unwrap();
+    }
+
+    let mut connection = setup();
+    let session = seed(&mut connection, "legacy-command");
+    insert(
+        &connection,
+        &session,
+        "legacy-call",
+        0,
+        "toolCall",
+        r#"{"kind":"toolCall","payload":{"category":"command","label":"Command","inputSummary":null}}"#,
+    );
+    insert(
+        &connection,
+        &session,
+        "legacy-result",
+        1,
+        "toolUpdateResult",
+        r#"{"kind":"toolUpdateResult","payload":{"category":"command","label":"Command","outputSummary":null}}"#,
+    );
+    insert(
+        &connection,
+        &session,
+        "current-result",
+        2,
+        "toolUpdateResult",
+        r#"{"kind":"toolUpdateResult","payload":{"category":"command","label":"Command","outputSummary":"safe","locations":[{"kind":"resource","resource":{"rootId":"root-one","relativePath":"src/lib.rs"}},{"kind":"unavailable","reason":"missing","label":"Path does not exist"}]}}"#,
+    );
+    let page = load_chat_page(
+        &connection,
+        SageProjectId::parse("project-one").unwrap(),
+        SageChatId::parse("chat-one").unwrap(),
+        None,
+    )
+    .unwrap();
+    assert!(matches!(
+        page.turns.as_slice()[0].items.as_slice()[0].content,
+        crate::acp::projection::ItemContent::ToolCall {
+            output_summary: None,
+            ..
+        }
+    ));
+    assert!(matches!(
+        page.turns.as_slice()[0].items.as_slice()[1].content,
+        crate::acp::projection::ItemContent::ToolUpdateResult {
+            output_summary: None,
+            ..
+        }
+    ));
+
+    let mut foreign = setup();
+    let session = seed(&mut foreign, "foreign-command");
+    let body = r#"{"kind":"toolCall","payload":{"category":"command","label":"Command","inputSummary":null,"outputSummary":"safe","locations":[{"kind":"resource","resource":{"rootId":"root-foreign","relativePath":"src/lib.rs"}}]}}"#;
+    insert(&foreign, &session, "foreign-call", 0, "toolCall", body);
+    assert!(matches!(
+        load_chat_page(
+            &foreign,
+            SageProjectId::parse("project-one").unwrap(),
+            SageChatId::parse("chat-one").unwrap(),
+            None
+        ),
+        Err(StoreError::Corrupt("resource root membership"))
+    ));
+}
+
+#[test]
 fn chat_page_projects_more_than_the_live_permission_window_from_history() {
     let mut connection = setup();
     let started = start_session(&mut connection, start(0, "start-permission-history")).unwrap();

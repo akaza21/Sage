@@ -1,4 +1,6 @@
 pub(crate) mod capabilities;
+pub(crate) mod command_output_stream;
+mod command_snapshots;
 mod errors;
 mod permissions;
 mod turn_starts;
@@ -7,6 +9,8 @@ mod turns;
 use errors::observed_platform;
 pub(crate) use errors::{AdapterError, TurnStartedRejection};
 
+use command_snapshots::CommandItemSnapshots;
+pub(crate) use command_snapshots::MaterializedCommandItem;
 use turn_starts::{CorrelationMatch, TurnStartCorrelations};
 
 use crate::acp::{
@@ -113,6 +117,7 @@ pub(crate) struct CodexAdapter {
     active_item_terminals: Vec<ItemTerminal>,
     active_terminal_id_bytes: usize,
     previous_turn: Option<TurnTombstone>,
+    command_item_snapshots: CommandItemSnapshots,
     permission_requests: Vec<PermissionRequestEntry>,
 }
 
@@ -140,6 +145,7 @@ impl CodexAdapter {
             active_item_terminals: Vec::new(),
             active_terminal_id_bytes: 0,
             previous_turn: None,
+            command_item_snapshots: CommandItemSnapshots::default(),
             permission_requests: Vec::new(),
         }
     }

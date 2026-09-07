@@ -263,12 +263,15 @@ pub(super) fn tool_payload(
             category: ToolCategory::Other,
             label,
             output_summary: None,
+            locations: Default::default(),
         }
     } else {
         NormalizedPayload::ToolCall {
             category: ToolCategory::Other,
             label,
             input_summary: None,
+            output_summary: None,
+            locations: Default::default(),
         }
     })
 }

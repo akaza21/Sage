@@ -1088,6 +1088,8 @@ fn pending_actual_bytes_are_exact_and_kind_conflicts_are_not_hidden() {
                     category: ToolCategory::Other,
                     label: SafeText::new("label", "tool").unwrap(),
                     input_summary: None,
+                    output_summary: None,
+                    locations: Default::default(),
                 },
             )],
             1,

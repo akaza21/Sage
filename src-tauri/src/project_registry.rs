@@ -51,7 +51,7 @@ pub(crate) fn persisted_path_text(path: &Path) -> AppResult<&str> {
 }
 
 impl Database {
-    #[cfg(any(test, feature = "acp-fixture"))]
+    #[cfg(any(test, all(windows, feature = "acp-fixture")))]
     pub(crate) fn selected_project_root_authority(
         &self,
         context: &ActiveProjectContext<'_>,
@@ -91,7 +91,7 @@ impl Database {
         let canonical = record.absolute_path.canonicalize().map_err(|_| {
             AppError::InvalidRequest("selected project root is missing or unavailable".into())
         })?;
-        if canonical != record.absolute_path || !canonical.is_dir() {
+        if canonical.as_os_str() != record.absolute_path.as_os_str() || !canonical.is_dir() {
             return Err(AppError::InvalidRequest(
                 "registered project root is not its canonical directory identity".into(),
             ));

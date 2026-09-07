@@ -159,6 +159,7 @@ impl FixtureAdapter {
                 label: SafeText::new("toolLabel", "Fixture tool")
                     .map_err(|_| AdapterRuntimeError::Frame)?,
                 output_summary: None,
+                locations: Default::default(),
             },
         })
     }

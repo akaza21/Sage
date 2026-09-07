@@ -1,12 +1,15 @@
 use std::{
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
 };
 
-use tokio::{sync::Notify, time::timeout};
+use tokio::{
+    sync::{Notify, oneshot},
+    time::timeout,
+};
 
 use crate::error::{AppError, AppResult};
 
@@ -78,7 +81,83 @@ pub(crate) struct GitContainmentTestObservation {
     pub(crate) available_reaper_permits: usize,
 }
 
+pub(crate) struct DeadlineWaitGate {
+    entered: Mutex<Option<oneshot::Sender<()>>>,
+    release: Mutex<Option<oneshot::Receiver<()>>>,
+}
+
+pub(crate) struct DeadlineWaitGateHandle {
+    entered: Option<oneshot::Receiver<()>>,
+    release: Option<oneshot::Sender<()>>,
+}
+
+impl DeadlineWaitGate {
+    fn new() -> (Arc<Self>, DeadlineWaitGateHandle) {
+        let (entered_sender, entered) = oneshot::channel();
+        let (release, release_receiver) = oneshot::channel();
+        (
+            Arc::new(Self {
+                entered: Mutex::new(Some(entered_sender)),
+                release: Mutex::new(Some(release_receiver)),
+            }),
+            DeadlineWaitGateHandle {
+                entered: Some(entered),
+                release: Some(release),
+            },
+        )
+    }
+
+    pub(super) async fn wait(&self) {
+        let entered = self
+            .entered
+            .lock()
+            .expect("deadline gate entry lock poisoned")
+            .take()
+            .expect("deadline gate entered more than once");
+        let release = self
+            .release
+            .lock()
+            .expect("deadline gate release lock poisoned")
+            .take()
+            .expect("deadline gate waited more than once");
+        let _ = entered.send(());
+        let _ = release.await;
+    }
+}
+
+impl DeadlineWaitGateHandle {
+    pub(crate) async fn wait_for_entry(&mut self, deadline: Duration) -> AppResult<()> {
+        let entered = self
+            .entered
+            .take()
+            .ok_or_else(|| AppError::Git("the Git deadline gate was awaited twice".into()))?;
+        timeout(deadline, entered)
+            .await
+            .map_err(|_| AppError::Git("the Git deadline gate was not reached in time".into()))?
+            .map_err(|_| AppError::Git("the Git deadline gate closed before entry".into()))
+    }
+
+    pub(crate) fn release(&mut self) {
+        if let Some(release) = self.release.take() {
+            let _ = release.send(());
+        }
+    }
+}
+
 impl GitProcessPolicy {
+    pub(crate) fn with_deadline_wait_gate(
+        command_timeout: Duration,
+    ) -> (Self, DeadlineWaitGateHandle) {
+        let (deadline_wait_gate, handle) = DeadlineWaitGate::new();
+        (
+            Self {
+                deadline_wait_gate: Some(deadline_wait_gate),
+                ..Self::mutation(command_timeout)
+            },
+            handle,
+        )
+    }
+
     pub(crate) fn nonconvergent_reap(command_timeout: Duration) -> Self {
         Self {
             reap_timeout: None,
@@ -94,11 +173,13 @@ impl GitProcessPolicy {
             mutation: true,
             visible_effect: true,
             post_reap_failure: true,
+            post_spawn_failure: false,
             stdout_reader_failure: false,
             reaper_control: None,
             containment_registry: None,
             before_spawn_hook: None,
             after_process_hook: None,
+            deadline_wait_gate: None,
         }
     }
 
@@ -106,6 +187,24 @@ impl GitProcessPolicy {
         let mut policy = Self::post_reap_failure(command_timeout);
         policy.visible_effect = false;
         policy
+    }
+
+    pub(crate) fn post_spawn_failure(command_timeout: Duration) -> Self {
+        Self {
+            command_timeout,
+            admission_timeout: GIT_ADMISSION_TIMEOUT,
+            reap_timeout: Some(GIT_REAP_TIMEOUT),
+            mutation: true,
+            visible_effect: true,
+            post_reap_failure: false,
+            post_spawn_failure: true,
+            stdout_reader_failure: false,
+            reaper_control: None,
+            containment_registry: None,
+            before_spawn_hook: None,
+            after_process_hook: None,
+            deadline_wait_gate: None,
+        }
     }
 
     pub(crate) fn stdout_reader_failure(command_timeout: Duration) -> Self {
@@ -116,11 +215,13 @@ impl GitProcessPolicy {
             mutation: true,
             visible_effect: true,
             post_reap_failure: false,
+            post_spawn_failure: false,
             stdout_reader_failure: true,
             reaper_control: None,
             containment_registry: None,
             before_spawn_hook: None,
             after_process_hook: None,
+            deadline_wait_gate: None,
         }
     }
 
@@ -228,11 +329,13 @@ impl GitProcessTestHarness {
                 mutation: true,
                 visible_effect: true,
                 post_reap_failure: false,
+                post_spawn_failure: true,
                 stdout_reader_failure: false,
                 reaper_control: Some(Arc::clone(&control)),
                 containment_registry: Some(Arc::clone(&self.registry)),
                 before_spawn_hook: None,
                 after_process_hook: None,
+                deadline_wait_gate: None,
             },
             GitReaperTestHandle {
                 registry: Arc::clone(&self.registry),

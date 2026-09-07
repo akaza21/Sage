@@ -1,6 +1,7 @@
 use serde_json::{Map, Value};
 
 use crate::acp::{
+    command_output::retain_command_output,
     contract::{BoundedVec, SafeText},
     image_admit::{ImageAdmitError, admit_image_data_url},
     intent::{NormalizedPayload, ToolCategory},
@@ -9,13 +10,28 @@ use crate::acp::{
     runtime::host_browse::{CURATED_BROWSE_TOOL_NAME, admit_browse_url},
 };
 
-use super::super::CODEX_BROWSE_TOOL_NAME;
+use super::super::{CODEX_BROWSE_TOOL_NAME, state::MaterializedCommandItem};
 use super::{
     IngressError, ResourceMapper,
-    support::{content, safe_text, text, unsupported},
+    support::{content, safe_text, sanitized_command_output, text, unsupported},
 };
 
 type ItemNormalization = (NormalizedPayload, Option<ToolState>, Option<ItemLifecycle>);
+
+pub(super) fn normalize_materialized_command(
+    command: &MaterializedCommandItem,
+    lifecycle: ItemLifecycle,
+) -> Result<ItemNormalization, IngressError> {
+    tool_with_summary_status(
+        lifecycle,
+        ToolCategory::Command,
+        "Command",
+        command.status.as_str(),
+        command.output.clone(),
+        command.locations.clone(),
+        true,
+    )
+}
 
 pub(super) fn normalize_item<M: ResourceMapper>(
     item: &Map<String, Value>,
@@ -52,7 +68,7 @@ pub(super) fn normalize_item<M: ResourceMapper>(
             None,
             None,
         ))),
-        "commandExecution" => tool(item, lifecycle, ToolCategory::Command, "Command").map(Some),
+        "commandExecution" => command_execution(item, lifecycle, mapper).map(Some),
         "mcpToolCall" => tool(item, lifecycle, ToolCategory::Mcp, "MCP tool").map(Some),
         "dynamicToolCall" => dynamic_tool(item, lifecycle).map(Some),
         "webSearch" => tool(item, lifecycle, ToolCategory::Web, "Web search").map(Some),
@@ -95,12 +111,63 @@ fn dynamic_tool(
             ToolCategory::Web,
             CURATED_BROWSE_TOOL_NAME,
             Some(href),
+            Default::default(),
+            false,
         );
     }
     if label == CURATED_BROWSE_TOOL_NAME || label == "sage.browse" {
         return Err(IngressError::UnsupportedServerRequest);
     }
     tool(item, lifecycle, ToolCategory::Other, "Tool")
+}
+
+fn command_execution<M: ResourceMapper>(
+    item: &Map<String, Value>,
+    lifecycle: ItemLifecycle,
+    mapper: &M,
+) -> Result<ItemNormalization, IngressError> {
+    let output = item
+        .get("aggregatedOutput")
+        .and_then(Value::as_str)
+        .map(|value| {
+            sanitized_command_output(value).and_then(|value| {
+                retain_command_output(&value)
+                    .and_then(|retained| retained.display_text())
+                    .ok_or(IngressError::Content)
+            })
+        })
+        .transpose()?;
+    let locations = item
+        .get("commandActions")
+        .and_then(Value::as_array)
+        .filter(|actions| actions.len() == 1)
+        .and_then(|actions| actions[0].as_object())
+        .filter(|action| action.get("type").and_then(Value::as_str) == Some("read"))
+        .and_then(|action| action.get("path").and_then(Value::as_str))
+        .filter(|path| is_well_formed_read_path(path))
+        .map(|absolute| match mapper.map_existing(absolute) {
+            Ok(resource) => crate::acp::intent::SafeResourceLocation::Resource { resource },
+            Err(reason) => crate::acp::intent::SafeResourceLocation::unavailable(reason),
+        })
+        .map(|location| BoundedVec::new("commandLocations", vec![location]))
+        .transpose()
+        .map_err(content)?
+        .unwrap_or_default();
+    tool_with_summary(
+        item,
+        lifecycle,
+        ToolCategory::Command,
+        "Command",
+        output,
+        locations,
+        true,
+    )
+}
+
+fn is_well_formed_read_path(path: &str) -> bool {
+    !path.is_empty()
+        && path.len() <= LIMITS.wire.absolute_path_bytes_native_only as usize
+        && !path.contains('\0')
 }
 
 fn image_generation(
@@ -137,7 +204,15 @@ fn tool(
     category: ToolCategory,
     label: &str,
 ) -> Result<ItemNormalization, IngressError> {
-    tool_with_summary(item, lifecycle, category, label, None)
+    tool_with_summary(
+        item,
+        lifecycle,
+        category,
+        label,
+        None,
+        Default::default(),
+        false,
+    )
 }
 
 fn tool_with_summary(
@@ -146,11 +221,39 @@ fn tool_with_summary(
     category: ToolCategory,
     label: &str,
     summary: Option<String>,
+    locations: BoundedVec<
+        crate::acp::intent::SafeResourceLocation,
+        { crate::acp::intent::COMMAND_RESOURCE_LIMIT },
+    >,
+    initial_summary_is_output: bool,
 ) -> Result<ItemNormalization, IngressError> {
     let status = item
         .get("status")
         .and_then(Value::as_str)
         .unwrap_or("inProgress");
+    tool_with_summary_status(
+        lifecycle,
+        category,
+        label,
+        status,
+        summary,
+        locations,
+        initial_summary_is_output,
+    )
+}
+
+fn tool_with_summary_status(
+    lifecycle: ItemLifecycle,
+    category: ToolCategory,
+    label: &str,
+    status: &str,
+    summary: Option<String>,
+    locations: BoundedVec<
+        crate::acp::intent::SafeResourceLocation,
+        { crate::acp::intent::COMMAND_RESOURCE_LIMIT },
+    >,
+    initial_summary_is_output: bool,
+) -> Result<ItemNormalization, IngressError> {
     let tool_state = match status {
         "inProgress" => ToolState::InProgress,
         "completed" => ToolState::Completed,
@@ -165,23 +268,26 @@ fn tool_with_summary(
         _ => None,
     };
     let label = SafeText::new("toolLabel", label).map_err(content)?;
+    let summary = summary
+        .map(|value| SafeText::new("toolOutput", value))
+        .transpose()
+        .map_err(content)?;
     let payload = if lifecycle == ItemLifecycle::Started {
         NormalizedPayload::ToolCall {
             category,
             label,
-            input_summary: summary
-                .map(|value| SafeText::new("toolInput", value))
-                .transpose()
-                .map_err(content)?,
+            input_summary: (!initial_summary_is_output)
+                .then_some(summary.clone())
+                .flatten(),
+            output_summary: initial_summary_is_output.then_some(summary).flatten(),
+            locations,
         }
     } else {
         NormalizedPayload::ToolUpdateResult {
             category,
             label,
-            output_summary: summary
-                .map(|value| SafeText::new("toolOutput", value))
-                .transpose()
-                .map_err(content)?,
+            output_summary: summary,
+            locations,
         }
     };
     Ok((payload, Some(tool_state), terminal))
@@ -242,6 +348,18 @@ mod tests {
     impl ResourceMapper for UnusedMapper {
         fn map_existing(&self, _: &str) -> Result<SafeResourceRef, UnavailableResourceReason> {
             Err(UnavailableResourceReason::Unsupported)
+        }
+    }
+
+    struct MappedResource;
+
+    impl ResourceMapper for MappedResource {
+        fn map_existing(&self, _: &str) -> Result<SafeResourceRef, UnavailableResourceReason> {
+            SafeResourceRef::new(
+                crate::acp::contract::SageRootId::parse("fixture-root").expect("root"),
+                "package.json",
+            )
+            .map_err(|_| UnavailableResourceReason::Unsupported)
         }
     }
 
@@ -400,8 +518,92 @@ mod tests {
         assert_eq!(terminal, None);
         assert!(matches!(
             payload,
-            NormalizedPayload::ToolCall { category: ToolCategory::Web, label, input_summary: Some(summary) }
+            NormalizedPayload::ToolCall { category: ToolCategory::Web, label, input_summary: Some(summary), .. }
                 if label.as_str() == "_sage/browse" && summary.as_str() == "http://127.0.0.1:43124/proof"
         ));
+    }
+
+    #[test]
+    fn command_execution_uses_only_typed_output_and_a_single_read_action() {
+        let command = item(json!({
+            "type": "commandExecution",
+            "status": "completed",
+            "aggregatedOutput": "Bearer sk-codex-secret\nsecond\n",
+            "command": "cat C:\\private\\secret.txt",
+            "commandActions": [{
+                "type": "read",
+                "command": "cat package.json",
+                "name": "read package",
+                "path": "C:\\fixture\\package.json"
+            }]
+        }));
+        let (started, state, lifecycle) =
+            normalize_item(&command, ItemLifecycle::Started, &MappedResource)
+                .expect("typed command")
+                .expect("item");
+        assert_eq!(state, Some(ToolState::Completed));
+        assert_eq!(lifecycle, Some(ItemLifecycle::Completed));
+        assert!(matches!(
+            started,
+            NormalizedPayload::ToolCall {
+                category: ToolCategory::Command,
+                input_summary: None,
+                output_summary: Some(output),
+                ..
+            } if output.as_str() == "Bearer [redacted]\nsecond\n"
+        ));
+
+        let (payload, state, lifecycle) =
+            normalize_item(&command, ItemLifecycle::Completed, &MappedResource)
+                .expect("typed command")
+                .expect("item");
+        assert_eq!(state, Some(ToolState::Completed));
+        assert_eq!(lifecycle, Some(ItemLifecycle::Completed));
+        let NormalizedPayload::ToolUpdateResult {
+            category,
+            output_summary,
+            locations,
+            ..
+        } = payload
+        else {
+            panic!("expected command update");
+        };
+        assert_eq!(category, ToolCategory::Command);
+        assert_eq!(
+            output_summary.expect("output").as_str(),
+            "Bearer [redacted]\nsecond\n"
+        );
+        assert!(
+            matches!(locations.as_slice(), [crate::acp::intent::SafeResourceLocation::Resource { resource }]
+            if resource.relative_path.as_str() == "package.json")
+        );
+    }
+
+    #[test]
+    fn command_execution_never_derives_a_location_from_nonread_or_multiple_actions() {
+        for actions in [
+            json!([]),
+            json!({"type":"read","path":"C:\\fixture\\package.json"}),
+            json!([{"type":"read"}]),
+            json!([{"type":"read","path":""}]),
+            json!([{"type":"write","path":"C:\\fixture\\package.json"}]),
+            json!([
+                {"type":"read","path":"C:\\fixture\\package.json"},
+                {"type":"read","path":"C:\\fixture\\other.json"}
+            ]),
+        ] {
+            let command = item(json!({
+                "type": "commandExecution", "status": "completed",
+                "aggregatedOutput": "safe", "commandActions": actions
+            }));
+            let (payload, _, _) =
+                normalize_item(&command, ItemLifecycle::Completed, &MappedResource)
+                    .expect("command")
+                    .expect("item");
+            assert!(
+                matches!(payload, NormalizedPayload::ToolUpdateResult { locations, .. }
+                if locations.as_slice().is_empty())
+            );
+        }
     }
 }

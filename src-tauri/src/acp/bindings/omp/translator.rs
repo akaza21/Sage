@@ -8,8 +8,8 @@ use std::collections::{BTreeMap, VecDeque};
 use serde_json::Value;
 
 use crate::acp::{
-    contract::{ContractError, RequiredText},
-    intent::ExternalId,
+    contract::{BoundedVec, ContractError, RequiredText, SafeText},
+    intent::{COMMAND_RESOURCE_LIMIT, ExternalId, SafeResourceLocation},
 };
 
 use super::{
@@ -43,6 +43,15 @@ pub(super) struct ActiveTurn {
     running_emitted: bool,
     terminal: Option<PromptTerminal>,
     tools: BTreeMap<String, crate::acp::contract::ToolState>,
+    tool_categories: BTreeMap<String, crate::acp::intent::ToolCategory>,
+    command_snapshots: BTreeMap<
+        String,
+        (
+            Option<SafeText<65536>>,
+            BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
+        ),
+    >,
+    command_snapshot_bytes: usize,
 }
 
 pub(crate) trait ResourceMapper {

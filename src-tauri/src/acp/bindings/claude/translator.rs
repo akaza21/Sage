@@ -3,8 +3,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::{Map, Value};
 
 use crate::acp::{
-    contract::{RequiredText, SafeText},
-    intent::{ExternalId, NormalizedPayload, SafeResourceRef, UnavailableResourceReason},
+    contract::{BoundedVec, RequiredText, SafeText},
+    intent::{
+        COMMAND_RESOURCE_LIMIT, ExternalId, NormalizedPayload, SafeResourceLocation,
+        SafeResourceRef, ToolCategory, UnavailableResourceReason,
+    },
     lifecycle::{ItemLifecycle, ToolState, TurnState},
     limits::LIMITS,
 };
@@ -70,6 +73,15 @@ pub(crate) enum AdapterEvent {
 pub(crate) struct ClaudeTranslator {
     external_session_id: ExternalId,
     tools: BTreeMap<String, ToolState>,
+    tool_categories: BTreeMap<String, ToolCategory>,
+    command_snapshots: BTreeMap<
+        String,
+        (
+            Option<SafeText<65536>>,
+            BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
+        ),
+    >,
+    command_snapshot_bytes: usize,
     text_snapshots: BTreeMap<String, String>,
     image_keys: BTreeSet<String>,
     text_bytes: usize,
@@ -86,6 +98,9 @@ impl ClaudeTranslator {
         Ok(Self {
             external_session_id: RequiredText::new("externalSessionId", external_session_id)?,
             tools: BTreeMap::new(),
+            tool_categories: BTreeMap::new(),
+            command_snapshots: BTreeMap::new(),
+            command_snapshot_bytes: 0,
             text_snapshots: BTreeMap::new(),
             image_keys: BTreeSet::new(),
             text_bytes: 0,
@@ -148,7 +163,7 @@ impl ClaudeTranslator {
                 "Claude thought mapping is not proven by the pinned source packet",
             )?],
             "plan" => vec![plan_event(update)?],
-            "tool_call" => vec![self.tool_call(update)?],
+            "tool_call" => vec![self.tool_call(update, resources)?],
             "tool_call_update" => self.tool_update(update, resources)?,
             "usage" => vec![unsupported_event(
                 "usage",
@@ -350,6 +365,9 @@ impl ClaudeTranslator {
 
     fn clear_turn_items(&mut self) {
         self.tools.clear();
+        self.tool_categories.clear();
+        self.command_snapshots.clear();
+        self.command_snapshot_bytes = 0;
         self.text_snapshots.clear();
         self.image_keys.clear();
         self.text_bytes = 0;

@@ -64,17 +64,17 @@ impl AcpService {
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
         let deadline = Instant::now()
             + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
-        #[cfg(test)]
+        #[cfg(all(test, windows))]
         self.record_cancel_stage("durable-wait");
         while !self.cancel_is_durable(&owner, &turn_id) {
             if Instant::now() >= deadline {
-                #[cfg(test)]
+                #[cfg(all(test, windows))]
                 self.record_cancel_stage("durable-timeout");
                 return Ok(outcome);
             }
             std::thread::sleep(Duration::from_millis(5));
         }
-        #[cfg(test)]
+        #[cfg(all(test, windows))]
         self.record_cancel_stage("converge");
         match self.converge_closed_shutdown(
             &owner,
@@ -84,16 +84,16 @@ impl AcpService {
             deadline,
         ) {
             Ok(()) => {
-                #[cfg(test)]
+                #[cfg(all(test, windows))]
                 self.record_cancel_stage("park");
                 self.park_after_cancel_zero(&owner).map(|()| {
-                    #[cfg(test)]
+                    #[cfg(all(test, windows))]
                     self.record_cancel_stage("ok");
                     outcome
                 })
             }
             Err(_) => {
-                #[cfg(test)]
+                #[cfg(all(test, windows))]
                 self.record_cancel_stage("converge");
                 let _ = self.runtime.mark_recovery(&owner);
                 self.retain_live_recovery(LiveHostRecovery {

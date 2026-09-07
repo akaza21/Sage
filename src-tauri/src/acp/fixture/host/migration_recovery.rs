@@ -1,19 +1,66 @@
 use serde_json::{Value, json};
 
 use crate::acp::{
-    fixture::generated_cases::FrozenCase,
-    migration::tests::{
-        FIXTURE_RETIREMENT_FAILPOINTS, fixture_backup_failpoint_observation,
-        fixture_insufficient_space_observation, fixture_retirement_observation,
-    },
+    fixture::generated_cases::FrozenCase, migration::tests::fixture_insufficient_space_observation,
 };
 
+pub(in crate::acp::fixture) struct PlatformObligation {
+    pub(in crate::acp::fixture) case_id: &'static str,
+    pub(in crate::acp::fixture) unavailable_native_mechanism: &'static str,
+    pub(in crate::acp::fixture) windows_observer: &'static str,
+    pub(in crate::acp::fixture) portable_counterparts: &'static [&'static str],
+}
+
+const WINDOWS_ONLY_MIGRATION_OBLIGATIONS: &[PlatformObligation] = &[
+    PlatformObligation {
+        case_id: "migration-backup-failpoint-rollback",
+        unavailable_native_mechanism: "identity-bound replacement publication and held-identity deletion",
+        windows_observer: "fixture_backup_failpoint_observation",
+        portable_counterparts: &[
+            "portable_retained_backup_survives_build_failure_then_retry_publishes",
+        ],
+    },
+    PlatformObligation {
+        case_id: "migration-retirement-prefixes",
+        unavailable_native_mechanism: "identity-bound replacement publication and held-identity deletion",
+        windows_observer: "fixture_retirement_observation",
+        portable_counterparts: &[
+            "portable_publish_recovers_retirement_restore_and_cleanup_prefixes",
+            "portable_publish_restores_and_cleans_wal_shm_prefixes_in_order",
+            "portable_publish_rejects_invalid_retirement_order_without_mutating_artifacts",
+        ],
+    },
+];
+
+#[cfg(windows)]
+pub(in crate::acp::fixture) const EXPLICIT_WINDOWS_ONLY_CASE_IDS: &[&str] = &[];
+
+#[cfg(not(windows))]
+pub(in crate::acp::fixture) const EXPLICIT_WINDOWS_ONLY_CASE_IDS: &[&str] = &[
+    "migration-backup-failpoint-rollback",
+    "migration-retirement-prefixes",
+];
+
+pub(in crate::acp::fixture) const PLATFORM_OBLIGATIONS: &[PlatformObligation] =
+    WINDOWS_ONLY_MIGRATION_OBLIGATIONS;
+
+#[cfg(windows)]
+use crate::acp::migration::tests::{
+    FIXTURE_RETIREMENT_FAILPOINTS, fixture_backup_failpoint_observation,
+    fixture_retirement_observation,
+};
+
+#[cfg(windows)]
 pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &[
     "migration-backup-failpoint-rollback",
     "migration-retirement-prefixes",
     "migration-recovery-insufficient-space",
 ];
 
+#[cfg(not(windows))]
+pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &["migration-recovery-insufficient-space"];
+
+#[cfg(windows)]
 pub(in crate::acp::fixture) fn execute(case: &FrozenCase) -> Value {
     let steps: Vec<Value> = serde_json::from_str(case.steps_json).unwrap();
     match case.id {
@@ -24,6 +71,14 @@ pub(in crate::acp::fixture) fn execute(case: &FrozenCase) -> Value {
     }
 }
 
+#[cfg(not(windows))]
+pub(in crate::acp::fixture) fn execute(case: &FrozenCase) -> Value {
+    assert_eq!(case.id, "migration-recovery-insufficient-space");
+    let steps: Vec<Value> = serde_json::from_str(case.steps_json).unwrap();
+    insufficient_space(&steps)
+}
+
+#[cfg(windows)]
 fn backup(steps: &[Value]) -> Value {
     assert_eq!(steps.len(), 2);
     assert_eq!(steps[0]["op"], "runMigrationFailpoint");
@@ -42,6 +97,7 @@ fn backup(steps: &[Value]) -> Value {
     })
 }
 
+#[cfg(windows)]
 fn retirement(steps: &[Value]) -> Value {
     let [step] = steps else {
         panic!("expected one migration retirement step");

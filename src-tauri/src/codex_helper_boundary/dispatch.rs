@@ -21,6 +21,7 @@ pub(crate) trait PublicationExecutor {
         helper: HelperIdentity,
     ) -> Result<(), PublicationFailure>;
 
+    #[cfg(windows)]
     fn recover(
         &mut self,
         authority: &ElevatedBoundaryAuthority,
@@ -31,6 +32,7 @@ pub(crate) trait PublicationExecutor {
         self.publish(authority, payload, secret, helper)
     }
 
+    #[cfg(windows)]
     fn update(
         &mut self,
         authority: &ElevatedBoundaryAuthority,
@@ -41,6 +43,7 @@ pub(crate) trait PublicationExecutor {
         self.publish(authority, payload, secret, helper)
     }
 
+    #[cfg(windows)]
     fn remove(
         &mut self,
         authority: &ElevatedBoundaryAuthority,

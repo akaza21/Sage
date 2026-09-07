@@ -357,6 +357,7 @@ fn frozen_permission_failures_use_the_mandatory_deny_and_teardown_contract() {
     }
 }
 
+#[cfg(windows)]
 #[test]
 fn frozen_migration_cases_execute_against_production_recovery() {
     use super::generated_cases::{FrozenOwner, FrozenPhase};
@@ -370,6 +371,20 @@ fn frozen_migration_cases_execute_against_production_recovery() {
         assert!(fixture_case.phase == FrozenPhase::Foundation);
         oracle::assert_literal(fixture_case, host::execute_migration(fixture_case));
     }
+}
+
+#[cfg(not(windows))]
+#[test]
+fn frozen_migration_cases_execute_against_production_recovery() {
+    use super::generated_cases::{FrozenOwner, FrozenPhase};
+
+    let fixture_case = FROZEN_CASES
+        .iter()
+        .find(|candidate| candidate.id == "migration-recovery-insufficient-space")
+        .unwrap();
+    assert!(fixture_case.owner == FrozenOwner::Host);
+    assert!(fixture_case.phase == FrozenPhase::Foundation);
+    oracle::assert_literal(fixture_case, host::execute_migration(fixture_case));
 }
 
 #[test]

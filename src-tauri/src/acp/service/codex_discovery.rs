@@ -253,7 +253,7 @@ impl CodexDiscoveryManager {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) fn seed_session_validation_for_test(
         &self,
         project_root: &CodexProjectRootAuthority,

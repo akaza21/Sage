@@ -1,6 +1,12 @@
 use serde::Serialize;
 mod preview;
 pub(crate) use preview::PREVIEW_LIMITS;
+
+pub(crate) const RETAINED_TOOL_OUTPUT_LINES: usize = 200;
+pub const COMMAND_RESOURCE_LIMIT: usize = 64;
+/// A one-byte sensitive token may expand to this replacement in command output.
+pub(crate) const COMMAND_OUTPUT_REDACTION_BYTES: usize = "[redacted]".len();
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Limits {

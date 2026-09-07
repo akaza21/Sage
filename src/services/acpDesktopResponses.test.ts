@@ -289,6 +289,85 @@ describe("safeAcpMutationResponse", () => {
     ).toBeNull();
   });
 
+  it("admits exactly 64 command locations and rejects one more", () => {
+    const command = (count: number) =>
+      mutation({
+        turns: [
+          turn({
+            items: [
+              item(0, {
+                kind: "toolUpdateResult",
+                toolState: "completed",
+                payload: {
+                  callItemId: null,
+                  outputSummary: "bounded output",
+                  presentation: {
+                    kind: "command",
+                    label: "Command",
+                    summary: null,
+                    resources: Array.from({ length: count }, (_, index) => ({
+                      kind: "resource",
+                      resource: {
+                        rootId: "root-a",
+                        relativePath: `file-${index}.ts`,
+                      },
+                    })),
+                  },
+                },
+              }),
+            ],
+          }),
+        ],
+      });
+    expect(safeAcpMutationResponse(command(64))).not.toBeNull();
+    expect(safeAcpMutationResponse(command(65))).toBeNull();
+  });
+
+  it.each([
+    ["toolCall", "outputSummary"],
+    ["toolUpdateResult", "outputSummary"],
+  ] as const)("bounds %s command output by UTF-8 bytes", (kind, outputKey) => {
+    const output = "😀".repeat(16_384);
+    const command = (value: string) =>
+      mutation({
+        turns: [
+          turn({
+            items: [
+              item(0, {
+                kind,
+                toolState: "completed",
+                payload:
+                  kind === "toolCall"
+                    ? {
+                        presentation: {
+                          kind: "command",
+                          label: "Command",
+                          summary: null,
+                          resources: [],
+                        },
+                        inputSummary: null,
+                        [outputKey]: value,
+                      }
+                    : {
+                        callItemId: null,
+                        presentation: {
+                          kind: "command",
+                          label: "Command",
+                          summary: null,
+                          resources: [],
+                        },
+                        [outputKey]: value,
+                      },
+              }),
+            ],
+          }),
+        ],
+      });
+    expect(new TextEncoder().encode(output).byteLength).toBe(65_536);
+    expect(safeAcpMutationResponse(command(output))).not.toBeNull();
+    expect(safeAcpMutationResponse(command(`${output}x`))).toBeNull();
+  });
+
   it("fails closed when collaboration labels exceed their limit", () => {
     expect(
       safeAcpMutationResponse(

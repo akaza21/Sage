@@ -120,14 +120,17 @@ impl PermissionStoreFixture {
             .unwrap();
     }
 
+    #[cfg(windows)]
     pub(in crate::acp::fixture) fn session_count(&self) -> i64 {
         self.count("SELECT COUNT(*) FROM agent_sessions WHERE chat_id='chat-permission'")
     }
 
+    #[cfg(windows)]
     pub(in crate::acp::fixture) fn activity_count(&self) -> i64 {
         self.count("SELECT COUNT(*) FROM session_activities WHERE turn_id='turn-permission'")
     }
 
+    #[cfg(windows)]
     pub(in crate::acp::fixture) fn has_projected_activity_text(
         &self,
         external_activity: &str,

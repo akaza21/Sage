@@ -69,7 +69,9 @@ async fn commit_git_repository_inner_with_timeout(
         state,
         request,
         expected_transition_epoch,
-        Some(repository::GitProcessPolicy::mutation(mutation_timeout)),
+        Some(repository::GitProcessPolicy::post_spawn_failure(
+            mutation_timeout,
+        )),
     )
     .await
 }

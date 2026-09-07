@@ -691,3 +691,149 @@ fn failed_resource_mapping_emits_a_typed_nonclickable_location() {
         [AdapterEvent::TurnRunning { .. }, AdapterEvent::Item { .. }]
     ));
 }
+
+#[test]
+fn command_tool_initial_and_sparse_updates_use_the_tracked_command_category() {
+    let mut adapter = translator(17);
+    initialize(&mut adapter, false);
+    new_session(&mut adapter);
+    begin_prompt(&mut adapter);
+    let initial = json!({
+        "jsonrpc":"2.0", "method":"session/update", "params":{
+            "sessionId":"omp-session-1", "update":{
+                "sessionUpdate":"tool_call", "toolCallId":"command-1", "kind":"execute",
+                "status":"pending", "content":[
+                    {"type":"text","text":"\"Bearer\","},
+                    {"type":"text","text":"  \t\r\n"},
+                    {"type":"text","text":"opaque-command-credential path=C:"},
+                    {"type":"text","text":"\\private file:///secret"}
+                ],
+                "locations":[{"path":"C:\\fixture\\src\\lib.rs"}]
+            }
+        }
+    });
+    let initial = adapter
+        .ingest(&serde_json::to_vec(&initial).unwrap(), &FixtureResources)
+        .unwrap();
+    assert!(initial.iter().any(|event| matches!(
+        event,
+        AdapterEvent::Item {
+            tool_state: Some(ToolState::Pending),
+            payload: NormalizedPayload::ToolCall {
+                category: ToolCategory::Command,
+                output_summary: Some(output),
+                locations,
+                ..
+            },
+            ..
+        } if !output.as_str().contains("opaque-command-credential")
+            && !output.as_str().contains("private")
+            && !output.as_str().contains("file:///")
+            && locations.as_slice().len() == 1
+    )));
+    assert!(
+        initial
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::ToolAuthorityDenied { .. }))
+    );
+    assert!(
+        initial
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::CancelDispatchRequired))
+    );
+
+    let update = json!({
+        "jsonrpc":"2.0", "method":"session/update", "params":{
+            "sessionId":"omp-session-1", "update":{
+                "sessionUpdate":"tool_call_update", "toolCallId":"command-1", "status":"in_progress"
+            }
+        }
+    });
+    let update = adapter
+        .ingest(&serde_json::to_vec(&update).unwrap(), &FixtureResources)
+        .unwrap();
+    assert!(matches!(
+        update.as_slice(),
+        [AdapterEvent::Item {
+            tool_state: Some(ToolState::InProgress),
+            payload: NormalizedPayload::ToolUpdateResult {
+                category: ToolCategory::Command,
+                output_summary: Some(output),
+                locations,
+                ..
+            },
+            ..
+        }] if !output.as_str().contains("opaque-command-credential")
+            && !output.as_str().contains("private")
+            && !output.as_str().contains("file:///")
+            && locations.as_slice().len() == 1
+    ));
+
+    let patched = json!({
+        "jsonrpc":"2.0", "method":"session/update", "params":{
+            "sessionId":"omp-session-1", "update":{
+                "sessionUpdate":"tool_call_update", "toolCallId":"command-1", "status":"in_progress",
+                "content":[
+                    {"type":"text","text":"\"Bearer:\","},
+                    {"type":"text","text":"\t\r\n"},
+                    {"type":"text","text":"opaque-command-credential path=C:"},
+                    {"type":"text","text":"\\private file:///update-secret"}
+                ]
+            }
+        }
+    });
+    let patched = adapter
+        .ingest(&serde_json::to_vec(&patched).unwrap(), &FixtureResources)
+        .unwrap();
+    assert!(matches!(
+        patched.as_slice(),
+        [AdapterEvent::Item {
+            payload: NormalizedPayload::ToolUpdateResult {
+                category: ToolCategory::Command,
+                output_summary: Some(output),
+                locations,
+                ..
+            },
+            ..
+        }] if !output.as_str().contains("opaque-command-credential")
+            && !output.as_str().contains("private")
+            && !output.as_str().contains("file:///")
+            && locations.as_slice().len() == 1
+    ));
+
+    let invalid = json!({
+        "jsonrpc":"2.0", "method":"session/update", "params":{
+            "sessionId":"omp-session-1", "update":{
+                "sessionUpdate":"tool_call_update", "toolCallId":"command-1", "content":{}
+            }
+        }
+    });
+    assert!(matches!(
+        adapter.ingest(&serde_json::to_vec(&invalid).unwrap(), &FixtureResources),
+        Err(TranslationError::MalformedFrame)
+    ));
+    let clear = json!({
+        "jsonrpc":"2.0", "method":"session/update", "params":{
+            "sessionId":"omp-session-1", "update":{
+                "sessionUpdate":"tool_call_update", "toolCallId":"command-1", "status":"completed",
+                "content":[], "locations":[]
+            }
+        }
+    });
+    let clear = adapter
+        .ingest(&serde_json::to_vec(&clear).unwrap(), &FixtureResources)
+        .unwrap();
+    assert!(matches!(
+        clear.as_slice(),
+        [AdapterEvent::Item {
+            tool_state: Some(ToolState::Completed),
+            payload: NormalizedPayload::ToolUpdateResult {
+                category: ToolCategory::Command,
+                output_summary: None,
+                locations,
+                ..
+            },
+            ..
+        }] if locations.as_slice().is_empty()
+    ));
+}

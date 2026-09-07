@@ -4,7 +4,7 @@ use crate::acp::{
         SageAgentSessionId, SageChatId, SageItemId, SageProjectId, SageRootId, SageServerRequestId,
         SageTurnId,
     },
-    intent::{NormalizedPayload, ToolCategory},
+    intent::{NormalizedPayload, SafeResourceLocation, ToolCategory},
     lifecycle::ServerRequestState,
     projection::{
         FileChangeProjection, FileOperation, ItemContent, ItemOrigin, ItemProjection, PlanEntry,
@@ -112,18 +112,22 @@ fn validate_resource_membership(
     payload: &NormalizedPayload,
     project_roots: &[SageRootId],
 ) -> Result<(), StoreError> {
-    let NormalizedPayload::FileChangeDiff {
-        resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
-        ..
-    } = payload
-    else {
-        return Ok(());
+    let locations: Vec<&SafeResourceLocation> = match payload {
+        NormalizedPayload::FileChangeDiff { resource, .. } => vec![resource],
+        NormalizedPayload::ToolCall { locations, .. }
+        | NormalizedPayload::ToolUpdateResult { locations, .. } => {
+            locations.as_slice().iter().collect()
+        }
+        _ => vec![],
     };
-    project_roots
-        .iter()
-        .any(|root| root == &resource.root_id)
-        .then_some(())
-        .ok_or(StoreError::Corrupt("resource root membership"))
+    for location in locations {
+        if let SafeResourceLocation::Resource { resource } = location
+            && !project_roots.iter().any(|root| root == &resource.root_id)
+        {
+            return Err(StoreError::Corrupt("resource root membership"));
+        }
+    }
+    Ok(())
 }
 
 fn content(
@@ -157,17 +161,21 @@ fn content(
             category,
             label,
             input_summary,
+            output_summary,
+            locations,
         } => ItemContent::ToolCall {
-            presentation: presentation(category, label)?,
+            presentation: presentation(category, label, locations)?,
             input_summary,
+            output_summary,
         },
         NormalizedPayload::ToolUpdateResult {
             category,
             label,
             output_summary,
+            locations,
         } => ItemContent::ToolUpdateResult {
             call_item_id: None,
-            presentation: presentation(category, label)?,
+            presentation: presentation(category, label, locations)?,
             output_summary,
         },
         NormalizedPayload::FileChangeDiff {
@@ -255,6 +263,7 @@ fn projected_line_count(value: Option<u64>) -> Option<u32> {
 fn presentation(
     category: ToolCategory,
     label: SafeText<512>,
+    locations: BoundedVec<SafeResourceLocation, { crate::acp::intent::COMMAND_RESOURCE_LIMIT }>,
 ) -> Result<ToolPresentation, StoreError> {
     let empty = || BoundedVec::new("resources", vec![]).map_err(contract);
     Ok(match category {
@@ -269,6 +278,7 @@ fn presentation(
         ToolCategory::Command => ToolPresentation::Command {
             label,
             summary: None,
+            resources: locations,
         },
         ToolCategory::Search => ToolPresentation::Search {
             query_summary: SafeText::new("query", label.as_str()).map_err(contract)?,

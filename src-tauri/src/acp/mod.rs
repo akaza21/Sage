@@ -1,6 +1,7 @@
 pub(crate) mod bindings;
 #[cfg(feature = "acp-fixture")]
 mod characterization_observation;
+pub(crate) mod command_output;
 pub mod contract;
 #[cfg(any(test, feature = "acp-fixture"))]
 pub mod fixture;

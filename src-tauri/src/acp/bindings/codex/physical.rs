@@ -85,10 +85,10 @@ impl PhysicallyInspectedPackage {
                 let Some(package_root) = entrypoint.strip_suffix(ENTRYPOINT_SUFFIX) else {
                     return false;
                 };
-                return self.package_root == Path::new(package_root)
+                self.package_root == Path::new(package_root)
                     && self.codex_home == packet.codex_home()
                     && self.artifact_count == packet.metadata().supporting_artifacts.len() + 1
-                    && self.byte_len == packet.metadata().package_unpacked_byte_len;
+                    && self.byte_len == packet.metadata().package_unpacked_byte_len
             }
             #[cfg(not(test))]
             {

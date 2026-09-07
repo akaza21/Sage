@@ -243,6 +243,8 @@ export function AcpChatProjection({
   const earlierHistoryIncomplete = page.nextCursor !== null;
   const countIncomplete = earlierHistoryIncomplete || retentionIncomplete;
   const rootLabels = projectRootLabels(projectRoots);
+  const canonicalRootId =
+    projectRoots.length === 1 ? projectRoots[0]?.id : undefined;
   return (
     <section
       className="acp-chat-projection"
@@ -251,6 +253,7 @@ export function AcpChatProjection({
       data-project-id={page.projectId}
       data-chat-id={page.chatId}
       data-current-session-id={page.currentSessionId ?? ""}
+      data-expected-resource-root-id={canonicalRootId}
     >
       {focused ? <AcpAnnouncementRegions page={page} /> : null}
       <h2 className="sr-only">{page.title}</h2>

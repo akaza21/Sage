@@ -84,9 +84,15 @@ describe("ToolItem", () => {
         onOpenResource={onOpen}
       />,
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open file src/main.ts" }),
+    const fileAction = screen.getByRole("button", {
+      name: "Open file src/main.ts",
+    });
+    expect(fileAction).toHaveAttribute("data-resource-root-id", "root-a");
+    expect(fileAction).toHaveAttribute(
+      "data-resource-relative-path",
+      "src/main.ts",
     );
+    fireEvent.click(fileAction);
     expect(onOpen).toHaveBeenCalledWith(
       { rootId: "root-a", relativePath: "src/main.ts" },
       "file",
@@ -119,7 +125,8 @@ describe("ToolItem", () => {
     );
   });
 
-  it("shows Read and command markers inline without opening Tool details", () => {
+  it("shows command output and its safe File action in one card", () => {
+    const onOpen = vi.fn();
     const fileItem = tool({
       kind: "file",
       label: "Read file",
@@ -140,20 +147,117 @@ describe("ToolItem", () => {
     ).toBeVisible();
     expect(screen.queryByText("Tool details")).toBeNull();
 
-    rerender(
-      <ToolItem
-        item={tool({
-          kind: "command",
+    const command = {
+      ...tool({
+        kind: "command",
+        label: "Run tests",
+        summary: null,
+        resources: [
+          {
+            kind: "resource" as const,
+            resource: { rootId: "root-a", relativePath: "package.json" },
+          },
+        ],
+      }),
+      kind: "toolUpdateResult" as const,
+      payload: {
+        presentation: {
+          kind: "command" as const,
           label: "Run tests",
-          summary: "npm test -- src/main.ts",
-        })}
-      />,
+          summary: null,
+          resources: [
+            {
+              kind: "resource" as const,
+              resource: { rootId: "root-a", relativePath: "package.json" },
+            },
+          ],
+        },
+        callItemId: null,
+        outputSummary: "retained command output",
+      },
+    } as Extract<AcpItem, { kind: "toolUpdateResult" }>;
+    rerender(<ToolItem item={command} onOpenResource={onOpen} />);
+    expect(screen.getByLabelText("Command output")).toHaveTextContent(
+      "retained command output",
     );
-    expect(screen.getByLabelText("Command")).toHaveTextContent(
-      "npm test -- src/main.ts",
+    const commandCard = screen.getByRole("group", { name: "Run tests" });
+    const descriptionId = commandCard.getAttribute("aria-describedby");
+    expect(descriptionId).not.toBeNull();
+    expect(document.getElementById(descriptionId ?? "")).toBe(
+      screen.getByLabelText("Command output"),
     );
-    expect(screen.getByText("Tool details")).toBeInTheDocument();
+    expect(screen.getAllByText("retained command output")).toHaveLength(1);
+    expect(screen.queryByText("Tool details")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open file package.json" }),
+    );
+    expect(onOpen).toHaveBeenLastCalledWith(
+      { rootId: "root-a", relativePath: "package.json" },
+      "file",
+    );
   });
+
+  it.each(["toolCall", "toolUpdateResult"] as const)(
+    "uses one referenced output surface for %s command output transitions",
+    (kind) => {
+      const { rerender } = render(<ToolItem item={commandItem(kind, null)} />);
+      expect(
+        screen.getByRole("group", { name: "Run command" }),
+      ).not.toHaveAttribute("aria-describedby");
+      expect(screen.queryByLabelText("Command output")).toBeNull();
+
+      rerender(<ToolItem item={commandItem(kind, "bounded output")} />);
+      const card = screen.getByRole("group", { name: "Run command" });
+      const id = card.getAttribute("aria-describedby");
+      expect(document.getElementById(id ?? "")).toBe(
+        screen.getByLabelText("Command output"),
+      );
+      expect(screen.getAllByText("bounded output")).toHaveLength(1);
+      expect(screen.queryByText("Tool details")).toBeNull();
+
+      rerender(<ToolItem item={commandItem(kind, "")} />);
+      expect(
+        screen.getByRole("group", { name: "Run command" }),
+      ).not.toHaveAttribute("aria-describedby");
+      expect(screen.queryByLabelText("Command output")).toBeNull();
+    },
+  );
+
+  function commandItem(
+    kind: "toolCall" | "toolUpdateResult",
+    outputSummary: string | null,
+  ): Extract<AcpItem, { kind: "toolCall" | "toolUpdateResult" }> {
+    const presentation = {
+      kind: "command" as const,
+      label: "Run command",
+      summary: null,
+      resources: [],
+    };
+    if (kind === "toolCall") {
+      return {
+        ...tool(presentation),
+        payload: {
+          presentation,
+          inputSummary: "retained input",
+          outputSummary,
+        },
+      };
+    }
+    return {
+      ...tool({
+        kind: "command",
+        label: "Run command",
+        summary: null,
+        resources: [],
+      }),
+      kind,
+      payload: {
+        presentation,
+        callItemId: null,
+        outputSummary,
+      },
+    } as Extract<AcpItem, { kind: "toolUpdateResult" }>;
+  }
 
   it("uses one generic card for unknown tools and typed safe summaries", () => {
     const { rerender } = render(

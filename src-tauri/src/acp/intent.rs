@@ -3,6 +3,7 @@ use serde::{Deserialize, Deserializer, Serialize, de};
 use super::contract::{
     BoundedVec, ContractError, ItemKind, RequiredText, SafeText, SageRootId, SchemaVersionV1,
 };
+pub use super::limits::COMMAND_RESOURCE_LIMIT;
 
 pub type BindingId = RequiredText<512>;
 pub type ModelId = RequiredText<512>;
@@ -168,11 +169,17 @@ pub enum NormalizedPayload {
         category: ToolCategory,
         label: SafeText<512>,
         input_summary: Option<SafeText<65536>>,
+        #[serde(default)]
+        output_summary: Option<SafeText<65536>>,
+        #[serde(default)]
+        locations: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
     },
     ToolUpdateResult {
         category: ToolCategory,
         label: SafeText<512>,
         output_summary: Option<SafeText<65536>>,
+        #[serde(default)]
+        locations: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
     },
     FileChangeDiff {
         resource: SafeResourceLocation,

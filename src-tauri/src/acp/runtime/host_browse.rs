@@ -131,6 +131,8 @@ pub(crate) fn browse_tool_payload(
         category: crate::acp::intent::ToolCategory::Web,
         label: SafeText::new("toolLabel", CURATED_BROWSE_TOOL_NAME)?,
         input_summary: Some(SafeText::new("toolInput", href)?),
+        output_summary: None,
+        locations: Default::default(),
     })
 }
 

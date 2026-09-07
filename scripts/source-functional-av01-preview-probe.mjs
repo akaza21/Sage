@@ -9,6 +9,7 @@ import {
   discoverTarget,
   hashFile,
   operationDeadline,
+  runBoundedTool,
   revalidateAttachedPage,
   writeContainedBytes,
   writeContainedText,
@@ -23,6 +24,7 @@ import {
   ACP04_ECHOES,
   runAcp04ModeA,
 } from "./source-functional-acp04-live-probe.mjs";
+import { runReadOnlyPackageJsonTurn } from "./source-functional-acp04-file-turn.mjs";
 import { waitUntil } from "./source-functional-acp04-observation.mjs";
 import {
   createAv01PreviewReceipt,
@@ -134,7 +136,7 @@ async function waitForFixtureManualOrigin(options, deadline) {
   );
 }
 
-export const AV01_PREVIEW_SNAPSHOT = `(()=>{const stacks=[...document.querySelectorAll('.agent-preview-stack')],panes=[...document.querySelectorAll('aside[aria-label="Agent artifacts"]')];if(stacks.length>1||panes.length!==1)return null;const stack=stacks[0]||null,group=stack?.querySelector('[role="group"][aria-label="Preview targets"]')||null,buttons=group?[...group.querySelectorAll('button')]:[],frames=stack?[...stack.querySelectorAll('iframe[title="Sage browser"]')]:[],notices=stack?[...stack.querySelectorAll('.resource-state')].map(x=>x.innerText.trim()).filter(Boolean):[];return {listenerReady:stack?.dataset.previewListenerReady||'false',phase:stack?.dataset.previewPhase||'none',targetIdentity:stack?.dataset.previewTargetIdentity||null,startEnabled:buttons.filter(x=>x.textContent.trim()==='Start'&&!x.disabled).length===1,stopVisible:buttons.filter(x=>x.textContent.trim()==='Stop'&&!x.disabled).length===1,frameUrls:frames.map(x=>x.getAttribute('src')||''),notices,collapsed:panes[0].classList.contains('agent-artifact-pane--collapsed')};})()`;
+export const AV01_PREVIEW_SNAPSHOT = `(()=>{const stacks=document.querySelectorAll('.agent-preview-stack'),panes=document.querySelectorAll('aside[aria-label="Agent artifacts"]');if(stacks.length>1||panes.length!==1)return null;const stack=stacks.length===1?stacks[0]:null,group=stack?.querySelector('[role="group"][aria-label="Preview targets"]')||null,buttons=group?.querySelectorAll('button')||[],frames=stack?.querySelectorAll('iframe[title="Sage browser"]')||[],noticeNodes=stack?.querySelectorAll('.resource-state')||[];if(buttons.length>16||frames.length>1||noticeNodes.length>4)return null;const text=node=>{const walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);let value='',next;while((next=walker.nextNode())){const part=next.nodeValue||'';if(part.length>4096-value.length)return null;value+=part;}return value.trim();};let starts=0,stops=0;for(const button of buttons){const label=text(button);if(label===null)return null;if(label==='Start'&&!button.disabled)starts++;if(label==='Stop'&&!button.disabled)stops++;}const frameUrls=[];for(const frame of frames)frameUrls.push(frame.getAttribute('src')||'');const notices=[];for(const node of noticeNodes){const notice=text(node);if(notice===null)return null;if(notice)notices.push(notice);}return {listenerReady:stack?.dataset.previewListenerReady||'false',phase:stack?.dataset.previewPhase||'none',targetIdentity:stack?.dataset.previewTargetIdentity||null,startEnabled:starts===1,stopVisible:stops===1,frameUrls,notices,collapsed:panes[0].classList.contains('agent-artifact-pane--collapsed')};})()`;
 
 export function validatePreviewSnapshot(value) {
   if (
@@ -555,10 +557,48 @@ function guardNativeLogs(options) {
   }
 }
 
+async function fixtureGitIdentity(options, deadline) {
+  const git = hashFile(options.git.path, 256 * 1024 * 1024);
+  if (git.bytes !== options.git.bytes || git.sha256 !== options.git.sha256)
+    fail("fixture-git-invalid");
+  const run = (argumentsFor, maxOutputBytes) =>
+    runBoundedTool(options.git.path, argumentsFor, deadline, options.output, {
+      commandRole: "av01-fixture-read-only-git",
+      expectedExecutablePath: options.git.path,
+      maxOutputBytes,
+    });
+  const status = await run(
+    [
+      "-C",
+      options.fixture.path,
+      "status",
+      "--porcelain=v1",
+      "--untracked-files=all",
+    ],
+    4096,
+  );
+  const identity = await run(
+    ["-C", options.fixture.path, "rev-parse", "HEAD", "HEAD^{tree}"],
+    4096,
+  );
+  const lines = identity.trim().split(/\r?\n/u);
+  if (
+    status !== "" ||
+    lines.length !== 2 ||
+    !lines.every((line) => /^[a-f0-9]{40,64}$/u.test(line))
+  )
+    fail("fixture-git-churn");
+  return Object.freeze({ commit: lines[0], tree: lines[1] });
+}
+
 async function execute(options) {
   const deadline = Date.now() + options.deadlineMs;
   options = await preflightCodex(options, deadline);
-  readAv01PreviewFixtureIdentity(options.fixture.path, options.fixture.case);
+  const fixtureBefore = readAv01PreviewFixtureIdentity(
+    options.fixture.path,
+    options.fixture.case,
+  );
+  const gitBefore = await fixtureGitIdentity(options, deadline);
   const admitted = await discoverTarget(
     options.port,
     options.expectedOrigin,
@@ -571,6 +611,21 @@ async function execute(options) {
       codexVersion: options.codex.version,
       guard: () => guardNativeLogs(options),
     });
+    const rawFileProof = await runReadOnlyPackageJsonTurn(
+      cdp,
+      deadline,
+      modeA.state,
+    );
+    const fixtureAfter = readAv01PreviewFixtureIdentity(
+      options.fixture.path,
+      options.fixture.case,
+    );
+    const gitAfter = await fixtureGitIdentity(options, deadline);
+    if (
+      JSON.stringify(fixtureBefore) !== JSON.stringify(fixtureAfter) ||
+      JSON.stringify(gitBefore) !== JSON.stringify(gitAfter)
+    )
+      fail("fixture-identity-churn");
     let activeScreenshot = null;
     const preview = await runAv01PreviewJourney(
       cdp,
@@ -595,6 +650,11 @@ async function execute(options) {
       startedAt: modeA.startedAt,
       completedAt: new Date().toISOString(),
       modeA,
+      fileProof: rawFileProof,
+      fixtureBefore,
+      fixtureAfter,
+      gitBefore,
+      gitAfter,
       preview,
     };
     writeContainedText(

@@ -9,8 +9,8 @@ use crate::acp::{
 use super::super::state::{AdapterError, ExternalKind, TurnStartedRejection};
 use super::{
     CodexAdapter, IncomingEvent, IngressDisposition, IngressError, ItemUpdateMode, ResourceMapper,
-    content, error_payload, expect_thread_and_turn, identity, normalize_item, parse_usage,
-    sanitize, text, unsupported,
+    content, error_payload, expect_thread_and_turn, identity, normalize_item,
+    normalize_materialized_command, parse_usage, sanitize, text, unsupported,
 };
 
 pub(super) fn notification<M: ResourceMapper>(
@@ -130,6 +130,7 @@ pub(super) fn notification<M: ResourceMapper>(
         "turn/completed" => turn_completed(adapter, params),
         "item/started" => item_event(adapter, params, ItemLifecycle::Started, mapper),
         "item/completed" => item_event(adapter, params, ItemLifecycle::Completed, mapper),
+        "item/commandExecution/outputDelta" => command_output_delta(adapter, params),
         "item/agentMessage/delta" => delta_event(adapter, params, DeltaKind::Text),
         "item/reasoning/summaryTextDelta" => delta_event(adapter, params, DeltaKind::Thought),
         "item/plan/delta" => delta_event(adapter, params, DeltaKind::Plan),
@@ -214,6 +215,7 @@ fn turn_completed(
         .map_err(identity)?
     {
         TerminalUpdate::Apply => {
+            adapter.clear_command_items();
             let id = adapter
                 .scoped_in_turn(ExternalKind::Turn, external, external)
                 .map_err(identity)?;
@@ -239,7 +241,16 @@ fn item_event<M: ResourceMapper>(
     if adapter.turn_is_terminal(turn) && !adapter.item_is_terminal(turn, external) {
         return Ok(IngressDisposition::IgnoredLate);
     }
-    let Some((payload, tool_state, terminal)) = normalize_item(item, requested, mapper)? else {
+    let command = (item.get("type").and_then(Value::as_str) == Some("commandExecution"))
+        .then(|| {
+            adapter.materialize_command_item(turn, external, item, mapper, requested.is_terminal())
+        })
+        .transpose()?;
+    let normalized = match command.as_ref() {
+        Some(command) => Some(normalize_materialized_command(command, requested)?),
+        None => normalize_item(item, requested, mapper)?,
+    };
+    let Some((payload, tool_state, terminal)) = normalized else {
         return Ok(IngressDisposition::Events(vec![]));
     };
     let lifecycle = terminal.unwrap_or(requested);
@@ -253,12 +264,59 @@ fn item_event<M: ResourceMapper>(
             TerminalUpdate::Apply => {}
         }
     }
+    if let Some(command) = command {
+        if lifecycle.is_terminal() {
+            adapter.remove_command_item(external);
+        } else {
+            adapter.commit_command_item(turn, external, command)?;
+        }
+    }
     let id = adapter
         .scoped_in_turn(ExternalKind::Item, turn, external)
         .map_err(identity)?;
     Ok(IncomingEvent::Item {
         id,
         lifecycle,
+        tool_state,
+        payload,
+        update_mode: ItemUpdateMode::Replace,
+    }
+    .into())
+}
+
+fn command_output_delta(
+    adapter: &mut CodexAdapter,
+    params: &Map<String, Value>,
+) -> Result<IngressDisposition, IngressError> {
+    let turn = expect_thread_and_turn(adapter, params)?;
+    if adapter.turn_is_terminal(turn) {
+        return Ok(IngressDisposition::IgnoredLate);
+    }
+    let external = text(params, "itemId", 512)?;
+    if adapter.item_is_terminal(turn, external) {
+        return Ok(IngressDisposition::IgnoredLate);
+    }
+    let delta = params
+        .get("delta")
+        .and_then(Value::as_str)
+        .filter(|value| {
+            value.len() <= crate::acp::limits::LIMITS.wire.frame_bytes as usize
+                && !value.contains('\0')
+        })
+        .ok_or(IngressError::Malformed)?;
+    let command = adapter.append_command_output_delta(turn, external, delta)?;
+    let (payload, tool_state, terminal) =
+        normalize_materialized_command(&command, ItemLifecycle::Streaming)?;
+    if terminal.is_some() || tool_state.is_none() {
+        return Err(IngressError::Malformed);
+    }
+    let id = adapter
+        .scoped_in_turn(ExternalKind::Item, turn, external)
+        .map_err(identity)?;
+    adapter.commit_command_item(turn, external, command)?;
+    Ok(IncomingEvent::Item {
+        id,
+        lifecycle: ItemLifecycle::Streaming,
         tool_state,
         payload,
         update_mode: ItemUpdateMode::Replace,

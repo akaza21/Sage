@@ -1,10 +1,11 @@
+mod command_snapshots;
 mod kinds;
 
 use serde_json::{Map, Value};
 
 use crate::acp::{
     contract::{ItemLifecycle, RequiredText, SafeText, ToolState},
-    intent::NormalizedPayload,
+    intent::{NormalizedPayload, SafeResourceLocation},
     limits::LIMITS,
     runtime::host_browse::browse_tool_summary,
 };
@@ -12,9 +13,10 @@ use crate::acp::{
 use super::{ActiveTurn, OmpTranslator, ResourceMapper, TranslationError};
 use crate::acp::bindings::omp::{
     protocol::{AdapterEvent, ItemUpdateMode},
-    wire::{normalized_text, opaque_id},
+    wire::{normalized_text, opaque_id, sanitized_command_output},
 };
 
+use command_snapshots::{CommandPatch, command_update_payload};
 pub(crate) use kinds::{category_label, external_id, object, tool_category};
 use kinds::{lifecycle, line_count, optional_item_id, parse_tool_state, required_string};
 
@@ -47,7 +49,7 @@ impl OmpTranslator {
             "agent_message_chunk" => vec![text_event(update, false)?],
             "agent_thought_chunk" => vec![text_event(update, true)?],
             "plan" => vec![plan_event(update)?],
-            "tool_call" => self.tool_call(update)?,
+            "tool_call" => self.tool_call(update, resources)?,
             "tool_call_update" => self.tool_update(update, resources)?,
             "usage" | "usage_update" => vec![usage_event(update)?],
             "error" => vec![error_event(update)?],
@@ -85,24 +87,45 @@ impl OmpTranslator {
     fn tool_call(
         &mut self,
         update: &Map<String, Value>,
+        resources: &impl ResourceMapper,
     ) -> Result<Vec<AdapterEvent>, TranslationError> {
         let id = external_id(update.get("toolCallId"))?;
         let state = parse_tool_state(update.get("status"), ToolState::Pending)?;
         let category = tool_category(update);
-        let active = self.live_turn()?;
-        if let Some(current) = active.tools.get(id.as_str()).copied() {
-            return if current == state {
-                Ok(vec![AdapterEvent::IgnoredDuplicate])
-            } else {
-                Err(TranslationError::ToolTransition)
-            };
-        }
-        if active.tools.len() >= MAX_TRACKED_TOOLS
-            || active.tools.len() as u64 >= LIMITS.wire.items_per_turn
         {
-            return Err(TranslationError::Limit("tools per Turn"));
+            let active = self.live_turn()?;
+            if let Some(current) = active.tools.get(id.as_str()).copied() {
+                return if current == state {
+                    Ok(vec![AdapterEvent::IgnoredDuplicate])
+                } else {
+                    Err(TranslationError::ToolTransition)
+                };
+            }
+            if active.tools.len() >= MAX_TRACKED_TOOLS
+                || active.tools.len() as u64 >= LIMITS.wire.items_per_turn
+            {
+                return Err(TranslationError::Limit("tools per Turn"));
+            }
         }
-        active.tools.insert(id.as_str().to_owned(), state);
+        let command = category == crate::acp::intent::ToolCategory::Command;
+        let snapshot = command
+            .then(|| command_update_payload(update, resources))
+            .transpose()?
+            .map(|patch| patch.apply((None, Default::default())));
+        if let Some(snapshot) = snapshot.as_ref() {
+            self.validate_command_snapshot(id.as_str(), snapshot)?;
+        }
+        {
+            let active = self.live_turn()?;
+            active.tools.insert(id.as_str().to_owned(), state);
+            active
+                .tool_categories
+                .insert(id.as_str().to_owned(), category);
+        }
+        if let Some(snapshot) = snapshot {
+            self.store_command_snapshot(id.as_str(), snapshot)?;
+        }
+        let (output_summary, locations) = self.command_snapshot(id.as_str())?;
         let mut events = vec![AdapterEvent::Item {
             external_key: id.clone(),
             lifecycle: lifecycle(state),
@@ -111,14 +134,28 @@ impl OmpTranslator {
                 category,
                 label: SafeText::new("toolLabel", category_label(category))?,
                 input_summary: browse_tool_summary("toolInput", update),
+                output_summary: command.then_some(output_summary).flatten(),
+                locations: if command {
+                    locations
+                } else {
+                    Default::default()
+                },
             },
             update_mode: ItemUpdateMode::Replace,
         }];
         // The H4 first slice grants no OMP tool authority. Record only the
         // bounded presentation and force the containing supervisor to cancel.
+        let dispatch_cancel = {
+            let active = self.live_turn()?;
+            if active.cancel_dispatch_required {
+                false
+            } else {
+                active.cancel_dispatch_required = true;
+                true
+            }
+        };
         events.push(AdapterEvent::ToolAuthorityDenied { tool_call_id: id });
-        if !active.cancel_dispatch_required {
-            active.cancel_dispatch_required = true;
+        if dispatch_cancel {
             events.push(AdapterEvent::CancelDispatchRequired);
         }
         Ok(events)
@@ -130,20 +167,44 @@ impl OmpTranslator {
         resources: &impl ResourceMapper,
     ) -> Result<Vec<AdapterEvent>, TranslationError> {
         let id = external_id(update.get("toolCallId"))?;
-        let category = tool_category(update);
         let current = self
             .live_turn()?
             .tools
             .get(id.as_str())
             .copied()
             .ok_or(TranslationError::Correlation)?;
+        let category = self
+            .live_turn()?
+            .tool_categories
+            .get(id.as_str())
+            .copied()
+            .ok_or(TranslationError::Correlation)?;
         let next = parse_tool_state(update.get("status"), current)?;
-        if next == current {
+        let patch = (category == crate::acp::intent::ToolCategory::Command)
+            .then(|| command_update_payload(update, resources))
+            .transpose()?;
+        if next == current && patch.as_ref().is_none_or(CommandPatch::is_omitted) {
             return Ok(vec![AdapterEvent::IgnoredDuplicate]);
         }
-        if !current.can_transition_to(next) {
+        if next != current && !current.can_transition_to(next) {
             return Err(TranslationError::ToolTransition);
         }
+        let command_snapshot = if let Some(patch) = patch {
+            let snapshot = self.command_snapshot(id.as_str())?;
+            let merged = patch.apply(snapshot);
+            self.validate_command_snapshot(id.as_str(), &merged)?;
+            Some(merged)
+        } else {
+            None
+        };
+        let (output_summary, locations) = if let Some(snapshot) = command_snapshot.as_ref() {
+            snapshot.clone()
+        } else {
+            (
+                browse_tool_summary("toolOutput", update),
+                Default::default(),
+            )
+        };
         let mut events = vec![AdapterEvent::Item {
             external_key: id.clone(),
             lifecycle: lifecycle(next),
@@ -151,7 +212,8 @@ impl OmpTranslator {
             payload: NormalizedPayload::ToolUpdateResult {
                 category,
                 label: SafeText::new("toolLabel", category_label(category))?,
-                output_summary: browse_tool_summary("toolOutput", update),
+                output_summary,
+                locations,
             },
             update_mode: ItemUpdateMode::Replace,
         }];
@@ -189,6 +251,9 @@ impl OmpTranslator {
             }
         }
         self.live_turn()?.tools.insert(id.as_str().to_owned(), next);
+        if let Some(snapshot) = command_snapshot {
+            self.store_command_snapshot(id.as_str(), snapshot)?;
+        }
         Ok(events)
     }
 

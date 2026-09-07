@@ -157,6 +157,7 @@
         "src-tauri/Cargo.toml",
         "src-tauri/migrations/005_acp_session_foundation.sql",
         "src-tauri/src/acp/bindings/adapter.rs",
+        "src-tauri/src/acp/command_output.rs",
         "src-tauri/src/acp/contract.rs",
         "src-tauri/src/acp/fixture_protocol.rs",
         "src-tauri/src/acp/image_admit.rs",

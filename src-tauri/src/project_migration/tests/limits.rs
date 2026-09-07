@@ -8,6 +8,14 @@ use crate::{
     project_registry::MAX_PROJECTS,
 };
 
+#[cfg(not(windows))]
+fn complete_legacy_upgrade_for_runtime(path: &Path) {
+    let mut connection = Connection::open(path).unwrap();
+    crate::project_migration::migrate(&mut connection).unwrap();
+    crate::acp::migration::complete_v4_upgrade_for_test(&mut connection).unwrap();
+    connection.close().unwrap();
+}
+
 fn legacy_fixture() -> (std::path::PathBuf, std::path::PathBuf) {
     let folder = std::env::temp_dir().join(format!("sage-migration-{}", Uuid::new_v4()));
     fs::create_dir_all(&folder).unwrap();
@@ -103,10 +111,16 @@ fn limit_plus_one_root_sentinel_rolls_back_before_collection() {
         .unwrap();
     drop(connection);
 
-    assert!(matches!(
-        Database::open(&path),
-        Err(AppError::ResourceLimit(_))
-    ));
+    #[cfg(windows)]
+    let result = Database::open(&path).map(|_| ());
+    #[cfg(not(windows))]
+    let result = {
+        let mut connection = Connection::open(&path).unwrap();
+        let result = crate::project_migration::migrate(&mut connection);
+        connection.close().unwrap();
+        result
+    };
+    assert!(matches!(result, Err(AppError::ResourceLimit(_))));
     assert!(!migration_applied(&path));
     fs::remove_dir_all(folder).unwrap();
 }
@@ -172,10 +186,16 @@ fn omitted_dirty_metadata_bytes_are_bounded_and_roll_back() {
         )
         .unwrap();
 
-    assert!(matches!(
-        Database::open(&path),
-        Err(AppError::ResourceLimit(_))
-    ));
+    #[cfg(windows)]
+    let result = Database::open(&path).map(|_| ());
+    #[cfg(not(windows))]
+    let result = {
+        let mut connection = Connection::open(&path).unwrap();
+        let result = crate::project_migration::migrate(&mut connection);
+        connection.close().unwrap();
+        result
+    };
+    assert!(matches!(result, Err(AppError::ResourceLimit(_))));
     assert!(!migration_applied(&path));
     fs::remove_dir_all(folder).unwrap();
 }
@@ -195,6 +215,8 @@ fn exact_legacy_content_limit_allows_ordinary_metadata() {
         )
         .unwrap();
 
+    #[cfg(not(windows))]
+    complete_legacy_upgrade_for_runtime(&path);
     let database = Database::open(&path).unwrap();
     assert_eq!(
         database.dirty_editor_buffers("legacy", None).unwrap().len(),

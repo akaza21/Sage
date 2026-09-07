@@ -11,6 +11,8 @@ mod manifest;
 mod paths;
 mod platform;
 mod platform_anchor;
+#[cfg(test)]
+mod portable_coverage_tests;
 mod probe;
 mod publish;
 mod schema_upgrade;
@@ -45,7 +47,7 @@ use self::{
     },
 };
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 use self::manifest::{ReplacementManifest, write_stage};
 #[cfg(test)]
 use self::schema_upgrade::{apply_v5, apply_v6};
@@ -61,6 +63,11 @@ const V9: &str = include_str!("../../../migrations/009_cancelled_permissions.sql
 pub(crate) struct OpenedDatabase {
     connection: Connection,
     live_path_anchor: LivePathAnchor,
+}
+
+#[cfg(test)]
+pub(crate) fn complete_v4_upgrade_for_test(connection: &mut Connection) -> AppResult<()> {
+    apply_through_v9(connection)
 }
 
 #[derive(Debug)]
@@ -263,7 +270,7 @@ fn build_replacement(
     sync_parent(&paths.replacement_stage)
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 fn inject_replacement_build_failure_once() {
     test_failpoint::arm("replacement-build");
 }

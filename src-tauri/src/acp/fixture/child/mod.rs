@@ -1,3 +1,4 @@
+#[cfg(windows)]
 mod activity_fixture_adapter;
 mod activity_observer;
 mod item_observer;

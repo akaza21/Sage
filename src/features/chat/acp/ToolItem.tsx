@@ -46,6 +46,8 @@ function ResourceLocations({
                   type="button"
                   className="acp-resource-action"
                   aria-label={`Open ${target} ${location.resource.relativePath}`}
+                  data-resource-root-id={location.resource.rootId}
+                  data-resource-relative-path={location.resource.relativePath}
                   onClick={() => onOpenResource(location.resource, target)}
                 >
                   <ChatFileChip path={location.resource.relativePath} />
@@ -71,7 +73,10 @@ function Presentation({
   item,
   allowBrowse,
   onOpenResource,
-}: Pick<ToolItemProps, "item" | "allowBrowse" | "onOpenResource">) {
+  descriptionId,
+}: Pick<ToolItemProps, "item" | "allowBrowse" | "onOpenResource"> & {
+  descriptionId: string;
+}) {
   const presentation = item.payload.presentation;
   switch (presentation.kind) {
     case "file":
@@ -153,12 +158,27 @@ function Presentation({
         </>
       );
     }
-    case "command":
-      return presentation.summary ? (
-        <pre className="acp-tool-command" aria-label="Command">
-          {presentation.summary}
-        </pre>
-      ) : null;
+    case "command": {
+      const output = item.payload.outputSummary ?? null;
+      return (
+        <>
+          {output ? (
+            <pre
+              id={descriptionId}
+              className="acp-tool-command"
+              aria-label="Command output"
+            >
+              {output}
+            </pre>
+          ) : null}
+          <ResourceLocations
+            locations={presentation.resources}
+            target="file"
+            onOpenResource={onOpenResource}
+          />
+        </>
+      );
+    }
     case "generic":
       return presentation.summary ? <p>{presentation.summary}</p> : null;
   }
@@ -171,9 +191,14 @@ export function ToolItem({
 }: ToolItemProps) {
   const descriptionId = useId();
   const detail =
-    item.kind === "toolCall"
-      ? item.payload.inputSummary
-      : item.payload.outputSummary;
+    item.payload.presentation.kind === "command"
+      ? (item.payload.outputSummary ?? null)
+      : item.kind === "toolCall"
+        ? item.payload.inputSummary
+        : item.payload.outputSummary;
+  const commandOutput =
+    item.payload.presentation.kind === "command" &&
+    (item.payload.outputSummary ?? null) !== null;
   const label = item.payload.presentation.label;
   const status = toolStateLabels[item.toolState];
   const terminal = terminalToolStates.has(item.toolState);
@@ -186,8 +211,9 @@ export function ToolItem({
       aria-describedby={detail ? descriptionId : undefined}
       data-activity-kind={kind}
       data-activity-state={item.toolState}
+      data-acp-item-id={item.id}
     >
-      {detail ? (
+      {detail && !commandOutput ? (
         <span className="sr-only" id={descriptionId}>
           {detail}
         </span>
@@ -208,8 +234,9 @@ export function ToolItem({
         item={item}
         allowBrowse={allowBrowse}
         onOpenResource={onOpenResource}
+        descriptionId={descriptionId}
       />
-      {detail ? (
+      {detail && !commandOutput ? (
         <details className="acp-details">
           <summary>Tool details</summary>
           <p>{detail}</p>

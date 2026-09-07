@@ -19,7 +19,11 @@ pub(super) use capacity::{CASE_IDS as CAPACITY_CASE_IDS, execute as execute_capa
 pub(super) use contract_bounds::{CASE_IDS as CONTRACT_CASE_IDS, execute as execute_contract};
 pub(super) use delivery_observer::CASE_IDS as DELIVERY_CASE_IDS;
 pub(super) use metadata_integrity::{CASE_IDS as METADATA_CASE_IDS, execute as execute_metadata};
-pub(super) use migration_recovery::{CASE_IDS as MIGRATION_CASE_IDS, execute as execute_migration};
+pub(super) use migration_recovery::{
+    CASE_IDS as MIGRATION_CASE_IDS, EXPLICIT_WINDOWS_ONLY_CASE_IDS,
+    PLATFORM_OBLIGATIONS as MIGRATION_PLATFORM_OBLIGATIONS, PlatformObligation,
+    execute as execute_migration,
+};
 pub(super) use permission_failures::{
     CASE_IDS as PERMISSION_CASE_IDS, execute as execute_permission,
 };

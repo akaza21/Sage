@@ -154,6 +154,10 @@ export function safeItem(value: unknown): AcpItem | null {
     case "toolCall": {
       const presentation = safeToolPresentation(payload.presentation);
       const inputSummary = safeNullableText(payload.inputSummary, 65_536);
+      const outputSummary =
+        payload.outputSummary === undefined
+          ? null
+          : safeNullableText(payload.outputSummary, 65_536);
       return !isOneOf(value.toolState, [
         "pending",
         "inProgress",
@@ -164,13 +168,14 @@ export function safeItem(value: unknown): AcpItem | null {
         "cancelled",
       ] as const) ||
         !presentation ||
-        inputSummary === undefined
+        inputSummary === undefined ||
+        outputSummary === undefined
         ? null
         : {
             ...identity,
             kind: "toolCall",
             toolState: value.toolState,
-            payload: { presentation, inputSummary },
+            payload: { presentation, inputSummary, outputSummary },
           };
     }
     case "toolUpdateResult": {

@@ -5,6 +5,14 @@ use uuid::Uuid;
 
 use crate::persistence::Database;
 
+#[cfg(not(windows))]
+fn complete_legacy_upgrade_for_runtime(path: &Path) {
+    let mut connection = Connection::open(path).unwrap();
+    super::migrate(&mut connection).unwrap();
+    crate::acp::migration::complete_v4_upgrade_for_test(&mut connection).unwrap();
+    connection.close().unwrap();
+}
+
 const INITIAL: &str = include_str!("../../migrations/001_initial.sql");
 const DIFF_TABS: &str = include_str!("../../migrations/002_diff_tabs.sql");
 const EDITOR_BUFFERS: &str = include_str!("../../migrations/003_editor_buffers.sql");
@@ -79,6 +87,8 @@ fn migrates_legacy_root_tabs_session_and_dirty_buffer() {
     let path = folder.join("sage.db");
     seed_legacy(&path, &root, r#"{"resourcePath":"src/main.rs"}"#);
 
+    #[cfg(not(windows))]
+    complete_legacy_upgrade_for_runtime(&path);
     let database = Database::open(&path).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let project = snapshot.project.unwrap();
@@ -125,6 +135,8 @@ fn missing_legacy_root_and_dirty_buffer_survive_upgrade_and_reopen() {
     seed_legacy(&path, &root, r#"{"resourcePath":"src/main.rs"}"#);
     fs::remove_dir_all(&root).unwrap();
 
+    #[cfg(not(windows))]
+    complete_legacy_upgrade_for_runtime(&path);
     let database = Database::open(&path).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     assert_eq!(
@@ -244,8 +256,8 @@ fn missing_root_case_distinct_resources_remain_independent() {
     fs::create_dir_all(&root).unwrap();
     let path = folder.join("sage.db");
     seed_legacy(&path, &root, r#"{"resourcePath":"src/main.rs"}"#);
-    Connection::open(&path)
-        .unwrap()
+    let connection = Connection::open(&path).unwrap();
+    connection
         .execute(
             "INSERT INTO editor_buffers
              VALUES ('legacy', 'SRC/MAIN.RS', 'other-base', 1, NULL, 'lf',
@@ -253,8 +265,10 @@ fn missing_root_case_distinct_resources_remain_independent() {
             [],
         )
         .unwrap();
+    connection.close().unwrap();
     fs::remove_dir_all(&root).unwrap();
 
+    complete_legacy_upgrade_for_runtime(&path);
     let database = Database::open(&path).unwrap();
     assert_eq!(
         database.dirty_editor_buffers("legacy", None).unwrap().len(),

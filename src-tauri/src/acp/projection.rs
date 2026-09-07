@@ -2,7 +2,10 @@ use serde::Serialize;
 
 use super::{
     contract::*,
-    intent::{BindingId, CapabilitySnapshotV1, ModelId, PageCursor, SafeResourceRef},
+    intent::{
+        BindingId, COMMAND_RESOURCE_LIMIT, CapabilitySnapshotV1, ModelId, PageCursor,
+        SafeResourceRef,
+    },
 };
 
 pub use super::intent::{SafeResourceLocation, UnavailableResourceReason};
@@ -60,6 +63,7 @@ pub enum ToolPresentation {
     Command {
         label: SafeText<512>,
         summary: Option<SafeText<16384>>,
+        resources: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
     },
     Search {
         label: SafeText<512>,
@@ -123,6 +127,7 @@ pub enum ItemContent {
     ToolCall {
         presentation: ToolPresentation,
         input_summary: Option<SafeText<65536>>,
+        output_summary: Option<SafeText<65536>>,
     },
     ToolUpdateResult {
         call_item_id: Option<SageItemId>,

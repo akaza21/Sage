@@ -2,7 +2,7 @@ use std::{
     fs,
     path::Path,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -11,40 +11,49 @@ use uuid::Uuid;
 
 use super::{
     acp::{
-        activate_acp_session_inner, await_codex_discovery, cancel_acp_turn_inner,
-        close_acp_session_inner, get_acp_chat_page_inner, get_codex_discovery_inner,
-        get_codex_discovery_with_deadline, send_acp_turn_inner, start_acp_session_inner,
+        await_codex_discovery, get_acp_chat_page_inner, get_codex_discovery_inner,
+        get_codex_discovery_with_deadline, start_acp_session_inner,
     },
     *,
 };
 use crate::{
     acp::{
         bindings::codex::CodexDiscoveryDeadline,
-        contract::{
-            ClientIntentId, EntityRevision, ProjectGeneration, RuntimeEpoch, SageAgentSessionId,
-            SageChatId, SageProjectId, SageTurnId, TurnState,
-        },
+        contract::{ClientIntentId, ProjectGeneration, SageChatId, SageProjectId},
         intent::{
-            AcpConflictResource, AcpIpcError, AcpUnavailableReason, ActivateAcpSessionRequest,
-            BindingId, CancelAcpTurnRequest, CloseAcpSessionRequest, GetAcpChatPageRequest,
-            GetCodexDiscoveryRequest, Prompt, SendAcpTurnRequest, StartAcpSessionRequest,
+            AcpConflictResource, AcpIpcError, AcpUnavailableReason, BindingId,
+            GetAcpChatPageRequest, GetCodexDiscoveryRequest, StartAcpSessionRequest,
         },
         projection::{ItemContent, TextRole},
-        runtime::{
-            HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, PromptWrite,
-            RuntimeEngine, RuntimeHost,
-        },
-        scheduler::RuntimeOwner,
-        store::{
-            ActivateSessionCommand, AdapterTurnCursor, BeginCancelCommand,
-            CompleteActivationCommand, FinalizeCloseCommand, PrepareTurnCommand, SendObservation,
-            TurnMutationCommand, activate_session, begin_cancel, begin_send, close_session,
-            complete_activation, finalize_close_after_zero_process, prepare_turn,
-            record_send_observation,
-        },
     },
     persistence::Database,
 };
+
+#[cfg(windows)]
+use super::acp::{
+    activate_acp_session_inner, cancel_acp_turn_inner, close_acp_session_inner, send_acp_turn_inner,
+};
+#[cfg(windows)]
+use crate::acp::{
+    contract::{EntityRevision, RuntimeEpoch, SageAgentSessionId, SageTurnId, TurnState},
+    intent::{
+        ActivateAcpSessionRequest, CancelAcpTurnRequest, CloseAcpSessionRequest, Prompt,
+        SendAcpTurnRequest,
+    },
+    runtime::{
+        HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, PromptWrite, RuntimeEngine,
+        RuntimeHost,
+    },
+    scheduler::RuntimeOwner,
+    store::{
+        ActivateSessionCommand, AdapterTurnCursor, BeginCancelCommand, CompleteActivationCommand,
+        FinalizeCloseCommand, PrepareTurnCommand, SendObservation, TurnMutationCommand,
+        activate_session, begin_cancel, begin_send, close_session, complete_activation,
+        finalize_close_after_zero_process, prepare_turn, record_send_observation,
+    },
+};
+#[cfg(windows)]
+use std::sync::Mutex;
 
 fn state_with_project() -> (AppState, String, String, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-acp-command-{}", Uuid::new_v4()));
@@ -112,12 +121,14 @@ fn state_with_admitted_codex_project() -> (AppState, String, String, std::path::
     (state, project.id, chat_id, root)
 }
 
+#[cfg(windows)]
 #[derive(Clone, Copy)]
 enum CommandHostMode {
     Idle,
     Running,
 }
 
+#[cfg(windows)]
 struct CommandHostEngine {
     database: Database,
     owner: RuntimeOwner,
@@ -129,6 +140,7 @@ struct CommandHostEngine {
 // test-engine guard in a lexical block so the command can immediately
 // reload the authoritative projection after the mutation returns.
 
+#[cfg(windows)]
 impl RuntimeEngine for CommandHostEngine {
     fn activate(&mut self, owner: &RuntimeOwner) -> Result<(), HostError> {
         (owner == &self.owner)
@@ -290,6 +302,7 @@ impl RuntimeEngine for CommandHostEngine {
     }
 }
 
+#[cfg(windows)]
 fn install_command_host(
     state: &AppState,
     project_id: &SageProjectId,
@@ -387,6 +400,7 @@ fn install_command_host(
     (owner, calls)
 }
 
+#[cfg(windows)]
 async fn start_admitted_command_session(
     state: &AppState,
     project_id: &SageProjectId,

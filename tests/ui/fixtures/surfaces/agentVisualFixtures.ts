@@ -158,6 +158,7 @@ function activityFamilyPage() {
       label: "Run focused checks",
       summary:
         "npm test -- src/features/chat/acp/ToolItem.test.tsx src/features/chat/acp/TurnActivityItem.test.tsx src/features/chat/acp/AcpChatProjection.test.tsx",
+      resources: [],
     }),
     activityToolItem(
       input(4),

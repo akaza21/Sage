@@ -11,7 +11,7 @@ use crate::{
     error::{AppError, AppResult},
 };
 
-#[cfg(any(test, feature = "acp-fixture"))]
+#[cfg(any(test, all(windows, feature = "acp-fixture")))]
 use super::WalConvergenceReceipt;
 
 #[derive(Debug, Clone, Copy)]
@@ -119,7 +119,7 @@ impl PhysicalStorage {
         }
     }
 
-    #[cfg(any(test, feature = "acp-fixture"))]
+    #[cfg(any(test, all(windows, feature = "acp-fixture")))]
     pub(super) fn converge_for_observation(
         &self,
         connection: &Connection,

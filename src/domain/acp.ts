@@ -1,6 +1,16 @@
-import type { AcpImagePayload } from "./acpImage";
-import type { ResourceRef } from "./workbench";
-import type { PermissionState } from "./acpPermission";
+export type {
+  AcpChatPage,
+  AcpItem,
+  AgentEditDisposition,
+  AgentEditDispositionState,
+  AgentSessionProjection,
+  FileChangeProjection,
+  HarnessActivityProjection,
+  SafeResourceLocation,
+  ToolPresentation,
+  TurnProjection,
+} from "./acpProjection";
+import type { AcpChatPage } from "./acpProjection";
 
 export type {
   PermissionDecision,
@@ -29,6 +39,23 @@ export type ProjectionRevision = Brand<string, "ProjectionRevision">;
 export type ProjectGeneration = Brand<string, "ProjectGeneration">;
 export type RuntimeEpoch = Brand<string, "RuntimeEpoch">;
 export type EntityRevision = Brand<string, "EntityRevision">;
+
+export interface AcpItemIdentity {
+  id: SageItemId;
+  projectId: SageProjectId;
+  chatId: SageChatId;
+  sessionId: SageAgentSessionId;
+  turnId: SageTurnId;
+  runtimeEpoch: RuntimeEpoch;
+  ordinal: number;
+  origin: "primary" | "harnessActivity";
+  activityId: SageActivityId | null;
+  lifecycle: ItemLifecycle;
+  revision: EntityRevision;
+  createdAt: number;
+  updatedAt: number;
+  terminalAt: number | null;
+}
 
 export type AgentSessionState =
   | "created"
@@ -95,218 +122,6 @@ export interface AcpCapabilitySet {
   multiRootExtensionSchemaId: string | null;
   modelCount: number;
   configCount: number;
-}
-
-export type SafeResourceLocation =
-  | { kind: "resource"; resource: ResourceRef }
-  | {
-      kind: "unavailable";
-      reason:
-        | "ambiguousRoot"
-        | "foreign"
-        | "missing"
-        | "noncanonical"
-        | "unsupported";
-      label: string;
-    };
-
-export type ToolPresentation =
-  | { kind: "generic"; label: string; summary: string | null }
-  | {
-      kind: "file" | "diff";
-      label: string;
-      resources: readonly SafeResourceLocation[];
-    }
-  | { kind: "command"; label: string; summary: string | null }
-  | {
-      kind: "search";
-      label: string;
-      querySummary: string;
-      resources: readonly ResourceRef[];
-    }
-  | { kind: "web"; label: string; summary: string | null }
-  | {
-      kind: "mcp";
-      label: string;
-      serverLabel: string;
-      toolLabel: string;
-    }
-  | {
-      kind: "subagent";
-      label: string;
-      activityId: SageActivityId | null;
-    };
-
-export interface FileChangeProjection {
-  resource: SafeResourceLocation;
-  operation: "created" | "updated" | "deleted" | "renamed" | "unknown";
-  originalResource: SafeResourceLocation | null;
-  summary: string;
-  additions: number | null;
-  deletions: number | null;
-}
-
-export type AgentEditDispositionState = "accepted" | "rejected";
-
-export interface AgentEditDisposition {
-  projectId: SageProjectId;
-  chatId: SageChatId;
-  sessionId: SageAgentSessionId;
-  turnId: SageTurnId;
-  expectedRevision: EntityRevision;
-  state: AgentEditDispositionState;
-}
-
-export interface AcpItemIdentity {
-  id: SageItemId;
-  projectId: SageProjectId;
-  chatId: SageChatId;
-  sessionId: SageAgentSessionId;
-  turnId: SageTurnId;
-  runtimeEpoch: RuntimeEpoch;
-  ordinal: number;
-  origin: "primary" | "harnessActivity";
-  activityId: SageActivityId | null;
-  lifecycle: ItemLifecycle;
-  revision: EntityRevision;
-  createdAt: number;
-  updatedAt: number;
-  terminalAt: number | null;
-}
-
-type PlainItem<Kind extends string, Payload> = AcpItemIdentity & {
-  kind: Kind;
-  toolState: null;
-  payload: Payload;
-};
-
-type ToolItem<Kind extends string, Payload> = AcpItemIdentity & {
-  kind: Kind;
-  toolState: ToolState;
-  payload: Payload;
-};
-
-export type AcpItem =
-  | PlainItem<"text", { role: "user" | "assistant" | "system"; text: string }>
-  | PlainItem<"thoughtSummary", { summary: string }>
-  | PlainItem<
-      "plan",
-      {
-        entries: readonly {
-          label: string;
-          state: "pending" | "inProgress" | "completed" | "failed";
-        }[];
-      }
-    >
-  | ToolItem<
-      "toolCall",
-      {
-        presentation: ToolPresentation;
-        inputSummary: string | null;
-      }
-    >
-  | ToolItem<
-      "toolUpdateResult",
-      {
-        callItemId: SageItemId | null;
-        presentation: ToolPresentation;
-        outputSummary: string | null;
-      }
-    >
-  | PlainItem<
-      "fileChangeDiff",
-      { changes: readonly FileChangeProjection[]; truncated: boolean }
-    >
-  | PlainItem<"image", AcpImagePayload>
-  | PlainItem<
-      "usage",
-      {
-        inputTokens: number | null;
-        outputTokens: number | null;
-        cachedInputTokens: number | null;
-        totalTokens: number | null;
-      }
-    >
-  | ToolItem<
-      "permissionRequest",
-      {
-        requestId: SagePermissionRequestId;
-        state: PermissionState;
-        label: string;
-        summary: string;
-      }
-    >
-  | PlainItem<"error", { code: string; message: string; recoverable: boolean }>
-  | PlainItem<
-      "unsupported",
-      { category: string; summary: string; truncated: boolean }
-    >
-  | PlainItem<
-      "collaboration",
-      {
-        activityId: SageActivityId;
-        label: string;
-        summary: string;
-        receiverLabels: readonly string[];
-      }
-    >;
-
-export interface HarnessActivityProjection {
-  id: SageActivityId;
-  turnId: SageTurnId;
-  parentActivityId: SageActivityId | null;
-  parentItemId: SageItemId;
-  role: "root" | "fork" | "child" | "unknown";
-  lifecycle: ActivityState;
-  depth: number;
-  provenance: {
-    schemaVersion: 1;
-    sourceKind: "tool" | "extension" | "collaboration" | "unknown";
-    externalKind: string;
-    extensionSchemaId: string | null;
-    safeLabel: string | null;
-  };
-  revision: EntityRevision;
-}
-
-export interface TurnProjection {
-  id: SageTurnId;
-  sessionId: SageAgentSessionId;
-  runtimeEpoch: RuntimeEpoch;
-  ordinal: number;
-  state: TurnState;
-  revision: EntityRevision;
-  createdAt: number;
-  updatedAt: number;
-  terminalAt: number | null;
-  items: readonly AcpItem[];
-  activities: readonly HarnessActivityProjection[];
-}
-
-export interface AgentSessionProjection {
-  id: SageAgentSessionId;
-  ordinal: number;
-  bindingId: CuratedBindingId;
-  modelId: CuratedModelId | null;
-  state: AgentSessionState;
-  residency: SessionResidency;
-  runtimeEpoch: RuntimeEpoch | null;
-  nextRuntimeEpoch: RuntimeEpoch | null;
-  capabilities: AcpCapabilitySet;
-  revision: EntityRevision;
-  projectionRevision: ProjectionRevision;
-  legacy: boolean;
-}
-
-export interface AcpChatPage {
-  projectId: SageProjectId;
-  chatId: SageChatId;
-  title: string;
-  projectionRevision: ProjectionRevision;
-  currentSessionId: SageAgentSessionId | null;
-  sessions: readonly AgentSessionProjection[];
-  turns: readonly TurnProjection[];
-  nextCursor: AcpPageCursor | null;
 }
 
 export interface GetAcpChatPageRequest {

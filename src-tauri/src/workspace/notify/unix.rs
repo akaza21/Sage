@@ -40,12 +40,11 @@ pub(super) fn spawn_workspace_root_watch(
                     let _ = app.emit(WORKSPACE_NOTIFY_EVENT, notice);
                 }
             };
-            if truncated {
-                if let Ok((relative, action)) =
+            if truncated
+                && let Ok((relative, action)) =
                     unix_events::unix_watch_delivery(None, unix_events::UnixWatchKind::Overflow)
-                {
-                    deliver(relative, action);
-                }
+            {
+                deliver(relative, action);
             }
             let result = run_prepared(prepared, &cancelled, &mut deliver);
             if result.is_err() && !cancelled.load(Ordering::Acquire) {

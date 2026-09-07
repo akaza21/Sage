@@ -69,6 +69,8 @@ pub(crate) fn normalize(input: NormalizerInput) -> Result<NormalizedPayload, Con
             input_summary: input_summary
                 .map(|value| SafeText::new("toolInput", value))
                 .transpose()?,
+            output_summary: None,
+            locations: Default::default(),
         },
         NormalizerInput::ToolResult {
             category,
@@ -80,6 +82,7 @@ pub(crate) fn normalize(input: NormalizerInput) -> Result<NormalizedPayload, Con
             output_summary: output_summary
                 .map(|value| SafeText::new("toolOutput", value))
                 .transpose()?,
+            locations: Default::default(),
         },
         NormalizerInput::FileChange {
             resource,

@@ -1,4 +1,7 @@
-use crate::acp::contract::{ContractError, SafeText};
+use crate::acp::{
+    contract::{ContractError, SafeText},
+    limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS},
+};
 
 const REDACTED: &str = "[redacted]";
 
@@ -25,6 +28,109 @@ pub(super) fn normalized_text<const MAX: usize>(
         output.push_str(whitespace);
     }
     SafeText::new(field, output)
+}
+
+/// Sanitizes one already frame-bounded command-output value before its display
+/// suffix is retained. This deliberately has a wider intermediate bound than
+/// `SafeText<65536>`: a valid oversized command output must be truncated, not
+/// rejected before redaction.
+pub(super) fn sanitized_command_output(input: &str) -> Result<String, ContractError> {
+    let maximum_input = LIMITS.wire.frame_bytes as usize;
+    let maximum_output = maximum_input.saturating_mul(COMMAND_OUTPUT_REDACTION_BYTES);
+    if input.len() > maximum_input {
+        return Err(ContractError::InvalidLength {
+            field: "toolOutput",
+            minimum: 0,
+            maximum: maximum_input,
+        });
+    }
+
+    let mut output = String::new();
+    let mut previous_bearer = false;
+    for token in input.split_inclusive(char::is_whitespace) {
+        let (body, whitespace) = split_trailing_whitespace(token);
+        if body.is_empty() {
+            append_command_output(&mut output, whitespace, maximum_output)?;
+            continue;
+        }
+        let replacement = if is_secret(body)
+            || previous_bearer
+            || is_absolute_native_path(body)
+            || contains_command_absolute_path(body)
+        {
+            REDACTED
+        } else {
+            body
+        };
+        append_command_output(&mut output, replacement, maximum_output)?;
+        append_command_output(&mut output, whitespace, maximum_output)?;
+        previous_bearer = is_bearer_marker(body);
+    }
+    Ok(output)
+}
+
+fn is_bearer_marker(value: &str) -> bool {
+    let trimmed = value.trim_matches(|character: char| {
+        matches!(
+            character,
+            '"' | '\'' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';'
+        )
+    });
+    trimmed.eq_ignore_ascii_case("bearer") || trimmed.eq_ignore_ascii_case("bearer:")
+}
+
+fn append_command_output(
+    output: &mut String,
+    value: &str,
+    maximum: usize,
+) -> Result<(), ContractError> {
+    let next = output
+        .len()
+        .checked_add(value.len())
+        .ok_or(ContractError::InvalidLength {
+            field: "toolOutput",
+            minimum: 0,
+            maximum,
+        })?;
+    if next > maximum {
+        return Err(ContractError::InvalidLength {
+            field: "toolOutput",
+            minimum: 0,
+            maximum,
+        });
+    }
+    output
+        .try_reserve(value.len())
+        .map_err(|_| ContractError::InvalidLength {
+            field: "toolOutput",
+            minimum: 0,
+            maximum,
+        })?;
+    output.push_str(value);
+    Ok(())
+}
+
+fn contains_command_absolute_path(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    if lower.contains("file:///") || lower.contains("file://\\\\") {
+        return true;
+    }
+    let bytes = value.as_bytes();
+    bytes.iter().enumerate().any(|(index, _)| {
+        let boundary = index == 0
+            || matches!(
+                bytes[index - 1],
+                b'"' | b'\'' | b'`' | b'(' | b'[' | b'{' | b'<' | b'=' | b',' | b';'
+            );
+        let rest = &bytes[index..];
+        boundary
+            && (rest.starts_with(b"\\\\")
+                || (rest.starts_with(b"/") && !rest.starts_with(b"//"))
+                || (rest.len() >= 3
+                    && rest[0].is_ascii_alphabetic()
+                    && rest[1] == b':'
+                    && matches!(rest[2], b'\\' | b'/')))
+    })
 }
 
 fn split_trailing_whitespace(value: &str) -> (&str, &str) {

@@ -18,7 +18,7 @@ pub(in crate::acp::bindings::codex) use support::*;
 
 #[path = "incoming_items.rs"]
 mod items;
-use items::normalize_item;
+use items::{normalize_item, normalize_materialized_command};
 
 #[path = "incoming_requests.rs"]
 mod requests;
@@ -271,9 +271,12 @@ fn response(
         RequestKind::Interrupt => IncomingEvent::Acknowledged {
             closes_session: false,
         },
-        RequestKind::Unsubscribe => IncomingEvent::Acknowledged {
-            closes_session: true,
-        },
+        RequestKind::Unsubscribe => {
+            adapter.clear_command_items();
+            IncomingEvent::Acknowledged {
+                closes_session: true,
+            }
+        }
     };
     Ok(event.into())
 }

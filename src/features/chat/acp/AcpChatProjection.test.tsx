@@ -575,6 +575,35 @@ describe("AcpChatProjection", () => {
     expect(openResource).not.toHaveBeenCalledWith(expect.anything(), "review");
   });
 
+  it("exposes a sole admitted root identity but fails closed for an ambiguous project root", () => {
+    const soleRoot = page("completed");
+    const { rerender } = render(
+      <AcpChatProjection
+        page={soleRoot}
+        active
+        projectRoots={[{ id: "root-one", name: "One", ordinal: 0 }]}
+      />,
+    );
+    expect(screen.getByLabelText(/Agent chat/)).toHaveAttribute(
+      "data-expected-resource-root-id",
+      "root-one",
+    );
+
+    rerender(
+      <AcpChatProjection
+        page={soleRoot}
+        active
+        projectRoots={[
+          { id: "root-one", name: "One", ordinal: 0 },
+          { id: "root-two", name: "Two", ordinal: 1 },
+        ]}
+      />,
+    );
+    expect(screen.getByLabelText(/Agent chat/)).not.toHaveAttribute(
+      "data-expected-resource-root-id",
+    );
+  });
+
   it("disambiguates duplicate root names in visible and accessible Diff labels", () => {
     const edited = page("completed");
     edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
@@ -997,6 +1026,7 @@ describe("AcpChatProjection", () => {
             kind: "command",
             label: `Tool ${index}`,
             summary: null,
+            resources: [],
           },
           inputSummary: null,
         },

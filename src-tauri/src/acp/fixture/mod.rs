@@ -38,6 +38,7 @@ use std::ffi::OsString;
 
 use self::cases::FixtureInvocation;
 
+#[cfg(windows)]
 pub(crate) use adapter::FixtureAdapter;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

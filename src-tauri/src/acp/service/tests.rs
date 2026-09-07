@@ -6,16 +6,15 @@ use std::{
 
 use crate::{
     acp::{
-        bindings::codex::CodexProjectRootAuthority,
         contract::{
             ClientIntentId, ProjectGeneration, ProjectionRevision, RequiredText, RuntimeEpoch,
-            SafeText, SageAgentSessionId, SageChatId, SageProjectId, SageRootId, SageTurnId,
+            SageAgentSessionId, SageChatId, SageProjectId, SageTurnId,
         },
         intent::{CapabilitySnapshotV1, ExternalId, IntentSnapshot, ProjectionChangedV1, Prompt},
         lifecycle::TurnState,
         runtime::{
-            ActivationMode, ActiveTurnIntent, AdapterBatchJournal, DurableAdapterEvent,
-            HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, HostState, JournalLane,
+            ActiveTurnIntent, AdapterBatchJournal, DurableAdapterEvent, HostCancelIntent,
+            HostCloseIntent, HostError, HostPromptIntent, HostState, JournalLane,
             NotificationError, NotificationSink, NotificationSinkFuture, PrepareDispatch,
             ProjectIntentAuthority, PromptWrite, PublishOutcome, RuntimeEngine, RuntimeHost,
             SendCoordinator, SessionPumpIntent, SqliteAdapterBatchJournal, TurnScope,
@@ -30,6 +29,15 @@ use crate::{
     },
     domain::{ProjectLayoutRequest, ProjectSwitchRequest},
     persistence::Database,
+};
+
+#[cfg(windows)]
+use crate::{
+    acp::{
+        bindings::codex::CodexProjectRootAuthority,
+        contract::{SafeText, SageRootId},
+        runtime::ActivationMode,
+    },
     project_registry::ProjectRootAuthority,
 };
 

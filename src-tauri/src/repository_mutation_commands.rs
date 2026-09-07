@@ -53,22 +53,6 @@ async fn mutate_git_file_inner(
 }
 
 #[cfg(test)]
-async fn mutate_git_file_inner_with_timeout(
-    state: &AppState,
-    request: GitFileMutationRequest,
-    expected_transition_epoch: u64,
-    mutation_timeout: Duration,
-) -> AppResult<GitFileMutationResult> {
-    mutate_git_file_inner_with_process_policy(
-        state,
-        request,
-        expected_transition_epoch,
-        repository::GitProcessPolicy::mutation(mutation_timeout),
-    )
-    .await
-}
-
-#[cfg(test)]
 async fn mutate_git_file_inner_with_process_policy(
     state: &AppState,
     request: GitFileMutationRequest,
@@ -162,7 +146,7 @@ async fn mutate_git_file_inner_with_policy_override(
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path, process::Command};
+    use std::{fs, path::Path, process::Command, sync::Arc};
 
     use uuid::Uuid;
 
@@ -385,7 +369,7 @@ mod tests {
     }
 
     #[test]
-    fn post_spawn_timeout_returns_typed_error_with_authoritative_status() {
+    fn finite_deadline_after_real_spawn_returns_typed_error_with_authoritative_status() {
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
             let root = base.join("repo");
@@ -396,42 +380,42 @@ mod tests {
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
-            let state = AppState::new(database);
+            let state = Arc::new(AppState::new(database));
 
-            let result = mutate_git_file_inner_with_timeout(
-                &state,
-                GitFileMutationRequest {
-                    project_id: project.id,
-                    resource: crate::domain::ResourceRef {
-                        root_id: root_id.clone(),
-                        relative_path: "new.txt".into(),
-                    },
-                    action: GitFileMutationAction::Stage,
-                    discard_confirmed: false,
+            let (policy, mut deadline_gate) =
+                repository::GitProcessPolicy::with_deadline_wait_gate(Duration::from_millis(50));
+            let request = GitFileMutationRequest {
+                project_id: project.id,
+                resource: crate::domain::ResourceRef {
+                    root_id: root_id.clone(),
+                    relative_path: "new.txt".into(),
                 },
-                0,
-                std::time::Duration::ZERO,
-            )
-            .await
-            .unwrap();
+                action: GitFileMutationAction::Stage,
+                discard_confirmed: false,
+            };
+            let mutation_state = Arc::clone(&state);
+            let mutation = tokio::spawn(async move {
+                mutate_git_file_inner_with_process_policy(&mutation_state, request, 0, policy).await
+            });
+            deadline_gate
+                .wait_for_entry(Duration::from_secs(1))
+                .await
+                .unwrap();
+            let result = mutation.await.unwrap().unwrap();
+            deadline_gate.release();
 
             assert_eq!(
                 result.error.as_ref().unwrap().kind,
                 crate::domain::GitFileMutationErrorKind::EffectUnknown
             );
-            assert_eq!(
-                result.repositories.roots[0].changes[0].index_status,
-                "unchanged"
-            );
-            assert_eq!(
-                result.repositories.roots[0].changes[0].worktree_status,
-                "untracked"
-            );
-            std::thread::sleep(std::time::Duration::from_millis(200));
+            let authoritative_changes =
+                serde_json::to_value(&result.repositories.roots[0].changes).unwrap();
             let workspace = Workspace::open("project-a", &root_id, &root).unwrap();
             let later = repository::status(&workspace).await.unwrap();
-            assert_eq!(later.changes[0].index_status, "unchanged");
-            assert_eq!(later.changes[0].worktree_status, "untracked");
+            assert_eq!(
+                serde_json::to_value(later.changes).unwrap(),
+                authoritative_changes
+            );
             drop(state);
             fs::remove_dir_all(base).unwrap();
         });
@@ -454,24 +438,29 @@ mod tests {
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
-            let state = AppState::new(database);
+            let state = Arc::new(AppState::new(database));
 
-            let result = mutate_git_file_inner_with_timeout(
-                &state,
-                GitFileMutationRequest {
-                    project_id: project.id,
-                    resource: crate::domain::ResourceRef {
-                        root_id: root_id.clone(),
-                        relative_path: "tracked.txt".into(),
-                    },
-                    action: GitFileMutationAction::Discard,
-                    discard_confirmed: true,
+            let (policy, mut deadline_gate) =
+                repository::GitProcessPolicy::with_deadline_wait_gate(Duration::from_millis(50));
+            let request = GitFileMutationRequest {
+                project_id: project.id,
+                resource: crate::domain::ResourceRef {
+                    root_id: root_id.clone(),
+                    relative_path: "tracked.txt".into(),
                 },
-                0,
-                Duration::ZERO,
-            )
-            .await
-            .unwrap();
+                action: GitFileMutationAction::Discard,
+                discard_confirmed: true,
+            };
+            let mutation_state = Arc::clone(&state);
+            let mutation = tokio::spawn(async move {
+                mutate_git_file_inner_with_process_policy(&mutation_state, request, 0, policy).await
+            });
+            deadline_gate
+                .wait_for_entry(Duration::from_secs(1))
+                .await
+                .unwrap();
+            let result = mutation.await.unwrap().unwrap();
+            deadline_gate.release();
 
             assert_eq!(
                 result.error.as_ref().unwrap().kind,
@@ -479,7 +468,6 @@ mod tests {
             );
             let authoritative_changes =
                 serde_json::to_value(&result.repositories.roots[0].changes).unwrap();
-            std::thread::sleep(Duration::from_millis(200));
             let workspace = Workspace::open("project-a", &root_id, &root).unwrap();
             let later = repository::status(&workspace).await.unwrap();
             assert_eq!(

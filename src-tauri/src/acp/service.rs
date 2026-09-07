@@ -22,7 +22,7 @@ use crate::{
     persistence::Database,
 };
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 use crate::acp::{
     bindings::{
         adapter::AdapterRuntimeError,
@@ -112,9 +112,9 @@ pub(crate) struct AcpService {
     codex_runtime_release_fail_always: AtomicBool,
     #[cfg(all(windows, feature = "acp-fixture"))]
     characterization: Option<CharacterizationBinding>,
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     last_shutdown_stage: Mutex<&'static str>,
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     last_cancel_stage: Mutex<&'static str>,
 }
 
@@ -191,14 +191,14 @@ impl AcpService {
             codex_runtime_release_fail_always: AtomicBool::new(false),
             #[cfg(all(windows, feature = "acp-fixture"))]
             characterization: configuration.characterization,
-            #[cfg(test)]
+            #[cfg(all(test, windows))]
             last_shutdown_stage: Mutex::new("none"),
-            #[cfg(test)]
+            #[cfg(all(test, windows))]
             last_cancel_stage: Mutex::new("none"),
         })
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) fn last_shutdown_stage(&self) -> &'static str {
         *self
             .last_shutdown_stage
@@ -206,7 +206,7 @@ impl AcpService {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) fn last_cancel_stage(&self) -> &'static str {
         *self
             .last_cancel_stage
@@ -214,7 +214,7 @@ impl AcpService {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     fn record_shutdown_stage(&self, stage: &'static str) {
         *self
             .last_shutdown_stage
@@ -222,7 +222,7 @@ impl AcpService {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = stage;
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(super) fn record_cancel_stage(&self, stage: &'static str) {
         *self
             .last_cancel_stage
@@ -235,7 +235,7 @@ impl AcpService {
         self.codex.clone()
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) fn codex_runtime(
         &self,
         project_root: CodexProjectRootAuthority,

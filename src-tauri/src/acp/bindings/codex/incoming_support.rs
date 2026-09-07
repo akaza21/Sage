@@ -3,7 +3,7 @@ use serde_json::{Map, Value};
 use crate::acp::{
     contract::{RequiredText, SafeText},
     intent::NormalizedPayload,
-    limits::LIMITS,
+    limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS},
 };
 
 use super::{IngressError, ModelDescriptor};
@@ -159,32 +159,104 @@ pub(super) fn safe_text(
 }
 
 pub(in crate::acp::bindings::codex) fn sanitize(value: &str) -> String {
-    let mut output = String::with_capacity(value.len().min(262_144));
+    sanitize_with_limit(value, usize::MAX, false).unwrap_or_default()
+}
+
+pub(in crate::acp::bindings::codex) fn sanitized_command_output(
+    value: &str,
+) -> Result<String, IngressError> {
+    let maximum_input = LIMITS.wire.frame_bytes as usize;
+    if value.len() > maximum_input {
+        return Err(IngressError::Content);
+    }
+    sanitize_with_limit(
+        value,
+        maximum_input.saturating_mul(COMMAND_OUTPUT_REDACTION_BYTES),
+        true,
+    )
+    .ok_or(IngressError::Content)
+}
+
+fn sanitize_with_limit(value: &str, maximum: usize, command_output: bool) -> Option<String> {
+    let mut output = if command_output {
+        String::new()
+    } else {
+        String::with_capacity(value.len().min(262_144))
+    };
     let mut redact_next = false;
     for part in value.split_inclusive(char::is_whitespace) {
         let token = part.trim_end_matches(char::is_whitespace);
         let whitespace = &part[token.len()..];
-        let bare = token.trim_matches(|character: char| {
-            matches!(
-                character,
-                '"' | '\'' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | ',' | ';'
-            )
-        });
-        let bearer = bare.eq_ignore_ascii_case("bearer");
-        let embedded_bearer = bare
-            .get(..7)
-            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("bearer:"));
-        if redact_next || embedded_bearer || bare.contains("sk-") {
-            output.push_str("[redacted]");
-        } else if contains_absolute_path(token) {
-            output.push_str("[path]");
-        } else {
-            output.push_str(token);
+        if command_output && token.is_empty() {
+            append_command_output(&mut output, whitespace, maximum)?;
+            continue;
         }
-        output.push_str(whitespace);
-        redact_next = bearer;
+        if command_output {
+            let (replacement, command_output_next) = command_output_token(token, redact_next);
+            append_command_output(&mut output, replacement, maximum)?;
+            append_command_output(&mut output, whitespace, maximum)?;
+            redact_next = command_output_next;
+        } else {
+            // Keep the generic sanitizer's historical `Bearer` transition:
+            // `Bearer:` redacts itself but never carries into a later token.
+            let bare = token.trim_matches(command_output_trim_character);
+            let embedded_bearer = bare
+                .get(..7)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("bearer:"));
+            let replacement = if redact_next || embedded_bearer || bare.contains("sk-") {
+                "[redacted]"
+            } else if contains_absolute_path(token) {
+                "[path]"
+            } else {
+                token
+            };
+            output.push_str(replacement);
+            output.push_str(whitespace);
+            redact_next = bare.eq_ignore_ascii_case("bearer");
+        }
     }
-    output
+    Some(output)
+}
+
+/// Classifies one completed command-output token. Callers that receive output
+/// in frames must keep incomplete tokens private until a whitespace boundary,
+/// then pass the complete token and the carried Bearer state here.
+pub(in crate::acp::bindings::codex) fn command_output_token(
+    token: &str,
+    redact_next: bool,
+) -> (&str, bool) {
+    let bare = token.trim_matches(command_output_trim_character);
+    let embedded_bearer = bare
+        .get(..7)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("bearer:"));
+    let replacement = if redact_next || embedded_bearer || bare.contains("sk-") {
+        "[redacted]"
+    } else if contains_absolute_path(token) {
+        "[path]"
+    } else {
+        token
+    };
+    (
+        replacement,
+        bare.eq_ignore_ascii_case("bearer") || bare.eq_ignore_ascii_case("bearer:"),
+    )
+}
+
+fn command_output_trim_character(character: char) -> bool {
+    matches!(
+        character,
+        '"' | '\'' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | ',' | ';'
+    )
+}
+
+fn append_command_output(output: &mut String, value: &str, maximum: usize) -> Option<()> {
+    let next = output.len().checked_add(value.len())?;
+    if next > maximum {
+        return None;
+    }
+    output.try_reserve(value.len()).ok()?;
+    output.push_str(value);
+    Some(())
 }
 
 fn contains_absolute_path(token: &str) -> bool {
@@ -269,4 +341,14 @@ pub(super) fn permission(_: AdapterError) -> IngressError {
 
 pub(super) fn content(_: crate::acp::contract::ContractError) -> IngressError {
     IngressError::Content
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize;
+
+    #[test]
+    fn generic_bearer_colon_does_not_carry_redaction_to_the_next_token() {
+        assert_eq!(sanitize("Bearer: opaque"), "[redacted] opaque");
+    }
 }

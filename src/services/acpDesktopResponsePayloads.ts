@@ -100,12 +100,30 @@ export function safeToolPresentation(value: unknown): ToolPresentation | null {
   if (label === null) return null;
   switch (value.kind) {
     case "generic":
-    case "command":
     case "web": {
       const summary = safeNullableText(value.summary, 16_384);
       return summary === undefined
         ? null
         : { kind: value.kind, label, summary };
+    }
+    case "command": {
+      const summary = safeNullableText(value.summary, 16_384);
+      if (
+        summary === undefined ||
+        !Array.isArray(value.resources) ||
+        value.resources.length > MAX_TOOL_RESOURCES
+      ) {
+        return null;
+      }
+      const resources = value.resources.map(safeResourceLocation);
+      return resources.some((resource) => !resource)
+        ? null
+        : {
+            kind: "command",
+            label,
+            summary,
+            resources: resources as SafeResourceLocation[],
+          };
     }
     case "file":
     case "diff": {

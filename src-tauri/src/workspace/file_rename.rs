@@ -108,7 +108,7 @@ impl Workspace {
         )
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) fn rename_file_with_hooks<P, L>(
         &self,
         source: &ResourceRef,

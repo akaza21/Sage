@@ -543,6 +543,131 @@ fn tool_and_diff_normalization_excludes_raw_commands_secrets_and_paths() {
 }
 
 #[test]
+fn command_tool_initial_and_sparse_updates_retain_only_typed_output_and_locations() {
+    let mut translator = ClaudeTranslator::new("claude-session-1").unwrap();
+    translator.begin_prompt("command-prompt").unwrap();
+    let initial = json!({
+        "method":"session/update", "params":{"sessionId":"claude-session-1", "update":{
+            "sessionUpdate":"tool_call", "toolCallId":"command-1", "kind":"execute",
+            "status":"pending", "content":[
+                {"type":"text","text":"\"Bearer\","},
+                {"type":"text","text":"  \t\r\n"},
+                {"type":"text","text":"opaque-command-credential path=C:"},
+                {"type":"text","text":"\\private file:///secret"}
+            ],
+            "locations":[{"path":"C:\\fixture\\root\\src\\lib.rs"}]
+        }}
+    });
+    let started = translator
+        .translate_notification(&encoded(&initial), &FixtureResources)
+        .unwrap();
+    assert!(matches!(
+        started.as_slice(),
+        [AdapterEvent::Item {
+            tool_state: Some(ToolState::Pending),
+            payload: NormalizedPayload::ToolCall {
+                category: ToolCategory::Command,
+                input_summary: None,
+                output_summary: Some(output),
+                locations,
+                ..
+            },
+            ..
+        }] if !output.as_str().contains("opaque-command-credential")
+            && !output.as_str().contains("private")
+            && !output.as_str().contains("file:///")
+            && locations.as_slice().len() == 1
+    ));
+
+    let status_only = json!({
+        "method":"session/update", "params":{"sessionId":"claude-session-1", "update":{
+            "sessionUpdate":"tool_call_update", "toolCallId":"command-1", "status":"in_progress"
+        }}
+    });
+    let status = translator
+        .translate_notification(&encoded(&status_only), &FixtureResources)
+        .unwrap();
+    assert!(matches!(
+        status.as_slice(),
+        [AdapterEvent::Item {
+            tool_state: Some(ToolState::InProgress),
+            payload: NormalizedPayload::ToolUpdateResult {
+                category: ToolCategory::Command,
+                output_summary: Some(output),
+                locations,
+                ..
+            },
+            ..
+        }] if !output.as_str().contains("opaque-command-credential")
+            && !output.as_str().contains("private")
+            && !output.as_str().contains("file:///")
+            && locations.as_slice().len() == 1
+    ));
+
+    let patched = json!({
+        "method":"session/update", "params":{"sessionId":"claude-session-1", "update":{
+            "sessionUpdate":"tool_call_update", "toolCallId":"command-1", "status":"in_progress",
+            "content":[
+                {"type":"text","text":"\"Bearer:\","},
+                {"type":"text","text":"\t\r\n"},
+                {"type":"text","text":"opaque-command-credential path=C:"},
+                {"type":"text","text":"\\private file:///update-secret"}
+            ]
+        }}
+    });
+    let patched = translator
+        .translate_notification(&encoded(&patched), &FixtureResources)
+        .unwrap();
+    assert!(matches!(
+        patched.as_slice(),
+        [AdapterEvent::Item {
+            payload: NormalizedPayload::ToolUpdateResult {
+                category: ToolCategory::Command,
+                output_summary: Some(output),
+                locations,
+                ..
+            },
+            ..
+        }] if !output.as_str().contains("opaque-command-credential")
+            && !output.as_str().contains("private")
+            && !output.as_str().contains("file:///")
+            && locations.as_slice().len() == 1
+    ));
+
+    let invalid = json!({
+        "method":"session/update", "params":{"sessionId":"claude-session-1", "update":{
+            "sessionUpdate":"tool_call_update", "toolCallId":"command-1", "content":{}
+        }}
+    });
+    assert!(matches!(
+        translator.translate_notification(&encoded(&invalid), &FixtureResources),
+        Err(TranslationError::MalformedFrame)
+    ));
+    let cleared = json!({
+        "method":"session/update", "params":{"sessionId":"claude-session-1", "update":{
+            "sessionUpdate":"tool_call_update", "toolCallId":"command-1", "status":"completed",
+            "content":[], "locations":[]
+        }}
+    });
+    let cleared = translator
+        .translate_notification(&encoded(&cleared), &FixtureResources)
+        .unwrap();
+    assert!(matches!(
+        cleared.as_slice(),
+        [AdapterEvent::Item {
+            tool_state: Some(ToolState::Completed),
+            payload: NormalizedPayload::ToolUpdateResult {
+                category: ToolCategory::Command,
+                output_summary: None,
+                locations,
+                ..
+            },
+            ..
+        }] if locations.as_slice().is_empty()
+    ));
+}
+
+#[test]
 fn permission_requests_only_produce_durable_decline_work() {
     let start = json!({
         "method": "session/update",

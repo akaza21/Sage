@@ -169,6 +169,8 @@ impl HarnessAdapter for ActivityFixtureAdapter {
                         label: SafeText::new("toolLabel", "Fixture parent tool")
                             .map_err(|_| AdapterRuntimeError::Frame)?,
                         input_summary: None,
+                        output_summary: None,
+                        locations: Default::default(),
                     },
                 }
             }

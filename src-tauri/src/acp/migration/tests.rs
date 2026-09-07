@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use super::limits::WAL_HARD_BYTES;
 use super::*;
+#[cfg(windows)]
 use crate::persistence::Database;
 
 struct TestDir(
@@ -191,6 +192,7 @@ fn fresh_open_applies_cancelled_permission_schema_as_version_9() {
     );
 }
 
+#[cfg(windows)]
 #[test]
 fn exact_v1_v2_v3_sources_migrate_through_v7() {
     for version in 1..=3 {
@@ -216,6 +218,7 @@ fn exact_v1_v2_v3_sources_migrate_through_v7() {
     }
 }
 
+#[cfg(windows)]
 #[test]
 fn exact_v5_source_migrates_to_bounded_resource_trash_intents() {
     let directory = TestDir::new();
@@ -256,6 +259,7 @@ fn exact_v5_source_migrates_to_bounded_resource_trash_intents() {
     );
 }
 
+#[cfg(windows)]
 #[test]
 fn exact_v6_source_upgrades_to_v7_without_losing_epoch_children() {
     let directory = TestDir::new();
@@ -356,6 +360,7 @@ fn exact_v6_source_upgrades_to_v7_without_losing_epoch_children() {
     );
 }
 
+#[cfg(windows)]
 #[test]
 fn current_structural_upgrade_preserves_an_existing_verified_backup() {
     for (source_schema, label) in [
@@ -392,6 +397,7 @@ fn current_structural_upgrade_preserves_an_existing_verified_backup() {
     }
 }
 
+#[cfg(windows)]
 #[test]
 fn v5_to_v7_failure_after_v6_work_rolls_back_and_retry_preserves_original_backup() {
     let directory = TestDir::new();
@@ -439,6 +445,7 @@ fn v5_to_v7_failure_after_v6_work_rolls_back_and_retry_preserves_original_backup
     );
 }
 
+#[cfg(windows)]
 #[test]
 fn wal_v5_retry_reuses_original_backup_after_physical_checkpoint() {
     let directory = TestDir::new();
@@ -561,6 +568,7 @@ fn wal_v5_retry_reuses_original_backup_after_physical_checkpoint() {
     );
 }
 
+#[cfg(windows)]
 #[test]
 fn tampered_v6_intermediate_with_v5_backup_is_rejected_unchanged() {
     let directory = TestDir::new();
@@ -608,6 +616,7 @@ fn tampered_v6_intermediate_with_v5_backup_is_rejected_unchanged() {
     backup::verify_retained_pair(&paths).unwrap();
 }
 
+#[cfg(windows)]
 #[test]
 fn current_v5_upgrade_rejects_missing_tampered_and_mismatched_backups_unchanged() {
     for corruption in [
@@ -976,6 +985,7 @@ fn foreign_probe_identity_is_preserved_and_blocks() {
     assert!(!directory_path.exists());
 }
 
+#[cfg(windows)]
 #[test]
 fn committed_wal_data_is_included_in_migration() {
     let directory = TestDir::new();
@@ -1026,6 +1036,7 @@ fn committed_wal_data_is_included_in_migration() {
     assert_eq!(name, "committed-in-wal");
 }
 
+#[cfg(windows)]
 #[test]
 fn replacement_build_intent_crash_prefixes_converge() {
     for prefix in [
@@ -1096,6 +1107,7 @@ fn replacement_build_intent_crash_prefixes_converge() {
     }
 }
 
+#[cfg(windows)]
 #[test]
 fn foreign_or_mismatched_build_intent_is_preserved_and_blocks() {
     for corruption in ["foreign", "mismatched-source"] {
@@ -1133,6 +1145,7 @@ fn foreign_or_mismatched_build_intent_is_preserved_and_blocks() {
     }
 }
 
+#[cfg(windows)]
 #[test]
 fn retained_backup_from_another_database_is_a_non_destructive_blocker() {
     let first = TestDir::new();
@@ -1157,6 +1170,7 @@ fn retained_backup_from_another_database_is_a_non_destructive_blocker() {
     );
 }
 
+#[cfg(windows)]
 #[test]
 fn v4_history_converts_and_retains_the_verified_backup_pair() {
     let directory = TestDir::new();
@@ -1181,6 +1195,7 @@ fn v4_history_converts_and_retains_the_verified_backup_pair() {
     assert!(!paths.retired_live.exists());
 }
 
+#[cfg(windows)]
 #[test]
 fn migrated_simulator_chat_lazily_creates_compatible_head_on_first_post_restart_prompt() {
     let directory = TestDir::new();
@@ -1249,6 +1264,7 @@ fn migrated_simulator_chat_lazily_creates_compatible_head_on_first_post_restart_
     assert_eq!(restored.messages[0].id, "event-1");
 }
 
+#[cfg(windows)]
 #[test]
 fn lazy_simulator_attempt_and_first_turn_roll_back_together() {
     let directory = TestDir::new();
@@ -1280,6 +1296,7 @@ fn lazy_simulator_attempt_and_first_turn_roll_back_together() {
     assert_eq!(restored.messages[0].id, "event-1");
 }
 
+#[cfg(windows)]
 #[test]
 fn migrated_empty_chat_creates_its_first_simulator_attempt_without_a_session_anchor() {
     let directory = TestDir::new();
@@ -1319,6 +1336,7 @@ fn migrated_empty_chat_creates_its_first_simulator_attempt_without_a_session_anc
     assert_eq!(restored.messages.len(), 2);
 }
 
+#[cfg(windows)]
 fn simulator_durable_state(database: &Database, project_id: &str, chat_id: &str) -> Vec<i64> {
     database
         .connection()
@@ -1387,6 +1405,7 @@ fn session_limit_plus_one_fails_before_backup_artifact_creation() {
     );
 }
 
+#[cfg(windows)]
 #[test]
 fn foreign_unmanifested_v5_stage_is_preserved_and_blocks() {
     let source = TestDir::new();
@@ -1421,6 +1440,7 @@ fn oversized_artifact_is_refused_before_hashing() {
     ));
 }
 
+#[cfg(windows)]
 #[test]
 fn restart_adopts_the_complete_retirement_prefix() {
     let directory = TestDir::new();
@@ -1440,6 +1460,7 @@ fn restart_adopts_the_complete_retirement_prefix() {
     assert!(!paths.replacement_manifest.exists());
 }
 
+#[cfg(windows)]
 #[test]
 fn restart_cleans_a_published_v5_prefix_idempotently() {
     let directory = TestDir::new();
@@ -1458,6 +1479,7 @@ fn restart_cleans_a_published_v5_prefix_idempotently() {
     assert!(!paths.replacement_manifest.exists());
 }
 
+#[cfg(windows)]
 #[test]
 fn current_v5_open_rejects_a_tampered_retained_backup_without_touching_live() {
     use std::io::Write;
@@ -1477,6 +1499,7 @@ fn current_v5_open_rejects_a_tampered_retained_backup_without_touching_live() {
     assert_eq!(live_before, file_fingerprint(&paths.live).unwrap());
 }
 
+#[cfg(windows)]
 #[test]
 fn replacement_restore_prefixes_converge_sidecars_before_main() {
     for prefix in ["none", "shm", "wal", "main"] {
@@ -1507,6 +1530,7 @@ fn replacement_restore_prefixes_converge_sidecars_before_main() {
     }
 }
 
+#[cfg(windows)]
 #[test]
 fn valid_replacement_intent_does_not_delete_an_unowned_foreign_stage() {
     let directory = TestDir::new();
@@ -1523,6 +1547,7 @@ fn valid_replacement_intent_does_not_delete_an_unowned_foreign_stage() {
     assert_eq!(before, fs::read(&paths.replacement_stage).unwrap());
 }
 
+#[cfg(windows)]
 #[test]
 fn valid_replacement_intent_preserves_an_unowned_empty_stage() {
     let directory = TestDir::new();
@@ -1539,6 +1564,7 @@ fn valid_replacement_intent_preserves_an_unowned_empty_stage() {
     assert_eq!(fs::metadata(&paths.replacement_stage).unwrap().len(), 0);
 }
 
+#[cfg(windows)]
 #[test]
 fn replaced_owned_journal_is_preserved_and_blocks_recovery() {
     let directory = TestDir::new();
@@ -1568,6 +1594,7 @@ fn replaced_owned_journal_is_preserved_and_blocks_recovery() {
     assert!(paths.replacement_stage.exists());
 }
 
+#[cfg(windows)]
 #[test]
 fn real_partial_sqlite_backup_copy_converges_after_restart() {
     let directory = TestDir::new();
@@ -1627,6 +1654,7 @@ fn real_partial_sqlite_backup_copy_converges_after_restart() {
     assert!(!paths.replacement_journal.exists());
 }
 
+#[cfg(windows)]
 #[test]
 fn injected_replacement_write_failure_preserves_legacy_and_retry_converges() {
     let directory = TestDir::new();
@@ -1651,6 +1679,7 @@ fn injected_replacement_write_failure_preserves_legacy_and_retry_converges() {
     assert!(!paths.replacement_stage_owner.exists());
 }
 
+#[cfg(windows)]
 pub(crate) struct FixtureBackupFailpointObservation {
     pub(crate) old_schema_readable: bool,
     pub(crate) new_schema_visible: bool,
@@ -1658,6 +1687,7 @@ pub(crate) struct FixtureBackupFailpointObservation {
     pub(crate) partial_rows: u64,
 }
 
+#[cfg(windows)]
 pub(crate) fn fixture_backup_failpoint_observation() -> FixtureBackupFailpointObservation {
     let directory = TestDir::new();
     create_v4(&directory.database(), "fixture-backup-failpoint", true);
@@ -1772,6 +1802,7 @@ fn insufficient_space_preflight_preserves_v4_sqlite_and_creates_no_backup() {
     assert!(!observed.backup_created);
 }
 
+#[cfg(windows)]
 pub(crate) struct FixtureRetirementObservation {
     pub(crate) verified_source_or_v5: bool,
     pub(crate) permanent_blocker_for_valid_prefix: bool,
@@ -1779,6 +1810,7 @@ pub(crate) struct FixtureRetirementObservation {
     pub(crate) unlisted_prefix: bool,
 }
 
+#[cfg(windows)]
 pub(crate) const FIXTURE_RETIREMENT_FAILPOINTS: &[&str] = &[
     "replacement-manifest-fsync",
     "replacement-build-intent-remove-or-parent-fsync",
@@ -1793,6 +1825,7 @@ pub(crate) const FIXTURE_RETIREMENT_FAILPOINTS: &[&str] = &[
     "cleanup-replacement-manifest-remove-or-parent-fsync",
 ];
 
+#[cfg(windows)]
 pub(crate) fn fixture_retirement_observation() -> FixtureRetirementObservation {
     for failpoint in FIXTURE_RETIREMENT_FAILPOINTS {
         let directory = TestDir::new();
@@ -1979,6 +2012,7 @@ fn aggregate_preflight_bounds_accept_exact_bytes_and_reject_plus_one() {
     );
 }
 
+#[cfg(windows)]
 #[test]
 fn owned_partial_backup_stage_is_removed_and_rebuilt_after_restart() {
     let directory = TestDir::new();
@@ -2156,6 +2190,7 @@ fn anchor_open_reparse_swap_is_rejected_before_sqlite_touches_target() {
     assert_eq!(fs::read(&original).unwrap(), target_bytes);
 }
 
+#[cfg(windows)]
 #[test]
 fn native_stage_identity_rejects_replaced_file_without_deleting_it() {
     let directory = TestDir::new();
@@ -2182,6 +2217,27 @@ fn native_stage_identity_rejects_replaced_file_without_deleting_it() {
     assert_eq!(before, fs::read(&paths.replacement_stage).unwrap());
 }
 
+#[cfg(not(windows))]
+#[test]
+fn identity_bound_sqlite_deletion_fails_closed_without_mutating_stage() {
+    let directory = TestDir::new();
+    let stage = directory.0.join("owned-stage.db");
+    fs::write(&stage, b"owned-stage").unwrap();
+    let anchor = platform_anchor::anchor_existing_sqlite(&stage, true).unwrap();
+    let identity = anchor.identity().clone();
+    drop(anchor);
+    let before = fs::read(&stage).unwrap();
+
+    let error = platform_anchor::delete_file_with_identity(&stage, &identity)
+        .expect_err("identity-bound deletion must remain unsupported off Windows");
+
+    assert!(
+        matches!(error, crate::error::AppError::InvalidRequest(message) if message == "identity-bound SQLite deletion is not admitted on this platform")
+    );
+    assert_eq!(before, fs::read(&stage).unwrap());
+}
+
+#[cfg(windows)]
 #[test]
 fn replacement_retirement_prefixes_converge() {
     for prefix in ["none", "wal", "shm", "main"] {
@@ -2208,6 +2264,7 @@ fn replacement_retirement_prefixes_converge() {
     }
 }
 
+#[cfg(windows)]
 #[test]
 fn replacement_cleanup_prefixes_converge() {
     for prefix in ["none", "shm", "wal", "main"] {
@@ -2249,6 +2306,7 @@ fn migration_artifact_symlink_is_rejected_without_touching_target() {
     assert_eq!(before, fs::read(&target).unwrap());
 }
 
+#[cfg(windows)]
 fn create_current_schema(path: &Path, schema: SchemaClass, project_name: &str) {
     create_v4(path, project_name, true);
     let mut connection = Connection::open(path).unwrap();
@@ -2263,6 +2321,7 @@ fn create_current_schema(path: &Path, schema: SchemaClass, project_name: &str) {
     connection.close().unwrap();
 }
 
+#[cfg(windows)]
 fn assert_current_v5_remains_unchanged(path: &Path, project_name: &str) {
     let before = file_fingerprint(path).unwrap();
 
@@ -2339,6 +2398,7 @@ fn create_v4(path: &Path, project_id: &str, event: bool) {
     connection.close().unwrap();
 }
 
+#[cfg(windows)]
 fn prepare_replacement(paths: &MigrationPaths) -> ReplacementManifest {
     let _lock = MigrationLock::acquire(paths.parent()).unwrap();
     let backup = ensure(paths).unwrap();
@@ -2362,6 +2422,7 @@ fn prepare_replacement(paths: &MigrationPaths) -> ReplacementManifest {
     manifest
 }
 
+#[cfg(windows)]
 fn retire_manifested_source(paths: &MigrationPaths, manifest: &ReplacementManifest) {
     let source = &manifest.source_after_checkpoint;
     if source.wal.present {

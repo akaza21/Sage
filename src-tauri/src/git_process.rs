@@ -43,6 +43,8 @@ pub(crate) struct GitProcessPolicy {
     #[cfg(test)]
     post_reap_failure: bool,
     #[cfg(test)]
+    post_spawn_failure: bool,
+    #[cfg(test)]
     stdout_reader_failure: bool,
     #[cfg(test)]
     reaper_control: Option<Arc<test_support::ReaperTestControl>>,
@@ -52,6 +54,8 @@ pub(crate) struct GitProcessPolicy {
     before_spawn_hook: Option<GitProcessHook>,
     #[cfg(test)]
     after_process_hook: Option<GitProcessHook>,
+    #[cfg(test)]
+    deadline_wait_gate: Option<Arc<test_support::DeadlineWaitGate>>,
 }
 
 impl GitProcessPolicy {
@@ -65,6 +69,8 @@ impl GitProcessPolicy {
             #[cfg(test)]
             post_reap_failure: false,
             #[cfg(test)]
+            post_spawn_failure: false,
+            #[cfg(test)]
             stdout_reader_failure: false,
             #[cfg(test)]
             reaper_control: None,
@@ -74,6 +80,8 @@ impl GitProcessPolicy {
             before_spawn_hook: None,
             #[cfg(test)]
             after_process_hook: None,
+            #[cfg(test)]
+            deadline_wait_gate: None,
         }
     }
 
@@ -87,6 +95,8 @@ impl GitProcessPolicy {
             #[cfg(test)]
             post_reap_failure: false,
             #[cfg(test)]
+            post_spawn_failure: false,
+            #[cfg(test)]
             stdout_reader_failure: false,
             #[cfg(test)]
             reaper_control: None,
@@ -96,6 +106,8 @@ impl GitProcessPolicy {
             before_spawn_hook: None,
             #[cfg(test)]
             after_process_hook: None,
+            #[cfg(test)]
+            deadline_wait_gate: None,
         }
     }
 
@@ -109,6 +121,8 @@ impl GitProcessPolicy {
             #[cfg(test)]
             post_reap_failure: false,
             #[cfg(test)]
+            post_spawn_failure: false,
+            #[cfg(test)]
             stdout_reader_failure: false,
             #[cfg(test)]
             reaper_control: None,
@@ -118,6 +132,8 @@ impl GitProcessPolicy {
             before_spawn_hook: None,
             #[cfg(test)]
             after_process_hook: None,
+            #[cfg(test)]
+            deadline_wait_gate: None,
         }
     }
 
@@ -266,7 +282,27 @@ async fn run_inner(
         stdout: Some(tokio::spawn(read_bounded(stdout, stdout_limit))),
         stderr: Some(tokio::spawn(read_bounded(stderr, MAX_STDERR_BYTES))),
     };
+    #[cfg(test)]
+    if policy.post_spawn_failure {
+        return containment::cleanup_failure(
+            child,
+            readers,
+            reaper_lease,
+            PostSpawnFailure {
+                message: "injected Git failure after spawn and reader setup".into(),
+                reaped: false,
+            },
+            policy,
+            registry,
+            root_authority,
+        )
+        .await;
+    }
     let completed = timeout(policy.command_timeout, async {
+        #[cfg(test)]
+        if let Some(gate) = &policy.deadline_wait_gate {
+            gate.wait().await;
+        }
         let status = child.wait().await.map_err(|error| PostSpawnFailure {
             message: format!("Git process wait failed: {error}"),
             reaped: false,

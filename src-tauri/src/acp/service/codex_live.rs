@@ -49,7 +49,7 @@ mod live_recovery;
 mod projection_recovery;
 mod recovery;
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 #[path = "codex_live/journey_tests.rs"]
 mod journey_tests;
 

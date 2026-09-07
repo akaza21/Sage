@@ -37,10 +37,12 @@ impl FixtureDeadline {
             .unwrap_or(self.deadline)
     }
 
+    #[cfg(windows)]
     pub(super) fn end(self) -> Instant {
         self.deadline
     }
 
+    #[cfg(windows)]
     pub(super) fn tree_before_cleanup(self) -> Duration {
         self.operation_before_cleanup()
             .min(Duration::from_millis(LIMITS.deadlines_ms.tree_termination))
@@ -51,6 +53,7 @@ impl FixtureDeadline {
             .min(Duration::from_millis(LIMITS.deadlines_ms.tree_termination))
     }
 
+    #[cfg(windows)]
     pub(super) fn tree_since(self, started: Instant) -> Duration {
         self.remaining().min(
             Duration::from_millis(LIMITS.deadlines_ms.tree_termination)

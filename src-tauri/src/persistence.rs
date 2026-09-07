@@ -12,7 +12,7 @@ mod physical_storage;
 
 use physical_storage::{PhysicalStorage, StorageLimits};
 
-#[cfg(any(test, feature = "acp-fixture"))]
+#[cfg(any(test, all(windows, feature = "acp-fixture")))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct WalConvergenceReceipt {
     wal_bytes: u64,
@@ -20,7 +20,7 @@ pub(crate) struct WalConvergenceReceipt {
     checkpointed: bool,
 }
 
-#[cfg(any(test, feature = "acp-fixture"))]
+#[cfg(any(test, all(windows, feature = "acp-fixture")))]
 impl WalConvergenceReceipt {
     pub(crate) fn wal_bytes(self) -> u64 {
         self.wal_bytes
@@ -34,7 +34,7 @@ impl WalConvergenceReceipt {
         self.checkpointed
     }
 
-    #[cfg(all(test, feature = "acp-fixture"))]
+    #[cfg(all(test, feature = "acp-fixture", windows))]
     pub(crate) fn test_only(
         wal_bytes: u64,
         checkpoint_target_bytes: u64,
@@ -96,7 +96,7 @@ impl Database {
         })
     }
 
-    #[cfg(any(test, feature = "acp-fixture"))]
+    #[cfg(any(test, all(windows, feature = "acp-fixture")))]
     pub(crate) fn converge_wal_for_observation(&self) -> AppResult<WalConvergenceReceipt> {
         let connection = self.connection();
         self.physical_storage.converge_for_observation(&connection)
