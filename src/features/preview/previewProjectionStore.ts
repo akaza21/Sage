@@ -7,6 +7,7 @@ import type {
   PreviewProjectionOwner,
 } from "../../domain/previewProjection";
 import { acpDesktop } from "../../services/acpDesktop";
+import { previewOwnerKey, samePreviewOwner } from "./previewPresentation";
 
 type PreviewState = {
   owner: PreviewProjectionOwner | null;
@@ -20,6 +21,7 @@ type PreviewState = {
 type Sink = {
   event: (event: PreviewProjectionChangedEvent) => void;
   error: (error: unknown) => void;
+  ready?: () => void;
 };
 
 type Subscribe = (
@@ -27,35 +29,6 @@ type Subscribe = (
 ) => Promise<() => void>;
 
 const MAX_LISTENER_RETRIES = 1;
-
-function sameOwner(
-  left: PreviewProjectionOwner | null,
-  right: PreviewProjectionOwner | null,
-): boolean {
-  return Boolean(
-    left &&
-    right &&
-    left.projectId === right.projectId &&
-    left.projectGeneration === right.projectGeneration &&
-    left.transitionEpoch === right.transitionEpoch &&
-    left.chatId === right.chatId &&
-    left.sessionId === right.sessionId &&
-    left.runtimeEpoch === right.runtimeEpoch,
-  );
-}
-
-function ownerKey(owner: PreviewProjectionOwner | null): string {
-  return owner
-    ? JSON.stringify([
-        owner.projectId,
-        owner.projectGeneration,
-        owner.transitionEpoch,
-        owner.chatId,
-        owner.sessionId,
-        owner.runtimeEpoch,
-      ])
-    : "";
-}
 
 function transitionAllowed(
   previous: PreviewProjection["phase"],
@@ -94,13 +67,18 @@ export function createPreviewProjectionStore() {
     projection: null,
     error: null,
     activate: (owner) => {
-      if (sameOwner(owner, get().owner)) return;
+      const current = get();
+      if (
+        samePreviewOwner(owner, current.owner) ||
+        (!owner && !current.owner && !current.projection && !current.error)
+      )
+        return;
       set({ owner, projection: null, error: null });
     },
     accept: (event) => {
       const current = get();
       const next = event.preview;
-      if (!sameOwner(current.owner, next)) return;
+      if (!samePreviewOwner(current.owner, next)) return;
       const previous = current.projection;
       if (
         previous &&
@@ -112,7 +90,7 @@ export function createPreviewProjectionStore() {
       set({ projection: next, error: null });
     },
     fail: (owner, error) => {
-      if (sameOwner(owner, get().owner)) set({ error: message(error) });
+      if (samePreviewOwner(owner, get().owner)) set({ error: message(error) });
     },
   }));
 }
@@ -132,8 +110,10 @@ export function createPreviewProjectionListener(subscribe: Subscribe) {
       .then((dispose) => {
         pending = null;
         retries = 0;
-        if (active) unlisten = dispose;
-        else dispose();
+        if (active) {
+          unlisten = dispose;
+          active.ready?.();
+        } else dispose();
       })
       .catch((error) => {
         pending = null;
@@ -148,7 +128,8 @@ export function createPreviewProjectionListener(subscribe: Subscribe) {
   return {
     acquire(sink: Sink): () => void {
       active = sink;
-      ensure();
+      if (unlisten) sink.ready?.();
+      else ensure();
       return () => {
         if (active !== sink) return;
         active = null;
@@ -167,7 +148,8 @@ const listener = createPreviewProjectionListener(
 
 export function usePreviewProjection(owner: PreviewProjectionOwner | null) {
   const [store] = useState(createPreviewProjectionStore);
-  const identity = ownerKey(owner);
+  const [listenerReady, setListenerReady] = useState(false);
+  const identity = previewOwnerKey(owner);
   // An owner switch is a rendering boundary, not an effect deferred until
   // after a replacement surface has painted.  Clearing projection and error
   // together prevents a new owner from observing the previous owner's origin.
@@ -180,10 +162,11 @@ export function usePreviewProjection(owner: PreviewProjectionOwner | null) {
         const activeOwner = store.getState().owner;
         if (activeOwner) store.getState().fail(activeOwner, error);
       },
+      ready: () => setListenerReady(true),
     });
   }, [identity, store]);
   const state = useStore(store, (value) => value);
-  return sameOwner(owner, state.owner)
-    ? state
-    : { ...state, projection: null, error: null };
+  return samePreviewOwner(owner, state.owner)
+    ? { ...state, listenerReady }
+    : { ...state, projection: null, error: null, listenerReady: false };
 }

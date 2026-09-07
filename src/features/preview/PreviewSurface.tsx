@@ -18,44 +18,14 @@ import {
   stopPreviewTarget,
   type PreviewTargetRef,
 } from "./previewDesktop";
+import { previewFailureMessage, samePreviewOwner } from "./previewPresentation";
 import { usePreviewProjection } from "./previewProjectionStore";
 import { useHarnessBrowseOwner } from "./useHarnessBrowseSession";
-
-function sameOwner(
-  left: PreviewProjectionOwner | null,
-  right: PreviewProjectionOwner | null,
-): boolean {
-  return Boolean(
-    left &&
-    right &&
-    left.projectId === right.projectId &&
-    left.projectGeneration === right.projectGeneration &&
-    left.transitionEpoch === right.transitionEpoch &&
-    left.chatId === right.chatId &&
-    left.sessionId === right.sessionId &&
-    left.runtimeEpoch === right.runtimeEpoch,
-  );
-}
 
 function message(error: unknown): string {
   return error instanceof Error
     ? error.message
     : "Preview request failed safely.";
-}
-
-function failureMessage(failure: string | null | undefined): string | null {
-  if (!failure) return null;
-  return (
-    {
-      scriptMissing: "No runnable Preview script was found.",
-      originNotLoopback: "Preview did not provide a safe loopback address.",
-      startupTimeout: "Preview did not start before its deadline.",
-      healthTimeout: "Preview did not become healthy before its deadline.",
-      exitedEarly: "Preview exited before it became ready.",
-      conflict: "Another Preview operation is already active.",
-      internal: "Preview failed safely.",
-    }[failure] ?? "Preview failed safely."
-  );
 }
 
 export function PreviewSurface() {
@@ -114,7 +84,11 @@ function PreviewSession({
   owner: PreviewProjectionOwner | null;
   transitioning: boolean;
 }) {
-  const { projection, error: subscriptionError } = usePreviewProjection(owner);
+  const {
+    projection,
+    error: subscriptionError,
+    listenerReady,
+  } = usePreviewProjection(owner);
   const browseOwner = useHarnessBrowseOwner();
   const [targets, setTargets] = useState<PreviewTargetRef[]>([]);
   const [discovered, setDiscovered] = useState(false);
@@ -141,17 +115,19 @@ function PreviewSession({
         sessionId: captured.sessionId,
         runtimeEpoch: captured.runtimeEpoch,
       });
-      if (!sameOwner(captured, ownerRef.current)) return;
+      if (!samePreviewOwner(captured, ownerRef.current)) return;
       setTargets(response.targets);
       setDiscovered(true);
     } catch (reason) {
-      if (sameOwner(captured, ownerRef.current)) setError(message(reason));
+      if (samePreviewOwner(captured, ownerRef.current))
+        setError(message(reason));
     }
   }, [owner]);
 
   useEffect(() => {
+    if (!listenerReady) return;
     queueMicrotask(() => void discover());
-  }, [discover]);
+  }, [discover, listenerReady]);
 
   useEffect(() => {
     if (
@@ -161,7 +137,7 @@ function PreviewSession({
       !projection.origin
     )
       return;
-    if (sameOwner(owner, browseOwner)) {
+    if (samePreviewOwner(owner, browseOwner)) {
       applyBrowseIntent({ owner, url: projection.origin });
     }
   }, [browseOwner, owner, projection]);
@@ -192,14 +168,18 @@ function PreviewSession({
         <button
           type="button"
           onClick={() => void discover()}
-          disabled={!owner || busy || transitioning}
+          disabled={!owner || !listenerReady || busy || transitioning}
         >
           Refresh
         </button>
       </div>
-      {error || subscriptionError || failureMessage(projection?.failure) ? (
+      {error ||
+      subscriptionError ||
+      previewFailureMessage(projection?.failure) ? (
         <p role="alert">
-          {error ?? subscriptionError ?? failureMessage(projection?.failure)}
+          {error ??
+            subscriptionError ??
+            previewFailureMessage(projection?.failure)}
         </p>
       ) : null}
       {discovered &&
@@ -221,7 +201,7 @@ function PreviewSession({
                   const captured = owner;
                   if (!captured) return;
                   void stopPreviewTarget(target).catch((reason) => {
-                    if (sameOwner(captured, ownerRef.current))
+                    if (samePreviewOwner(captured, ownerRef.current))
                       setError(message(reason));
                   });
                 }}
@@ -231,13 +211,13 @@ function PreviewSession({
             ) : (
               <button
                 type="button"
-                disabled={!owner || busy || transitioning}
+                disabled={!owner || !listenerReady || busy || transitioning}
                 onClick={() => {
                   const captured = owner;
                   if (!captured) return;
                   setError(null);
                   void startPreviewTarget(target).catch((reason) => {
-                    if (sameOwner(captured, ownerRef.current))
+                    if (samePreviewOwner(captured, ownerRef.current))
                       setError(message(reason));
                   });
                 }}

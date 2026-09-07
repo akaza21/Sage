@@ -3,7 +3,8 @@ param(
   [string]$SageExecutable,
   [string]$SourceRoot,
   [string]$EvidenceRoot,
-  [ValidateSet("native-ide", "acp04-live")][string]$JourneyKind = "native-ide",
+  [ValidateSet("native-ide", "acp04-live", "av01-preview")][string]$JourneyKind = "native-ide",
+  [ValidateSet("starting-active", "health-failed", "exited")][string]$PreviewCase = "starting-active",
   [ValidateRange(15000, 180000)][int]$DeadlineMs = 90000,
   [ValidateSet("capture", "cleanup")][string]$ToolIdentityAction,
   [int]$ToolProcessId,
@@ -601,7 +602,7 @@ function Write-Acp04ProfileIdentity(
 function Invoke-ControlledNodeCollector(
   [string]$Node,
   [string[]]$Arguments,
-  [ValidateSet("native-ide", "acp04-live")][string]$JourneyKind = "native-ide"
+  [ValidateSet("native-ide", "acp04-live", "av01-preview")][string]$JourneyKind = "native-ide"
 ) {
   $codeLoadingNames = [Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase
@@ -656,6 +657,9 @@ function Invoke-ControlledNodeCollector(
     if ($JourneyKind -eq "acp04-live") {
       throw "ACP-04 collector failed; inspect machine-failure.json under EvidenceRoot."
     }
+    if ($JourneyKind -eq "av01-preview") {
+      throw "AV01 Preview collector failed; inspect machine-failure.json under EvidenceRoot."
+    }
     throw "Native IDE journey runner failed; inspect machine-failure.json under EvidenceRoot."
   }
 }
@@ -690,8 +694,18 @@ if ($null -eq $gitMarker) { throw "SourceRoot must be a Git checkout." }
 $node = Require-PlainCanonicalFile (Get-Command node -ErrorAction Stop).Source "node"
 $preLaunchNodeBytes = (Get-Item -LiteralPath $node -Force).Length
 $preLaunchNodeSha256 = (Get-FileHash -LiteralPath $node -Algorithm SHA256).Hash.ToLowerInvariant()
+$av01PowerShell = $null
+$av01PowerShellBytes = $null
+$av01PowerShellSha256 = $null
+if ($JourneyKind -eq "av01-preview") {
+  $av01PowerShell = Require-PlainCanonicalFile (Join-Path $PSHOME "powershell.exe") "AV01 Preview helper runtime"
+  $av01PowerShellBytes = (Get-Item -LiteralPath $av01PowerShell -Force).Length
+  $av01PowerShellSha256 = (Get-FileHash -LiteralPath $av01PowerShell -Algorithm SHA256).Hash.ToLowerInvariant()
+}
 $runnerName = if ($JourneyKind -eq "acp04-live") {
   "source-functional-acp04-live-probe.mjs"
+} elseif ($JourneyKind -eq "av01-preview") {
+  "source-functional-av01-preview-probe.mjs"
 } else {
   "source-functional-native-ide-journey.mjs"
 }
@@ -699,11 +713,13 @@ $runner = Require-AbsoluteFile (Join-Path $PSScriptRoot $runnerName) "journey ru
 $finalizer = $null
 if ($JourneyKind -eq "acp04-live") {
   $finalizer = Require-AbsoluteFile (Join-Path $PSScriptRoot "source-functional-acp04-finalizer.mjs") "ACP-04 finalizer"
+} elseif ($JourneyKind -eq "av01-preview") {
+  $finalizer = Require-AbsoluteFile (Join-Path $PSScriptRoot "source-functional-av01-preview-finalizer.mjs") "AV01 Preview finalizer"
 }
 $codex = $null
 $codexBytes = $null
 $codexSha256 = $null
-if ($JourneyKind -eq "acp04-live") {
+if ($JourneyKind -eq "acp04-live" -or $JourneyKind -eq "av01-preview") {
   $codexCommand = @(Get-Command codex.cmd -CommandType Application -ErrorAction Stop) | Select-Object -First 1
   $codex = Require-PlainCanonicalFile $codexCommand.Source "Codex launcher"
   $codexBytes = (Get-Item -LiteralPath $codex -Force).Length
@@ -721,7 +737,7 @@ $frontendContract = Resolve-FrontendPortContract $resolvedSource
 
 if (-not $EvidenceRoot) {
   $stamp = [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ")
-  $journeyLabel = if ($JourneyKind -eq "acp04-live") { "acp04-live" } else { "native-ide" }
+  $journeyLabel = if ($JourneyKind -eq "acp04-live") { "acp04-live" } elseif ($JourneyKind -eq "av01-preview") { "av01-preview" } else { "native-ide" }
   $EvidenceRoot = Join-Path $resolvedSource "local-evidence\BETA-0001\source-functional\$journeyLabel-$stamp"
 }
 if (-not (Test-FullyQualifiedPath $EvidenceRoot)) { throw "EvidenceRoot must be an absolute canonical path." }
@@ -739,14 +755,37 @@ $fixture = Join-Path $EvidenceRoot "fixture-project"
 $profileIdentity = New-C0BDisposableProfile $EvidenceRoot "$($JourneyKind.Replace('_', '-'))-profile"
 $profile = $profileIdentity.root
 $profileIdentityArtifact = $null
-if ($JourneyKind -eq "acp04-live") {
+if ($JourneyKind -eq "acp04-live" -or $JourneyKind -eq "av01-preview") {
   $profileIdentityArtifact = Join-Path $EvidenceRoot "acp04-profile-identity.json"
   Write-Acp04ProfileIdentity $profileIdentityArtifact $profile $profileIdentity.identitySha256
 }
 
-$fixtureIdentity = Initialize-JourneyFixture $fixture
-$fixtureIdentity |
-  ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $fixture "fixture-identity.json") -NoNewline -Encoding utf8
+$fixtureIdentity = if ($JourneyKind -eq "av01-preview") {
+  $fixtureBuilder = Require-AbsoluteFile (Join-Path $PSScriptRoot "source-functional-av01-preview-fixture.mjs") "AV01 Preview fixture builder"
+  Invoke-ControlledNodeCollector $node @($fixtureBuilder, "--fixture", $fixture, "--preview-case", $PreviewCase) $JourneyKind
+  $identity = Get-Content -LiteralPath (Join-Path $fixture "fixture-identity.json") -Raw | ConvertFrom-Json
+  $names = @($identity.files | ForEach-Object { [string]$_.name } | Sort-Object)
+  if (($names -join "`0") -ne ((@("av01-preview-case.json", "package.json", "preview-fixture.mjs") | Sort-Object) -join "`0")) {
+    throw "AV01 Preview fixture identity does not describe its exact bounded files."
+  }
+  [void](Invoke-GitAt -Repository $fixture -Arguments @("init", "--quiet"))
+  [void](Invoke-GitAt -Repository $fixture -Arguments @("config", "user.name", "Sage AV01 fixture"))
+  [void](Invoke-GitAt -Repository $fixture -Arguments @("config", "user.email", "sage-av01-fixture@localhost"))
+  [void](Invoke-GitAt -Repository $fixture -Arguments @("add", "--", "package.json", "av01-preview-case.json", "preview-fixture.mjs", "fixture-identity.json"))
+  [void](Invoke-GitAt -Repository $fixture -Arguments @("commit", "--quiet", "-m", "seed AV01 Preview fixture"))
+  [IO.File]::WriteAllText(
+    (Join-Path $EvidenceRoot "av01-preview-fixture-git.json"),
+    (([ordered]@{ commit = Invoke-GitAt -Repository $fixture -Arguments @("rev-parse", "HEAD"); tree = Invoke-GitAt -Repository $fixture -Arguments @("rev-parse", "HEAD^{tree}") } | ConvertTo-Json -Compress) + "`n"),
+    [Text.UTF8Encoding]::new($false)
+  )
+  $identity
+} else {
+  Initialize-JourneyFixture $fixture
+}
+if ($JourneyKind -ne "av01-preview") {
+  $fixtureIdentity |
+    ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $fixture "fixture-identity.json") -NoNewline -Encoding utf8
+}
 
 $port = Get-BoundedLoopbackPort
 $previous = @{
@@ -777,7 +816,7 @@ try {
   [Environment]::SetEnvironmentVariable("SAGE_DISPOSABLE_PROFILE_ROOT", $profile, "Process")
   [Environment]::SetEnvironmentVariable("SAGE_PROJECT_ROOT", $fixture, "Process")
   [Environment]::SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--remote-debugging-address=127.0.0.1 --remote-debugging-port=$port", "Process")
-  if ($JourneyKind -eq "acp04-live") {
+  if ($JourneyKind -eq "acp04-live" -or $JourneyKind -eq "av01-preview") {
     $process = Start-Process -FilePath $resolvedExecutable `
       -WorkingDirectory (Split-Path -Parent $resolvedExecutable) `
       -RedirectStandardOutput $sageStdoutLog `
@@ -807,6 +846,27 @@ try {
       "--receipt-name", (Split-Path -Leaf $pendingReceipt),
       "--deadline-ms", "$DeadlineMs", "--mode", "two-turn-cancel-restart"
     )
+  } elseif ($JourneyKind -eq "av01-preview") {
+    $fixtureProcessHelper = Require-AbsoluteFile (Join-Path $PSScriptRoot "source-functional-av01-preview-process.ps1") "AV01 Preview process helper"
+    $arguments = @(
+      $runner, "--port", "$port", "--output", $EvidenceRoot,
+      "--source-commit", $commit, "--source-tree", $tree,
+      "--executable", $resolvedExecutable, "--fixture", $fixture,
+      "--fixture-identity", (Join-Path $fixture "fixture-identity.json"), "--fixture-process-helper", $fixtureProcessHelper, "--preview-case", $PreviewCase,
+      "--source-root", $resolvedSource,
+      "--executable-bytes", "$preLaunchExecutableBytes", "--executable-sha256", $preLaunchExecutableSha256,
+      "--node-bytes", "$preLaunchNodeBytes", "--node-sha256", $preLaunchNodeSha256,
+      "--powershell-path", $av01PowerShell, "--powershell-bytes", "$av01PowerShellBytes", "--powershell-sha256", $av01PowerShellSha256,
+      "--codex-path", $codex, "--codex-bytes", "$codexBytes", "--codex-sha256", $codexSha256,
+      "--profile-root", $profile, "--profile-identity-artifact", $profileIdentityArtifact,
+      "--sage-stdout-log", $sageStdoutLog, "--sage-stderr-log", $sageStderrLog,
+      "--sage-process-id", "$($sageRuntime.identity.processId)",
+      "--sage-process-created", "$($sageRuntime.identity.creationDate)",
+      "--expected-origin", $frontendContract.origin,
+      "--runtime-mode", $runtimeReceipt.mode, "--frontend-ready", "$($runtimeReceipt.frontendReady)".ToLowerInvariant(),
+      "--receipt-name", (Split-Path -Leaf $pendingReceipt),
+      "--deadline-ms", "$DeadlineMs"
+    )
   } else {
     $arguments = @(
       $runner, "--port", "$port", "--output", $EvidenceRoot,
@@ -835,13 +895,13 @@ try {
 
 if ($cleanupFailures.Count -ne 0) { throw ($cleanupFailures -join " ") }
 if ($null -ne $journeyFailure) { throw $journeyFailure }
-if ($JourneyKind -eq "acp04-live") {
+if ($JourneyKind -eq "acp04-live" -or $JourneyKind -eq "av01-preview") {
   $nativeStdoutIdentity = Assert-BoundedNativeLog $sageStdoutLog "Sage stdout"
   $nativeStderrIdentity = Assert-BoundedNativeLog $sageStderrLog "Sage stderr"
 }
 $receipt = Join-Path $EvidenceRoot "machine-receipt.json"
 if (-not (Test-Path -LiteralPath $pendingReceipt -PathType Leaf)) { throw "Native IDE journey cleanup completed without a pending receipt." }
-if ($JourneyKind -eq "acp04-live") {
+if ($JourneyKind -eq "acp04-live" -or $JourneyKind -eq "av01-preview") {
   $sageCleanupJson = $sageCleanup | ConvertTo-Json -Compress
   $viteCleanupJson = $viteCleanup | ConvertTo-Json -Compress
   $finalizerArguments = @(
@@ -858,7 +918,7 @@ if ($JourneyKind -eq "acp04-live") {
   Invoke-ControlledNodeCollector $node $finalizerArguments $JourneyKind
   if ((Test-Path -LiteralPath $pendingReceipt) -or
       -not (Test-Path -LiteralPath $receipt -PathType Leaf)) {
-    throw "ACP-04 final receipt publication did not complete."
+    throw "Source-functional final receipt publication did not complete."
   }
 } else {
   Publish-PendingJourneyReceipt $pendingReceipt $receipt $sageCleanup $viteCleanup

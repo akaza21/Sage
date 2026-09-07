@@ -16,6 +16,17 @@ describe("visual scenario contract", () => {
       { name: "file", mode: "agent", resource: "file" },
       { name: "diff", mode: "agent", resource: "diff" },
       { name: "preview", mode: "agent", resource: "preview" },
+      {
+        name: "agent-preview-starting",
+        mode: "agent",
+        resource: "preview",
+      },
+      {
+        name: "agent-preview-health-failed",
+        mode: "agent",
+        resource: "preview",
+      },
+      { name: "agent-preview-exited", mode: "agent", resource: "preview" },
       { name: "error", mode: "agent", resource: "empty" },
       { name: "waiting", mode: "agent", resource: "empty" },
     ]);

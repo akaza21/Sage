@@ -3,11 +3,17 @@ import {
   Files,
   GitCompareArrows,
   PanelRightClose,
-  PanelRightOpen,
   Pin,
   X,
 } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useStore } from "zustand";
 
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
@@ -22,8 +28,15 @@ import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
 import { orderedTabs } from "../app/tabState";
 import { useWorkbenchStore } from "../app/store";
 import { agentArtifactVisible } from "./agentArtifactAdmission";
+import { AgentArtifactCollapsedPane } from "./AgentArtifactCollapsedPane";
+import {
+  activeArtifactForTarget,
+  artifactTabParts,
+} from "./agentArtifactTabPresentation";
+import { agentPreviewControllerOwner } from "./agentPreviewControllerOwner";
+import { useAgentArtifactFollowLifecycle } from "./useAgentArtifactFollowLifecycle";
 import { FileKindIcon } from "../features/files/FileKindIcon";
-import { HarnessBrowserSurface } from "../features/preview/HarnessBrowserSurface";
+import { AgentPreviewSurface } from "../features/preview/AgentPreviewSurface";
 import {
   useHarnessBrowseOwner,
   useHarnessBrowseSession,
@@ -34,14 +47,6 @@ import {
   agentArtifactOwnerKey,
   type AgentArtifactOwner,
 } from "../domain/agentArtifact";
-
-type ArtifactTab = { resource?: { relativePath?: string }; title: string };
-
-function artifactTabParts(tab: ArtifactTab) {
-  const full = tab.resource?.relativePath ?? tab.title;
-  const base = full.split("/").at(-1) ?? full;
-  return [full, base, full.slice(0, full.length - base.length)];
-}
 
 export function AgentArtifactPane({
   expanded = true,
@@ -58,6 +63,7 @@ export function AgentArtifactPane({
   const closeTab = useWorkbenchStore((state) => state.closeTab);
   const availableResourceKeys = useRef(new Set<string>());
   const paneRef = useRef<HTMLElement | null>(null);
+  const [canvasNode, setCanvasNode] = useState<HTMLElement | null>(null);
   const edgeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const previousExpanded = useRef(expanded);
   const emptyTitleId = useId();
@@ -68,6 +74,9 @@ export function AgentArtifactPane({
   const project = useWorkbenchStore((state) => state.project);
   const projectGeneration = useWorkbenchStore(
     (state) => state.projectGeneration,
+  );
+  const nativeTransitionEpoch = useWorkbenchStore(
+    (state) => state.nativeTransitionEpoch,
   );
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
@@ -130,42 +139,45 @@ export function AgentArtifactPane({
     ],
     [artifacts, focusedOwner],
   );
-  const followRecord = agentArtifactFollowRecordFor(
-    followRecords,
-    focusedOwner,
-  );
+  const record = agentArtifactFollowRecordFor(followRecords, focusedOwner);
   const activeWorkbenchArtifact = artifacts.find(
-    (tab) => tab.id === activeTabId,
+    ({ id }) => id === activeTabId,
   );
   const defaultTarget: AgentArtifactTarget | null = activeWorkbenchArtifact
     ? { kind: "tab", tabId: activeWorkbenchArtifact.id }
     : previewOpen
       ? { kind: "preview" }
       : null;
-  const selectedTarget = followRecord
+  const selectedTarget = record
     ? (availableTargets.find((target) =>
-        sameAgentArtifactTarget(target, followRecord.selected),
+        sameAgentArtifactTarget(target, record.selected),
       ) ?? null)
     : defaultTarget;
   const previewSelected = selectedTarget?.kind === "preview";
-  const activeArtifact =
-    selectedTarget?.kind === "tab"
-      ? (artifacts.find((tab) => tab.id === selectedTarget.tabId) ?? null)
-      : null;
+  const previewControllerOwner = agentPreviewControllerOwner({
+    browseOwner,
+    focusedOwner,
+    focusedPage,
+    focusedScope,
+    nativeTransitionEpoch,
+    projectGeneration,
+  });
+  const previewController = (
+    <AgentPreviewSurface
+      key={JSON.stringify(Object.values(previewControllerOwner ?? {}))}
+      owner={previewControllerOwner}
+      browseOwner={browseOwner}
+      visible={expanded && previewSelected}
+      container={canvasNode}
+    />
+  );
+  const activeArtifact = activeArtifactForTarget(artifacts, selectedTarget);
 
-  useEffect(() => {
-    if (!focusedOwner || !browseSession) return;
-    useAgentArtifactFollowStore
-      .getState()
-      .observe(focusedOwner, { kind: "preview" }, browseSession.revision);
-  }, [browseSession, focusedOwner]);
-
-  useEffect(() => {
-    if (!focusedOwner) return;
-    useAgentArtifactFollowStore
-      .getState()
-      .reconcile(focusedOwner, availableTargets);
-  }, [availableTargets, focusedOwner]);
+  useAgentArtifactFollowLifecycle({
+    availableTargets,
+    browseSession,
+    focusedOwner,
+  });
 
   const hasResources = artifacts.length > 0 || focusedOwner !== null;
   const resourceKeys = useMemo(
@@ -198,213 +210,197 @@ export function AgentArtifactPane({
   }, [expanded, focusOnExpand]);
 
   if (!expanded) {
-    const collapsedCount = artifacts.length;
-    const collapsedLabel =
-      collapsedCount > 0
-        ? `Open files, changes, and preview, ${collapsedCount} ${collapsedCount === 1 ? "resource" : "resources"}`
-        : "Open files, changes, and preview";
     return (
-      <aside
-        ref={paneRef}
-        className="agent-artifact-pane agent-artifact-pane--collapsed"
-        aria-label="Agent artifacts"
-      >
-        <button
-          ref={edgeTriggerRef}
-          className="agent-artifact-pane__edge-action"
-          type="button"
-          aria-label={collapsedLabel}
-          title={
-            collapsedCount > 0
-              ? `Open resources (${collapsedCount})`
-              : "Open resources"
-          }
-          onClick={() => onExpandedChange?.(true)}
-        >
-          <PanelRightOpen size={17} strokeWidth={1.8} aria-hidden="true" />
-          {collapsedCount > 0 ? (
-            <span className="agent-artifact-pane__count" aria-hidden="true">
-              {collapsedCount}
-            </span>
-          ) : null}
-        </button>
-      </aside>
+      <>
+        <AgentArtifactCollapsedPane
+          count={artifacts.length}
+          edgeTriggerRef={edgeTriggerRef}
+          onExpand={() => onExpandedChange?.(true)}
+          paneRef={paneRef}
+        />
+        {previewController}
+      </>
     );
   }
 
   return (
-    <aside
-      ref={paneRef}
-      className={`agent-artifact-pane${
-        hasResources ? "" : " agent-artifact-pane--empty"
-      }`}
-      aria-label="Agent artifacts"
-      tabIndex={focusOnExpand ? -1 : undefined}
-      onKeyDown={(event) => {
-        if (event.key !== "Escape") return;
-        event.preventDefault();
-        onExpandedChange?.(false);
-      }}
-    >
-      <header className="agent-artifact-pane__header">
-        {hasResources ? (
-          <nav className="tab-strip" aria-label="Agent artifact tabs">
-            <div className="tab-strip__scroll">
-              {artifacts.map((tab) => {
-                const selected =
-                  selectedTarget?.kind === "tab" &&
-                  tab.id === selectedTarget.tabId;
-                const stats = artifactChipStatsForTab(
-                  tab,
-                  focusedOwner ? focusedPage : null,
-                );
-                const [fullPath, basename, directory] = artifactTabParts(tab);
-                const accessibleName = `${tab.kind === "file" ? "File" : "Diff"} ${fullPath}`;
-                return (
+    <>
+      <aside
+        ref={paneRef}
+        className={`agent-artifact-pane${
+          hasResources ? "" : " agent-artifact-pane--empty"
+        }`}
+        aria-label="Agent artifacts"
+        tabIndex={focusOnExpand ? -1 : undefined}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          onExpandedChange?.(false);
+        }}
+      >
+        <header className="agent-artifact-pane__header">
+          {hasResources ? (
+            <nav className="tab-strip" aria-label="Agent artifact tabs">
+              <div className="tab-strip__scroll">
+                {artifacts.map((tab) => {
+                  const selected =
+                    selectedTarget?.kind === "tab" &&
+                    tab.id === selectedTarget.tabId;
+                  const stats = artifactChipStatsForTab(
+                    tab,
+                    focusedOwner ? focusedPage : null,
+                  );
+                  const [fullPath, basename, directory] = artifactTabParts(tab);
+                  const accessibleName = `${tab.kind === "file" ? "File" : "Diff"} ${fullPath}`;
+                  return (
+                    <div
+                      className={`tab ${selected ? "tab--active" : ""}`}
+                      key={tab.id}
+                      role="presentation"
+                    >
+                      <button
+                        className="tab__activate"
+                        type="button"
+                        role="tab"
+                        aria-selected={selected}
+                        aria-label={accessibleName}
+                        title={fullPath}
+                        onClick={() => {
+                          if (focusedOwner) {
+                            useAgentArtifactFollowStore
+                              .getState()
+                              .pin(focusedOwner, {
+                                kind: "tab",
+                                tabId: tab.id,
+                              });
+                          }
+                          void activateTab(tab.id);
+                        }}
+                      >
+                        {tab.kind === "file" ? (
+                          <FileKindIcon
+                            path={tab.resource?.relativePath ?? tab.title}
+                            size={15}
+                          />
+                        ) : (
+                          <GitCompareArrows
+                            size={15}
+                            strokeWidth={1.8}
+                            aria-hidden="true"
+                          />
+                        )}
+                        <span className="tab__path" aria-hidden="true">
+                          <span className="tab__dir">{directory}</span>
+                          <span className="tab__basename">{basename}</span>
+                        </span>
+                        {tab.dirty === true ? (
+                          <span
+                            className="tab__dirty"
+                            title="Unsaved changes"
+                          />
+                        ) : null}
+                        {stats?.additionsLabel ? (
+                          <span className="tab__count tab__count--add">
+                            {stats.additionsLabel}
+                          </span>
+                        ) : null}
+                        {stats?.deletionsLabel ? (
+                          <span className="tab__count tab__count--del">
+                            {stats.deletionsLabel}
+                          </span>
+                        ) : null}
+                      </button>
+                      <button
+                        className="tab__close"
+                        type="button"
+                        aria-label={`Close ${tab.title}`}
+                        onClick={() => closeTab(tab.id)}
+                      >
+                        <X size={14} aria-hidden="true" />
+                      </button>
+                    </div>
+                  );
+                })}
+                {focusedOwner !== null ? (
                   <div
-                    className={`tab ${selected ? "tab--active" : ""}`}
-                    key={tab.id}
+                    className={`tab ${previewSelected ? "tab--active" : ""}`}
                     role="presentation"
                   >
                     <button
                       className="tab__activate"
                       type="button"
                       role="tab"
-                      aria-selected={selected}
-                      aria-label={accessibleName}
-                      title={fullPath}
+                      aria-selected={previewSelected}
+                      aria-label="Preview"
                       onClick={() => {
                         if (focusedOwner) {
                           useAgentArtifactFollowStore
                             .getState()
-                            .pin(focusedOwner, {
-                              kind: "tab",
-                              tabId: tab.id,
-                            });
+                            .pin(focusedOwner, { kind: "preview" });
                         }
-                        void activateTab(tab.id);
                       }}
                     >
-                      {tab.kind === "file" ? (
-                        <FileKindIcon
-                          path={tab.resource?.relativePath ?? tab.title}
-                          size={15}
-                        />
-                      ) : (
-                        <GitCompareArrows
-                          size={15}
-                          strokeWidth={1.8}
-                          aria-hidden="true"
-                        />
-                      )}
-                      <span className="tab__path" aria-hidden="true">
-                        <span className="tab__dir">{directory}</span>
-                        <span className="tab__basename">{basename}</span>
-                      </span>
-                      {tab.dirty === true ? (
-                        <span className="tab__dirty" title="Unsaved changes" />
-                      ) : null}
-                      {stats?.additionsLabel ? (
-                        <span className="tab__count tab__count--add">
-                          {stats.additionsLabel}
-                        </span>
-                      ) : null}
-                      {stats?.deletionsLabel ? (
-                        <span className="tab__count tab__count--del">
-                          {stats.deletionsLabel}
-                        </span>
-                      ) : null}
-                    </button>
-                    <button
-                      className="tab__close"
-                      type="button"
-                      aria-label={`Close ${tab.title}`}
-                      onClick={() => closeTab(tab.id)}
-                    >
-                      <X size={14} aria-hidden="true" />
+                      <Eye size={15} strokeWidth={1.8} aria-hidden="true" />
+                      <span>Preview</span>
                     </button>
                   </div>
-                );
-              })}
-              {focusedOwner !== null ? (
-                <div
-                  className={`tab ${previewSelected ? "tab--active" : ""}`}
-                  role="presentation"
-                >
-                  <button
-                    className="tab__activate"
-                    type="button"
-                    role="tab"
-                    aria-selected={previewSelected}
-                    aria-label="Preview"
-                    onClick={() => {
-                      if (focusedOwner) {
-                        useAgentArtifactFollowStore
-                          .getState()
-                          .pin(focusedOwner, { kind: "preview" });
-                      }
-                    }}
-                  >
-                    <Eye size={15} strokeWidth={1.8} aria-hidden="true" />
-                    <span>Preview</span>
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </nav>
-        ) : (
-          <strong>Files, changes, and preview</strong>
-        )}
-        {focusedOwner && followRecord && availableTargets.length > 1 ? (
+                ) : null}
+              </div>
+            </nav>
+          ) : (
+            <strong>Files, changes, and preview</strong>
+          )}
+          {focusedOwner && record && availableTargets.length > 1 ? (
+            <button
+              className="agent-artifact-pane__follow"
+              type="button"
+              aria-label="Follow latest resource"
+              aria-pressed={record.mode === "follow"}
+              title={
+                record.mode === "follow"
+                  ? "Following the newest resource from this Chat"
+                  : "Resume following the newest resource from this Chat"
+              }
+              onClick={() =>
+                useAgentArtifactFollowStore
+                  .getState()
+                  .followLatest(focusedOwner)
+              }
+            >
+              <Pin size={15} aria-hidden="true" />
+            </button>
+          ) : null}
           <button
-            className="agent-artifact-pane__follow"
+            className="agent-artifact-pane__collapse"
             type="button"
-            aria-label="Follow latest resource"
-            aria-pressed={followRecord.mode === "follow"}
-            title={
-              followRecord.mode === "follow"
-                ? "Following the newest resource from this Chat"
-                : "Resume following the newest resource from this Chat"
-            }
-            onClick={() =>
-              useAgentArtifactFollowStore.getState().followLatest(focusedOwner)
-            }
+            aria-label="Collapse files, changes, and preview"
+            title="Collapse resources"
+            onClick={() => onExpandedChange?.(false)}
           >
-            <Pin size={15} aria-hidden="true" />
+            <PanelRightClose size={16} aria-hidden="true" />
           </button>
-        ) : null}
-        <button
-          className="agent-artifact-pane__collapse"
-          type="button"
-          aria-label="Collapse files, changes, and preview"
-          title="Collapse resources"
-          onClick={() => onExpandedChange?.(false)}
-        >
-          <PanelRightClose size={16} aria-hidden="true" />
-        </button>
-      </header>
-      <div className="agent-artifact-pane__canvas">
-        {previewSelected ? (
-          <div className="agent-preview-stack">
-            <HarnessBrowserSurface owner={browseOwner} />
-          </div>
-        ) : null}
-        {!previewSelected && activeArtifact
-          ? renderFileOrDiffCanvas(activeArtifact)
-          : null}
-        {!previewSelected && !activeArtifact ? (
-          <section
-            className="placeholder-surface agent-artifact-pane__empty-state"
-            aria-labelledby={emptyTitleId}
-          >
-            <span className="placeholder-surface__icon" aria-hidden="true">
-              <Files size={19} strokeWidth={1.7} />
-            </span>
-            <h1 id={emptyTitleId}>No resources yet</h1>
-            <p>Files, changes, and previews from this Chat will appear here.</p>
-          </section>
-        ) : null}
-      </div>
-    </aside>
+        </header>
+        <div ref={setCanvasNode} className="agent-artifact-pane__canvas">
+          {!previewSelected && activeArtifact
+            ? renderFileOrDiffCanvas(activeArtifact)
+            : null}
+          {!previewSelected && !activeArtifact ? (
+            <section
+              className="placeholder-surface agent-artifact-pane__empty-state"
+              aria-labelledby={emptyTitleId}
+            >
+              <span className="placeholder-surface__icon" aria-hidden="true">
+                <Files size={19} strokeWidth={1.7} />
+              </span>
+              <h1 id={emptyTitleId}>No resources yet</h1>
+              <p>
+                Files, changes, and previews from this Chat will appear here.
+              </p>
+            </section>
+          ) : null}
+        </div>
+      </aside>
+      {previewController}
+    </>
   );
 }

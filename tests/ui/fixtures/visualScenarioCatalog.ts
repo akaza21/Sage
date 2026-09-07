@@ -1,6 +1,7 @@
 import {
   AGENT_VISUAL_SCENARIOS,
   EDITOR_VISUAL_SCENARIOS,
+  PREVIEW_PROJECTION_FIXTURE_SCENARIOS,
   RECOVERY_VISUAL_SCENARIOS,
   RESOURCE_VISUAL_SCENARIOS,
 } from "./visualScenarioTypes";
@@ -24,6 +25,9 @@ const SCENARIO_META: Record<
   file: { mode: "agent", resource: "file" },
   diff: { mode: "agent", resource: "diff" },
   preview: { mode: "agent", resource: "preview" },
+  "agent-preview-starting": { mode: "agent", resource: "preview" },
+  "agent-preview-health-failed": { mode: "agent", resource: "preview" },
+  "agent-preview-exited": { mode: "agent", resource: "preview" },
   error: { mode: "agent", resource: "empty" },
   waiting: { mode: "agent", resource: "empty" },
 };
@@ -38,7 +42,10 @@ const VISUAL_SURFACE_SCENARIOS: Record<
 > = {
   agent: AGENT_VISUAL_SCENARIOS,
   editor: EDITOR_VISUAL_SCENARIOS,
-  resource: RESOURCE_VISUAL_SCENARIOS,
+  resource: [
+    ...RESOURCE_VISUAL_SCENARIOS,
+    ...PREVIEW_PROJECTION_FIXTURE_SCENARIOS,
+  ],
   recovery: RECOVERY_VISUAL_SCENARIOS,
 };
 
@@ -46,6 +53,7 @@ export const VISUAL_SCENARIOS: readonly VisualScenarioDefinition[] = [
   ...AGENT_VISUAL_SCENARIOS,
   ...EDITOR_VISUAL_SCENARIOS,
   ...RESOURCE_VISUAL_SCENARIOS,
+  ...PREVIEW_PROJECTION_FIXTURE_SCENARIOS,
   ...RECOVERY_VISUAL_SCENARIOS,
 ].map(defineScenario);
 

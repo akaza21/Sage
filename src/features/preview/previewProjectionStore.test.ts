@@ -54,6 +54,16 @@ afterEach(() => {
 });
 
 describe("Preview projection store", () => {
+  it("does not publish repeatedly when an unavailable controller rerenders", () => {
+    const store = createPreviewProjectionStore();
+    const observe = vi.fn();
+    const release = store.subscribe(observe);
+    store.getState().activate(null);
+    store.getState().activate(null);
+    expect(observe).not.toHaveBeenCalled();
+    release();
+  });
+
   it("accepts a noncontiguous first revision, updates an equal phase, and rejects stale or illegal transitions", () => {
     const store = createPreviewProjectionStore();
     store.getState().activate(owner);

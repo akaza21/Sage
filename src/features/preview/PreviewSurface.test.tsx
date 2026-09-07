@@ -197,6 +197,26 @@ describe("PreviewSurface", () => {
     );
   });
 
+  it("observes listener readiness before its first automatic discovery", async () => {
+    let ready: ((dispose: () => void) => void) | null = null;
+    previewBridge.subscribe.mockImplementation(
+      () =>
+        new Promise<() => void>((resolve) => {
+          ready = resolve;
+        }),
+    );
+    seedOwnedSession();
+    setHarnessBrowseOwner(owner, ["chat-a"]);
+    render(<PreviewSurface />);
+
+    await Promise.resolve();
+    expect(previewBridge.subscribe).toHaveBeenCalledOnce();
+    expect(previewBridge.discover).not.toHaveBeenCalled();
+    if (!ready) throw new Error("listener readiness resolver was unavailable");
+    (ready as (dispose: () => void) => void)(unlisten);
+    await waitFor(() => expect(previewBridge.discover).toHaveBeenCalledOnce());
+  });
+
   it("navigates only the exact current owner's active native origin", async () => {
     seedOwnedSession(owner);
     seedOwnedSession(replacementOwner);

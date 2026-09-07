@@ -65,6 +65,9 @@ export function buildResourcePages(
         standardPage("visual-chat-diff", "Agent navigation polish", "rich"),
       ];
     case "preview":
+    case "agent-preview-starting":
+    case "agent-preview-health-failed":
+    case "agent-preview-exited":
       return [
         standardPage("visual-chat-preview", "Preview interaction", "rich"),
       ];

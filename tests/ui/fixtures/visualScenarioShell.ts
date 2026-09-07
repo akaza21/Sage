@@ -77,5 +77,5 @@ export async function installVisualScenario(name: VisualScenarioName) {
   await new Promise((resolve) =>
     requestAnimationFrame(() => resolve(undefined)),
   );
-  reapplyVisualPreviewBrowseIntent(scenario);
+  await reapplyVisualPreviewBrowseIntent(scenario);
 }

@@ -59,7 +59,7 @@ test("every original check-lanes case has a declared successor", () => {
 
 test("lane split and runner tests are explicitly recorded", () => {
   const justifications = verifyLaneJustifications();
-  assert.equal(justifications.justified, 4);
+  assert.equal(justifications.justified, 6);
 });
 
 test("mixed check-lanes source is retired from the discovered set", () => {

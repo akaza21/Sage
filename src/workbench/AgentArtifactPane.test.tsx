@@ -4,9 +4,31 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const previewBridge = vi.hoisted(() => ({
+  discover: vi.fn(),
+  health: vi.fn(),
+  start: vi.fn(),
+  stop: vi.fn(),
+  subscribe: vi.fn(),
+  available: vi.fn(),
+}));
+
+vi.mock("../features/preview/previewDesktop", () => ({
+  discoverPreviewTargets: previewBridge.discover,
+  getPreviewHealth: previewBridge.health,
+  previewDesktopAvailable: previewBridge.available,
+  startPreviewTarget: previewBridge.start,
+  stopPreviewTarget: previewBridge.stop,
+}));
+
+vi.mock("../services/acpDesktop", () => ({
+  acpDesktop: { subscribePreviewProjectionChanges: previewBridge.subscribe },
+}));
 
 import {
   acpProjectionStoreFor,
@@ -36,6 +58,7 @@ import {
 import { clearAgentChatOwner, pinAgentChatOwner } from "../app/agentChatOwner";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import { AgentArtifactPane } from "./AgentArtifactPane";
+import type { PreviewProjectionChangedEvent } from "../domain/previewProjection";
 
 const initialState = useWorkbenchStore.getState();
 const focusedOwner = {
@@ -100,7 +123,7 @@ function pageWithEdit(): AcpChatPage {
     title: "Focused",
     projectionRevision: "8",
     currentSessionId: "session-a",
-    sessions: [{ id: "session-a", ordinal: 1 }],
+    sessions: [{ id: "session-a", ordinal: 1, runtimeEpoch: "3" }],
     turns: [
       {
         id: "turn-a",
@@ -135,6 +158,18 @@ function seedFocusedPage(): void {
 }
 
 beforeEach(() => {
+  previewBridge.discover.mockReset();
+  previewBridge.health.mockReset();
+  previewBridge.start.mockReset();
+  previewBridge.stop.mockReset();
+  previewBridge.subscribe.mockReset();
+  previewBridge.available.mockReset();
+  previewBridge.discover.mockResolvedValue({ targets: [], truncated: false });
+  previewBridge.health.mockResolvedValue({ healthy: true, origin: null });
+  previewBridge.start.mockResolvedValue(undefined);
+  previewBridge.stop.mockResolvedValue(undefined);
+  previewBridge.subscribe.mockResolvedValue(vi.fn());
+  previewBridge.available.mockReturnValue(true);
   useAgentArtifactFollowStore.getState().clear();
   seedFocusedPage();
   pinAgentChatOwner(focusedOwner.chatId);
@@ -340,6 +375,578 @@ describe("Agent artifact file chips", () => {
       screen.queryByText("No dev or start scripts were found."),
     ).toBeNull();
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+  });
+
+  it("keeps a standalone manual browser quiet when native Preview is unavailable", () => {
+    previewBridge.available.mockReturnValue(false);
+    applyBrowseIntent({
+      owner: previewOwner,
+      url: "http://127.0.0.1:5173/manual",
+    });
+    render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    expect(screen.getByTitle("Sage browser")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:5173/manual",
+    );
+    expect(previewBridge.discover).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("surfaces a desktop Preview subscription failure without replacing manual browsing", async () => {
+    previewBridge.subscribe.mockRejectedValue(
+      new Error("Preview listener registration failed"),
+    );
+    applyBrowseIntent({
+      owner: previewOwner,
+      url: "http://127.0.0.1:5173/manual",
+    });
+    render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Preview listener registration failed",
+      ),
+    );
+    expect(screen.getByTitle("Sage browser")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:5173/manual",
+    );
+    expect(previewBridge.discover).not.toHaveBeenCalled();
+  });
+
+  it("keeps the native controller through File, tab, and collapse sleep-resume", async () => {
+    const unlisten = vi.fn();
+    previewBridge.subscribe.mockResolvedValue(unlisten);
+    const onExpandedChange = vi.fn();
+    const view = render(
+      <AgentArtifactPane expanded onExpandedChange={onExpandedChange} />,
+    );
+
+    expect(previewBridge.discover).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await waitFor(() => expect(previewBridge.discover).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
+    expect(screen.queryByLabelText("Sage browser")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    expect(previewBridge.discover).toHaveBeenCalledOnce();
+    expect(previewBridge.stop).not.toHaveBeenCalled();
+
+    view.rerender(
+      <AgentArtifactPane
+        expanded={false}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+    view.rerender(
+      <AgentArtifactPane expanded onExpandedChange={onExpandedChange} />,
+    );
+    await waitFor(() => expect(previewBridge.discover).toHaveBeenCalledOnce());
+    expect(previewBridge.stop).not.toHaveBeenCalled();
+    expect(unlisten).not.toHaveBeenCalled();
+  });
+
+  it("waits for the Agent listener before discovering and enabling Start", async () => {
+    let ready: ((unlisten: () => void) => void) | null = null;
+    const target = {
+      projectId: "project-a",
+      projectGeneration: "0",
+      expectedTransitionEpoch: 0,
+      chatId: "chat-focused",
+      sessionId: "session-a",
+      runtimeEpoch: "3",
+      rootId: "root-a",
+      scriptName: "dev",
+    } as const;
+    previewBridge.subscribe.mockImplementation(
+      () =>
+        new Promise<() => void>((resolve) => {
+          ready = resolve;
+        }),
+    );
+    previewBridge.discover.mockResolvedValue({ targets: [target] });
+    render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await waitFor(() => expect(previewBridge.subscribe).toHaveBeenCalledOnce());
+    expect(previewBridge.discover).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
+
+    if (!ready) throw new Error("listener readiness resolver was unavailable");
+    (ready as (dispose: () => void) => void)(vi.fn());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Start" })).toBeEnabled(),
+    );
+    expect(previewBridge.discover).toHaveBeenCalledOnce();
+  });
+
+  it("renders compact bounded Preview targets and one typed native failure notice", async () => {
+    let receive: ((event: PreviewProjectionChangedEvent) => void) | null = null;
+    const target = {
+      projectId: "project-a",
+      projectGeneration: "0",
+      expectedTransitionEpoch: 0,
+      chatId: "chat-focused",
+      sessionId: "session-a",
+      runtimeEpoch: "3",
+      rootId: "root-a",
+      scriptName: "start-a-very-long-preview-script-name-that-stays-accessible",
+    } as const;
+    previewBridge.subscribe.mockImplementation(async (handler) => {
+      receive = handler;
+      return vi.fn();
+    });
+    previewBridge.discover.mockResolvedValue({ targets: [target] });
+    render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+
+    const targets = await screen.findByRole("group", {
+      name: "Preview targets",
+    });
+    const row = targets.querySelector(".agent-preview-target");
+    if (!(row instanceof HTMLElement))
+      throw new Error("Preview target row was unavailable");
+    expect(row.querySelector(".agent-preview-target__name")).toHaveAttribute(
+      "title",
+      target.scriptName,
+    );
+    expect(within(row).getByRole("button", { name: "Start" })).toHaveClass(
+      "button",
+      "button--compact",
+      "button--primary",
+    );
+    expect(document.querySelector(".agent-preview-stack")).toHaveAttribute(
+      "data-preview-listener-ready",
+      "true",
+    );
+    expect(document.querySelector(".agent-preview-stack")).toHaveAttribute(
+      "data-preview-phase",
+      "none",
+    );
+
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "2",
+          phase: "healthFailed",
+          failure: "healthTimeout",
+          target,
+          origin: null,
+        },
+      } as unknown as PreviewProjectionChangedEvent),
+    );
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("alert")).toHaveTextContent("Preview failed");
+    expect(screen.queryByText("Preview is unavailable")).toBeNull();
+    expect(document.querySelector(".agent-preview-stack")).toHaveAttribute(
+      "data-preview-phase",
+      "healthFailed",
+    );
+    expect(document.querySelector(".agent-preview-stack")).toHaveAttribute(
+      "data-preview-target-identity",
+      `${target.rootId}:${target.scriptName}`,
+    );
+  });
+
+  it("stops the captured target exactly once when focused ownership disposes the controller", async () => {
+    let receive: ((event: PreviewProjectionChangedEvent) => void) | null = null;
+    previewBridge.subscribe.mockImplementation(async (handler) => {
+      receive = handler;
+      return vi.fn();
+    });
+    const target = {
+      projectId: "project-a",
+      projectGeneration: "0",
+      expectedTransitionEpoch: 0,
+      chatId: "chat-focused",
+      sessionId: "session-a",
+      runtimeEpoch: "3",
+      rootId: "root-a",
+      scriptName: "dev",
+    } as const;
+    render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await waitFor(() => expect(receive).not.toBeNull());
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "2",
+          phase: "active",
+          failure: null,
+          target,
+          origin: "http://127.0.0.1:5173/native",
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+    act(() => pinAgentChatOwner(null));
+    expect(previewBridge.stop).toHaveBeenCalledExactlyOnceWith(target);
+  });
+
+  it("bridges active native Preview and hides only its matching-origin terminal frame", async () => {
+    let receive: ((event: PreviewProjectionChangedEvent) => void) | null = null;
+    previewBridge.subscribe.mockImplementation(async (handler) => {
+      receive = handler;
+      return vi.fn();
+    });
+    const target = {
+      projectId: "project-a",
+      projectGeneration: "0",
+      expectedTransitionEpoch: 0,
+      chatId: "chat-focused",
+      sessionId: "session-a",
+      runtimeEpoch: "3",
+      rootId: "root-a",
+      scriptName: "dev",
+    } as const;
+    previewBridge.discover.mockResolvedValue({ targets: [target] });
+    const view = render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await waitFor(() => expect(receive).not.toBeNull());
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "2",
+          phase: "active",
+          failure: null,
+          target,
+          origin: "http://127.0.0.1:5173/native",
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+    await waitFor(() =>
+      expect(screen.getByTitle("Sage browser")).toHaveAttribute(
+        "src",
+        "http://127.0.0.1:5173/native",
+      ),
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await waitFor(() => expect(previewBridge.health).toHaveBeenCalledOnce());
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "3",
+          phase: "healthChecking",
+          failure: null,
+          target,
+          origin: null,
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "4",
+          phase: "active",
+          failure: null,
+          target,
+          origin: "http://127.0.0.1:5173/native",
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+    expect(previewBridge.health).toHaveBeenCalledOnce();
+
+    act(() =>
+      applyBrowseIntent({
+        owner: previewOwner,
+        url: "http://127.0.0.1:5174/manual",
+      }),
+    );
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "5",
+          phase: "active",
+          failure: null,
+          target,
+          origin: "http://127.0.0.1:5173/native",
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+    expect(screen.getByTitle("Sage browser")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:5174/manual",
+    );
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "6",
+          phase: "healthChecking",
+          failure: null,
+          target,
+          origin: null,
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "7",
+          phase: "healthFailed",
+          failure: "healthTimeout",
+          target,
+          origin: null,
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+    expect(screen.getByTitle("Sage browser")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:5174/manual",
+    );
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("alert")).toHaveTextContent("Preview failed");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Preview did not become healthy before its deadline.",
+    );
+    previewBridge.start.mockRejectedValueOnce(
+      new Error("retry request failed"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "retry request failed",
+      ),
+    );
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+
+    act(() =>
+      applyBrowseIntent({
+        owner: previewOwner,
+        url: "http://127.0.0.1:5173/other",
+      }),
+    );
+    expect(screen.queryByTitle("Sage browser")).toBeNull();
+    expect(
+      screen
+        .getAllByRole("alert")
+        .some((alert) =>
+          alert.textContent?.includes(
+            "Preview did not become healthy before its deadline.",
+          ),
+        ),
+    ).toBe(true);
+    view.unmount();
+    expect(previewBridge.stop).toHaveBeenCalledExactlyOnceWith(target);
+  });
+
+  it("suppresses a stopped native frame while preserving a different manual origin", async () => {
+    let receive: ((event: PreviewProjectionChangedEvent) => void) | null = null;
+    previewBridge.subscribe.mockImplementation(async (handler) => {
+      receive = handler;
+      return vi.fn();
+    });
+    const target = {
+      projectId: "project-a",
+      projectGeneration: "0",
+      expectedTransitionEpoch: 0,
+      chatId: "chat-focused",
+      sessionId: "session-a",
+      runtimeEpoch: "3",
+      rootId: "root-a",
+      scriptName: "dev",
+    } as const;
+    const emit = (
+      revision: string,
+      phase: PreviewProjectionChangedEvent["preview"]["phase"],
+      origin: string | null,
+    ) =>
+      act(() =>
+        receive?.({
+          kind: "preview",
+          preview: {
+            ...previewOwner,
+            previewRevision: revision,
+            phase,
+            failure: null,
+            target,
+            origin,
+          },
+        } as PreviewProjectionChangedEvent),
+      );
+
+    render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await waitFor(() => expect(receive).not.toBeNull());
+    emit("2", "active", "http://127.0.0.1:5173/native");
+    await waitFor(() =>
+      expect(screen.getByTitle("Sage browser")).toHaveAttribute(
+        "src",
+        "http://127.0.0.1:5173/native",
+      ),
+    );
+    emit("3", "stopping", null);
+    expect(screen.queryByTitle("Sage browser")).toBeNull();
+    expect(screen.getByText("Preview is stopping")).toBeInTheDocument();
+    emit("4", "stopped", null);
+    expect(screen.queryByTitle("Sage browser")).toBeNull();
+    expect(screen.getByText("Preview stopped")).toBeInTheDocument();
+
+    emit("5", "starting", null);
+    emit("6", "waitingForOrigin", null);
+    emit("7", "healthChecking", null);
+    emit("8", "active", "http://127.0.0.1:5173/native");
+    await waitFor(() =>
+      expect(screen.getByTitle("Sage browser")).toHaveAttribute(
+        "src",
+        "http://127.0.0.1:5173/native",
+      ),
+    );
+    act(() =>
+      applyBrowseIntent({
+        owner: previewOwner,
+        url: "http://127.0.0.1:5174/manual",
+      }),
+    );
+    emit("9", "stopping", null);
+    expect(screen.getByTitle("Sage browser")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:5174/manual",
+    );
+    emit("10", "stopped", null);
+    expect(screen.getByTitle("Sage browser")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:5174/manual",
+    );
+  });
+
+  it("uses only emitted phases for first-native notices and leaves idle native states as the browser shell", async () => {
+    let receive: ((event: PreviewProjectionChangedEvent) => void) | null = null;
+    previewBridge.subscribe.mockImplementation(async (handler) => {
+      receive = handler;
+      return vi.fn();
+    });
+    render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await waitFor(() => expect(receive).not.toBeNull());
+    const target = {
+      projectId: "project-a",
+      projectGeneration: "0",
+      expectedTransitionEpoch: 0,
+      chatId: "chat-focused",
+      sessionId: "session-a",
+      runtimeEpoch: "3",
+      rootId: "root-a",
+      scriptName: "dev",
+    } as const;
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "2",
+          phase: "starting",
+          failure: null,
+          target,
+          origin: null,
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+    expect(screen.getByText("Preview is starting")).toBeInTheDocument();
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "3",
+          phase: "healthFailed",
+          failure: "healthTimeout",
+          target,
+          origin: null,
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+    expect(screen.getByText("Preview failed")).toBeInTheDocument();
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "4",
+          phase: "starting",
+          failure: null,
+          target,
+          origin: null,
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "5",
+          phase: "exited",
+          failure: "exitedEarly",
+          target,
+          origin: null,
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+    expect(screen.getByText("Preview exited")).toBeInTheDocument();
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "6",
+          phase: "starting",
+          failure: null,
+          target,
+          origin: null,
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "7",
+          phase: "stopping",
+          failure: null,
+          target,
+          origin: null,
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+    expect(screen.getByText("Preview is stopping")).toBeInTheDocument();
+    expect(
+      screen.getByText("Stopping the native Preview process."),
+    ).toBeInTheDocument();
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "8",
+          phase: "stopped",
+          failure: null,
+          target,
+          origin: null,
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+    expect(screen.getByText("Preview stopped")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Preview has stopped. Start it again when you are ready.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("keeps a pinned File when Preview arrives and resumes Follow latest", () => {

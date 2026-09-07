@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, RotateCw, X } from "lucide-react";
-import { useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 
 import {
   applyBrowseIntent,
@@ -14,8 +14,10 @@ import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 
 export function HarnessBrowserSurface({
   owner,
+  replacement,
 }: {
   owner: HarnessBrowseOwner | null;
+  replacement?: ReactNode;
 }) {
   const session = useHarnessBrowseSession(owner);
   const history = owner
@@ -115,28 +117,29 @@ export function HarnessBrowserSurface({
           Only loopback HTTP(S) with a port
         </p>
       ) : null}
-      {session ? (
-        <iframe
-          key={`${session.href}:${frameEpoch}`}
-          className="harness-browser__frame"
-          title="Sage browser"
-          src={session.href}
-          sandbox="allow-scripts allow-same-origin allow-forms"
-          referrerPolicy="no-referrer"
-        />
-      ) : owner ? (
-        <ResourceStateNotice
-          state="idle"
-          title="Preview is idle"
-          detail="Preview shows loopback development servers started from this Chat. Only loopback HTTP(S) with a port; public sites stay closed."
-        />
-      ) : (
-        <ResourceStateNotice
-          state="idle"
-          title="Preview unavailable"
-          detail="Select a Chat to preview loopback development servers."
-        />
-      )}
+      {replacement ??
+        (session ? (
+          <iframe
+            key={`${session.href}:${frameEpoch}`}
+            className="harness-browser__frame"
+            title="Sage browser"
+            src={session.href}
+            sandbox="allow-scripts allow-same-origin allow-forms"
+            referrerPolicy="no-referrer"
+          />
+        ) : owner ? (
+          <ResourceStateNotice
+            state="idle"
+            title="Preview is idle"
+            detail="Preview shows loopback development servers started from this Chat. Only loopback HTTP(S) with a port; public sites stay closed."
+          />
+        ) : (
+          <ResourceStateNotice
+            state="idle"
+            title="Preview unavailable"
+            detail="Select a Chat to preview loopback development servers."
+          />
+        ))}
     </section>
   );
 }

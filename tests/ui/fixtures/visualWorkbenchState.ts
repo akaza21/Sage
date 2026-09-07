@@ -331,13 +331,22 @@ export function applyVisualWorkbenchState(
   }
 }
 
-export function reapplyVisualPreviewBrowseIntent(
+export async function reapplyVisualPreviewBrowseIntent(
   scenario: BuiltVisualScenario,
-): void {
+): Promise<void> {
   if (scenario.resource !== "preview") return;
   const chatId = scenario.pages[0]?.chatId;
   if (!chatId) throw new Error("Visual Preview fixture requires a Chat.");
   const expectedOwner = browseOwner(chatId);
+  // The real mounted Chat shell owns this identity. It can publish its first
+  // owner after the fixture's state write, so wait a bounded two frames for
+  // that commit without ever admitting a looser owner.
+  for (let frame = 0; frame < 2; frame += 1) {
+    if (sameBrowseOwner(harnessBrowseOwner(), expectedOwner)) break;
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+  }
   if (!sameBrowseOwner(harnessBrowseOwner(), expectedOwner)) {
     throw new Error("Visual Preview fixture owner was not established.");
   }

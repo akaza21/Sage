@@ -19,6 +19,7 @@ import {
 import {
   AGENT_VISUAL_SCENARIOS,
   EDITOR_VISUAL_SCENARIOS,
+  PREVIEW_PROJECTION_FIXTURE_SCENARIOS,
   RECOVERY_VISUAL_SCENARIOS,
   RESOURCE_VISUAL_SCENARIOS,
   type VisualScenarioName,
@@ -98,7 +99,10 @@ afterEach(() => {
 const SLICES = {
   agent: AGENT_VISUAL_SCENARIOS,
   editor: EDITOR_VISUAL_SCENARIOS,
-  resource: RESOURCE_VISUAL_SCENARIOS,
+  resource: [
+    ...RESOURCE_VISUAL_SCENARIOS,
+    ...PREVIEW_PROJECTION_FIXTURE_SCENARIOS,
+  ],
   recovery: RECOVERY_VISUAL_SCENARIOS,
 } as const;
 
@@ -122,6 +126,9 @@ describe("visual scenario surface ownership", () => {
       "file",
       "diff",
       "preview",
+      "agent-preview-starting",
+      "agent-preview-health-failed",
+      "agent-preview-exited",
       "error",
       "waiting",
     ]);
@@ -166,6 +173,9 @@ describe("visual scenario surface ownership", () => {
       file: "resource",
       diff: "resource",
       preview: "resource",
+      "agent-preview-starting": "resource",
+      "agent-preview-health-failed": "resource",
+      "agent-preview-exited": "resource",
       error: "recovery",
       waiting: "recovery",
     };
@@ -188,6 +198,19 @@ describe("visual scenario surface ownership", () => {
         scenarioSurface(scenario.name),
       ]);
     }
+  });
+
+  it("keeps AV-01 phase fixture companions labelled separately from screenshot proof", () => {
+    expect(PREVIEW_PROJECTION_FIXTURE_SCENARIOS).toEqual([
+      "agent-preview-starting",
+      "agent-preview-health-failed",
+      "agent-preview-exited",
+    ]);
+    expect(
+      PREVIEW_PROJECTION_FIXTURE_SCENARIOS.every(
+        (name) => scenarioSurface(name) === "resource",
+      ),
+    ).toBe(true);
   });
 
   it("builds the same deterministic pages through the dispatcher and the owning builder", () => {

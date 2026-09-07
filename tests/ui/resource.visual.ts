@@ -1,9 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { RESOURCE_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
+import { PREVIEW_PROJECTION_FIXTURE_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
 import {
   expectNoViewportOverflow,
+  installFixedClock,
+  installLayoutMode,
+  installScenario,
   openScenario,
   settleTranscriptAtEnd,
   takeCanonicalScreenshot,
@@ -15,6 +19,11 @@ import {
 } from "./resourceVisualHelpers";
 import { expectFindContained } from "./editorVisualHelpers";
 import { assertAgentLandmarks } from "./agentVisualHelpers";
+import {
+  assertPreviewProjectionTransportBounds,
+  emitPreviewProjection,
+  installPreviewProjectionTransport,
+} from "./previewProjectionFixture";
 
 test.describe("Wave 2 canonical visual states", () => {
   test.use({ viewport: { width: 1380, height: 880 } });
@@ -27,6 +36,61 @@ test.describe("Wave 2 canonical visual states", () => {
       await assertAgentLandmarks(page);
       await settleTranscriptAtEnd(page);
       await expectNoViewportOverflow(page);
+      await takeCanonicalScreenshot(workbench, name);
+    });
+  }
+});
+
+test.describe("AV-01 projection-fixture browser routes", () => {
+  test.use({ viewport: { width: 1_380, height: 880 } });
+
+  for (const name of PREVIEW_PROJECTION_FIXTURE_SCENARIOS) {
+    test(`${name} is projection-fixture proof only`, async ({ page }) => {
+      await installFixedClock(page);
+      await installLayoutMode(page, "agent");
+      await page.goto("/");
+      await installPreviewProjectionTransport(page);
+      await assertPreviewProjectionTransportBounds(page);
+      await installScenario(page, name);
+      await page.evaluate(() => document.fonts.ready);
+      const workbench = page.locator("main.workbench");
+      const resources = page.getByRole("complementary", {
+        name: "Agent artifacts",
+      });
+      await expect(
+        resources.getByRole("tab", { name: "Preview" }),
+      ).toHaveAttribute("aria-selected", "true");
+      const start = resources.getByRole("button", { name: "Start" });
+      await expect(start).toBeEnabled();
+      await expect(start).toHaveCSS("height", "28px");
+      const phase = name.replace("agent-preview-", "");
+      await emitPreviewProjection(
+        page,
+        phase === "health-failed" ? "healthFailed" : phase,
+      );
+      await expect(
+        resources.getByText(
+          phase === "starting"
+            ? "Preview is starting"
+            : phase === "health-failed"
+              ? "Preview failed"
+              : "Preview exited",
+          { exact: true },
+        ),
+      ).toBeVisible();
+      if (phase !== "starting") {
+        const detail =
+          phase === "health-failed"
+            ? "Preview did not become healthy before its deadline."
+            : "Preview exited before it became ready.";
+        await expect(resources.getByText(detail, { exact: true })).toHaveCount(
+          1,
+        );
+      }
+      await expect(resources.getByTitle("Sage browser")).toHaveCount(0);
+      // Projection-fixture proof only; native lifecycle proof is separate.
+      await expectNoViewportOverflow(page);
+      await settleTranscriptAtEnd(page);
       await takeCanonicalScreenshot(workbench, name);
     });
   }

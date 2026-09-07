@@ -11,6 +11,9 @@ export type VisualScenarioName =
   | "file"
   | "diff"
   | "preview"
+  | "agent-preview-starting"
+  | "agent-preview-health-failed"
+  | "agent-preview-exited"
   | "error"
   | "waiting";
 
@@ -54,6 +57,16 @@ export const RESOURCE_VISUAL_SCENARIOS: readonly VisualScenarioName[] = [
   "diff",
   "preview",
 ];
+
+// These are deterministic browser projection-fixture companions only. They
+// deliberately stay out of canonical screenshot coverage: native lifecycle
+// truth requires the packaged Tauri journey rather than a seeded projection.
+export const PREVIEW_PROJECTION_FIXTURE_SCENARIOS: readonly VisualScenarioName[] =
+  [
+    "agent-preview-starting",
+    "agent-preview-health-failed",
+    "agent-preview-exited",
+  ];
 
 export const RECOVERY_VISUAL_SCENARIOS: readonly VisualScenarioName[] = [
   "error",

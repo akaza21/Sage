@@ -33,9 +33,14 @@ type PreviewFailure = {
 };
 
 const MAX_COUNTER = "9223372036854775807";
+export const MAX_PREVIEW_TARGETS = 16;
 
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+export function previewDesktopAvailable(): boolean {
+  return isTauriRuntime();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -231,7 +236,7 @@ export async function discoverPreviewTargets(
   if (
     response.projectId !== exactRequest.projectId ||
     response.transitionEpoch !== exactRequest.expectedTransitionEpoch ||
-    response.targets.length > 16 ||
+    response.targets.length > MAX_PREVIEW_TARGETS ||
     typeof response.truncated !== "boolean" ||
     !response.targets.every(
       (target) =>

@@ -59,6 +59,8 @@ export const NATIVE_WINDOWS_BUDGET_TESTS = Object.freeze([
   "installed-smoke-identity.node-test.mjs",
   "process-identity-cleanup.node-test.mjs",
   "source-functional-acp04-live-probe.node-test.mjs",
+  "source-functional-av01-preview.node-test.mjs",
+  "source-functional-av01-preview-process.node-test.mjs",
   "source-functional-native-ide-cdp.node-test.mjs",
   "source-functional-native-ide-journey.node-test.mjs",
   "windows-job.node-test.mjs",
@@ -364,6 +366,16 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "check-lanes.native-posix.node-test.mjs",
     reason:
       "Native-POSIX successor lane for the Unix process-group escalation proof plus the Darwin arm of the contention proof.",
+  },
+  {
+    file: "source-functional-av01-preview.node-test.mjs",
+    reason:
+      "Native-Windows source-functional AV01 Preview fixture, CDP collector, and final-receipt contract tests require the Windows journey envelope.",
+  },
+  {
+    file: "source-functional-av01-preview-process.node-test.mjs",
+    reason:
+      "Native-Windows owned-child process identity capture, live rejection, and disappearance proof for the AV01 Preview helper.",
   },
 ]);
 
