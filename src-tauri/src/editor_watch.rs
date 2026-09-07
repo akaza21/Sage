@@ -198,7 +198,7 @@ fn notice_kind_for_action(action: u32) -> Option<EditorExternalWatchKind> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, windows))]
 fn notice_kind_for_path(
     watched_file_name: &str,
     changed_file_name: &str,

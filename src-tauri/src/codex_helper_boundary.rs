@@ -25,6 +25,8 @@ mod windows;
 
 #[cfg(windows)]
 pub(crate) use authority::ElevatedBoundaryAuthority;
+#[cfg(all(windows, test))]
+pub(crate) use authority::{AuthorityObservation, PublicationAuthority, publication_authority};
 #[cfg(windows)]
 pub(crate) use dispatch::{PublicationExecutor, PublicationFailure, authenticated_response};
 #[cfg(any(windows, test))]
