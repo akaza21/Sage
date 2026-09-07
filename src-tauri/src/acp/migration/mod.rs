@@ -65,7 +65,7 @@ pub(crate) struct OpenedDatabase {
     live_path_anchor: LivePathAnchor,
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(windows)))]
 pub(crate) fn complete_v4_upgrade_for_test(connection: &mut Connection) -> AppResult<()> {
     apply_through_v9(connection)
 }
