@@ -22,7 +22,7 @@ export function safeActivity(value: unknown): HarnessActivityProjection | null {
   const turnId = safeIdentifier(value.turnId);
   const parentActivityId = safeNullableIdentifier(value.parentActivityId);
   const parentItemId = safeIdentifier(value.parentItemId);
-  const revision = safeCounter(value.revision, false);
+  const revision = safeCounter(value.revision, true);
   const externalKind = safeText(value.provenance.externalKind, 128);
   const extensionSchemaId = safeNullableIdentifier(
     value.provenance.extensionSchemaId,
@@ -90,7 +90,7 @@ export function safeTurn(value: unknown): TurnProjection | null {
   const id = safeIdentifier(value.id);
   const sessionId = safeIdentifier(value.sessionId);
   const runtimeEpoch = safeCounter(value.runtimeEpoch, false);
-  const revision = safeCounter(value.revision, false);
+  const revision = safeCounter(value.revision, true);
   const ordinal = safeOrdinal(value.ordinal);
   const createdAt = safeTimestamp(value.createdAt);
   const updatedAt = safeTimestamp(value.updatedAt);

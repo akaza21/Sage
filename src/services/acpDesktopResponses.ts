@@ -144,7 +144,7 @@ function safeSession(value: unknown): AgentSessionProjection | null {
   const runtimeEpoch = safeNullableCounter(value.runtimeEpoch, false);
   const nextRuntimeEpoch = safeNullableCounter(value.nextRuntimeEpoch, false);
   const ordinal = safeOrdinal(value.ordinal);
-  const revision = safeCounter(value.revision, false);
+  const revision = safeCounter(value.revision, true);
   const projectionRevision = safeCounter(value.projectionRevision, false);
   const capabilities = safeCapabilities(value.capabilities);
   if (

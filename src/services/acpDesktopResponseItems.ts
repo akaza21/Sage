@@ -39,7 +39,7 @@ function safeItemIdentity(
   const turnId = safeIdentifier(value.turnId);
   const activityId = safeNullableIdentifier(value.activityId);
   const runtimeEpoch = safeCounter(value.runtimeEpoch, false);
-  const revision = safeCounter(value.revision, false);
+  const revision = safeCounter(value.revision, true);
   const ordinal = safeOrdinal(value.ordinal);
   const createdAt = safeTimestamp(value.createdAt);
   const updatedAt = safeTimestamp(value.updatedAt);

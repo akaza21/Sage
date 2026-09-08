@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { safeAcpMutationResponse } from "./acpDesktopResponses";
 
-function session(index = 0): object {
+function session(index = 0, overrides: Record<string, unknown> = {}): object {
   return {
     id: `session-${index}`,
     ordinal: index,
@@ -33,6 +33,7 @@ function session(index = 0): object {
     revision: "1",
     projectionRevision: "1",
     legacy: false,
+    ...overrides,
   };
 }
 
@@ -73,7 +74,7 @@ function item(index = 0, overrides: Record<string, unknown> = {}): object {
   };
 }
 
-function activity(index = 0): object {
+function activity(index = 0, overrides: Record<string, unknown> = {}): object {
   return {
     id: `activity-${index}`,
     turnId: "turn-0",
@@ -90,6 +91,7 @@ function activity(index = 0): object {
       safeLabel: null,
     },
     revision: "1",
+    ...overrides,
   };
 }
 
@@ -126,9 +128,104 @@ function mutation(overrides: Record<string, unknown> = {}): object {
   };
 }
 
+function mutationWithEntityRevisions(revision: unknown): object {
+  return mutation({
+    sessions: [session(0, { revision })],
+    turns: [
+      turn({
+        revision,
+        items: [item(0, { revision })],
+        activities: [activity(0, { revision })],
+      }),
+    ],
+  });
+}
+
 describe("safeAcpMutationResponse", () => {
   it("returns a well-bounded mutation projection", () => {
     expect(safeAcpMutationResponse(mutation())).toEqual(mutation());
+  });
+
+  it("admits native zero entity revisions while retaining counter bounds", () => {
+    expect(
+      safeAcpMutationResponse(mutationWithEntityRevisions("0")),
+    ).not.toBeNull();
+    expect(
+      safeAcpMutationResponse(
+        mutationWithEntityRevisions("9223372036854775807"),
+      ),
+    ).not.toBeNull();
+
+    for (const invalid of ["9223372036854775808", "01", "-1", 0]) {
+      expect(
+        safeAcpMutationResponse(mutationWithEntityRevisions(invalid)),
+      ).toBeNull();
+    }
+  });
+
+  it("admits a native-shaped fresh cold session at entity revision zero", () => {
+    expect(
+      safeAcpMutationResponse(
+        mutation({
+          sessions: [
+            session(0, {
+              state: "created",
+              residency: "cold",
+              runtimeEpoch: null,
+              nextRuntimeEpoch: "1",
+              revision: "0",
+            }),
+          ],
+          turns: [],
+        }),
+      ),
+    ).not.toBeNull();
+  });
+
+  it("does not admit zero runtime or projection counters with zero entity revisions", () => {
+    const zeroEntities = mutationWithEntityRevisions("0") as {
+      projection: Record<string, unknown>;
+    };
+    expect(
+      safeAcpMutationResponse({
+        projection: { ...zeroEntities.projection, projectionRevision: "0" },
+      }),
+    ).toBeNull();
+    expect(
+      safeAcpMutationResponse({
+        projection: {
+          ...zeroEntities.projection,
+          sessions: [session(0, { revision: "0", runtimeEpoch: "0" })],
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps capabilities and identity relations fail-closed with zero entity revisions", () => {
+    const zeroEntities = mutationWithEntityRevisions("0") as {
+      projection: Record<string, unknown>;
+    };
+    expect(
+      safeAcpMutationResponse({
+        projection: { ...zeroEntities.projection, currentSessionId: "foreign" },
+      }),
+    ).toBeNull();
+    expect(
+      safeAcpMutationResponse({
+        projection: {
+          ...zeroEntities.projection,
+          sessions: [
+            session(0, {
+              revision: "0",
+              capabilities: {
+                ...(session() as { capabilities: object }).capabilities,
+                prompt: "true",
+              },
+            }),
+          ],
+        },
+      }),
+    ).toBeNull();
   });
 
   it("fails closed when sessions exceed the ACP page limit", () => {
