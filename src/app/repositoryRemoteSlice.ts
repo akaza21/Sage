@@ -28,10 +28,6 @@ export interface RepositoryRemoteSlice {
   clearRepositoryRemoteError: (rootId: string) => void;
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function rejectedRemote(
   error: unknown,
 ): Omit<RepositoryRemoteError, "rootId" | "remote" | "action"> {
@@ -160,3 +156,4 @@ export const createRepositoryRemoteSlice: StateCreator<
     pushRemote: (rootId, remote) => transportRemote(rootId, remote, "push"),
   };
 };
+import { errorMessage } from "../domain/errors";

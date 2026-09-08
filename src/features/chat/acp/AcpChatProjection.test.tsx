@@ -171,9 +171,11 @@ function editItem(
 }
 
 describe("AcpChatProjection", () => {
-  it("keeps retained Turn status accessible without replaying it", () => {
+  it("keeps retained Turn status accessible without replaying it", async () => {
     render(<AcpChatProjection page={page("waitingUser")} active />);
-    const status = screen.getByRole("status", { name: "Waiting for user" });
+    const status = await screen.findByRole("status", {
+      name: "Waiting for user",
+    });
     expect(status).toHaveTextContent("Waiting for user");
     expect(status).toHaveAttribute("aria-live", "off");
     expect(status).toHaveAttribute("aria-atomic", "true");
@@ -280,17 +282,17 @@ describe("AcpChatProjection", () => {
     }
   });
 
-  it("renders mermaid fences as a copyable diagram instead of a raw fence only", () => {
+  it("renders mermaid fences as a copyable diagram instead of a raw fence only", async () => {
     const next = page("completed");
     const item = textItem();
     item.payload.text = "```mermaid\ngraph TD\nA --> B\n```";
     next.turns[0].items = [item];
     render(<AcpChatProjection page={next} active />);
     expect(
-      screen.getByRole("img", { name: "Mermaid diagram" }),
+      await screen.findByRole("img", { name: "Mermaid diagram" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Copy diagram source" }),
+      await screen.findByRole("button", { name: "Copy diagram source" }),
     ).toBeInTheDocument();
     expect(screen.queryByText(/```mermaid/)).toBeNull();
   });

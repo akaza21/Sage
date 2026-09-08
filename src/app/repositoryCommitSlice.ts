@@ -38,10 +38,6 @@ export interface RepositoryCommitSlice {
   clearRepositoryCommitError: (rootId: string) => void;
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function rejectedCommit(error: unknown) {
   if (
     typeof error === "object" &&
@@ -277,3 +273,4 @@ export const createRepositoryCommitSlice: StateCreator<
         desktop.continueGitRevert({ projectId, rootId }, epoch),
     ),
 });
+import { errorMessage } from "../domain/errors";

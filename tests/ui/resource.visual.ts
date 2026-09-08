@@ -1014,3 +1014,195 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
     await expect(workbench).toHaveScreenshot("agent-artifacts-long-paths.png");
   });
 });
+
+test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
+  test("agent-preview-narrow-720x560", async ({ page }) => {
+    await page.setViewportSize({ width: 720, height: 560 });
+    const workbench = await openAgentScenario(page, "preview");
+    const resources = page.getByRole("complementary", {
+      name: "Agent artifacts",
+    });
+    const browser = resources.locator(".harness-browser");
+    const address = resources.getByRole("textbox", {
+      name: "Preview address",
+    });
+    const trigger = resources.getByRole("button", {
+      name: "Preview controls",
+    });
+
+    await expect(
+      resources.getByRole("tab", { name: "Preview" }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(address).toBeVisible();
+    await expect(trigger).toBeVisible();
+    await expect(resources.getByRole("button", { name: "Back" })).toBeHidden();
+    await trigger.click();
+    const menu = page.getByRole("menu", { name: "Preview controls" });
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Back" })).toBeDisabled();
+    await expect(
+      menu.getByRole("menuitem", { name: "Reload preview" }),
+    ).toBeEnabled();
+    expect(
+      await menu.evaluate((node) => {
+        const bounds = node.getBoundingClientRect();
+        return (
+          bounds.left >= 8 &&
+          bounds.right <= innerWidth - 8 &&
+          bounds.top >= 8 &&
+          bounds.bottom <= innerHeight - 8 &&
+          node.scrollWidth <= node.clientWidth
+        );
+      }),
+    ).toBe(true);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(menu).toHaveCSS("animation-name", "none");
+    const geometry = await browser.evaluate((node) => {
+      const body = node.querySelector<HTMLElement>(
+        ".harness-browser__frame, .harness-browser > .resource-state",
+      );
+      if (!body) throw new Error("Preview viewport is missing");
+      const canvas = node.closest<HTMLElement>(".agent-artifact-pane__canvas");
+      if (!canvas) throw new Error("Preview resource canvas is missing");
+      const browserBounds = node.getBoundingClientRect();
+      const bodyBounds = body.getBoundingClientRect();
+      return {
+        browser: browserBounds.toJSON(),
+        body: bodyBounds.toJSON(),
+        canvas: canvas.getBoundingClientRect().toJSON(),
+      };
+    });
+    expect(geometry.body.height).toBeGreaterThanOrEqual(240);
+    expect(geometry.body.bottom).toBeLessThanOrEqual(
+      geometry.browser.bottom + 1,
+    );
+    expect(geometry.browser.y).toBeGreaterThanOrEqual(geometry.canvas.y - 1);
+    expect(geometry.browser.y).toBeLessThanOrEqual(geometry.canvas.y + 1);
+    expect(geometry.browser.bottom).toBeLessThanOrEqual(
+      geometry.canvas.bottom + 1,
+    );
+    expect(geometry.browser.bottom).toBeGreaterThanOrEqual(
+      geometry.canvas.bottom - 1,
+    );
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot(
+      "agent-preview-narrow-720x560.png",
+    );
+  });
+
+  test("agent-preview-zoom-200", async ({ page }) => {
+    await page.setViewportSize({ width: 1_380, height: 880 });
+    const workbench = await openAgentScenario(page, "preview");
+    await page.evaluate(() => {
+      document.documentElement.style.zoom = "2";
+    });
+    const resources = page.getByRole("complementary", {
+      name: "Agent artifacts",
+    });
+    const trigger = resources.getByRole("button", {
+      name: "Preview controls",
+    });
+    const address = resources.getByRole("textbox", {
+      name: "Preview address",
+    });
+
+    await expect
+      .poll(() =>
+        page.evaluate(() => getComputedStyle(document.documentElement).zoom),
+      )
+      .toBe("2");
+    await expect(address).toBeVisible();
+    await expect(trigger).toBeVisible();
+    await trigger.click();
+    await expect(
+      page.getByRole("menu", { name: "Preview controls" }),
+    ).toBeVisible();
+    expect(
+      await resources.locator(".harness-browser").evaluate((node) => {
+        const browser = node.getBoundingClientRect();
+        const frame = node.querySelector<HTMLElement>(
+          ".harness-browser__frame",
+        );
+        const addressInput = node.querySelector<HTMLElement>(
+          ".harness-browser__address input",
+        );
+        if (!frame || !addressInput) {
+          throw new Error("Zoom Preview geometry probe missing");
+        }
+        const content = frame.getBoundingClientRect();
+        const address = addressInput.getBoundingClientRect();
+        return (
+          address.width > 0 &&
+          address.right <= browser.right + 1 &&
+          content.height >= 240 &&
+          content.bottom <= browser.bottom + 1
+        );
+      }),
+    ).toBe(true);
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot("agent-preview-zoom-200.png");
+  });
+
+  test("agent-preview-keyboard-focus", async ({ page }) => {
+    const workbench = await openAgentScenario(page, "preview");
+    const resources = page.getByRole("complementary", {
+      name: "Agent artifacts",
+    });
+    const previewTab = resources.getByRole("tab", { name: "Preview" });
+    const collapse = resources.getByRole("button", {
+      name: "Collapse files, changes, and preview",
+    });
+    const controls = resources.locator(".harness-browser__controls");
+    const reload = controls.getByRole("button", { name: "Reload preview" });
+    const close = controls.getByRole("button", { name: "Close browser" });
+    const address = resources.getByRole("textbox", {
+      name: "Preview address",
+    });
+    const frame = resources.getByTitle("Sage browser");
+
+    await previewTab.focus();
+    await page.keyboard.press("Shift+Tab");
+    await expect(collapse).toBeFocused();
+    await expect(collapse).toBeEnabled();
+    await page.keyboard.press("Tab");
+    await expect(previewTab).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(reload).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(close).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(address).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(frame).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(address).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(previewTab).toBeFocused();
+    await expect(resources).not.toHaveClass(/agent-artifact-pane--collapsed/);
+
+    const splitter = page.getByRole("separator", {
+      name: "Resize files and preview",
+    });
+    const ordinary = await splitter.evaluate((node) => ({
+      hitTarget: node.getBoundingClientRect().width,
+      seam: getComputedStyle(node, "::after").width,
+    }));
+    expect(ordinary.hitTarget).toBeGreaterThanOrEqual(8);
+    expect(ordinary.seam).toBe("1px");
+    await page.emulateMedia({ forcedColors: "active" });
+    await splitter.focus();
+    await expect
+      .poll(() =>
+        splitter.evaluate((node) => ({
+          seam: getComputedStyle(node, "::after").width,
+          outline: getComputedStyle(node).outlineStyle,
+        })),
+      )
+      .toEqual({ seam: "2px", outline: "solid" });
+    await page.emulateMedia({ forcedColors: "none" });
+    await expectNoViewportOverflow(page);
+    await expect(workbench).toHaveScreenshot(
+      "agent-preview-keyboard-focus.png",
+    );
+  });
+});

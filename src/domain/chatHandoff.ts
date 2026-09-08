@@ -19,10 +19,10 @@ export interface ChatHandoffIntent {
   draft: string;
 }
 
-const encoder = new TextEncoder();
+import { utf8ByteLength } from "./text";
 
 function byteLength(value: string) {
-  return encoder.encode(value).byteLength;
+  return utf8ByteLength(value);
 }
 
 export function validateChatHandoffDraft(draft: string) {

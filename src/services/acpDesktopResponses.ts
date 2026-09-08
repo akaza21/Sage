@@ -5,6 +5,12 @@ import type {
   CodexDiscoveryModel,
   CodexDiscoveryResponse,
 } from "../domain/acp";
+import {
+  boundedIdentifier as safeIdentifier,
+  decimalU64Counter,
+  isRecord,
+} from "../domain/guards";
+import { utf8ByteLength } from "../domain/text";
 import { safeTurn } from "./acpDesktopResponseTurns";
 
 const ACP_PAGE_LIMITS = {
@@ -14,27 +20,11 @@ const ACP_PAGE_LIMITS = {
   activities: 128,
 } as const;
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-export function safeIdentifier(value: unknown): string | null {
-  if (
-    typeof value !== "string" ||
-    value.length === 0 ||
-    value.length > 512 ||
-    value.includes("\0")
-  )
-    return null;
-  return new TextEncoder().encode(value).byteLength <= 512 ? value : null;
-}
-
 export function safeCounter(value: unknown, allowZero: boolean): string | null {
-  if (typeof value !== "string" || !/^(0|[1-9][0-9]{0,18})$/.test(value))
-    return null;
-  if (value.length === 19 && value > "9223372036854775807") return null;
-  return allowZero || value !== "0" ? value : null;
+  return decimalU64Counter(value, { allowZero });
 }
+
+export { isRecord, safeIdentifier };
 
 export function isOneOf<const Value extends string>(
   value: unknown,
@@ -44,8 +34,7 @@ export function isOneOf<const Value extends string>(
 }
 
 export function safeText(value: unknown, maximumBytes: number): string | null {
-  return typeof value === "string" &&
-    new TextEncoder().encode(value).byteLength <= maximumBytes
+  return typeof value === "string" && utf8ByteLength(value) <= maximumBytes
     ? value
     : null;
 }

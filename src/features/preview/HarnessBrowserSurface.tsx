@@ -1,5 +1,18 @@
-import { ChevronLeft, ChevronRight, RotateCw, X } from "lucide-react";
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  MoreHorizontal,
+  RotateCw,
+  X,
+} from "lucide-react";
+import {
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 
 import {
   applyBrowseIntent,
@@ -10,6 +23,7 @@ import {
 } from "./harnessBrowse";
 import { useHarnessBrowseSession } from "./useHarnessBrowseSession";
 import type { HarnessBrowseOwner } from "./harnessBrowse";
+import { MenuPopover } from "../../ui/MenuPopover";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 
 export function HarnessBrowserSurface({
@@ -30,7 +44,11 @@ export function HarnessBrowserSurface({
   } | null>(null);
   const [denied, setDenied] = useState(false);
   const [frameEpoch, setFrameEpoch] = useState(0);
+  const [controlsOpen, setControlsOpen] = useState(false);
   const addressRef = useRef<HTMLInputElement | null>(null);
+  const browserRef = useRef<HTMLElement | null>(null);
+  const controlsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const controlsMenuId = useId();
   const draft =
     override && override.href === sessionHref ? override.draft : sessionHref;
 
@@ -46,30 +64,86 @@ export function HarnessBrowserSurface({
     setOverride(null);
   };
 
+  const closeBrowser = () => {
+    if (!owner) return;
+    clearBrowseSession(owner);
+    addressRef.current?.focus();
+  };
+
+  const returnToPreviewTab = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    browserRef.current
+      ?.closest<HTMLElement>(".agent-artifact-pane")
+      ?.querySelector<HTMLButtonElement>('[role="tab"][aria-label="Preview"]')
+      ?.focus();
+  };
+
   return (
-    <section className="harness-browser" aria-label="Sage browser">
+    <section
+      ref={browserRef}
+      className="harness-browser"
+      aria-label="Sage browser"
+    >
       <header className="harness-browser__chrome">
-        <button
-          type="button"
-          aria-label="Back"
-          title="Back"
-          disabled={!history.canBack || !owner}
-          onClick={() => {
-            if (owner) browseBack(owner);
-          }}
+        <div
+          className="harness-browser__controls"
+          aria-label="Preview controls"
         >
-          <ChevronLeft size={13} aria-hidden="true" />
-        </button>
+          <button
+            type="button"
+            aria-label="Back"
+            title="Back"
+            disabled={!history.canBack || !owner}
+            onClick={() => {
+              if (owner) browseBack(owner);
+            }}
+          >
+            <ChevronLeft size={13} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            aria-label="Forward"
+            title="Forward"
+            disabled={!history.canForward || !owner}
+            onClick={() => {
+              if (owner) browseForward(owner);
+            }}
+          >
+            <ChevronRight size={13} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            aria-label="Reload preview"
+            title="Reload preview"
+            disabled={!session}
+            onClick={() => setFrameEpoch((epoch) => epoch + 1)}
+          >
+            <RotateCw size={13} aria-hidden="true" />
+          </button>
+          {session && owner ? (
+            <button
+              type="button"
+              aria-label="Close browser"
+              title="Close browser"
+              onClick={closeBrowser}
+            >
+              <X size={13} aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
         <button
+          ref={controlsTriggerRef}
+          className="harness-browser__controls-trigger"
           type="button"
-          aria-label="Forward"
-          title="Forward"
-          disabled={!history.canForward || !owner}
-          onClick={() => {
-            if (owner) browseForward(owner);
-          }}
+          aria-label="Preview controls"
+          aria-controls={controlsMenuId}
+          aria-expanded={controlsOpen}
+          title="Preview controls"
+          onClick={() => setControlsOpen((open) => !open)}
         >
-          <ChevronRight size={13} aria-hidden="true" />
+          <MoreHorizontal size={15} aria-hidden="true" />
         </button>
         <form className="harness-browser__address" onSubmit={submitAddress}>
           <input
@@ -80,6 +154,7 @@ export function HarnessBrowserSurface({
             value={draft}
             placeholder="http://127.0.0.1:port/"
             disabled={!owner}
+            onKeyDown={returnToPreviewTab}
             onChange={(event) => {
               setOverride({
                 href: sessionHref,
@@ -89,29 +164,68 @@ export function HarnessBrowserSurface({
             }}
           />
         </form>
+      </header>
+      <MenuPopover
+        ariaLabel="Preview controls"
+        id={controlsMenuId}
+        open={controlsOpen}
+        onDismiss={() => setControlsOpen(false)}
+        triggerRef={controlsTriggerRef}
+      >
         <button
           type="button"
-          aria-label="Reload preview"
-          title="Reload preview"
-          disabled={!session}
-          onClick={() => setFrameEpoch((epoch) => epoch + 1)}
+          role="menuitem"
+          className="menu-item"
+          aria-label="Back"
+          disabled={!history.canBack || !owner}
+          onClick={() => {
+            if (owner) browseBack(owner);
+            setControlsOpen(false);
+          }}
         >
-          <RotateCw size={13} aria-hidden="true" />
+          Back
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-item"
+          aria-label="Forward"
+          disabled={!history.canForward || !owner}
+          onClick={() => {
+            if (owner) browseForward(owner);
+            setControlsOpen(false);
+          }}
+        >
+          Forward
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-item"
+          aria-label="Reload preview"
+          disabled={!session}
+          onClick={() => {
+            setFrameEpoch((epoch) => epoch + 1);
+            setControlsOpen(false);
+          }}
+        >
+          Reload preview
         </button>
         {session && owner ? (
           <button
             type="button"
+            role="menuitem"
+            className="menu-item"
             aria-label="Close browser"
-            title="Close browser"
             onClick={() => {
-              clearBrowseSession(owner);
-              addressRef.current?.focus();
+              closeBrowser();
+              setControlsOpen(false);
             }}
           >
-            <X size={13} aria-hidden="true" />
+            Close browser
           </button>
         ) : null}
-      </header>
+      </MenuPopover>
       {denied ? (
         <p className="harness-browser__denied" role="alert">
           Only loopback HTTP(S) with a port

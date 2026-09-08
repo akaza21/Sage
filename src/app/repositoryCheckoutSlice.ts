@@ -33,10 +33,6 @@ export interface RepositoryCheckoutSlice {
   clearRepositoryCheckoutError: (rootId: string) => void;
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function rejectedCheckout(
   error: unknown,
 ): Omit<RepositoryCheckoutError, "rootId" | "branch"> {
@@ -176,3 +172,4 @@ export const createRepositoryCheckoutSlice: StateCreator<
           desktop.renameGitLocalBranch({ projectId, rootId, from, to }, epoch),
         ),
 });
+import { errorMessage } from "../domain/errors";

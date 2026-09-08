@@ -18,6 +18,8 @@ import type {
   StartAcpSessionRequest,
 } from "../domain/acp";
 import type { PreviewProjectionChangedEvent } from "../domain/previewProjection";
+import { utf8ByteLength } from "../domain/text";
+import { invokeNative } from "../ports/nativeInvoke";
 import { subscribePreviewProjectionChanges } from "./acpDesktopPreview";
 import {
   isOneOf,
@@ -38,7 +40,7 @@ function safeMessage(value: unknown): string | null {
   if (typeof value !== "string" || value.length === 0 || value.length > 8192) {
     return null;
   }
-  return new TextEncoder().encode(value).byteLength <= 8192 ? value : null;
+  return utf8ByteLength(value) <= 8192 ? value : null;
 }
 
 function safePermissionDecision(
@@ -245,8 +247,7 @@ async function invokeAcp<T, Request extends object>(
   }
 
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    return await invoke<T>(command, { request });
+    return await invokeNative<T>(command, { request });
   } catch (error: unknown) {
     if (error instanceof AcpDesktopError) {
       throw error;

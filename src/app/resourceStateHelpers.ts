@@ -7,10 +7,6 @@ import type { ResourceRef } from "../domain/workbench";
 
 import type { ResourceState } from "./store";
 
-export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export function boundedResourceStateUpdate<T>(
   current: Record<string, ResourceState<T>>,
   key: string,

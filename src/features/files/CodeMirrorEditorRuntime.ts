@@ -51,7 +51,7 @@ export interface CodeMirrorEditorRuntime {
   update: (props: RuntimeProps) => void;
 }
 
-const textEncoder = new TextEncoder();
+import { utf8ByteLength } from "../../domain/text";
 
 /*
  * Document syntax palette resolves from --doc-syntax-* tokens (authority in
@@ -160,7 +160,7 @@ function withinUtf8Limit(document: Text, limit: number) {
   if (document.length <= Math.floor(limit / 3)) {
     return true;
   }
-  return textEncoder.encode(document.toString()).byteLength <= limit;
+  return utf8ByteLength(document.toString()) <= limit;
 }
 
 function appearanceExtensions(appearance: EditorAppearance): Extension {

@@ -41,11 +41,6 @@ export interface FileCreateSlice {
   ) => Promise<boolean>;
 }
 
-function boundedError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.slice(0, MAX_FILE_CREATE_ERROR_UNITS);
-}
-
 function boundedListingUpdate(
   current: Record<string, ResourceState<DirectoryListing>>,
   listing: DirectoryListing,
@@ -300,7 +295,12 @@ export const createFileCreateSlice: StateCreator<
         matchesProjectIntent(get(), projectGeneration, project.id) &&
         creationGeneration(get(), kind) === requestGeneration
       ) {
-        set(creationFailure(kind, boundedError(error)));
+        set(
+          creationFailure(
+            kind,
+            boundedError(error, MAX_FILE_CREATE_ERROR_UNITS, "utf16"),
+          ),
+        );
       }
       return false;
     } finally {
@@ -332,3 +332,4 @@ export const createFileCreateSlice: StateCreator<
       createProjectResource("folder", parent, basename),
   };
 };
+import { boundedError } from "../domain/errors";

@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HarnessBrowserSurface } from "./HarnessBrowserSurface";
 import {
@@ -119,7 +119,7 @@ describe("HarnessBrowserSurface", () => {
     expect(reloaded).not.toBe(first);
   });
 
-  it("keeps the browser chrome controls named in DOM order", () => {
+  it("keeps the browser chrome controls before the address in tab order", () => {
     applyBrowseIntent({
       owner: ownerA,
       url: "http://127.0.0.1:5173/app",
@@ -128,15 +128,15 @@ describe("HarnessBrowserSurface", () => {
 
     const chrome = screen.getByRole("region", { name: "Sage browser" });
     expect(
-      Array.from(chrome.querySelectorAll("button, input")).map((element) =>
-        element.getAttribute("aria-label"),
-      ),
+      Array.from(
+        chrome.querySelectorAll(".harness-browser__controls button, input"),
+      ).map((element) => element.getAttribute("aria-label")),
     ).toEqual([
       "Back",
       "Forward",
-      "Preview address",
       "Reload preview",
       "Close browser",
+      "Preview address",
     ]);
   });
 
@@ -145,10 +145,54 @@ describe("HarnessBrowserSurface", () => {
 
     const chrome = screen.getByRole("region", { name: "Sage browser" });
     expect(
-      Array.from(chrome.querySelectorAll("button, input")).map((element) =>
-        element.getAttribute("aria-label"),
+      Array.from(
+        chrome.querySelectorAll(".harness-browser__controls button, input"),
+      ).map((element) => element.getAttribute("aria-label")),
+    ).toEqual(["Back", "Forward", "Reload preview", "Preview address"]);
+  });
+
+  it("returns Escape from the address to its scoped Preview tab without collapsing the pane", () => {
+    const onPaneKeyDown = vi.fn();
+    render(
+      <aside className="agent-artifact-pane" onKeyDown={onPaneKeyDown}>
+        <div role="tablist">
+          <button role="tab" aria-label="Preview" aria-selected="true">
+            Preview
+          </button>
+        </div>
+        <HarnessBrowserSurface owner={ownerA} />
+      </aside>,
+    );
+
+    const address = screen.getByLabelText("Preview address");
+    address.focus();
+    fireEvent.keyDown(address, { key: "Escape" });
+
+    expect(screen.getByRole("tab", { name: "Preview" })).toHaveFocus();
+    expect(onPaneKeyDown).not.toHaveBeenCalled();
+  });
+
+  it("uses the existing overflow menu actions while keeping the address available", () => {
+    applyBrowseIntent({
+      owner: ownerA,
+      url: "http://127.0.0.1:5173/app",
+    });
+    render(<HarnessBrowserSurface owner={ownerA} />);
+
+    const trigger = screen.getByRole("button", { name: "Preview controls" });
+    expect(screen.getByLabelText("Preview address")).toBeInTheDocument();
+    fireEvent.click(trigger);
+
+    const menu = screen.getByRole("menu", { name: "Preview controls" });
+    expect(
+      Array.from(menu.querySelectorAll('[role="menuitem"]')).map((item) =>
+        item.getAttribute("aria-label"),
       ),
-    ).toEqual(["Back", "Forward", "Preview address", "Reload preview"]);
+    ).toEqual(["Back", "Forward", "Reload preview", "Close browser"]);
+    expect(screen.getByRole("menuitem", { name: "Back" })).toBeDisabled();
+    expect(
+      screen.getByRole("menuitem", { name: "Reload preview" }),
+    ).toBeEnabled();
   });
 
   it("walks admitted back and forward without leaving Sage", () => {

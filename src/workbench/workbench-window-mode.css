@@ -52,6 +52,8 @@
 }
 
 .workbench--agent .workbench__body {
+  container-name: agent-workbench;
+  container-type: inline-size;
   grid-template-columns: var(--project-sidebar-width) minmax(0, 1fr) minmax(
       280px,
       40%
@@ -103,6 +105,12 @@
   background: var(--color-accent);
 }
 
+/* The Agent artifact edge keeps its generous pointer target without painting it. */
+.workbench-sidebar-splitter--trailing::after {
+  left: calc(50% - 0.5px);
+  width: 1px;
+}
+
 .workbench-sidebar-splitter:focus-visible {
   outline: 0;
 }
@@ -116,6 +124,10 @@
 @media (forced-colors: active) {
   .workbench-sidebar-splitter::after {
     width: 2px;
+  }
+
+  .workbench-sidebar-splitter--trailing::after {
+    left: 3px;
   }
 
   .workbench-sidebar-splitter:focus-visible {
@@ -187,6 +199,10 @@
   color: var(--color-text-muted);
   background: transparent;
   cursor: pointer;
+}
+
+.agent-artifact-pane__collapse {
+  order: 2;
 }
 
 .agent-artifact-pane__follow:hover,
@@ -361,7 +377,10 @@
   height: 100%;
   /* AV-01: header token only — no document palette aliases. */
   --resource-document-header-height: 36px;
-  grid-template-rows: var(--resource-document-header-height) auto minmax(0, 1fr);
+  grid-template-rows:
+    var(--resource-document-header-height)
+    auto
+    minmax(240px, 1fr);
 }
 
 .harness-browser__chrome {
@@ -378,6 +397,12 @@
 .harness-browser__address {
   min-width: 0;
   flex: 1;
+}
+
+.harness-browser__controls {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
 }
 
 .harness-browser__address input {
@@ -407,6 +432,10 @@
   color: var(--color-text-muted);
 }
 
+.harness-browser__chrome .harness-browser__controls-trigger {
+  display: none;
+}
+
 .harness-browser__chrome button:hover:not(:disabled) {
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
@@ -430,4 +459,15 @@
 
 .harness-browser > .resource-state {
   grid-row: 3;
+}
+
+@container agent-workbench (max-width: 760px) {
+  .harness-browser__controls {
+    display: none;
+  }
+
+  .harness-browser__chrome .harness-browser__controls-trigger {
+    display: inline-flex;
+    flex: 0 0 auto;
+  }
 }

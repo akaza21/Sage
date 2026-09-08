@@ -26,7 +26,7 @@ const transitionToken =
   /^(\[\*\]|[A-Za-z][A-Za-z0-9_]*)\s*-->\s*(\[\*\]|[A-Za-z][A-Za-z0-9_]*)\s*(?::\s*(.*))?$/u;
 
 export function parseMermaidState(source: string): MermaidStateSource {
-  if (new TextEncoder().encode(source).length > 8192) {
+  if (utf8ByteLength(source) > 8192) {
     return { ok: false, reason: "limit" };
   }
   const lines = source
@@ -98,3 +98,4 @@ function clampStateLabel(value: string): string {
   const text = value.replace(/\s+/gu, " ").trim();
   return text.length <= 64 ? text : text.slice(0, 64);
 }
+import { utf8ByteLength } from "../../../domain/text";

@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
+import { boundedError } from "../../domain/errors";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { MAX_CHAT_SEARCH_QUERY_BYTES } from "./chatSearchDomain";
 import { projectChatSearchDesktop } from "./chatSearchDesktop";
@@ -27,15 +28,6 @@ type SearchPhase = "idle" | "searching" | "results" | "error";
 
 function matchesScope(scope: ChatSearchScope) {
   return matchesChatSearchScope(useWorkbenchStore.getState(), scope);
-}
-
-function boundedError(error: unknown): string {
-  const value = error instanceof Error ? error.message : String(error);
-  const bytes = new TextEncoder().encode(value);
-  if (bytes.length <= 2_048) return value;
-  let end = 2_048;
-  while (end > 0 && (bytes[end] & 0xc0) === 0x80) end -= 1;
-  return new TextDecoder().decode(bytes.slice(0, end));
 }
 
 export function ChatSearchControl() {
@@ -155,7 +147,7 @@ export function ChatSearchControl() {
       setPhase("results");
     } catch (searchError) {
       if (requestGeneration.current !== intent || !matchesScope(scope)) return;
-      setError(boundedError(searchError));
+      setError(boundedError(searchError, 2_048, "utf8"));
       setPhase("error");
     }
   };

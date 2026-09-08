@@ -29,7 +29,7 @@ function assertBrowserChatIdentifier(label: string, value: unknown) {
     throw new Error(`${label} is not a valid bounded Chat identifier`);
   }
   if (
-    new TextEncoder().encode(value).byteLength > MAX_CHAT_IDENTIFIER_BYTES ||
+    utf8ByteLength(value) > MAX_CHAT_IDENTIFIER_BYTES ||
     CONTROL_CHARACTER.test(value)
   ) {
     throw new Error(`${label} is not a valid bounded Chat identifier`);
@@ -255,9 +255,8 @@ export function browserSessionId(
 }
 
 function messageBytes(values: ChatMessage[]) {
-  const encoder = new TextEncoder();
   return values.reduce(
-    (total, message) => total + encoder.encode(message.text).byteLength,
+    (total, message) => total + utf8ByteLength(message.text),
     0,
   );
 }
@@ -305,3 +304,4 @@ export function appendBrowserSimulatorTurn(
   }
   return [...current, ...turn];
 }
+import { utf8ByteLength } from "../domain/text";

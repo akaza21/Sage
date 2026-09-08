@@ -56,7 +56,7 @@ export function canonicalChatName(input: string): string {
   if (hasUnpairedUtf16Surrogate(title)) {
     throw new Error("Chat title must not contain an unpaired UTF-16 surrogate");
   }
-  if (new TextEncoder().encode(title).byteLength > MAX_CHAT_TITLE_BYTES) {
+  if (utf8ByteLength(title) > MAX_CHAT_TITLE_BYTES) {
     throw new Error(
       `Chat title may contain at most ${MAX_CHAT_TITLE_BYTES} UTF-8 bytes`,
     );
@@ -76,3 +76,4 @@ export function chatDisplayTitle(title: string): string {
     ? title.slice(CHAT_TITLE_PREFIX.length)
     : title;
 }
+import { utf8ByteLength } from "./text";

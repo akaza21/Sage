@@ -268,13 +268,22 @@ test("Rust validation plans build the frontend bundle before concurrent groups",
     npmInvocation,
   });
 
+  assert.deepEqual(
+    developer.prerequisiteGroups.flatMap(({ commands }) =>
+      commands.map(({ args }) => args.slice(-2)),
+    ),
+    [["run", "build"]],
+  );
+  assert.deepEqual(
+    integration.prerequisiteGroups.flatMap(({ commands }) =>
+      commands.map(({ args }) => args.slice(-2)),
+    ),
+    [
+      ["run", "build"],
+      ["run", "test:web-bundle"],
+    ],
+  );
   for (const plan of [developer, integration]) {
-    assert.deepEqual(
-      plan.prerequisiteGroups.flatMap(({ commands }) =>
-        commands.map(({ args }) => args.slice(-2)),
-      ),
-      [["run", "build"]],
-    );
     assert.ok(
       plan.groups.some(({ cargoTargetDir }) => cargoTargetDir !== undefined),
     );
@@ -313,7 +322,7 @@ test("integration plan preserves every frontend phase and serializes Rust tools"
     plan.prerequisiteGroups.flatMap(({ commands }) =>
       commands.map(({ label }) => label),
     ),
-    ["frontend:build"],
+    ["frontend:build", "frontend:web-bundle"],
   );
   assert.equal(plan.groups[0].concurrency, 3);
   assert.equal(plan.groups[1].concurrency, 1);

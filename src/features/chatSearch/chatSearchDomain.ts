@@ -6,7 +6,6 @@ export const MAX_CHAT_SEARCH_RESPONSE_BYTES = 64 * 1024;
 const MAX_IDENTIFIER_BYTES = 512;
 const MAX_TITLE_BYTES = 1_024;
 const MAX_RESPONSE_ELAPSED_MS = 1_000;
-const encoder = new TextEncoder();
 
 export interface ProjectChatSearchRequest {
   projectId: string;
@@ -37,8 +36,8 @@ export interface ProjectChatSearchGateway {
   search(request: ProjectChatSearchRequest): Promise<ProjectChatSearchResponse>;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function isNonArrayRecord(value: unknown): value is Record<string, unknown> {
+  return isRecord(value) && !Array.isArray(value);
 }
 
 function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]) {
@@ -65,7 +64,7 @@ function boundedString(
   return (
     typeof value === "string" &&
     value.length > 0 &&
-    encoder.encode(value).byteLength <= maximum &&
+    utf8ByteLength(value) <= maximum &&
     (allowControl || !containsControl(value))
   );
 }
@@ -96,7 +95,7 @@ function searchResult(
   query: string,
 ): value is ProjectChatSearchResult {
   if (
-    !isRecord(value) ||
+    !isNonArrayRecord(value) ||
     !hasExactKeys(value, [
       "chatId",
       "title",
@@ -128,7 +127,7 @@ export function parseProjectChatSearchResponse(
 ): ProjectChatSearchResponse {
   const invalid = () => new Error("invalid Project Chat search response");
   if (
-    !isRecord(value) ||
+    !isNonArrayRecord(value) ||
     !hasExactKeys(value, [
       "projectId",
       "projectGeneration",
@@ -162,10 +161,11 @@ export function parseProjectChatSearchResponse(
   const chatIds = new Set(value.results.map((result) => result.chatId));
   if (
     chatIds.size !== value.results.length ||
-    encoder.encode(JSON.stringify(value)).byteLength >
-      MAX_CHAT_SEARCH_RESPONSE_BYTES
+    utf8ByteLength(JSON.stringify(value)) > MAX_CHAT_SEARCH_RESPONSE_BYTES
   ) {
     throw invalid();
   }
   return value as unknown as ProjectChatSearchResponse;
 }
+import { isRecord } from "../../domain/guards";
+import { utf8ByteLength } from "../../domain/text";

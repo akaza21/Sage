@@ -237,6 +237,15 @@ export function AgentArtifactPane({
         }}
       >
         <header className="agent-artifact-pane__header">
+          <button
+            className="agent-artifact-pane__collapse"
+            type="button"
+            aria-label="Collapse files, changes, and preview"
+            title="Collapse resources"
+            onClick={() => onExpandedChange?.(false)}
+          >
+            <PanelRightClose size={16} aria-hidden="true" />
+          </button>
           {hasResources ? (
             <AgentArtifactTabStrip
               artifacts={artifacts}
@@ -252,15 +261,6 @@ export function AgentArtifactPane({
           ) : (
             <strong>Files, changes, and preview</strong>
           )}
-          <button
-            className="agent-artifact-pane__collapse"
-            type="button"
-            aria-label="Collapse files, changes, and preview"
-            title="Collapse resources"
-            onClick={() => onExpandedChange?.(false)}
-          >
-            <PanelRightClose size={16} aria-hidden="true" />
-          </button>
         </header>
         <div ref={setCanvasNode} className="agent-artifact-pane__canvas">
           {!previewSelected && activeArtifact

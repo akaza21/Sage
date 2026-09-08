@@ -129,7 +129,9 @@ describe("Agent center workbench window mode seam", () => {
       activateTab,
     });
     render(createElement(Workbench));
-    expect(screen.getByText("Loading src/current.ts…")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Loading src/current.ts…"),
+    ).toBeInTheDocument();
 
     fireEvent.click(
       within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
@@ -263,7 +265,9 @@ describe("Agent center workbench window mode seam", () => {
     });
     expect(activateTab).toHaveBeenCalledTimes(2);
     expect(agentControl).toBeChecked();
-    expect(screen.getByText("Loading src/current.ts…")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Loading src/current.ts…"),
+    ).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Agent chat" }));
   });
 
@@ -480,7 +484,9 @@ describe("Agent center workbench window mode seam", () => {
       activateTab,
     });
     render(createElement(Workbench));
-    expect(screen.getByText("Loading src/current.ts…")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Loading src/current.ts…"),
+    ).toBeInTheDocument();
 
     fireEvent.click(
       within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
@@ -507,7 +513,9 @@ describe("Agent center workbench window mode seam", () => {
     await vi.waitFor(() => {
       expect(activateTab).toHaveBeenLastCalledWith("file:a");
     });
-    expect(screen.getByText("Loading src/current.ts…")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Loading src/current.ts…"),
+    ).toBeInTheDocument();
   });
 
   it("does not steal an active File artifact after a transition flag reset", async () => {

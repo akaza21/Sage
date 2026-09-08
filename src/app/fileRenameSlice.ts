@@ -46,11 +46,6 @@ export interface FileRenameSlice {
   ) => Promise<boolean>;
 }
 
-function boundedError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.slice(0, MAX_FILE_RENAME_ERROR_UNITS);
-}
-
 function hasResourceTab(
   state: WorkbenchState,
   source: ResourceRef,
@@ -163,7 +158,13 @@ export const createFileRenameSlice: StateCreator<
           ? renameTargetResource(source, basename)
           : renameFolderTargetResource(source, basename);
     } catch (error) {
-      set({ fileRenameError: boundedError(error) });
+      set({
+        fileRenameError: boundedError(
+          error,
+          MAX_FILE_RENAME_ERROR_UNITS,
+          "utf16",
+        ),
+      });
       return false;
     }
     const root = project?.roots.find(
@@ -334,7 +335,11 @@ export const createFileRenameSlice: StateCreator<
         set({
           fileRenameInFlight: false,
           projectTransitioning: false,
-          fileRenameError: boundedError(error),
+          fileRenameError: boundedError(
+            error,
+            MAX_FILE_RENAME_ERROR_UNITS,
+            "utf16",
+          ),
         });
       }
       return false;
@@ -362,3 +367,4 @@ export const createFileRenameSlice: StateCreator<
       renameProjectResource("folder", source, basename),
   };
 };
+import { boundedError } from "../domain/errors";

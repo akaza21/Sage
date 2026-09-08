@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build --mode desktop-native && node scripts/write-web-build-receipt.mjs desktop-native",
     "test": "vitest run --exclude tests/ui/**/*.spec.ts",
     "test:ui": "playwright test --config playwright.config.ts",
     "test:ui:update": "playwright test --config playwright.config.ts --update-snapshots",
     "test:budgets": "node scripts/budget-lanes.mjs --check",
+    "test:web-bundle": "node scripts/verify-web-bundle.mjs",
     "test:budgets:portable": "node scripts/budget-lanes.mjs --lane portable",
     "test:budgets:windows": "node scripts/budget-lanes.mjs --lane windows",
     "test:budgets:posix": "node scripts/budget-lanes.mjs --lane posix",
@@ -24,7 +25,7 @@
     "check:dev": "node scripts/check-dev.mjs",
     "check:integration": "node scripts/check-integration.mjs",
     "check:release": "node scripts/check-release.mjs",
-    "check": "npm run format:check && npm run lint && npm run test && npm run test:budgets && npm run build && npm run check:policy",
+    "check": "npm run format:check && npm run lint && npm run test && npm run test:budgets && npm run build && npm run test:web-bundle && npm run check:policy",
     "tauri": "tauri"
   },
   "dependencies": {

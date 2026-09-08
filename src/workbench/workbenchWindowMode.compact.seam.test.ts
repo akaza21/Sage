@@ -59,6 +59,7 @@ function seedArtifactOwner(): void {
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   compactViewport = false;
   clearAcpProjectionRegistry();
   useAgentArtifactAdmissionStore.getState().clear();
@@ -66,7 +67,7 @@ afterEach(() => {
 });
 
 describe("compact workbench window mode seam", () => {
-  it("keeps the center interactive when Agent mode replaces an open compact Editor drawer", () => {
+  it("keeps the center interactive when Agent mode replaces an open compact Editor drawer", async () => {
     compactViewport = true;
     useWorkbenchStore.setState({
       project,
@@ -100,8 +101,12 @@ describe("compact workbench window mode seam", () => {
     );
 
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(center).not.toHaveAttribute("inert");
-    expect(center).not.toHaveAttribute("aria-hidden");
+    await screen.findByRole("button", {
+      name: "Open files, changes, and preview",
+    });
+    const agentCenter = container.querySelector(".center-region");
+    expect(agentCenter).not.toHaveAttribute("inert");
+    expect(agentCenter).not.toHaveAttribute("aria-hidden");
 
     fireEvent.click(
       within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
@@ -113,8 +118,9 @@ describe("compact workbench window mode seam", () => {
     expect(
       screen.getByRole("dialog", { name: "Explorer project tools" }),
     ).toBeInTheDocument();
-    expect(center).toHaveAttribute("inert");
-    expect(center).toHaveAttribute("aria-hidden", "true");
+    const editorCenter = container.querySelector(".center-region");
+    expect(editorCenter).toHaveAttribute("inert");
+    expect(editorCenter).toHaveAttribute("aria-hidden", "true");
   });
 
   it("opens new Agent resources on the right while tabs change", async () => {
@@ -173,8 +179,9 @@ describe("compact workbench window mode seam", () => {
     expect(
       screen.getByRole("complementary", { name: "Agent artifacts" }),
     ).not.toHaveClass("agent-artifact-pane--collapsed");
-    expect(center).toHaveAttribute("inert");
-    expect(center).toHaveAttribute("aria-hidden", "true");
+    const agentCenter = container.querySelector(".center-region");
+    expect(agentCenter).toHaveAttribute("inert");
+    expect(agentCenter).toHaveAttribute("aria-hidden", "true");
 
     fireEvent.click(
       within(
@@ -185,8 +192,8 @@ describe("compact workbench window mode seam", () => {
     await vi.waitFor(() => {
       expect(activateTab).toHaveBeenLastCalledWith("file:a");
     });
-    expect(center).toHaveAttribute("inert");
-    expect(center).toHaveAttribute("aria-hidden", "true");
+    expect(agentCenter).toHaveAttribute("inert");
+    expect(agentCenter).toHaveAttribute("aria-hidden", "true");
     expect(
       screen.getByRole("region", { name: "Agent chat", hidden: true }),
     ).toBeInTheDocument();

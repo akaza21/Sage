@@ -11,6 +11,7 @@ import {
   discoverSourceFilesWithCssBound,
 } from "./css-highlight-policy.mjs";
 import { workbenchTransportParityErrors } from "./workbench-transport-parity.mjs";
+import { q02SharedHelperPolicyErrors } from "./q02-shared-helpers-policy.mjs";
 
 const root = process.cwd();
 const failures = [];
@@ -863,6 +864,9 @@ for (const error of await workbenchTransportParityErrors(root)) {
   fail(error);
 }
 for (const error of await acpTransportParityErrors(root)) {
+  fail(error);
+}
+for (const error of await q02SharedHelperPolicyErrors(root)) {
   fail(error);
 }
 

@@ -64,7 +64,7 @@ function hasForbiddenControlChars(raw: string): boolean {
 export function admitHarnessBrowseUrl(raw: string): HarnessBrowseUrl | null {
   if (
     raw.length === 0 ||
-    new TextEncoder().encode(raw).byteLength > MAX_HARNESS_BROWSE_URL_BYTES ||
+    utf8ByteLength(raw) > MAX_HARNESS_BROWSE_URL_BYTES ||
     hasForbiddenControlChars(raw)
   ) {
     return null;
@@ -94,7 +94,7 @@ export function extractAdmittedBrowseUrl(
 ): HarnessBrowseUrl | null {
   if (
     text.length === 0 ||
-    new TextEncoder().encode(text).byteLength > MAX_HARNESS_BROWSE_URL_BYTES
+    utf8ByteLength(text) > MAX_HARNESS_BROWSE_URL_BYTES
   ) {
     return null;
   }
@@ -342,3 +342,4 @@ export function listBrowseSessions(
     .sort((left, right) => left.revision - right.revision)
     .slice(0, 4);
 }
+import { utf8ByteLength } from "../../domain/text";

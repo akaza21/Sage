@@ -126,10 +126,6 @@ const emptyRepositories: ProjectRepositoryStatus = {
   elapsedMs: 0,
 };
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
   let settingsReturnTabId: string | null = null;
   return {
@@ -378,3 +374,4 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   };
 });
+import { errorMessage } from "../domain/errors";

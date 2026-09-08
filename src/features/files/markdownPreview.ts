@@ -3,7 +3,7 @@ import { editorLanguageForPath } from "./editorLanguage";
 export const MAX_MARKDOWN_PREVIEW_BLOCKS = 64;
 export const MAX_MARKDOWN_PREVIEW_BLOCK_CHARS = 4096;
 export const MAX_MARKDOWN_PREVIEW_SOURCE_BYTES = 256 * 1024;
-const utf8Encoder = new TextEncoder();
+import { utf8Bytes } from "../../domain/text";
 
 export type MarkdownPreviewBlock =
   | { kind: "heading"; level: 1 | 2 | 3; text: string }
@@ -163,7 +163,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
 }
 
 function sourceWindow(source: string): { text: string; exceeded: boolean } {
-  const encoded = utf8Encoder.encode(source);
+  const encoded = utf8Bytes(source);
   if (encoded.length <= MAX_MARKDOWN_PREVIEW_SOURCE_BYTES) {
     return { text: source, exceeded: false };
   }

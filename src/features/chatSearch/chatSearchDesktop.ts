@@ -4,6 +4,7 @@ import {
   type ProjectChatSearchGateway,
   type ProjectChatSearchRequest,
 } from "./chatSearchDomain";
+import { invokeNative } from "../../ports/nativeInvoke";
 
 export type ProjectChatSearchInvoke = (
   command: string,
@@ -40,8 +41,7 @@ async function invokeProjectChatSearch(
   if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
     throw new Error("Chat search is available in the Sage desktop runtime.");
   }
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke(command, args);
+  return invokeNative(command, args);
 }
 
 export const projectChatSearchDesktop = createProjectChatSearchAdapter(

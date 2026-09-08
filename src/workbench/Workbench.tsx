@@ -11,15 +11,12 @@ import { useEditorAppearanceStore } from "../app/editorAppearanceStore";
 import { sameResource } from "../domain/resourceIdentity";
 import { admitsFocusedCodexRendererRecreation } from "../features/chat/acp/rendererRecreationCollectorAdmission";
 import { mountRendererRecreationPacketCollector } from "../features/chat/acp/rendererRecreationPacket";
-import { AgentArtifactPane } from "./AgentArtifactPane";
-import { AgentChatPanes } from "./AgentChatPanes";
 import { DirtyTabDialog } from "./DirtyTabDialog";
 import { EditorWelcome } from "./EditorWelcome";
-import { LeftSidebar } from "./LeftSidebar";
 import { PlaceholderSurface } from "./PlaceholderSurface";
 import { RightSidebar } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
-import { SettingsSurface } from "./SettingsSurface";
+import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import { TabStrip } from "./TabStrip";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import { renderFileOrDiffCanvas } from "./surfaceRegistry";
@@ -49,6 +46,16 @@ import "./workbench-window-mode.css";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 
 registerWorkbenchSurfaces();
+
+const loadSettingsSurface = () =>
+  import("./SettingsSurface").then(({ SettingsSurface }) => ({
+    default: SettingsSurface,
+  }));
+
+const loadAgentWorkbenchBody = () =>
+  import("./AgentWorkbenchBody").then(({ AgentWorkbenchBody }) => ({
+    default: AgentWorkbenchBody,
+  }));
 
 const workbenchGeometryStyle = {
   "--editor-activity-width": `${EDITOR_ACTIVITY_BAR_WIDTH}px`,
@@ -97,7 +104,13 @@ function ActiveCanvas({ onOpenAgent }: { onOpenAgent: () => void }) {
         </div>
       ) : null}
       {canvas}
-      {activeTab?.kind === "settings" ? <SettingsSurface /> : null}
+      {activeTab?.kind === "settings" ? (
+        <LazyModuleBoundary
+          label="Settings"
+          load={loadSettingsSurface}
+          render={(SettingsSurface) => <SettingsSurface />}
+        />
+      ) : null}
       {activeTab &&
       !editorTab &&
       activeTab.kind !== "chat" &&
@@ -292,80 +305,51 @@ export function Workbench() {
       <AgentCenterKeeper windowMode={windowMode} />
       <EditorContinuityKeeper windowMode={windowMode} />
       <RendererRecreationPacketCollector windowMode={windowMode} />
-      <div className="workbench__body" style={bodyStyle}>
-        {windowMode === "editor" ? (
-          <RightSidebar compact={compact} railFirst />
-        ) : (
-          <LeftSidebar
-            compact={compact}
-            open={agentNavigationOpen}
-            onOpenChange={changeAgentNavigation}
-          />
-        )}
-        {!compact ? (
-          <WorkbenchSidebarSplitter
-            ariaLabel={
-              windowMode === "agent"
-                ? "Resize project and chat rail"
-                : "Resize Editor tool rail"
-            }
-            side="leading"
-            value={
-              windowMode === "agent" ? agentLeftRailWidth : editorToolRailWidth
-            }
-            width={
-              windowMode === "agent"
-                ? AGENT_LEFT_RAIL_WIDTH
-                : EDITOR_TOOL_RAIL_WIDTH
-            }
-            pointerOffsetAdjustment={
-              windowMode === "editor" ? EDITOR_ACTIVITY_BAR_WIDTH : 0
-            }
-            onChange={
-              windowMode === "agent"
-                ? setAgentLeftRailWidth
-                : setEditorToolRailWidth
-            }
-          />
-        ) : null}
-        <div
-          className="center-region"
-          inert={drawerOpen}
-          aria-hidden={drawerOpen || undefined}
-        >
-          {windowMode === "agent" ? (
-            <AgentChatPanes compact={compact} />
-          ) : (
-            <>
-              <div className="workbench__tabs">
-                <TabStrip
-                  kinds={[...EDITOR_CANVAS_KINDS]}
-                  showNewChat={false}
-                />
-              </div>
-              <ActiveCanvas onOpenAgent={() => setWindowMode("agent")} />
-            </>
-          )}
-        </div>
-        {windowMode === "agent" ? (
-          <>
-            {!compact && agentArtifactExpanded ? (
-              <WorkbenchSidebarSplitter
-                ariaLabel="Resize files and preview"
-                side="trailing"
-                value={agentArtifactWidth}
-                width={AGENT_ARTIFACT_WIDTH}
-                onChange={setAgentArtifactWidth}
-              />
-            ) : null}
-            <AgentArtifactPane
-              expanded={agentArtifactExpanded}
-              focusOnExpand={compact}
-              onExpandedChange={changeAgentArtifact}
+      {windowMode === "agent" ? (
+        <LazyModuleBoundary
+          label="Agent workspace"
+          load={loadAgentWorkbenchBody}
+          render={(AgentWorkbenchBody) => (
+            <AgentWorkbenchBody
+              compact={compact}
+              style={bodyStyle}
+              drawerOpen={drawerOpen}
+              navigationOpen={agentNavigationOpen}
+              onNavigationOpenChange={changeAgentNavigation}
+              artifactExpanded={agentArtifactExpanded}
+              onArtifactExpandedChange={changeAgentArtifact}
+              agentLeftRailWidth={agentLeftRailWidth}
+              onAgentLeftRailWidthChange={setAgentLeftRailWidth}
+              agentArtifactWidth={agentArtifactWidth}
+              onAgentArtifactWidthChange={setAgentArtifactWidth}
             />
-          </>
-        ) : null}
-      </div>
+          )}
+        />
+      ) : (
+        <div className="workbench__body" style={bodyStyle}>
+          <RightSidebar compact={compact} railFirst />
+          {!compact ? (
+            <WorkbenchSidebarSplitter
+              ariaLabel="Resize Editor tool rail"
+              side="leading"
+              value={editorToolRailWidth}
+              width={EDITOR_TOOL_RAIL_WIDTH}
+              pointerOffsetAdjustment={EDITOR_ACTIVITY_BAR_WIDTH}
+              onChange={setEditorToolRailWidth}
+            />
+          ) : null}
+          <div
+            className="center-region"
+            inert={drawerOpen}
+            aria-hidden={drawerOpen || undefined}
+          >
+            <div className="workbench__tabs">
+              <TabStrip kinds={[...EDITOR_CANVAS_KINDS]} showNewChat={false} />
+            </div>
+            <ActiveCanvas onOpenAgent={() => setWindowMode("agent")} />
+          </div>
+        </div>
+      )}
       <StatusBar
         railLeading={windowMode === "editor"}
         showSidebarToggle={windowMode === "editor"}

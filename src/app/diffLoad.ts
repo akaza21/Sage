@@ -1,4 +1,5 @@
 import { diffCacheKey, isNestedRepository } from "../domain/diffIdentity";
+import { errorMessage } from "../domain/errors";
 import { sameResource } from "../domain/resourceIdentity";
 import type { FileDiff, RepositoryRef, ResourceRef } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
@@ -8,10 +9,7 @@ import {
   matchesActiveTabIntent,
   matchesRequestIntent,
 } from "./projectIntent";
-import {
-  boundedResourceStateUpdate,
-  errorMessage,
-} from "./resourceStateHelpers";
+import { boundedResourceStateUpdate } from "./resourceStateHelpers";
 import type { WorkbenchState } from "./store";
 
 const MAX_CACHED_DIFFS = 32;

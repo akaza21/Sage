@@ -4,6 +4,7 @@ import {
   type WorkspaceSearchGateway,
   type WorkspaceSearchRequest,
 } from "./workspaceSearchDomain";
+import { invokeNative } from "../../ports/nativeInvoke";
 
 export type WorkspaceSearchInvoke = (
   command: string,
@@ -63,8 +64,7 @@ async function invokeWorkspaceSearch(
       "Workspace Search is available in the Sage desktop runtime.",
     );
   }
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke(command, args);
+  return invokeNative(command, args);
 }
 
 export const workspaceSearchDesktop = createWorkspaceSearchAdapter(

@@ -97,7 +97,7 @@ const nodeToken =
   /^([A-Za-z][A-Za-z0-9_-]*)(?:\[([^\]]{1,64})\]|\(([^)]{1,64})\)|\{([^}]{1,64})\})?/;
 
 export function parseMermaidFlowchart(source: string): MermaidDiagram {
-  if (new TextEncoder().encode(source).length > MAX_MERMAID_SOURCE_BYTES) {
+  if (utf8ByteLength(source) > MAX_MERMAID_SOURCE_BYTES) {
     return { ok: false, reason: "limit" };
   }
   const lines = source
@@ -155,7 +155,7 @@ export function parseMermaidFlowchart(source: string): MermaidDiagram {
 }
 
 export function parseMermaidSequence(source: string): MermaidSource {
-  if (new TextEncoder().encode(source).length > MAX_MERMAID_SOURCE_BYTES) {
+  if (utf8ByteLength(source) > MAX_MERMAID_SOURCE_BYTES) {
     return { ok: false, reason: "limit" };
   }
   const lines = source
@@ -214,7 +214,7 @@ const classRelationToken =
   /^([A-Za-z][A-Za-z0-9_]*)\s*(<\|--|\*--|o--|-->)\s*([A-Za-z][A-Za-z0-9_]*)$/u;
 
 export function parseMermaidClass(source: string): MermaidSource {
-  if (new TextEncoder().encode(source).length > MAX_MERMAID_SOURCE_BYTES) {
+  if (utf8ByteLength(source) > MAX_MERMAID_SOURCE_BYTES) {
     return { ok: false, reason: "limit" };
   }
   const lines = source
@@ -369,3 +369,4 @@ function clampLabel(value: string): string {
     ? text
     : text.slice(0, MAX_MERMAID_LABEL);
 }
+import { utf8ByteLength } from "../../../domain/text";

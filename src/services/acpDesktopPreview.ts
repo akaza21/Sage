@@ -20,10 +20,7 @@ function epoch(value: unknown): number | null {
     : null;
 }
 function origin(value: unknown): string | undefined {
-  if (
-    typeof value !== "string" ||
-    new TextEncoder().encode(value).byteLength > 2048
-  )
+  if (typeof value !== "string" || utf8ByteLength(value) > 2048)
     return undefined;
   try {
     const url = new URL(value);
@@ -179,3 +176,4 @@ export async function subscribePreviewProjectionChanges(
     if (parsed) onChange(parsed);
   });
 }
+import { utf8ByteLength } from "../domain/text";

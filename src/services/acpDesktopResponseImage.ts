@@ -17,7 +17,7 @@ export function admittedImageDataUrl(
   }
   if (
     dataUrl.length > IMAGE_DATA_URL_MAX_BYTES ||
-    new TextEncoder().encode(dataUrl).byteLength > IMAGE_DATA_URL_MAX_BYTES
+    utf8ByteLength(dataUrl) > IMAGE_DATA_URL_MAX_BYTES
   ) {
     return null;
   }
@@ -38,3 +38,4 @@ function isStdBase64(value: string): boolean {
     value,
   );
 }
+import { utf8ByteLength } from "../domain/text";

@@ -16,9 +16,7 @@ interface FocusEnvelope {
   activityId: string;
 }
 
-function utf8Bytes(value: string) {
-  return new TextEncoder().encode(value).byteLength;
-}
+const utf8Bytes = utf8ByteLength;
 
 function readEnvelope(): FocusEnvelope | null {
   let raw: string | null;
@@ -206,3 +204,4 @@ export function useRendererRecreationFocus(
         : "no-restoration-when-no-valid-envelope";
   }, [page, pending, surfaceRef]);
 }
+import { utf8ByteLength } from "../../../domain/text";

@@ -21,21 +21,13 @@ export interface ChatOwnershipIntent {
 }
 
 export function validateChatComposerText(text: string) {
-  if (new TextEncoder().encode(text).byteLength > MAX_CHAT_COMPOSER_BYTES) {
+  if (utf8ByteLength(text) > MAX_CHAT_COMPOSER_BYTES) {
     throw new Error(`Chat composer bytes exceed ${MAX_CHAT_COMPOSER_BYTES}`);
   }
   return text;
 }
 
 export function boundedChatError(message: string) {
-  const encoder = new TextEncoder();
-  let bytes = 0;
-  let bounded = "";
-  for (const character of message) {
-    const characterBytes = encoder.encode(character).byteLength;
-    if (bytes + characterBytes > MAX_CHAT_ERROR_BYTES) break;
-    bounded += character;
-    bytes += characterBytes;
-  }
-  return bounded;
+  return truncateUtf8(message, MAX_CHAT_ERROR_BYTES);
 }
+import { truncateUtf8, utf8ByteLength } from "./text";

@@ -29,10 +29,6 @@ export interface RepositoryInventorySlice {
   selectRepository: (repository: RepositoryRef) => Promise<void>;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function canLoad(state: WorkbenchState): boolean {
   return !(
     state.projectTransitioning ||
@@ -212,3 +208,4 @@ export const createRepositoryInventorySlice: StateCreator<
     }
   },
 });
+import { errorMessage } from "../domain/errors";

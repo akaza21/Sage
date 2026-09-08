@@ -2,7 +2,7 @@ export const MAX_FIND_QUERY_LENGTH = 256;
 export const MAX_FIND_MATCHES = 10_000;
 export const MAX_EDITABLE_CONTENT_BYTES = 1024 * 1024;
 
-const utf8Encoder = new TextEncoder();
+import { utf8ByteLength } from "../../domain/text";
 
 export interface FindMatches {
   offsets: number[];
@@ -29,7 +29,7 @@ export function findLiteralMatches(
     return { offsets: [], truncated: false, contentLimitExceeded: false };
   }
 
-  if (utf8Encoder.encode(content).byteLength > MAX_EDITABLE_CONTENT_BYTES) {
+  if (utf8ByteLength(content) > MAX_EDITABLE_CONTENT_BYTES) {
     return { offsets: [], truncated: false, contentLimitExceeded: true };
   }
 

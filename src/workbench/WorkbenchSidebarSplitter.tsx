@@ -69,7 +69,7 @@ export function WorkbenchSidebarSplitter({
   return (
     <div
       ref={splitterRef}
-      className={`workbench-sidebar-splitter${
+      className={`workbench-sidebar-splitter workbench-sidebar-splitter--${side}${
         resizing ? " workbench-sidebar-splitter--active" : ""
       }`}
       role="separator"

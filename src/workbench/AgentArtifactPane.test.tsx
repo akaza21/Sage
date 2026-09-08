@@ -331,7 +331,7 @@ describe("Agent artifact file chips", () => {
     expect(onExpandedChange).toHaveBeenCalledWith(true);
   });
 
-  it("keeps an idle Preview tab reachable without a browse session", () => {
+  it("keeps an idle Preview tab reachable without a browse session", async () => {
     render(<AgentArtifactPane />);
 
     expect(screen.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
@@ -342,7 +342,7 @@ describe("Agent artifact file chips", () => {
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
-    expect(screen.getByText("Preview is idle")).toBeInTheDocument();
+    expect(await screen.findByText("Preview is idle")).toBeInTheDocument();
     expect(
       screen.getByText(
         /Preview shows loopback development servers started from this Chat/,
@@ -1377,9 +1377,10 @@ describe("Agent artifact file chips", () => {
     ).toEqual([
       "Back",
       "Forward",
-      "Preview address",
       "Reload preview",
       "Close browser",
+      "Preview controls",
+      "Preview address",
     ]);
 
     fireEvent.keyDown(screen.getByLabelText("Agent artifacts"), {

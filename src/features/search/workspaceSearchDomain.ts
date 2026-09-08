@@ -1,4 +1,6 @@
 import type { ResourceRef } from "../../domain/workbench";
+import { isRecord } from "../../domain/guards";
+import { utf8ByteLength } from "../../domain/text";
 import { WORKSPACE_SEARCH_LIMITS } from "./workspaceSearchLimits";
 import {
   assertWorkspaceSearchContinuationMatchesRequest,
@@ -88,10 +90,6 @@ export interface WorkspaceSearchGateway {
   ): Promise<WorkspaceSearchResponse>;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 function boundedString(
   value: unknown,
   maxBytes: number,
@@ -101,7 +99,7 @@ function boundedString(
     typeof value === "string" &&
     (allowEmpty || value.length > 0) &&
     !value.includes("\0") &&
-    new TextEncoder().encode(value).byteLength <= maxBytes
+    utf8ByteLength(value) <= maxBytes
   );
 }
 
@@ -113,8 +111,7 @@ function validFilterPattern(value: unknown): value is string {
   return (
     typeof value === "string" &&
     value.length > 0 &&
-    new TextEncoder().encode(value).byteLength <=
-      WORKSPACE_SEARCH_LIMITS.filterPatternBytes &&
+    utf8ByteLength(value) <= WORKSPACE_SEARCH_LIMITS.filterPatternBytes &&
     !value.startsWith("/") &&
     !value.startsWith("~") &&
     !value.includes("\\") &&
@@ -132,8 +129,7 @@ function validFilterPatterns(value: unknown): value is string[] {
     Array.isArray(value) &&
     value.length <= WORKSPACE_SEARCH_LIMITS.filterPatterns &&
     value.every(validFilterPattern) &&
-    new TextEncoder().encode(value.join("")).byteLength <=
-      WORKSPACE_SEARCH_LIMITS.filterBytes
+    utf8ByteLength(value.join("")) <= WORKSPACE_SEARCH_LIMITS.filterBytes
   );
 }
 
@@ -237,9 +233,9 @@ export function validateWorkspaceSearchRequest(
     throw new Error("workspace Search path filters are invalid");
   }
   if (
-    new TextEncoder().encode(
+    utf8ByteLength(
       [...request.includePatterns, ...request.excludePatterns].join(""),
-    ).byteLength > WORKSPACE_SEARCH_LIMITS.filterBytes
+    ) > WORKSPACE_SEARCH_LIMITS.filterBytes
   ) {
     throw new Error("workspace Search path filters exceed the byte limit");
   }

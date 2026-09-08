@@ -22,7 +22,7 @@ export function validateNewFileBasename(basename: string): string | null {
   if (!basename || basename.length > MAX_RAW_NAME_UNITS) {
     return `File name must be 1-${MAX_NEW_FILE_NAME_BYTES} UTF-8 bytes.`;
   }
-  const bytes = new TextEncoder().encode(basename).byteLength;
+  const bytes = utf8ByteLength(basename);
   if (bytes === 0 || bytes > MAX_NEW_FILE_NAME_BYTES) {
     return `File name must be 1-${MAX_NEW_FILE_NAME_BYTES} UTF-8 bytes.`;
   }
@@ -82,8 +82,7 @@ export function validateNewFilePath(
     return "Selected parent path is not canonical.";
   }
   const resource = newFileResource(parent, basename);
-  return new TextEncoder().encode(resource.relativePath).byteLength >
-    MAX_NEW_FILE_PATH_BYTES
+  return utf8ByteLength(resource.relativePath) > MAX_NEW_FILE_PATH_BYTES
     ? `File path exceeds ${MAX_NEW_FILE_PATH_BYTES} UTF-8 bytes.`
     : null;
 }
@@ -190,3 +189,4 @@ function validateCreateProjectResourceResult(
   }
   return result.resourceConfirmed;
 }
+import { utf8ByteLength } from "../../domain/text";

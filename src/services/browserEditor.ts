@@ -24,7 +24,7 @@ function diskContent(resource: ResourceRef): string {
 
 function fingerprint(content: string): string {
   let hash = 2_166_136_261;
-  for (const byte of new TextEncoder().encode(content)) {
+  for (const byte of utf8Bytes(content)) {
     hash ^= byte;
     hash = Math.imul(hash, 16_777_619);
   }
@@ -34,7 +34,7 @@ function fingerprint(content: string): string {
 function version(content: string) {
   return {
     fingerprint: fingerprint(content),
-    byteLen: new TextEncoder().encode(content).byteLength,
+    byteLen: utf8ByteLength(content),
     modifiedAt: null,
   };
 }
@@ -44,7 +44,7 @@ function readTextFile(resource: ResourceRef): TextFile {
   return {
     resource,
     content,
-    byteLen: new TextEncoder().encode(content).byteLength,
+    byteLen: utf8ByteLength(content),
     lineEnding: "lf",
     modifiedAt: Date.now(),
   };
@@ -62,7 +62,7 @@ function open(resource: ResourceRef): EditorDocument {
     base: persisted?.request.base ?? disk,
     buffer: {
       fingerprint: persisted?.fingerprint ?? disk.fingerprint,
-      byteLen: new TextEncoder().encode(content).byteLength,
+      byteLen: utf8ByteLength(content),
       revision: persisted?.request.revision ?? 0,
       content,
     },
@@ -157,3 +157,4 @@ export const browserEditor = {
   createEmpty,
   resetCreatedFiles,
 };
+import { utf8ByteLength, utf8Bytes } from "../domain/text";

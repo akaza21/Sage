@@ -70,10 +70,10 @@ interface AcpProjectionState {
   clear: () => void;
 }
 
-const encoder = new TextEncoder();
+import { utf8ByteLength } from "../domain/text";
 
 function byteLength(value: unknown): number {
-  return encoder.encode(JSON.stringify(value)).byteLength;
+  return utf8ByteLength(JSON.stringify(value));
 }
 
 function sameScope(

@@ -9,10 +9,7 @@ export function gitCommitMessageError(message: string): string | null {
   if (normalized.includes("\0")) {
     return "Commit message cannot contain a null character";
   }
-  if (
-    new TextEncoder().encode(normalized).byteLength >
-    MAX_GIT_COMMIT_MESSAGE_BYTES
-  ) {
+  if (utf8ByteLength(normalized) > MAX_GIT_COMMIT_MESSAGE_BYTES) {
     return "Commit message must be 8192 UTF-8 bytes or fewer";
   }
   return null;
@@ -116,3 +113,4 @@ export function canAbortGitSequence(root: RootRepositoryStatus): boolean {
     !root.truncated
   );
 }
+import { utf8ByteLength } from "./text";

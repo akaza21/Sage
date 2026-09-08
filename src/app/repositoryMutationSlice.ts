@@ -33,10 +33,6 @@ export interface RepositoryMutationSlice {
   ) => Promise<boolean>;
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function rejectedMutation(error: unknown) {
   if (
     typeof error === "object" &&
@@ -169,3 +165,4 @@ export const createRepositoryMutationSlice: StateCreator<
     }
   },
 });
+import { errorMessage } from "../domain/errors";

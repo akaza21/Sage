@@ -2,7 +2,7 @@ import { Check, Copy } from "lucide-react";
 import { useState } from "react";
 
 import { renderMarkdownPreview } from "../../files/markdownPreview";
-import { MermaidFigure } from "./MermaidFigure";
+import { MermaidFigureBoundary } from "./MermaidFigureBoundary";
 
 const languageNames: Readonly<Record<string, string>> = {
   css: "CSS",
@@ -80,7 +80,12 @@ export function ChatMarkdown({ text }: { text: string }) {
           block.kind === "code" &&
           block.language.toLowerCase() === "mermaid"
         ) {
-          return <MermaidFigure key={`mermaid:${index}`} source={block.text} />;
+          return (
+            <MermaidFigureBoundary
+              key={`mermaid:${index}`}
+              source={block.text}
+            />
+          );
         }
         if (block.kind === "heading") {
           if (block.level === 1) return <h3 key={index}>{block.text}</h3>;

@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand";
 
+import { errorMessage } from "../domain/errors";
 import { runLoadDiff } from "./diffLoad";
 import {
   childResource,
@@ -21,7 +22,6 @@ import {
 import {
   boundedExpandedUpdate,
   boundedResourceStateUpdate,
-  errorMessage,
 } from "./resourceStateHelpers";
 import { resourceTabUpdate } from "./resourceTabs";
 import { useAgentArtifactAdmissionStore } from "./agentArtifactAdmissionStore";

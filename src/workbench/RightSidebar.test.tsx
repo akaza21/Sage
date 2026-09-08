@@ -111,7 +111,7 @@ describe("RightSidebar Search", () => {
     });
 
     render(<RightSidebar compact={false} />);
-    const query = screen.getByLabelText("Search text");
+    const query = await screen.findByLabelText("Search text");
     const form = query.closest("form");
     expect(form).not.toBeNull();
     fireEvent.change(query, {
@@ -218,7 +218,7 @@ describe("RightSidebar Source Control mutations", () => {
     });
 
     render(<RightSidebar compact={false} />);
-    const alphaMessage = screen.getByRole("textbox", {
+    const alphaMessage = await screen.findByRole("textbox", {
       name: "Commit message for Alpha",
     });
     const alphaCommit = screen.getByRole("button", {

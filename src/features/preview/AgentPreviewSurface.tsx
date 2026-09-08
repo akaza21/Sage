@@ -1,13 +1,17 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 
 import type { PreviewProjectionOwner } from "../../domain/previewProjection";
-import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
-import { HarnessBrowserSurface } from "./HarnessBrowserSurface";
+import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { applyBrowseIntent } from "./harnessBrowse";
 import type { HarnessBrowseOwner } from "./harnessBrowse";
 import {
-  previewNotice,
   previewOrigin,
   previewOwnerKey,
   samePreviewOwner,
@@ -21,7 +25,11 @@ import {
   type PreviewTargetRef,
 } from "./previewDesktop";
 import { usePreviewProjection } from "./previewProjectionStore";
-import { useHarnessBrowseSession } from "./useHarnessBrowseSession";
+
+const loadAgentPreviewPresentation = () =>
+  import("./AgentPreviewPresentation").then(({ AgentPreviewPresentation }) => ({
+    default: AgentPreviewPresentation,
+  }));
 
 /**
  * A lightweight exact-owner controller. It intentionally stays mounted while
@@ -45,7 +53,6 @@ export function AgentPreviewSurface({
     projection,
   } = usePreviewProjection(owner);
   const desktopAvailable = previewDesktopAvailable();
-  const session = useHarnessBrowseSession(browseOwner);
   const [targets, setTargets] = useState<PreviewTargetRef[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [lastAdmittedNativeOrigin, setLastAdmittedNativeOrigin] = useState<
@@ -148,135 +155,46 @@ export function AgentPreviewSurface({
     };
   }, []);
 
-  const busy = Boolean(
-    projection &&
-    [
-      "discovering",
-      "starting",
-      "waitingForOrigin",
-      "healthChecking",
-      "stopping",
-    ].includes(projection.phase),
+  const onStart = useCallback(
+    (target: PreviewTargetRef) => {
+      if (!owner) return;
+      void startPreviewTarget(target).catch(
+        (reason: unknown) =>
+          samePreviewOwner(owner, ownerRef.current) &&
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "Preview request failed safely.",
+          ),
+      );
+    },
+    [owner],
   );
-  const activeTarget = projection?.target ?? null;
-  const replacesNativePresentation = Boolean(
-    projection &&
-    projection.phase !== "active" &&
-    (!session ||
-      (lastAdmittedNativeOrigin &&
-        previewOrigin(session.href) === lastAdmittedNativeOrigin)),
-  );
-  const nativeNotice = projection
-    ? previewNotice(projection.phase, projection.failure)
-    : null;
-  const genericError = error ?? (desktopAvailable ? subscriptionError : null);
-  const inlineNativeNotice =
-    !replacesNativePresentation &&
-    !genericError &&
-    (projection?.phase === "healthFailed" || projection?.phase === "exited")
-      ? nativeNotice
-      : null;
-  const replacement =
-    replacesNativePresentation && nativeNotice ? (
-      <ResourceStateNotice {...nativeNotice} />
-    ) : undefined;
-  // `previewDesktop` rejects discovery responses above MAX_PREVIEW_TARGETS.
-  // Keep the admitted, bounded target controls stable across phase revisions.
-  const targetRows = useMemo(
-    () =>
-      targets.map((target) => {
-        const selected =
-          activeTarget?.rootId === target.rootId &&
-          activeTarget.scriptName === target.scriptName;
-        return (
-          <div
-            className="agent-preview-target"
-            key={`${target.rootId}:${target.scriptName}`}
-          >
-            <span
-              className="agent-preview-target__name"
-              title={target.scriptName}
-            >
-              {target.scriptName}
-            </span>
-            {selected && projection?.phase === "active" ? (
-              <button
-                type="button"
-                className="button button--compact button--danger"
-                onClick={() =>
-                  void stopPreviewTarget(target).catch(() => undefined)
-                }
-              >
-                Stop
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="button button--compact button--primary"
-                disabled={!desktopAvailable || !listenerReady || busy || !owner}
-                onClick={() => {
-                  if (owner)
-                    void startPreviewTarget(target).catch(
-                      (reason: unknown) =>
-                        samePreviewOwner(owner, ownerRef.current) &&
-                        setError(
-                          reason instanceof Error
-                            ? reason.message
-                            : "Preview request failed safely.",
-                        ),
-                    );
-                }}
-              >
-                Start
-              </button>
-            )}
-          </div>
-        );
-      }),
-    [
-      activeTarget,
-      busy,
-      desktopAvailable,
-      listenerReady,
-      owner,
-      projection?.phase,
-      targets,
-    ],
-  );
+  const onStop = useCallback((target: PreviewTargetRef) => {
+    void stopPreviewTarget(target).catch(() => undefined);
+  }, []);
 
   if (!visible || !container) return null;
 
   return createPortal(
-    <div
-      className="agent-preview-stack"
-      data-preview-listener-ready={listenerReady ? "true" : "false"}
-      data-preview-phase={projection?.phase ?? "none"}
-      data-preview-target-identity={
-        activeTarget
-          ? `${activeTarget.rootId}:${activeTarget.scriptName}`
-          : undefined
-      }
-    >
-      {genericError ? (
-        <ResourceStateNotice
-          state="error"
-          title="Preview is unavailable"
-          detail={genericError}
+    <LazyModuleBoundary
+      label="Preview"
+      load={loadAgentPreviewPresentation}
+      render={(AgentPreviewPresentation) => (
+        <AgentPreviewPresentation
+          owner={owner}
+          browseOwner={browseOwner}
+          desktopAvailable={desktopAvailable}
+          listenerReady={listenerReady}
+          projection={projection}
+          targets={targets}
+          error={error ?? (desktopAvailable ? subscriptionError : null)}
+          lastAdmittedNativeOrigin={lastAdmittedNativeOrigin}
+          onStart={onStart}
+          onStop={onStop}
         />
-      ) : inlineNativeNotice ? (
-        <ResourceStateNotice {...inlineNativeNotice} />
-      ) : null}
-      {targetRows.length > 0 ? (
-        <div
-          className="agent-preview-targets"
-          role="group"
-          aria-label="Preview targets"
-        >
-          {targetRows}
-        </div>
-      ) : null}
-      <HarnessBrowserSurface owner={browseOwner} replacement={replacement} />
-    </div>,
+      )}
+    />,
     container,
   );
 }

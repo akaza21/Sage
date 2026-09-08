@@ -49,7 +49,6 @@ function assertCanonicalResource(
 }
 
 function assertTabMetadataBudget(layout: ProjectLayoutRequest) {
-  const encoder = new TextEncoder();
   let total = 0;
   for (const tab of layout.tabs) {
     if (tab.resource != null) assertResourceShape(tab.resource);
@@ -68,7 +67,7 @@ function assertTabMetadataBudget(layout: ProjectLayoutRequest) {
       if (value.length > MAX_TAB_METADATA_BYTES) {
         throw new Error("tab projection exceeds its metadata byte limit");
       }
-      total += encoder.encode(value).byteLength;
+      total += utf8ByteLength(value);
       if (total > MAX_TAB_METADATA_BYTES) {
         throw new Error("tab projection exceeds its metadata byte limit");
       }
@@ -142,3 +141,4 @@ export function assertBrowserProjectLayout(
     }
   }
 }
+import { utf8ByteLength } from "../domain/text";

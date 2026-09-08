@@ -63,6 +63,13 @@ export function createIntegrationPlan({
             timeoutMs: COMMAND_DEADLINES_MS.build,
             npmInvocation,
           }),
+          npmCommand({
+            label: "frontend:web-bundle",
+            npmArguments: ["run", "test:web-bundle"],
+            repositoryRoot: root,
+            timeoutMs: COMMAND_DEADLINES_MS.budgets,
+            npmInvocation,
+          }),
         ],
       },
     ],

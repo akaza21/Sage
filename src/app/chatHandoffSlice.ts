@@ -11,10 +11,6 @@ export interface ChatHandoffSlice {
   handoffChat: (intent: ChatHandoffIntent) => Promise<boolean>;
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function matchesHandoffSource(
   state: WorkbenchState,
   intent: ChatHandoffIntent,
@@ -126,3 +122,4 @@ export const createChatHandoffSlice: StateCreator<
     return false;
   },
 });
+import { errorMessage } from "../domain/errors";

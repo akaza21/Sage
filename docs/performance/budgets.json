@@ -1,6 +1,9 @@
 {
   "schemaVersion": 1,
   "bundle": {
+    "webEntryJsGzipBytes": 130000,
+    "webInitialStaticClosureGzipBytes": 130000,
+    "webTotalJsGzipBytes": 405410,
     "windowsInstallerMb": 45,
     "macosSingleArchitectureMb": 45,
     "macosUniversalMb": 80,

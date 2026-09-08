@@ -1,4 +1,4 @@
-import { MermaidFigure } from "../chat/acp/MermaidFigure";
+import { MermaidFigureBoundary } from "../chat/acp/MermaidFigureBoundary";
 import {
   renderMarkdownPreview,
   type MarkdownPreviewBlock,
@@ -14,7 +14,7 @@ export function FileMarkdownPreview({
   if (asDiagram) {
     return (
       <article className="file-markdown-preview" aria-label="Diagram preview">
-        <MermaidFigure source={source} />
+        <MermaidFigureBoundary source={source} />
       </article>
     );
   }
@@ -44,7 +44,7 @@ function PreviewBlock({ block }: { block: MarkdownPreviewBlock }) {
       return <blockquote>{block.text}</blockquote>;
     case "code":
       if (block.language.toLowerCase() === "mermaid") {
-        return <MermaidFigure source={block.text} />;
+        return <MermaidFigureBoundary source={block.text} />;
       }
       return <pre>{block.text}</pre>;
     case "list":

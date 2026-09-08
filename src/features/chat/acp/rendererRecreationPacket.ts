@@ -31,9 +31,7 @@ type RendererRecreationPacketCollectorHost = Window & {
   __SAGE_COLLECT_RENDERER_RECREATION_PACKET__?: () => RendererRecreationFrontendPacket | null;
 };
 
-function utf8Bytes(value: string) {
-  return new TextEncoder().encode(value).byteLength;
-}
+const utf8Bytes = utf8ByteLength;
 
 function walkAnnouncementRegions(root: ParentNode): HTMLElement[] | null {
   if (typeof document === "undefined" || !("createTreeWalker" in document)) {
@@ -177,3 +175,4 @@ export function admitRendererRecreationPacket(
   if (polite === 0 && packet.pagehideListeners !== 0) return null;
   return packet;
 }
+import { utf8ByteLength } from "../../../domain/text";

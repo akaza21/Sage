@@ -1,14 +1,65 @@
 import type { WorkbenchTab } from "../domain/workbench";
 import { ChatSurface } from "../features/chat/ChatSurface";
-import { DiffSurface } from "../features/diff/DiffSurface";
 import { ExplorerSurface } from "../features/files/ExplorerSurface";
-import { FileSurface } from "../features/files/FileSurface";
 import { OutlineSurface } from "../features/outline/OutlineSurface";
-import { PreviewSurface } from "../features/preview/PreviewSurface";
 import { ProblemsSurface } from "../features/problems/ProblemsSurface";
-import { SearchSurface } from "../features/search/SearchSurface";
-import { SourceControlView } from "./SourceControlView";
+import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import { registerCanvasSurface, registerToolSurface } from "./surfaceRegistry";
+
+const loadSearchSurface = () =>
+  import("../features/search/SearchSurface").then(({ SearchSurface }) => ({
+    default: SearchSurface,
+  }));
+const loadSourceControlView = () =>
+  import("./SourceControlView").then(({ SourceControlView }) => ({
+    default: SourceControlView,
+  }));
+const loadPreviewSurface = () =>
+  import("../features/preview/PreviewSurface").then(({ PreviewSurface }) => ({
+    default: PreviewSurface,
+  }));
+const loadDiffSurface = () =>
+  import("../features/diff/DiffSurface").then(({ DiffSurface }) => ({
+    default: DiffSurface,
+  }));
+const loadFileSurface = () =>
+  import("../features/files/FileSurface").then(({ FileSurface }) => ({
+    default: FileSurface,
+  }));
+
+function LazyToolSurface({
+  label,
+  load,
+}: {
+  label: string;
+  load: () => Promise<{ default: React.ComponentType }>;
+}) {
+  return (
+    <LazyModuleBoundary
+      label={label}
+      load={load}
+      render={(Surface) => <Surface />}
+    />
+  );
+}
+
+function LazyCanvasSurface({
+  tab,
+  label,
+  load,
+}: {
+  tab: WorkbenchTab;
+  label: string;
+  load: () => Promise<{ default: React.ComponentType<{ tab: WorkbenchTab }> }>;
+}) {
+  return (
+    <LazyModuleBoundary
+      label={label}
+      load={load}
+      render={(Surface) => <Surface tab={tab} />}
+    />
+  );
+}
 
 function ChatCanvas({ tab }: { tab: WorkbenchTab }) {
   return <ChatSurface chatId={tab.id} />;
@@ -19,12 +70,22 @@ let registered = false;
 export function registerWorkbenchSurfaces(): void {
   if (registered) return;
   registerCanvasSurface("chat", ChatCanvas);
-  registerCanvasSurface("diff", DiffSurface);
-  registerCanvasSurface("file", FileSurface);
+  registerCanvasSurface("diff", ({ tab }) => (
+    <LazyCanvasSurface tab={tab} label="Diff" load={loadDiffSurface} />
+  ));
+  registerCanvasSurface("file", ({ tab }) => (
+    <LazyCanvasSurface tab={tab} label="File" load={loadFileSurface} />
+  ));
   registerToolSurface("explorer", ExplorerSurface);
-  registerToolSurface("search", SearchSurface);
-  registerToolSurface("sourceControl", SourceControlView);
-  registerToolSurface("preview", PreviewSurface);
+  registerToolSurface("search", () => (
+    <LazyToolSurface label="Search" load={loadSearchSurface} />
+  ));
+  registerToolSurface("sourceControl", () => (
+    <LazyToolSurface label="Source Control" load={loadSourceControlView} />
+  ));
+  registerToolSurface("preview", () => (
+    <LazyToolSurface label="Preview" load={loadPreviewSurface} />
+  ));
   registerToolSurface("problems", ProblemsSurface);
   registerToolSurface("outline", OutlineSurface);
   registered = true;

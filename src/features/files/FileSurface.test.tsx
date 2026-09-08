@@ -840,9 +840,11 @@ describe("FileSurface Markdown Preview", () => {
     render(<FileSurface tab={markdownTab} />);
     await screen.findByRole("textbox", { name: "Edit docs/readme.md" });
     fireEvent.click(screen.getByRole("button", { name: "Preview file" }));
-    expect(screen.getByRole("img", { name: "Mermaid diagram" })).toBeVisible();
     expect(
-      screen.getByRole("button", { name: "Copy diagram source" }),
+      await screen.findByRole("img", { name: "Mermaid diagram" }),
+    ).toBeVisible();
+    expect(
+      await screen.findByRole("button", { name: "Copy diagram source" }),
     ).toBeVisible();
   });
 
@@ -860,6 +862,8 @@ describe("FileSurface Markdown Preview", () => {
     expect(
       screen.getByRole("article", { name: "Diagram preview" }),
     ).toBeVisible();
-    expect(screen.getByRole("img", { name: "Mermaid diagram" })).toBeVisible();
+    expect(
+      await screen.findByRole("img", { name: "Mermaid diagram" }),
+    ).toBeVisible();
   });
 });

@@ -90,7 +90,7 @@ describe("D0 workbench window mode seam", () => {
     ).toHaveAttribute("aria-selected", "true");
     fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
     expect(
-      screen.getByRole("region", { name: "Settings" }),
+      await screen.findByRole("region", { name: "Settings" }),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close Settings" }));
     expect(screen.getByRole("tab", { name: "current.ts" })).toHaveAttribute(
@@ -190,7 +190,7 @@ describe("D0 workbench window mode seam", () => {
     expect(useWorkbenchStore.getState().error).toBe("Snapshot failed");
   });
 
-  it("keeps the Editor tool rail by default and swaps to Agent chrome on toggle", () => {
+  it("keeps the Editor tool rail by default and swaps to Agent chrome on toggle", async () => {
     useWorkbenchStore.setState({ sidebarOpen: false });
     render(createElement(Workbench));
 
@@ -216,7 +216,7 @@ describe("D0 workbench window mode seam", () => {
     ).toBeNull();
     expect(screen.queryByRole("button", { name: "Explorer" })).toBeNull();
     expect(
-      screen.getByRole("complementary", { name: "Projects and chats" }),
+      await screen.findByRole("complementary", { name: "Projects and chats" }),
     ).toBeInTheDocument();
 
     fireEvent.click(editorControl);
@@ -256,7 +256,7 @@ describe("D0 workbench window mode seam", () => {
     ).toBeChecked();
   });
 
-  it("keeps Agent artifacts on the right and hides Editor chrome in Agent mode", () => {
+  it("keeps Agent artifacts on the right and hides Editor chrome in Agent mode", async () => {
     useWorkbenchStore.setState({
       sidebarOpen: false,
       tabs: [
@@ -291,7 +291,7 @@ describe("D0 workbench window mode seam", () => {
     );
 
     expect(
-      screen.getByRole("complementary", { name: "Projects and chats" }),
+      await screen.findByRole("complementary", { name: "Projects and chats" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("complementary", { name: "Agent artifacts" }),

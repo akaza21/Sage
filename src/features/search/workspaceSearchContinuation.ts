@@ -1,4 +1,6 @@
 import { WORKSPACE_SEARCH_LIMITS } from "./workspaceSearchLimits";
+import { boundedIdentifier, isRecord } from "../../domain/guards";
+import { utf8ByteLength } from "../../domain/text";
 
 export interface WorkspaceSearchIndexStamp {
   projectId: string;
@@ -20,21 +22,8 @@ interface ContinuationToken {
   o: number;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 function safeCounter(value: unknown, minimum = 0): value is number {
   return Number.isSafeInteger(value) && (value as number) >= minimum;
-}
-
-function boundedIdentifier(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    !value.includes("\0") &&
-    new TextEncoder().encode(value).byteLength <= 512
-  );
 }
 
 function relativePath(value: unknown): value is string {
@@ -45,8 +34,7 @@ function relativePath(value: unknown): value is string {
     !value.includes("\\") &&
     !value.startsWith("/") &&
     !value.endsWith("/") &&
-    new TextEncoder().encode(value).byteLength <=
-      WORKSPACE_SEARCH_LIMITS.resourcePathBytes &&
+    utf8ByteLength(value) <= WORKSPACE_SEARCH_LIMITS.resourcePathBytes &&
     value
       .split("/")
       .every((segment) => segment !== "" && segment !== "." && segment !== "..")
@@ -73,10 +61,7 @@ export function coordinateWorkspaceSearchIndex(
 }
 
 function readContinuationToken(value: string): ContinuationToken | null {
-  if (
-    new TextEncoder().encode(value).byteLength >
-    WORKSPACE_SEARCH_LIMITS.continuationTokenBytes
-  ) {
+  if (utf8ByteLength(value) > WORKSPACE_SEARCH_LIMITS.continuationTokenBytes) {
     return null;
   }
   let token: unknown;

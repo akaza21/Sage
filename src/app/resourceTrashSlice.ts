@@ -32,11 +32,6 @@ export interface ResourceTrashSlice {
   ) => Promise<boolean>;
 }
 
-function boundedError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.slice(0, MAX_RESOURCE_TRASH_ERROR_UNITS);
-}
-
 function hasOpenResource(state: WorkbenchState, source: ResourceRef) {
   return (
     state.tabs.some(
@@ -291,7 +286,11 @@ export const createResourceTrashSlice: StateCreator<
         set({
           resourceTrashInFlight: false,
           projectTransitioning: false,
-          resourceTrashError: boundedError(error),
+          resourceTrashError: boundedError(
+            error,
+            MAX_RESOURCE_TRASH_ERROR_UNITS,
+            "utf16",
+          ),
         });
       }
       return false;
@@ -305,3 +304,4 @@ export const createResourceTrashSlice: StateCreator<
     }
   },
 });
+import { boundedError } from "../domain/errors";

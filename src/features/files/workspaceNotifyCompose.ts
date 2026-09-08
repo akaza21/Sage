@@ -122,7 +122,7 @@ function boundedNotifyPath(value: unknown): value is string {
     return false;
   }
   return (
-    new TextEncoder().encode(value).length <= MAX_NOTICE_PATH_BYTES &&
+    utf8ByteLength(value) <= MAX_NOTICE_PATH_BYTES &&
     !value.includes("\\") &&
     !value.startsWith("/") &&
     !value.endsWith("/") &&
@@ -309,3 +309,4 @@ export async function syncLiveProjectWorkspaceNotify(
     await dropSession(hooks);
   }
 }
+import { utf8ByteLength } from "../../domain/text";

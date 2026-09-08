@@ -5,6 +5,10 @@ import { describe, expect, it } from "vitest";
 import { FROZEN_WORKBENCH_PORT_METHODS } from "./workbenchPorts";
 import { createBrowserWorkbenchPorts } from "./browserWorkbenchPorts";
 import { createNativeWorkbenchPorts } from "./nativeWorkbenchPorts";
+import {
+  getWorkbenchPorts as getDesktopWorkbenchPorts,
+  resetWorkbenchPortsForTests as resetDesktopWorkbenchPortsForTests,
+} from "./workbenchRuntime.desktop";
 import { getWorkbenchPorts } from "./workbenchRuntime";
 import {
   selectAgentSession,
@@ -145,6 +149,17 @@ describe("S0.3 workbench port seam", () => {
     expect(typeof ports.editor.openEditorDocument).toBe("function");
     expect(typeof ports.chat.createChat).toBe("function");
     expect(typeof ports.settings.getEditorAppearance).toBe("function");
+  });
+
+  it("keeps the desktop-only facade synchronous and native-only", () => {
+    resetDesktopWorkbenchPortsForTests();
+    const first = getDesktopWorkbenchPorts();
+    expect(first).toBe(getDesktopWorkbenchPorts());
+    expect(typeof first.project.getBootstrapSnapshot).toBe("function");
+    expect(typeof first.editor.openEditorDocument).toBe("function");
+    expect(typeof first.chat.createChat).toBe("function");
+    resetDesktopWorkbenchPortsForTests();
+    expect(getDesktopWorkbenchPorts()).not.toBe(first);
   });
 
   it("exposes named store selectors so features do not expand aggregate store", () => {

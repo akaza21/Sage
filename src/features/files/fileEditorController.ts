@@ -82,10 +82,6 @@ export interface FileEditorController {
   saveError(bridge: EditorStateBridge, error: unknown): void;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function ready(document: EditorDocument): ReadyEditorState {
   return {
     phase: "ready",
@@ -326,3 +322,4 @@ export function useFileEditorLifecycle(
     revision,
   ]);
 }
+import { errorMessage } from "../../domain/errors";

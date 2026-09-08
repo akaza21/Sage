@@ -1,8 +1,9 @@
 import { resourceKey, sameResource } from "../../domain/resourceIdentity";
+import { boundedIdentifier, isRecord } from "../../domain/guards";
+import { utf8ByteLength } from "../../domain/text";
 import type { ResourceRef } from "../../domain/workbench";
 import { WORKSPACE_SEARCH_LIMITS } from "./workspaceSearchLimits";
 
-const MAX_IDENTIFIER_BYTES = 512;
 const MAX_POSITION = 0xffff_ffff;
 const MAX_COLLECTION = 500;
 
@@ -54,8 +55,12 @@ function reject(code: string): never {
   throw error;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function isNonArrayRecord(value: unknown): value is Record<string, unknown> {
+  return isRecord(value) && !Array.isArray(value);
+}
+
+function isBoundedIdentifier(value: unknown): value is string {
+  return boundedIdentifier(value) !== null;
 }
 
 function exactKeys(
@@ -63,18 +68,9 @@ function exactKeys(
   keys: readonly string[],
 ): value is Record<string, unknown> {
   return (
-    isRecord(value) &&
+    isNonArrayRecord(value) &&
     JSON.stringify(Object.keys(value).sort()) ===
       JSON.stringify([...keys].sort())
-  );
-}
-
-function boundedIdentifier(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    !value.includes("\0") &&
-    new TextEncoder().encode(value).byteLength <= MAX_IDENTIFIER_BYTES
   );
 }
 
@@ -86,8 +82,7 @@ function relativePath(value: unknown): value is string {
     !value.includes("\\") &&
     !value.startsWith("/") &&
     !value.endsWith("/") &&
-    new TextEncoder().encode(value).byteLength <=
-      WORKSPACE_SEARCH_LIMITS.resourcePathBytes &&
+    utf8ByteLength(value) <= WORKSPACE_SEARCH_LIMITS.resourcePathBytes &&
     value
       .split("/")
       .every((segment) => segment !== "" && segment !== "." && segment !== "..")
@@ -109,7 +104,7 @@ function position(value: unknown): value is number {
 function resourceRef(value: unknown): value is ResourceRef {
   return (
     exactKeys(value, ["rootId", "relativePath"]) &&
-    boundedIdentifier(value.rootId) &&
+    isBoundedIdentifier(value.rootId) &&
     relativePath(value.relativePath)
   );
 }
@@ -117,7 +112,7 @@ function resourceRef(value: unknown): value is ResourceRef {
 function stamp(value: unknown): value is Ide1JourneyStamp {
   return (
     exactKeys(value, ["projectId", "projectGeneration", "transitionEpoch"]) &&
-    boundedIdentifier(value.projectId) &&
+    isBoundedIdentifier(value.projectId) &&
     safeCounter(value.projectGeneration) &&
     safeCounter(value.transitionEpoch)
   );
@@ -131,7 +126,7 @@ function listing(value: unknown): value is Ide1JourneyListing {
       "transitionEpoch",
       "resources",
     ]) ||
-    !boundedIdentifier(value.projectId) ||
+    !isBoundedIdentifier(value.projectId) ||
     !safeCounter(value.projectGeneration) ||
     !safeCounter(value.transitionEpoch) ||
     !Array.isArray(value.resources) ||
@@ -167,7 +162,7 @@ function search(value: unknown): value is Ide1JourneySearch {
       "transitionEpoch",
       "matches",
     ]) &&
-    boundedIdentifier(value.projectId) &&
+    isBoundedIdentifier(value.projectId) &&
     safeCounter(value.indexGeneration) &&
     safeCounter(value.transitionEpoch) &&
     Array.isArray(value.matches) &&
@@ -187,7 +182,7 @@ function opened(value: unknown): value is Ide1JourneyOpened {
       "lineNumber",
       "columnNumber",
     ]) &&
-    boundedIdentifier(value.projectId) &&
+    isBoundedIdentifier(value.projectId) &&
     safeCounter(value.projectGeneration) &&
     safeCounter(value.transitionEpoch) &&
     resourceRef(value.resource) &&

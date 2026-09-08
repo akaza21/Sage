@@ -21,9 +21,7 @@ export type ProjectionOutcome = "committed" | "unchanged" | "diverged";
 
 const MAX_PROJECTION_ATTEMPTS = 2;
 
-export function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
+export { errorMessage };
 
 export function matchesLayout(
   snapshot: BootstrapSnapshot,
@@ -289,3 +287,4 @@ export async function commitIdentityChatResult(input: {
     return false;
   }
 }
+import { errorMessage } from "../domain/errors";

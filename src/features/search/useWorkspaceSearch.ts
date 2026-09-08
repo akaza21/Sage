@@ -41,10 +41,6 @@ const initialState = (): WorkspaceSearchState => ({
   error: null,
 });
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function filterPatterns(value: string): string[] {
   return value
     .split(",")
@@ -382,3 +378,4 @@ export function useWorkspaceSearch({
     refresh: submit,
   };
 }
+import { errorMessage } from "../../domain/errors";

@@ -17,13 +17,18 @@ vi.mock("../features/chat/ChatSurface", () => ({
     createElement("section", { "aria-label": "Agent chat" }, "Active chat"),
 }));
 
-function selectWindowMode(mode: "Agent" | "Editor") {
+async function selectWindowMode(mode: "Agent" | "Editor") {
   fireEvent.click(
     within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
       "radio",
       { name: mode },
     ),
   );
+  if (mode === "Agent") {
+    await screen.findByRole("button", {
+      name: "Open files, changes, and preview",
+    });
+  }
 }
 
 function openAgentNavigation() {
@@ -96,7 +101,7 @@ afterEach(() => {
 });
 
 describe("compact Workbench project tools", () => {
-  it("keeps an empty Agent resource pane collapsed until the user opens it", () => {
+  it("keeps an empty Agent resource pane collapsed until the user opens it", async () => {
     compactViewport = false;
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "A", roots: [] },
@@ -115,7 +120,7 @@ describe("compact Workbench project tools", () => {
     });
 
     render(<Workbench />);
-    selectWindowMode("Agent");
+    await selectWindowMode("Agent");
 
     const openResources = screen.getByRole("button", {
       name: "Open files, changes, and preview",
@@ -137,7 +142,7 @@ describe("compact Workbench project tools", () => {
     ).toBeVisible();
   });
 
-  it("opens compact Agent resources from the right edge without shrinking Chat", () => {
+  it("opens compact Agent resources from the right edge without shrinking Chat", async () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "A", roots: [] },
       projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
@@ -155,7 +160,7 @@ describe("compact Workbench project tools", () => {
     });
 
     const { container } = render(<Workbench />);
-    selectWindowMode("Agent");
+    await selectWindowMode("Agent");
     fireEvent.click(
       screen.getByRole("button", {
         name: "Open files, changes, and preview",
@@ -179,7 +184,7 @@ describe("compact Workbench project tools", () => {
     );
   });
 
-  it("renders only the focused Chat when compact instead of squeezing a pair", () => {
+  it("renders only the focused Chat when compact instead of squeezing a pair", async () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "A", roots: [] },
       projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
@@ -205,7 +210,7 @@ describe("compact Workbench project tools", () => {
     });
 
     render(<Workbench />);
-    selectWindowMode("Agent");
+    await selectWindowMode("Agent");
 
     expect(screen.getAllByRole("region", { name: "Agent chat" })).toHaveLength(
       1,
@@ -216,7 +221,7 @@ describe("compact Workbench project tools", () => {
     ).toBeNull();
   });
 
-  it("opens compact Agent navigation as an Escape-dismissable drawer", () => {
+  it("opens compact Agent navigation as an Escape-dismissable drawer", async () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "A", roots: [] },
       projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
@@ -234,7 +239,7 @@ describe("compact Workbench project tools", () => {
     });
 
     const { container } = render(<Workbench />);
-    selectWindowMode("Agent");
+    await selectWindowMode("Agent");
 
     const trigger = screen.getByRole("button", {
       name: "Open projects and chats",
@@ -260,7 +265,7 @@ describe("compact Workbench project tools", () => {
     );
   });
 
-  it("routes Chat navigation from the sidebar through authoritative activation", () => {
+  it("routes Chat navigation from the sidebar through authoritative activation", async () => {
     const activateTab = vi.fn(async () => undefined);
     useWorkbenchStore.setState({
       activateTab,
@@ -287,7 +292,7 @@ describe("compact Workbench project tools", () => {
       activeTabId: "chat:a",
     });
     render(<Workbench />);
-    selectWindowMode("Agent");
+    await selectWindowMode("Agent");
     openAgentNavigation();
 
     fireEvent.click(screen.getByTitle("Open chat B"));
@@ -316,7 +321,7 @@ describe("compact Workbench project tools", () => {
       activeTabId: "chat:b",
     });
     render(<Workbench />);
-    selectWindowMode("Agent");
+    await selectWindowMode("Agent");
 
     openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
@@ -365,7 +370,7 @@ describe("compact Workbench project tools", () => {
       activeTabId: "chat:b",
     });
     const { container } = render(<Workbench />);
-    selectWindowMode("Agent");
+    await selectWindowMode("Agent");
     openAgentNavigation();
     const sidebarScroll = container.querySelector(".project-sidebar__scroll");
     expect(sidebarScroll).not.toBeNull();
@@ -427,7 +432,7 @@ describe("compact Workbench project tools", () => {
       activeTabId: "chat:b",
     });
     render(<Workbench />);
-    selectWindowMode("Agent");
+    await selectWindowMode("Agent");
 
     openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
@@ -480,7 +485,7 @@ describe("compact Workbench project tools", () => {
       activeTabId: "chat:a",
     });
     render(<Workbench />);
-    selectWindowMode("Agent");
+    await selectWindowMode("Agent");
 
     openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
@@ -539,7 +544,7 @@ describe("compact Workbench project tools", () => {
       activeTabId: "file:a",
     });
     render(<Workbench />);
-    selectWindowMode("Agent");
+    await selectWindowMode("Agent");
 
     openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
@@ -567,14 +572,14 @@ describe("compact Workbench project tools", () => {
     expect(useWorkbenchStore.getState().activeTabId).toBe("file:a");
   });
 
-  it("routes the Agent New Chat control through one creation action", () => {
+  it("routes the Agent New Chat control through one creation action", async () => {
     const createChat = vi.fn(async () => undefined);
     useWorkbenchStore.setState({
       createChat,
       project: { id: "project-a", name: "A", roots: [] },
     });
     render(<Workbench />);
-    selectWindowMode("Agent");
+    await selectWindowMode("Agent");
     openAgentNavigation();
 
     const newChatControls = screen.getAllByRole("button", {
@@ -603,7 +608,7 @@ describe("compact Workbench project tools", () => {
     expect(screen.queryByText("Username")).toBeNull();
   });
 
-  it("exposes only truthful focusable controls in the Project sidebar", () => {
+  it("exposes only truthful focusable controls in the Project sidebar", async () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "A", roots: [] },
       projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
@@ -620,7 +625,7 @@ describe("compact Workbench project tools", () => {
       activeTabId: "chat:a",
     });
     render(<Workbench />);
-    selectWindowMode("Agent");
+    await selectWindowMode("Agent");
     openAgentNavigation();
 
     expect(
@@ -671,7 +676,7 @@ describe("compact Workbench project tools", () => {
     expect(center).not.toHaveAttribute("aria-hidden");
   });
 
-  it("exposes bounded keyboard-resizable rails in each full workbench mode", () => {
+  it("exposes bounded keyboard-resizable rails in each full workbench mode", async () => {
     compactViewport = false;
     render(<Workbench />);
 
@@ -684,7 +689,7 @@ describe("compact Workbench project tools", () => {
     fireEvent.keyDown(editorRail, { key: "ArrowRight" });
     expect(editorRail).toHaveAttribute("aria-valuenow", "280");
 
-    selectWindowMode("Agent");
+    await selectWindowMode("Agent");
     const agentRail = screen.getByRole("separator", {
       name: "Resize project and chat rail",
     });
@@ -726,7 +731,7 @@ describe("compact Workbench project tools", () => {
     expect(splitter).toHaveAttribute("aria-valuenow", "298");
   });
 
-  it("restores only persisted single-splitter widths on load", () => {
+  it("restores only persisted single-splitter widths on load", async () => {
     compactViewport = false;
     localStorage.setItem(
       "sage.workbench.layout.v1",
@@ -741,7 +746,7 @@ describe("compact Workbench project tools", () => {
     expect(
       screen.getByRole("separator", { name: "Resize Editor tool rail" }),
     ).toHaveAttribute("aria-valuenow", "320");
-    selectWindowMode("Agent");
+    await selectWindowMode("Agent");
     expect(
       screen.getByRole("separator", { name: "Resize project and chat rail" }),
     ).toHaveAttribute("aria-valuenow", "248");
@@ -755,7 +760,7 @@ describe("compact Workbench project tools", () => {
     ).toHaveAttribute("aria-valuenow", "360");
   });
 
-  it("moves focus out of the center on a compact transition", () => {
+  it("moves focus out of the center on a compact transition", async () => {
     compactViewport = false;
     useWorkbenchStore.setState({
       sidebarOpen: true,
@@ -788,7 +793,7 @@ describe("compact Workbench project tools", () => {
     expect(drawer).toHaveFocus();
     expect(center).toHaveAttribute("inert");
 
-    const drawerButton = within(drawer).getByRole("button", {
+    const drawerButton = await within(drawer).findByRole("button", {
       name: "Refresh Source Control",
     });
     drawerButton.focus();

@@ -31,10 +31,6 @@ export interface ChatOwnershipSlice {
   sendPrompt: () => Promise<void>;
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function activeChatId(state: WorkbenchState) {
   return (
     state.tabs.find(
@@ -324,3 +320,4 @@ export const createChatOwnershipSlice: StateCreator<
     }
   },
 });
+import { errorMessage } from "../domain/errors";

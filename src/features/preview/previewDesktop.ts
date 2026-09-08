@@ -2,6 +2,13 @@ import type {
   PreviewProjectionOwner,
   PreviewTargetRef,
 } from "../../domain/previewProjection";
+import { invokeNative } from "../../ports/nativeInvoke";
+import {
+  boundedIdentifier,
+  decimalU64Counter,
+  isRecord,
+} from "../../domain/guards";
+import { utf8ByteLength } from "../../domain/text";
 
 export type { PreviewTargetRef } from "../../domain/previewProjection";
 
@@ -32,7 +39,6 @@ type PreviewFailure = {
   resource?: string;
 };
 
-const MAX_COUNTER = "9223372036854775807";
 export const MAX_PREVIEW_TARGETS = 16;
 
 function isTauriRuntime(): boolean {
@@ -43,34 +49,19 @@ export function previewDesktopAvailable(): boolean {
   return isTauriRuntime();
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 function safeIdentifier(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.length <= 512 &&
-    !value.includes("\0") &&
-    new TextEncoder().encode(value).byteLength <= 512
-  );
+  return boundedIdentifier(value) !== null;
 }
 
 function safeCounter(value: unknown, allowZero: boolean): value is string {
-  return (
-    typeof value === "string" &&
-    /^(0|[1-9][0-9]{0,18})$/.test(value) &&
-    !(value.length === 19 && value > MAX_COUNTER) &&
-    (allowZero || value !== "0")
-  );
+  return decimalU64Counter(value, { allowZero }) !== null;
 }
 
 function isLoopbackOrigin(value: unknown): value is string {
   if (
     typeof value !== "string" ||
     value.length === 0 ||
-    new TextEncoder().encode(value).byteLength > 2048
+    utf8ByteLength(value) > 2048
   ) {
     return false;
   }
@@ -174,7 +165,7 @@ function safeFailure(value: unknown): PreviewFailure {
     isRecord(value) &&
     typeof value.message === "string" &&
     value.message.length > 0 &&
-    new TextEncoder().encode(value.message).byteLength <= 8192 &&
+    utf8ByteLength(value.message) <= 8192 &&
     (value.kind === "invalidRequest" ||
       value.kind === "conflict" ||
       value.kind === "unavailable" ||
@@ -204,8 +195,7 @@ async function invokePreview<T>(command: string, request: object): Promise<T> {
     });
   }
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    return await invoke<T>(command, { request });
+    return await invokeNative<T>(command, { request });
   } catch (error) {
     throw new PreviewDesktopError(safeFailure(error));
   }

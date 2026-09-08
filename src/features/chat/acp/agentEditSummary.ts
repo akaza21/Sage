@@ -24,13 +24,11 @@ export interface AgentEditSummaryProjection {
   rejectedUnsafeOrStale: boolean;
 }
 
-const encoder = new TextEncoder();
-
 function boundedText(value: unknown, maximumBytes: number): value is string {
   return (
     typeof value === "string" &&
     !value.includes("\0") &&
-    encoder.encode(value).byteLength <= maximumBytes
+    utf8ByteLength(value) <= maximumBytes
   );
 }
 
@@ -278,3 +276,4 @@ export function projectAgentEditSummary(
     rejectedUnsafeOrStale,
   };
 }
+import { utf8ByteLength } from "../../../domain/text";

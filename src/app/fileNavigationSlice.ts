@@ -35,7 +35,7 @@ function boundedNavigationString(value: unknown, maxBytes: number) {
     value.length > 0 &&
     value.length <= maxBytes &&
     !value.includes("\0") &&
-    new TextEncoder().encode(value).byteLength <= maxBytes
+    utf8ByteLength(value) <= maxBytes
   );
 }
 
@@ -129,3 +129,4 @@ export const createFileNavigationSlice: StateCreator<
     });
   },
 });
+import { utf8ByteLength } from "../domain/text";

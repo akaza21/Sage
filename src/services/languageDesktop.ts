@@ -5,6 +5,9 @@ import {
   type LanguageOutlineReport,
 } from "../domain/languageService";
 import type { ResourceRef } from "../domain/resource";
+import { isRecord } from "../domain/guards";
+import { utf8ByteLength } from "../domain/text";
+import { invokeNative } from "../ports/nativeInvoke";
 
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -20,8 +23,7 @@ async function invokeLanguage<T>(
       "Language sessions are available only in the Sage desktop runtime.",
     );
   }
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<T>(command, {
+  return invokeNative<T>(command, {
     resource,
     ...(document === undefined ? {} : { document }),
   });
@@ -119,10 +121,6 @@ function isLanguageOutlineReport(
   );
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 function isResource(value: unknown): value is ResourceRef {
   return (
     isRecord(value) &&
@@ -147,8 +145,4 @@ function isPosition(value: unknown): value is number {
     value > 0 &&
     value <= 0xffff_ffff
   );
-}
-
-function utf8ByteLength(value: string): number {
-  return new TextEncoder().encode(value).byteLength;
 }
