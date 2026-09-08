@@ -9,7 +9,7 @@ import {
 } from "./source-functional-acp04-observation.mjs";
 
 export const ACP04_READ_ONLY_PACKAGE_JSON_PROMPT =
-  "Read package.json exactly once. Do not modify files or run unrelated commands.";
+  "Use exec_command exactly once with cmd `cat package.json`, shell `C:\\Program Files\\Git\\bin\\bash.exe`, and login `false`. Read package.json only. Do not modify files or run unrelated commands.";
 
 const MAX_TURNS = 4;
 const MAX_ACTIONS = 16;

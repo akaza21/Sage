@@ -48,11 +48,13 @@ import {
   validatePreviewSnapshot,
 } from "./source-functional-av01-preview-probe.mjs";
 import {
+  ACP04_READ_ONLY_PACKAGE_JSON_PROMPT,
   ACP04_FILE_TAB_SNAPSHOT,
   ACP04_FILE_TURN_SNAPSHOT,
   runReadOnlyPackageJsonTurn,
   validateReadOnlyFileProof,
 } from "./source-functional-acp04-file-turn.mjs";
+import { fillPromptExpression } from "./source-functional-acp04-live-probe.mjs";
 
 const SHA = "a".repeat(64);
 const GIT = "b".repeat(40);
@@ -1317,6 +1319,18 @@ test("collector third turn dispatches only one typed package.json File action an
   );
   assert.equal(proof.turnId, "turn-3");
   assert.equal(proof.relativePath, "package.json");
+  assert.equal(
+    ACP04_READ_ONLY_PACKAGE_JSON_PROMPT,
+    "Use exec_command exactly once with cmd `cat package.json`, shell `C:\\Program Files\\Git\\bin\\bash.exe`, and login `false`. Read package.json only. Do not modify files or run unrelated commands.",
+  );
+  assert.equal(
+    expressions.filter(
+      (expression) =>
+        expression ===
+        fillPromptExpression(ACP04_READ_ONLY_PACKAGE_JSON_PROMPT),
+    ).length,
+    1,
+  );
   assert.equal(expressions.includes(ACP04_FILE_TAB_SNAPSHOT), true);
   assert.throws(
     () => validateReadOnlyFileProof({ ...proof, rootId: "" }),
