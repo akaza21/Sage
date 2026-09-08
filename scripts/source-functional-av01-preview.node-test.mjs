@@ -233,6 +233,80 @@ test("AV01 Preview parser accepts exactly the bounded three fixture cases", () =
   }
 });
 
+test("wrapper gives AV01 exactly one Git identity triple and keeps it out of ACP-04", () => {
+  const wrapper = readFileSync(
+    path.resolve("scripts/run-source-functional-native-ide-journey.ps1"),
+    "utf8",
+  );
+  const collectorVectors = wrapper.slice(
+    wrapper.lastIndexOf("$sageRuntime = Capture-OwnedRuntimeOrQuarantine"),
+  );
+  const acp =
+    /if \(\$JourneyKind -eq "acp04-live"\) \{\s*\$arguments = @\((?<arguments>[\s\S]*?)\n\s*\)\s*\} elseif \(\$JourneyKind -eq "av01-preview"\)/u.exec(
+      collectorVectors,
+    )?.groups?.arguments;
+  const av01 =
+    /\} elseif \(\$JourneyKind -eq "av01-preview"\) \{[\s\S]*?\$arguments = @\((?<arguments>[\s\S]*?)\n\s*\)\s*\} else \{/u.exec(
+      collectorVectors,
+    )?.groups?.arguments;
+  assert.ok(acp, "ACP-04 collector vector is present");
+  assert.ok(av01, "AV01 collector vector is present");
+  const flags = (body) =>
+    [...body.matchAll(/"--(?<flag>[a-z0-9-]+)"/gu)].map(
+      (match) => match.groups.flag,
+    );
+  const gitFlags = ["git-path", "git-bytes", "git-sha256"];
+  assert.deepEqual(
+    flags(av01).filter((flag) => gitFlags.includes(flag)),
+    gitFlags,
+  );
+  assert.deepEqual(
+    flags(acp).filter((flag) => gitFlags.includes(flag)),
+    [],
+  );
+  const misplaced = collectorVectors
+    .replace(
+      '      "--git-path", $gitExecutable, "--git-bytes", "$gitBytes", "--git-sha256", $gitSha256,\n',
+      "",
+    )
+    .replace(
+      '      "--codex-path", $codex, "--codex-bytes", "$codexBytes", "--codex-sha256", $codexSha256,\n',
+      '      "--codex-path", $codex, "--codex-bytes", "$codexBytes", "--codex-sha256", $codexSha256,\n      "--git-path", $gitExecutable, "--git-bytes", "$gitBytes", "--git-sha256", $gitSha256,\n',
+    );
+  const misplacedAv01 =
+    /\} elseif \(\$JourneyKind -eq "av01-preview"\) \{[\s\S]*?\$arguments = @\((?<arguments>[\s\S]*?)\n\s*\)\s*\} else \{/u.exec(
+      misplaced,
+    )?.groups?.arguments;
+  assert.ok(misplacedAv01, "misplaced AV01 collector vector is present");
+  assert.deepEqual(
+    flags(misplacedAv01).filter((flag) => gitFlags.includes(flag)),
+    [],
+  );
+
+  const directory = root();
+  try {
+    const vector = argumentsFor(directory);
+    assert.equal(
+      parseAv01PreviewArguments(vector).git.path,
+      path.join(directory, "git.exe"),
+    );
+    for (const flag of gitFlags) {
+      const offset = vector.indexOf(`--${flag}`);
+      assert.notEqual(offset, -1);
+      assert.throws(
+        () =>
+          parseAv01PreviewArguments([
+            ...vector.slice(0, offset),
+            ...vector.slice(offset + 2),
+          ]),
+        /av01-preview-arguments-invalid/,
+      );
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("AV01 Preview fixture hashes every package-script input and rejects mutation", () => {
   const directory = root();
   const fixture = path.join(directory, "fixture-project");

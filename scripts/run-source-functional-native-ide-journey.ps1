@@ -382,7 +382,16 @@ function Capture-OwnedRuntimeOrQuarantine(
       throw "cleanup did not prove terminal zero"
     }
   } catch {
-    try { Write-RuntimeCleanupQuarantine $Role $EvidenceRoot $null $null } catch { }
+    $unadmittedRoot = [ordered]@{
+      processId = [int]$Process.Id
+      executablePath = $cleanupPath
+      creationDate = $null
+    }
+    try {
+      Write-RuntimeCleanupQuarantine `
+        $Role $EvidenceRoot $null $null `
+        "update-owned-tree" "observation-failed" $unadmittedRoot
+    } catch { }
     throw "The $Role runtime identity could not be captured and cleanup could not be proven."
   }
   if (-not $launchQuarantineRetained) {
@@ -517,17 +526,84 @@ function Start-OwnedVite(
     $StartupDeadlineMilliseconds $null $null $MonotonicMilliseconds
 }
 
+function Get-CleanupRootTuple([object]$Identity) {
+  $processId = $null
+  $executablePath = $null
+  $creationDate = $null
+  try { $processId = [int]$Identity.processId } catch { }
+  try {
+    $candidate = [string]$Identity.executablePath
+    if ($candidate.Length -gt 0 -and $candidate.Length -le 4096) {
+      $executablePath = [IO.Path]::GetFullPath($candidate)
+    }
+  } catch { }
+  try {
+    $candidate = [string]$Identity.creationDate
+    if ($candidate.Length -gt 0 -and $candidate.Length -le 128) {
+      $creationDate = $candidate
+    }
+  } catch { }
+  return [ordered]@{
+    processId = $processId
+    executablePath = $executablePath
+    creationDate = $creationDate
+  }
+}
+
+function Resolve-CleanupFailureClass([object]$Failure) {
+  $exceptionType = ""
+  $errorId = ""
+  try { $exceptionType = [string]$Failure.Exception.GetType().FullName } catch { }
+  try { $errorId = [string]$Failure.FullyQualifiedErrorId } catch { }
+  if ($exceptionType -eq "Microsoft.Management.Infrastructure.CimException" -or
+      $errorId -match "(?i)(cim|snapshot)") {
+    return "snapshot-failed"
+  }
+  $isWin32AccessDenied = $false
+  if ($exceptionType -eq "System.ComponentModel.Win32Exception") {
+    try { $isWin32AccessDenied = [int]$Failure.Exception.NativeErrorCode -eq 5 } catch { }
+  }
+  if ($exceptionType -in @(
+      "System.UnauthorizedAccessException",
+      "System.Security.SecurityException"
+    ) -or $isWin32AccessDenied -or $errorId -match "(?i)(access|permission|unauthorized)") {
+    return "stop-access-denied"
+  }
+  if ($exceptionType -eq "System.Management.Automation.ParameterBindingException" -or
+      $errorId -match "(?i)parameterbinding") {
+    return "binding-failed"
+  }
+  if ($errorId -match "(?i)(identity|processid).*(mismatch|reuse|conflict)") {
+    return "identity-conflict"
+  }
+  return "stop-unknown"
+}
+
 function Write-RuntimeCleanupQuarantine(
   [ValidateSet("sage", "vite")][string]$Role,
   [string]$EvidenceRoot,
   [object]$IdentityLost,
-  [object]$RemainingCount
+  [object]$RemainingCount,
+  [ValidateSet("update-owned-tree", "stop-tree", "post-teardown")][string]$Stage,
+  [ValidateSet(
+    "observation-failed",
+    "snapshot-failed",
+    "stop-access-denied",
+    "binding-failed",
+    "identity-conflict",
+    "stop-unknown",
+    "terminal-zero-invalid"
+  )][string]$FailureClass,
+  [object]$RootIdentity
 ) {
   if (-not $EvidenceRoot -or -not (Test-Path -LiteralPath $EvidenceRoot -PathType Container)) { return }
   $record = [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     runtimeRole = $Role
     category = "cleanup-unproven"
+    stage = $Stage
+    failureClass = $FailureClass
+    root = Get-CleanupRootTuple $RootIdentity
     identityLost = $IdentityLost
     remainingCount = $RemainingCount
   }
@@ -545,12 +621,15 @@ function Stop-OwnedRuntimeTree(
   try {
     $teardown = Stop-FootprintTree $Runtime.identity $Runtime.store 2
   } catch {
-    Write-RuntimeCleanupQuarantine $Role $EvidenceRoot $null $null
+    Write-RuntimeCleanupQuarantine `
+      $Role $EvidenceRoot $null $null "stop-tree" (Resolve-CleanupFailureClass $_) $Runtime.identity
     throw "The $Role runtime cleanup could not be proven."
   }
   $remainingCount = @($teardown.remaining).Count
   if ($teardown.identityLost -or $remainingCount -ne 0) {
-    Write-RuntimeCleanupQuarantine $Role $EvidenceRoot ([bool]$teardown.identityLost) $remainingCount
+    Write-RuntimeCleanupQuarantine `
+      $Role $EvidenceRoot ([bool]$teardown.identityLost) $remainingCount `
+      "post-teardown" "terminal-zero-invalid" $Runtime.identity
     throw "The $Role runtime cleanup was not terminal-zero."
   }
   return [ordered]@{ role = $Role; identityLost = $false; remainingCount = 0 }
@@ -845,7 +924,6 @@ try {
       "--executable-bytes", "$preLaunchExecutableBytes", "--executable-sha256", $preLaunchExecutableSha256,
       "--node-bytes", "$preLaunchNodeBytes", "--node-sha256", $preLaunchNodeSha256,
       "--codex-path", $codex, "--codex-bytes", "$codexBytes", "--codex-sha256", $codexSha256,
-      "--git-path", $gitExecutable, "--git-bytes", "$gitBytes", "--git-sha256", $gitSha256,
       "--profile-root", $profile, "--profile-identity-artifact", $profileIdentityArtifact,
       "--sage-stdout-log", $sageStdoutLog, "--sage-stderr-log", $sageStderrLog,
       "--sage-process-id", "$($sageRuntime.identity.processId)",
@@ -867,6 +945,7 @@ try {
       "--node-bytes", "$preLaunchNodeBytes", "--node-sha256", $preLaunchNodeSha256,
       "--powershell-path", $av01PowerShell, "--powershell-bytes", "$av01PowerShellBytes", "--powershell-sha256", $av01PowerShellSha256,
       "--codex-path", $codex, "--codex-bytes", "$codexBytes", "--codex-sha256", $codexSha256,
+      "--git-path", $gitExecutable, "--git-bytes", "$gitBytes", "--git-sha256", $gitSha256,
       "--profile-root", $profile, "--profile-identity-artifact", $profileIdentityArtifact,
       "--sage-stdout-log", $sageStdoutLog, "--sage-stderr-log", $sageStderrLog,
       "--sage-process-id", "$($sageRuntime.identity.processId)",
@@ -902,7 +981,13 @@ try {
   try { $viteCleanup = Stop-OwnedRuntimeTree "vite" $viteRuntime $EvidenceRoot } catch { $cleanupFailures += $_.Exception.Message }
 }
 
-if ($cleanupFailures.Count -ne 0) { throw ($cleanupFailures -join " ") }
+if ($cleanupFailures.Count -ne 0) {
+  if ($null -ne $journeyFailure) {
+    throw ("Journey failure: {0} Cleanup failure: {1}" -f `
+      $journeyFailure.Exception.Message, ($cleanupFailures -join " "))
+  }
+  throw ($cleanupFailures -join " ")
+}
 if ($null -ne $journeyFailure) { throw $journeyFailure }
 if ($JourneyKind -eq "acp04-live" -or $JourneyKind -eq "av01-preview") {
   $nativeStdoutIdentity = Assert-BoundedNativeLog $sageStdoutLog "Sage stdout"
