@@ -73,9 +73,47 @@ const OBSERVATION_IO = Object.freeze({
   openSync,
   readSync,
 });
+const FIXTURE_NODE_CLOSE_TIMEOUT_MS = 1_000;
 
 function root() {
   return mkdtempSync(path.join(tmpdir(), "sage-av01-preview-"));
+}
+
+function fixtureNodeLifecycle(closeTimeoutMs = FIXTURE_NODE_CLOSE_TIMEOUT_MS) {
+  const nodes = [];
+  return {
+    retain(child) {
+      const node = { child, closed: false };
+      node.close = new Promise((resolve) => {
+        child.once("close", () => {
+          node.closed = true;
+          resolve();
+        });
+      });
+      nodes.push(node);
+      return child;
+    },
+    async terminateAndAwait() {
+      for (const node of nodes) {
+        if (!node.closed && !node.child.killed) node.child.kill();
+      }
+      await Promise.all(
+        nodes.map(
+          (node) =>
+            new Promise((resolve, reject) => {
+              const timeout = setTimeout(
+                () => reject(new Error("AV01 fixture child close unproven")),
+                closeTimeoutMs,
+              );
+              node.close.then(() => {
+                clearTimeout(timeout);
+                resolve();
+              });
+            }),
+        ),
+      );
+    },
+  };
 }
 
 function fixtureHelperOptions() {
@@ -299,13 +337,20 @@ async function expectFixtureGit(promise, expected) {
   assert.deepEqual(await promise, expected);
 }
 
-function fixtureHelperChild({ stdout = "", stderr = "", code, emit = true }) {
+function fixtureHelperChild({
+  stdout = "",
+  stderr = "",
+  code,
+  emit = true,
+  onKill,
+}) {
   const child = new EventEmitter();
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
   child.killed = false;
   child.kill = () => {
     child.killed = true;
+    onKill?.(child);
   };
   if (emit) {
     queueMicrotask(() => {
@@ -316,6 +361,40 @@ function fixtureHelperChild({ stdout = "", stderr = "", code, emit = true }) {
   }
   return child;
 }
+
+test("AV01 fixture lifecycle awaits a queued delayed child close", async () => {
+  const nodes = fixtureNodeLifecycle();
+  const child = nodes.retain(
+    fixtureHelperChild({
+      emit: false,
+      onKill: (delayed) => {
+        queueMicrotask(() => {
+          setTimeout(() => delayed.emit("close", 0), 1);
+        });
+      },
+    }),
+  );
+
+  await nodes.terminateAndAwait();
+  assert.equal(child.killed, true);
+});
+
+test("AV01 fixture lifecycle retains its root when close settlement is unproven", async () => {
+  const directory = root();
+  const nodes = fixtureNodeLifecycle(1);
+  const child = nodes.retain(fixtureHelperChild({ emit: false }));
+  try {
+    await assert.rejects(
+      nodes.terminateAndAwait(),
+      /AV01 fixture child close unproven/,
+    );
+    assert.equal(lstatSync(directory).isDirectory(), true);
+  } finally {
+    child.emit("close", 0);
+    await nodes.terminateAndAwait();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 function argumentsFor(directory, overrides = {}) {
   const fixture = path.join(directory, "fixture-project");
@@ -1347,7 +1426,7 @@ test("collector rejects candidate roots, duplicate actions, and post-click owner
 
 test("healthy fixture delays then serves its nonce marker; failed and exited cases do not fabricate it", async () => {
   const directory = root();
-  const children = [];
+  const nodes = fixtureNodeLifecycle();
   try {
     for (const previewCase of AV01_PREVIEW_CASES) {
       const fixture = path.join(directory, previewCase);
@@ -1357,11 +1436,12 @@ test("healthy fixture delays then serves its nonce marker; failed and exited cas
         previewCase,
         nonce: "2".repeat(64),
       });
-      const child = spawn(process.execPath, ["preview-fixture.mjs"], {
-        cwd: fixture,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      children.push(child);
+      const child = nodes.retain(
+        spawn(process.execPath, ["preview-fixture.mjs"], {
+          cwd: fixture,
+          stdio: ["ignore", "pipe", "pipe"],
+        }),
+      );
       if (previewCase === "exited") {
         await new Promise((resolve) => child.once("exit", resolve));
         assert.equal(
@@ -1391,7 +1471,7 @@ test("healthy fixture delays then serves its nonce marker; failed and exited cas
       }
     }
   } finally {
-    for (const child of children) if (!child.killed) child.kill();
+    await nodes.terminateAndAwait();
     rmSync(directory, { recursive: true, force: true });
   }
 });
