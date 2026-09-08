@@ -1090,57 +1090,79 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
     );
   });
 
-  test("agent-preview-zoom-200", async ({ page }) => {
-    await page.setViewportSize({ width: 1_380, height: 880 });
-    const workbench = await openAgentScenario(page, "preview");
-    await page.evaluate(() => {
-      document.documentElement.style.zoom = "2";
-    });
-    const resources = page.getByRole("complementary", {
-      name: "Agent artifacts",
-    });
-    const trigger = resources.getByRole("button", {
-      name: "Preview controls",
-    });
-    const address = resources.getByRole("textbox", {
-      name: "Preview address",
+  test.describe("agent-preview-zoom-200 DPR proxy", () => {
+    test.use({
+      viewport: { width: 690, height: 440 },
+      deviceScaleFactor: 2,
     });
 
-    await expect
-      .poll(() =>
-        page.evaluate(() => getComputedStyle(document.documentElement).zoom),
-      )
-      .toBe("2");
-    await expect(address).toBeVisible();
-    await expect(trigger).toBeVisible();
-    await trigger.click();
-    await expect(
-      page.getByRole("menu", { name: "Preview controls" }),
-    ).toBeVisible();
-    expect(
-      await resources.locator(".harness-browser").evaluate((node) => {
-        const browser = node.getBoundingClientRect();
-        const frame = node.querySelector<HTMLElement>(
-          ".harness-browser__frame",
-        );
-        const addressInput = node.querySelector<HTMLElement>(
-          ".harness-browser__address input",
-        );
-        if (!frame || !addressInput) {
-          throw new Error("Zoom Preview geometry probe missing");
-        }
-        const content = frame.getBoundingClientRect();
-        const address = addressInput.getBoundingClientRect();
-        return (
-          address.width > 0 &&
-          address.right <= browser.right + 1 &&
-          content.height >= 240 &&
-          content.bottom <= browser.bottom + 1
-        );
-      }),
-    ).toBe(true);
-    await expectNoViewportOverflow(page);
-    await expect(workbench).toHaveScreenshot("agent-preview-zoom-200.png");
+    test("agent-preview-zoom-200", async ({ page }) => {
+      const workbench = await openAgentScenario(page, "preview");
+      const resources = page.getByRole("complementary", {
+        name: "Agent artifacts",
+      });
+      const trigger = resources.getByRole("button", {
+        name: "Preview controls",
+      });
+      const address = resources.getByRole("textbox", {
+        name: "Preview address",
+      });
+
+      await expect(workbench).toHaveClass(/workbench--compact/);
+      await expect
+        .poll(() =>
+          page.evaluate(() => ({
+            devicePixelRatio: window.devicePixelRatio,
+            innerWidth: window.innerWidth,
+          })),
+        )
+        .toEqual({ devicePixelRatio: 2, innerWidth: 690 });
+      await expect(address).toBeVisible();
+      await expect(trigger).toBeVisible();
+      await trigger.click();
+      await expect(
+        page.getByRole("menu", { name: "Preview controls" }),
+      ).toBeVisible();
+      const geometry = await resources
+        .locator(".harness-browser")
+        .evaluate((node) => {
+          const browser = node.getBoundingClientRect();
+          const frame = node.querySelector<HTMLElement>(
+            ".harness-browser__frame",
+          );
+          const addressInput = node.querySelector<HTMLElement>(
+            ".harness-browser__address input",
+          );
+          const canvas = node.closest<HTMLElement>(
+            ".agent-artifact-pane__canvas",
+          );
+          if (!frame || !addressInput || !canvas) {
+            throw new Error("Zoom Preview geometry probe missing");
+          }
+          return {
+            address: addressInput.getBoundingClientRect().toJSON(),
+            browser: browser.toJSON(),
+            canvas: canvas.getBoundingClientRect().toJSON(),
+            content: frame.getBoundingClientRect().toJSON(),
+          };
+        });
+      expect(geometry.address.width).toBeGreaterThan(0);
+      expect(geometry.address.right).toBeLessThanOrEqual(
+        geometry.browser.right + 1,
+      );
+      expect(geometry.content.height).toBeGreaterThanOrEqual(240);
+      expect(geometry.content.bottom).toBeLessThanOrEqual(
+        geometry.browser.bottom + 1,
+      );
+      expect(geometry.browser.bottom).toBeGreaterThanOrEqual(
+        geometry.canvas.bottom - 1,
+      );
+      expect(geometry.browser.bottom).toBeLessThanOrEqual(
+        geometry.canvas.bottom + 1,
+      );
+      await expectNoViewportOverflow(page);
+      await expect(workbench).toHaveScreenshot("agent-preview-zoom-200.png");
+    });
   });
 
   test("agent-preview-keyboard-focus", async ({ page }) => {

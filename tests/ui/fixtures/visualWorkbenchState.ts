@@ -9,6 +9,7 @@ import {
   applyBrowseIntent,
   harnessBrowseOwner,
   setHarnessBrowseOwner,
+  subscribeBrowseSessions,
 } from "../../../src/features/preview/harnessBrowse";
 
 import type { BuiltVisualScenario } from "./visualScenarioTypes";
@@ -30,6 +31,7 @@ import {
 } from "./visualDocumentFixtures";
 
 const VISUAL_NATIVE_TRANSITION_EPOCH = 0;
+const PREVIEW_OWNER_DEADLINE_MS = 500;
 
 function artifactOwner(
   chatId: AgentArtifactOwner["chatId"],
@@ -322,13 +324,47 @@ export function applyVisualWorkbenchState(
       tabId: "visual-diff-tab",
     });
   }
-  setHarnessBrowseOwner(selectedBrowseOwner, chatIds.slice(0, 2));
-  if (scenario.resource === "preview" && selectedBrowseOwner) {
-    applyBrowseIntent({
-      owner: selectedBrowseOwner,
-      url: visualPreviewUrl(),
-    });
+  if (scenario.resource !== "preview") {
+    setHarnessBrowseOwner(selectedBrowseOwner, chatIds.slice(0, 2));
   }
+}
+
+function waitForMountedPreviewOwner(
+  expectedOwner: HarnessBrowseOwner,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let recheckFrame: number | null = null;
+    let unsubscribe = () => undefined;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(deadline);
+      if (recheckFrame !== null) cancelAnimationFrame(recheckFrame);
+      unsubscribe();
+      if (error) reject(error);
+      else resolve();
+    };
+    const recheck = () => {
+      if (!sameBrowseOwner(harnessBrowseOwner(), expectedOwner)) {
+        if (recheckFrame !== null) cancelAnimationFrame(recheckFrame);
+        recheckFrame = null;
+        return;
+      }
+      if (recheckFrame !== null) return;
+      recheckFrame = requestAnimationFrame(() => {
+        recheckFrame = null;
+        if (sameBrowseOwner(harnessBrowseOwner(), expectedOwner)) finish();
+      });
+    };
+    const deadline = window.setTimeout(
+      () =>
+        finish(new Error("Visual Preview fixture owner was not established.")),
+      PREVIEW_OWNER_DEADLINE_MS,
+    );
+    unsubscribe = subscribeBrowseSessions(recheck);
+    recheck();
+  });
 }
 
 export async function reapplyVisualPreviewBrowseIntent(
@@ -338,18 +374,7 @@ export async function reapplyVisualPreviewBrowseIntent(
   const chatId = scenario.pages[0]?.chatId;
   if (!chatId) throw new Error("Visual Preview fixture requires a Chat.");
   const expectedOwner = browseOwner(chatId);
-  // The real mounted Chat shell owns this identity. It can publish its first
-  // owner after the fixture's state write, so wait a bounded two frames for
-  // that commit without ever admitting a looser owner.
-  for (let frame = 0; frame < 2; frame += 1) {
-    if (sameBrowseOwner(harnessBrowseOwner(), expectedOwner)) break;
-    await new Promise<void>((resolve) =>
-      requestAnimationFrame(() => resolve()),
-    );
-  }
-  if (!sameBrowseOwner(harnessBrowseOwner(), expectedOwner)) {
-    throw new Error("Visual Preview fixture owner was not established.");
-  }
+  await waitForMountedPreviewOwner(expectedOwner);
   if (!applyBrowseIntent({ owner: expectedOwner, url: visualPreviewUrl() })) {
     throw new Error("Visual Preview fixture browse intent was not admitted.");
   }

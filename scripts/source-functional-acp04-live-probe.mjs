@@ -58,6 +58,19 @@ export {
   waitUntil,
 } from "./source-functional-acp04-observation.mjs";
 
+export const ACP04_PROJECTION_UNAVAILABLE = Object.freeze({
+  kind: "projection-unavailable",
+});
+
+function projectionUnavailable(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    Object.keys(value).length === 1 &&
+    value.kind === ACP04_PROJECTION_UNAVAILABLE.kind
+  );
+}
+
 export function createAcp04Ui(codexVersion) {
   if (!codexSemanticVersion(codexVersion)) fail("codex-version-invalid");
   const display = `Codex \u2014 ${codexVersion}`;
@@ -82,7 +95,7 @@ export function createAcp04Ui(codexVersion) {
   });
 }
 
-export const ACP04_SNAPSHOT_EXPRESSION = `(()=>{const allPanes=[...document.querySelectorAll('section.agent-chat-pane')],panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];if(allPanes.length<1||allPanes.length>2||panes.length!==1)return null;const surfaces=[...panes[0].querySelectorAll('section.chat-surface[aria-label="Agent chat"]')];if(surfaces.length!==1)return null;const s=surfaces[0],projections=[...s.querySelectorAll('section.acp-chat-projection[aria-label^="Agent chat "]')],selects=[...s.querySelectorAll('.composer__controls select')],composers=[...s.querySelectorAll('textarea[aria-label="Message agent"]')];if(projections.length!==1||selects.length!==2)return null;const p=projections[0],selected=x=>x.selectedOptions.length===1?{id:x.value,text:x.selectedOptions[0].textContent.trim()}:null;const alerts=[...s.querySelectorAll('[role="alert"]')].map(x=>{const source=(String(x.className).trim().split(/\\s+/u)[0]||x.tagName.toLowerCase()).replace(/[^a-z0-9_-]/giu,'-').slice(0,64)||'unclassified';return '['+source+'] '+x.innerText.trim()}).filter(x=>!x.endsWith('] '));const named=(s.innerText.match(/ProtocolFailure|HostError::Closed|ACP[^\\n]{0,80}(?:recovery|capacity)/giu)||[]).map(x=>'[named-protocol] '+x);return {projectId:p.dataset.projectId||'',chatId:p.dataset.chatId||'',currentSessionId:p.dataset.currentSessionId||'',projectionRevision:p.dataset.projectionRevision||'',harness:selected(selects[0]),model:selected(selects[1]),harnessStatus:(s.querySelector('.session-state')?.textContent||'').trim(),composerEnabled:composers.length===1&&composers[0].disabled===false,failures:[...new Set([...alerts,...named])],turns:[...p.querySelectorAll(':scope > section.acp-turn')].map(t=>({id:t.dataset.turnId||'',sessionId:t.dataset.sessionId||'',runtimeEpoch:t.dataset.runtimeEpoch||'',ordinal:Number(t.dataset.turnOrdinal),state:t.querySelector(':scope > header [data-turn-status][role="status"]')?.getAttribute('aria-label')||'',items:[...t.querySelectorAll('article[data-item-id][data-message-role]')].map(x=>({id:x.dataset.itemId||'',role:x.dataset.messageRole||'',text:(x.querySelector('.acp-markdown')?.innerText||'').trim()}))}))}})()`;
+export const ACP04_SNAPSHOT_EXPRESSION = `(()=>{const allPanes=[...document.querySelectorAll('section.agent-chat-pane')],panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];if(allPanes.length<1||allPanes.length>2||panes.length!==1)return null;const surfaces=[...panes[0].querySelectorAll('section.chat-surface[aria-label="Agent chat"]')];if(surfaces.length!==1)return null;const s=surfaces[0],projections=[...s.querySelectorAll('section.acp-chat-projection[aria-label^="Agent chat "]')],selects=[...s.querySelectorAll('.composer__controls select')],composers=[...s.querySelectorAll('textarea[aria-label="Message agent"]')];if(selects.length!==2)return null;if(projections.length===0)return {kind:'projection-unavailable'};if(projections.length!==1)return null;const p=projections[0],selected=x=>x.selectedOptions.length===1?{id:x.value,text:x.selectedOptions[0].textContent.trim()}:null;const alerts=[...s.querySelectorAll('[role="alert"]')].map(x=>{const source=(String(x.className).trim().split(/\\s+/u)[0]||x.tagName.toLowerCase()).replace(/[^a-z0-9_-]/giu,'-').slice(0,64)||'unclassified';return '['+source+'] '+x.innerText.trim()}).filter(x=>!x.endsWith('] '));const named=(s.innerText.match(/ProtocolFailure|HostError::Closed|ACP[^\\n]{0,80}(?:recovery|capacity)/giu)||[]).map(x=>'[named-protocol] '+x);return {projectId:p.dataset.projectId||'',chatId:p.dataset.chatId||'',currentSessionId:p.dataset.currentSessionId||'',projectionRevision:p.dataset.projectionRevision||'',harness:selected(selects[0]),model:selected(selects[1]),harnessStatus:(s.querySelector('.session-state')?.textContent||'').trim(),composerEnabled:composers.length===1&&composers[0].disabled===false,failures:[...new Set([...alerts,...named])],turns:[...p.querySelectorAll(':scope > section.acp-turn')].map(t=>({id:t.dataset.turnId||'',sessionId:t.dataset.sessionId||'',runtimeEpoch:t.dataset.runtimeEpoch||'',ordinal:Number(t.dataset.turnOrdinal),state:t.querySelector(':scope > header [data-turn-status][role="status"]')?.getAttribute('aria-label')||'',items:[...t.querySelectorAll('article[data-item-id][data-message-role]')].map(x=>({id:x.dataset.itemId||'',role:x.dataset.messageRole||'',text:(x.querySelector('.acp-markdown')?.innerText||'').trim()}))}))}})()`;
 
 export function freshChatReadyExpression(previousChatId) {
   if (
@@ -98,9 +111,13 @@ const RUNTIME_OBSERVATION_EXPRESSION =
   '(()=>{const invoke=window.__TAURI_INTERNALS__?.invoke;if(typeof invoke!=="function")throw new Error("Sage invoke unavailable");return invoke("get_codex_runtime_identity",{})})()';
 
 export async function probeAcp04Snapshot(cdp, deadline) {
-  return validateSnapshot(
-    await cdp.evaluate(ACP04_SNAPSHOT_EXPRESSION, operationDeadline(deadline)),
+  const value = await cdp.evaluate(
+    ACP04_SNAPSHOT_EXPRESSION,
+    operationDeadline(deadline),
   );
+  return projectionUnavailable(value)
+    ? ACP04_PROJECTION_UNAVAILABLE
+    : validateSnapshot(value);
 }
 
 function validateEchoes(echoes) {
@@ -340,6 +357,7 @@ export async function runAcp04ModeA(
   await driver.selectCodex();
   await driver.waitForCodexReady?.();
   const initial = await driver.snapshot();
+  if (projectionUnavailable(initial)) fail("initial-projection-unavailable");
   let state = createModeAState(echoes, initial, deps.codexVersion);
   const observations = [];
   for (const echo of echoes) {
@@ -350,6 +368,7 @@ export async function runAcp04ModeA(
     const accepted = await waitUntil(
       async () => {
         const snapshot = await driver.snapshot();
+        if (projectionUnavailable(snapshot)) return null;
         const next = acceptModeASnapshot(state, snapshot);
         return next.phase === before ? null : { next, snapshot };
       },

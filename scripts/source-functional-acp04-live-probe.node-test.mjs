@@ -17,6 +17,7 @@ import {
   ACP04_MODE_B,
   ACP04_MODE_B_CANCEL_PROMPT,
   ACP04_MODE_B_RECOVERY_ECHO,
+  ACP04_PROJECTION_UNAVAILABLE,
   ACP04_SNAPSHOT_EXPRESSION,
   acceptModeBSnapshot,
   acceptModeASnapshot,
@@ -460,8 +461,21 @@ test("Mode B uses the exact Cancel control before the fourth normal composer tur
 });
 
 test("Mode A rejects session churn and named protocol/recovery failures", () => {
+  const initial = createModeAState(
+    ECHOES,
+    snapshot({ currentSessionId: "" }),
+    CODEX_VERSION,
+  );
+  assert.throws(
+    () =>
+      acceptModeASnapshot(
+        initial,
+        snapshot({ projectId: "project-other", projectionRevision: "2" }),
+      ),
+    /acp04-identity-churn/,
+  );
   const first = acceptModeASnapshot(
-    createModeAState(ECHOES, snapshot({ currentSessionId: "" }), CODEX_VERSION),
+    initial,
     snapshot({
       projectionRevision: "2",
       turns: [completedTurn(1, `Reply with exactly: ${ECHOES[0]}`, ECHOES[0])],
@@ -481,6 +495,26 @@ test("Mode A rejects session churn and named protocol/recovery failures", () => 
               `Reply with exactly: ${ECHOES[1]}`,
               ECHOES[1],
               "session-2",
+            ),
+          ],
+        }),
+      ),
+    /acp04-session-churn/,
+  );
+  assert.throws(
+    () =>
+      acceptModeASnapshot(
+        first,
+        snapshot({
+          projectionRevision: "3",
+          turns: [
+            completedTurn(1, `Reply with exactly: ${ECHOES[0]}`, ECHOES[0]),
+            completedTurn(
+              2,
+              `Reply with exactly: ${ECHOES[1]}`,
+              ECHOES[1],
+              "session-1",
+              "8",
             ),
           ],
         }),
@@ -574,6 +608,155 @@ test("snapshot probe propagates malformed observations instead of retrying them"
       ),
     /acp04-snapshot-invalid:turns/,
   );
+  for (const malformed of [
+    null,
+    {},
+    { kind: "projection-unavailable", extra: true },
+  ]) {
+    await assert.rejects(
+      () =>
+        probeAcp04Snapshot(
+          { evaluate: async () => malformed },
+          Date.now() + 1_000,
+        ),
+      /acp04-snapshot-invalid/,
+    );
+  }
+});
+
+test("snapshot DOM classifies only the unique focused surface with zero projections", () => {
+  const controls =
+    '<div class="composer__controls"><select><option selected>Codex</option></select><select><option selected>gpt-5.6</option></select></div><textarea aria-label="Message agent"></textarea>';
+  const surface = `<section class="chat-surface" aria-label="Agent chat">${controls}</section>`;
+  const pane = `<section class="agent-chat-pane agent-chat-pane--focused">${surface}</section>`;
+  const evaluate = (markup) => {
+    const dom = new JSDOM(`<!doctype html>${markup}`);
+    const previous = { document: globalThis.document };
+    globalThis.document = dom.window.document;
+    try {
+      return eval(ACP04_SNAPSHOT_EXPRESSION);
+    } finally {
+      globalThis.document = previous.document;
+      dom.window.close();
+    }
+  };
+
+  assert.deepEqual(evaluate(pane), ACP04_PROJECTION_UNAVAILABLE);
+  assert.equal(
+    evaluate(
+      `${pane}<section class="agent-chat-pane"></section><section class="agent-chat-pane"></section>`,
+    ),
+    null,
+  );
+  assert.equal(evaluate(`${pane}${pane}`), null);
+  assert.equal(
+    evaluate(
+      `<section class="agent-chat-pane agent-chat-pane--focused">${surface}${surface}</section>`,
+    ),
+    null,
+  );
+  assert.equal(
+    evaluate(
+      `<section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat">${controls}<section class="acp-chat-projection" aria-label="Agent chat one"></section><section class="acp-chat-projection" aria-label="Agent chat two"></section></section></section>`,
+    ),
+    null,
+  );
+  assert.equal(
+    evaluate(
+      `<section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat">${controls.replace("<select><option selected>gpt-5.6</option></select>", "")}</section></section>`,
+    ),
+    null,
+  );
+});
+
+function modeADriver(snapshotFor, onSend = () => {}) {
+  return {
+    waitForEditorReady: async () => undefined,
+    enterAgentFromEditor: async () => undefined,
+    waitForSeededAgentChat: async () => undefined,
+    seededChatId: async () => "chat-seeded",
+    createFreshChat: async () => undefined,
+    waitForFreshChat: async () => undefined,
+    waitForCodexSelectable: async () => undefined,
+    selectCodex: async () => undefined,
+    snapshot: snapshotFor,
+    fillPrompt: async () => undefined,
+    waitForSendReady: async () => undefined,
+    send: async () => onSend(),
+    runtimeObservation: async () => runtimeObservation(),
+  };
+}
+
+test("Mode A retries only a post-send projection-unavailable observation without resending", async () => {
+  let sent = 0;
+  let postSendObservations = 0;
+  const driver = modeADriver(
+    async () => {
+      if (sent === 0) return snapshot({ currentSessionId: "" });
+      if (postSendObservations++ === 0) return ACP04_PROJECTION_UNAVAILABLE;
+      return snapshot({
+        currentSessionId: "session-1",
+        projectionRevision: String(sent + 1),
+        turns: ECHOES.slice(0, sent).map((echo, index) =>
+          completedTurn(index + 1, `Reply with exactly: ${echo}`, echo),
+        ),
+      });
+    },
+    () => {
+      sent += 1;
+    },
+  );
+
+  const result = await runAcp04ModeA({}, Date.now() + 5_000, ECHOES, {
+    driver,
+    codexVersion: CODEX_VERSION,
+  });
+  assert.equal(result.state.phase, "complete");
+  assert.equal(sent, 2);
+  assert.equal(postSendObservations, 3);
+});
+
+test("Mode A times out persistent post-send projection-unavailable without resending", async () => {
+  let sent = 0;
+  const driver = modeADriver(
+    async () =>
+      sent === 0
+        ? snapshot({ currentSessionId: "" })
+        : ACP04_PROJECTION_UNAVAILABLE,
+    () => {
+      sent += 1;
+    },
+  );
+
+  await assert.rejects(
+    () =>
+      runAcp04ModeA({}, Date.now() + 20, ECHOES, {
+        driver,
+        codexVersion: CODEX_VERSION,
+      }),
+    /acp04-turn-timeout/,
+  );
+  assert.equal(sent, 1);
+});
+
+test("Mode A rejects an initial projection-unavailable observation without dispatching", async () => {
+  let sent = 0;
+  const driver = modeADriver(
+    async () => ACP04_PROJECTION_UNAVAILABLE,
+    () => {
+      sent += 1;
+    },
+  );
+
+  await assert.rejects(
+    () =>
+      runAcp04ModeA({}, Date.now() + 1_000, ECHOES, {
+        driver,
+        codexVersion: CODEX_VERSION,
+      }),
+    /acp04-initial-projection-unavailable/,
+  );
+  assert.equal(sent, 0);
 });
 
 test("Mode A uses behavior seams for Editor to one seeded Agent chat", async () => {

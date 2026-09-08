@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { createElement, StrictMode } from "react";
 
 import { clearAcpProjectionRegistry } from "../../../src/app/acpProjectionRegistry";
@@ -12,6 +12,7 @@ import {
   browseSessionForOwner,
   clearBrowseSessions,
   harnessBrowseOwner,
+  listBrowseSessions,
   setHarnessBrowseOwner,
   type HarnessBrowseOwner,
 } from "../../../src/features/preview/harnessBrowse";
@@ -288,22 +289,46 @@ describe("visual scenario surface ownership", () => {
     expect(browseSessionForOwner(secondOwner)?.href).toContain("chat=2");
   });
 
-  it("admits the Preview scenario's authoritative owner before its browse intent", async () => {
+  it("does not self-seed Preview ownership before the Chat shell mounts", async () => {
     const scenario = buildVisualScenario("preview");
     const chat = scenario.pages[0];
     if (!chat) throw new Error("Preview fixture requires a Chat.");
-    await installVisualScenario("preview");
-    const owner = harnessBrowseOwner();
-    expect(owner).toEqual({
+    await expect(installVisualScenario("preview")).rejects.toThrow(
+      "Visual Preview fixture owner was not established.",
+    );
+    expect(harnessBrowseOwner()).toBeNull();
+    const expectedOwner = {
       projectId: PROJECT_ID,
       projectGeneration: GENERATION,
       transitionEpoch: 0,
       chatId: chat.chatId,
       sessionId: SESSION_ID,
       runtimeEpoch: RUNTIME_EPOCH,
-    });
-    if (!owner) throw new Error("Preview fixture browse owner was absent.");
-    expect(browseSessionForOwner(owner)?.href).toBe(visualPreviewUrl());
+    };
+    expect(browseSessionForOwner(expectedOwner)).toBeNull();
+  });
+
+  it("rejects a bounded Preview wait when the mounted owner has the wrong tuple", async () => {
+    const scenario = buildVisualScenario("preview");
+    const chat = scenario.pages[0];
+    if (!chat) throw new Error("Preview fixture requires a Chat.");
+    const installing = installVisualScenario("preview");
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+    const wrongOwner: HarnessBrowseOwner = {
+      projectId: PROJECT_ID,
+      projectGeneration: GENERATION,
+      transitionEpoch: 0,
+      chatId: chat.chatId,
+      sessionId: "wrong-session",
+      runtimeEpoch: RUNTIME_EPOCH,
+    };
+    setHarnessBrowseOwner(wrongOwner, [chat.chatId]);
+    await expect(installing).rejects.toThrow(
+      "Visual Preview fixture owner was not established.",
+    );
+    expect(browseSessionForOwner(wrongOwner)).toBeNull();
   });
 
   it("keeps the Preview fixture owner and selected tab through mounted Chat handoff", async () => {
@@ -336,7 +361,7 @@ describe("visual scenario surface ownership", () => {
     );
   });
 
-  it("reapplies Preview browse only after the StrictMode Workbench shell establishes its owner", async () => {
+  it("waits through the StrictMode lazy Chat bootstrap before admitting Preview browse", async () => {
     localStorage.setItem(
       "sage.workbench.layout.v1",
       JSON.stringify({
@@ -345,15 +370,19 @@ describe("visual scenario surface ownership", () => {
         windowMode: "agent",
       }),
     );
+    const installing = installVisualScenario("preview");
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+    expect(harnessBrowseOwner()).toBeNull();
     const view = render(
       createElement(StrictMode, null, createElement(Workbench)),
     );
+    expect(view.container.querySelector(".agent-chat-panes")).toBeNull();
+    await installing;
     await waitFor(() =>
       expect(view.container.querySelector(".agent-chat-panes")).not.toBeNull(),
     );
-    await act(async () => {
-      await installVisualScenario("preview");
-    });
     await waitFor(() =>
       expect(view.getByRole("tab", { name: "Preview" })).toHaveAttribute(
         "aria-selected",
@@ -363,6 +392,18 @@ describe("visual scenario surface ownership", () => {
     await waitFor(() =>
       expect(view.getByTitle("Sage browser")).toBeInTheDocument(),
     );
+    const owner = harnessBrowseOwner();
+    expect(owner).toEqual({
+      projectId: PROJECT_ID,
+      projectGeneration: GENERATION,
+      transitionEpoch: 0,
+      chatId: "visual-chat-preview",
+      sessionId: SESSION_ID,
+      runtimeEpoch: RUNTIME_EPOCH,
+    });
+    if (!owner) throw new Error("Preview fixture browse owner was absent.");
+    expect(browseSessionForOwner(owner)?.href).toBe(visualPreviewUrl());
+    expect(listBrowseSessions()).toHaveLength(1);
   });
 
   it("keeps Preview selected and idle after the mounted fixture clears browsing", async () => {
