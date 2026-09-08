@@ -41,6 +41,7 @@ import {
   AV01_PREVIEW_SNAPSHOT,
   AV01_PREVIEW_UI,
   decodeAv01FixtureProcessHelperOutput,
+  fixtureGitIdentity,
   previewManualOriginAction,
   runFixtureProcessHelper,
   runAv01PreviewJourney,
@@ -96,6 +97,206 @@ function fixtureHelperOptions() {
     },
     sourceRoot: "C:\\source",
   };
+}
+
+function fixtureGitOptions() {
+  return {
+    git: {
+      path: "C:\\Program Files\\Git\\cmd\\git.exe",
+      bytes: 99,
+      sha256: SHA,
+    },
+    fixture: { path: "C:\\fixture-project" },
+    output: "C:\\output",
+  };
+}
+
+function fixtureGitDependencies(outputs, overrides = {}) {
+  const calls = [];
+  return {
+    calls,
+    command: "C:\\Windows\\System32\\cmd.exe",
+    validateGit: () => undefined,
+    hashGit: () => ({ bytes: 99, sha256: SHA }),
+    runTool: async (...args) => {
+      calls.push(args);
+      return outputs.shift();
+    },
+    ...overrides,
+  };
+}
+
+test("AV01 fixture Git waits for captured CMD ownership before fixed authenticated reads", async () => {
+  const dependencies = fixtureGitDependencies(["", `${GIT}\r\n${GIT}\r\n`]);
+  await expectFixtureGit(
+    fixtureGitIdentity(fixtureGitOptions(), 999, dependencies),
+    { commit: GIT, tree: GIT },
+  );
+  assert.deepEqual(
+    dependencies.calls.map(([command, args, deadline, output, options]) => ({
+      command,
+      args,
+      deadline,
+      output,
+      options,
+    })),
+    [
+      {
+        command: "C:\\Windows\\System32\\cmd.exe",
+        args: [
+          "/d",
+          "/s",
+          "/c",
+          'set /p "SAGE_AV01_GIT_ACK=" && "C:\\Program Files\\Git\\cmd\\git.exe" status --porcelain=v1 --untracked-files=all',
+        ],
+        deadline: 999,
+        output: "C:\\output",
+        options: {
+          commandRole: "av01-fixture-read-only-git",
+          expectedExecutablePath: "C:\\Windows\\System32\\cmd.exe",
+          identityHandshake: "captured-owner\r\n",
+          maxOutputBytes: 4096,
+          spawnCwd: "C:\\fixture-project",
+          windowsVerbatimArguments: true,
+        },
+      },
+      {
+        command: "C:\\Windows\\System32\\cmd.exe",
+        args: [
+          "/d",
+          "/s",
+          "/c",
+          'set /p "SAGE_AV01_GIT_ACK=" && "C:\\Program Files\\Git\\cmd\\git.exe" rev-parse HEAD "HEAD^{tree}"',
+        ],
+        deadline: 999,
+        output: "C:\\output",
+        options: {
+          commandRole: "av01-fixture-read-only-git",
+          expectedExecutablePath: "C:\\Windows\\System32\\cmd.exe",
+          identityHandshake: "captured-owner\r\n",
+          maxOutputBytes: 4096,
+          spawnCwd: "C:\\fixture-project",
+          windowsVerbatimArguments: true,
+        },
+      },
+    ],
+  );
+  assert.equal(
+    dependencies.calls
+      .flatMap((call) => call[1])
+      .join(" ")
+      .includes("call "),
+    false,
+  );
+});
+
+test("AV01 fixture Git rejects unsafe or changed bindings before spawning and retains churn rejection", async () => {
+  for (const path of ["C:\\Git&bad\\git.exe", "C:\\Git\r\ngit.exe"]) {
+    const options = fixtureGitOptions();
+    options.git.path = path;
+    const dependencies = fixtureGitDependencies([]);
+    await assert.rejects(
+      fixtureGitIdentity(options, 999, dependencies),
+      /fixture-git-invalid/,
+    );
+    assert.equal(dependencies.calls.length, 0);
+  }
+  const changed = fixtureGitDependencies([], {
+    hashGit: () => ({ bytes: 100, sha256: SHA }),
+  });
+  await assert.rejects(
+    fixtureGitIdentity(fixtureGitOptions(), 999, changed),
+    /fixture-git-invalid/,
+  );
+  assert.equal(changed.calls.length, 0);
+  await assert.rejects(
+    fixtureGitIdentity(
+      fixtureGitOptions(),
+      999,
+      fixtureGitDependencies(["dirty", `${GIT}\n${GIT}\n`]),
+    ),
+    /fixture-git-churn/,
+  );
+});
+
+test("AV01 fixture Git negative matrix fails closed at the intended boundary", async () => {
+  const unsafeCharacters = [
+    '"',
+    "%",
+    "!",
+    "^",
+    "&",
+    "|",
+    "<",
+    ">",
+    "(",
+    ")",
+    "\r",
+    "\n",
+    "\0",
+  ];
+  const cases = [
+    ...unsafeCharacters.map((character) => ({
+      label: `unsafe CMD character ${JSON.stringify(character)}`,
+      options: () => {
+        const options = fixtureGitOptions();
+        options.git.path = `C:\\Git${character}unsafe\\git.exe`;
+        return options;
+      },
+      dependencies: () => fixtureGitDependencies([]),
+      error: /fixture-git-invalid/u,
+      runs: 0,
+    })),
+    {
+      label: "distinct SHA mismatch",
+      options: fixtureGitOptions,
+      dependencies: () =>
+        fixtureGitDependencies([], {
+          hashGit: () => ({ bytes: 99, sha256: "d".repeat(64) }),
+        }),
+      error: /fixture-git-invalid/u,
+      runs: 0,
+    },
+    {
+      label: "post-read binding mutation",
+      options: fixtureGitOptions,
+      dependencies: () => {
+        let validations = 0;
+        return fixtureGitDependencies(["", `${GIT}\r\n${GIT}\r\n`], {
+          hashGit: () => {
+            validations += 1;
+            return {
+              bytes: 99,
+              sha256: validations === 1 ? SHA : "e".repeat(64),
+            };
+          },
+        });
+      },
+      error: /fixture-git-invalid/u,
+      runs: 2,
+    },
+    {
+      label: "malformed identity output",
+      options: fixtureGitOptions,
+      dependencies: () => fixtureGitDependencies(["", "not-a-git-identity\n"]),
+      error: /fixture-git-churn/u,
+      runs: 2,
+    },
+  ];
+
+  for (const entry of cases) {
+    const dependencies = entry.dependencies();
+    await assert.rejects(
+      fixtureGitIdentity(entry.options(), 999, dependencies),
+      entry.error,
+      entry.label,
+    );
+    assert.equal(dependencies.calls.length, entry.runs, entry.label);
+  }
+});
+
+async function expectFixtureGit(promise, expected) {
+  assert.deepEqual(await promise, expected);
 }
 
 function fixtureHelperChild({ stdout = "", stderr = "", code, emit = true }) {

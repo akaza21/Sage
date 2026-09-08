@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,6 +11,7 @@ import {
   operationDeadline,
   runBoundedTool,
   revalidateAttachedPage,
+  validatePlainCanonicalExecutable,
   writeContainedBytes,
   writeContainedText,
   writePendingJourneyReceipt,
@@ -36,6 +37,7 @@ import { readAv01PreviewFixtureIdentity } from "./source-functional-av01-preview
 
 const MAX_SNAPSHOTS = 32;
 const MAX_TEXT = 1024;
+const CMD_UNSAFE_PATH_CHARACTER = /["%!^&|<>()\r\n\0]/u;
 
 function fail(code) {
   throw new Error(`av01-preview-${code}`);
@@ -557,30 +559,85 @@ function guardNativeLogs(options) {
   }
 }
 
-async function fixtureGitIdentity(options, deadline) {
-  const git = hashFile(options.git.path, 256 * 1024 * 1024);
+function fixtureGitCommandInterpreter(dependencies = {}) {
+  const command =
+    dependencies.command ??
+    path.join(
+      dependencies.systemRoot ??
+        process.env.SystemRoot ??
+        process.env.WINDIR ??
+        "C:\\Windows",
+      "System32",
+      "cmd.exe",
+    );
+  if (dependencies.command) return command;
+  if (
+    !path.win32.isAbsolute(command) ||
+    path.basename(command).toLowerCase() !== "cmd.exe"
+  )
+    fail("fixture-git-invalid");
+  const canonical = (realpathSync.native ?? realpathSync)(command);
+  if (
+    path.win32.normalize(canonical).toLowerCase() !==
+    path.win32.normalize(command).toLowerCase()
+  )
+    fail("fixture-git-invalid");
+  for (let current = canonical; ; current = path.dirname(current)) {
+    if (lstatSync(current).isSymbolicLink()) fail("fixture-git-invalid");
+    if (path.dirname(current) === current) return canonical;
+  }
+}
+
+function validateFixtureGit(options, dependencies = {}) {
+  if (
+    typeof options.git.path !== "string" ||
+    CMD_UNSAFE_PATH_CHARACTER.test(options.git.path)
+  )
+    fail("fixture-git-invalid");
+  (dependencies.validateGit ?? validatePlainCanonicalExecutable)(
+    options.git.path,
+    options.git,
+  );
+  const git = (dependencies.hashGit ?? hashFile)(
+    options.git.path,
+    256 * 1024 * 1024,
+  );
   if (git.bytes !== options.git.bytes || git.sha256 !== options.git.sha256)
     fail("fixture-git-invalid");
+}
+
+export async function fixtureGitIdentity(options, deadline, dependencies = {}) {
+  validateFixtureGit(options, dependencies);
+  const command = fixtureGitCommandInterpreter(dependencies);
+  const runTool = dependencies.runTool ?? runBoundedTool;
   const run = (argumentsFor, maxOutputBytes) =>
-    runBoundedTool(options.git.path, argumentsFor, deadline, options.output, {
+    runTool(command, argumentsFor, deadline, options.output, {
       commandRole: "av01-fixture-read-only-git",
-      expectedExecutablePath: options.git.path,
+      expectedExecutablePath: command,
+      identityHandshake: "captured-owner\r\n",
       maxOutputBytes,
+      spawnCwd: options.fixture.path,
+      windowsVerbatimArguments: true,
     });
   const status = await run(
     [
-      "-C",
-      options.fixture.path,
-      "status",
-      "--porcelain=v1",
-      "--untracked-files=all",
+      "/d",
+      "/s",
+      "/c",
+      `set /p "SAGE_AV01_GIT_ACK=" && "${options.git.path}" status --porcelain=v1 --untracked-files=all`,
     ],
     4096,
   );
   const identity = await run(
-    ["-C", options.fixture.path, "rev-parse", "HEAD", "HEAD^{tree}"],
+    [
+      "/d",
+      "/s",
+      "/c",
+      `set /p "SAGE_AV01_GIT_ACK=" && "${options.git.path}" rev-parse HEAD "HEAD^{tree}"`,
+    ],
     4096,
   );
+  validateFixtureGit(options, dependencies);
   const lines = identity.trim().split(/\r?\n/u);
   if (
     status !== "" ||
