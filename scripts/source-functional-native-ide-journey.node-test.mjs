@@ -48,6 +48,7 @@ import {
 } from "./source-functional-native-ide-journey.mjs";
 import { revalidateFreshProfile } from "./source-functional-acp04-evidence.mjs";
 import { parseAcp04ProbeArguments } from "./source-functional-acp04-live-contract.mjs";
+import { parseAv01PreviewArguments } from "./source-functional-av01-preview-contract.mjs";
 
 function evaluateBrowserExpression(expression, globals) {
   const names = Object.keys(globals);
