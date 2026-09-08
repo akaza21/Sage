@@ -400,15 +400,155 @@ function Capture-OwnedRuntimeOrQuarantine(
   throw "The $Role runtime identity could not be captured; the launched runtime reached terminal zero."
 }
 
+function Test-StartupIncompleteIdentityFailure([Management.Automation.ErrorRecord]$Failure) {
+  return $null -ne $Failure -and
+    $Failure.Exception -is [Management.Automation.RuntimeException] -and
+    $Failure.Exception.Message -eq "A remembered process lacks executable or creation identity."
+}
+
+function Get-StartupIncompleteIdentityProcessId([object]$Row, [string[]]$Names) {
+  foreach ($name in $Names) {
+    try {
+      $property = $Row.PSObject.Properties[$name]
+      if ($null -eq $property) { continue }
+      $candidate = [long]$property.Value
+      if ($candidate -ge 1 -and $candidate -le [int]::MaxValue) { return [int]$candidate }
+    } catch { }
+  }
+  return $null
+}
+
+function Test-StartupIncompleteIdentityFieldPresent([object]$Row, [string]$Name) {
+  try {
+    $property = $Row.PSObject.Properties[$Name]
+    return $null -ne $property -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)
+  } catch {
+    return $false
+  }
+}
+
+function Add-StartupIncompleteIdentityFact(
+  [Management.Automation.ErrorRecord]$Failure,
+  [ValidateSet("update-root", "update-descendant", "frontend-listener")][string]$Stage,
+  [object]$Row,
+  [AllowNull()][Nullable[bool]]$IsRoot
+) {
+  if (-not (Test-StartupIncompleteIdentityFailure $Failure)) { return $false }
+  if ($Failure.Exception.Data.Contains("SageStartupIncompleteIdentity")) { return $true }
+  $Failure.Exception.Data["SageStartupIncompleteIdentity"] = [ordered]@{
+    stage = $Stage
+    processId = Get-StartupIncompleteIdentityProcessId $Row @("ProcessId", "processId")
+    parentProcessId = Get-StartupIncompleteIdentityProcessId $Row @("ParentProcessId", "parentProcessId")
+    isRoot = $IsRoot
+    executablePathPresent = Test-StartupIncompleteIdentityFieldPresent $Row "ExecutablePath"
+    creationDatePresent = Test-StartupIncompleteIdentityFieldPresent $Row "CreationDate"
+  }
+  return $true
+}
+
+function Get-ValidatedStartupIncompleteIdentityFact([Management.Automation.ErrorRecord]$Failure) {
+  if (-not (Test-StartupIncompleteIdentityFailure $Failure)) { return $null }
+  if (-not $Failure.Exception.Data.Contains("SageStartupIncompleteIdentity")) { return $null }
+  $fact = $Failure.Exception.Data["SageStartupIncompleteIdentity"]
+  if ($fact -isnot [Collections.IDictionary]) { return $null }
+  $expected = @(
+    "stage", "processId", "parentProcessId", "isRoot",
+    "executablePathPresent", "creationDatePresent"
+  )
+  if ($fact.Count -ne $expected.Count) { return $null }
+  foreach ($name in $expected) {
+    if (-not $fact.Contains($name)) { return $null }
+  }
+  if ([string]$fact.stage -notin @("update-root", "update-descendant", "frontend-listener")) { return $null }
+  foreach ($name in @("processId", "parentProcessId")) {
+    $value = $fact[$name]
+    if ($null -ne $value -and ($value -isnot [int] -or $value -lt 1)) { return $null }
+  }
+  if ($null -ne $fact.isRoot -and $fact.isRoot -isnot [bool]) { return $null }
+  foreach ($name in @("executablePathPresent", "creationDatePresent")) {
+    if ($fact[$name] -isnot [bool]) { return $null }
+  }
+  return [ordered]@{
+    stage = [string]$fact.stage
+    processId = $fact.processId
+    parentProcessId = $fact.parentProcessId
+    isRoot = $fact.isRoot
+    executablePathPresent = [bool]$fact.executablePathPresent
+    creationDatePresent = [bool]$fact.creationDatePresent
+  }
+}
+
+function Get-StartupIncompleteIdentityDiagnosticPath([string]$EvidenceRoot) {
+  $root = [IO.Path]::GetFullPath($EvidenceRoot)
+  $target = [IO.Path]::GetFullPath((Join-Path $root "startup-incomplete-identity.json"))
+  if (-not [string]::Equals((Split-Path -Parent $target), $root, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Startup incomplete-identity diagnostic path is not contained."
+  }
+  Assert-PlainContainedDirectory $root $root
+  return $target
+}
+
+function Write-StartupIncompleteIdentityDiagnostic(
+  [string]$EvidenceRoot,
+  [Management.Automation.ErrorRecord]$Failure,
+  [AllowNull()][Collections.IDictionary]$ViteRuntime
+) {
+  $fact = Get-ValidatedStartupIncompleteIdentityFact $Failure
+  if ($null -eq $fact) { return $false }
+  $record = [ordered]@{
+    schemaVersion = 1
+    category = "startup-incomplete-identity"
+    fact = $fact
+    rootTupleAvailable = $false
+  }
+  if ($null -ne $ViteRuntime -and $null -ne $ViteRuntime.identity) {
+    $record.rootTupleAvailable = $true
+    $record.viteRoot = Get-CleanupRootTuple $ViteRuntime.identity
+    if ($null -ne $fact.processId -and $null -ne $record.viteRoot.processId) {
+      $fact.isRoot = [int]$fact.processId -eq [int]$record.viteRoot.processId
+    }
+  }
+  $bytes = [Text.Encoding]::UTF8.GetBytes(($record | ConvertTo-Json -Compress))
+  if ($bytes.Length -gt 4096) { throw "Startup incomplete-identity diagnostic exceeds its byte limit." }
+  $stream = $null
+  try {
+    $stream = [IO.File]::Open(
+      (Get-StartupIncompleteIdentityDiagnosticPath $EvidenceRoot),
+      [IO.FileMode]::CreateNew,
+      [IO.FileAccess]::Write,
+      [IO.FileShare]::None
+    )
+    $stream.Write($bytes, 0, $bytes.Length)
+  } finally {
+    if ($null -ne $stream) { $stream.Dispose() }
+  }
+  return $true
+}
+
 function Update-OwnedRuntimeTree([Collections.IDictionary]$Runtime) {
   $rows = @(Get-FootprintProcessSnapshot)
-  [void](Get-FootprintRootIdentity `
-      -RootProcessId ([int]$Runtime.identity.processId) `
-      -ExpectedExecutablePath ([string]$Runtime.identity.executablePath) `
-      -ExpectedCreationDate ([string]$Runtime.identity.creationDate) `
-      -ProcessRows $rows)
+  try {
+    [void](Get-FootprintRootIdentity `
+        -RootProcessId ([int]$Runtime.identity.processId) `
+        -ExpectedExecutablePath ([string]$Runtime.identity.executablePath) `
+        -ExpectedCreationDate ([string]$Runtime.identity.creationDate) `
+        -ProcessRows $rows)
+  } catch {
+    try {
+      $rootRow = @($rows | Where-Object { [int]$_.ProcessId -eq [int]$Runtime.identity.processId }) | Select-Object -First 1
+      [void](Add-StartupIncompleteIdentityFact $_ "update-root" $rootRow $true)
+    } catch { }
+    throw
+  }
   foreach ($row in @(Get-FootprintDescendants ([int]$Runtime.identity.processId) $rows)) {
-    [void](Add-FootprintRememberedIdentity $Runtime.store $row)
+    $isRoot = $false
+    try { $isRoot = [int]$row.ProcessId -eq [int]$Runtime.identity.processId } catch { }
+    try {
+      [void](Add-FootprintRememberedIdentity $Runtime.store $row)
+    } catch {
+      try { [void](Add-StartupIncompleteIdentityFact $_ "update-descendant" $row $isRoot) } catch { }
+      throw
+    }
   }
 }
 
@@ -418,7 +558,12 @@ function Get-FrontendListenerIdentity([Collections.IDictionary]$Contract) {
   if ($listeners.Count -eq 0) { return $null }
   $rows = @(Get-FootprintProcessSnapshot | Where-Object { [int]$_.ProcessId -eq [int]$listeners[0].OwningProcess })
   if ($rows.Count -ne 1) { return $null }
-  return ConvertTo-FootprintProcessIdentity $rows[0]
+  try {
+    return ConvertTo-FootprintProcessIdentity $rows[0]
+  } catch {
+    try { [void](Add-StartupIncompleteIdentityFact $_ "frontend-listener" $rows[0] $null) } catch { }
+    throw
+  }
 }
 
 function Test-OwnedRuntimeProcessIdentity(
@@ -973,6 +1118,7 @@ try {
   if (-not (Test-Path -LiteralPath $pendingReceipt -PathType Leaf)) { throw "Native IDE journey did not retain its pending machine receipt." }
 } catch {
   $journeyFailure = $_
+  try { [void](Write-StartupIncompleteIdentityDiagnostic $EvidenceRoot $journeyFailure $viteRuntime) } catch { }
 } finally {
   [Environment]::SetEnvironmentVariable("SAGE_DISPOSABLE_PROFILE_ROOT", $previous.profile, "Process")
   [Environment]::SetEnvironmentVariable("SAGE_PROJECT_ROOT", $previous.project, "Process")

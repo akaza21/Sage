@@ -161,6 +161,309 @@ test("PowerShell 5 ACP-04 profile identity is BOM-free and revalidates", () => {
   }
 });
 
+test("Windows startup incomplete-identity diagnostics retain only safe attributed facts", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-startup-identity-"));
+  const powershell = path.join(
+    process.env.SystemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  const wrapper = path.resolve(
+    "scripts",
+    "run-source-functional-native-ide-journey.ps1",
+  );
+  try {
+    const quote = (value) => `'${value.replaceAll("'", "''")}'`;
+    const names = [
+      "Assert-PlainContainedDirectory",
+      "Get-CleanupRootTuple",
+      "Test-StartupIncompleteIdentityFailure",
+      "Get-StartupIncompleteIdentityProcessId",
+      "Test-StartupIncompleteIdentityFieldPresent",
+      "Add-StartupIncompleteIdentityFact",
+      "Get-ValidatedStartupIncompleteIdentityFact",
+      "Get-StartupIncompleteIdentityDiagnosticPath",
+      "Write-StartupIncompleteIdentityDiagnostic",
+      "Update-OwnedRuntimeTree",
+      "Get-FrontendListenerIdentity",
+    ];
+    const source = [
+      "$ErrorActionPreference = 'Stop'",
+      "Set-StrictMode -Version Latest",
+      "$tokens = $null; $errors = $null",
+      `$ast = [Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)}, [ref]$tokens, [ref]$errors)`,
+      `foreach ($name in @(${names.map(quote).join(", ")})) {`,
+      "  $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)",
+      '  if ($null -eq $fn) { throw "missing $name" }',
+      "  Invoke-Expression $fn.Extent.Text",
+      "}",
+      "$update = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Update-OwnedRuntimeTree' }, $true).Extent.Text",
+      "$listener = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-FrontendListenerIdentity' }, $true).Extent.Text",
+      "$message = 'A remembered process lacks executable or creation identity.'",
+      "$row = [pscustomobject]@{ ProcessId = 101; ParentProcessId = 100; ExecutablePath = ''; CreationDate = $null; CommandLine = 'hostile-command'; Environment = 'hostile-environment' }",
+      "function New-Incomplete([object]$target) { return [Management.Automation.ErrorRecord]::new([Management.Automation.RuntimeException]::new($message), 'incomplete', [Management.Automation.ErrorCategory]::InvalidData, $target) }",
+      "$facts = @()",
+      "foreach ($stage in @('update-root', 'update-descendant', 'frontend-listener')) {",
+      "  $failure = New-Incomplete $row; $beforeMessage = $failure.Exception.Message; $beforeType = $failure.Exception.GetType().FullName",
+      "  $failure.Exception.Data['hostile-extra'] = 'hostile-extra'",
+      "  $isRoot = if ($stage -eq 'update-root') { $true } elseif ($stage -eq 'update-descendant') { $false } else { $null }",
+      "  $attached = Add-StartupIncompleteIdentityFact $failure $stage $row $isRoot",
+      "  $facts += [ordered]@{ stage = $stage; attached = $attached; message = $failure.Exception.Message; type = $failure.Exception.GetType().FullName; beforeMessage = $beforeMessage; beforeType = $beforeType; fact = Get-ValidatedStartupIncompleteIdentityFact $failure }",
+      "}",
+      "$diagnosticFailure = New-Incomplete $row; [void](Add-StartupIncompleteIdentityFact $diagnosticFailure 'update-root' $row $true); $diagnosticFailure.Exception.Data['hostile-extra'] = 'hostile-extra'",
+      `$viteRuntime = [ordered]@{ identity = [ordered]@{ processId = 101; executablePath = ${quote(powershell)}; creationDate = '2026-09-08T00:00:00.000Z' } }`,
+      `$written = Write-StartupIncompleteIdentityDiagnostic ${quote(root)} $diagnosticFailure $viteRuntime`,
+      `$diagnosticPath = Join-Path ${quote(root)} 'startup-incomplete-identity.json'; $diagnosticText = Get-Content -LiteralPath $diagnosticPath -Raw; $diagnostic = $diagnosticText | ConvertFrom-Json`,
+      "$noOverwrite = $false; try { [void](Write-StartupIncompleteIdentityDiagnostic " +
+        quote(root) +
+        " $diagnosticFailure $viteRuntime) } catch { $noOverwrite = $true }",
+      "$spoofFailure = New-Incomplete $row; [void](Add-StartupIncompleteIdentityFact $spoofFailure 'update-root' $row $true); $spoofFailure.Exception.Data['SageStartupIncompleteIdentity']['spoof'] = 'discard'; $spoofRejected = $null -eq (Get-ValidatedStartupIncompleteIdentityFact $spoofFailure)",
+      "$complete = [Management.Automation.ErrorRecord]::new([Management.Automation.RuntimeException]::new('complete row'), 'complete', [Management.Automation.ErrorCategory]::InvalidData, $row); $completeAttached = Add-StartupIncompleteIdentityFact $complete 'update-root' $row $true; $completeDiagnostic = Write-StartupIncompleteIdentityDiagnostic " +
+        quote(root) +
+        " $complete $viteRuntime",
+      "$writeFailure = New-Incomplete $row; [void](Add-StartupIncompleteIdentityFact $writeFailure 'frontend-listener' $row $null); $writeBeforeMessage = $writeFailure.Exception.Message; $writeBeforeType = $writeFailure.Exception.GetType().FullName; $writeRejected = $false; try { [void](Write-StartupIncompleteIdentityDiagnostic (Join-Path " +
+        quote(root) +
+        " 'missing') $writeFailure $null) } catch { $writeRejected = $true }",
+      `$oversizedRoot = Join-Path ${quote(root)} 'oversized'; [void](New-Item -ItemType Directory -Path $oversizedRoot)`,
+      "$oversizedFailure = New-Incomplete $row; [void](Add-StartupIncompleteIdentityFact $oversizedFailure 'frontend-listener' $row $null); $originalRootTuple = ${function:Get-CleanupRootTuple}; $oversized = $false; try { function Get-CleanupRootTuple { param($Identity) return [ordered]@{ processId = 101; executablePath = ('x' * 5000); creationDate = '2026-09-08T00:00:00.000Z' } }; [void](Write-StartupIncompleteIdentityDiagnostic $oversizedRoot $oversizedFailure $viteRuntime) } catch { $oversized = $true } finally { Set-Item -Path Function:\\Get-CleanupRootTuple -Value $originalRootTuple }",
+      "$oversizedExists = Test-Path -LiteralPath (Join-Path $oversizedRoot 'startup-incomplete-identity.json')",
+      "[ordered]@{ facts = $facts; written = $written; diagnostic = $diagnostic; diagnosticBytes = ([Text.Encoding]::UTF8.GetByteCount($diagnosticText)); diagnosticLeakedHostile = $diagnosticText.Contains('hostile'); noOverwrite = $noOverwrite; spoofRejected = $spoofRejected; completeAttached = $completeAttached; completeDiagnostic = $completeDiagnostic; writeRejected = $writeRejected; writeMessage = $writeFailure.Exception.Message; writeType = $writeFailure.Exception.GetType().FullName; writeBeforeMessage = $writeBeforeMessage; writeBeforeType = $writeBeforeType; oversized = $oversized; oversizedExists = $oversizedExists; updateStages = $update.Contains('update-root') -and $update.Contains('update-descendant') -and $update.Contains('$isRoot'); listenerStage = $listener.Contains('frontend-listener') } | ConvertTo-Json -Depth 6 -Compress",
+    ].join("\n");
+    const result = spawnSync(
+      powershell,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        Buffer.from(source, "utf16le").toString("base64"),
+      ],
+      { encoding: "utf8", windowsHide: true, timeout: 15_000 },
+    );
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const observed = JSON.parse(result.stdout.trim());
+    assert.equal(observed.updateStages, true);
+    assert.equal(observed.listenerStage, true);
+    for (const [index, stage] of [
+      "update-root",
+      "update-descendant",
+      "frontend-listener",
+    ].entries()) {
+      const entry = observed.facts[index];
+      assert.equal(entry.stage, stage);
+      assert.equal(entry.attached, true);
+      assert.equal(entry.message, entry.beforeMessage);
+      assert.equal(entry.type, entry.beforeType);
+      assert.deepEqual(entry.fact, {
+        stage,
+        processId: 101,
+        parentProcessId: 100,
+        isRoot:
+          stage === "update-root"
+            ? true
+            : stage === "update-descendant"
+              ? false
+              : null,
+        executablePathPresent: false,
+        creationDatePresent: false,
+      });
+    }
+    assert.equal(observed.written, true);
+    assert.equal(observed.diagnosticBytes <= 4096, true);
+    assert.equal(observed.diagnosticLeakedHostile, false);
+    assert.equal(observed.diagnostic.rootTupleAvailable, true);
+    assert.equal(observed.diagnostic.fact.isRoot, true);
+    assert.equal(observed.noOverwrite, true);
+    assert.equal(observed.spoofRejected, true);
+    assert.equal(observed.completeAttached, false);
+    assert.equal(observed.completeDiagnostic, false);
+    assert.equal(observed.writeRejected, true);
+    assert.equal(observed.writeMessage, observed.writeBeforeMessage);
+    assert.equal(observed.writeType, observed.writeBeforeType);
+    assert.equal(observed.oversized, true);
+    assert.equal(observed.oversizedExists, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Windows startup diagnostics exercise wrapper seams and preserve failures", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-startup-seams-"));
+  const powershell = path.join(
+    process.env.SystemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  const wrapper = path.resolve(
+    "scripts",
+    "run-source-functional-native-ide-journey.ps1",
+  );
+  try {
+    const quote = (value) => `'${value.replaceAll("'", "''")}'`;
+    const names = [
+      "Test-StartupIncompleteIdentityFailure",
+      "Get-StartupIncompleteIdentityProcessId",
+      "Test-StartupIncompleteIdentityFieldPresent",
+      "Add-StartupIncompleteIdentityFact",
+      "Get-ValidatedStartupIncompleteIdentityFact",
+      "Update-OwnedRuntimeTree",
+      "Get-FrontendListenerIdentity",
+    ];
+    const source = [
+      "$ErrorActionPreference = 'Stop'",
+      "Set-StrictMode -Version Latest",
+      "$tokens = $null; $errors = $null",
+      `$ast = [Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)}, [ref]$tokens, [ref]$errors)`,
+      `foreach ($name in @(${names.map(quote).join(", ")})) {`,
+      "  $fn = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)",
+      "  Invoke-Expression $fn.Extent.Text",
+      "}",
+      "$message = 'A remembered process lacks executable or creation identity.'",
+      "$rootRow = [pscustomobject]@{ ProcessId = 91; ParentProcessId = 90; ExecutablePath = 'C:\\root.exe'; CreationDate = '2026-09-08T00:00:00.000Z' }",
+      "$childRow = [pscustomobject]@{ ProcessId = 92; ParentProcessId = 91; ExecutablePath = ''; CreationDate = $null }",
+      "$identity = [ordered]@{ processId = 91; executablePath = 'C:\\root.exe'; creationDate = '2026-09-08T00:00:00.000Z' }",
+      "$runtime = [ordered]@{ identity = $identity; store = [Collections.Generic.Dictionary[string, object]]::new() }",
+      "$results = @()",
+      "function New-Incomplete([object]$target) { [Management.Automation.ErrorRecord]::new([Management.Automation.RuntimeException]::new($message), 'incomplete', [Management.Automation.ErrorCategory]::InvalidData, $target) }",
+      "function Get-FootprintProcessSnapshot { @($rootRow, $childRow) }",
+      "$rootFailure = New-Incomplete $rootRow",
+      "function Get-FootprintRootIdentity { throw $script:rootFailure }",
+      "try { Update-OwnedRuntimeTree $runtime } catch { $results += [ordered]@{ seam = 'update-root'; sameException = [object]::ReferenceEquals($_.Exception, $rootFailure.Exception); message = $_.Exception.Message; type = $_.Exception.GetType().FullName; fact = Get-ValidatedStartupIncompleteIdentityFact $_ } }",
+      "$descendant = $childRow",
+      "function Get-FootprintRootIdentity { return $identity }",
+      "function Get-FootprintDescendants { param($id, $rows) @($descendant) }",
+      "$descendantFailure = New-Incomplete $childRow",
+      "function Add-FootprintRememberedIdentity { param($store, $value) throw $script:descendantFailure }",
+      "try { Update-OwnedRuntimeTree $runtime } catch { $results += [ordered]@{ seam = 'update-descendant'; sameException = [object]::ReferenceEquals($_.Exception, $descendantFailure.Exception); message = $_.Exception.Message; type = $_.Exception.GetType().FullName; fact = Get-ValidatedStartupIncompleteIdentityFact $_ } }",
+      "function Get-NetTCPConnection { [pscustomobject]@{ OwningProcess = 91 } }",
+      "$listenerFailure = New-Incomplete $rootRow",
+      "function ConvertTo-FootprintProcessIdentity { param($value) throw $script:listenerFailure }",
+      "try { Get-FrontendListenerIdentity ([ordered]@{ port = 1431 }) } catch { $results += [ordered]@{ seam = 'frontend-listener'; sameException = [object]::ReferenceEquals($_.Exception, $listenerFailure.Exception); message = $_.Exception.Message; type = $_.Exception.GetType().FullName; fact = Get-ValidatedStartupIncompleteIdentityFact $_ } }",
+      "function Add-StartupIncompleteIdentityFact { throw 'injected attachment failure' }",
+      "$attachmentFailure = New-Incomplete $rootRow",
+      "function Get-FootprintRootIdentity { throw $script:attachmentFailure }",
+      "try { Update-OwnedRuntimeTree $runtime } catch { $results += [ordered]@{ seam = 'attachment'; sameException = [object]::ReferenceEquals($_.Exception, $attachmentFailure.Exception); message = $_.Exception.Message; type = $_.Exception.GetType().FullName } }",
+      "$results | ConvertTo-Json -Depth 5 -Compress",
+    ].join("\n");
+    const result = spawnSync(
+      powershell,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        Buffer.from(source, "utf16le").toString("base64"),
+      ],
+      { encoding: "utf8", windowsHide: true, timeout: 15_000 },
+    );
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const observed = JSON.parse(result.stdout.trim());
+    for (const [index, seam] of [
+      "update-root",
+      "update-descendant",
+      "frontend-listener",
+      "attachment",
+    ].entries()) {
+      const entry = observed[index];
+      assert.equal(entry.seam, seam);
+      assert.equal(entry.sameException, true);
+      assert.equal(
+        entry.message,
+        "A remembered process lacks executable or creation identity.",
+      );
+      assert.equal(entry.type, "System.Management.Automation.RuntimeException");
+      if (seam === "attachment") continue;
+      assert.equal(entry.fact.stage, seam);
+      assert.equal(
+        entry.fact.processId,
+        seam === "update-descendant" ? 92 : 91,
+      );
+      assert.equal(
+        entry.fact.parentProcessId,
+        seam === "update-descendant" ? 91 : 90,
+      );
+      assert.equal(
+        entry.fact.isRoot,
+        seam === "update-root"
+          ? true
+          : seam === "update-descendant"
+            ? false
+            : null,
+      );
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Windows startup diagnostic write failure preserves the actual outer catch and cleanup flow", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-startup-outer-"));
+  const powershell = path.join(
+    process.env.SystemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  const wrapper = path.resolve(
+    "scripts",
+    "run-source-functional-native-ide-journey.ps1",
+  );
+  try {
+    const quote = (value) => `'${value.replaceAll("'", "''")}'`;
+    const source = [
+      "$ErrorActionPreference = 'Stop'",
+      "Set-StrictMode -Version Latest",
+      "$tokens = $null; $errors = $null",
+      `$ast = [Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)}, [ref]$tokens, [ref]$errors)`,
+      "$main = $ast.Find({ param($node) $node -is [Management.Automation.Language.TryStatementAst] -and $node.CatchClauses.Count -eq 1 -and $node.CatchClauses[0].Body.Extent.Text.Contains('Write-StartupIncompleteIdentityDiagnostic') }, $true)",
+      "$tail = @($ast.FindAll({ param($node) $node -is [Management.Automation.Language.IfStatementAst] -and $node.Extent.Text.Contains('if ($null -ne $journeyFailure) { throw $journeyFailure }') }, $true)) | Select-Object -First 1",
+      "if ($null -eq $main -or $null -eq $tail) { throw 'missing journey catch/finally or rethrow' }",
+      "$script:writeCalls = 0; $script:cleanupCalls = 0",
+      "function Write-StartupIncompleteIdentityDiagnostic { param($EvidenceRoot, $Failure, $ViteRuntime) $script:writeCalls++; throw [IO.IOException]::new('injected diagnostic write failure') }",
+      "function Stop-OwnedRuntimeTree { param($Role, $Runtime, $EvidenceRoot) $script:cleanupCalls++; return [ordered]@{ terminalZero = $true } }",
+      "$previous = @{ profile = $null; project = $null; webview = $null }; $EvidenceRoot = " +
+        quote(root) +
+        "; $viteRuntime = $null; $sageRuntime = $null; $sageCleanup = $null; $viteCleanup = $null; $cleanupFailures = @(); $journeyFailure = $null",
+      "$originalException = [Management.Automation.RuntimeException]::new('A remembered process lacks executable or creation identity.'); $original = [Management.Automation.ErrorRecord]::new($originalException, 'incomplete', [Management.Automation.ErrorCategory]::InvalidData, $null)",
+      "try { throw $original } catch { Invoke-Expression ('. ' + $main.CatchClauses[0].Body.Extent.Text) } finally { Invoke-Expression ('. ' + $main.Finally.Extent.Text) }",
+      "$final = $null; try { Invoke-Expression $tail.Extent.Text } catch { $final = $_ }",
+      "[ordered]@{ writeCalls = $script:writeCalls; cleanupCalls = $script:cleanupCalls; sameJourneyException = [object]::ReferenceEquals($journeyFailure.Exception, $originalException); sameFinalException = [object]::ReferenceEquals($final.Exception, $originalException); journeyMessage = $journeyFailure.Exception.Message; finalMessage = $final.Exception.Message; journeyType = $journeyFailure.Exception.GetType().FullName; finalType = $final.Exception.GetType().FullName; cleanupFailures = $cleanupFailures.Count } | ConvertTo-Json -Compress",
+    ].join("\n");
+    const result = spawnSync(
+      powershell,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        Buffer.from(source, "utf16le").toString("base64"),
+      ],
+      { encoding: "utf8", windowsHide: true, timeout: 15_000 },
+    );
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const observed = JSON.parse(result.stdout.trim());
+    assert.equal(observed.writeCalls, 1);
+    assert.equal(observed.cleanupCalls, 2);
+    assert.equal(observed.cleanupFailures, 0);
+    assert.equal(observed.sameJourneyException, true);
+    assert.equal(observed.sameFinalException, true);
+    assert.equal(
+      observed.journeyMessage,
+      "A remembered process lacks executable or creation identity.",
+    );
+    assert.equal(observed.finalMessage, observed.journeyMessage);
+    assert.equal(
+      observed.journeyType,
+      "System.Management.Automation.RuntimeException",
+    );
+    assert.equal(observed.finalType, observed.journeyType);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("native IDE Project readiness scopes the retained file to its admitted tree", () => {
   const journeyItem = {};
   const outsideItem = {};
