@@ -374,6 +374,42 @@ describe("SearchablePicker", () => {
     expect(outside).toHaveFocus();
   });
 
+  it("consumes one Escape in a document portal before the compact parent can close", () => {
+    const closeParent = vi.fn();
+    function CompactHarness() {
+      const [open, setOpen] = useState(true);
+      return open ? (
+        <section
+          role="dialog"
+          aria-label="Compact project tools"
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            closeParent();
+            setOpen(false);
+          }}
+        >
+          <Harness />
+        </section>
+      ) : null;
+    }
+    render(<CompactHarness />);
+    const parent = screen.getByRole("dialog", {
+      name: "Compact project tools",
+    });
+    const trigger = screen.getByRole("button", { name: "Select repository" });
+    fireEvent.click(trigger);
+    const input = screen.getByRole("combobox", { name: "Select repository" });
+    expect(parent.contains(input)).toBe(false);
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(closeParent).not.toHaveBeenCalled();
+    expect(parent).toBeVisible();
+    expect(trigger).toHaveFocus();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    fireEvent.keyDown(trigger, { key: "Escape" });
+    expect(closeParent).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("keeps a modal picker portal-owned, contains Escape, and leaves Tab to the dialog", () => {
     function ModalHarness() {
       const dialogRef = useRef<HTMLDialogElement>(null);

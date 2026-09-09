@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type RefObject,
 } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
@@ -26,6 +27,7 @@ import {
   chatSearchAttachment,
   chatSearchFolderOptions,
   matchesChatSearchScope,
+  requestChatSearchInFolder,
   subscribeChatSearchFolderRequest,
   takeChatSearchFocusReturn,
   takeChatSearchFolderRequest,
@@ -38,8 +40,42 @@ function matchesScope(scope: ChatSearchScope) {
   return matchesChatSearchScope(useWorkbenchStore.getState(), scope);
 }
 
-export function ChatSearchControl() {
+export function ChatSearchTrigger({
+  triggerRef,
+}: {
+  triggerRef?: RefObject<HTMLButtonElement | null>;
+}) {
   const project = useWorkbenchStore((state) => state.project);
+  const transitioning = useWorkbenchStore(
+    (state) => state.projectTransitioning,
+  );
+  return (
+    <button
+      ref={triggerRef}
+      className="project-action"
+      type="button"
+      title="Search chats"
+      aria-label="Search chats"
+      disabled={!project || transitioning}
+      onClick={(event) => {
+        if (!project || transitioning) return;
+        const trigger = event.currentTarget;
+        requestChatSearchInFolder(project.id, () => trigger.focus());
+      }}
+    >
+      <Search size={16} aria-hidden="true" />
+      Search chats
+    </button>
+  );
+}
+
+export function ChatSearchControl({
+  showTrigger = true,
+  triggerRef: suppliedTriggerRef,
+}: {
+  showTrigger?: boolean;
+  triggerRef?: RefObject<HTMLButtonElement | null>;
+} = {}) {
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
@@ -54,26 +90,30 @@ export function ChatSearchControl() {
   const [response, setResponse] = useState<ChatSearchFanoutView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestGeneration = useRef(0);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const localTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const triggerRef = suppliedTriggerRef ?? localTriggerRef;
   const focusReturnRef = useRef<(() => void) | null>(null);
 
-  const close = (restoreFocus = true) => {
-    requestGeneration.current += 1;
-    setOpen(false);
-    setScope(null);
-    setQuery("");
-    setPhase("idle");
-    setResponse(null);
-    setError(null);
-    const focusReturn = focusReturnRef.current;
-    focusReturnRef.current = null;
-    if (restoreFocus) {
-      setTimeout(() => {
-        if (focusReturn) focusReturn();
-        else triggerRef.current?.focus();
-      }, 0);
-    }
-  };
+  const close = useCallback(
+    (restoreFocus = true) => {
+      requestGeneration.current += 1;
+      setOpen(false);
+      setScope(null);
+      setQuery("");
+      setPhase("idle");
+      setResponse(null);
+      setError(null);
+      const focusReturn = focusReturnRef.current;
+      focusReturnRef.current = null;
+      if (restoreFocus) {
+        setTimeout(() => {
+          if (focusReturn) focusReturn();
+          else triggerRef.current?.focus();
+        }, 0);
+      }
+    },
+    [triggerRef],
+  );
 
   useEffect(() => {
     if (!open || !scope) return;
@@ -82,7 +122,7 @@ export function ChatSearchControl() {
         close();
       }
     });
-  }, [open, scope]);
+  }, [close, open, scope]);
 
   const openSearch = (
     searchProjectId?: string,
@@ -109,12 +149,15 @@ export function ChatSearchControl() {
   };
 
   useEffect(() => {
-    return subscribeChatSearchFolderRequest(() => {
+    const consumeRequest = () => {
       const folderId = takeChatSearchFolderRequest();
       if (folderId) {
         openSearch(folderId, takeChatSearchFocusReturn());
       }
-    });
+    };
+    const unsubscribe = subscribeChatSearchFolderRequest(consumeRequest);
+    consumeRequest();
+    return unsubscribe;
   }, []);
 
   const editQuery = (value: string) => {
@@ -212,18 +255,7 @@ export function ChatSearchControl() {
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        className="project-action"
-        type="button"
-        title="Search chats"
-        aria-label="Search chats"
-        disabled={!project || projectTransitioning}
-        onClick={() => openSearch()}
-      >
-        <Search size={16} aria-hidden="true" />
-        Search chats
-      </button>
+      {showTrigger ? <ChatSearchTrigger triggerRef={triggerRef} /> : null}
       {open && scope ? (
         <ModalDialog
           className="chat-search-dialog"

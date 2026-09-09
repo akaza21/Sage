@@ -39,6 +39,18 @@ export async function runEditorCanonicalTest(
   const workbench = await openScenario(page, name, mode);
   await assertEditorLandmarks(page);
   if (name === "editor") {
+    await expect(
+      page.getByRole("textbox", {
+        name: "Edit src/workbench/AgentChatPanes.tsx",
+        exact: true,
+      }),
+    ).toContainText("export function AgentChatPanes");
+    await expect(
+      page.locator(".file-surface .cm-content .cm-line span[class]").first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Loading File…" }),
+    ).toHaveCount(0);
     const tree = page.getByRole("tree", { name: "Project files" });
     const activeFile = tree.getByRole("treeitem", {
       name: "Open file src/workbench/AgentChatPanes.tsx",

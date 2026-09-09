@@ -219,7 +219,21 @@ test.describe("ED02 picker visual states", () => {
 
   test("captures the modal-safe handoff target picker", async ({ page }) => {
     const workbench = await openScenario(page, "agent-picker-handoff", "agent");
-    await page.getByRole("button", { name: "Hand off chat" }).click();
+    const sourceChat = page.getByRole("region", {
+      name: "Chat pane Source chat",
+      exact: true,
+    });
+    const targetChat = page.getByRole("region", {
+      name: "Chat pane Target chat",
+      exact: true,
+    });
+    const handoffTrigger = sourceChat.getByRole("button", {
+      name: "Hand off chat",
+      exact: true,
+    });
+    await expect(handoffTrigger).toHaveCount(1);
+    await expect(handoffTrigger).toBeEnabled();
+    await handoffTrigger.click();
     const dialog = page.getByRole("dialog", { name: "Hand off this Chat" });
     const trigger = dialog.getByRole("button", { name: "Target Chat" });
     await expect(trigger).toHaveText("Target chat");
@@ -256,7 +270,7 @@ test.describe("ED02 picker visual states", () => {
     await expect(draft).toHaveValue("Edited but unsent visual handoff");
     await expect(trigger).toHaveText("Target chat");
     await expect(
-      page.getByRole("textbox", { name: "Message agent" }),
+      sourceChat.getByRole("textbox", { name: "Message agent" }),
     ).toHaveValue("");
     await takeCanonicalScreenshot(workbench, "agent-picker-handoff");
     await page.evaluate(async () => {
@@ -264,15 +278,16 @@ test.describe("ED02 picker visual states", () => {
       useWorkbenchStore.setState({ activeTabId: "visual-chat-handoff-target" });
     });
     await expect(dialog).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Hand off chat" }),
-    ).toBeFocused();
+    await expect(handoffTrigger).toBeFocused();
     await expect(page.locator("html")).toHaveAttribute(
       "data-visual-handoff-dispatch-count",
       "0",
     );
     await expect(
-      page.getByRole("textbox", { name: "Message agent" }),
+      sourceChat.getByRole("textbox", { name: "Message agent" }),
+    ).toHaveValue("");
+    await expect(
+      targetChat.getByRole("textbox", { name: "Message agent" }),
     ).toHaveValue("");
   });
 
@@ -886,7 +901,12 @@ test.describe("Wave 2 200% zoom state", () => {
     await expectNoViewportOverflow(page);
 
     await openScenario(page, "agent-picker-handoff", "agent");
-    await page.getByRole("button", { name: "Hand off chat" }).click();
+    const handoffTrigger = page
+      .getByRole("region", { name: "Chat pane Source chat", exact: true })
+      .getByRole("button", { name: "Hand off chat", exact: true });
+    await expect(handoffTrigger).toHaveCount(1);
+    await expect(handoffTrigger).toBeEnabled();
+    await handoffTrigger.click();
     await page.getByRole("button", { name: "Target Chat" }).click();
     await expectOpenPickerContained(
       page,

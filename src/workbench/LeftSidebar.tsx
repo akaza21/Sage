@@ -11,7 +11,10 @@ import {
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../app/store";
-import { ChatSearchControl } from "../features/chatSearch/ChatSearchControl";
+import {
+  ChatSearchControl,
+  ChatSearchTrigger,
+} from "../features/chatSearch/ChatSearchControl";
 import { CHAT_SEARCH_ALL_FOLDERS_ID } from "../features/chatSearch/chatSearchFanout";
 import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
 import {
@@ -67,6 +70,7 @@ export function LeftSidebar({
   const [railTick, setRailTick] = useState(0);
   const drawerRef = useRef<HTMLElement>(null);
   const drawerTriggerRef = useRef<HTMLButtonElement>(null);
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const wasDrawerOpen = useRef(false);
   const gitLabel = sessionRailGitLabel(
     useWorkbenchStore(
@@ -170,7 +174,7 @@ export function LeftSidebar({
           <SquarePen size={16} aria-hidden="true" />
           New chat
         </button>
-        <ChatSearchControl />
+        <ChatSearchTrigger triggerRef={searchTriggerRef} />
       </div>
 
       <div className="project-sidebar__scroll">
@@ -341,6 +345,7 @@ export function LeftSidebar({
   if (!compact) {
     return (
       <aside className="project-sidebar" aria-label="Projects and chats">
+        <ChatSearchControl showTrigger={false} triggerRef={searchTriggerRef} />
         {navigation}
       </aside>
     );
@@ -351,6 +356,7 @@ export function LeftSidebar({
       className="project-sidebar project-sidebar--compact"
       aria-label="Agent navigation"
     >
+      <ChatSearchControl showTrigger={false} triggerRef={searchTriggerRef} />
       <button
         ref={drawerTriggerRef}
         className="project-sidebar__drawer-trigger"

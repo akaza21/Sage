@@ -227,7 +227,7 @@ export function SearchablePicker({
       selectActive();
     } else if (event.key === "Escape") {
       event.preventDefault();
-      if (portalTarget === "closest-dialog") event.stopPropagation();
+      event.stopPropagation();
       close("escape");
     } else if (event.key === "Tab") {
       if (portalTarget === "closest-dialog") {
