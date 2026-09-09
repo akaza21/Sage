@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { createElement, StrictMode } from "react";
 
 import { clearAcpProjectionRegistry } from "../../../src/app/acpProjectionRegistry";
@@ -57,6 +57,8 @@ import {
   buildVisualScenario,
   installVisualScenario,
 } from "./visualScenarioShell";
+import { fixtureTabs } from "./visualDocumentFixtures";
+import { applyVisualWorkbenchState } from "./visualWorkbenchState";
 
 const initialState = useWorkbenchStore.getState();
 
@@ -66,6 +68,7 @@ function visualPreviewUrl(): string {
 }
 
 beforeEach(() => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
     return window.setTimeout(() => callback(performance.now()), 0);
   });
@@ -159,7 +162,7 @@ describe("visual scenario surface ownership", () => {
       payload: {
         inputSummary: null,
         outputSummary:
-          "Focused checks passed for ToolItem, TurnActivityItem, and AcpChatProjection.",
+          "Focused checks passed for ToolItem, TurnActivityItem, and AcpChatProjection. This deliberately bounded fixture output records the completed command result across parser coverage, mounted runtime lifecycle, visual projection ownership, accessibility labels, and compact-width containment so the activity card exercises the existing long-output overflow contract without using presentation text, input text, or raw process output.",
       },
     });
     expect(
@@ -231,6 +234,25 @@ describe("visual scenario surface ownership", () => {
         revision: "1",
       },
     ]);
+  });
+
+  it("seeds the Editor repository fixture as one authoritative ready inventory", () => {
+    const scenario = buildVisualScenario("editor");
+    applyVisualWorkbenchState(scenario, fixtureTabs(scenario));
+
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      repositoryInventoryPhase: "ready",
+      repositoryStatusPhase: "ready",
+      selectedRepository: { rootId: "visual-root", relativePath: "" },
+      repositoryRefs: [{ rootId: "visual-root", relativePath: "" }],
+    });
+    expect(useWorkbenchStore.getState().selectedRepositoryStatus).toMatchObject(
+      {
+        rootId: "visual-root",
+        state: "repository",
+        branch: "feature/editor-polish",
+      },
+    );
   });
 
   it("assigns every scenario to exactly one surface with no duplicate names", () => {
@@ -473,18 +495,33 @@ describe("visual scenario surface ownership", () => {
       }),
     );
     const installing = installVisualScenario("preview");
-    await new Promise<void>((resolve) =>
-      requestAnimationFrame(() => resolve()),
-    );
+    await act(async () => {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+    });
     expect(harnessBrowseOwner()).toBeNull();
     const view = render(
       createElement(StrictMode, null, createElement(Workbench)),
     );
     expect(view.container.querySelector(".agent-chat-panes")).toBeNull();
-    await installing;
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
     await waitFor(() =>
       expect(view.container.querySelector(".agent-chat-panes")).not.toBeNull(),
     );
+    await waitFor(() =>
+      expect(harnessBrowseOwner()).toEqual({
+        projectId: PROJECT_ID,
+        projectGeneration: GENERATION,
+        transitionEpoch: 0,
+        chatId: "visual-chat-preview",
+        sessionId: SESSION_ID,
+        runtimeEpoch: RUNTIME_EPOCH,
+      }),
+    );
+    await installing;
     await waitFor(() =>
       expect(view.getByRole("tab", { name: "Preview" })).toHaveAttribute(
         "aria-selected",
@@ -495,14 +532,6 @@ describe("visual scenario surface ownership", () => {
       expect(view.getByTitle("Sage browser")).toBeInTheDocument(),
     );
     const owner = harnessBrowseOwner();
-    expect(owner).toEqual({
-      projectId: PROJECT_ID,
-      projectGeneration: GENERATION,
-      transitionEpoch: 0,
-      chatId: "visual-chat-preview",
-      sessionId: SESSION_ID,
-      runtimeEpoch: RUNTIME_EPOCH,
-    });
     if (!owner) throw new Error("Preview fixture browse owner was absent.");
     expect(browseSessionForOwner(owner)?.href).toBe(visualPreviewUrl());
     expect(listBrowseSessions()).toHaveLength(1);

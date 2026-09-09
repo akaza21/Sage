@@ -1,6 +1,9 @@
 import type { AgentArtifactOwner } from "../../../src/domain/agentArtifact";
 import type { HarnessBrowseOwner } from "../../../src/features/preview/harnessBrowse";
-import type { WorkbenchTab } from "../../../src/domain/workbench";
+import type {
+  RootRepositoryStatus,
+  WorkbenchTab,
+} from "../../../src/domain/workbench";
 import { diffCacheKey } from "../../../src/domain/diffIdentity";
 import { resourceKey } from "../../../src/domain/resourceIdentity";
 import { useWorkbenchStore } from "../../../src/app/store";
@@ -132,6 +135,39 @@ export function applyVisualWorkbenchState(
     ],
     truncated: false,
   };
+  const visualRootRepository: RootRepositoryStatus = {
+    rootId: ROOT_ID,
+    state: "repository",
+    branch: "feature/editor-polish",
+    upstream: null,
+    ahead: 0,
+    behind: 0,
+    branches: ["feature/editor-polish", "main", "release/beta"],
+    branchesTruncated: false,
+    recentCommits: [
+      { sha: "b7c12d66aa7de0f0a1", subject: "Polish editor tools" },
+      { sha: "49a0ee42f7d08b93c2", subject: "Keep Git actions truthful" },
+      {
+        sha: "1e8c53a1c51f81f8aa",
+        subject: "Align shared file surfaces",
+      },
+    ],
+    recentCommitsTruncated: false,
+    remotes: ["origin", "upstream"],
+    remotesTruncated: false,
+    changes: [
+      {
+        resource: fileResource,
+        indexStatus: "unchanged",
+        worktreeStatus: "modified",
+        additions: 28,
+        deletions: 11,
+      },
+    ],
+    truncated: false,
+    elapsedMs: 12,
+    message: null,
+  };
 
   useWorkbenchStore.setState({
     phase: "ready",
@@ -216,42 +252,17 @@ export function applyVisualWorkbenchState(
     chatError: null,
     composerText: "",
     sending: false,
+    repositoryRefs: [{ rootId: ROOT_ID, relativePath: "" }],
+    repositoryInventoryPhase: "ready",
+    repositoryInventoryError: null,
+    repositoryDiscoveryTruncated: false,
+    repositoryInventoryProjectScope: `${PROJECT_ID}\0${VISUAL_NATIVE_TRANSITION_EPOCH}\0${VISUAL_NATIVE_TRANSITION_EPOCH}`,
+    selectedRepository: { rootId: ROOT_ID, relativePath: "" },
+    selectedRepositoryStatus: visualRootRepository,
+    repositoryStatusPhase: "ready",
+    repositoryStatusError: null,
     repositories: {
-      roots: [
-        {
-          rootId: ROOT_ID,
-          state: "repository",
-          branch: "feature/editor-polish",
-          upstream: null,
-          ahead: 0,
-          behind: 0,
-          branches: ["feature/editor-polish", "main", "release/beta"],
-          branchesTruncated: false,
-          recentCommits: [
-            { sha: "b7c12d66aa7de0f0a1", subject: "Polish editor tools" },
-            { sha: "49a0ee42f7d08b93c2", subject: "Keep Git actions truthful" },
-            {
-              sha: "1e8c53a1c51f81f8aa",
-              subject: "Align shared file surfaces",
-            },
-          ],
-          recentCommitsTruncated: false,
-          remotes: ["origin", "upstream"],
-          remotesTruncated: false,
-          changes: [
-            {
-              resource: fileResource,
-              indexStatus: "unchanged",
-              worktreeStatus: "modified",
-              additions: 28,
-              deletions: 11,
-            },
-          ],
-          truncated: false,
-          elapsedMs: 12,
-          message: null,
-        },
-      ],
+      roots: [visualRootRepository],
       truncated: false,
       elapsedMs: 12,
     },

@@ -192,7 +192,7 @@ export function SourceControlView() {
             state="loading"
             title="Loading repository status"
           />
-        ) : repositoryRefs.length === 0 ? (
+        ) : inventoryPhase === "ready" && repositoryRefs.length === 0 ? (
           <ResourceStateNotice state="idle" title="No repositories found" />
         ) : null}
         {selectedRepository && !isRootRepository(selectedRepository) ? (

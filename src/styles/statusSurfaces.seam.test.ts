@@ -32,4 +32,21 @@ describe("Status surfaces stylesheet seam", () => {
     );
     expect(surfaceCss).toMatch(/\.status-bar\s*\{[^}]*overflow-x:\s*auto;/s);
   });
+
+  it("keeps Source Control notices compact without changing generic notices", async () => {
+    const surfaceCss = await readFile(
+      resolve("src/styles/status-surfaces.css"),
+      "utf8",
+    );
+
+    expect(surfaceCss).toMatch(
+      /\.source-control-list\s*>\s*\.resource-state\s*\{[^}]*height:\s*auto;[^}]*gap:\s*var\(--space-1\);[^}]*padding:\s*var\(--space-2\) 0;/s,
+    );
+    expect(surfaceCss).toMatch(
+      /\.source-control-list\s*>\s*\.resource-state\s*>\s*\.resource-state__icon\s*\{[^}]*width:\s*var\(--space-4\);[^}]*height:\s*var\(--space-4\);[^}]*border:\s*0;[^}]*background:\s*transparent;/s,
+    );
+    expect(surfaceCss).toMatch(
+      /^\.resource-state__icon,\n\.placeholder-surface__icon/m,
+    );
+  });
 });

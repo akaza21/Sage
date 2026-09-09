@@ -48,6 +48,27 @@
   line-height: 1.5;
 }
 
+.source-control-list > .resource-state {
+  height: auto;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  text-align: left;
+}
+
+.source-control-list > .resource-state > .resource-state__icon {
+  width: var(--space-4);
+  height: var(--space-4);
+  border: 0;
+  background: transparent;
+}
+
+.source-control-list > .resource-state > .resource-state__detail {
+  max-width: none;
+  line-height: 1.4;
+}
+
 .repository-mutation-alert {
   position: absolute;
   z-index: 4;

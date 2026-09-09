@@ -165,7 +165,7 @@ function activityFamilyPage() {
         resources: [],
       },
       "completed",
-      "Focused checks passed for ToolItem, TurnActivityItem, and AcpChatProjection.",
+      "Focused checks passed for ToolItem, TurnActivityItem, and AcpChatProjection. This deliberately bounded fixture output records the completed command result across parser coverage, mounted runtime lifecycle, visual projection ownership, accessibility labels, and compact-width containment so the activity card exercises the existing long-output overflow contract without using presentation text, input text, or raw process output.",
     ),
     activityToolItem(
       input(4),

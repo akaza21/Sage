@@ -215,11 +215,15 @@ it("uses disambiguated project-root labels for repository options", () => {
 it("projects repository loading, empty, and error states through ResourceStateNotice", () => {
   useWorkbenchStore.setState({
     repositoryRefs: [],
-    repositoryInventoryPhase: "loading",
+    repositoryInventoryPhase: "idle",
     repositoryStatusPhase: "ready",
     loadRepositoryInventory: vi.fn(async () => undefined),
   });
   const { rerender } = render(<SourceControlView />);
+  expect(screen.queryByText("No repositories found")).not.toBeInTheDocument();
+
+  useWorkbenchStore.setState({ repositoryInventoryPhase: "loading" });
+  rerender(<SourceControlView />);
   expect(screen.getByRole("status")).toHaveTextContent(
     "Loading repository status",
   );
@@ -235,6 +239,18 @@ it("projects repository loading, empty, and error states through ResourceStateNo
   expect(screen.getByRole("alert")).toHaveTextContent(
     "Could not refresh repository inventory.",
   );
+
+  useWorkbenchStore.setState({
+    repositoryInventoryError: null,
+    repositoryRefs: [rootRepository],
+    selectedRepository: rootRepository,
+    repositoryInventoryPhase: "ready",
+  });
+  rerender(<SourceControlView />);
+  expect(
+    screen.getByRole("button", { name: "Select repository" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("No repositories found")).not.toBeInTheDocument();
 });
 
 it("shows native-proven identity and dispatches the selected publish action", async () => {

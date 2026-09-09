@@ -305,7 +305,10 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     ).toContainText("packages/repository-2");
     await page.getByRole("button", { name: "Select repository" }).click();
     await expect(
-      page.getByRole("option", { name: /packages\/repository-2/ }),
+      page.getByRole("option", {
+        name: "Sage — packages/repository-2",
+        exact: true,
+      }),
     ).toHaveAttribute("aria-selected", "true");
     await expectNoViewportOverflow(page);
     await takeCanonicalScreenshot(workbench, "editor-picker-repository");
@@ -329,14 +332,48 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       .click();
     await page.getByRole("button", { name: "Select repository" }).click();
     const picker = page.getByRole("combobox", { name: "Select repository" });
-    await expect(page.getByText(/Current: Sage/)).toBeVisible();
+    const popup = page.locator(
+      ".searchable-picker__popover.menu-popover--editor",
+    );
+    const listbox = page.getByRole("listbox", {
+      name: "Select repository",
+      exact: true,
+    });
+    await expect(popup).toBeVisible();
+    await expect(popup.locator(".searchable-picker__current")).toHaveText(
+      "Current: Sage — Repository root",
+    );
     await picker.fill("read-only");
+    const readonlyOption = listbox.getByRole("option", {
+      name: "Read-only root — packages/repository-31",
+      exact: true,
+    });
+    await expect(readonlyOption).toBeVisible();
+    await expect(readonlyOption).toHaveAttribute("aria-disabled", "true");
+    await expect(listbox.getByRole("option")).toHaveCount(1);
     await expect(
-      page.getByRole("option", { name: /Read-only root/ }),
-    ).toBeVisible();
+      listbox.locator('[role="option"]:not([aria-disabled="true"])'),
+    ).toHaveCount(0);
+    await expect(popup.locator(".searchable-picker__current")).toHaveText(
+      "Current: Sage — Repository root",
+    );
     await expect(
-      page.getByText("Repository root is unavailable."),
+      listbox.getByText("Repository root is unavailable.", { exact: true }),
     ).toBeVisible();
+    await expect
+      .poll(() =>
+        popup.evaluate((node) => {
+          const style = getComputedStyle(node);
+          const bounds = node.getBoundingClientRect();
+          return (
+            style.opacity === "1" &&
+            style.visibility === "visible" &&
+            bounds.width > 0 &&
+            bounds.height > 0
+          );
+        }),
+      )
+      .toBe(true);
     await expectNoViewportOverflow(page);
     await takeCanonicalScreenshot(
       workbench,
@@ -634,18 +671,25 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const workbench = await openScenario(page, "editor", "editor");
 
     await expect(workbench).toHaveClass(/workbench--compact/);
-    await expect(page.locator(".center-region")).toBeVisible();
+    const drawer = page.locator('.workbench--editor .sidebar[role="dialog"]');
+    const center = page.locator(".workbench--editor .center-region");
+    await expect(drawer).toBeVisible();
+    await expect(center).toHaveAttribute("inert", "");
+    await expect(center).toHaveAttribute("aria-hidden", "true");
     await expect(
       page.getByRole("textbox", {
         name: "Edit src/workbench/AgentChatPanes.tsx",
+        includeHidden: true,
       }),
-    ).toBeVisible();
+    ).toContainText("export function AgentChatPanes");
     await expect(
-      page.getByRole("status").filter({ hasText: "Loading editor…" }),
+      page
+        .getByRole("status", { includeHidden: true })
+        .filter({ hasText: "Loading editor…" }),
     ).toHaveCount(0);
     await expect(
-      page.locator(".file-surface .cm-content .cm-line span[class]").first(),
-    ).toBeVisible();
+      center.locator(".file-surface .cm-content .cm-line span[class]").first(),
+    ).toBeAttached();
     await expect
       .poll(() =>
         page.evaluate(() => {
