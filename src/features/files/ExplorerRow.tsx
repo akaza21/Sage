@@ -1,0 +1,82 @@
+import { ChevronRight } from "lucide-react";
+import { forwardRef, memo } from "react";
+
+import { resourceKey } from "../../domain/resourceIdentity";
+import type { ResourceRef } from "../../domain/workbench";
+import { FileKindIcon } from "./FileKindIcon";
+import type { VisibleWorkspaceEntry } from "./fileTree";
+
+interface ExplorerRowProps {
+  entry: VisibleWorkspaceEntry;
+  selected: boolean;
+  expanded: boolean;
+  onSelectDirectory: (resource: ResourceRef) => void;
+  onToggleDirectory: (resource: ResourceRef) => void;
+  onOpenFile: (resource: ResourceRef) => Promise<void>;
+}
+
+export const ExplorerRow = memo(
+  forwardRef<HTMLButtonElement, ExplorerRowProps>(function ExplorerRow(
+    {
+      entry,
+      selected,
+      expanded,
+      onSelectDirectory,
+      onToggleDirectory,
+      onOpenFile,
+    },
+    ref,
+  ) {
+    const key = resourceKey(entry.resource);
+    const directory = entry.kind === "directory";
+    const file = entry.kind === "file";
+    const entryKind = directory ? "directory" : file ? "file" : "symlink";
+
+    return (
+      <button
+        className={`tree__row ${directory ? "tree__row--folder" : ""} ${
+          selected ? "tree__row--selected" : ""
+        }`}
+        data-resource-key={key}
+        ref={ref}
+        type="button"
+        role="treeitem"
+        aria-label={
+          directory
+            ? `Toggle folder ${entry.resource.relativePath}`
+            : file
+              ? `Open file ${entry.resource.relativePath}`
+              : `Unavailable resource ${entry.resource.relativePath}`
+        }
+        aria-current={selected ? "page" : undefined}
+        aria-expanded={directory ? expanded : undefined}
+        title={entry.resource.relativePath}
+        style={{ paddingLeft: 9 + entry.depth * 16 }}
+        disabled={!directory && !file}
+        onClick={() => {
+          if (directory) {
+            onSelectDirectory(entry.resource);
+            onToggleDirectory(entry.resource);
+          } else {
+            void onOpenFile(entry.resource);
+          }
+        }}
+      >
+        {directory ? (
+          <ChevronRight
+            className={expanded ? "tree__chevron--expanded" : undefined}
+            size={13}
+            aria-hidden="true"
+          />
+        ) : (
+          <span className="tree__indent" />
+        )}
+        <FileKindIcon
+          path={entry.resource.relativePath}
+          entryKind={entryKind}
+        />
+        <span>{entry.name}</span>
+      </button>
+    );
+  }),
+);

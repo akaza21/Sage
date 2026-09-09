@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ChatMarkdown } from "./ChatMarkdown";
+import * as markdownPreview from "../../files/markdownPreview";
 
 afterEach(() => {
   cleanup();
@@ -25,5 +26,15 @@ describe("ChatMarkdown code blocks", () => {
 
     expect(writeText).toHaveBeenCalledWith("const answer = 42;");
     expect(await screen.findByText("Copied")).toBeInTheDocument();
+  });
+
+  it("parses only when exact markdown text changes", () => {
+    const parse = vi.spyOn(markdownPreview, "renderMarkdownPreview");
+    const { rerender } = render(<ChatMarkdown text="Retained text" />);
+    expect(parse).toHaveBeenCalledTimes(1);
+    rerender(<ChatMarkdown text="Retained text" />);
+    expect(parse).toHaveBeenCalledTimes(1);
+    rerender(<ChatMarkdown text="Revised text" />);
+    expect(parse).toHaveBeenCalledTimes(2);
   });
 });

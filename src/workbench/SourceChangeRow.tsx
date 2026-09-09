@@ -1,9 +1,8 @@
-import { useId, useRef, useState } from "react";
+import { memo, useId, useRef, useState } from "react";
 import { Minus, Plus, RotateCcw } from "lucide-react";
 
 import { isConflictedChange, isSafeDiscardChange } from "../domain/gitMutation";
 import { isRootRepository } from "../domain/repositoryInventory";
-import { sameResource } from "../domain/resourceIdentity";
 import { sourceChangeStatusChip } from "../features/git/conflictPresentation";
 import type {
   FileChange,
@@ -16,7 +15,7 @@ interface SourceChangeRowProps {
   change: FileChange;
   repository: RepositoryRef | undefined;
   rootName: string;
-  selected: ResourceRef | null;
+  isSelected: boolean;
   controlsDisabled: boolean;
   mutateRepositoryFile: (
     resource: ResourceRef,
@@ -29,11 +28,11 @@ interface SourceChangeRowProps {
   ) => Promise<void>;
 }
 
-export function SourceChangeRow({
+export const SourceChangeRow = memo(function SourceChangeRow({
   change,
   repository,
   rootName,
-  selected,
+  isSelected,
   controlsDisabled,
   mutateRepositoryFile,
   openDiff,
@@ -56,7 +55,6 @@ export function SourceChangeRow({
   const canDiscard = !readOnly && isSafeDiscardChange(change);
   const canResolve = !readOnly && conflicted;
   const path = change.resource.relativePath;
-  const isSelected = sameResource(selected, change.resource);
   const cancelDiscard = () => {
     setConfirmingDiscard(false);
     queueMicrotask(() => discardTriggerRef.current?.focus());
@@ -208,4 +206,4 @@ export function SourceChangeRow({
       )}
     </div>
   );
-}
+});

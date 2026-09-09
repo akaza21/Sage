@@ -1177,11 +1177,16 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
     const controls = resources.locator(".harness-browser__controls");
     const reload = controls.getByRole("button", { name: "Reload preview" });
     const close = controls.getByRole("button", { name: "Close browser" });
+    const trigger = resources.locator(".harness-browser__controls-trigger");
     const address = resources.getByRole("textbox", {
       name: "Preview address",
     });
     const frame = resources.getByTitle("Sage browser");
 
+    await expect(reload).toBeVisible();
+    await expect(reload).toBeEnabled();
+    await expect(close).toBeVisible();
+    await expect(trigger).toHaveCSS("display", "none");
     await previewTab.focus();
     await page.keyboard.press("Shift+Tab");
     await expect(collapse).toBeFocused();

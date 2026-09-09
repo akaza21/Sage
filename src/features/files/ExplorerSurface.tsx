@@ -1,5 +1,4 @@
-import { ChevronRight } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import { selectOpenProject } from "../../app/workbenchSelectors";
@@ -10,10 +9,15 @@ import {
 } from "../../domain/resourceIdentity";
 import type { ProjectRootSummary } from "../../domain/workbench";
 import { ExplorerActions } from "./ExplorerActions";
+import { ExplorerRow } from "./ExplorerRow";
 import { FileKindIcon } from "./FileKindIcon";
 import { flattenFileTree } from "./fileTree";
 
-function RootTree({ root }: { root: ProjectRootSummary }) {
+const RootTree = memo(function RootTree({
+  root,
+}: {
+  root: ProjectRootSummary;
+}) {
   const selected = useWorkbenchStore((state) => state.selectedResource);
   const listings = useWorkbenchStore((state) => state.directoryListings);
   const expanded = useWorkbenchStore((state) => state.expandedDirectories);
@@ -23,9 +27,12 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
   const openFile = useWorkbenchStore((state) => state.openFile);
   const selectRoot = useWorkbenchStore((state) => state.selectRoot);
   const selectedRow = useRef<HTMLButtonElement>(null);
-  const rootResource = childResource(root.id);
+  const rootResource = useMemo(() => childResource(root.id), [root.id]);
   const rootSelected = sameResource(rootResource, selected);
-  const tree = flattenFileTree(rootResource, listings, expanded);
+  const tree = useMemo(
+    () => flattenFileTree(rootResource, listings, expanded, 500),
+    [expanded, listings, rootResource],
+  );
   const listing = listings[resourceKey(rootResource)];
   const nestedTruncatedResource = tree.entries.find((entry) => {
     const entryListing = listings[resourceKey(entry.resource)];
@@ -73,57 +80,17 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
       {tree.entries.map((entry) => {
         const isSelected = sameResource(entry.resource, selected);
         const key = resourceKey(entry.resource);
-        const directory = entry.kind === "directory";
-        const file = entry.kind === "file";
-        const entryKind = directory ? "directory" : file ? "file" : "symlink";
         return (
-          <button
-            className={`tree__row ${directory ? "tree__row--folder" : ""} ${
-              isSelected ? "tree__row--selected" : ""
-            }`}
+          <ExplorerRow
             key={key}
-            data-resource-key={key}
             ref={isSelected ? selectedRow : undefined}
-            type="button"
-            role="treeitem"
-            aria-label={
-              directory
-                ? `Toggle folder ${entry.resource.relativePath}`
-                : file
-                  ? `Open file ${entry.resource.relativePath}`
-                  : `Unavailable resource ${entry.resource.relativePath}`
-            }
-            aria-current={isSelected ? "page" : undefined}
-            aria-expanded={directory ? Boolean(expanded[key]) : undefined}
-            title={entry.resource.relativePath}
-            style={{ paddingLeft: 9 + entry.depth * 16 }}
-            disabled={!directory && !file}
-            onClick={() => {
-              if (directory) {
-                selectDirectory(entry.resource);
-                toggleDirectory(entry.resource);
-              } else {
-                void openFile(entry.resource);
-              }
-            }}
-          >
-            {directory ? (
-              <ChevronRight
-                className={
-                  expanded[key] ? "tree__chevron--expanded" : undefined
-                }
-                size={13}
-                aria-hidden="true"
-              />
-            ) : (
-              <span className="tree__indent" />
-            )}
-            <FileKindIcon
-              path={entry.resource.relativePath}
-              entryKind={entryKind}
-            />
-            <span>{entry.name}</span>
-          </button>
+            entry={entry}
+            selected={isSelected}
+            expanded={Boolean(expanded[key])}
+            onSelectDirectory={selectDirectory}
+            onToggleDirectory={toggleDirectory}
+            onOpenFile={openFile}
+          />
         );
       })}
       {tree.truncated ? (
@@ -139,7 +106,7 @@ function RootTree({ root }: { root: ProjectRootSummary }) {
       ) : null}
     </section>
   );
-}
+});
 
 export function ExplorerSurface() {
   const project = useWorkbenchStore(selectOpenProject);

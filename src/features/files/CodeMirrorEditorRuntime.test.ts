@@ -10,12 +10,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createCodeMirrorEditorRuntime } from "./CodeMirrorEditorRuntime";
 
-function runtimeForPath(path: string) {
+function runtimeForPath(path: string, documentIdentity?: string) {
   const parent = document.createElement("div");
   document.body.append(parent);
   const runtime = createCodeMirrorEditorRuntime({
     parent,
     ariaLabel: `Edit ${path}`,
+    documentIdentity,
     path,
     content: "fn main() {}",
     disabled: false,
@@ -74,7 +75,10 @@ describe("CodeMirrorEditorRuntime language lifecycle", () => {
           resolvePython = resolve;
         }),
     );
-    const { runtime, view } = runtimeForPath("notes.txt");
+    const { runtime, view } = runtimeForPath(
+      "notes.txt",
+      "root-a\0notes.txt\0r1\0fn main() {}",
+    );
 
     runtime.update({
       ariaLabel: "Edit scripts/slow.py",
@@ -197,6 +201,106 @@ describe("CodeMirrorEditorRuntime appearance", () => {
     });
 
     expect(parent.querySelector(".cm-gutters")).toBe(gutter);
+    runtime.destroy();
+  });
+});
+
+describe("CodeMirrorEditorRuntime controlled identity", () => {
+  it("does not stringify the document for unrelated controlled updates", () => {
+    const { runtime, view } = runtimeForPath(
+      "notes.txt",
+      "root-a\0notes.txt\0r1\0fn main() {}",
+    );
+    const toString = vi.spyOn(view.state.doc, "toString");
+    toString.mockClear();
+
+    runtime.update({
+      ariaLabel: "Edit notes.txt (renamed label)",
+      documentIdentity: "root-a\0notes.txt\0r1\0fn main() {}",
+      path: "notes.txt",
+      content: "fn main() {}",
+      disabled: true,
+      maxContentLength: 1024,
+      onChange: vi.fn(),
+    });
+
+    expect(toString).not.toHaveBeenCalled();
+    runtime.destroy();
+  });
+
+  it("reconciles a changed authoritative identity, including same text at another resource", () => {
+    const { runtime, view } = runtimeForPath("notes.txt");
+    runtime.update({
+      ariaLabel: "Edit notes.txt",
+      documentIdentity: "root-a\0notes.txt\0r2\0restored",
+      path: "notes.txt",
+      content: "restored",
+      disabled: false,
+      maxContentLength: 1024,
+      onChange: vi.fn(),
+    });
+    expect(view.state.doc.toString()).toBe("restored");
+    runtime.update({
+      ariaLabel: "Edit copied.txt",
+      documentIdentity: "root-a\0copied.txt\0r2\0restored",
+      path: "copied.txt",
+      content: "restored",
+      disabled: false,
+      maxContentLength: 1024,
+      onChange: vi.fn(),
+    });
+    expect(view.state.doc.toString()).toBe("restored");
+    runtime.destroy();
+  });
+
+  it("does not let matching resource revision and fingerprint mask changed content", () => {
+    const { runtime, view } = runtimeForPath(
+      "notes.txt",
+      "root-a\0notes.txt\0r1\0fingerprint-a",
+    );
+    runtime.update({
+      ariaLabel: "Edit notes.txt",
+      documentIdentity: "root-a\0notes.txt\0r1\0fingerprint-a",
+      path: "notes.txt",
+      content: "authoritative reload disagreement",
+      disabled: false,
+      maxContentLength: 1024,
+      onChange: vi.fn(),
+    });
+    expect(view.state.doc.toString()).toBe("authoritative reload disagreement");
+    runtime.destroy();
+  });
+
+  it("keeps local undo through a completed save echo and accepts an external reload", () => {
+    const { runtime, view } = runtimeForPath(
+      "notes.txt",
+      "root-a\0notes.txt\0r1\0fn main() {}",
+    );
+    view.dispatch({ changes: { from: view.state.doc.length, insert: "!" } });
+    expect(view.state.doc.toString()).toBe("fn main() {}!");
+
+    runtime.update({
+      ariaLabel: "Edit notes.txt",
+      documentIdentity: "root-a\0notes.txt\0r2\0fn main() {}!",
+      path: "notes.txt",
+      content: "fn main() {}!",
+      disabled: false,
+      maxContentLength: 1024,
+      onChange: vi.fn(),
+    });
+    expect(undo(view)).toBe(true);
+    expect(view.state.doc.toString()).toBe("fn main() {}");
+
+    runtime.update({
+      ariaLabel: "Edit notes.txt",
+      documentIdentity: "root-a\0notes.txt\0r3\0reloaded from disk",
+      path: "notes.txt",
+      content: "reloaded from disk",
+      disabled: false,
+      maxContentLength: 1024,
+      onChange: vi.fn(),
+    });
+    expect(view.state.doc.toString()).toBe("reloaded from disk");
     runtime.destroy();
   });
 });

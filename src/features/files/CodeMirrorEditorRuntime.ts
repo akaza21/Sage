@@ -30,6 +30,12 @@ import { editorLanguageForPath, loadEditorLanguage } from "./editorLanguage";
 
 interface RuntimeProps {
   ariaLabel: string;
+  /**
+   * Authoritative controlled document identity.  Callers include the resource,
+   * durable revision and content fingerprint so cosmetic updates never need to
+   * read the CodeMirror document.
+   */
+  documentIdentity?: string;
   path: string;
   content: string;
   disabled: boolean;
@@ -225,6 +231,9 @@ export function createCodeMirrorEditorRuntime(
     appearance: options.appearance ?? DEFAULT_EDITOR_APPEARANCE,
   };
   let applyingControlledContent = false;
+  // A local transaction already serializes its exact content through onChange.
+  // Its store echo must not become a controlled replacement (which clears undo).
+  let lastLocalContent = options.content;
   let languageGeneration = 0;
   let destroyed = false;
   const view = new EditorView({
@@ -249,7 +258,8 @@ export function createCodeMirrorEditorRuntime(
         ),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !applyingControlledContent) {
-            current.onChange(update.state.doc.toString());
+            lastLocalContent = update.state.doc.toString();
+            current.onChange(lastLocalContent);
           }
           if (
             current.onCaretOffset &&
@@ -328,7 +338,20 @@ export function createCodeMirrorEditorRuntime(
       if (effects.length > 0) {
         view.dispatch({ effects });
       }
-      if (view.state.doc.toString() !== props.content) {
+      // Do not stringify the editor document for unrelated prop updates.  A
+      // changed identity is deliberately stronger than a local revision: it
+      // includes the resource and controlled content, so reload/save/undo
+      // reconciliation and same-text resource changes remain authoritative.
+      const identityChanged =
+        next.documentIdentity !== undefined &&
+        previous.documentIdentity !== undefined
+          ? next.documentIdentity !== previous.documentIdentity
+          : view.state.doc.toString() !== props.content;
+      // Identity normally avoids touching content, but it cannot mask an
+      // authoritative content disagreement from an external reload.
+      const controlledDocumentChanged =
+        identityChanged || props.content !== previous.content;
+      if (controlledDocumentChanged && props.content !== lastLocalContent) {
         applyingControlledContent = true;
         try {
           view.dispatch({
@@ -342,6 +365,7 @@ export function createCodeMirrorEditorRuntime(
         } finally {
           applyingControlledContent = false;
         }
+        lastLocalContent = props.content;
       }
       if (props.path !== previous.path) {
         selectLanguage(props.path);

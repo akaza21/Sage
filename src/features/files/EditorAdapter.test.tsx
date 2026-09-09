@@ -101,6 +101,37 @@ describe("EditorAdapter", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("keeps a local selection through unrelated updates with the same document identity", async () => {
+    const { rerender } = render(
+      <EditorAdapter
+        ariaLabel="Edit notes.txt"
+        documentIdentity="root-a\0notes.txt\0r1\0draft"
+        path="notes.txt"
+        content="draft"
+        disabled={false}
+        maxContentLength={1024}
+        onChange={vi.fn()}
+      />,
+    );
+    const editor = await screen.findByRole("textbox", {
+      name: "Edit notes.txt",
+    });
+    const view = viewForEditor(editor);
+    view.dispatch({ selection: { anchor: 1, head: 3 } });
+    rerender(
+      <EditorAdapter
+        ariaLabel="Edit durable notes.txt"
+        documentIdentity="root-a\0notes.txt\0r1\0draft"
+        path="notes.txt"
+        content="draft"
+        disabled
+        maxContentLength={1024}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(view.state.selection.main).toMatchObject({ from: 1, to: 3 });
+  });
+
   it("projects the same display settings into every shared File editor", async () => {
     useEditorAppearanceStore.setState({
       lineNumbers: false,

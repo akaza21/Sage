@@ -22,6 +22,7 @@ export interface EditorAdapterHandle {
 
 interface EditorAdapterProps {
   ariaLabel: string;
+  documentIdentity?: string;
   path: string;
   content: string;
   disabled: boolean;
@@ -114,6 +115,7 @@ export const EditorAdapter = forwardRef<
     lineNumbers,
     props.ariaLabel,
     props.content,
+    props.documentIdentity,
     props.disabled,
     props.maxContentLength,
     props.onChange,

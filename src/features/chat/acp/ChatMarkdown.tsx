@@ -1,5 +1,5 @@
 import { Check, Copy } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { renderMarkdownPreview } from "../../files/markdownPreview";
 import { MermaidFigureBoundary } from "./MermaidFigureBoundary";
@@ -72,7 +72,9 @@ function ChatCodeBlock({
 }
 
 export function ChatMarkdown({ text }: { text: string }) {
-  const document = renderMarkdownPreview(text);
+  // The exact text is the parser authority; unrelated projection updates do
+  // not parse a retained message again.
+  const document = useMemo(() => renderMarkdownPreview(text), [text]);
   return (
     <div className="acp-markdown">
       {document.blocks.map((block, index) => {

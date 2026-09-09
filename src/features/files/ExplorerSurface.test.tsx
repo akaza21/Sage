@@ -1,9 +1,26 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
 import { childResource, resourceKey } from "../../domain/resourceIdentity";
 import { ExplorerSurface } from "./ExplorerSurface";
+
+const { fileKindIcon } = vi.hoisted(() => ({
+  fileKindIcon: vi.fn(() => <span data-testid="file-kind-icon" />),
+}));
+
+vi.mock("./FileKindIcon", () => ({ FileKindIcon: fileKindIcon }));
+
+Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+  configurable: true,
+  value: vi.fn(),
+});
 
 const initialState = useWorkbenchStore.getState();
 
@@ -89,4 +106,63 @@ it("discloses the full resource path for truncated Explorer rows", () => {
     "title",
     "A",
   );
+});
+
+it("updates only the affected memoized Explorer rows when selection changes", () => {
+  const root = childResource("root-a");
+  const first = childResource("root-a", "src/first.ts");
+  const second = childResource("root-a", "src/second.ts");
+  const unchanged = childResource("root-a", "src/unchanged.ts");
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    selectedResource: first,
+    directoryListings: {
+      [resourceKey(root)]: {
+        phase: "ready",
+        value: {
+          resource: root,
+          entries: [
+            { name: "first.ts", resource: first, kind: "file", byteLen: 1 },
+            { name: "second.ts", resource: second, kind: "file", byteLen: 1 },
+            {
+              name: "unchanged.ts",
+              resource: unchanged,
+              kind: "file",
+              byteLen: 1,
+            },
+          ],
+          truncated: false,
+        },
+      },
+    },
+    expandedDirectories: {},
+  });
+
+  render(<ExplorerSurface />);
+  fileKindIcon.mockClear();
+
+  act(() => useWorkbenchStore.setState({ selectedResource: second }));
+
+  const renderedRows = (
+    fileKindIcon.mock.calls as unknown as Array<[{ path?: string }]>
+  ).filter(([props]) => props.path !== "A");
+  expect(renderedRows).toHaveLength(2);
+  expect(
+    screen.getByRole("treeitem", { name: "Open file src/first.ts" }),
+  ).not.toHaveAttribute("aria-current");
+  expect(
+    screen.getByRole("treeitem", { name: "Open file src/second.ts" }),
+  ).toHaveAttribute("aria-current", "page");
 });

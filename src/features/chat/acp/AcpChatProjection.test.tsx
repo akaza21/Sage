@@ -171,6 +171,82 @@ function editItem(
 }
 
 describe("AcpChatProjection", () => {
+  it("replaces only a revised immutable Turn row", async () => {
+    const chatMarkdown = vi.fn(({ text }: { text: string }) => (
+      <span>{text}</span>
+    ));
+    const turnEditSummary = vi.fn(() => null);
+    vi.resetModules();
+    vi.doMock("./ChatMarkdown", () => ({ ChatMarkdown: chatMarkdown }));
+    vi.doMock("./TurnEditSummary", () => ({
+      TurnEditSummary: turnEditSummary,
+    }));
+    const { AcpChatProjection: MemoProjection } =
+      await import("./AcpChatProjection");
+    const initial = page("completed");
+    initial.turns = Array.from({ length: 14 }, (_, index) => {
+      const turn = structuredClone(initial.turns[0]);
+      turn.id = `turn-${index + 1}` as never;
+      turn.ordinal = index + 1;
+      turn.revision = "1" as never;
+      turn.items = [
+        {
+          ...textItem(),
+          id: `item-${index + 1}` as never,
+          turnId: turn.id,
+          revision: "1" as never,
+          payload: { role: "assistant", text: `Retained row ${index + 1}` },
+        } as AcpItem,
+        {
+          ...textItem(),
+          id: `retained-item-${index + 1}` as never,
+          turnId: turn.id,
+          revision: "1" as never,
+          payload: {
+            role: "assistant",
+            text: `Unchanged sibling ${index + 1}`,
+          },
+        } as AcpItem,
+      ];
+      return turn;
+    });
+    const { container, rerender } = render(
+      <MemoProjection page={initial} active />,
+    );
+    await screen.findByText("Retained row 14");
+    chatMarkdown.mockClear();
+    turnEditSummary.mockClear();
+    const before = Array.from(
+      container.querySelectorAll<HTMLElement>(".acp-turn"),
+    );
+    const revised = structuredClone(initial);
+    const changed = revised.turns[6]!;
+    changed.revision = "2" as never;
+    changed.items = changed.items.map((item, index) =>
+      index === 0
+        ? ({
+            ...item,
+            revision: "2" as never,
+            payload: { role: "assistant", text: "Revised row 7" },
+          } as AcpItem)
+        : item,
+    );
+    rerender(<MemoProjection page={revised} active />);
+    await screen.findByText("Revised row 7");
+    const after = Array.from(
+      container.querySelectorAll<HTMLElement>(".acp-turn"),
+    );
+    expect(chatMarkdown).toHaveBeenCalledOnce();
+    expect(turnEditSummary).toHaveBeenCalledOnce();
+    expect(after[0]).toBe(before[0]);
+    expect(after[6]).toBe(before[6]);
+    expect(after[6]).toHaveTextContent("Revised row 7");
+    expect(after[13]).toBe(before[13]);
+    vi.doUnmock("./ChatMarkdown");
+    vi.doUnmock("./TurnEditSummary");
+    vi.resetModules();
+  });
+
   it("keeps retained Turn status accessible without replaying it", async () => {
     render(<AcpChatProjection page={page("waitingUser")} active />);
     const status = await screen.findByRole("status", {
@@ -213,7 +289,7 @@ describe("AcpChatProjection", () => {
     });
   });
 
-  it("renders an admitted png image item", () => {
+  it("renders an admitted png image item", async () => {
     const next = page("completed");
     const png =
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
@@ -241,8 +317,10 @@ describe("AcpChatProjection", () => {
         },
       } as AcpItem,
     ];
-    const { container } = render(<AcpChatProjection page={next} active />);
-    const image = container.querySelector("img.acp-image__src");
+    render(<AcpChatProjection page={next} active />);
+    const image = await screen.findByRole("img", {
+      name: "Image provided by the agent",
+    });
     expect(image).toHaveAttribute("src", `data:image/png;base64,${png}`);
     expect(
       screen.getByRole("img", { name: "Image provided by the agent" }),
@@ -505,6 +583,7 @@ describe("AcpChatProjection", () => {
     expect(openResource).toHaveBeenCalledWith(
       { rootId: "root-right", relativePath: "src/main.ts" },
       "diff",
+      { projectId: "project-1", chatId: "chat-1", sessionId: "session-1" },
     );
   });
 
@@ -573,6 +652,7 @@ describe("AcpChatProjection", () => {
     expect(openResource).toHaveBeenCalledWith(
       { rootId: "root-one", relativePath: "src/main.ts" },
       "diff",
+      { projectId: "project-1", chatId: "chat-1", sessionId: "session-1" },
     );
     expect(openResource).not.toHaveBeenCalledWith(expect.anything(), "review");
   });
@@ -645,11 +725,13 @@ describe("AcpChatProjection", () => {
       1,
       { rootId: "root-left", relativePath: "src/main.ts" },
       "diff",
+      { projectId: "project-1", chatId: "chat-1", sessionId: "session-1" },
     );
     expect(openResource).toHaveBeenNthCalledWith(
       2,
       { rootId: "root-right", relativePath: "src/main.ts" },
       "diff",
+      { projectId: "project-1", chatId: "chat-1", sessionId: "session-1" },
     );
   });
 
@@ -809,9 +891,15 @@ describe("AcpChatProjection", () => {
       within(summary).getByText(/outside this Project/i),
     ).toBeInTheDocument();
 
-    edited.turns[0].items = [stale];
+    const refreshed = structuredClone(edited);
+    refreshed.turns[0].items = [stale];
+    refreshed.turns[0].revision = "2" as never;
     rerender(
-      <AcpChatProjection page={edited} active onOpenResource={openResource} />,
+      <AcpChatProjection
+        page={refreshed}
+        active
+        onOpenResource={openResource}
+      />,
     );
     summary = screen.getByRole("region", { name: "Files edited in turn 1" });
     expect(within(summary).queryByRole("list")).toBeNull();
@@ -900,6 +988,7 @@ describe("AcpChatProjection", () => {
     expect(openResource).toHaveBeenCalledWith(
       { rootId: "root-a", relativePath: "src/main.ts" },
       "file",
+      { projectId: "project-1", chatId: "chat-1", sessionId: "session-1" },
     );
     fireEvent.keyDown(rootNode!, { key: "ArrowRight" });
     expect(rootNode).toHaveAttribute("aria-expanded", "true");
@@ -928,12 +1017,18 @@ describe("AcpChatProjection", () => {
     );
     nestedDisclosure.focus();
     expect(nestedDisclosure).toHaveFocus();
-    nested.turns[0].items = nested.turns[0].items.filter(
+    const refreshed = structuredClone(nested);
+    refreshed.turns[0].items = refreshed.turns[0].items.filter(
       (item) => item.id !== "nested-unknown",
     );
-    nested.turns[0].activities = [nested.turns[0].activities[0]];
+    refreshed.turns[0].activities = [refreshed.turns[0].activities[0]];
+    refreshed.turns[0].revision = "2" as never;
     rerender(
-      <AcpChatProjection page={nested} active onOpenResource={openResource} />,
+      <AcpChatProjection
+        page={refreshed}
+        active
+        onOpenResource={openResource}
+      />,
     );
     expect(activityDisclosure).toHaveFocus();
   });
@@ -1040,7 +1135,8 @@ describe("AcpChatProjection", () => {
     );
     expect(screen.queryByText(/^Thought/)).toBeNull();
 
-    next.turns[0].items = [
+    const refreshed = structuredClone(next);
+    refreshed.turns[0].items = [
       {
         id: "thought",
         kind: "thoughtSummary",
@@ -1050,7 +1146,8 @@ describe("AcpChatProjection", () => {
       } as AcpItem,
       ...tools,
     ];
-    rerender(<AcpChatProjection page={next} active />);
+    refreshed.turns[0].revision = "2" as never;
+    rerender(<AcpChatProjection page={refreshed} active />);
     expect(container.querySelectorAll(".acp-thought__working li")).toHaveLength(
       64,
     );

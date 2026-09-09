@@ -3,7 +3,7 @@ import { RefreshCw } from "lucide-react";
 
 import { useWorkbenchStore } from "../app/store";
 import { isRootRepository, repositoryKey } from "../domain/repositoryInventory";
-import { resourceKey } from "../domain/resourceIdentity";
+import { resourceKey, sameResource } from "../domain/resourceIdentity";
 import {
   conflictGroupLabel,
   partitionSourceChanges,
@@ -61,7 +61,7 @@ function SourceChangeGroups({
       change={change}
       repository={repository}
       rootName={rootName}
-      selected={selected}
+      isSelected={sameResource(selected, change.resource)}
       controlsDisabled={controlsDisabled}
       mutateRepositoryFile={mutateRepositoryFile}
       openDiff={openDiff}

@@ -18,7 +18,15 @@ type AcpChatProjectionProps = {
   page: AcpChatPage;
   active: boolean;
   focused?: boolean;
-  onOpenResource?: (resource: ResourceRef, target: OpenResourceTarget) => void;
+  onOpenResource?: (
+    resource: ResourceRef,
+    target: OpenResourceTarget,
+    origin?: {
+      projectId: AcpChatPage["projectId"];
+      chatId: AcpChatPage["chatId"];
+      sessionId: NonNullable<AcpChatPage["currentSessionId"]>;
+    },
+  ) => void;
   hasEarlier?: boolean;
   loadingEarlier?: boolean;
   historyError?: string | null;

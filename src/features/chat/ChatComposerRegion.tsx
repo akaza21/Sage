@@ -10,28 +10,7 @@ import {
 import { ComposerContext } from "./ComposerContext";
 import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
 
-interface ChatComposerProps {
-  composerRef: RefObject<HTMLTextAreaElement | null>;
-  fieldId: string;
-  descriptionId: string;
-  disabledReasonId: string;
-  text: string;
-  enabled: boolean;
-  actionBusy: boolean;
-  projectTransitioning: boolean;
-  workbenchError: string | null;
-  chatError: string | null;
-  availableBinding: boolean;
-  canPrompt: boolean;
-  missingBindingNotice: boolean;
-  disabledReason: string | null;
-  project: { name: string } | null | undefined;
-  onSubmit: FormEventHandler<HTMLFormElement>;
-  onTextChange: (text: string) => void;
-  onCancelTurn: (() => void) | null;
-}
-
-export function ChatComposer({
+export function ChatComposerRegion({
   composerRef,
   fieldId,
   descriptionId,
@@ -50,7 +29,26 @@ export function ChatComposer({
   onSubmit,
   onTextChange,
   onCancelTurn,
-}: ChatComposerProps) {
+}: {
+  composerRef: RefObject<HTMLTextAreaElement | null>;
+  fieldId: string;
+  descriptionId: string;
+  disabledReasonId: string;
+  text: string;
+  enabled: boolean;
+  actionBusy: boolean;
+  projectTransitioning: boolean;
+  workbenchError: string | null;
+  chatError: string | null;
+  availableBinding: boolean;
+  canPrompt: boolean;
+  missingBindingNotice: boolean;
+  disabledReason: string | null;
+  project: { name: string } | null | undefined;
+  onSubmit: FormEventHandler<HTMLFormElement>;
+  onTextChange: (text: string) => void;
+  onCancelTurn: (() => void) | null;
+}) {
   return (
     <form
       className="composer"
@@ -83,9 +81,7 @@ export function ChatComposer({
         ref={composerRef}
         id={fieldId}
         aria-label="Message agent"
-        aria-describedby={`${descriptionId}${
-          disabledReason ? ` ${disabledReasonId}` : ""
-        }`}
+        aria-describedby={`${descriptionId}${disabledReason ? ` ${disabledReasonId}` : ""}`}
         value={text}
         maxLength={MAX_CHAT_COMPOSER_BYTES}
         rows={2}

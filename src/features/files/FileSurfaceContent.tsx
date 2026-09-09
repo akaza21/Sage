@@ -152,6 +152,7 @@ export function FileSurfaceContent({
             key={activeResourceKey}
             ref={editorInputRef}
             ariaLabel={`Edit ${path}`}
+            documentIdentity={`${activeResourceKey}\0${editor.revision}\0${editor.document.buffer.fingerprint}`}
             path={path}
             content={editor.content}
             maxContentLength={MAX_EDITABLE_CONTENT_BYTES}

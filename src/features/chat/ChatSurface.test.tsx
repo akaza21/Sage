@@ -307,6 +307,10 @@ describe("ChatSurface ACP resource integration", () => {
   });
 
   it("stops following when the reader scrolls away and offers a return to latest", () => {
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
     const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView);
     const { rerender } = render(<ChatSurface />);
     const transcript = document.querySelector(".message-list");
@@ -334,6 +338,24 @@ describe("ChatSurface ACP resource integration", () => {
       behavior: "smooth",
       block: "end",
     });
+  });
+
+  it("coalesces a scroll burst and cancels pending follow work on owner change or unmount", () => {
+    const request = vi.fn((_: FrameRequestCallback) => 17);
+    const cancel = vi.fn();
+    vi.stubGlobal("requestAnimationFrame", request);
+    vi.stubGlobal("cancelAnimationFrame", cancel);
+    const { rerender, unmount } = render(<ChatSurface chatId="chat-a" />);
+    const transcript = document.querySelector(".message-list");
+    expect(transcript).not.toBeNull();
+    for (let index = 0; index < 24; index += 1) fireEvent.scroll(transcript!);
+    expect(request).toHaveBeenCalledTimes(1);
+    rerender(<ChatSurface chatId="chat-b" />);
+    expect(cancel).toHaveBeenCalledWith(17);
+    fireEvent.scroll(document.querySelector(".message-list")!);
+    expect(request).toHaveBeenCalledTimes(2);
+    unmount();
+    expect(cancel).toHaveBeenCalledTimes(2);
   });
 
   it("keeps selected not-installed Codex truthful and hides later built-in harnesses", () => {
@@ -1060,6 +1082,34 @@ describe("ChatSurface ACP resource integration", () => {
     expect(hooks.actions.close).toHaveBeenCalledOnce();
   });
 
+  it("keeps the current closable session available when selected model binding does not match", () => {
+    setTurnState("completed");
+    hooks.page = {
+      ...hooks.page!,
+      currentSessionId: "session-a" as never,
+      sessions: [
+        {
+          id: "session-a",
+          ordinal: 0,
+          runtimeEpoch: "1",
+          nextRuntimeEpoch: null,
+          state: "active",
+          residency: "hot",
+          legacy: false,
+          bindingId: "codex-app-server",
+          modelId: "a-different-model",
+          capabilities: { closeSession: true },
+          revision: "1",
+          projectionRevision: "2",
+        },
+      ],
+    } as unknown as AcpChatPage;
+
+    render(<ChatSurface />);
+    fireEvent.click(screen.getByRole("button", { name: "Close session" }));
+    expect(hooks.actions.close).toHaveBeenCalledOnce();
+  });
+
   it("keeps ACP prompting disabled until authoritative Chat state loads", () => {
     hooks.page = null;
     render(<ChatSurface />);
@@ -1186,7 +1236,7 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeNull();
   });
 
-  it("routes duplicate-path ACP file and diff actions by canonical ResourceRef", () => {
+  it("routes duplicate-path ACP file and diff actions by canonical ResourceRef", async () => {
     const openFile = vi.fn().mockResolvedValue(undefined);
     const openDiff = vi.fn().mockResolvedValue(undefined);
     useWorkbenchStore.setState({
@@ -1224,12 +1274,12 @@ describe("ChatSurface ACP resource integration", () => {
       page: hooks.page,
     });
 
-    render(<ChatSurface />);
+    const { rerender } = render(<ChatSurface />);
     fireEvent.click(
-      screen.getByRole("button", { name: "Open file src/main.ts" }),
+      await screen.findByRole("button", { name: "Open file src/main.ts" }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Open diff B / src/main.ts" }),
+      await screen.findByRole("button", { name: "Open diff B / src/main.ts" }),
     );
 
     expect(openFile).toHaveBeenCalledWith({
@@ -1240,14 +1290,132 @@ describe("ChatSurface ACP resource integration", () => {
       rootId: "root-b",
       relativePath: "src/main.ts",
     });
+
+    const refreshed = structuredClone(hooks.page!);
+    refreshed.currentSessionId = "session-next" as never;
+    refreshed.sessions = [{ id: "session-next", ordinal: 0 }] as never;
+    refreshed.turns = refreshed.turns.map(
+      (turn) =>
+        ({
+          ...turn,
+          sessionId: "session-next" as never,
+          revision: "2" as never,
+          items: turn.items.map(
+            (item) =>
+              ({
+                ...item,
+                sessionId: "session-next" as never,
+                revision: "2" as never,
+              }) as AcpItem,
+          ),
+        }) as typeof turn,
+    );
+    hooks.page = refreshed;
+    acpProjectionStoreFor("chat-a").setState({
+      scope: {
+        projectId: "project-a",
+        projectGeneration: "0",
+        chatId: "chat-a",
+      } as never,
+      page: refreshed,
+    });
+    rerender(<ChatSurface />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open file src/main.ts" }),
+    );
+
+    expect(openFile).toHaveBeenLastCalledWith({
+      rootId: "root-a",
+      relativePath: "src/main.ts",
+    });
   });
 
-  it("passes frontend retention incompleteness into the ACP edit summary", () => {
+  it("rejects an old rendered ToolItem handler after owner rollover", async () => {
+    const openAgentArtifact = vi.fn(async () => true);
+    vi.resetModules();
+    vi.doMock("../../app/store", () => ({ useWorkbenchStore }));
+    vi.doMock("../../app/openAgentArtifact", () => ({ openAgentArtifact }));
+    vi.doMock("./acp", async () => {
+      const actual = await vi.importActual<typeof AcpModule>("./acp");
+      return {
+        ...actual,
+        useAcpChatActions: () => hooks.actions,
+        useAcpChatProjection: () => hooks.page,
+      };
+    });
+    const { ChatSurface: CapturingChatSurface } = await import("./ChatSurface");
+    const { rerender } = render(<CapturingChatSurface />);
+    const oldButton = await screen.findByRole("button", {
+      name: "Open file src/main.ts",
+    });
+    const oldPropsKey = Object.keys(oldButton).find((key) =>
+      key.startsWith("__reactProps$"),
+    ) as keyof typeof oldButton;
+    const oldHandler = (
+      oldButton[oldPropsKey] as unknown as { onClick: () => void }
+    ).onClick;
+    const refreshed = structuredClone(hooks.page!);
+    refreshed.currentSessionId = "session-next" as never;
+    refreshed.sessions = [{ id: "session-next", ordinal: 0 }] as never;
+    refreshed.turns = refreshed.turns.map(
+      (turn) =>
+        ({
+          ...turn,
+          sessionId: "session-next" as never,
+          revision: "2" as never,
+          items: turn.items.map(
+            (item) =>
+              ({
+                ...item,
+                projectId: "project-next" as never,
+                chatId: "chat-next" as never,
+                sessionId: "session-next" as never,
+                revision: "2" as never,
+              }) as AcpItem,
+          ),
+        }) as never,
+    );
+    hooks.page = {
+      ...refreshed,
+      projectId: "project-next" as never,
+      chatId: "chat-next" as never,
+      currentSessionId: "session-next" as never,
+    };
+    rerender(<CapturingChatSurface />);
+    oldHandler();
+    await Promise.resolve();
+    expect(openAgentArtifact).not.toHaveBeenCalled();
+    const freshButton = await screen.findByRole("button", {
+      name: "Open file src/main.ts",
+    });
+    const freshPropsKey = Object.keys(freshButton).find((key) =>
+      key.startsWith("__reactProps$"),
+    ) as keyof typeof freshButton;
+    (
+      freshButton[freshPropsKey] as unknown as { onClick: () => void }
+    ).onClick();
+    await Promise.resolve();
+    expect(openAgentArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: expect.objectContaining({
+          projectId: "project-next",
+          chatId: "chat-next",
+          sessionId: "session-next",
+        }),
+      }),
+    );
+    vi.doUnmock("../../app/store");
+    vi.doUnmock("../../app/openAgentArtifact");
+    vi.doUnmock("./acp");
+    vi.resetModules();
+  });
+
+  it("passes frontend retention incompleteness into the ACP edit summary", async () => {
     useAcpProjectionStore.setState({ retentionIncomplete: true });
 
     render(<ChatSurface />);
 
-    expect(screen.getByText("Showing 1 edited file")).toBeVisible();
+    expect(await screen.findByText("Showing 1 edited file")).toBeVisible();
     expect(
       screen.getByText(/discarded to stay within memory limits/i),
     ).toBeVisible();

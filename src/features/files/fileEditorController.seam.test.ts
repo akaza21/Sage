@@ -117,7 +117,12 @@ describe("file editor controller seam", () => {
     expect(source).not.toMatch(/from ["'][^"']*ports\/workbenchRuntime["']/);
     expect(source).not.toMatch(/from ["'][^"']*ports\/workbenchPorts["']/);
     expect(source).not.toContain("bindFileEditorController");
-    expect(source).toContain("getFileEditorController");
+    expect(source).toContain("useFileSurfaceModel");
+    const modelSource = readFileSync(
+      path.resolve(import.meta.dirname, "./useFileSurfaceModel.ts"),
+      "utf8",
+    );
+    expect(modelSource).toContain("getFileEditorController");
   });
 
   it("keeps snapshot requests, bounded flushes, revisions, and dirty state in the controller", () => {

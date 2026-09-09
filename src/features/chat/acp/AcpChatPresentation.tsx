@@ -1,3 +1,5 @@
+import { memo, useCallback, useMemo } from "react";
+
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../../domain/acp";
 import type {
   ProjectRootSummary,
@@ -18,7 +20,15 @@ import { turnStateLabels } from "./statusSemantics";
 
 export type AcpChatPresentationProps = {
   page: AcpChatPage;
-  onOpenResource?: (resource: ResourceRef, target: OpenResourceTarget) => void;
+  onOpenResource?: (
+    resource: ResourceRef,
+    target: OpenResourceTarget,
+    origin?: {
+      projectId: AcpChatPage["projectId"];
+      chatId: AcpChatPage["chatId"];
+      sessionId: NonNullable<AcpChatPage["currentSessionId"]>;
+    },
+  ) => void;
   hasEarlier: boolean;
   loadingEarlier: boolean;
   historyError: string | null;
@@ -43,169 +53,221 @@ function rootLabels(
   );
 }
 
-function ItemView({
-  item,
-  interactive,
-  onOpenResource,
-}: {
-  item: AcpItem;
-  interactive: boolean;
-  onOpenResource?: AcpChatPresentationProps["onOpenResource"];
-}) {
-  switch (item.kind) {
-    case "text": {
-      const timestamp = chatTimestamp(item.createdAt);
-      return (
-        <article
-          className={`acp-message acp-message--${item.payload.role}`}
-          data-item-id={item.id}
-          data-message-role={item.payload.role}
-        >
-          <header className="acp-message__meta">
-            <span className="acp-message__role">
-              {item.payload.role === "assistant"
-                ? "Agent"
-                : item.payload.role === "user"
-                  ? "You"
-                  : "System"}
-            </span>
-            {timestamp ? (
-              <time dateTime={timestamp.dateTime} title={timestamp.dateTime}>
-                {timestamp.label}
-              </time>
-            ) : null}
-          </header>
-          <ChatMarkdown text={item.payload.text} />
-        </article>
-      );
-    }
-    case "thoughtSummary":
-    case "plan":
-    case "usage":
-    case "error":
-      return <TurnActivityItem item={item} />;
-    case "toolCall":
-    case "toolUpdateResult":
-      return (
-        <ToolItem
-          item={item}
-          allowBrowse={interactive}
-          onOpenResource={interactive ? onOpenResource : undefined}
-        />
-      );
-    case "fileChangeDiff":
-      return (
-        <p className="acp-activity__edit-reference">
-          Edit included in the Turn changed-file summary
-        </p>
-      );
-    case "image":
-      return <ImageItem item={item} />;
-    case "permissionRequest":
-      return <PermissionItem item={item} />;
-    case "unsupported":
-      return <UnknownItem item={item} />;
-    case "collaboration":
-      return <CollaborationItem item={item} />;
-  }
+function rootLabelKey(roots: AcpChatPresentationProps["projectRoots"]): string {
+  return roots
+    .map((root) => `${root.id}\0${root.name}\0${root.ordinal}`)
+    .join("\n");
 }
 
-function Turn({
-  page,
-  turn,
-  labels,
-  countIncomplete,
-  onOpenResource,
-}: {
-  page: AcpChatPage;
-  turn: TurnProjection;
-  labels: Readonly<Record<string, string>>;
-  countIncomplete: boolean;
-  onOpenResource?: AcpChatPresentationProps["onOpenResource"];
-}) {
-  const primary = turn.items.filter(
-    (item) =>
-      item.origin === "primary" &&
-      item.kind !== "fileChangeDiff" &&
-      item.kind !== "thoughtSummary",
-  );
-  const activityIds = new Set(turn.activities.map((activity) => activity.id));
-  const itemActivities = new Map(
-    turn.items.map((item) => [item.id, item.activityId] as const),
-  );
-  const roots = turn.activities.filter(
-    (activity) =>
-      !activity.parentActivityId ||
-      !activityIds.has(activity.parentActivityId) ||
-      itemActivities.get(activity.parentItemId) !== activity.parentActivityId,
-  );
-  const interactive = turn.sessionId === page.currentSessionId;
-  const thought = turn.items.find((item) => item.kind === "thoughtSummary");
-  return (
-    <section
-      className="acp-turn"
-      aria-label={`Turn ${turn.ordinal}`}
-      data-turn-id={turn.id}
-      data-session-id={turn.sessionId}
-      data-runtime-epoch={turn.runtimeEpoch}
-      data-turn-ordinal={turn.ordinal}
-    >
-      <header className="acp-turn__header">
-        <span
-          className="acp-state"
-          role="status"
-          aria-label={turnStateLabels[turn.state]}
-          aria-live="off"
-          aria-atomic="true"
-          data-turn-status={turn.id}
-          tabIndex={-1}
-        >
-          {turnStateLabels[turn.state]}
-        </span>
-      </header>
-      <div className="acp-turn__items">
-        {thought ? (
-          <TurnActivityItem item={thought} workingItems={turn.items} />
-        ) : null}
-        {primary.map((item) => (
-          <ItemView
-            key={item.id}
+const ItemView = memo(
+  function ItemView({
+    item,
+    interactive,
+    onOpenResource,
+  }: {
+    item: AcpItem;
+    interactive: boolean;
+    onOpenResource?: AcpChatPresentationProps["onOpenResource"];
+  }) {
+    switch (item.kind) {
+      case "text": {
+        const timestamp = chatTimestamp(item.createdAt);
+        return (
+          <article
+            className={`acp-message acp-message--${item.payload.role}`}
+            data-item-id={item.id}
+            data-message-role={item.payload.role}
+          >
+            <header className="acp-message__meta">
+              <span className="acp-message__role">
+                {item.payload.role === "assistant"
+                  ? "Agent"
+                  : item.payload.role === "user"
+                    ? "You"
+                    : "System"}
+              </span>
+              {timestamp ? (
+                <time dateTime={timestamp.dateTime} title={timestamp.dateTime}>
+                  {timestamp.label}
+                </time>
+              ) : null}
+            </header>
+            <ChatMarkdown text={item.payload.text} />
+          </article>
+        );
+      }
+      case "thoughtSummary":
+      case "plan":
+      case "usage":
+      case "error":
+        return <TurnActivityItem item={item} />;
+      case "toolCall":
+      case "toolUpdateResult":
+        return (
+          <ToolItem
             item={item}
-            interactive={interactive}
-            onOpenResource={onOpenResource}
+            allowBrowse={interactive}
+            onOpenResource={interactive ? onOpenResource : undefined}
           />
-        ))}
-        {roots.map((activity) => (
-          <HarnessActivity
-            key={activity.id}
-            activity={activity}
-            activities={turn.activities}
-            items={turn.items}
-            renderItem={(item) => (
-              <ItemView
-                item={item}
-                interactive={interactive}
-                onOpenResource={onOpenResource}
-              />
-            )}
+        );
+      case "fileChangeDiff":
+        return (
+          <p className="acp-activity__edit-reference">
+            Edit included in the Turn changed-file summary
+          </p>
+        );
+      case "image":
+        return <ImageItem item={item} />;
+      case "permissionRequest":
+        return <PermissionItem item={item} />;
+      case "unsupported":
+        return <UnknownItem item={item} />;
+      case "collaboration":
+        return <CollaborationItem item={item} />;
+    }
+  },
+  (left, right) =>
+    left.item.id === right.item.id &&
+    left.item.revision === right.item.revision &&
+    left.interactive === right.interactive &&
+    left.onOpenResource === right.onOpenResource,
+);
+
+const Turn = memo(
+  function Turn({
+    page,
+    turn,
+    labels,
+    countIncomplete,
+    onOpenResource,
+  }: {
+    page: AcpChatPage;
+    turn: TurnProjection;
+    labels: Readonly<Record<string, string>>;
+    countIncomplete: boolean;
+    onOpenResource?: AcpChatPresentationProps["onOpenResource"];
+  }) {
+    const primary = turn.items.filter(
+      (item) =>
+        item.origin === "primary" &&
+        item.kind !== "fileChangeDiff" &&
+        item.kind !== "thoughtSummary",
+    );
+    const activityIds = new Set(turn.activities.map((activity) => activity.id));
+    const itemActivities = new Map(
+      turn.items.map((item) => [item.id, item.activityId] as const),
+    );
+    const roots = turn.activities.filter(
+      (activity) =>
+        !activity.parentActivityId ||
+        !activityIds.has(activity.parentActivityId) ||
+        itemActivities.get(activity.parentItemId) !== activity.parentActivityId,
+    );
+    const interactive = turn.sessionId === page.currentSessionId;
+    const actionOrigin = useMemo(
+      () => ({
+        projectId: page.projectId,
+        chatId: page.chatId,
+        sessionId: turn.sessionId,
+      }),
+      [page.chatId, page.projectId, turn.sessionId],
+    );
+    const openForTurn = useCallback(
+      (resource: ResourceRef, target: OpenResourceTarget) =>
+        onOpenResource?.(resource, target, actionOrigin),
+      [actionOrigin, onOpenResource],
+    );
+    const openDiffForTurn = useCallback(
+      (resource: ResourceRef) => openForTurn(resource, "diff"),
+      [openForTurn],
+    );
+    const thought = turn.items.find((item) => item.kind === "thoughtSummary");
+    return (
+      <section
+        className="acp-turn"
+        aria-label={`Turn ${turn.ordinal}`}
+        data-turn-id={turn.id}
+        data-session-id={turn.sessionId}
+        data-runtime-epoch={turn.runtimeEpoch}
+        data-turn-ordinal={turn.ordinal}
+      >
+        <header className="acp-turn__header">
+          <span
+            className="acp-state"
+            role="status"
+            aria-label={turnStateLabels[turn.state]}
+            aria-live="off"
+            aria-atomic="true"
+            data-turn-status={turn.id}
+            tabIndex={-1}
+          >
+            {turnStateLabels[turn.state]}
+          </span>
+        </header>
+        <div className="acp-turn__items">
+          {thought ? (
+            <TurnActivityItem item={thought} workingItems={turn.items} />
+          ) : null}
+          {primary.map((item) => (
+            <ItemView
+              key={item.id}
+              item={item}
+              interactive={interactive}
+              onOpenResource={
+                interactive && onOpenResource ? openForTurn : undefined
+              }
+            />
+          ))}
+          {roots.map((activity) => (
+            <HarnessActivity
+              key={activity.id}
+              activity={activity}
+              activities={turn.activities}
+              items={turn.items}
+              renderItem={(item) => (
+                <ItemView
+                  item={item}
+                  interactive={interactive}
+                  onOpenResource={
+                    interactive && onOpenResource ? openForTurn : undefined
+                  }
+                />
+              )}
+            />
+          ))}
+          <TurnEditSummary
+            page={page}
+            turn={turn}
+            rootLabels={labels}
+            countIncomplete={countIncomplete}
+            onOpenDiff={
+              interactive && onOpenResource ? openDiffForTurn : undefined
+            }
+            onRecordDisposition={recordAgentEditDisposition}
           />
-        ))}
-        <TurnEditSummary
-          page={page}
-          turn={turn}
-          rootLabels={labels}
-          countIncomplete={countIncomplete}
-          onOpenDiff={
-            interactive && onOpenResource
-              ? (resource) => onOpenResource(resource, "diff")
-              : undefined
-          }
-          onRecordDisposition={recordAgentEditDisposition}
-        />
-      </div>
-    </section>
-  );
-}
+        </div>
+      </section>
+    );
+  },
+  (left, right) =>
+    // A replaced page that reuses a mutable Turn is not an immutable revision
+    // update; render it conservatively rather than retaining stale controls.
+    (left.turn !== right.turn || left.page === right.page) &&
+    left.turn.id === right.turn.id &&
+    left.turn.revision === right.turn.revision &&
+    left.turn.items.length === right.turn.items.length &&
+    left.turn.items.every(
+      (item, index) =>
+        item.id === right.turn.items[index]?.id &&
+        item.revision === right.turn.items[index]?.revision,
+    ) &&
+    left.page.projectId === right.page.projectId &&
+    left.page.chatId === right.page.chatId &&
+    left.page.currentSessionId === right.page.currentSessionId &&
+    left.labels === right.labels &&
+    left.countIncomplete === right.countIncomplete &&
+    left.onOpenResource === right.onOpenResource,
+);
 
 export function AcpChatPresentation({
   page,
@@ -219,6 +281,11 @@ export function AcpChatPresentation({
 }: AcpChatPresentationProps) {
   const incomplete = page.nextCursor !== null;
   const countIncomplete = incomplete || retentionIncomplete;
+  const labelsKey = rootLabelKey(projectRoots);
+  // The primitive key is the complete label projection; keeping it narrow
+  // avoids row churn when a caller replaces an equivalent roots array.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const labels = useMemo(() => rootLabels(projectRoots), [labelsKey]);
   return (
     <>
       {hasEarlier && onLoadEarlier ? (
@@ -256,7 +323,7 @@ export function AcpChatPresentation({
             key={turn.id}
             page={page}
             turn={turn}
-            labels={rootLabels(projectRoots)}
+            labels={labels}
             countIncomplete={countIncomplete}
             onOpenResource={onOpenResource}
           />
