@@ -126,6 +126,15 @@ pub(crate) enum DurableAdapterEvent {
         payload_digest: String,
         now_millis: i64,
     },
+    /// Bounded old/new bytes for the preceding `FileChangeDiff` item with the
+    /// same external key. Applied atomically with its item in the store batch.
+    FilePair {
+        scope: TurnScope,
+        external_item_id: ExternalId,
+        old_text: String,
+        new_text: String,
+        now_millis: i64,
+    },
     ActivityItem(Box<DurableActivityItem>),
     PermissionRequest {
         intent: PermissionIntent,

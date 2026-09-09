@@ -652,7 +652,7 @@ fn failed_resource_mapping_emits_a_typed_nonclickable_location() {
     begin_prompt(&mut adapter);
     let start = br#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"omp-session-1","update":{"sessionUpdate":"tool_call","toolCallId":"mapped-tool","kind":"edit"}}}"#;
     adapter.ingest(start, &FixtureResources).unwrap();
-    let diff = br#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"omp-session-1","update":{"sessionUpdate":"tool_call_update","toolCallId":"mapped-tool","kind":"edit","status":"completed","content":[{"type":"diff","path":"C:\\fixture\\src\\lib.rs"}]}}}"#;
+    let diff = br#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"omp-session-1","update":{"sessionUpdate":"tool_call_update","toolCallId":"mapped-tool","kind":"edit","status":"completed","content":[{"type":"diff","path":"C:\\fixture\\src\\lib.rs","oldText":"old\n","newText":"new\n"}]}}}"#;
     let mapped = adapter.ingest(diff, &RejectResources).unwrap();
     assert!(mapped.iter().any(|event| matches!(
         event,

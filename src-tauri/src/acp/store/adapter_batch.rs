@@ -12,9 +12,11 @@ use crate::acp::{
     runtime::permissions::PermissionIntent,
 };
 
+use super::snapshots::FilePairCommand;
 use super::{ItemIngressCommand, MutationDisposition, StoreError};
 
 mod activity_item;
+mod file_pairs;
 mod turns;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +52,9 @@ pub(crate) enum AdapterInboundEvent {
         now_millis: i64,
     },
     Item(ItemIngressCommand),
+    /// Bounded old/new bytes for the `FileChangeDiff` item with the same
+    /// owner and external key. Applied in the same transaction as its item.
+    FilePair(FilePairCommand),
     ActivityItem(Box<AdapterActivityItemCommand>),
     PermissionRequest {
         intent: PermissionIntent,
@@ -186,10 +191,7 @@ pub(super) fn apply_adapter_inbound_batch_ref(
     let transaction = connection.transaction()?;
     verify_owner(&transaction, &command.owner)?;
     let initial = current_projection(&transaction, &command.owner)?;
-    let mut applied = false;
-    for event in &command.events {
-        applied |= apply_event(&transaction, &command.owner, event)?;
-    }
+    let applied = file_pairs::apply_events(&transaction, &command.owner, &command.events)?;
     let turn_cursor = turns::cursor(&transaction, &command.owner)?;
     let projection = turn_cursor.projection_revision();
     transaction
@@ -220,6 +222,12 @@ fn apply_event(
         }
         AdapterInboundEvent::Item(command) => {
             verify_item_scope(owner, command)?;
+            if matches!(
+                command.payload,
+                crate::acp::intent::NormalizedPayload::FileChangeDiff { .. }
+            ) {
+                return super::snapshots::apply_summary_in(transaction, command);
+            }
             Ok(
                 super::item_ingress::apply_item_ingress_in(transaction, command)?
                     .entity
@@ -227,6 +235,7 @@ fn apply_event(
                     == MutationDisposition::Applied,
             )
         }
+        AdapterInboundEvent::FilePair(_) => Err(StoreError::BatchShape),
         event @ AdapterInboundEvent::ActivityItem(_) => {
             activity_item::apply(transaction, owner, event)
         }
@@ -297,6 +306,24 @@ fn verify_owner(
 pub(super) fn verify_item_scope(
     owner: &AdapterStoreOwner,
     command: &ItemIngressCommand,
+) -> Result<(), StoreError> {
+    if command.project_id == owner.project_id
+        && command.chat_id == owner.chat_id
+        && command.session_id == owner.session_id
+        && command.turn_id == owner.turn_id
+        && command.runtime_epoch == owner.runtime_epoch
+    {
+        Ok(())
+    } else {
+        Err(StoreError::Conflict {
+            resource: "adapterItemOwner",
+        })
+    }
+}
+
+fn verify_file_pair_scope(
+    owner: &AdapterStoreOwner,
+    command: &FilePairCommand,
 ) -> Result<(), StoreError> {
     if command.project_id == owner.project_id
         && command.chat_id == owner.chat_id

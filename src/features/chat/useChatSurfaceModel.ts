@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useRef } from "react";
 
 import { openAgentArtifact } from "../../app/openAgentArtifact";
+import type { AgentDiffRef } from "../../domain/agentDiff";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type {
   CuratedBindingId,
@@ -209,6 +210,7 @@ export function useChatSurfaceModel({
         chatId: AcpChatPage["chatId"];
         sessionId: NonNullable<AcpChatPage["currentSessionId"]>;
       },
+      diffRef?: AgentDiffRef,
     ) => {
       const current = pageRef.current;
       if (
@@ -219,7 +221,12 @@ export function useChatSurfaceModel({
         current.currentSessionId !== origin.sessionId
       )
         return;
-      void openAgentArtifact({ owner: origin, target, resource });
+      void openAgentArtifact({
+        owner: origin,
+        target,
+        resource,
+        ...(diffRef ? { diffRef } : {}),
+      });
     },
     [],
   );

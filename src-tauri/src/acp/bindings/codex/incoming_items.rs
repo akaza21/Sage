@@ -318,14 +318,17 @@ fn file_change<M: ResourceMapper>(
         Ok(resource) => crate::acp::intent::SafeResourceLocation::Resource { resource },
         Err(reason) => crate::acp::intent::SafeResourceLocation::unavailable(reason),
     };
+    // Codex `fileChange` wire evidence carries a single opaque `diff` string,
+    // never a bounded old/new pair. Map to typed unavailable metadata without
+    // inventing text from disk or Git; the card still opens its summary.
     Ok((
-        NormalizedPayload::FileChangeDiff {
+        NormalizedPayload::file_summary_only(
             resource,
-            summary: SafeText::new("fileSummary", "Codex reported a file change")
-                .map_err(content)?,
-            additions: None,
-            deletions: None,
-        },
+            SafeText::new("fileSummary", "Codex reported a file change").map_err(content)?,
+            None,
+            None,
+            false,
+        ),
         Some(ToolState::Completed),
         Some(ItemLifecycle::Completed),
     ))

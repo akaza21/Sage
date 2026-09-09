@@ -73,7 +73,7 @@ fn portable_apply_through_v9_dispatches_exact_v1_v2_v3_v5_and_v6_sources() {
 
         assert_eq!(
             super::fingerprint::classify_connection(&connection).unwrap(),
-            SchemaClass::CurrentV9,
+            SchemaClass::CurrentV10,
             "source version {version}"
         );
         let migration_count: i64 = connection
@@ -81,7 +81,7 @@ fn portable_apply_through_v9_dispatches_exact_v1_v2_v3_v5_and_v6_sources() {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(migration_count, 9);
+        assert_eq!(migration_count, 10);
         assert_eq!(
             connection
                 .query_row(
@@ -136,7 +136,7 @@ fn portable_v5_dispatch_rolls_back_v6_v7_failpoint_then_retries() {
     apply_through_v9(&mut connection).unwrap();
     assert_eq!(
         super::fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV9
+        SchemaClass::CurrentV10
     );
 }
 
@@ -270,7 +270,7 @@ fn portable_publish_recovers_valid_prefixes_and_rejects_stale_stage_identity() {
     assert!(recover_or_publish(&paths).unwrap());
     assert_eq!(
         super::fingerprint::classify_path(&paths.live).unwrap(),
-        SchemaClass::CurrentV9
+        SchemaClass::CurrentV10
     );
     let published = Connection::open(&paths.live).unwrap();
     assert_eq!(
@@ -723,7 +723,7 @@ fn cleanup_prefix(paths: &MigrationPaths, prefix: &str) {
 fn assert_published_project(paths: &MigrationPaths) {
     assert_eq!(
         super::fingerprint::classify_path(&paths.live).unwrap(),
-        SchemaClass::CurrentV9
+        SchemaClass::CurrentV10
     );
     let published = Connection::open(&paths.live).unwrap();
     assert_eq!(

@@ -18,6 +18,49 @@ pub struct GetAcpChatPageRequest {
     pub cursor: Option<PageCursor>,
 }
 
+/// Narrow owner-bound immutable snapshot read. Returns one bounded pair,
+/// never raw event JSON and never a history-page payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GetAcpFileSnapshotRequest {
+    pub project_id: SageProjectId,
+    pub project_generation: ProjectGeneration,
+    pub expected_projection_revision: ProjectionRevision,
+    pub chat_id: SageChatId,
+    pub session_id: SageAgentSessionId,
+    pub runtime_epoch: RuntimeEpoch,
+    pub turn_id: SageTurnId,
+    pub item_id: SageItemId,
+    pub diff_ordinal: u64,
+    #[serde(with = "crate::acp::file_diff::wire_counter")]
+    pub snapshot_revision: u64,
+    pub root_id: SageRootId,
+    pub relative_path: String,
+    pub content_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpFileSnapshotResponse {
+    pub project_id: SageProjectId,
+    pub projection_revision: ProjectionRevision,
+    pub chat_id: SageChatId,
+    pub session_id: SageAgentSessionId,
+    pub runtime_epoch: RuntimeEpoch,
+    pub turn_id: SageTurnId,
+    pub item_id: SageItemId,
+    pub diff_ordinal: u64,
+    pub root_id: SageRootId,
+    pub relative_path: String,
+    #[serde(with = "crate::acp::file_diff::wire_counter")]
+    pub snapshot_revision: u64,
+    pub old_text: String,
+    pub new_text: String,
+    pub old_bytes: u64,
+    pub new_bytes: u64,
+    pub content_digest: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GetCodexDiscoveryRequest {

@@ -1,6 +1,8 @@
 import type { StateCreator } from "zustand";
 
 import { errorMessage } from "../domain/errors";
+import type { AgentDiffRef } from "../domain/agentDiff";
+import { agentDiffKey } from "../domain/agentDiffIdentity";
 import { runLoadDiff } from "./diffLoad";
 import {
   childResource,
@@ -53,6 +55,7 @@ export interface ResourceSlice {
   openDiff: (
     resource: ResourceRef,
     repository?: RepositoryRef,
+    diffRef?: AgentDiffRef,
   ) => Promise<void>;
   openFile: (resource: ResourceRef) => Promise<void>;
   loadDirectory: (resource: ResourceRef, refresh?: boolean) => Promise<void>;
@@ -62,6 +65,7 @@ export interface ResourceSlice {
   loadDiff: (
     resource: ResourceRef,
     repository?: RepositoryRef,
+    diffRef?: AgentDiffRef,
   ) => Promise<void>;
 }
 
@@ -79,9 +83,12 @@ export const createResourceSlice: StateCreator<
   requestGenerations: {},
   requestIntentSequence: 0,
 
-  openDiff: async (resource, repository) => {
+  openDiff: async (resource, repository, diffRef) => {
     const generation = get().projectGeneration;
     const projectId = get().project?.id;
+    const snapshotAdmission = diffRef
+      ? await import("./agentDiffAdmission")
+      : undefined;
     if (
       !projectId ||
       get().fileCreateInFlight ||
@@ -89,6 +96,9 @@ export const createResourceSlice: StateCreator<
       get().fileRenameInFlight ||
       get().resourceTrashInFlight ||
       get().projectTransitioning ||
+      (diffRef &&
+        (!snapshotAdmission?.selectedSnapshotIsCurrent(get(), diffRef) ||
+          repository)) ||
       !matchesResourceIntent(get(), generation, projectId, resource)
     ) {
       return;
@@ -101,21 +111,31 @@ export const createResourceSlice: StateCreator<
     }
     if (
       get().projectTransitioning ||
+      (diffRef &&
+        !snapshotAdmission?.selectedSnapshotIsCurrent(get(), diffRef)) ||
       !matchesResourceIntent(get(), generation, projectId, resource)
     ) {
       return;
     }
     const tabsBeforeOpen = get().tabs;
-    set((state) => resourceTabUpdate(state, "diff", resource, repository));
+    set((state) =>
+      resourceTabUpdate(state, "diff", resource, repository, diffRef),
+    );
     forgetRemovedResourceAdmissions(tabsBeforeOpen, get().tabs);
     const tab = get().tabs.find(
       (candidate) => candidate.id === get().activeTabId,
     );
-    if (tab?.kind !== "diff" || !sameResource(tab.resource, resource)) {
+    if (
+      tab?.kind !== "diff" ||
+      !sameResource(tab.resource, resource) ||
+      (diffRef
+        ? !tab.diffRef || agentDiffKey(tab.diffRef) !== agentDiffKey(diffRef)
+        : tab.diffRef)
+    ) {
       return;
     }
     set({ activeEditor: null });
-    void get().loadDiff(resource, tab.repository ?? repository);
+    void get().loadDiff(resource, tab.repository ?? repository, tab.diffRef);
     void get().revealFile(resource);
   },
 
@@ -340,6 +360,6 @@ export const createResourceSlice: StateCreator<
     await Promise.all(parents.map((parent) => get().loadDirectory(parent)));
   },
 
-  loadDiff: (resource, repository) =>
-    runLoadDiff(get, set, resource, repository),
+  loadDiff: (resource, repository, diffRef) =>
+    runLoadDiff(get, set, resource, repository, diffRef),
 });

@@ -39,6 +39,17 @@ pub(super) fn setup() -> Connection {
          INSERT INTO acp_store_usage VALUES(1,0,0,0,0,0,0,0);",
     ).unwrap();
     connection
+        .execute_batch(
+            "CREATE UNIQUE INDEX snapshot_fixture_item_owner
+         ON items(project_id,chat_id,session_id,turn_id,id,runtime_epoch);",
+        )
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/010_acp_file_change_snapshots.sql"
+        ))
+        .unwrap();
+    connection
 }
 
 pub(super) fn command(prompt: &str) -> PrepareTurnCommand {

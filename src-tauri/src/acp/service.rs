@@ -43,6 +43,7 @@ mod configuration;
 mod intent_snapshot;
 mod permission;
 pub(crate) use permission::PermissionDecisionIntent;
+mod file_snapshot;
 #[allow(dead_code)] // Fixed production observation boundary; lifecycle wiring is separate.
 mod renderer_recreation;
 mod renderer_recreation_orchestrator;

@@ -1,4 +1,9 @@
 import { resourceKey } from "../../../domain/resourceIdentity";
+import {
+  parseAgentDiffRef,
+  type AgentDiffRef,
+} from "../../../domain/agentDiff";
+import { MAX_AGENT_DIFFS_PER_TURN } from "../../../domain/agentDiffIdentity";
 import type {
   AcpChatPage,
   AcpItem,
@@ -6,9 +11,9 @@ import type {
   TurnProjection,
 } from "../../../domain/acp";
 
-export const MAX_AGENT_EDIT_SUMMARY_FILES = 64;
+export const MAX_AGENT_EDIT_SUMMARY_FILES = MAX_AGENT_DIFFS_PER_TURN;
 const MAX_PROJECTED_ITEMS_PER_TURN = 1_000;
-const MAX_CHANGES_PER_ITEM = 256;
+const MAX_CHANGES_PER_ITEM = MAX_AGENT_DIFFS_PER_TURN;
 const MAX_ID_BYTES = 512;
 const MAX_PATH_BYTES = 16 * 1024;
 const MAX_SUMMARY_BYTES = 64 * 1024;
@@ -18,11 +23,15 @@ const MAX_COUNTER_BYTES = 19;
 const MAX_COUNTER_VALUE = 9_223_372_036_854_775_807n;
 
 export interface AgentEditSummaryProjection {
-  changes: readonly FileChangeProjection[];
+  changes: readonly AgentEditSummaryChange[];
   omittedCount: number;
   sourceTruncated: boolean;
   rejectedUnsafeOrStale: boolean;
 }
+
+export type AgentEditSummaryChange = FileChangeProjection & {
+  diffRef?: AgentDiffRef;
+};
 
 function boundedText(value: unknown, maximumBytes: number): value is string {
   return (
@@ -244,7 +253,7 @@ export function projectAgentEditSummary(
       left.updatedAt - right.updatedAt ||
       codeUnitComparison(left.id, right.id),
   );
-  const changesByResource = new Map<string, FileChangeProjection>();
+  const changesByResource = new Map<string, AgentEditSummaryChange>();
   let sourceTruncated = false;
   for (const item of ordered) {
     if (item.kind !== "fileChangeDiff") continue;
@@ -259,8 +268,29 @@ export function projectAgentEditSummary(
         continue;
       }
       const key = changeKey(change);
+      const diffRef =
+        change.pairState === "available" &&
+        change.resource.kind === "resource" &&
+        item.payload.changes.length === 1
+          ? parseAgentDiffRef({
+              projectId: item.projectId,
+              chatId: item.chatId,
+              sessionId: item.sessionId,
+              runtimeEpoch: item.runtimeEpoch,
+              turnId: item.turnId,
+              itemId: item.id,
+              diffOrdinal: 0,
+              snapshotRevision: change.snapshotRevision,
+              contentDigest: change.contentDigest,
+              ...change.resource.resource,
+            })
+          : undefined;
+      if (change.pairState === "available" && !diffRef) {
+        rejectedUnsafeOrStale = true;
+        continue;
+      }
       changesByResource.delete(key);
-      changesByResource.set(key, change);
+      changesByResource.set(key, diffRef ? { ...change, diffRef } : change);
     }
   }
 

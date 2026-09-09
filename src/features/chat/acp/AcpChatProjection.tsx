@@ -1,14 +1,11 @@
 import { useEffect } from "react";
 
 import type { AcpChatPage } from "../../../domain/acp";
-import type {
-  ProjectRootSummary,
-  ResourceRef,
-} from "../../../domain/workbench";
+import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
+import type { ProjectRootSummary } from "../../../domain/workbench";
 import { LazyModuleBoundary } from "../../../ui/LazyModuleBoundary";
 import { AcpAnnouncementRegions } from "./AcpAnnouncementRegions";
 import { dispatchBrowseFromAcpPage } from "./dispatchBrowse";
-import type { OpenResourceTarget } from "./ToolItem";
 import "./acp-activity-cards.css";
 import "./acp-chat-activities.css";
 import "./acp-chat.css";
@@ -18,15 +15,7 @@ type AcpChatProjectionProps = {
   page: AcpChatPage;
   active: boolean;
   focused?: boolean;
-  onOpenResource?: (
-    resource: ResourceRef,
-    target: OpenResourceTarget,
-    origin?: {
-      projectId: AcpChatPage["projectId"];
-      chatId: AcpChatPage["chatId"];
-      sessionId: NonNullable<AcpChatPage["currentSessionId"]>;
-    },
-  ) => void;
+  onOpenResource?: AgentArtifactOpenHandler;
   hasEarlier?: boolean;
   loadingEarlier?: boolean;
   historyError?: string | null;

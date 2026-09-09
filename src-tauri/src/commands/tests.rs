@@ -55,7 +55,7 @@ use crate::acp::{
 #[cfg(windows)]
 use std::sync::Mutex;
 
-fn state_with_project() -> (AppState, String, String, std::path::PathBuf) {
+pub(super) fn state_with_project() -> (AppState, String, String, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-acp-command-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let database = Database::open(Path::new(":memory:")).unwrap();

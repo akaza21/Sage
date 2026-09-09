@@ -114,6 +114,24 @@ fn event_bytes(
         DurableAdapterEvent::ActivityItem(activity) => {
             super::activity::event_bytes(intent, activity)
         }
+        DurableAdapterEvent::FilePair {
+            scope,
+            external_item_id,
+            old_text,
+            new_text,
+            ..
+        } => {
+            verify_scope(intent, scope)?;
+            if old_text.len() > crate::acp::file_diff::DIFF_SIDE_BYTES_MAX
+                || new_text.len() > crate::acp::file_diff::DIFF_SIDE_BYTES_MAX
+            {
+                return Err(PumpJournalError::Rejected);
+            }
+            Ok(scope_heap_bytes(scope)
+                + external_item_id.as_str().len()
+                + old_text.len()
+                + new_text.len())
+        }
         DurableAdapterEvent::PermissionRequest { intent: deny, .. } => {
             if deny.project_id != intent.project_id
                 || deny.chat_id != intent.chat_id
@@ -193,6 +211,23 @@ fn convert(event: DurableAdapterEvent) -> Result<AdapterInboundEvent, PumpJourna
             now_millis,
         }),
         DurableAdapterEvent::ActivityItem(activity) => super::activity::convert(*activity)?,
+        DurableAdapterEvent::FilePair {
+            scope,
+            external_item_id,
+            old_text,
+            new_text,
+            now_millis,
+        } => AdapterInboundEvent::FilePair(crate::acp::store::FilePairCommand {
+            project_id: scope.project_id,
+            chat_id: scope.chat_id,
+            session_id: scope.session_id,
+            turn_id: scope.turn_id,
+            runtime_epoch: scope.runtime_epoch,
+            external_item_id,
+            old_text,
+            new_text,
+            now_millis,
+        }),
         DurableAdapterEvent::PermissionRequest { intent, now_millis } => {
             AdapterInboundEvent::PermissionRequest { intent, now_millis }
         }

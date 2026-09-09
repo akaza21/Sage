@@ -503,7 +503,7 @@ fn tool_and_diff_normalization_excludes_raw_commands_secrets_and_paths() {
     let completed = translator
         .translate_notification(&encoded(&frames[1]), &FixtureResources)
         .unwrap();
-    assert_eq!(completed.len(), 2);
+    assert_eq!(completed.len(), 3);
     assert!(matches!(
         &completed[0],
         AdapterEvent::Item {
@@ -535,6 +535,14 @@ fn tool_and_diff_normalization_excludes_raw_commands_secrets_and_paths() {
             assert_eq!(*deletions, Some(1));
         }
         other => panic!("unexpected event: {other:?}"),
+    }
+    match &completed[2] {
+        AdapterEvent::FilePair {
+            old_text, new_text, ..
+        } => {
+            assert!(!old_text.is_empty() || !new_text.is_empty());
+        }
+        other => panic!("expected admitted file pair: {other:?}"),
     }
     let projected = format!("{start:?}{completed:?}");
     assert!(!projected.contains("secret-command"));

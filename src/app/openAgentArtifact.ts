@@ -9,6 +9,8 @@ import type {
 import { validAgentArtifactOwner } from "../domain/agentArtifact";
 import { sameRepository } from "../domain/diffIdentity";
 import { sameResource } from "../domain/resourceIdentity";
+import { sameAgentArtifactOwner } from "../domain/agentArtifact";
+import { agentDiffKey } from "../domain/agentDiffIdentity";
 
 export function agentArtifactOwnerIsCurrent(
   owner: AgentArtifactOwner,
@@ -49,7 +51,30 @@ export async function openAgentArtifact(
   if (intent.target === "file") {
     await useWorkbenchStore.getState().openFile(intent.resource);
   } else {
-    await useWorkbenchStore.getState().openDiff(intent.resource);
+    const { selectedSnapshotIsCurrent, snapshotProjectionRevision } =
+      await import("./agentDiffAdmission");
+    const ref = intent.diffRef;
+    if (
+      !ref ||
+      !sameAgentArtifactOwner(intent.owner, ref) ||
+      !sameResource(intent.resource, ref) ||
+      !agentArtifactOwnerIsCurrent(intent.owner, projectGeneration) ||
+      !selectedSnapshotIsCurrent(useWorkbenchStore.getState(), ref)
+    )
+      return false;
+    const revision = snapshotProjectionRevision(
+      useWorkbenchStore.getState(),
+      ref,
+    );
+    await useWorkbenchStore
+      .getState()
+      .openDiff(intent.resource, undefined, ref);
+    if (
+      snapshotProjectionRevision(useWorkbenchStore.getState(), ref) !==
+        revision ||
+      !selectedSnapshotIsCurrent(useWorkbenchStore.getState(), ref)
+    )
+      return false;
   }
 
   if (!agentArtifactOwnerIsCurrent(intent.owner, projectGeneration)) {
@@ -62,7 +87,10 @@ export async function openAgentArtifact(
         candidate.kind === intent.target &&
         sameResource(candidate.resource, intent.resource) &&
         (intent.target === "file" ||
-          sameRepository(candidate.repository, undefined)),
+          (sameRepository(candidate.repository, undefined) &&
+            candidate.diffRef &&
+            intent.diffRef &&
+            agentDiffKey(candidate.diffRef) === agentDiffKey(intent.diffRef))),
     );
   if (!tab) return false;
   useAgentArtifactAdmissionStore.getState().admit({

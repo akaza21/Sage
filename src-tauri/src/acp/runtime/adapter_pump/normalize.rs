@@ -45,6 +45,30 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                     measured.bytes,
                 )))
             }
+            AdapterEvent::FilePair {
+                id,
+                external_item_id,
+                old_text,
+                new_text,
+            } if self.exact_turn(&id) && terminal.is_none() => {
+                let bytes = old_text
+                    .len()
+                    .checked_add(new_text.len())
+                    .ok_or(AdapterPumpError::BatchCapacity)?;
+                if bytes > LIMITS.queues.journal_bytes_per_transaction as usize {
+                    return Err(AdapterPumpError::BatchCapacity);
+                }
+                Ok(Some(NormalizedFact::new(
+                    DurableAdapterEvent::FilePair {
+                        scope: self.scope(),
+                        external_item_id,
+                        old_text,
+                        new_text,
+                        now_millis,
+                    },
+                    bytes,
+                )))
+            }
             AdapterEvent::ActivityItem(activity)
                 if self.exact_turn(&activity.activity_id)
                     && self.exact_turn(&activity.item_id)
@@ -139,6 +163,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             AdapterEvent::SessionReady { id, .. } if !self.exact_session(&id) => Ok(None),
             AdapterEvent::Turn { .. }
             | AdapterEvent::Item { .. }
+            | AdapterEvent::FilePair { .. }
             | AdapterEvent::ActivityItem(_)
             | AdapterEvent::Usage { .. }
             | AdapterEvent::PermissionRequest { .. }
@@ -191,6 +216,7 @@ pub(super) fn control_critical(fact: &NormalizedFact) -> bool {
             NormalizedPayload::Error { .. } | NormalizedPayload::Unsupported { .. }
         ),
         DurableAdapterEvent::Item { .. } => false,
+        DurableAdapterEvent::FilePair { .. } => false,
         DurableAdapterEvent::ActivityItem(_) => false,
     }
 }

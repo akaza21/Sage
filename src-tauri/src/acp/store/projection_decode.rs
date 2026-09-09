@@ -183,21 +183,42 @@ fn content(
             summary,
             additions,
             deletions,
-        } => ItemContent::FileChangeDiff {
-            changes: BoundedVec::new(
-                "fileChanges",
-                vec![FileChangeProjection {
-                    resource,
-                    operation: FileOperation::Updated,
-                    original_resource: None,
-                    summary,
-                    additions: projected_line_count(additions),
-                    deletions: projected_line_count(deletions),
-                }],
-            )
-            .map_err(contract)?,
-            truncated: false,
-        },
+            truncated,
+            snapshot_revision,
+            old_bytes,
+            new_bytes,
+            content_digest,
+            pair_available,
+        } => {
+            let pair = admitted_pair_view(
+                truncated,
+                snapshot_revision,
+                old_bytes,
+                new_bytes,
+                content_digest,
+                pair_available,
+            )?;
+            ItemContent::FileChangeDiff {
+                changes: BoundedVec::new(
+                    "fileChanges",
+                    vec![FileChangeProjection {
+                        resource,
+                        operation: FileOperation::Updated,
+                        original_resource: None,
+                        summary,
+                        additions: projected_line_count(additions),
+                        deletions: projected_line_count(deletions),
+                        pair_state: pair.state,
+                        snapshot_revision: pair.revision,
+                        old_bytes: pair.old_bytes,
+                        new_bytes: pair.new_bytes,
+                        content_digest: pair.digest,
+                    }],
+                )
+                .map_err(contract)?,
+                truncated,
+            }
+        }
         NormalizedPayload::Image { media_type, data } => ItemContent::Image {
             media_type,
             data_url: crate::acp::image_admit::image_data_url(media_type, data.as_str())
@@ -259,6 +280,11 @@ fn projected_line_count(value: Option<u64>) -> Option<u32> {
         .filter(|count| *count <= 1_000_000)
         .and_then(|count| u32::try_from(count).ok())
 }
+
+/// Legacy summary-only rows (no pair metadata) decode as unavailable, never
+/// as fabricated empty text. Malformed admitted metadata fails closed.
+mod file_pair;
+use file_pair::admitted_pair_view;
 
 fn presentation(
     category: ToolCategory,

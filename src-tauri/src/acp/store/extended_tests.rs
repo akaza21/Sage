@@ -36,6 +36,17 @@ pub(super) fn setup() -> Connection {
          INSERT INTO acp_store_usage VALUES(1,1,0,0,0,0,0,0,0,0);",
     ).unwrap();
     connection
+        .execute_batch(
+            "CREATE UNIQUE INDEX snapshot_fixture_item_owner
+         ON items(project_id,chat_id,session_id,turn_id,id,runtime_epoch);",
+        )
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/010_acp_file_change_snapshots.sql"
+        ))
+        .unwrap();
+    connection
 }
 
 pub(super) fn capabilities() -> String {
@@ -426,18 +437,19 @@ fn chat_page_rejects_a_persisted_resource_from_a_foreign_root() {
     let started = start_session(&mut connection, start(0, "start-resource")).unwrap();
     connection.execute("INSERT INTO session_runtime_epochs VALUES('project-one','chat-one',?1,1,'exited',NULL,0,1,'fixture')",[started.session_id.as_str()]).unwrap();
     connection.execute("INSERT INTO turns VALUES('turn-resource','project-one','chat-one',?1,1,0,'turn-intent','completed','correlated',0,1,1,1)",[started.session_id.as_str()]).unwrap();
-    let body = serde_json::to_string(&NormalizedPayload::FileChangeDiff {
-        resource: crate::acp::intent::SafeResourceLocation::Resource {
+    let body = serde_json::to_string(&NormalizedPayload::file_summary_only(
+        crate::acp::intent::SafeResourceLocation::Resource {
             resource: crate::acp::intent::SafeResourceRef::new(
                 crate::acp::contract::SageRootId::parse("root-foreign").unwrap(),
                 "src/lib.rs",
             )
             .unwrap(),
         },
-        summary: crate::acp::contract::SafeText::new("summary", "changed").unwrap(),
-        additions: Some(1),
-        deletions: None,
-    })
+        crate::acp::contract::SafeText::new("summary", "changed").unwrap(),
+        Some(1),
+        None,
+        false,
+    ))
     .unwrap();
     let digest = super::facts::hex_digest(body.as_bytes());
     connection.execute("INSERT INTO items VALUES('item-resource','project-one','chat-one',?1,'turn-resource',1,0,'primary',NULL,'fileChangeDiff','completed',NULL,NULL,?2,?3,?4,0,1,1,1)",params![started.session_id.as_str(),body,body.len() as i64,digest]).unwrap();

@@ -112,6 +112,14 @@ pub(crate) enum AdapterEvent {
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,
     },
+    /// Bounded old/new bytes for the preceding `FileChangeDiff` item.
+    /// `external_item_id` keys the item the pair belongs to.
+    FilePair {
+        id: AdapterIdentity,
+        external_item_id: ExternalId,
+        old_text: String,
+        new_text: String,
+    },
     ActivityItem(Box<AdapterActivityItem>),
     Usage {
         turn_id: AdapterIdentity,
@@ -426,24 +434,5 @@ fn event_bytes(event: &AdapterEvent) -> Option<usize> {
     json_bytes(event)
 }
 
-fn json_bytes(value: &impl serde::Serialize) -> Option<usize> {
-    struct Counter(usize);
-
-    impl std::io::Write for Counter {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0 = self
-                .0
-                .checked_add(bytes.len())
-                .ok_or_else(|| std::io::Error::other("serialized byte count overflow"))?;
-            Ok(bytes.len())
-        }
-
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    let mut counter = Counter(0);
-    serde_json::to_writer(&mut counter, value).ok()?;
-    Some(counter.0)
-}
+mod byte_count;
+use byte_count::json_bytes;

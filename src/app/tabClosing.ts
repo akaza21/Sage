@@ -4,6 +4,7 @@ import type { WorkbenchState } from "./store";
 import { useAgentArtifactAdmissionStore } from "./agentArtifactAdmissionStore";
 import { useAgentArtifactFollowStore } from "./agentArtifactFollowStore";
 import { closeTab as closeTabState } from "./tabState";
+import { agentDiffKey } from "../domain/agentDiffIdentity";
 
 export function closeWorkbenchTab(
   set: StoreApi<WorkbenchState>["setState"],
@@ -29,6 +30,11 @@ export function closeWorkbenchTab(
   }
   const result = closeTabState(state.tabs, state.activeTabId ?? "", tabId);
   if (result.tabs.length < state.tabs.length) {
+    if (tab?.diffRef) {
+      const diffs = { ...get().diffs };
+      delete diffs[agentDiffKey(tab.diffRef)];
+      set({ diffs });
+    }
     useAgentArtifactAdmissionStore.getState().forget(tabId);
     useAgentArtifactFollowStore.getState().forgetTab(tabId);
   }

@@ -10,6 +10,7 @@ import type {
 } from "../../../domain/acp";
 import { resourceKey } from "../../../domain/resourceIdentity";
 import type { ResourceRef } from "../../../domain/workbench";
+import type { AgentDiffRef } from "../../../domain/agentDiff";
 import { ChatFileChip } from "./FileChip";
 import { chatFileChipBasename } from "./chatFileChip";
 import { projectAgentEditSummary } from "./agentEditSummary";
@@ -19,7 +20,7 @@ interface TurnEditSummaryProps {
   turn: TurnProjection;
   rootLabels: Readonly<Record<string, string>>;
   countIncomplete: boolean;
-  onOpenDiff?: (resource: ResourceRef) => void;
+  onOpenDiff?: (resource: ResourceRef, snapshot: AgentDiffRef) => void;
   onRecordDisposition?: (
     disposition: AgentEditDisposition,
   ) => Promise<AcpMutationResult>;
@@ -159,12 +160,14 @@ export function TurnEditSummary({
               change.additions !== null || change.deletions !== null;
             return (
               <li key={resourceKey(resource)}>
-                {onOpenDiff && admitted ? (
+                {onOpenDiff && admitted && change.diffRef ? (
                   <button
                     type="button"
                     className="acp-resource-action"
                     aria-label={`Open diff ${qualifiedLabel}`}
-                    onClick={() => onOpenDiff(resource)}
+                    onClick={() => {
+                      if (change.diffRef) onOpenDiff(resource, change.diffRef);
+                    }}
                   >
                     {chip}
                     <ChevronRight size={14} aria-hidden="true" />

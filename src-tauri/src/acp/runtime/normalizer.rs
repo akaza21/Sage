@@ -89,12 +89,13 @@ pub(crate) fn normalize(input: NormalizerInput) -> Result<NormalizedPayload, Con
             summary,
             additions,
             deletions,
-        } => NormalizedPayload::FileChangeDiff {
-            resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
-            summary: SafeText::new("fileSummary", summary)?,
+        } => NormalizedPayload::file_summary_only(
+            crate::acp::intent::SafeResourceLocation::Resource { resource },
+            SafeText::new("fileSummary", summary)?,
             additions,
             deletions,
-        },
+            false,
+        ),
         NormalizerInput::Usage {
             input_tokens,
             output_tokens,

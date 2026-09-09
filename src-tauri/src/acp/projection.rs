@@ -95,6 +95,18 @@ pub enum FileOperation {
     Unknown,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FilePairState {
+    /// An immutable snapshot revision is retained for the narrow read.
+    Available,
+    /// No pair was admitted (legacy summary, harness without pair evidence,
+    /// or unavailable resource). Never fabricated text.
+    Unavailable,
+    /// Over-cap admission: summary only with truthful truncation.
+    SummaryTruncated,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileChangeProjection {
@@ -104,6 +116,15 @@ pub struct FileChangeProjection {
     pub summary: SafeText<65536>,
     pub additions: Option<u32>,
     pub deletions: Option<u32>,
+    pub pair_state: FilePairState,
+    /// Immutable snapshot revision; zero unless `pair_state == Available`.
+    #[serde(with = "crate::acp::file_diff::wire_counter")]
+    pub snapshot_revision: u64,
+    /// Raw UTF-8 byte lengths of the retained pair, when available.
+    pub old_bytes: Option<u64>,
+    pub new_bytes: Option<u64>,
+    /// 64-char pair digest binding the immutable bytes, when available.
+    pub content_digest: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -135,7 +156,7 @@ pub enum ItemContent {
         output_summary: Option<SafeText<65536>>,
     },
     FileChangeDiff {
-        changes: BoundedVec<FileChangeProjection, 256>,
+        changes: BoundedVec<FileChangeProjection, 32>,
         truncated: bool,
     },
     Image {

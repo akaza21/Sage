@@ -43,7 +43,8 @@ use self::{
     platform::{MigrationLock, sync_file, sync_parent},
     publish::recover_or_publish,
     schema_upgrade::{
-        apply_through_v9, apply_v6_and_v7_atomically, apply_v7, apply_v8, apply_v9, build_fresh_v9,
+        apply_through_v9, apply_v6_and_v7_atomically, apply_v7, apply_v8, apply_v9, apply_v10,
+        build_fresh_v9,
     },
 };
 
@@ -59,6 +60,7 @@ const V6: &str = include_str!("../../../migrations/006_resource_trash_intents.sq
 const V7: &str = include_str!("../../../migrations/007_acp_activation_abort.sql");
 const V8: &str = include_str!("../../../migrations/008_permission_decisions.sql");
 const V9: &str = include_str!("../../../migrations/009_cancelled_permissions.sql");
+const V10: &str = include_str!("../../../migrations/010_acp_file_change_snapshots.sql");
 
 pub(crate) struct OpenedDatabase {
     connection: Connection,
@@ -139,10 +141,10 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
         }
-        SchemaClass::CurrentV9 => {
+        SchemaClass::CurrentV10 => {
             reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
-            if probe::classify_live(&paths)? != SchemaClass::CurrentV9 {
+            if probe::classify_live(&paths)? != SchemaClass::CurrentV10 {
                 return invalid("current SQLite path changed before its anchored open");
             }
             let connection = Connection::open(path)?;
@@ -150,6 +152,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
         }
+        SchemaClass::CurrentV9 => upgrade_current_through_v9(&paths, SchemaClass::CurrentV9),
         SchemaClass::CurrentV8 => upgrade_current_through_v9(&paths, SchemaClass::CurrentV8),
         SchemaClass::CurrentV7 => upgrade_current_through_v9(&paths, SchemaClass::CurrentV7),
         SchemaClass::CurrentV6 => upgrade_current_through_v9(&paths, SchemaClass::CurrentV6),
@@ -179,17 +182,24 @@ fn upgrade_current_through_v9(
             apply_v6_and_v7_atomically(&mut connection)?;
             apply_v8(&mut connection)?;
             apply_v9(&mut connection)?;
+            apply_v10(&mut connection)?;
         }
         SchemaClass::CurrentV6 => {
             apply_v7(&mut connection)?;
             apply_v8(&mut connection)?;
             apply_v9(&mut connection)?;
+            apply_v10(&mut connection)?;
         }
         SchemaClass::CurrentV7 => {
             apply_v8(&mut connection)?;
             apply_v9(&mut connection)?;
+            apply_v10(&mut connection)?;
         }
-        SchemaClass::CurrentV8 => apply_v9(&mut connection)?,
+        SchemaClass::CurrentV8 => {
+            apply_v9(&mut connection)?;
+            apply_v10(&mut connection)?;
+        }
+        SchemaClass::CurrentV9 => apply_v10(&mut connection)?,
         _ => return invalid("in-place upgrade source is not admitted"),
     }
     anchor.verify_path(&paths.live)?;
@@ -318,8 +328,8 @@ fn checkpoint_source(
 }
 
 fn verify_current(connection: &Connection) -> AppResult<()> {
-    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV9 {
-        return invalid("database did not reach exact schema v9");
+    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV10 {
+        return invalid("database did not reach exact schema v10");
     }
     verify_sqlite(connection)?;
     let store_rows: i64 = connection.query_row(

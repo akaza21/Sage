@@ -140,25 +140,82 @@ impl ClaudeTranslator {
                         Ok(resource) => SafeResourceLocation::Resource { resource },
                         Err(reason) => SafeResourceLocation::unavailable(reason),
                     };
-                    let old_text = entry.get("oldText").and_then(Value::as_str).unwrap_or("");
-                    let new_text = entry.get("newText").and_then(Value::as_str).unwrap_or("");
-                    events.push(AdapterEvent::Item {
-                        external_key: RequiredText::new(
-                            "externalItemId",
-                            format!("{}:diff:{index}", id.as_str()),
-                        )?,
-                        lifecycle: ItemLifecycle::Completed,
-                        tool_state: None,
-                        payload: NormalizedPayload::FileChangeDiff {
-                            resource,
-                            summary: SafeText::new(
-                                "fileSummary",
-                                "File change reported by Claude ACP",
-                            )?,
-                            additions: Some(line_count(new_text)),
-                            deletions: Some(line_count(old_text)),
-                        },
-                    });
+                    // Missing, null, or non-string sides are malformed wire
+                    // input, not an empty edit. Over-cap sides admit
+                    // summary-only metadata without retaining a partial side.
+                    let old_text = entry
+                        .get("oldText")
+                        .and_then(Value::as_str)
+                        .ok_or(TranslationError::MalformedFrame)?;
+                    let new_text = entry
+                        .get("newText")
+                        .and_then(Value::as_str)
+                        .ok_or(TranslationError::MalformedFrame)?;
+                    let external_key = RequiredText::new(
+                        "externalItemId",
+                        format!("{}:diff:{index}", id.as_str()),
+                    )?;
+                    let summary =
+                        SafeText::new("fileSummary", "File change reported by Claude ACP")?;
+                    // An unavailable resource has no immutable root/path key,
+                    // so no pair is retained: typed unavailable, never text
+                    // invented from disk or Git.
+                    if !matches!(resource, SafeResourceLocation::Resource { .. }) {
+                        events.push(AdapterEvent::Item {
+                            external_key,
+                            lifecycle: ItemLifecycle::Completed,
+                            tool_state: None,
+                            payload: NormalizedPayload::file_summary_only(
+                                resource,
+                                summary,
+                                Some(line_count(new_text)),
+                                Some(line_count(old_text)),
+                                false,
+                            ),
+                        });
+                        continue;
+                    }
+                    match crate::acp::file_diff::admit_pair(old_text, new_text) {
+                        crate::acp::file_diff::PairAdmission::Admitted {
+                            old_bytes,
+                            new_bytes,
+                            digest,
+                        } => {
+                            events.push(AdapterEvent::Item {
+                                external_key: external_key.clone(),
+                                lifecycle: ItemLifecycle::Completed,
+                                tool_state: None,
+                                payload: NormalizedPayload::file_admitted(
+                                    resource,
+                                    summary,
+                                    Some(line_count(new_text)),
+                                    Some(line_count(old_text)),
+                                    0,
+                                    (old_bytes as u64, new_bytes as u64),
+                                    digest,
+                                ),
+                            });
+                            events.push(AdapterEvent::FilePair {
+                                external_key,
+                                old_text: old_text.to_owned(),
+                                new_text: new_text.to_owned(),
+                            });
+                        }
+                        crate::acp::file_diff::PairAdmission::SummaryOnly => {
+                            events.push(AdapterEvent::Item {
+                                external_key,
+                                lifecycle: ItemLifecycle::Completed,
+                                tool_state: None,
+                                payload: NormalizedPayload::file_summary_only(
+                                    resource,
+                                    summary,
+                                    Some(line_count(new_text)),
+                                    Some(line_count(old_text)),
+                                    true,
+                                ),
+                            });
+                        }
+                    }
                 }
             }
         }

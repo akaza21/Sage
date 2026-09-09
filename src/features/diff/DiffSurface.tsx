@@ -2,7 +2,10 @@ import { FileDiff } from "lucide-react";
 import { useEffect } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
+import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
+import { snapshotProjectionRevision } from "../../app/agentDiffAdmission";
 import { diffCacheKey } from "../../domain/diffIdentity";
+import { isSnapshotDiffTab } from "../../domain/agentDiffIdentity";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { DiffLineKind, WorkbenchTab } from "../../domain/workbench";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
@@ -15,25 +18,68 @@ const linePrefix: Record<DiffLineKind, string> = {
 };
 
 export function DiffSurface({ tab }: { tab: WorkbenchTab }) {
+  return tab.diffRef ? (
+    <SnapshotDiffSurface tab={tab} />
+  ) : (
+    <DiffDocument tab={tab} unavailable={isSnapshotDiffTab(tab)} />
+  );
+}
+
+function SnapshotDiffSurface({ tab }: { tab: WorkbenchTab }) {
+  const project = useWorkbenchStore((state) => state.project);
+  const projectGeneration = useWorkbenchStore(
+    (state) => state.projectGeneration,
+  );
+  const projectTransitioning = useWorkbenchStore(
+    (state) => state.projectTransitioning,
+  );
+  const ref = tab.diffRef!;
+  const current = acpProjectionStoreFor(ref.chatId)(
+    (projection) =>
+      snapshotProjectionRevision(
+        { project, projectGeneration, projectTransitioning },
+        ref,
+        projection,
+      ) !== null,
+  );
+  return <DiffDocument tab={tab} unavailable={!current} />;
+}
+
+function DiffDocument({
+  tab,
+  unavailable = false,
+}: {
+  tab: WorkbenchTab;
+  unavailable?: boolean;
+}) {
   const tabResource = tab.resource;
   const tabRepository = tab.repository;
   const path = tabResource?.relativePath ?? tab.title;
   const repositories = useWorkbenchStore((state) => state.repositories);
-  const diff = useWorkbenchStore((state) =>
+  const cached = useWorkbenchStore((state) =>
     tabResource
-      ? state.diffs[diffCacheKey(tabRepository, tabResource)]
+      ? state.diffs[diffCacheKey(tabRepository, tabResource, tab.diffRef)]
       : undefined,
   );
+  const diff = unavailable
+    ? {
+        phase: "error" as const,
+        message: "This saved edit is unavailable for the current Chat session.",
+      }
+    : cached;
   const loadDiff = useWorkbenchStore((state) => state.loadDiff);
-  const change = repositories.roots
-    .flatMap((repository) => repository.changes)
-    .find((candidate) => sameResource(candidate.resource, tabResource));
+  const change = isSnapshotDiffTab(tab)
+    ? undefined
+    : repositories.roots
+        .flatMap((repository) => repository.changes)
+        .find((candidate) => sameResource(candidate.resource, tabResource));
 
   useEffect(() => {
-    if (tabResource) {
-      void loadDiff(tabResource, tabRepository);
+    if (tabResource && !unavailable) {
+      if (tab.diffRef) void loadDiff(tabResource, tabRepository, tab.diffRef);
+      else void loadDiff(tabResource, tabRepository);
     }
-  }, [loadDiff, tabResource, tabRepository]);
+  }, [loadDiff, tabResource, tabRepository, tab.diffRef, unavailable]);
 
   return (
     <section
@@ -51,18 +97,32 @@ export function DiffSurface({ tab }: { tab: WorkbenchTab }) {
         </div>
       </header>
       <div className="diff-toolbar">
-        <span>Working tree changes</span>
+        <span>
+          {isSnapshotDiffTab(tab)
+            ? "Saved agent change"
+            : "Working tree changes"}
+        </span>
         <span className="diff-toolbar__hint">Read-only</span>
       </div>
       {!diff || diff.phase === "loading" ? (
         <ResourceStateNotice state="loading" title="Loading diff…" />
       ) : null}
       {diff?.phase === "error" ? (
-        <ResourceStateNotice
-          state="error"
-          title="Could not load this diff"
-          detail={diff.message}
-        />
+        <>
+          <ResourceStateNotice
+            state="error"
+            title="Could not load this diff"
+            detail={diff.message}
+          />
+          {tab.diffRef && tabResource && !unavailable ? (
+            <button
+              type="button"
+              onClick={() => void loadDiff(tabResource, undefined, tab.diffRef)}
+            >
+              Retry saved diff
+            </button>
+          ) : null}
+        </>
       ) : null}
       {diff?.phase === "ready" ? (
         <div
@@ -94,7 +154,9 @@ export function DiffSurface({ tab }: { tab: WorkbenchTab }) {
               ))}
             </div>
           ))}
-          {diff.value.hunks.length === 0 && !diff.value.binary ? (
+          {diff.value.hunks.length === 0 &&
+          !diff.value.binary &&
+          !diff.value.truncated ? (
             <p className="resource-state">No textual changes for this file.</p>
           ) : null}
           {diff.value.truncated ? (

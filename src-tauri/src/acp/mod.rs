@@ -3,6 +3,7 @@ pub(crate) mod bindings;
 mod characterization_observation;
 pub(crate) mod command_output;
 pub mod contract;
+pub(crate) mod file_diff;
 #[cfg(any(test, feature = "acp-fixture"))]
 pub mod fixture;
 pub(crate) mod image_admit;

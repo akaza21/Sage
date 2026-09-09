@@ -160,17 +160,17 @@ fn assert_populated_rows(connection: &Connection) {
     );
 }
 
-fn assert_v9_structure(connection: &Connection) {
+fn assert_v10_structure(connection: &Connection) {
     assert_eq!(
         fingerprint::classify_connection(connection).expect("classification"),
-        SchemaClass::CurrentV9
+        SchemaClass::CurrentV10
     );
     assert_eq!(
         connection
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row
                 .get::<_, i64>(0))
             .expect("migration count"),
-        9
+        10
     );
     assert!(
         connection
@@ -190,11 +190,34 @@ fn assert_v9_structure(connection: &Connection) {
             .expect("owner index"),
         1
     );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_schema
+                 WHERE type='table' AND name='acp_file_change_snapshots'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("snapshot table"),
+        1
+    );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_schema
+                 WHERE type='index' AND name='idx_file_change_snapshots_turn'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("snapshot turn index"),
+        1
+    );
     for trigger in [
         "deny_server_request_delete",
         "deny_server_request_identity_mutation",
         "deny_server_request_invalid_transition",
         "deny_terminal_server_request_mutation",
+        "deny_file_change_snapshot_mutation",
     ] {
         assert_eq!(
             connection
@@ -219,7 +242,7 @@ fn populated_v8_upgrades_exactly_and_reopens_idempotently_with_retained_source()
         .schema_sha256;
 
     let migrated = open_or_migrate(&directory.database()).expect("v9 migration");
-    assert_v9_structure(&migrated);
+    assert_v10_structure(&migrated);
     assert_populated_rows(&migrated);
     let migrated_fingerprint = database_fingerprint(&migrated).expect("migrated fingerprint");
     assert_eq!(migrated_fingerprint.schema_sha256, expected_schema);
@@ -235,7 +258,7 @@ fn populated_v8_upgrades_exactly_and_reopens_idempotently_with_retained_source()
     drop(backup);
 
     let reopened = open_or_migrate(&directory.database()).expect("idempotent reopen");
-    assert_v9_structure(&reopened);
+    assert_v10_structure(&reopened);
     assert_populated_rows(&reopened);
     assert_eq!(
         database_fingerprint(&reopened).expect("reopen fingerprint"),
@@ -268,7 +291,7 @@ fn populated_v8_injected_v9_failure_rolls_back_and_retry_reuses_retained_backup(
     drop(backup);
 
     let retried = open_or_migrate(&directory.database()).expect("retry");
-    assert_v9_structure(&retried);
+    assert_v10_structure(&retried);
     assert_populated_rows(&retried);
     drop(retried);
     backup::verify_retained_pair(&paths).expect("retained backup after retry");

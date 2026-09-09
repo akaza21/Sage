@@ -162,6 +162,11 @@ function editItem(
           summary,
           additions,
           deletions,
+          pairState: "available",
+          snapshotRevision: "1",
+          oldBytes: 4,
+          newBytes: 4,
+          contentDigest: "a".repeat(64),
         },
       ],
       truncated: false,
@@ -584,6 +589,13 @@ describe("AcpChatProjection", () => {
       { rootId: "root-right", relativePath: "src/main.ts" },
       "diff",
       { projectId: "project-1", chatId: "chat-1", sessionId: "session-1" },
+      expect.objectContaining({
+        itemId: "right",
+        turnId: "turn-1",
+        runtimeEpoch: "2",
+        snapshotRevision: "1",
+        contentDigest: "a".repeat(64),
+      }),
     );
   });
 
@@ -653,6 +665,11 @@ describe("AcpChatProjection", () => {
       { rootId: "root-one", relativePath: "src/main.ts" },
       "diff",
       { projectId: "project-1", chatId: "chat-1", sessionId: "session-1" },
+      expect.objectContaining({
+        itemId: "change",
+        rootId: "root-one",
+        snapshotRevision: "1",
+      }),
     );
     expect(openResource).not.toHaveBeenCalledWith(expect.anything(), "review");
   });
@@ -726,12 +743,14 @@ describe("AcpChatProjection", () => {
       { rootId: "root-left", relativePath: "src/main.ts" },
       "diff",
       { projectId: "project-1", chatId: "chat-1", sessionId: "session-1" },
+      expect.objectContaining({ rootId: "root-left", snapshotRevision: "1" }),
     );
     expect(openResource).toHaveBeenNthCalledWith(
       2,
       { rootId: "root-right", relativePath: "src/main.ts" },
       "diff",
       { projectId: "project-1", chatId: "chat-1", sessionId: "session-1" },
+      expect.objectContaining({ rootId: "root-right", snapshotRevision: "1" }),
     );
   });
 

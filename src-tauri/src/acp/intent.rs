@@ -186,6 +186,25 @@ pub enum NormalizedPayload {
         summary: SafeText<65536>,
         additions: Option<u64>,
         deletions: Option<u64>,
+        /// Truthful overflow marker. Over-cap admits summary-only metadata;
+        /// no partial side is ever retained.
+        #[serde(default)]
+        truncated: bool,
+        /// Immutable snapshot revision from `acp_file_change_snapshots`.
+        /// Zero with `pair_available == false` means summary-only.
+        #[serde(default)]
+        snapshot_revision: u64,
+        /// Raw UTF-8 byte lengths of the admitted pair (pre-serialization).
+        #[serde(default)]
+        old_bytes: u64,
+        #[serde(default)]
+        new_bytes: u64,
+        /// Empty unless `pair_available`; then the 64-char pair digest.
+        #[serde(default)]
+        content_digest: String,
+        /// False for legacy summary-only rows, which decode as unavailable.
+        #[serde(default)]
+        pair_available: bool,
     },
     Image {
         media_type: ImageMediaType,
@@ -216,6 +235,55 @@ pub enum NormalizedPayload {
 }
 
 impl NormalizedPayload {
+    /// Summary-only file change: no pair is retained. `truncated` marks an
+    /// over-cap admission; legacy rows decode with `truncated == false` and
+    /// render as typed unavailable, never fabricated text.
+    pub(crate) fn file_summary_only(
+        resource: SafeResourceLocation,
+        summary: SafeText<65536>,
+        additions: Option<u64>,
+        deletions: Option<u64>,
+        truncated: bool,
+    ) -> Self {
+        Self::FileChangeDiff {
+            resource,
+            summary,
+            additions,
+            deletions,
+            truncated,
+            snapshot_revision: 0,
+            old_bytes: 0,
+            new_bytes: 0,
+            content_digest: String::new(),
+            pair_available: false,
+        }
+    }
+
+    /// Admitted pair metadata. The texts live as BLOBs in
+    /// `acp_file_change_snapshots`; only lengths and digest stay inline.
+    pub(crate) fn file_admitted(
+        resource: SafeResourceLocation,
+        summary: SafeText<65536>,
+        additions: Option<u64>,
+        deletions: Option<u64>,
+        snapshot_revision: u64,
+        side_bytes: (u64, u64),
+        content_digest: String,
+    ) -> Self {
+        Self::FileChangeDiff {
+            resource,
+            summary,
+            additions,
+            deletions,
+            truncated: false,
+            snapshot_revision,
+            old_bytes: side_bytes.0,
+            new_bytes: side_bytes.1,
+            content_digest,
+            pair_available: true,
+        }
+    }
+
     pub fn kind(&self) -> ItemKind {
         match self {
             Self::Text { .. } => ItemKind::Text,

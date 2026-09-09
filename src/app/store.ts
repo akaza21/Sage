@@ -235,7 +235,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
         await get().loadEditor(tab.resource);
         void get().revealFile(tab.resource);
       } else if (tab.kind === "diff" && tab.resource) {
-        const key = diffCacheKey(tab.repository, tab.resource);
+        const key = diffCacheKey(tab.repository, tab.resource, tab.diffRef);
         if (get().diffs[key]?.phase === "loading") {
           set((state) => {
             const diffs = { ...state.diffs };
@@ -243,7 +243,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
             return { diffs };
           });
         }
-        void get().loadDiff(tab.resource, tab.repository);
+        void get().loadDiff(tab.resource, tab.repository, tab.diffRef);
         void get().revealFile(tab.resource);
       }
     },

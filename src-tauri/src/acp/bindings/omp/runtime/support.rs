@@ -208,6 +208,20 @@ impl OmpRuntime {
                 };
                 (vec![event], None)
             }
+            AdapterEvent::FilePair {
+                external_key,
+                old_text,
+                new_text,
+                ..
+            } => {
+                let event = RuntimeEvent::FilePair {
+                    id: self.item_identity(external_key.clone())?,
+                    external_item_id: external_key,
+                    old_text,
+                    new_text,
+                };
+                (vec![event], None)
+            }
             AdapterEvent::PermissionDeclinePending { request_id, .. } => {
                 let egress = self.prepare_deny(request_id)?;
                 let duplicate = egress.is_none().then_some(RuntimeEvent::IgnoredDuplicate);

@@ -109,6 +109,11 @@ function projection(): AcpChatPage {
             summary: "Updated duplicate path",
             additions: 2,
             deletions: 1,
+            pairState: "available",
+            snapshotRevision: "1",
+            oldBytes: 4,
+            newBytes: 4,
+            contentDigest: "a".repeat(64),
           },
         ],
         truncated: false,
@@ -1439,10 +1444,24 @@ describe("ChatSurface ACP resource integration", () => {
       rootId: "root-a",
       relativePath: "src/main.ts",
     });
-    expect(openDiff).toHaveBeenCalledWith({
-      rootId: "root-b",
-      relativePath: "src/main.ts",
-    });
+    await waitFor(() =>
+      expect(openDiff).toHaveBeenCalledWith(
+        { rootId: "root-b", relativePath: "src/main.ts" },
+        undefined,
+        expect.objectContaining({
+          projectId: "project-a",
+          chatId: "chat-a",
+          sessionId: "session-a",
+          turnId: "turn-a",
+          itemId: "item-diff",
+          runtimeEpoch: "1",
+          snapshotRevision: "1",
+          rootId: "root-b",
+          relativePath: "src/main.ts",
+          contentDigest: "a".repeat(64),
+        }),
+      ),
+    );
 
     const refreshed = structuredClone(hooks.page!);
     refreshed.currentSessionId = "session-next" as never;

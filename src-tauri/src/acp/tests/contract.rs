@@ -256,12 +256,13 @@ fn production_schema_exactly_matches_the_reviewed_schema_contract() {
 fn normalized_payloads_admit_only_canonical_resource_refs() {
     let root_id = SageRootId::parse("root-a").unwrap();
     let resource = SafeResourceRef::new(root_id, "src/main.rs").unwrap();
-    let payload = NormalizedPayload::FileChangeDiff {
-        resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
-        summary: SafeText::new("summary", "one file changed").unwrap(),
-        additions: Some(2),
-        deletions: Some(1),
-    };
+    let payload = NormalizedPayload::file_summary_only(
+        crate::acp::intent::SafeResourceLocation::Resource { resource },
+        SafeText::new("summary", "one file changed").unwrap(),
+        Some(2),
+        Some(1),
+        false,
+    );
     assert_eq!(
         payload.kind(),
         crate::acp::contract::ItemKind::FileChangeDiff

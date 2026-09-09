@@ -305,7 +305,7 @@ describe("safeAcpMutationResponse", () => {
     ).toBeNull();
   });
 
-  it("admits a file-change payload at the 64-change bound", () => {
+  it("admits a file-change payload at the 32-change bound", () => {
     expect(
       safeAcpMutationResponse(
         mutation({
@@ -315,7 +315,7 @@ describe("safeAcpMutationResponse", () => {
                 item(0, {
                   kind: "fileChangeDiff",
                   payload: {
-                    changes: Array.from({ length: 64 }, (_, index) =>
+                    changes: Array.from({ length: 32 }, (_, index) =>
                       fileChange(`a${index}.ts`),
                     ),
                     truncated: false,
@@ -339,7 +339,7 @@ describe("safeAcpMutationResponse", () => {
                 item(0, {
                   kind: "fileChangeDiff",
                   payload: {
-                    changes: Array.from({ length: 65 }, (_, index) =>
+                    changes: Array.from({ length: 33 }, (_, index) =>
                       fileChange(`a${index}.ts`),
                     ),
                     truncated: true,

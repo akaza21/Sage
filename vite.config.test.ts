@@ -25,6 +25,8 @@ const EXPECTED_DYNAMIC_FACADES = [
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
   "node_modules/@tauri-apps/api/window.js",
+  "src/app/agentDiffAdmission.ts",
+  "src/app/agentDiffLoad.ts",
   "src/features/chat/acp/AcpChatPresentation.tsx",
   "src/features/chat/acp/MermaidFigure.tsx",
   "src/features/diff/DiffSurface.tsx",
@@ -33,6 +35,7 @@ const EXPECTED_DYNAMIC_FACADES = [
   "src/features/preview/AgentPreviewPresentation.tsx",
   "src/features/preview/PreviewSurface.tsx",
   "src/features/search/SearchSurface.tsx",
+  "src/services/acpFileSnapshot.ts",
   "src/workbench/AgentWorkbenchBody.tsx",
   "src/workbench/SettingsSurface.tsx",
   "src/workbench/SourceControlView.tsx",
@@ -194,8 +197,22 @@ describe("desktop-native initial dependency grouping", () => {
 
     expect(ordinaryGraph.entryCount).toBe(1);
     expect(groupedGraph.entryCount).toBe(1);
-    expect(ordinaryGraph.allModules).toHaveLength(408);
-    expect(ordinaryGraph.initialModules).toHaveLength(262);
+    expect(ordinaryGraph.allModules).toHaveLength(414);
+    expect(ordinaryGraph.initialModules).toHaveLength(263);
+    for (const snapshotModule of [
+      "/src/domain/agentDiff.ts",
+      "/src/services/acpFileSnapshot.ts",
+      "/src/app/agentDiffAdmission.ts",
+      "/src/app/agentDiffLoad.ts",
+      "/src/features/diff/snapshotDiff.ts",
+    ]) {
+      expect(
+        ordinaryGraph.allModules.some((id) => id.endsWith(snapshotModule)),
+      ).toBe(true);
+      expect(
+        ordinaryGraph.initialModules.some((id) => id.endsWith(snapshotModule)),
+      ).toBe(false);
+    }
     expect(groupedGraph.allModules).toEqual(ordinaryGraph.allModules);
     expect(groupedGraph.initialModules).toEqual(ordinaryGraph.initialModules);
     expect(groupedGraph.dynamicFacades).toEqual(EXPECTED_DYNAMIC_FACADES);

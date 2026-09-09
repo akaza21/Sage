@@ -3,6 +3,10 @@ mod preview;
 pub(crate) use preview::PREVIEW_LIMITS;
 
 pub(crate) const RETAINED_TOOL_OUTPUT_LINES: usize = 200;
+/// Raw UTF-8 bytes admitted per immutable file-diff side, before JSON escaping.
+pub(crate) const DIFF_SIDE_BYTES_MAX: usize = 262_144;
+/// Retained immutable versions per Turn, including multiple versions of one item.
+pub(crate) const DIFFS_PER_TURN: i64 = 32;
 pub const COMMAND_RESOURCE_LIMIT: usize = 64;
 /// A one-byte sensitive token may expand to this replacement in command output.
 pub(crate) const COMMAND_OUTPUT_REDACTION_BYTES: usize = "[redacted]".len();

@@ -61,6 +61,13 @@ pub(crate) enum AdapterEvent {
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,
     },
+    /// Bounded old/new bytes for the preceding `FileChangeDiff` item with the
+    /// same external key. Stored as BLOBs; never serialized into the payload.
+    FilePair {
+        external_key: ExternalId,
+        old_text: String,
+        new_text: String,
+    },
     PermissionDecline {
         request_id: ExternalId,
         tool_call_id: ExternalId,

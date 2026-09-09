@@ -1,6 +1,8 @@
 import { memo, useCallback, useMemo } from "react";
 
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../../domain/acp";
+import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
+import type { AgentDiffRef } from "../../../domain/agentDiff";
 import type {
   ProjectRootSummary,
   ResourceRef,
@@ -20,15 +22,7 @@ import { turnStateLabels } from "./statusSemantics";
 
 export type AcpChatPresentationProps = {
   page: AcpChatPage;
-  onOpenResource?: (
-    resource: ResourceRef,
-    target: OpenResourceTarget,
-    origin?: {
-      projectId: AcpChatPage["projectId"];
-      chatId: AcpChatPage["chatId"];
-      sessionId: NonNullable<AcpChatPage["currentSessionId"]>;
-    },
-  ) => void;
+  onOpenResource?: AgentArtifactOpenHandler;
   hasEarlier: boolean;
   loadingEarlier: boolean;
   historyError: string | null;
@@ -178,8 +172,9 @@ const Turn = memo(
       [actionOrigin, onOpenResource],
     );
     const openDiffForTurn = useCallback(
-      (resource: ResourceRef) => openForTurn(resource, "diff"),
-      [openForTurn],
+      (resource: ResourceRef, diffRef: AgentDiffRef) =>
+        onOpenResource?.(resource, "diff", actionOrigin, diffRef),
+      [actionOrigin, onOpenResource],
     );
     const thought = turn.items.find((item) => item.kind === "thoughtSummary");
     return (

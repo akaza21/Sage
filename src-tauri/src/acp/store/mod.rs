@@ -25,6 +25,7 @@ mod send;
 mod session_close;
 mod session_duplicates;
 mod sessions;
+mod snapshots;
 mod state;
 mod terminal;
 mod terminalize;
@@ -98,6 +99,8 @@ pub(crate) use sessions::{
     ActivateSessionCommand, CloseSessionCommand, SessionMutation, StartSessionCommand,
     activate_session, start_session,
 };
+#[allow(unused_imports)]
+pub(crate) use snapshots::{FilePairCommand, read_snapshot};
 #[allow(unused_imports)]
 pub(crate) use terminal::{
     apply_activity_terminal, apply_item_terminal, apply_session_terminal, apply_turn_terminal,

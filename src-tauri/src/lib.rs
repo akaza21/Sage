@@ -289,6 +289,7 @@ pub fn run() {
             settings_commands::get_editor_appearance,
             settings_commands::set_editor_appearance,
             commands::acp::get_acp_chat_page,
+            commands::acp::get_acp_file_snapshot,
             commands::acp::get_codex_discovery,
             #[cfg(any(debug_assertions, feature = "diagnostics"))]
             commands::acp::runtime_identity::get_codex_runtime_identity,

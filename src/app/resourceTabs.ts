@@ -6,6 +6,8 @@ import {
 } from "../domain/resourceIdentity";
 import type { RepositoryRef, ResourceRef } from "../domain/workbench";
 import type { WorkbenchState } from "./store";
+import type { AgentDiffRef } from "../domain/agentDiff";
+import { agentDiffKey, isSnapshotDiffTab } from "../domain/agentDiffIdentity";
 
 const MAX_OPEN_RESOURCE_TABS = 32;
 
@@ -14,14 +16,29 @@ export function resourceTabUpdate(
   kind: "diff" | "file",
   resource: ResourceRef,
   repository?: RepositoryRef,
+  diffRef?: AgentDiffRef,
 ): Partial<WorkbenchState> {
-  const id = isNestedRepository(repository)
-    ? `${kind}:${resourceKey(repository)}:${resourceKey(resource)}`
-    : `${kind}:${resourceKey(resource)}`;
+  if (
+    diffRef &&
+    (kind !== "diff" ||
+      repository ||
+      diffRef.rootId !== resource.rootId ||
+      diffRef.relativePath !== resource.relativePath)
+  ) {
+    return {
+      error:
+        "Snapshot Diff tabs require their exact resource and no Git repository.",
+    };
+  }
   const existing = state.tabs.find(
     (tab) =>
       tab.kind === kind &&
       sameResource(tab.resource, resource) &&
+      (diffRef
+        ? Boolean(
+            tab.diffRef && agentDiffKey(tab.diffRef) === agentDiffKey(diffRef),
+          )
+        : !isSnapshotDiffTab(tab)) &&
       sameRepository(tab.repository, repository),
   );
   if (existing) {
@@ -57,8 +74,22 @@ export function resourceTabUpdate(
   const position =
     retainedTabs.reduce((maximum, tab) => Math.max(maximum, tab.position), -1) +
     1;
+  const id = diffRef
+    ? `diff:snapshot:${crypto.randomUUID()}`
+    : isNestedRepository(repository)
+      ? `${kind}:${resourceKey(repository)}:${resourceKey(resource)}`
+      : `${kind}:${resourceKey(resource)}`;
 
   return {
+    ...(evicted?.diffRef
+      ? {
+          diffs: Object.fromEntries(
+            Object.entries(state.diffs).filter(
+              ([key]) => key !== agentDiffKey(evicted.diffRef!),
+            ),
+          ),
+        }
+      : {}),
     tabs: [
       ...retainedTabs,
       {
@@ -69,6 +100,7 @@ export function resourceTabUpdate(
         pinned: false,
         dirty: false,
         resource,
+        ...(diffRef ? { diffRef } : {}),
         ...(isNestedRepository(repository) ? { repository } : {}),
       },
     ],

@@ -233,21 +233,86 @@ impl OmpTranslator {
                     Ok(resource) => crate::acp::intent::SafeResourceLocation::Resource { resource },
                     Err(reason) => crate::acp::intent::SafeResourceLocation::unavailable(reason),
                 };
-                events.push(AdapterEvent::Item {
-                    external_key: RequiredText::new(
-                        "externalItemId",
-                        format!("{}:diff:{index}", id.as_str()),
-                    )?,
-                    lifecycle: ItemLifecycle::Completed,
-                    tool_state: None,
-                    payload: NormalizedPayload::FileChangeDiff {
-                        resource,
-                        summary: SafeText::new("fileSummary", "File change reported by OMP ACP")?,
-                        additions: line_count(entry.get("newText").and_then(Value::as_str)),
-                        deletions: line_count(entry.get("oldText").and_then(Value::as_str)),
-                    },
-                    update_mode: ItemUpdateMode::Replace,
-                });
+                // Missing, null, or non-string sides are malformed wire
+                // input, not an empty edit. Over-cap sides admit
+                // summary-only metadata without retaining a partial side.
+                let old_text = entry
+                    .get("oldText")
+                    .and_then(Value::as_str)
+                    .ok_or(TranslationError::MalformedFrame)?;
+                let new_text = entry
+                    .get("newText")
+                    .and_then(Value::as_str)
+                    .ok_or(TranslationError::MalformedFrame)?;
+                let external_key =
+                    RequiredText::new("externalItemId", format!("{}:diff:{index}", id.as_str()))?;
+                let summary = SafeText::new("fileSummary", "File change reported by OMP ACP")?;
+                // An unavailable resource has no immutable root/path key,
+                // so no pair is retained: typed unavailable, never text
+                // invented from disk or Git.
+                if !matches!(
+                    resource,
+                    crate::acp::intent::SafeResourceLocation::Resource { .. }
+                ) {
+                    events.push(AdapterEvent::Item {
+                        external_key,
+                        lifecycle: ItemLifecycle::Completed,
+                        tool_state: None,
+                        payload: NormalizedPayload::file_summary_only(
+                            resource,
+                            summary,
+                            line_count(Some(new_text)),
+                            line_count(Some(old_text)),
+                            false,
+                        ),
+                        update_mode: ItemUpdateMode::Replace,
+                    });
+                    continue;
+                }
+                match crate::acp::file_diff::admit_pair(old_text, new_text) {
+                    crate::acp::file_diff::PairAdmission::Admitted {
+                        old_bytes,
+                        new_bytes,
+                        digest,
+                    } => {
+                        events.push(AdapterEvent::Item {
+                            external_key: external_key.clone(),
+                            lifecycle: ItemLifecycle::Completed,
+                            tool_state: None,
+                            payload: NormalizedPayload::file_admitted(
+                                resource,
+                                summary,
+                                line_count(Some(new_text)),
+                                line_count(Some(old_text)),
+                                0,
+                                (old_bytes as u64, new_bytes as u64),
+                                digest,
+                            ),
+                            update_mode: ItemUpdateMode::Replace,
+                        });
+                        events.push(AdapterEvent::FilePair {
+                            external_key,
+                            old_text: old_text.to_owned(),
+                            new_text: new_text.to_owned(),
+                            update_mode: ItemUpdateMode::Replace,
+                        });
+                    }
+                    crate::acp::file_diff::PairAdmission::SummaryOnly => {
+                        events.push(AdapterEvent::Item {
+                            external_key,
+                            lifecycle: ItemLifecycle::Completed,
+                            tool_state: None,
+                            payload: NormalizedPayload::file_summary_only(
+                                resource,
+                                summary,
+                                line_count(Some(new_text)),
+                                line_count(Some(old_text)),
+                                true,
+                            ),
+                            update_mode: ItemUpdateMode::Replace,
+                        });
+                    }
+                }
             }
         }
         self.live_turn()?.tools.insert(id.as_str().to_owned(), next);
@@ -289,76 +354,8 @@ fn text_event(
     })
 }
 
-fn plan_event(update: &Map<String, Value>) -> Result<AdapterEvent, TranslationError> {
-    let entries = update
-        .get("entries")
-        .and_then(Value::as_array)
-        .ok_or(TranslationError::MalformedFrame)?;
-    if entries.len() > MAX_PLAN_ENTRIES {
-        return Err(TranslationError::Limit("plan entries"));
-    }
-    let mut summary = String::new();
-    for (index, entry) in entries.iter().enumerate() {
-        if index != 0 {
-            summary.push('\n');
-        }
-        let status = normalized_text::<32>(
-            "planStatus",
-            entry
-                .get("status")
-                .and_then(Value::as_str)
-                .unwrap_or("pending"),
-        )?;
-        let content = normalized_text::<262144>(
-            "planEntry",
-            entry
-                .get("content")
-                .and_then(Value::as_str)
-                .ok_or(TranslationError::MalformedFrame)?,
-        )?;
-        summary.push('[');
-        summary.push_str(status.as_str());
-        summary.push_str("] ");
-        summary.push_str(content.as_str());
-        if summary.len() > 262_144 {
-            return Err(TranslationError::Limit("plan bytes"));
-        }
-    }
-    Ok(AdapterEvent::Item {
-        external_key: optional_item_id(update, "plan")?,
-        lifecycle: ItemLifecycle::Streaming,
-        tool_state: None,
-        payload: NormalizedPayload::Plan {
-            summary: SafeText::new("plan", summary)?,
-        },
-        update_mode: ItemUpdateMode::Replace,
-    })
-}
-
-fn usage_event(update: &Map<String, Value>) -> Result<AdapterEvent, TranslationError> {
-    let usage = update
-        .get("usage")
-        .and_then(Value::as_object)
-        .unwrap_or(update);
-    Ok(AdapterEvent::Item {
-        external_key: optional_item_id(update, "usage")?,
-        lifecycle: ItemLifecycle::Completed,
-        tool_state: None,
-        payload: NormalizedPayload::Usage {
-            input_tokens: usage
-                .get("inputTokens")
-                .or_else(|| usage.get("input_tokens"))
-                .and_then(Value::as_u64)
-                .ok_or(TranslationError::MalformedFrame)?,
-            output_tokens: usage
-                .get("outputTokens")
-                .or_else(|| usage.get("output_tokens"))
-                .and_then(Value::as_u64)
-                .ok_or(TranslationError::MalformedFrame)?,
-        },
-        update_mode: ItemUpdateMode::Replace,
-    })
-}
+mod progress;
+use progress::{plan_event, usage_event};
 
 fn error_event(update: &Map<String, Value>) -> Result<AdapterEvent, TranslationError> {
     let retryable = update

@@ -18,6 +18,10 @@ import type {
   StartAcpSessionRequest,
 } from "../domain/acp";
 import type { PreviewProjectionChangedEvent } from "../domain/previewProjection";
+import type {
+  AgentDiffSnapshot,
+  GetAgentDiffRequest,
+} from "../domain/agentDiff";
 import { utf8ByteLength } from "../domain/text";
 import { invokeNative } from "../ports/nativeInvoke";
 import { subscribePreviewProjectionChanges } from "./acpDesktopPreview";
@@ -272,6 +276,17 @@ async function invokeAcpMutation<Request extends object>(
 }
 
 export const acpDesktop = {
+  async getFileSnapshot(
+    request: GetAgentDiffRequest,
+  ): Promise<AgentDiffSnapshot> {
+    const { fetchAgentDiffSnapshot } = await import("./acpFileSnapshot");
+    return fetchAgentDiffSnapshot(
+      request,
+      (bounded) => invokeAcp("get_acp_file_snapshot", bounded),
+      (kind, message) => new AcpDesktopError({ kind, message }),
+    );
+  },
+
   async getCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
     return invokeCodexAuth("get_codex_auth", request);
   },

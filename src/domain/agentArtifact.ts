@@ -1,5 +1,6 @@
 import type { SageAgentSessionId, SageChatId, SageProjectId } from "./acp";
 import type { ResourceRef } from "./workbench";
+import type { AgentDiffRef } from "./agentDiff";
 
 export type AgentArtifactOwner = {
   projectId: SageProjectId;
@@ -11,7 +12,15 @@ export type AgentArtifactOpenIntent = {
   owner: AgentArtifactOwner;
   target: "file" | "diff";
   resource: ResourceRef;
+  diffRef?: AgentDiffRef;
 };
+
+export type AgentArtifactOpenHandler = (
+  resource: ResourceRef,
+  target: "file" | "diff",
+  origin?: AgentArtifactOwner,
+  diffRef?: AgentDiffRef,
+) => void;
 
 export type AgentArtifactAdmission = {
   owner: AgentArtifactOwner;

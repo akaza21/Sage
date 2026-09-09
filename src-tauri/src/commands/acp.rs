@@ -22,11 +22,12 @@ use crate::{
         bindings::codex::CodexDiscoveryDeadline,
         contract::{ProjectGeneration, SageChatId, SageProjectId},
         intent::{
-            AcpChatPage, AcpIpcError, AcpMutationResponse, ActivateAcpSessionRequest,
-            CancelAcpTurnRequest, CloseAcpSessionRequest, CodexDiscoveryResponse,
-            GetAcpChatPageRequest, GetCodexDiscoveryRequest, IntentError, IntentSnapshot,
-            SendAcpTurnRequest, StartAcpSessionRequest, validate_base_intent,
-            validate_cancel_intent, validate_session_intent,
+            AcpChatPage, AcpFileSnapshotResponse, AcpIpcError, AcpMutationResponse,
+            ActivateAcpSessionRequest, CancelAcpTurnRequest, CloseAcpSessionRequest,
+            CodexDiscoveryResponse, GetAcpChatPageRequest, GetAcpFileSnapshotRequest,
+            GetCodexDiscoveryRequest, IntentError, IntentSnapshot, SendAcpTurnRequest,
+            StartAcpSessionRequest, validate_base_intent, validate_cancel_intent,
+            validate_session_intent,
         },
         runtime::HostCancelIntent,
         scheduler::RuntimeOwner,
@@ -112,7 +113,6 @@ pub async fn get_acp_chat_page(
 ) -> Result<AcpChatPage, AcpIpcError> {
     get_acp_chat_page_inner(&state, request).await
 }
-
 pub(crate) async fn get_acp_chat_page_inner(
     state: &AppState,
     request: GetAcpChatPageRequest,
@@ -133,6 +133,17 @@ pub(crate) async fn get_acp_chat_page_inner(
     }
     Ok(page)
 }
+
+#[tauri::command]
+pub async fn get_acp_file_snapshot(
+    state: State<'_, AppState>,
+    request: GetAcpFileSnapshotRequest,
+) -> Result<AcpFileSnapshotResponse, AcpIpcError> {
+    get_acp_file_snapshot_inner(&state, request).await
+}
+
+mod file_snapshot;
+pub(crate) use file_snapshot::get_acp_file_snapshot_inner;
 
 #[tauri::command]
 pub async fn start_acp_session(

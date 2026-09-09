@@ -11,6 +11,8 @@ import {
 } from "./projectIntent";
 import { boundedResourceStateUpdate } from "./resourceStateHelpers";
 import type { WorkbenchState } from "./store";
+import type { AgentDiffRef } from "../domain/agentDiff";
+import { isSnapshotDiffTab } from "../domain/agentDiffIdentity";
 
 const MAX_CACHED_DIFFS = 32;
 
@@ -40,10 +42,22 @@ export async function runLoadDiff(
   set: (partial: object | ((state: WorkbenchState) => object)) => void,
   resource: ResourceRef,
   repository?: RepositoryRef,
+  diffRef?: AgentDiffRef,
 ): Promise<void> {
+  if (diffRef) {
+    if (repository) return;
+    const { runLoadAgentDiff } = await import("./agentDiffLoad");
+    return runLoadAgentDiff(get, set, resource, diffRef);
+  }
   const generation = get().projectGeneration;
   const projectId = get().project?.id;
   const active = get().tabs.find((tab) => tab.id === get().activeTabId);
+  if (
+    active &&
+    isSnapshotDiffTab(active) &&
+    sameResource(active.resource, resource)
+  )
+    return;
   const resolvedRepository =
     repository ??
     (active?.kind === "diff" && sameResource(active.resource, resource)

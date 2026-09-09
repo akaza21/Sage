@@ -117,11 +117,11 @@ describe("ToolItem", () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Open diff src/main.ts" }),
+      screen.getByRole("button", { name: "Open file src/main.ts" }),
     );
     expect(onOpen).toHaveBeenLastCalledWith(
       { rootId: "root-b", relativePath: "src/main.ts" },
-      "diff",
+      "file",
     );
   });
 

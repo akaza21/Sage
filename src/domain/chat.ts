@@ -1,5 +1,6 @@
 import type { RepositoryRef } from "./repository";
 import type { ResourceRef } from "./resource";
+import type { AgentDiffRef } from "./agentDiff";
 
 export type TabKind =
   | "chat"
@@ -25,6 +26,7 @@ export interface WorkbenchTab {
   updatedAt?: number;
   resource?: ResourceRef;
   repository?: RepositoryRef;
+  diffRef?: AgentDiffRef;
 }
 
 export interface RenameChatRequest {

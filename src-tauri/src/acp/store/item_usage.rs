@@ -18,7 +18,10 @@ pub(super) fn ensure_capacity(
     bytes: i64,
 ) -> Result<i64, StoreError> {
     let turn: (i64, i64, i64) = transaction.query_row(
-        "SELECT COUNT(*),COALESCE(SUM(payload_bytes),0),COALESCE(MAX(ordinal),-1)+1
+        "SELECT COUNT(*),COALESCE(SUM(payload_bytes),0)
+         + COALESCE((SELECT SUM(old_bytes+new_bytes) FROM acp_file_change_snapshots
+            WHERE project_id=?1 AND chat_id=?2 AND session_id=?3 AND turn_id=?4
+              AND runtime_epoch=?5),0),COALESCE(MAX(ordinal),-1)+1
          FROM items WHERE project_id=?1 AND chat_id=?2 AND session_id=?3 AND turn_id=?4
            AND runtime_epoch=?5",
         params![

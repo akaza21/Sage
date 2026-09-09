@@ -1,4 +1,5 @@
 import type { AcpImagePayload } from "./acpImage";
+import type { FilePairMetadata } from "./agentDiff";
 import type {
   ActivityState,
   AgentSessionState,
@@ -69,14 +70,14 @@ export type ToolPresentation =
       activityId: SageActivityId | null;
     };
 
-export interface FileChangeProjection {
+export type FileChangeProjection = FilePairMetadata & {
   resource: SafeResourceLocation;
   operation: "created" | "updated" | "deleted" | "renamed" | "unknown";
   originalResource: SafeResourceLocation | null;
   summary: string;
   additions: number | null;
   deletions: number | null;
-}
+};
 
 export type AgentEditDispositionState = "accepted" | "rejected";
 

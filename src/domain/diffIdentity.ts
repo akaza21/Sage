@@ -1,6 +1,8 @@
 import { resourceKey } from "./resourceIdentity";
 import type { RepositoryRef } from "./repository";
 import type { ResourceRef } from "./resource";
+import type { AgentDiffRef } from "./agentDiff";
+import { agentDiffKey } from "./agentDiffIdentity";
 
 const COMPOSITE_SEPARATOR = "\0";
 
@@ -29,7 +31,9 @@ export function rootRepositoryRef(rootId: string): RepositoryRef {
 export function diffCacheKey(
   repository: RepositoryRef | null | undefined,
   resource: ResourceRef,
+  snapshot?: AgentDiffRef,
 ): string {
+  if (snapshot) return agentDiffKey(snapshot);
   if (!isNestedRepository(repository)) {
     return resourceKey(resource);
   }

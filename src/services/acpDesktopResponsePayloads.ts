@@ -4,6 +4,11 @@ import type {
   ToolPresentation,
 } from "../domain/acp";
 import type { ResourceRef } from "../domain/workbench";
+import type { FilePairMetadata } from "../domain/agentDiff";
+import {
+  AGENT_DIFF_SIDE_BYTES,
+  MAX_AGENT_DIFFS_PER_TURN,
+} from "../domain/agentDiffIdentity";
 import {
   isOneOf,
   isRecord,
@@ -11,9 +16,10 @@ import {
   safeNullableIdentifier,
   safeNullableText,
   safeText,
+  safeCounter,
 } from "./acpDesktopResponses";
 
-export const MAX_FILE_CHANGES = 64;
+export const MAX_FILE_CHANGES = MAX_AGENT_DIFFS_PER_TURN;
 export const MAX_TOOL_RESOURCES = 64;
 
 export function safeResourceRef(value: unknown): ResourceRef | null {
@@ -60,6 +66,7 @@ function safeNullableBoundedNumber(value: unknown): number | null | undefined {
 
 export function safeFileChange(value: unknown): FileChangeProjection | null {
   if (!isRecord(value)) return null;
+  const pair = safeFilePair(value);
   const resource = safeResourceLocation(value.resource);
   const originalResource =
     value.originalResource === null
@@ -70,6 +77,8 @@ export function safeFileChange(value: unknown): FileChangeProjection | null {
   const deletions = safeNullableBoundedNumber(value.deletions);
   if (
     !resource ||
+    !pair ||
+    (pair.pairState === "available" && resource.kind !== "resource") ||
     originalResource === undefined ||
     summary === null ||
     additions === undefined ||
@@ -85,12 +94,65 @@ export function safeFileChange(value: unknown): FileChangeProjection | null {
     return null;
   }
   return {
+    ...pair,
     resource,
     operation: value.operation,
     originalResource,
     summary,
     additions,
     deletions,
+  };
+}
+
+function safeFilePair(value: Record<string, unknown>): FilePairMetadata | null {
+  // Only an entirely absent field set is a legacy summary. A partial new
+  // snapshot declaration must never be silently downgraded into an action.
+  if (
+    value.pairState === undefined &&
+    ["snapshotRevision", "oldBytes", "newBytes", "contentDigest"].every(
+      (key) => value[key] === undefined,
+    )
+  )
+    return {};
+  if (
+    value.pairState === "unavailable" ||
+    value.pairState === "summaryTruncated"
+  ) {
+    return value.snapshotRevision === "0" &&
+      value.oldBytes === null &&
+      value.newBytes === null &&
+      value.contentDigest === null
+      ? {
+          pairState: value.pairState,
+          snapshotRevision: "0",
+          oldBytes: null,
+          newBytes: null,
+          contentDigest: null,
+        }
+      : null;
+  }
+  const snapshotRevision = safeCounter(value.snapshotRevision, false);
+  if (
+    value.pairState !== "available" ||
+    !snapshotRevision ||
+    typeof value.oldBytes !== "number" ||
+    !Number.isSafeInteger(value.oldBytes) ||
+    value.oldBytes < 0 ||
+    value.oldBytes > AGENT_DIFF_SIDE_BYTES ||
+    typeof value.newBytes !== "number" ||
+    !Number.isSafeInteger(value.newBytes) ||
+    value.newBytes < 0 ||
+    value.newBytes > AGENT_DIFF_SIDE_BYTES ||
+    typeof value.contentDigest !== "string" ||
+    !/^[0-9a-f]{64}$/.test(value.contentDigest)
+  )
+    return null;
+  return {
+    pairState: "available",
+    snapshotRevision,
+    oldBytes: value.oldBytes,
+    newBytes: value.newBytes,
+    contentDigest: value.contentDigest,
   };
 }
 

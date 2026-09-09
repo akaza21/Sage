@@ -266,6 +266,19 @@ impl ClaudeRuntime {
                         payload,
                     })?;
                 }
+                AdapterEvent::FilePair {
+                    external_key,
+                    old_text,
+                    new_text,
+                } => {
+                    let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
+                    batch.push_event(SharedEvent::FilePair {
+                        id: self.item_identity(active, external_key.clone())?,
+                        external_item_id: external_key,
+                        old_text,
+                        new_text,
+                    })?;
+                }
                 AdapterEvent::TurnTerminal(state) => {
                     let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
                     batch.push_event(SharedEvent::Turn {

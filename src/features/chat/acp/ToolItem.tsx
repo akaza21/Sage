@@ -81,10 +81,12 @@ function Presentation({
   switch (presentation.kind) {
     case "file":
     case "diff":
+      // Tool locations admit file reads only. Saved Diff authority comes from
+      // the separate file-change projection carrying its immutable DiffRef.
       return (
         <ResourceLocations
           locations={presentation.resources}
-          target={presentation.kind}
+          target="file"
           onOpenResource={onOpenResource}
         />
       );
