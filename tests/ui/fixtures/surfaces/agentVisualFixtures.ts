@@ -42,6 +42,7 @@ function activityToolItem(
   input: ItemInput,
   presentation: ToolCallItem["payload"]["presentation"],
   state: ToolCallItem["toolState"] = "completed",
+  outputSummary?: string,
 ): AcpItem {
   const identity = itemIdentity(input);
   const terminal = state !== "pending" && state !== "inProgress";
@@ -54,6 +55,7 @@ function activityToolItem(
     payload: {
       presentation,
       inputSummary: null,
+      ...(outputSummary ? { outputSummary } : {}),
     },
   } as ToolCallItem;
 }
@@ -153,13 +155,18 @@ function activityFamilyPage() {
       "Comparing the activity family before the final pass.",
     ),
     planItem(input(2)),
-    activityToolItem(input(3), {
-      kind: "command",
-      label: "Run focused checks",
-      summary:
-        "npm test -- src/features/chat/acp/ToolItem.test.tsx src/features/chat/acp/TurnActivityItem.test.tsx src/features/chat/acp/AcpChatProjection.test.tsx",
-      resources: [],
-    }),
+    activityToolItem(
+      input(3),
+      {
+        kind: "command",
+        label: "Run focused checks",
+        summary:
+          "npm test -- src/features/chat/acp/ToolItem.test.tsx src/features/chat/acp/TurnActivityItem.test.tsx src/features/chat/acp/AcpChatProjection.test.tsx",
+        resources: [],
+      },
+      "completed",
+      "Focused checks passed for ToolItem, TurnActivityItem, and AcpChatProjection.",
+    ),
     activityToolItem(
       input(4),
       {

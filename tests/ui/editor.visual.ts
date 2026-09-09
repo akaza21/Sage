@@ -635,6 +635,17 @@ test.describe("Wave 2 accessibility and responsive states", () => {
 
     await expect(workbench).toHaveClass(/workbench--compact/);
     await expect(page.locator(".center-region")).toBeVisible();
+    await expect(
+      page.getByRole("textbox", {
+        name: "Edit src/workbench/AgentChatPanes.tsx",
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Loading editor…" }),
+    ).toHaveCount(0);
+    await expect(
+      page.locator(".file-surface .cm-content .cm-line span[class]").first(),
+    ).toBeVisible();
     await expect
       .poll(() =>
         page.evaluate(() => {

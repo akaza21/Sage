@@ -139,6 +139,100 @@ describe("visual scenario surface ownership", () => {
     ]);
   });
 
+  it("keeps the completed activity command as authored bounded output with stable history identity", () => {
+    const activityPage = buildAgentPages("agent-activity-family")?.[0];
+    const activityTurn = activityPage?.turns[0];
+    const command = activityTurn?.items.find(
+      (item) =>
+        item.kind === "toolCall" &&
+        item.payload.presentation.kind === "command" &&
+        item.payload.presentation.label === "Run focused checks",
+    );
+
+    expect(command).toMatchObject({
+      id: "visual-turn-visual-chat-activity-family-1-item-3",
+      kind: "toolCall",
+      lifecycle: "completed",
+      ordinal: 3,
+      revision: "1",
+      toolState: "completed",
+      payload: {
+        inputSummary: null,
+        outputSummary:
+          "Focused checks passed for ToolItem, TurnActivityItem, and AcpChatProjection.",
+      },
+    });
+    expect(
+      activityTurn?.items.map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        ordinal: item.ordinal,
+        revision: item.revision,
+      })),
+    ).toEqual([
+      {
+        id: "visual-turn-visual-chat-activity-family-1-item-1",
+        kind: "thoughtSummary",
+        ordinal: 1,
+        revision: "1",
+      },
+      {
+        id: "visual-turn-visual-chat-activity-family-1-item-2",
+        kind: "plan",
+        ordinal: 2,
+        revision: "1",
+      },
+      {
+        id: "visual-turn-visual-chat-activity-family-1-item-3",
+        kind: "toolCall",
+        ordinal: 3,
+        revision: "1",
+      },
+      {
+        id: "visual-turn-visual-chat-activity-family-1-item-4",
+        kind: "toolCall",
+        ordinal: 4,
+        revision: "1",
+      },
+      {
+        id: "visual-turn-visual-chat-activity-family-1-item-5",
+        kind: "toolCall",
+        ordinal: 5,
+        revision: "1",
+      },
+      {
+        id: "visual-turn-visual-chat-activity-family-1-item-6",
+        kind: "toolCall",
+        ordinal: 6,
+        revision: "1",
+      },
+      {
+        id: "visual-turn-visual-chat-activity-family-1-item-7",
+        kind: "toolCall",
+        ordinal: 7,
+        revision: "1",
+      },
+      {
+        id: "visual-turn-visual-chat-activity-family-1-item-8",
+        kind: "usage",
+        ordinal: 8,
+        revision: "1",
+      },
+      {
+        id: "visual-turn-visual-chat-activity-family-1-item-9",
+        kind: "error",
+        ordinal: 9,
+        revision: "1",
+      },
+      {
+        id: "visual-turn-visual-chat-activity-family-1-item-10",
+        kind: "unsupported",
+        ordinal: 10,
+        revision: "1",
+      },
+    ]);
+  });
+
   it("assigns every scenario to exactly one surface with no duplicate names", () => {
     const owned = Object.values(SLICES).flat();
     expect(owned).toHaveLength(VISUAL_SCENARIOS.length);

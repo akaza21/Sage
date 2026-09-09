@@ -335,7 +335,7 @@ function waitForMountedPreviewOwner(
   return new Promise((resolve, reject) => {
     let settled = false;
     let recheckFrame: number | null = null;
-    let unsubscribe = () => undefined;
+    let unsubscribe: () => void = () => undefined;
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;

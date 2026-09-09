@@ -290,10 +290,30 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const composerSelector =
       'textarea[aria-label="Message agent"]:not(:disabled)';
     const composerTextarea = page.locator(composerSelector);
-    await page.keyboard.press("Tab");
-    await expect(composerTextarea).toBeEnabled();
-    await expect(composerTextarea).toBeFocused();
+    const currentProjection = page.locator(
+      ".agent-chat-pane--focused .acp-chat-projection",
+    );
+    await expect(currentProjection).toHaveAttribute(
+      "data-project-id",
+      "visual-project",
+    );
+    await expect(currentProjection).toHaveAttribute(
+      "data-chat-id",
+      "visual-chat-agent-single",
+    );
+    await expect(currentProjection).toHaveAttribute(
+      "data-current-session-id",
+      "visual-session",
+    );
     await expect(composerTextarea).toBeVisible();
+    await expect(composerTextarea).toBeEnabled();
+    await page.keyboard.press("ControlOrMeta+L");
+    await expect(composerTextarea).toBeFocused();
+    expect(
+      await composerTextarea.evaluate(
+        (textarea) => document.activeElement === textarea,
+      ),
+    ).toBe(true);
     expect(
       await composerTextarea.evaluate((textarea) =>
         textarea.matches(":focus-visible"),
