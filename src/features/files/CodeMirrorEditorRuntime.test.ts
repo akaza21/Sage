@@ -10,7 +10,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createCodeMirrorEditorRuntime } from "./CodeMirrorEditorRuntime";
 
-function runtimeForPath(path: string, documentIdentity?: string) {
+function runtimeForPath(
+  path: string,
+  documentIdentity?: string,
+  content = "fn main() {}",
+) {
   const parent = document.createElement("div");
   document.body.append(parent);
   const runtime = createCodeMirrorEditorRuntime({
@@ -18,7 +22,7 @@ function runtimeForPath(path: string, documentIdentity?: string) {
     ariaLabel: `Edit ${path}`,
     documentIdentity,
     path,
-    content: "fn main() {}",
+    content,
     disabled: false,
     maxContentLength: 1024,
     onChange: vi.fn(),
@@ -31,6 +35,16 @@ function runtimeForPath(path: string, documentIdentity?: string) {
   return { parent, runtime, view };
 }
 
+function syntaxNodeNames(view: EditorView): string[] {
+  const names: string[] = [];
+  syntaxTree(view.state).iterate({
+    enter: (node) => {
+      names.push(node.name);
+    },
+  });
+  return names;
+}
+
 afterEach(() => {
   document.body.replaceChildren();
   vi.doUnmock("@codemirror/lang-css");
@@ -38,6 +52,83 @@ afterEach(() => {
 });
 
 describe("CodeMirrorEditorRuntime language lifecycle", () => {
+  it("keeps CSS and Python parsing and language data without autocomplete providers", async () => {
+    const css = runtimeForPath(
+      "styles/app.css",
+      undefined,
+      ".card { color: red; }",
+    );
+    await vi.waitFor(() =>
+      expect(syntaxNodeNames(css.view)).toEqual(
+        expect.arrayContaining(["Declaration", "PropertyName"]),
+      ),
+    );
+    expect(css.view.state.languageDataAt("commentTokens", 0)).toEqual([
+      { block: { close: "*/", open: "/*" } },
+    ]);
+    expect(css.view.state.languageDataAt("autocomplete", 0)).toEqual([]);
+    css.runtime.destroy();
+
+    const python = runtimeForPath(
+      "tools/check.py",
+      undefined,
+      "def check(value):\n  return value",
+    );
+    await vi.waitFor(() =>
+      expect(syntaxNodeNames(python.view)).toEqual(
+        expect.arrayContaining(["FunctionDefinition", "VariableName"]),
+      ),
+    );
+    expect(python.view.state.languageDataAt("commentTokens", 0)).toEqual([
+      { line: "#" },
+    ]);
+    expect(python.view.state.languageDataAt("autocomplete", 0)).toEqual([]);
+    python.runtime.destroy();
+  });
+
+  it("keeps no-match HTML parsing and embedded JavaScript and CSS languages", async () => {
+    const { runtime, view } = runtimeForPath(
+      "public/index.html",
+      undefined,
+      "<div></span><script>const answer = 1;</script><style>.card { color: red; }</style>",
+    );
+    await vi.waitFor(() =>
+      expect(syntaxNodeNames(view)).toEqual(
+        expect.arrayContaining([
+          "StartCloseTag",
+          "VariableDeclaration",
+          "Declaration",
+        ]),
+      ),
+    );
+    expect(syntaxNodeNames(view)).not.toContain("MismatchedCloseTag");
+    runtime.destroy();
+  });
+
+  it("preserves JavaScript JSX and TSX close-tag insertion through CodeMirror input", async () => {
+    for (const path of ["view.jsx", "view.tsx"]) {
+      const { runtime, view } = runtimeForPath(path, undefined, "<Widget");
+      await vi.waitFor(() =>
+        expect(syntaxNodeNames(view)).toContain("JSXIdentifier"),
+      );
+      runtime.setSelection(view.state.doc.length, view.state.doc.length);
+      view.contentDOM.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          data: ">",
+          inputType: "insertText",
+        }),
+      );
+      view.contentDOM.append(view.dom.ownerDocument.createTextNode(">"));
+      (view as unknown as { observer: { flush: () => void } }).observer.flush();
+      await vi.waitFor(() =>
+        expect(view.state.doc.toString()).toBe("<Widget></Widget>"),
+      );
+      runtime.destroy();
+    }
+  });
+
   it("falls back to plain text when the current language chunk rejects", async () => {
     const chunkRequested = vi.fn();
     vi.doMock("@codemirror/lang-css", () => {
@@ -67,11 +158,19 @@ describe("CodeMirrorEditorRuntime language lifecycle", () => {
 
   it("ignores a superseded language chunk that resolves out of order", async () => {
     let resolvePython:
-      ((module: { python: () => Extension }) => void) | undefined;
+      ((module: { pythonLanguage: Extension }) => void) | undefined;
+    let resolvePythonLanguageRead: (() => void) | undefined;
+    let resolveStaleContinuation: (() => void) | undefined;
+    const pythonLanguageRead = new Promise<void>((resolve) => {
+      resolvePythonLanguageRead = resolve;
+    });
+    const staleContinuationSettled = new Promise<void>((resolve) => {
+      resolveStaleContinuation = resolve;
+    });
     vi.doMock(
       "@codemirror/lang-python",
       () =>
-        new Promise<{ python: () => Extension }>((resolve) => {
+        new Promise<{ pythonLanguage: Extension }>((resolve) => {
           resolvePython = resolve;
         }),
     );
@@ -102,10 +201,17 @@ describe("CodeMirrorEditorRuntime language lifecycle", () => {
       expect(syntaxTree(view.state).length).toBeGreaterThan(0),
     );
 
-    const python = vi.fn<() => Extension>(() => []);
-    resolvePython?.({ python });
-    await vi.waitFor(() => expect(python).toHaveBeenCalledOnce());
-    await Promise.resolve();
+    resolvePython?.({
+      get pythonLanguage() {
+        resolvePythonLanguageRead?.();
+        queueMicrotask(() => {
+          queueMicrotask(() => resolveStaleContinuation?.());
+        });
+        return [];
+      },
+    });
+    await pythonLanguageRead;
+    await staleContinuationSettled;
 
     expect(syntaxTree(view.state).length).toBeGreaterThan(0);
     runtime.destroy();

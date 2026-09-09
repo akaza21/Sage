@@ -97,20 +97,20 @@ export async function loadEditorLanguage(
       return json();
     }
     case "css": {
-      const { css } = await import("@codemirror/lang-css");
-      return css();
+      const { cssLanguage } = await import("@codemirror/lang-css");
+      return cssLanguage;
     }
     case "html": {
-      const { html } = await import("@codemirror/lang-html");
-      return html({ autoCloseTags: false, matchClosingTags: false });
+      const { htmlLanguage } = await import("@codemirror/lang-html");
+      return htmlLanguage.configure({ dialect: "noMatch" });
     }
     case "markdown": {
       const { markdown } = await import("@codemirror/lang-markdown");
       return markdown({ addKeymap: false });
     }
     case "python": {
-      const { python } = await import("@codemirror/lang-python");
-      return python();
+      const { pythonLanguage } = await import("@codemirror/lang-python");
+      return pythonLanguage;
     }
     case "rust": {
       const { rust } = await import("@codemirror/lang-rust");
