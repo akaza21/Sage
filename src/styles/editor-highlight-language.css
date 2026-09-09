@@ -62,7 +62,13 @@
   /* Compact fields use their border as the sole edge plus a soft falloff. */
   .workbench--editor .workspace-search__input:focus-within,
   .workbench--editor .workspace-search__filters input:focus-visible,
-  .workbench--editor .source-control-selector select:focus-visible,
+  .workbench--editor
+    .source-control-selector
+    .searchable-picker__trigger:focus-visible,
+  .workbench--editor
+    .source-control-selector
+    .searchable-picker__input:focus-visible,
+  .menu-popover--editor .searchable-picker__input:focus-visible,
   .workbench--editor .source-branch-create__label input:focus-visible,
   .workbench--editor .source-branch-create__label select:focus-visible,
   .workbench--editor .repository-commit__label textarea:focus-visible,

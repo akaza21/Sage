@@ -115,6 +115,36 @@ function GrowingMenuHarness() {
 }
 
 describe("MenuPopover", () => {
+  it("leaves focus and keyboard ownership to an opt-in neutral popup", () => {
+    function NeutralHarness() {
+      const triggerRef = useRef<HTMLButtonElement>(null);
+      const inputRef = useRef<HTMLInputElement>(null);
+      return (
+        <>
+          <button ref={triggerRef} type="button">
+            Trigger
+          </button>
+          <MenuPopover
+            ariaLabel="Neutral"
+            focusStrategy="none"
+            id="neutral-popup"
+            onDismiss={() => undefined}
+            open
+            role="none"
+            triggerRef={triggerRef}
+          >
+            <input ref={inputRef} aria-label="Filter" />
+          </MenuPopover>
+        </>
+      );
+    }
+    render(<NeutralHarness />);
+    const input = screen.getByRole("textbox", { name: "Filter" });
+    input.focus();
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(input).toHaveFocus();
+  });
+
   it("keeps one roving item and traps keyboard focus inside the open menu", () => {
     render(<MenuHarness />);
 

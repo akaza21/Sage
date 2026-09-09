@@ -13,6 +13,18 @@ describe("visual scenario contract", () => {
       { name: "agent-image", mode: "agent", resource: "empty" },
       { name: "agent-child-activity", mode: "agent", resource: "empty" },
       { name: "editor", mode: "editor", resource: "file" },
+      {
+        name: "editor-picker-repository",
+        mode: "editor",
+        resource: "file",
+      },
+      {
+        name: "editor-picker-repository-filtered",
+        mode: "editor",
+        resource: "file",
+      },
+      { name: "editor-picker-narrow", mode: "editor", resource: "file" },
+      { name: "editor-picker-zoom-200", mode: "editor", resource: "file" },
       { name: "file", mode: "agent", resource: "file" },
       { name: "diff", mode: "agent", resource: "diff" },
       { name: "preview", mode: "agent", resource: "preview" },

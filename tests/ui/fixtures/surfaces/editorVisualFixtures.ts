@@ -15,10 +15,63 @@ import type { VisualScenarioName } from "../visualScenarioTypes";
 export function buildEditorPages(
   name: VisualScenarioName,
 ): AcpChatPage[] | null {
-  if (name !== "editor") return null;
+  if (
+    ![
+      "editor",
+      "editor-picker-repository",
+      "editor-picker-repository-filtered",
+      "editor-picker-narrow",
+      "editor-picker-zoom-200",
+    ].includes(name)
+  ) {
+    return null;
+  }
   return [
     standardPage("visual-chat-editor", "Agent navigation polish", "rich"),
   ];
+}
+
+export function installVisualRepositoryPickerFixture({
+  disabled = false,
+}: {
+  disabled?: boolean;
+} = {}) {
+  useWorkbenchStore.setState((state) => ({
+    repositoryRefs: Array.from({ length: 32 }, (_, index) => ({
+      rootId: index === 31 ? "visual-readonly" : ROOT_ID,
+      relativePath: index === 0 ? "" : `packages/repository-${index}`,
+    })),
+    project: state.project
+      ? {
+          ...state.project,
+          roots: [
+            ...state.project.roots,
+            {
+              id: "visual-readonly",
+              name: "Read-only root",
+              ordinal: state.project.roots.length,
+              availability: "unavailable",
+              message: "Repository root is unavailable.",
+            },
+          ],
+        }
+      : state.project,
+    selectedRepository: { rootId: ROOT_ID, relativePath: "" },
+    repositoryInventoryPhase: disabled ? "loading" : "ready",
+    repositoryInventoryError: null,
+    repositoryStatusPhase: "ready",
+    repositoryStatusError: null,
+    repositoryRefreshing: false,
+    projectTransitioning: false,
+    repositoryMutation: null,
+    repositoryCommit: null,
+    repositoryCheckout: null,
+    repositoryRemote: null,
+    repositories: state.repositories,
+    selectRepository: async (repository) => {
+      useWorkbenchStore.setState({ selectedRepository: repository });
+    },
+  }));
 }
 
 export function installEditorToolFixtures() {

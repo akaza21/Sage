@@ -78,7 +78,6 @@ describe("Editor highlight language seam", () => {
       ".problem-card",
       ".outline-card",
       ".source-change--selected",
-      ".source-control-selector select:focus-visible",
       ".repository-commit__label",
       "textarea:focus-visible",
       ".sidebar:focus-visible",
@@ -90,6 +89,12 @@ describe("Editor highlight language seam", () => {
     ]) {
       expect(css).toContain(selector);
     }
+    expect(css).toMatch(
+      /\.workbench--editor\s+\.source-control-selector\s+\.searchable-picker__trigger:focus-visible/,
+    );
+    expect(css).toContain(
+      ".menu-popover--editor .searchable-picker__input:focus-visible",
+    );
     expect(css).toContain(".activity-rail__button--active");
     expect(activityCss).toContain(".workbench-sidebar-splitter--active::after");
     expect(visualCss).toContain(".new-file-dialog--editor");

@@ -8,6 +8,10 @@ export type VisualScenarioName =
   | "agent-image"
   | "agent-child-activity"
   | "editor"
+  | "editor-picker-repository"
+  | "editor-picker-repository-filtered"
+  | "editor-picker-narrow"
+  | "editor-picker-zoom-200"
   | "file"
   | "diff"
   | "preview"
@@ -50,6 +54,10 @@ export const AGENT_VISUAL_SCENARIOS: readonly VisualScenarioName[] = [
 
 export const EDITOR_VISUAL_SCENARIOS: readonly VisualScenarioName[] = [
   "editor",
+  "editor-picker-repository",
+  "editor-picker-repository-filtered",
+  "editor-picker-narrow",
+  "editor-picker-zoom-200",
 ];
 
 export const RESOURCE_VISUAL_SCENARIOS: readonly VisualScenarioName[] = [

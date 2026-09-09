@@ -1,103 +1,15 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { RefreshCw } from "lucide-react";
 
 import { useWorkbenchStore } from "../app/store";
 import { isRootRepository, repositoryKey } from "../domain/repositoryInventory";
-import { resourceKey, sameResource } from "../domain/resourceIdentity";
-import {
-  conflictGroupLabel,
-  partitionSourceChanges,
-} from "../features/git/conflictPresentation";
-import type {
-  FileChange,
-  GitFileMutationAction,
-  RepositoryRef,
-  ResourceRef,
-} from "../domain/workbench";
 import { SourceBranchList } from "./SourceBranchList";
-import { SourceChangeRow } from "./SourceChangeRow";
+import { SourceChangeGroups } from "./SourceChangeGroups";
 import { SourceCommitList } from "./SourceCommitList";
 import { SourceRemoteList } from "./SourceRemoteList";
 import { SourceRepositoryControl } from "./SourceRepositoryControl";
-
-function SourceChangeGroups({
-  changes,
-  repository,
-  rootName,
-  rebaseInProgress,
-  cherryPickInProgress,
-  revertInProgress,
-  selected,
-  controlsDisabled,
-  mutateRepositoryFile,
-  openDiff,
-}: {
-  changes: readonly FileChange[];
-  repository: RepositoryRef | undefined;
-  rootName: string;
-  rebaseInProgress: boolean;
-  cherryPickInProgress: boolean;
-  revertInProgress: boolean;
-  selected: ResourceRef | null;
-  controlsDisabled: boolean;
-  mutateRepositoryFile: (
-    resource: ResourceRef,
-    action: GitFileMutationAction,
-    discardConfirmed?: boolean,
-  ) => Promise<boolean>;
-  openDiff: (
-    resource: ResourceRef,
-    repository?: RepositoryRef,
-  ) => Promise<void>;
-}) {
-  const { conflicts, others } = partitionSourceChanges(changes);
-  const staged = others.filter((change) => change.indexStatus !== "unchanged");
-  const unstaged = others.filter(
-    (change) => change.indexStatus === "unchanged",
-  );
-  const renderChange = (change: FileChange) => (
-    <SourceChangeRow
-      key={`${resourceKey(change.resource)}:${change.indexStatus}:${change.worktreeStatus}:${change.originalResource ? resourceKey(change.originalResource) : ""}`}
-      change={change}
-      repository={repository}
-      rootName={rootName}
-      isSelected={sameResource(selected, change.resource)}
-      controlsDisabled={controlsDisabled}
-      mutateRepositoryFile={mutateRepositoryFile}
-      openDiff={openDiff}
-    />
-  );
-  const group = (label: string, entries: readonly FileChange[]) =>
-    entries.length > 0 ? (
-      <details className="source-change-group" open>
-        <summary>
-          <span>{label}</span>
-          <span aria-label={`${entries.length} ${label.toLowerCase()}`}>
-            {entries.length}
-          </span>
-        </summary>
-        {entries.map(renderChange)}
-      </details>
-    ) : null;
-  return (
-    <>
-      {conflicts.length > 0 ? (
-        group(
-          conflictGroupLabel({
-            rebaseInProgress,
-            cherryPickInProgress,
-            revertInProgress,
-          }),
-          conflicts,
-        )
-      ) : rebaseInProgress || cherryPickInProgress || revertInProgress ? (
-        <p className="sidebar__empty">Conflicts are resolved.</p>
-      ) : null}
-      {group("Staged Changes", staged)}
-      {group("Changes", unstaged)}
-    </>
-  );
-}
+import { SearchablePicker } from "../ui/SearchablePicker";
+import { ResourceStateNotice } from "../ui/ResourceStateNotice";
 
 function disambiguatedRootLabel(
   rootName: string,
@@ -198,13 +110,46 @@ export function SourceControlView() {
     projectGeneration,
     transitioning,
   ]);
-  const projectRoots = new Map(
-    project?.roots.map((root) => [root.id, root]) ?? [],
+  const projectRoots = useMemo(
+    () => new Map(project?.roots.map((root) => [root.id, root]) ?? []),
+    [project?.roots],
   );
-  const rootNameCounts = new Map<string, number>();
-  for (const root of project?.roots ?? []) {
-    rootNameCounts.set(root.name, (rootNameCounts.get(root.name) ?? 0) + 1);
-  }
+  const rootNameCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const root of project?.roots ?? []) {
+      counts.set(root.name, (counts.get(root.name) ?? 0) + 1);
+    }
+    return counts;
+  }, [project?.roots]);
+  const repositoryOptions = useMemo(
+    () =>
+      repositoryRefs.map((ref) => {
+        const projectRoot = projectRoots.get(ref.rootId);
+        const rootName = projectRoot?.name ?? "Root";
+        const rootLabel = disambiguatedRootLabel(
+          rootName,
+          projectRoot?.ordinal ?? 0,
+          rootNameCounts,
+        );
+        return {
+          disabledReason:
+            projectRoot?.availability === "unavailable"
+              ? (projectRoot.message ?? "Repository root is unavailable.")
+              : undefined,
+          id: repositoryKey(ref),
+          label: `${rootLabel} — ${ref.relativePath || "Repository root"}`,
+        };
+      }),
+    [projectRoots, repositoryRefs, rootNameCounts],
+  );
+  const chooseRepository = useCallback(
+    (key: string) => {
+      if (controlsDisabled || inventoryPhase === "loading") return;
+      const next = repositoryRefs.find((ref) => repositoryKey(ref) === key);
+      if (next) void selectRepository(next);
+    },
+    [controlsDisabled, inventoryPhase, repositoryRefs, selectRepository],
+  );
 
   return (
     <>
@@ -224,52 +169,31 @@ export function SourceControlView() {
       </div>
       <div className="source-control-list">
         {repositoryRefs.length > 0 ? (
-          <label className="source-control-selector">
-            <span className="sr-only">Repository</span>
-            <select
-              aria-label="Select repository"
-              value={
-                selectedRepository ? repositoryKey(selectedRepository) : ""
-              }
+          <div className="source-control-selector">
+            <SearchablePicker
+              ariaLabel="Select repository"
+              candidates={repositoryOptions}
               disabled={controlsDisabled || inventoryPhase === "loading"}
-              onChange={(event) => {
-                const next = repositoryRefs.find(
-                  (ref) => repositoryKey(ref) === event.target.value,
-                );
-                if (next) void selectRepository(next);
-              }}
-            >
-              {repositoryRefs.map((ref) => {
-                const projectRoot = projectRoots.get(ref.rootId);
-                const rootName = projectRoot?.name ?? "Root";
-                const rootLabel = disambiguatedRootLabel(
-                  rootName,
-                  projectRoot?.ordinal ?? 0,
-                  rootNameCounts,
-                );
-                return (
-                  <option key={repositoryKey(ref)} value={repositoryKey(ref)}>
-                    {`${rootLabel} — ${ref.relativePath || "Repository root"}`}
-                  </option>
-                );
-              })}
-            </select>
-          </label>
+              onSelect={chooseRepository}
+              selectedId={
+                selectedRepository ? repositoryKey(selectedRepository) : null
+              }
+            />
+          </div>
         ) : null}
-        {inventoryError ? (
-          <p className="sidebar__error" role="alert">
-            {inventoryError}
-          </p>
-        ) : null}
-        {statusError ? (
-          <p className="sidebar__error" role="alert">
-            {statusError}
-          </p>
-        ) : null}
-        {inventoryPhase === "loading" || statusPhase === "loading" ? (
-          <p className="sidebar__loading" role="status">
-            Loading repository status…
-          </p>
+        {inventoryError || statusError ? (
+          <ResourceStateNotice
+            detail={inventoryError ?? statusError ?? undefined}
+            state="error"
+            title="Repository status is unavailable"
+          />
+        ) : inventoryPhase === "loading" || statusPhase === "loading" ? (
+          <ResourceStateNotice
+            state="loading"
+            title="Loading repository status"
+          />
+        ) : repositoryRefs.length === 0 ? (
+          <ResourceStateNotice state="idle" title="No repositories found" />
         ) : null}
         {selectedRepository && !isRootRepository(selectedRepository) ? (
           <p className="sidebar__notice">

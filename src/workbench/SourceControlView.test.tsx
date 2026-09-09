@@ -1,17 +1,38 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
-import { repositoryKey } from "../domain/repositoryInventory";
 import type { RepositoryRef, RootRepositoryStatus } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import type { SearchablePicker } from "../ui/SearchablePicker";
+import type * as SearchablePickerModule from "../ui/SearchablePicker";
 import { SourceControlView } from "./SourceControlView";
+
+const { pickerOptionRender, pickerProps } = vi.hoisted(() => ({
+  pickerOptionRender: vi.fn(),
+  pickerProps: vi.fn(),
+}));
+
+vi.mock("../ui/SearchablePicker", async (importOriginal) => {
+  const actual = await importOriginal<typeof SearchablePickerModule>();
+  function TrackedSearchablePicker(
+    props: ComponentProps<typeof SearchablePicker>,
+  ) {
+    pickerProps(props);
+    return (
+      <actual.SearchablePicker {...props} onOptionRender={pickerOptionRender} />
+    );
+  }
+  return { ...actual, SearchablePicker: TrackedSearchablePicker };
+});
 
 const initialState = useWorkbenchStore.getState();
 const rootRepository: RepositoryRef = { rootId: "root-a", relativePath: "" };
@@ -160,12 +181,60 @@ it("uses disambiguated project-root labels for repository options", () => {
 
   render(<SourceControlView />);
 
+  fireEvent.click(screen.getByRole("button", { name: "Select repository" }));
+
   expect(
     screen.getByRole("option", { name: "Workspace (root 1) — packages/tool" }),
   ).toBeInTheDocument();
   expect(
     screen.getByRole("option", { name: "Workspace (root 2) — packages/tool" }),
   ).toBeInTheDocument();
+
+  const initialPickerProps = pickerProps.mock.lastCall?.[0];
+  pickerProps.mockClear();
+  pickerOptionRender.mockClear();
+  act(() => {
+    useWorkbenchStore.setState({
+      selectedResource: { rootId: "root-a", relativePath: "unrelated.ts" },
+    });
+  });
+  const rerenderedPickerProps = pickerProps.mock.lastCall?.[0];
+  expect(rerenderedPickerProps?.candidates).toBe(
+    initialPickerProps?.candidates,
+  );
+  expect(rerenderedPickerProps?.onSelect).toBe(initialPickerProps?.onSelect);
+  expect(pickerOptionRender).not.toHaveBeenCalled();
+
+  const picker = screen.getByRole("combobox", { name: "Select repository" });
+  fireEvent.keyDown(picker, { key: "ArrowDown" });
+  expect(pickerOptionRender).toHaveBeenCalledTimes(1);
+  fireEvent.keyDown(picker, { key: "ArrowDown" });
+  expect(pickerOptionRender).toHaveBeenCalledTimes(3);
+});
+
+it("projects repository loading, empty, and error states through ResourceStateNotice", () => {
+  useWorkbenchStore.setState({
+    repositoryRefs: [],
+    repositoryInventoryPhase: "loading",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+  const { rerender } = render(<SourceControlView />);
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Loading repository status",
+  );
+
+  useWorkbenchStore.setState({ repositoryInventoryPhase: "ready" });
+  rerender(<SourceControlView />);
+  expect(screen.getByRole("status")).toHaveTextContent("No repositories found");
+
+  useWorkbenchStore.setState({
+    repositoryInventoryError: "Could not refresh repository inventory.",
+  });
+  rerender(<SourceControlView />);
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Could not refresh repository inventory.",
+  );
 });
 
 it("shows native-proven identity and dispatches the selected publish action", async () => {
@@ -387,12 +456,13 @@ it("selects a nested repository, opens its Diff, and offers no mutations", async
 
   render(<SourceControlView />);
 
-  fireEvent.change(
-    screen.getByRole("combobox", { name: "Select repository" }),
-    {
-      target: { value: repositoryKey(nestedRepository) },
-    },
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Select repository" }));
+  const repositoryPicker = screen.getByRole("combobox", {
+    name: "Select repository",
+  });
+  fireEvent.keyDown(repositoryPicker, { key: "ArrowDown" });
+  fireEvent.keyDown(repositoryPicker, { key: "ArrowDown" });
+  fireEvent.keyDown(repositoryPicker, { key: "Enter" });
 
   await waitFor(() =>
     expect(selectRepository).toHaveBeenCalledWith(nestedRepository),
@@ -672,9 +742,9 @@ it("distinguishes repository errors from loading and informational states", () =
   render(<SourceControlView />);
 
   expect(screen.getAllByRole("alert")).toHaveLength(2);
-  expect(screen.getByText("Repository inventory failed.")).toHaveClass(
-    "sidebar__error",
-  );
+  expect(
+    screen.getByText("Repository inventory failed.").closest('[role="alert"]'),
+  ).toHaveClass("resource-state--error");
   expect(screen.getByText("Checkout failed.")).toHaveClass("sidebar__error");
 });
 

@@ -20,7 +20,8 @@ const VIEWPORT_GUTTER = 8;
 const POPOVER_GAP = 4;
 
 type InitialFocus = "first" | "last" | "selected";
-type PopoverRole = "menu" | "listbox";
+type PopoverRole = "menu" | "listbox" | "none";
+type FocusStrategy = "none" | "roving";
 export type MenuDismissReason = "escape" | "outside" | "tab";
 
 function menuItems(container: HTMLElement) {
@@ -57,6 +58,7 @@ export function MenuPopover({
   children,
   className,
   focusKey,
+  focusStrategy = "roving",
   id,
   initialFocus = "first",
   keepMounted = false,
@@ -71,6 +73,7 @@ export function MenuPopover({
   children: ReactNode;
   className?: string;
   focusKey?: string | number | boolean;
+  focusStrategy?: FocusStrategy;
   id: string;
   initialFocus?: InitialFocus;
   keepMounted?: boolean;
@@ -84,9 +87,9 @@ export function MenuPopover({
   const popoverRef = useRef<HTMLDivElement>(null);
   const typeaheadRef = useRef("");
   const typeaheadTimerRef = useRef<number | null>(null);
-  const [position, setPosition] = useState<CSSProperties>({
-    visibility: "hidden",
-  });
+  const [position, setPosition] = useState<CSSProperties>(() =>
+    focusStrategy === "none" ? {} : { visibility: "hidden" },
+  );
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -140,7 +143,7 @@ export function MenuPopover({
   }, [focusKey, matchTriggerWidth, open, triggerRef]);
 
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!open || focusStrategy === "none") return;
     const popover = popoverRef.current;
     if (!popover) return;
     const items = enabledMenuItems(popover);
@@ -156,7 +159,7 @@ export function MenuPopover({
         activateMenuItem(popover, next);
       }
     });
-  }, [focusKey, initialFocus, open]);
+  }, [focusKey, focusStrategy, initialFocus, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -188,6 +191,7 @@ export function MenuPopover({
   if (!open && !keepMounted) return null;
 
   const moveFocus = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (focusStrategy === "none") return;
     const popover = event.currentTarget;
     const items = enabledMenuItems(popover);
     if (event.key === "Escape") {
@@ -262,12 +266,13 @@ export function MenuPopover({
       ref={popoverRef}
       id={id}
       className={["menu-popover", className].filter(Boolean).join(" ")}
-      role={role}
+      role={role === "none" ? undefined : role}
       aria-label={ariaLabel}
       hidden={!open}
       style={position}
       onKeyDown={moveFocus}
       onFocus={(event) => {
+        if (focusStrategy === "none") return;
         const item = (event.target as HTMLElement).closest<HTMLElement>(
           ITEM_SELECTOR,
         );

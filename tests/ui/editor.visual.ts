@@ -1,21 +1,168 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 import { EDITOR_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
 import {
   expectNoViewportOverflow,
   openScenario,
+  takeCanonicalScreenshot,
 } from "./shared/visualBrowserPrimitives";
 import {
   expectFindContained,
   runEditorCanonicalTest,
 } from "./editorVisualHelpers";
 
+type PickerRect = {
+  bottom: number;
+  height: number;
+  left: number;
+  right: number;
+  top: number;
+  width: number;
+};
+
+type PickerGeometryObservation = {
+  active: PickerRect | null;
+  activeId: string | null;
+  activeInListbox: boolean;
+  activeRole: string | null;
+  current: PickerRect | null;
+  focused: boolean;
+  input: PickerRect | null;
+  listbox: PickerRect | null;
+  listboxId: string | null;
+  listboxScrollTop: number | null;
+  popup: PickerRect | null;
+  popupScrollTop: number | null;
+  semanticOwnerId: string | null;
+  viewport: { height: number; width: number };
+};
+
+function requirePickerRect(name: string, rect: PickerRect | null): PickerRect {
+  expect(rect, `${name} rect: ${JSON.stringify(rect)}`).not.toBeNull();
+  if (!rect) throw new Error(`${name} rect is missing`);
+  expect(rect.width, `${name} rect: ${JSON.stringify(rect)}`).toBeGreaterThan(
+    0,
+  );
+  expect(rect.height, `${name} rect: ${JSON.stringify(rect)}`).toBeGreaterThan(
+    0,
+  );
+  return rect;
+}
+
+function expectRectInside(
+  name: string,
+  inner: PickerRect,
+  outer: PickerRect | { height: number; width: number },
+) {
+  const bounds: PickerRect =
+    "left" in outer
+      ? outer
+      : {
+          bottom: outer.height,
+          height: outer.height,
+          left: 0,
+          right: outer.width,
+          top: 0,
+          width: outer.width,
+        };
+  const detail = `${name}: inner=${JSON.stringify(inner)} outer=${JSON.stringify(bounds)}`;
+  expect(inner.left, detail).toBeGreaterThanOrEqual(bounds.left);
+  expect(inner.top, detail).toBeGreaterThanOrEqual(bounds.top);
+  expect(inner.right, detail).toBeLessThanOrEqual(bounds.right);
+  expect(inner.bottom, detail).toBeLessThanOrEqual(bounds.bottom);
+}
+
+async function expectPickerGeometry(picker: Locator) {
+  const observation = await picker.evaluate((input) => {
+    const listbox = document.getElementById(
+      input.getAttribute("aria-controls") ?? "",
+    );
+    const active = document.getElementById(
+      input.getAttribute("aria-activedescendant") ?? "",
+    );
+    const popup = input.closest<HTMLElement>(".searchable-picker__popover");
+    const current = popup?.querySelector(".searchable-picker__current");
+    const rect = (node: Element | null): PickerRect | null => {
+      if (!node) return null;
+      const { bottom, height, left, right, top, width } =
+        node.getBoundingClientRect();
+      return { bottom, height, left, right, top, width };
+    };
+    return {
+      active: rect(active),
+      activeId: input.getAttribute("aria-activedescendant"),
+      activeInListbox: Boolean(listbox?.contains(active)),
+      activeRole: active?.getAttribute("role") ?? null,
+      current: rect(current ?? null),
+      focused: input === document.activeElement,
+      input: rect(input),
+      listbox: rect(listbox),
+      listboxId: listbox?.id ?? null,
+      listboxScrollTop:
+        listbox instanceof HTMLElement ? listbox.scrollTop : null,
+      popup: rect(popup),
+      popupScrollTop: popup?.scrollTop ?? null,
+      semanticOwnerId: input.getAttribute("aria-controls"),
+      viewport: { height: window.innerHeight, width: window.innerWidth },
+    } satisfies PickerGeometryObservation;
+  });
+  expect(
+    observation.semanticOwnerId,
+    `aria-controls: ${JSON.stringify(observation)}`,
+  ).toBe(observation.listboxId);
+  expect(
+    observation.activeId,
+    `aria-activedescendant: ${JSON.stringify(observation)}`,
+  ).toBeTruthy();
+  expect(
+    observation.activeRole,
+    `active option: ${JSON.stringify(observation)}`,
+  ).toBe("option");
+  expect(
+    observation.activeInListbox,
+    `active listbox ownership: ${JSON.stringify(observation)}`,
+  ).toBe(true);
+  expect(
+    observation.focused,
+    `focused input: ${JSON.stringify(observation)}`,
+  ).toBe(true);
+
+  const input = requirePickerRect("input", observation.input);
+  const current = requirePickerRect("current", observation.current);
+  const popup = requirePickerRect("popup", observation.popup);
+  const listbox = requirePickerRect("listbox", observation.listbox);
+  const active = requirePickerRect("active", observation.active);
+  for (const [name, rect] of [
+    ["input", input],
+    ["current", current],
+    ["popup", popup],
+    ["listbox", listbox],
+    ["active", active],
+  ] as const) {
+    expectRectInside(name, rect, observation.viewport);
+  }
+  expectRectInside("input in popup", input, popup);
+  expectRectInside("current in popup", current, popup);
+  expectRectInside("listbox in popup", listbox, popup);
+  expectRectInside("active in listbox", active, listbox);
+  expect(
+    observation.listboxScrollTop,
+    `listbox scrollTop: ${JSON.stringify(observation)}`,
+  ).toBeGreaterThan(0);
+  expect(
+    observation.popupScrollTop,
+    `popup scrollTop: ${JSON.stringify(observation)}`,
+  ).toBe(0);
+}
+
 test.describe("Wave 2 canonical visual states", () => {
   test.use({ viewport: { width: 1380, height: 880 } });
 
-  for (const { name, mode } of VISUAL_SCENARIOS.filter((scenario) =>
-    EDITOR_VISUAL_SCENARIOS.includes(scenario.name),
+  for (const { name, mode } of VISUAL_SCENARIOS.filter(
+    (scenario) =>
+      EDITOR_VISUAL_SCENARIOS.includes(scenario.name) &&
+      scenario.name === "editor",
   )) {
     test(`${name} stays visually stable`, async ({ page }) => {
       await runEditorCanonicalTest(page, name, mode);
@@ -129,6 +276,100 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     ).toBe("0s");
     await expect(reset).toBeEnabled();
     await expectNoViewportOverflow(page);
+  });
+
+  test("editor-picker-repository selects an alternate repository", async ({
+    page,
+  }) => {
+    const workbench = await openScenario(
+      page,
+      "editor-picker-repository",
+      "editor",
+    );
+    await page.evaluate(async () => {
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      fixtures.installVisualRepositoryPickerFixture();
+    });
+    await page
+      .getByRole("button", { name: "Source Control", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Select repository" }).click();
+    const picker = page.getByRole("combobox", { name: "Select repository" });
+    await picker.press("ArrowDown");
+    await picker.press("ArrowDown");
+    await picker.press("ArrowDown");
+    await picker.press("Enter");
+    await expect(
+      page.getByRole("button", { name: "Select repository" }),
+    ).toContainText("packages/repository-2");
+    await page.getByRole("button", { name: "Select repository" }).click();
+    await expect(
+      page.getByRole("option", { name: /packages\/repository-2/ }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expectNoViewportOverflow(page);
+    await takeCanonicalScreenshot(workbench, "editor-picker-repository");
+  });
+
+  test("editor-picker-repository-filtered retains current and disabled reason hooks", async ({
+    page,
+  }) => {
+    const workbench = await openScenario(
+      page,
+      "editor-picker-repository-filtered",
+      "editor",
+    );
+    await page.evaluate(async () => {
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      fixtures.installVisualRepositoryPickerFixture();
+    });
+    await page
+      .getByRole("button", { name: "Source Control", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Select repository" }).click();
+    const picker = page.getByRole("combobox", { name: "Select repository" });
+    await expect(page.getByText(/Current: Sage/)).toBeVisible();
+    await picker.fill("read-only");
+    await expect(
+      page.getByRole("option", { name: /Read-only root/ }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Repository root is unavailable."),
+    ).toBeVisible();
+    await expectNoViewportOverflow(page);
+    await takeCanonicalScreenshot(
+      workbench,
+      "editor-picker-repository-filtered",
+    );
+  });
+
+  test("editor-picker-narrow keeps the picker keyboard reachable", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 720, height: 560 });
+    const workbench = await openScenario(
+      page,
+      "editor-picker-narrow",
+      "editor",
+    );
+    await page.evaluate(async () => {
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      fixtures.installVisualRepositoryPickerFixture();
+    });
+    await page
+      .getByRole("button", { name: "Source Control", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Select repository" })
+      .press("Enter");
+    const picker = page.getByRole("combobox", { name: "Select repository" });
+    await picker.press("End");
+    await expect(picker).toBeFocused();
+    await expectPickerGeometry(picker);
+    await expectNoViewportOverflow(page);
+    await takeCanonicalScreenshot(workbench, "editor-picker-narrow");
   });
 
   test("scrolls a restored Explorer file into the actual sidebar viewport", async ({
@@ -442,6 +683,34 @@ test.describe("Wave 2 200% zoom state", () => {
       settings.getByRole("combobox", { name: "Font size" }),
     ).toBeVisible();
     await expectNoViewportOverflow(page);
+  });
+
+  test("editor-picker-zoom-200 remains contained at the DPR proxy", async ({
+    page,
+  }) => {
+    const workbench = await openScenario(
+      page,
+      "editor-picker-zoom-200",
+      "editor",
+    );
+    await page.evaluate(async () => {
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      fixtures.installVisualRepositoryPickerFixture();
+    });
+    await page
+      .getByRole("button", { name: "Source Control", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Select repository" }).click();
+    await expect(
+      page.getByRole("combobox", { name: "Select repository" }),
+    ).toBeVisible();
+    const picker = page.getByRole("combobox", { name: "Select repository" });
+    await picker.press("PageDown");
+    await expect(picker).toBeFocused();
+    await expectPickerGeometry(picker);
+    await expectNoViewportOverflow(page);
+    await takeCanonicalScreenshot(workbench, "editor-picker-zoom-200");
   });
 
   test("supports the Editor workbench at 200% zoom", async ({ page }) => {

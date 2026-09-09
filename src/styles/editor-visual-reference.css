@@ -189,7 +189,8 @@
   margin: 0 2px 6px;
 }
 
-.workbench--editor .source-control-selector select {
+.workbench--editor .source-control-selector .searchable-picker__trigger,
+.workbench--editor .source-control-selector .searchable-picker__input {
   width: 100%;
   height: 28px;
   padding: 0 24px 0 7px;
@@ -200,9 +201,29 @@
   font-size: var(--font-size-xs);
 }
 
+.menu-popover--editor .searchable-picker__input {
+  height: 28px;
+  padding: 0 7px;
+}
+
 .workbench--editor .source-root__summary {
   min-height: 32px;
   padding: 4px 6px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.workbench--editor .source-root__name {
+  grid-column: 1;
+}
+
+.workbench--editor .source-root__branch {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.workbench--editor .source-root__identity {
+  grid-column: 2;
+  grid-row: 2;
 }
 
 .workbench--editor .source-group-label {
@@ -366,7 +387,9 @@
     border-color: CanvasText;
   }
 
-  .workbench--editor .source-control-selector select,
+  .workbench--editor .source-control-selector .searchable-picker__trigger,
+  .workbench--editor .source-control-selector .searchable-picker__input,
+  .menu-popover--editor .searchable-picker__input,
   .workbench--editor .repository-commit__label textarea {
     border-color: ButtonText;
   }
