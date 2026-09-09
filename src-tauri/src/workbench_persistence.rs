@@ -209,12 +209,21 @@ pub(crate) fn persist_layout_in(
         } else {
             tab.title.clone()
         };
-        let metadata = match (&tab.resource, &tab.repository) {
-            (Some(resource), Some(repository)) => {
+        crate::workbench_diff_ref::validate_diff_ref_for_persist(&request.project_id, tab)?;
+        let metadata = match (&tab.resource, &tab.repository, &tab.diff_ref) {
+            (Some(resource), Some(repository), None) => {
                 json!({ "resource": resource, "repository": repository })
             }
-            (Some(resource), None) => json!({ "resource": resource }),
-            _ => json!({}),
+            (Some(resource), None, Some(diff_ref)) => {
+                json!({ "resource": resource, "diffRef": diff_ref })
+            }
+            (Some(resource), None, None) => json!({ "resource": resource }),
+            (None, None, None) => json!({}),
+            _ => {
+                return Err(AppError::InvalidRequest(
+                    "snapshot Diff tabs require their exact resource and no Git repository.".into(),
+                ));
+            }
         };
         transaction.execute(
             "INSERT INTO workbench_tabs
@@ -369,6 +378,7 @@ pub(crate) fn validate_layout(
             tab.resource.as_ref(),
             tab.repository.as_ref(),
         )?;
+        crate::workbench_diff_ref::validate_diff_ref_for_persist(&request.project_id, tab)?;
     }
     if request
         .active_tab_id

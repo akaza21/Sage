@@ -15,6 +15,7 @@ import {
 import {
   exerciseResourceStates,
   openAgentScenario,
+  openAgentSnapshotDiff,
   setResourceState,
 } from "./resourceVisualHelpers";
 import { expectFindContained } from "./editorVisualHelpers";
@@ -33,6 +34,7 @@ test.describe("Wave 2 canonical visual states", () => {
   )) {
     test(`${name} stays visually stable`, async ({ page }) => {
       const workbench = await openScenario(page, name, mode);
+      if (name === "diff") await openAgentSnapshotDiff(page);
       await assertAgentLandmarks(page);
       await settleTranscriptAtEnd(page);
       await expectNoViewportOverflow(page);
@@ -534,15 +536,86 @@ test.describe("AV-03 Agent document ready baselines", () => {
     await expect(workbench).toHaveScreenshot("agent-file-ready.png");
   });
 
-  test("agent-diff-ready stays visually stable", async ({ page }) => {
-    const workbench = await openAgentScenario(page, "diff");
+  test("agent-diff-ready opens the immutable snapshot from its FileChange card", async ({
+    page,
+  }) => {
+    await installFixedClock(page);
+    await installLayoutMode(page, "agent");
+    await page.goto("/");
+    await page.evaluate(async () => {
+      const { getWorkbenchPorts } =
+        await import("/src/ports/workbenchRuntime.ts");
+      const repository = getWorkbenchPorts().repository;
+      const getFileDiff = repository.getFileDiff.bind(repository);
+      repository.getFileDiff = async (...args) => {
+        document.documentElement.dataset.visualGitDiffCalls = String(
+          Number(document.documentElement.dataset.visualGitDiffCalls ?? "0") +
+            1,
+        );
+        return getFileDiff(...args);
+      };
+      document.documentElement.dataset.visualGitDiffCalls = "0";
+    });
+    await installScenario(page, "diff");
+    await page.evaluate(() => document.fonts.ready);
+    const workbench = page.locator("main.workbench");
+    await expect(
+      page.getByRole("button", {
+        name: "Open diff Sage / src/workbench/AgentChatPanes.tsx",
+      }),
+    ).toBeVisible();
     await expect(
       page.getByRole("table", { name: "Unified file diff" }),
+    ).toHaveCount(0);
+    await openAgentSnapshotDiff(page);
+    await expect(page.getByText("maximum: 1", { exact: false })).toBeVisible();
+    await expect(page.getByText("maximum: 2", { exact: false })).toBeVisible();
+    await expect(
+      page.getByText("Saved agent change", { exact: true }),
     ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.dataset.visualGitDiffCalls,
+      ),
+    ).toBe("0");
     await expect(page.locator(".diff-line--added").first()).toBeVisible();
     await expect(page.locator(".diff-line--removed").first()).toBeVisible();
     await expectNoViewportOverflow(page);
     await expect(workbench).toHaveScreenshot("agent-diff-ready.png");
+  });
+
+  test("agent-diff-ready shows a typed unavailable snapshot without Git fallback", async ({
+    page,
+  }) => {
+    await installFixedClock(page);
+    await installLayoutMode(page, "agent");
+    await page.goto("/");
+    await installScenario(page, "diff");
+    await page.evaluate(async () => {
+      const { AcpDesktopError, acpDesktop } =
+        await import("/src/services/acpDesktop.ts");
+      acpDesktop.getFileSnapshot = async () => {
+        throw new AcpDesktopError({
+          kind: "unavailable",
+          reason: "sessionUnavailable",
+          message: "The saved edit is unavailable for this Chat session.",
+        });
+      };
+    });
+    await page
+      .getByRole("button", {
+        name: "Open diff Sage / src/workbench/AgentChatPanes.tsx",
+      })
+      .click();
+    await expect(
+      page.getByText("Saved agent change", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText(
+      "The saved edit is unavailable for this Chat session.",
+    );
+    await expect(
+      page.getByText("Working tree changes", { exact: true }),
+    ).toHaveCount(0);
   });
 });
 
@@ -646,6 +719,7 @@ test.describe("V6a Agent right-resource state shell", () => {
     page,
   }) => {
     const workbench = await openAgentScenario(page, "diff");
+    await openAgentSnapshotDiff(page);
     await expect(
       page.getByRole("table", { name: "Unified file diff" }),
     ).toBeVisible();
@@ -668,6 +742,7 @@ test.describe("V6a Agent right-resource state shell", () => {
     test(`keeps ${resource} states contained at 720px`, async ({ page }) => {
       await page.setViewportSize({ width: 720, height: 560 });
       const workbench = await openAgentScenario(page, resource);
+      if (resource === "diff") await openAgentSnapshotDiff(page);
       await expect(workbench).toHaveClass(/workbench--compact/);
       await exerciseResourceStates(page, resource);
     });
@@ -723,6 +798,7 @@ test.describe("V6a Agent resource shell at 200%", () => {
   for (const resource of ["file", "diff"] as const) {
     test(`keeps ${resource} states contained`, async ({ page }) => {
       const workbench = await openAgentScenario(page, resource);
+      if (resource === "diff") await openAgentSnapshotDiff(page);
       await expect(workbench).toHaveClass(/workbench--compact/);
       await exerciseResourceStates(page, resource);
     });

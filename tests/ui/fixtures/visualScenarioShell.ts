@@ -12,7 +12,12 @@ import { buildAgentPages } from "./surfaces/agentVisualFixtures";
 import { buildEditorPages } from "./surfaces/editorVisualFixtures";
 import { buildRecoveryPages } from "./surfaces/recoveryVisualFixtures";
 import { buildResourcePages } from "./surfaces/resourceVisualFixtures";
-import { fixtureTabs } from "./visualDocumentFixtures";
+import {
+  fixtureTabs,
+  visualSnapshotDiffRef,
+  visualSnapshotNewText,
+  visualSnapshotOldText,
+} from "./visualDocumentFixtures";
 import { installEditorToolFixtures } from "./surfaces/editorVisualFixtures";
 import { GENERATION, PROJECT_ID } from "./visualFixtureIds";
 import { VISUAL_SCENARIOS } from "./visualScenarioCatalog";
@@ -24,6 +29,8 @@ import {
   applyVisualWorkbenchState,
   reapplyVisualPreviewBrowseIntent,
 } from "./visualWorkbenchState";
+
+const defaultGetFileSnapshot = acpDesktop.getFileSnapshot;
 
 export function buildVisualScenario(
   name: VisualScenarioName,
@@ -39,8 +46,39 @@ export function buildVisualScenario(
   return { ...definition, pages };
 }
 
+function isVisualSnapshotRequest(
+  request: Parameters<typeof acpDesktop.getFileSnapshot>[0],
+): boolean {
+  return (
+    request.projectGeneration === GENERATION &&
+    request.expectedProjectionRevision === "42" &&
+    Object.entries(visualSnapshotDiffRef).every(
+      ([key, value]) =>
+        request[key as keyof typeof visualSnapshotDiffRef] === value,
+    )
+  );
+}
+
+function installVisualSnapshotBridge(name: VisualScenarioName): void {
+  if (name !== "diff") return;
+  acpDesktop.getFileSnapshot = async (request) => {
+    if (!isVisualSnapshotRequest(request)) {
+      throw new Error("Visual snapshot fixture rejected an unrecognized ref.");
+    }
+    return {
+      ...visualSnapshotDiffRef,
+      projectionRevision: "42" as never,
+      oldText: visualSnapshotOldText,
+      newText: visualSnapshotNewText,
+      oldBytes: 54,
+      newBytes: 54,
+    };
+  };
+}
+
 export async function installVisualScenario(name: VisualScenarioName) {
   const scenario = buildVisualScenario(name);
+  acpDesktop.getFileSnapshot = defaultGetFileSnapshot;
   const tabs = fixtureTabs(scenario);
   const chatIds = scenario.pages.map((pageValue) => pageValue.chatId);
 
@@ -54,6 +92,7 @@ export async function installVisualScenario(name: VisualScenarioName) {
   const pagesByChat = new Map(
     scenario.pages.map((pageValue) => [pageValue.chatId, pageValue]),
   );
+  installVisualSnapshotBridge(name);
   acpDesktop.getChatPage = async (request) => {
     const pageValue = pagesByChat.get(request.chatId);
     if (!pageValue) throw new Error(`No visual page for ${request.chatId}`);

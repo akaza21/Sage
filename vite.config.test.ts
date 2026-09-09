@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DESKTOP_NATIVE_BUILD_MODE,
+  DESKTOP_NATIVE_CODE_SPLITTING_GROUPS,
   desktopNativeWorkbenchRuntimePlugin,
   resolveDesktopNativeWorkbenchRuntime,
 } from "./vite.config";
@@ -15,7 +16,8 @@ const root = path.resolve(import.meta.dirname);
 const importer = path.join(root, "src/app/store.ts");
 const runtime = path.join(root, "src/ports/workbenchRuntime.desktop.ts");
 
-const INITIAL_GROUPS = [{ name: "initial-deps", tags: ["$initial"] }];
+const DESKTOP_GROUPS = DESKTOP_NATIVE_CODE_SPLITTING_GROUPS;
+const BROWSER_FIXTURE_MODULE = "/src/services/browserWorkspaceFixture.ts";
 const EXPECTED_DYNAMIC_FACADES = [
   "node_modules/@codemirror/lang-html/dist/index.js",
   "node_modules/@codemirror/lang-json/dist/index.js",
@@ -40,6 +42,23 @@ const EXPECTED_DYNAMIC_FACADES = [
   "src/workbench/SettingsSurface.tsx",
   "src/workbench/SourceControlView.tsx",
 ];
+
+const CODEMIRROR_LANGUAGE_PARSER_ALLOWLIST = {
+  css: ["@lezer/css"],
+  html: ["@lezer/css", "@lezer/html", "@lezer/javascript"],
+  json: ["@lezer/json"],
+  markdown: [
+    "@lezer/css",
+    "@lezer/html",
+    "@lezer/javascript",
+    "@lezer/markdown",
+  ],
+  python: ["@lezer/python"],
+  rust: ["@lezer/rust"],
+} as const;
+
+type EditorLanguageWithParser =
+  keyof typeof CODEMIRROR_LANGUAGE_PARSER_ALLOWLIST;
 
 type DesktopRolldownOutput = NonNullable<
   NonNullable<NonNullable<InlineConfig["build"]>["rolldownOptions"]>["output"]
@@ -79,6 +98,28 @@ function graphInventory(result: Awaited<ReturnType<typeof build>>) {
     .flatMap((output) => ("output" in output ? output.output : []))
     .filter((asset) => asset.type === "chunk");
   const byFileName = new Map(chunks.map((chunk) => [chunk.fileName, chunk]));
+  const modules = (entries: readonly (typeof chunks)[number][]) =>
+    entries.flatMap((chunk) => Object.keys(chunk.modules)).sort();
+  const staticChunkClosure = (entry: (typeof chunks)[number]) => {
+    const files = new Set([entry.fileName]);
+    const pending = [entry.fileName];
+    while (pending.length > 0) {
+      const fileName = pending.pop();
+      if (!fileName) continue;
+      const chunk = byFileName.get(fileName);
+      for (const imported of chunk?.imports ?? []) {
+        if (!files.has(imported)) {
+          files.add(imported);
+          pending.push(imported);
+        }
+      }
+    }
+    return modules(
+      [...files]
+        .map((fileName) => byFileName.get(fileName))
+        .filter((chunk): chunk is (typeof chunks)[number] => Boolean(chunk)),
+    );
+  };
   const initialFiles = new Set(
     chunks.filter((chunk) => chunk.isEntry).map((chunk) => chunk.fileName),
   );
@@ -94,16 +135,22 @@ function graphInventory(result: Awaited<ReturnType<typeof build>>) {
       }
     }
   }
-  const modules = (entries: readonly (typeof chunks)[number][]) =>
-    entries.flatMap((chunk) => Object.keys(chunk.modules)).sort();
+  const dynamicFiles = new Set(chunks.flatMap((chunk) => chunk.dynamicImports));
+  const dynamicStaticClosures = chunks
+    .filter((chunk) => chunk.isDynamicEntry || dynamicFiles.has(chunk.fileName))
+    .map((chunk) => ({
+      facadeModuleId: chunk.facadeModuleId
+        ? path.relative(root, chunk.facadeModuleId).split(path.sep).join("/")
+        : undefined,
+      modules: Object.keys(chunk.modules).sort(),
+      staticClosure: staticChunkClosure(chunk),
+    }));
   return {
     allModules: modules(chunks),
-    dynamicFacades: chunks
-      .filter((chunk) => chunk.isDynamicEntry && chunk.facadeModuleId)
-      .map((chunk) =>
-        path.relative(root, chunk.facadeModuleId!).split(path.sep).join("/"),
-      )
+    dynamicFacades: dynamicStaticClosures
+      .flatMap(({ facadeModuleId }) => (facadeModuleId ? [facadeModuleId] : []))
       .sort(),
+    dynamicStaticClosures,
     entryCount: chunks.filter((chunk) => chunk.isEntry).length,
     initialModules: modules(
       [...initialFiles]
@@ -111,6 +158,31 @@ function graphInventory(result: Awaited<ReturnType<typeof build>>) {
         .filter((chunk): chunk is (typeof chunks)[number] => Boolean(chunk)),
     ),
   };
+}
+
+function parserPackages(closure: readonly string[]): string[] {
+  return closure
+    .map((id) => id.replaceAll("\\", "/"))
+    .flatMap((id) => {
+      const match = id.match(
+        /node_modules\/@lezer\/(css|html|javascript|json|markdown|python|rust)\//,
+      );
+      return match ? [`@lezer/${match[1]}`] : [];
+    })
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .sort();
+}
+
+function languageStaticClosure(
+  graph: ReturnType<typeof graphInventory>,
+  language: EditorLanguageWithParser,
+): readonly string[] {
+  const languageModule = `node_modules/@codemirror/lang-${language}/dist/index.js`;
+  const matches = graph.dynamicStaticClosures.filter(({ modules }) =>
+    modules.some((id) => id.endsWith(languageModule)),
+  );
+  expect(matches).toHaveLength(1);
+  return matches[0]!.staticClosure;
 }
 
 describe("desktop-native runtime resolver", () => {
@@ -156,8 +228,8 @@ describe("desktop-native runtime resolver", () => {
   });
 });
 
-describe("desktop-native initial dependency grouping", () => {
-  it("enables exactly one initial-only group only for the desktop-native build", async () => {
+describe("desktop-native chunk topology", () => {
+  it("enables bounded desktop groups only for the desktop-native build", async () => {
     expect(typeof Range).toBe("undefined");
     const desktopBuild = await resolveConfig(
       desktopGraphConfig(true),
@@ -169,7 +241,7 @@ describe("desktop-native initial dependency grouping", () => {
 
     expect(
       codeSplittingGroups(desktopBuild.build.rolldownOptions?.output),
-    ).toEqual(INITIAL_GROUPS);
+    ).toEqual(DESKTOP_GROUPS);
     expect(
       codeSplittingGroups(desktopServe.build?.rolldownOptions?.output),
     ).toBeUndefined();
@@ -215,7 +287,35 @@ describe("desktop-native initial dependency grouping", () => {
     }
     expect(groupedGraph.allModules).toEqual(ordinaryGraph.allModules);
     expect(groupedGraph.initialModules).toEqual(ordinaryGraph.initialModules);
+    expect(
+      groupedGraph.allModules.some((id) => id.endsWith(BROWSER_FIXTURE_MODULE)),
+    ).toBe(false);
     expect(groupedGraph.dynamicFacades).toEqual(EXPECTED_DYNAMIC_FACADES);
     expect(ordinaryGraph.dynamicFacades).toEqual(EXPECTED_DYNAMIC_FACADES);
+
+    const editorRuntimeClosure = groupedGraph.dynamicStaticClosures.find(
+      ({ facadeModuleId }) =>
+        facadeModuleId === "src/features/files/CodeMirrorEditorRuntime.ts",
+    )?.staticClosure;
+    expect(editorRuntimeClosure).toBeDefined();
+    expect(
+      editorRuntimeClosure?.some((id) =>
+        id.includes("node_modules/@codemirror/state/"),
+      ),
+    ).toBe(true);
+    expect(
+      editorRuntimeClosure?.some((id) =>
+        id.includes("node_modules/@codemirror/lang-"),
+      ),
+    ).toBe(false);
+    expect(parserPackages(editorRuntimeClosure ?? [])).toEqual([]);
+
+    for (const [language, allowlist] of Object.entries(
+      CODEMIRROR_LANGUAGE_PARSER_ALLOWLIST,
+    ) as [EditorLanguageWithParser, readonly string[]][]) {
+      expect(
+        parserPackages(languageStaticClosure(groupedGraph, language)),
+      ).toEqual(allowlist);
+    }
   }, 90_000);
 });

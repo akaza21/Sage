@@ -1,5 +1,43 @@
 use super::*;
-use crate::acp::{contract::ProjectionRevision, intent::AcpConflictResource};
+use crate::acp::{
+    contract::ProjectionRevision,
+    intent::{AcpConflictResource, AcpUnavailableReason},
+};
+
+#[test]
+fn snapshot_read_failures_preserve_the_frontend_ipc_contract() {
+    let unavailable = snapshot_error(crate::acp::file_diff::SnapshotReadError::Unavailable);
+    assert!(matches!(
+        unavailable,
+        AcpIpcError::Unavailable {
+            reason: AcpUnavailableReason::SessionUnavailable,
+            ..
+        }
+    ));
+    assert_eq!(
+        serde_json::to_value(unavailable).unwrap(),
+        serde_json::json!({
+            "kind": "unavailable",
+            "reason": "sessionUnavailable",
+            "message": "No admitted file snapshot exists for this change"
+        })
+    );
+    assert!(matches!(
+        snapshot_error(crate::acp::file_diff::SnapshotReadError::Stale),
+        AcpIpcError::Conflict {
+            resource: AcpConflictResource::Session,
+            ..
+        }
+    ));
+    assert!(matches!(
+        snapshot_error(crate::acp::file_diff::SnapshotReadError::Corrupt),
+        AcpIpcError::RecoveryRequired { .. }
+    ));
+    assert!(matches!(
+        snapshot_error(crate::acp::file_diff::SnapshotReadError::Forbidden),
+        AcpIpcError::InvalidRequest { .. }
+    ));
+}
 
 #[test]
 fn snapshot_command_rejects_stale_generation_and_forged_refs_without_mutation() {

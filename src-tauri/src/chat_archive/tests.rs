@@ -311,6 +311,7 @@ fn restore_rejects_the_plus_one_tab_without_mutation() {
             updated_at: None,
             resource: None,
             repository: None,
+            diff_ref: None,
         });
     }
     database.persist_project_layout(&full_layout).unwrap();

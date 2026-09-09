@@ -18,6 +18,7 @@ import {
   editorDocument,
   fileResource,
   visualDiff,
+  visualSnapshotDiffRef,
 } from "../visualDocumentFixtures";
 import {
   GENERATION,
@@ -60,10 +61,42 @@ export function buildResourcePages(
       return [
         standardPage("visual-chat-file", "Agent navigation polish", "rich"),
       ];
-    case "diff":
-      return [
-        standardPage("visual-chat-diff", "Agent navigation polish", "rich"),
-      ];
+    case "diff": {
+      const page = standardPage(
+        "visual-chat-diff",
+        "Agent navigation polish",
+        "rich",
+      );
+      const changed = page.turns[0];
+      if (!changed) throw new Error("Visual snapshot fixture requires a Turn");
+      changed.items = changed.items.map((item) =>
+        item.id === visualSnapshotDiffRef.itemId &&
+        item.kind === "fileChangeDiff"
+          ? {
+              ...item,
+              payload: {
+                truncated: false,
+                changes: [
+                  {
+                    resource: { kind: "resource", resource: fileResource },
+                    operation: "updated",
+                    originalResource: null,
+                    summary: "Expanded the visible Chat limit",
+                    additions: 1,
+                    deletions: 1,
+                    pairState: "available",
+                    snapshotRevision: visualSnapshotDiffRef.snapshotRevision,
+                    oldBytes: 54,
+                    newBytes: 54,
+                    contentDigest: visualSnapshotDiffRef.contentDigest,
+                  },
+                ],
+              },
+            }
+          : item,
+      );
+      return [page];
+    }
     case "preview":
     case "agent-preview-starting":
     case "agent-preview-health-failed":
@@ -98,7 +131,11 @@ export async function installVisualAgentResourceState(
             },
     });
   } else {
-    const key = diffCacheKey(resourceTab.repository, resourceTab.resource);
+    const key = diffCacheKey(
+      resourceTab.repository,
+      resourceTab.resource,
+      resourceTab.diffRef,
+    );
     useWorkbenchStore.setState({
       diffs: {
         ...current.diffs,

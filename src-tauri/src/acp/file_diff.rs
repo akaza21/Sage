@@ -64,7 +64,7 @@ pub(crate) fn pair_digest(old_bytes: &[u8], new_bytes: &[u8]) -> String {
 /// validated by the native snapshot lookup and never reused across revisions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct DiffRef {
+pub struct DiffRef {
     pub project_id: String,
     pub chat_id: String,
     pub session_id: String,

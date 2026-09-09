@@ -88,11 +88,7 @@ export function applyVisualWorkbenchState(
   }
   const chatIds = scenario.pages.map((pageValue) => pageValue.chatId);
   const activeTabId =
-    scenario.resource === "file"
-      ? "visual-file-tab"
-      : scenario.resource === "diff"
-        ? "visual-diff-tab"
-        : (chatIds[0] ?? null);
+    scenario.resource === "file" ? "visual-file-tab" : (chatIds[0] ?? null);
 
   const editorDoc = editorDocument();
   const emptyOwnership = {
@@ -334,12 +330,15 @@ export function applyVisualWorkbenchState(
       [resourceKey(srcListing.resource)]: true,
       [resourceKey(workbenchListing.resource)]: true,
     },
-    diffs: {
-      [diffCacheKey(undefined, fileResource)]: {
-        phase: "ready",
-        value: visualDiff,
-      },
-    },
+    diffs:
+      scenario.resource === "diff"
+        ? {}
+        : {
+            [diffCacheKey(undefined, fileResource)]: {
+              phase: "ready",
+              value: visualDiff,
+            },
+          },
     activeEditor:
       scenario.resource === "file"
         ? {
@@ -410,7 +409,11 @@ export function applyVisualWorkbenchState(
       : {}),
     loadRepositoryInventory: async () => undefined,
     loadDirectory: async () => undefined,
-    loadDiff: async () => undefined,
+    // The diff fixture deliberately preserves the production loader so the
+    // FileChange card reaches its exact immutable snapshot bridge.
+    ...(scenario.resource === "diff"
+      ? {}
+      : { loadDiff: async () => undefined }),
   });
 
   const selectedArtifactOwner = chatIds[0] ? artifactOwner(chatIds[0]) : null;
@@ -423,16 +426,6 @@ export function applyVisualWorkbenchState(
     useAgentArtifactAdmissionStore.getState().admit({
       owner: selectedArtifactOwner,
       tabId: "visual-file-tab",
-    });
-  }
-  if (
-    scenario.mode === "agent" &&
-    scenario.resource === "diff" &&
-    selectedArtifactOwner
-  ) {
-    useAgentArtifactAdmissionStore.getState().admit({
-      owner: selectedArtifactOwner,
-      tabId: "visual-diff-tab",
     });
   }
   if (scenario.resource !== "preview") {

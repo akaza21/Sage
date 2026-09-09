@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
+import type { OutputOptions } from "rolldown";
 
 const host = process.env.TAURI_DEV_HOST;
 const sourceMaps = process.env.SAGE_BUILD_SOURCEMAPS === "1";
@@ -14,6 +15,26 @@ const desktopWorkbenchRuntime = path.join(
 );
 
 export const DESKTOP_NATIVE_BUILD_MODE = "desktop-native";
+
+/**
+ * Keep startup dependencies and bounded editor-core dependencies separate.
+ * Language packages and feature implementations stay on their own demand paths.
+ */
+type DesktopCodeSplitting = Exclude<
+  OutputOptions["codeSplitting"],
+  boolean | undefined
+>;
+
+export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
+  DesktopCodeSplitting["groups"]
+> = [
+  { name: "initial-deps", tags: ["$initial"], priority: 2 },
+  {
+    name: "codemirror-deps",
+    priority: 1,
+    test: /node_modules[\\/]@codemirror[\\/](?:state|view|language|commands|autocomplete)[\\/]/,
+  },
+];
 
 export function resolveDesktopNativeWorkbenchRuntime(
   command: string,
@@ -92,7 +113,7 @@ export default defineConfig(({ command, mode }) => ({
           rolldownOptions: {
             output: {
               codeSplitting: {
-                groups: [{ name: "initial-deps", tags: ["$initial"] }],
+                groups: DESKTOP_NATIVE_CODE_SPLITTING_GROUPS,
               },
             },
           },

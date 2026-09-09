@@ -5,9 +5,21 @@ import type {
   ResourceRef,
   WorkbenchTab,
 } from "../../../src/domain/workbench";
+import type { AgentDiffRef } from "../../../src/domain/agentDiff";
+import type {
+  SageChatId,
+  SageItemId,
+  SageTurnId,
+} from "../../../src/domain/acp";
 
 import type { BuiltVisualScenario } from "./visualScenarioTypes";
-import { FIXED_NOW, ROOT_ID } from "./visualFixtureIds";
+import {
+  FIXED_NOW,
+  PROJECT_ID,
+  ROOT_ID,
+  RUNTIME_EPOCH,
+  SESSION_ID,
+} from "./visualFixtureIds";
 
 export const fileResource: ResourceRef = {
   rootId: ROOT_ID,
@@ -46,6 +58,26 @@ export function editorDocument(): EditorDocument {
     conflict: null,
   };
 }
+
+export const visualSnapshotOldText =
+  "const visibleChats = useVisibleChats({ maximum: 1 });\n";
+export const visualSnapshotNewText =
+  "const visibleChats = useVisibleChats({ maximum: 2 });\n";
+
+/** Exact immutable card fixture identity; the visual bridge admits no other ref. */
+export const visualSnapshotDiffRef: AgentDiffRef = {
+  projectId: PROJECT_ID,
+  chatId: "visual-chat-diff" as SageChatId,
+  sessionId: SESSION_ID,
+  runtimeEpoch: RUNTIME_EPOCH,
+  turnId: "visual-turn-visual-chat-diff-1" as SageTurnId,
+  itemId: "visual-turn-visual-chat-diff-1-item-6" as SageItemId,
+  diffOrdinal: 0,
+  snapshotRevision: "1",
+  ...fileResource,
+  contentDigest:
+    "627b6f10d44396419682846de4a005bab4a57833b76d9710bdd223bd2cfa8597",
+};
 
 export const visualDiff: FileDiff = {
   resource: fileResource,
@@ -120,18 +152,9 @@ export function fixtureTabs(scenario: BuiltVisualScenario): WorkbenchTab[] {
     ];
   }
   if (scenario.resource === "diff") {
-    return [
-      ...chats,
-      {
-        id: "visual-diff-tab",
-        kind: "diff",
-        title: "AgentChatPanes.tsx",
-        position: chats.length,
-        pinned: false,
-        dirty: false,
-        resource: fileResource,
-      },
-    ];
+    // The agent-diff visual route must begin at the FileChange card. A tab or
+    // Git-style cache seeded here would bypass immutable snapshot admission.
+    return chats;
   }
   return chats;
 }

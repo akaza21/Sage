@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{RepositoryRef, ResourceRef};
+use crate::acp::file_diff::DiffRef;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,6 +18,8 @@ pub struct WorkbenchTab {
     pub resource: Option<ResourceRef>,
     #[serde(default)]
     pub repository: Option<RepositoryRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diff_ref: Option<DiffRef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

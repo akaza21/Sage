@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseAgentDiffRef } from "../domain/agentDiff";
 import { resourceTabUpdate } from "./resourceTabs";
+import { assertBrowserProjectLayout } from "../services/browserLayout";
 import { useWorkbenchStore, type WorkbenchState } from "./store";
 
 const resource = { rootId: "root", relativePath: "src/a.ts" };
@@ -71,5 +72,56 @@ describe("immutable snapshot resource tabs", () => {
     );
     expect(update.error).toMatch(/32 resource-tab limit/);
     expect(update.tabs).toBeUndefined();
+  });
+
+  it("round-trips two snapshot refs and one Git diff through durable layout validation", () => {
+    let state = initial();
+    const first = reference("one");
+    const second = reference("one", "2");
+    for (const ref of [first, second]) {
+      state = {
+        ...state,
+        ...resourceTabUpdate(state, "diff", resource, undefined, ref),
+      };
+    }
+    state = { ...state, ...resourceTabUpdate(state, "diff", resource) };
+    expect(state.tabs).toHaveLength(3);
+    expect(() =>
+      assertBrowserProjectLayout(
+        {
+          projectId: "project",
+          tabs: state.tabs,
+          activeTabId: state.activeTabId,
+          selectedRootId: "root",
+          selectedResource: null,
+        },
+        "project",
+        [{ id: "root" }],
+      ),
+    ).not.toThrow();
+    const serialized = JSON.parse(JSON.stringify(state.tabs));
+    expect(serialized[0].diffRef).toEqual(JSON.parse(JSON.stringify(first)));
+    expect(serialized[1].diffRef).toEqual(JSON.parse(JSON.stringify(second)));
+    expect(serialized[2].diffRef).toBeUndefined();
+    expect(() =>
+      assertBrowserProjectLayout(
+        {
+          projectId: "project",
+          tabs: [
+            ...state.tabs,
+            {
+              ...state.tabs[0],
+              id: "diff:snapshot:bad-kind",
+              kind: "file" as const,
+            },
+          ],
+          activeTabId: state.activeTabId,
+          selectedRootId: "root",
+          selectedResource: null,
+        },
+        "project",
+        [{ id: "root" }],
+      ),
+    ).toThrow();
   });
 });

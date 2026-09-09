@@ -3,6 +3,7 @@ import type {
   ResourceRef,
   TabKind,
 } from "../domain/workbench";
+import { parseAgentDiffRef } from "../domain/agentDiff";
 
 const MAX_LAYOUT_TABS = 64;
 const MAX_RESOURCE_TABS = 32;
@@ -52,6 +53,7 @@ function assertTabMetadataBudget(layout: ProjectLayoutRequest) {
   let total = 0;
   for (const tab of layout.tabs) {
     if (tab.resource != null) assertResourceShape(tab.resource);
+    const diffRef = tab.diffRef;
     const fields = [
       tab.id,
       tab.kind,
@@ -59,6 +61,16 @@ function assertTabMetadataBudget(layout: ProjectLayoutRequest) {
       tab.status ?? "",
       tab.resource?.rootId ?? "",
       tab.resource?.relativePath ?? "",
+      diffRef?.projectId ?? "",
+      diffRef?.chatId ?? "",
+      diffRef?.sessionId ?? "",
+      diffRef?.runtimeEpoch ?? "",
+      diffRef?.turnId ?? "",
+      diffRef?.itemId ?? "",
+      diffRef?.snapshotRevision ?? "",
+      diffRef?.rootId ?? "",
+      diffRef?.relativePath ?? "",
+      diffRef?.contentDigest ?? "",
     ];
     for (const value of fields) {
       if (typeof value !== "string") {
@@ -125,6 +137,33 @@ export function assertBrowserProjectLayout(
       assertCanonicalResource(tab.resource, rootIds);
     } else if (tab.kind === "file" || tab.kind === "diff") {
       throw new Error("File and Diff tabs require a resource identity");
+    }
+    if (tab.repository != null && tab.kind !== "diff" && tab.kind !== "file") {
+      throw new Error("only File and Diff tabs may carry a repository");
+    }
+    if (tab.diffRef != null) {
+      const parsed = parseAgentDiffRef(tab.diffRef);
+      if (!parsed) {
+        throw new Error("persisted snapshot reference is malformed");
+      }
+      if (
+        tab.kind !== "diff" ||
+        tab.repository != null ||
+        tab.resource == null
+      ) {
+        throw new Error(
+          "snapshot Diff tabs require their exact resource and no Git repository.",
+        );
+      }
+      if (
+        parsed.rootId !== tab.resource.rootId ||
+        parsed.relativePath !== tab.resource.relativePath ||
+        parsed.projectId !== layout.projectId
+      ) {
+        throw new Error(
+          "persisted snapshot reference does not match its tab resource",
+        );
+      }
     }
   }
 

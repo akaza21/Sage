@@ -1,9 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createElement, StrictMode } from "react";
 
 import { clearAcpProjectionRegistry } from "../../../src/app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../../src/app/store";
+import { getWorkbenchPorts } from "../../../src/ports/workbenchRuntime";
+import { acpDesktop } from "../../../src/services/acpDesktop";
 import { AgentArtifactPane } from "../../../src/workbench/AgentArtifactPane";
 import { AgentChatPanes } from "../../../src/workbench/AgentChatPanes";
 import { Workbench } from "../../../src/workbench/Workbench";
@@ -57,7 +66,7 @@ import {
   buildVisualScenario,
   installVisualScenario,
 } from "./visualScenarioShell";
-import { fixtureTabs } from "./visualDocumentFixtures";
+import { fixtureTabs, visualSnapshotDiffRef } from "./visualDocumentFixtures";
 import { applyVisualWorkbenchState } from "./visualWorkbenchState";
 
 const initialState = useWorkbenchStore.getState();
@@ -97,6 +106,7 @@ afterEach(() => {
   clearAcpProjectionRegistry();
   useWorkbenchStore.setState(initialState, true);
   Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -561,6 +571,51 @@ describe("visual scenario surface ownership", () => {
       ),
     );
     expect(view.getByText("Preview is idle")).toBeInTheDocument();
+  });
+
+  it("runs the diff fixture card through the real snapshot loader without Git", async () => {
+    const view = render(
+      createElement(
+        "div",
+        null,
+        createElement(AgentChatPanes),
+        createElement(AgentArtifactPane),
+      ),
+    );
+    await installVisualScenario("diff");
+    const snapshotBridge = acpDesktop.getFileSnapshot;
+    const snapshot = vi
+      .spyOn(acpDesktop, "getFileSnapshot")
+      .mockImplementation(snapshotBridge);
+    const git = vi.spyOn(getWorkbenchPorts().repository, "getFileDiff");
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Open diff Sage / src/workbench/AgentChatPanes.tsx",
+      }),
+    );
+
+    expect(
+      await screen.findByRole("table", { name: "Unified file diff" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "-const visibleChats = useVisibleChats({ maximum: 1 });",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "+const visibleChats = useVisibleChats({ maximum: 2 });",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("Saved agent change")).toBeVisible();
+    expect(snapshot).toHaveBeenCalledOnce();
+    expect(snapshot).toHaveBeenCalledWith({
+      ...visualSnapshotDiffRef,
+      projectGeneration: GENERATION,
+      expectedProjectionRevision: "42",
+    });
+    expect(git).not.toHaveBeenCalled();
   });
 
   it("seeds the resource follow fixture's second Chat browse owner before intent", async () => {

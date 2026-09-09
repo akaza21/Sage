@@ -609,4 +609,81 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn file_change_maps_to_typed_unavailable_without_invented_pair_text() {
+        for (name, changes) in [
+            (
+                "present",
+                json!([{"path": "C:\\fixture\\package.json", "kind": {"type": "update"}, "diff": "opaque"}]),
+            ),
+            (
+                "missing-diff",
+                json!([{"path": "C:\\fixture\\package.json", "kind": {"type": "update"}}]),
+            ),
+            (
+                "oversized-diff",
+                json!([{"path": "C:\\fixture\\package.json", "kind": {"type": "update"}, "diff": "x".repeat(65_536)}]),
+            ),
+        ] {
+            let file = item(json!({
+                "type": "fileChange",
+                "id": format!("file-{name}"),
+                "status": "completed",
+                "changes": changes,
+            }));
+            let (payload, state, lifecycle) =
+                normalize_item(&file, ItemLifecycle::Completed, &MappedResource)
+                    .expect("codex fileChange")
+                    .expect("item");
+            assert_eq!(state, Some(ToolState::Completed), "{name}");
+            assert_eq!(lifecycle, Some(ItemLifecycle::Completed), "{name}");
+            assert!(
+                matches!(
+                    payload,
+                    NormalizedPayload::FileChangeDiff {
+                        pair_available: false,
+                        snapshot_revision: 0,
+                        old_bytes: 0,
+                        new_bytes: 0,
+                        ..
+                    }
+                ),
+                "{name} must remain summary-only without a retained pair"
+            );
+            assert!(
+                !format!("{payload:?}").contains("opaque"),
+                "{name} must not retain wire diff text"
+            );
+        }
+        let malformed = item(json!({
+            "type": "fileChange",
+            "id": "file-malformed-path",
+            "status": "completed",
+            "changes": json!([{"path": "", "kind": {"type": "update"}, "diff": "opaque"}]),
+        }));
+        assert!(
+            normalize_item(&malformed, ItemLifecycle::Completed, &MappedResource).is_err(),
+            "empty path must fail closed as malformed"
+        );
+    }
+
+    #[test]
+    fn file_change_multi_resource_is_typed_unsupported() {
+        let file = item(json!({
+            "type": "fileChange",
+            "id": "file-multi",
+            "status": "completed",
+            "changes": [
+                {"path": "C:\\fixture\\package.json", "kind": {"type": "update"}, "diff": "a"},
+                {"path": "C:\\fixture\\other.json", "kind": {"type": "update"}, "diff": "b"},
+            ],
+        }));
+        let (payload, _, lifecycle) =
+            normalize_item(&file, ItemLifecycle::Completed, &MappedResource)
+                .expect("multi")
+                .expect("item");
+        assert_eq!(lifecycle, Some(ItemLifecycle::Unsupported));
+        assert!(matches!(payload, NormalizedPayload::Unsupported { .. }));
+    }
 }

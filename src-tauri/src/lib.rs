@@ -73,6 +73,7 @@ mod session_events;
 mod settings_commands;
 mod settings_store;
 mod state;
+mod workbench_diff_ref;
 mod workbench_persistence;
 mod workbench_restore;
 mod workspace;

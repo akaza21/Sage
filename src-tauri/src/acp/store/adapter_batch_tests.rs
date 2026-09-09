@@ -14,6 +14,7 @@ use crate::acp::{
 };
 
 mod lifecycle_tests;
+mod snapshot_reopen_tests;
 mod snapshot_tests;
 
 struct Fixture {

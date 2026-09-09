@@ -268,6 +268,7 @@ mod tests {
                 updated_at: None,
                 resource: Some(selected_resource.clone()),
                 repository: None,
+                diff_ref: None,
             };
             let current_layout = ProjectLayoutRequest {
                 project_id: layout.project_id.clone(),

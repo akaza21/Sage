@@ -28,3 +28,6 @@ pub(crate) use translator::{OmpTranslator, ResourceMapper, TranslationError};
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod snapshot_mapping_tests;

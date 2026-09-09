@@ -74,7 +74,8 @@ pub(crate) async fn get_acp_file_snapshot_inner(
 fn snapshot_error(error: crate::acp::file_diff::SnapshotReadError) -> AcpIpcError {
     use crate::acp::file_diff::SnapshotReadError;
     match error {
-        SnapshotReadError::Unavailable => AcpIpcError::InvalidRequest {
+        SnapshotReadError::Unavailable => AcpIpcError::Unavailable {
+            reason: crate::acp::intent::AcpUnavailableReason::SessionUnavailable,
             message: safe_message(error.message()),
         },
         SnapshotReadError::Stale => AcpIpcError::Conflict {

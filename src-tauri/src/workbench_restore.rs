@@ -237,6 +237,13 @@ fn load_tabs(
                     .map(serde_json::from_value::<RepositoryRef>)
                     .transpose()
                     .map_err(|error| AppError::InvalidRequest(error.to_string()))?;
+                let diff_ref = crate::workbench_diff_ref::parse_diff_ref_from_metadata(
+                    project_id,
+                    kind.as_str(),
+                    resource.as_ref(),
+                    repository.as_ref(),
+                    object,
+                )?;
                 validate_tab_repository(&kind, resource.as_ref(), repository.as_ref())?;
                 if let Some(repository) = &repository {
                     let root = roots.get(repository.root_id.as_str()).ok_or_else(|| {
@@ -282,6 +289,7 @@ fn load_tabs(
                     updated_at: admit_tab_updated_at(updated_at),
                     resource,
                     repository,
+                    diff_ref,
                 })
             },
         )
@@ -341,13 +349,19 @@ pub fn tab_projection_bytes(tab: &WorkbenchTab) -> i64 {
             .len()
             .saturating_add(repository.relative_path.len())
     });
+    let diff_ref_bytes = tab
+        .diff_ref
+        .as_ref()
+        .map(crate::workbench_diff_ref::diff_ref_projection_bytes)
+        .unwrap_or(0) as usize;
     tab.id
         .len()
         .saturating_add(tab.kind.len())
         .saturating_add(tab.title.len())
         .saturating_add(tab.status.as_deref().map_or(0, str::len))
         .saturating_add(resource_bytes)
-        .saturating_add(repository_bytes) as i64
+        .saturating_add(repository_bytes)
+        .saturating_add(diff_ref_bytes) as i64
 }
 
 fn validate_resource_metadata(root: &RootRecord, resource: &ResourceRef) -> AppResult<()> {
@@ -526,6 +540,7 @@ mod tests {
             updated_at: None,
             resource: Some(resource.clone()),
             repository: None,
+            diff_ref: None,
         });
         assert!(
             fixture
@@ -562,6 +577,7 @@ mod tests {
                 root_id: fixture.root_id.clone(),
                 relative_path: "vendor/nested".into(),
             }),
+            diff_ref: None,
         });
         fixture
             .database
@@ -630,6 +646,7 @@ mod tests {
                 root_id: repository_root.into(),
                 relative_path: "vendor/nested".into(),
             }),
+            diff_ref: None,
         }
     }
 

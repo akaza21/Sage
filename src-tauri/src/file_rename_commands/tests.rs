@@ -84,6 +84,7 @@ impl Fixture {
                 relative_path: relative_path.into(),
             }),
             repository: None,
+            diff_ref: None,
         }
     }
 

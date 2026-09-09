@@ -136,6 +136,7 @@ impl Database {
                 updated_at: None,
                 resource: None,
                 repository: None,
+                diff_ref: None,
             });
             next_layout.active_tab_id = Some(request.chat_id.clone());
             validate_tab_projection(&next_layout.tabs)?;

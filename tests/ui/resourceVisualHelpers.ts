@@ -20,6 +20,20 @@ export async function openAgentScenario(page: Page, name: VisualScenarioName) {
   return page.locator("main.workbench");
 }
 
+export async function openAgentSnapshotDiff(page: Page) {
+  await page
+    .getByRole("button", {
+      name: "Open diff Sage / src/workbench/AgentChatPanes.tsx",
+    })
+    .click();
+  await expect(
+    page.getByRole("table", { name: "Unified file diff" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Saved agent change", { exact: true }),
+  ).toBeVisible();
+}
+
 export async function setResourceState(
   page: Page,
   state: VisualAgentResourceState,

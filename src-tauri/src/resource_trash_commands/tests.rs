@@ -105,6 +105,7 @@ impl Fixture {
                 relative_path: "src/empty/ghost.rs".into(),
             }),
             repository: None,
+            diff_ref: None,
         }
     }
 }
