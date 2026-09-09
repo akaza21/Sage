@@ -22,6 +22,7 @@ const POPOVER_GAP = 4;
 type InitialFocus = "first" | "last" | "selected";
 type PopoverRole = "menu" | "listbox" | "none";
 type FocusStrategy = "none" | "roving";
+type PortalTarget = "closest-dialog" | "document";
 export type MenuDismissReason = "escape" | "outside" | "tab";
 
 function menuItems(container: HTMLElement) {
@@ -65,6 +66,7 @@ export function MenuPopover({
   matchTriggerWidth = false,
   onDismiss,
   open,
+  portalTarget = "document",
   role = "menu",
   trapFocus = false,
   triggerRef,
@@ -80,6 +82,7 @@ export function MenuPopover({
   matchTriggerWidth?: boolean;
   onDismiss: (reason: MenuDismissReason) => void;
   open: boolean;
+  portalTarget?: PortalTarget;
   role?: PopoverRole;
   trapFocus?: boolean;
   triggerRef: RefObject<HTMLElement | null>;
@@ -87,6 +90,9 @@ export function MenuPopover({
   const popoverRef = useRef<HTMLDivElement>(null);
   const typeaheadRef = useRef("");
   const typeaheadTimerRef = useRef<number | null>(null);
+  const [portalRoot, setPortalRoot] = useState<HTMLElement>(
+    () => document.body,
+  );
   const [position, setPosition] = useState<CSSProperties>(() =>
     focusStrategy === "none" ? {} : { visibility: "hidden" },
   );
@@ -140,7 +146,24 @@ export function MenuPopover({
       window.removeEventListener("scroll", updatePosition, true);
       resizeObserver?.disconnect();
     };
-  }, [focusKey, matchTriggerWidth, open, triggerRef]);
+  }, [focusKey, matchTriggerWidth, open, portalRoot, triggerRef]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const nextRoot =
+      portalTarget === "closest-dialog"
+        ? (triggerRef.current?.closest<HTMLDialogElement>("dialog") ??
+          document.body)
+        : document.body;
+    setPortalRoot((current) => (current === nextRoot ? current : nextRoot));
+  }, [open, portalTarget, triggerRef]);
+
+  useLayoutEffect(() => {
+    if (!open || portalTarget !== "closest-dialog") return;
+    popoverRef.current
+      ?.querySelector<HTMLElement>('[role="combobox"]')
+      ?.focus();
+  }, [open, portalRoot, portalTarget]);
 
   useLayoutEffect(() => {
     if (!open || focusStrategy === "none") return;
@@ -284,6 +307,6 @@ export function MenuPopover({
     >
       {children}
     </div>,
-    document.body,
+    portalRoot,
   );
 }

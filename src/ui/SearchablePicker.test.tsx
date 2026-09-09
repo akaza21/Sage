@@ -6,7 +6,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -305,6 +305,9 @@ describe("SearchablePicker", () => {
       name: /Unavailable repository/,
     });
     expect(disabled).toHaveAttribute("aria-disabled", "true");
+    expect(disabled).toHaveAccessibleName(
+      "Unavailable repositoryRepository is unavailable.",
+    );
     expect(disabled).toHaveAccessibleDescription("Repository is unavailable.");
     const longLabel =
       "A repository label long enough to require clipped current-value chrome ".repeat(
@@ -369,5 +372,40 @@ describe("SearchablePicker", () => {
     outside.focus();
     fireEvent.pointerDown(outside);
     expect(outside).toHaveFocus();
+  });
+
+  it("keeps a modal picker portal-owned, contains Escape, and leaves Tab to the dialog", () => {
+    function ModalHarness() {
+      const dialogRef = useRef<HTMLDialogElement>(null);
+      return (
+        <dialog ref={dialogRef} open>
+          <SearchablePicker
+            ariaLabel="Target"
+            candidates={options}
+            onSelect={vi.fn()}
+            portalTarget="closest-dialog"
+            selectedId="one"
+          />
+        </dialog>
+      );
+    }
+    render(<ModalHarness />);
+    const dialog = screen.getByRole("dialog");
+    const trigger = screen.getByRole("button", { name: "Target" });
+    fireEvent.click(trigger);
+    const input = screen.getByRole("combobox", { name: "Target" });
+    expect(dialog.contains(input)).toBe(true);
+    const escape = createEvent.keyDown(input, { key: "Escape" });
+    fireEvent(input, escape);
+    expect(escape.defaultPrevented).toBe(true);
+    expect(trigger).toHaveFocus();
+    expect(dialog).toBeVisible();
+    fireEvent.click(trigger);
+    const tabInput = screen.getByRole("combobox", { name: "Target" });
+    const tab = createEvent.keyDown(tabInput, { key: "Tab" });
+    fireEvent(tabInput, tab);
+    expect(tab.defaultPrevented).toBe(false);
+    expect(trigger).toHaveFocus();
+    expect(screen.queryByRole("combobox", { name: "Target" })).toBeNull();
   });
 });

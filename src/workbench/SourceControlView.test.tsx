@@ -1204,6 +1204,12 @@ it("offers Delete for a listed non-current local branch and hides it for current
 
 it("offers Rename branch for a listed name to a valid unlisted name", async () => {
   const renameLocalBranch = vi.fn(async () => true);
+  const branches = [
+    "main",
+    "topic",
+    ...Array.from({ length: 62 }, (_, index) => `bounded-${index + 1}`),
+  ];
+  const boundedRootStatus = { ...rootStatus, branches };
   useWorkbenchStore.setState({
     project: {
       id: "project-a",
@@ -1218,10 +1224,14 @@ it("offers Rename branch for a listed name to a valid unlisted name", async () =
         },
       ],
     },
-    repositories: { roots: [rootStatus], truncated: false, elapsedMs: 1 },
+    repositories: {
+      roots: [boundedRootStatus],
+      truncated: false,
+      elapsedMs: 1,
+    },
     repositoryRefs: [rootRepository],
     selectedRepository: rootRepository,
-    selectedRepositoryStatus: rootStatus,
+    selectedRepositoryStatus: boundedRootStatus,
     repositoryInventoryPhase: "ready",
     repositoryStatusPhase: "ready",
     loadRepositoryInventory: vi.fn(async () => undefined),
@@ -1230,9 +1240,29 @@ it("offers Rename branch for a listed name to a valid unlisted name", async () =
 
   render(<SourceControlView />);
 
-  fireEvent.change(screen.getByRole("combobox", { name: "Branch to rename" }), {
-    target: { value: "topic" },
-  });
+  const picker = screen.getByRole("button", { name: "Branch to rename" });
+  fireEvent.click(picker);
+  const listbox = screen.getByRole("listbox", { name: "Branch to rename" });
+  expect(screen.getAllByRole("option")).toHaveLength(64);
+  expect(screen.getByRole("option", { name: "main" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  const input = screen.getByRole("combobox", { name: "Branch to rename" });
+  fireEvent.keyDown(input, { key: "ArrowDown" });
+  fireEvent.keyDown(input, { key: "ArrowDown" });
+  expect(input).toHaveAttribute(
+    "aria-activedescendant",
+    expect.stringContaining("topic"),
+  );
+  expect(listbox).toContainElement(
+    screen.getByRole("option", { name: "topic" }),
+  );
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(picker).toHaveTextContent("topic");
+  act(() => useWorkbenchStore.setState({ repositoryRefreshing: true }));
+  expect(picker).toBeDisabled();
+  act(() => useWorkbenchStore.setState({ repositoryRefreshing: false }));
   fireEvent.change(
     screen.getByRole("textbox", { name: "Renamed branch name" }),
     { target: { value: "feature" } },

@@ -341,6 +341,17 @@ export function buildAgentPages(
       ];
     case "agent-child-activity":
       return [childActivityPage()];
+    case "agent-picker-harness-model":
+      return [standardPage("visual-chat-picker", "Picker readiness", "rich")];
+    case "agent-picker-handoff":
+      return [
+        standardPage("visual-chat-handoff-source", "Source chat", "rich"),
+        standardPage("visual-chat-handoff-target", "Target chat", "waiting"),
+      ];
+    case "agent-composer-narrow":
+      return [
+        standardPage("visual-chat-composer-narrow", "Narrow composer", "rich"),
+      ];
     default:
       return null;
   }

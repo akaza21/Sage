@@ -80,7 +80,8 @@
   font-weight: var(--font-weight-medium);
 }
 
-.select-control select {
+.select-control select,
+.select-control .searchable-picker__trigger {
   width: 100%;
   min-width: 0;
   min-height: var(--control-height-compact);
@@ -102,7 +103,8 @@
   background: var(--color-surface-hover);
 }
 
-.select-control select:disabled {
+.select-control select:disabled,
+.select-control .searchable-picker__trigger:disabled {
   color: var(--color-text-disabled);
   cursor: not-allowed;
 }

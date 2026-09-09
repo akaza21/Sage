@@ -87,6 +87,17 @@ export default defineConfig(({ command, mode }) => ({
     target: "es2022",
     sourcemap: sourceMaps,
     reportCompressedSize: true,
+    ...(command === "build" && mode === DESKTOP_NATIVE_BUILD_MODE
+      ? {
+          rolldownOptions: {
+            output: {
+              codeSplitting: {
+                groups: [{ name: "initial-deps", tags: ["$initial"] }],
+              },
+            },
+          },
+        }
+      : {}),
   },
   test: {
     environment: "jsdom",

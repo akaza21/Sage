@@ -9,6 +9,7 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
+import { flushSync } from "react-dom";
 
 import { MenuPopover, type MenuDismissReason } from "./MenuPopover";
 import { ResourceStateNotice } from "./ResourceStateNotice";
@@ -57,6 +58,7 @@ const PickerOption = memo(function PickerOption({
       aria-disabled={disabled || undefined}
       aria-describedby={disabled ? `${id}-reason` : undefined}
       aria-selected={selected}
+      data-option-id={candidate.id}
       data-active={active || undefined}
       disabled={disabled}
       tabIndex={-1}
@@ -84,6 +86,7 @@ export function SearchablePicker({
   disabled = false,
   onOptionRender,
   onSelect,
+  portalTarget = "document",
   selectedId,
   state,
   stateDetail,
@@ -95,6 +98,7 @@ export function SearchablePicker({
   disabled?: boolean;
   onOptionRender?: (id: string) => void;
   onSelect: (id: string) => void;
+  portalTarget?: "closest-dialog" | "document";
   selectedId: string | null;
   state?: "error" | "idle" | "loading";
   stateDetail?: string;
@@ -223,8 +227,14 @@ export function SearchablePicker({
       selectActive();
     } else if (event.key === "Escape") {
       event.preventDefault();
+      if (portalTarget === "closest-dialog") event.stopPropagation();
       close("escape");
     } else if (event.key === "Tab") {
+      if (portalTarget === "closest-dialog") {
+        flushSync(() => close("tab"));
+        triggerRef.current?.focus();
+        return;
+      }
       triggerRef.current?.focus();
       close("tab");
     }
@@ -250,6 +260,7 @@ export function SearchablePicker({
         aria-expanded={open && !disabled}
         aria-haspopup="listbox"
         aria-controls={`${id}-listbox`}
+        data-selected-id={selectedId ?? ""}
         disabled={disabled}
         onClick={() => (open ? close() : setOpen(true))}
       >
@@ -263,6 +274,7 @@ export function SearchablePicker({
         matchTriggerWidth
         onDismiss={close}
         open={open && !disabled}
+        portalTarget={portalTarget}
         role="none"
         triggerRef={triggerRef}
       >

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 
 import {
   canCheckoutLocalBranch,
@@ -7,6 +7,7 @@ import {
   canRenameLocalBranch,
   isCurrentLocalBranch,
 } from "../features/git/localBranches";
+import { SearchablePicker } from "../ui/SearchablePicker";
 
 interface Props {
   rootLabel: string;
@@ -22,6 +23,8 @@ interface Props {
   onDelete?: (name: string) => void;
   onRename?: (from: string, to: string) => void;
 }
+
+const EMPTY_BRANCHES: readonly string[] = [];
 
 export function SourceBranchList({
   rootLabel,
@@ -40,7 +43,11 @@ export function SourceBranchList({
   const [draft, setDraft] = useState("");
   const [renameFrom, setRenameFrom] = useState("");
   const [renameTo, setRenameTo] = useState("");
-  const names = branches ?? [];
+  const names = branches ?? EMPTY_BRANCHES;
+  const branchCandidates = useMemo(
+    () => names.map((name) => ({ id: name, label: name })),
+    [names],
+  );
   const selectedFrom = names.includes(renameFrom)
     ? renameFrom
     : (names[0] ?? "");
@@ -164,18 +171,13 @@ export function SourceBranchList({
             >
               <label className="source-branch-create__label">
                 <span className="sr-only">Branch to rename</span>
-                <select
-                  value={selectedFrom}
-                  aria-label="Branch to rename"
+                <SearchablePicker
+                  ariaLabel="Branch to rename"
                   disabled={renameDisabled}
-                  onChange={(event) => setRenameFrom(event.target.value)}
-                >
-                  {names.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
+                  candidates={branchCandidates}
+                  onSelect={setRenameFrom}
+                  selectedId={selectedFrom}
+                />
               </label>
               <label className="source-branch-create__label">
                 <span className="sr-only">Renamed branch name</span>

@@ -1,5 +1,7 @@
 import {
+  act,
   cleanup,
+  createEvent,
   fireEvent,
   render,
   screen,
@@ -12,6 +14,10 @@ import { useWorkbenchStore } from "../../app/store";
 import type { ProjectChatSearchResponse } from "./chatSearchDomain";
 import { projectChatSearchDesktop } from "./chatSearchDesktop";
 import { ChatSearchControl } from "./ChatSearchControl";
+import {
+  clearChatSearchFolderRequest,
+  requestChatSearchInFolder,
+} from "./chatSearchScope";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -50,6 +56,7 @@ describe("ChatSearchControl", () => {
   afterEach(cleanup);
 
   beforeEach(() => {
+    clearChatSearchFolderRequest();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
     useWorkbenchStore.setState({
       phase: "ready",
@@ -94,6 +101,8 @@ describe("ChatSearchControl", () => {
     });
     vi.restoreAllMocks();
   });
+
+  afterEach(() => clearChatSearchFolderRequest());
 
   it("submits explicitly, edits criteria, and navigates attached and archived results", async () => {
     const search = vi
@@ -153,6 +162,56 @@ describe("ChatSearchControl", () => {
     expect(dialog).not.toBeInTheDocument();
   });
 
+  it("consumes a close(false) focus return on activation and uses only a new return after reopen", async () => {
+    vi.spyOn(projectChatSearchDesktop, "search").mockResolvedValue(response);
+    const activated = document.createElement("button");
+    activated.textContent = "Activated chat";
+    document.body.append(activated);
+    const activateChat = vi.fn(async () => activated.focus());
+    useWorkbenchStore.setState({ activateChat });
+    render(<ChatSearchControl />);
+
+    const priorReturn = vi.fn();
+    act(() => requestChatSearchInFolder("project-a", priorReturn));
+    const firstInput = await screen.findByRole("searchbox", {
+      name: "Search Chats",
+    });
+    fireEvent.change(firstInput, { target: { value: "needle" } });
+    fireEvent.submit(firstInput.closest("form")!);
+    await screen.findByRole("listbox", { name: "Chat search results" });
+    fireEvent.click(screen.getByRole("option", { name: /Chat: B.*Attached/ }));
+    await waitFor(() => expect(activateChat).toHaveBeenCalledWith("chat-b"));
+    expect(priorReturn).not.toHaveBeenCalled();
+    expect(activated).toHaveFocus();
+
+    const nextReturn = vi.fn();
+    act(() => requestChatSearchInFolder("project-a", nextReturn));
+    await screen.findByRole("dialog", { name: "Search Chats" });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(nextReturn).toHaveBeenCalledOnce());
+    expect(priorReturn).not.toHaveBeenCalled();
+    activated.remove();
+  });
+
+  it("drops a rejected external focus return before a plain search is cancelled", async () => {
+    render(<ChatSearchControl />);
+
+    const staleReturn = vi.fn();
+    act(() => {
+      useWorkbenchStore.setState({ projectTransitioning: true });
+      requestChatSearchInFolder("project-a", staleReturn);
+    });
+    expect(screen.queryByRole("dialog", { name: "Search Chats" })).toBeNull();
+
+    act(() => useWorkbenchStore.setState({ projectTransitioning: false }));
+    const trigger = screen.getByRole("button", { name: "Search chats" });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(staleReturn).not.toHaveBeenCalled();
+  });
+
   it("searches and restores an archived chat on another folder without switching", async () => {
     const foreignResponse: ProjectChatSearchResponse = {
       projectId: "cross",
@@ -200,9 +259,8 @@ describe("ChatSearchControl", () => {
     });
     render(<ChatSearchControl />);
     fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Search in" }), {
-      target: { value: "cross" },
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Search in" }));
+    fireEvent.click(screen.getByRole("option", { name: "Cross" }));
     const input = screen.getByRole("searchbox", { name: "Search Chats" });
     fireEvent.change(input, { target: { value: "Research" } });
     fireEvent.submit(input.closest("form")!);
@@ -274,9 +332,8 @@ describe("ChatSearchControl", () => {
     });
     render(<ChatSearchControl />);
     fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Search in" }), {
-      target: { value: "all-folders" },
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Search in" }));
+    fireEvent.click(screen.getByRole("option", { name: "All folders" }));
     const input = screen.getByRole("searchbox", { name: "Search Chats" });
     fireEvent.change(input, { target: { value: "Research" } });
     fireEvent.submit(input.closest("form")!);
@@ -295,6 +352,22 @@ describe("ChatSearchControl", () => {
     expect(useWorkbenchStore.getState().project?.id).toBe("project-a");
   });
 
+  it("closes an actually open scope picker when its owner becomes stale", async () => {
+    render(<ChatSearchControl />);
+    const trigger = screen.getByRole("button", { name: "Search chats" });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Search in" }));
+    const input = screen.getByRole("combobox", { name: "Search in" });
+    await waitFor(() => expect(input).toHaveFocus());
+    expect(screen.getByRole("listbox", { name: "Search in" })).toBeVisible();
+    act(() => useWorkbenchStore.setState({ projectGeneration: 4 }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("combobox", { name: "Search in" })).toBeNull();
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
   it("drops a stale completion after a Project intent changes", async () => {
     const pending = deferred<typeof response>();
     vi.spyOn(projectChatSearchDesktop, "search").mockReturnValue(
@@ -302,6 +375,12 @@ describe("ChatSearchControl", () => {
     );
     render(<ChatSearchControl />);
     fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
+    fireEvent.click(screen.getByRole("button", { name: "Search in" }));
+    expect(screen.getByRole("combobox", { name: "Search in" })).toBeVisible();
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Search in" }), {
+      key: "Escape",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search in" }));
     const input = screen.getByRole("searchbox", { name: "Search Chats" });
     fireEvent.change(input, { target: { value: "needle" } });
     fireEvent.submit(input.closest("form")!);
@@ -311,6 +390,7 @@ describe("ChatSearchControl", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
+    expect(screen.queryByRole("combobox", { name: "Search in" })).toBeNull();
     expect(
       screen.queryByText("attached needle context"),
     ).not.toBeInTheDocument();
@@ -393,12 +473,48 @@ describe("ChatSearchControl", () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
-  it("keeps keyboard focus inside the named chat-search dialog", () => {
+  it("keeps keyboard focus inside the named chat-search dialog", async () => {
+    useWorkbenchStore.setState({
+      projects: Array.from({ length: 64 }, (_, index) => ({
+        id: index === 0 ? "project-a" : `project-${index + 1}`,
+        name: index === 0 ? "A" : `Project ${index + 1}`,
+        rootCount: 1,
+        lastOpenedAt: index + 1,
+      })),
+    });
     render(<ChatSearchControl />);
     fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
     const dialog = screen.getByRole("dialog", { name: "Search Chats" });
-    const select = screen.getByRole("combobox", { name: "Search in" });
+    const select = screen.getByRole("button", { name: "Search in" });
     const search = screen.getByRole("button", { name: "Search" });
+
+    fireEvent.click(select);
+    const pickerInput = screen.getByRole("combobox", { name: "Search in" });
+    expect(dialog.contains(pickerInput)).toBe(true);
+    await waitFor(() => expect(pickerInput).toHaveFocus());
+    expect(screen.getAllByRole("option")).toHaveLength(65);
+    const forwardTab = createEvent.keyDown(pickerInput, { key: "Tab" });
+    fireEvent(pickerInput, forwardTab);
+    expect(forwardTab.defaultPrevented).toBe(false);
+    expect(screen.queryByRole("combobox", { name: "Search in" })).toBeNull();
+    expect(select).toHaveFocus();
+    fireEvent.click(select);
+    const reverseInput = screen.getByRole("combobox", { name: "Search in" });
+    await waitFor(() => expect(reverseInput).toHaveFocus());
+    const reverseTab = createEvent.keyDown(reverseInput, {
+      key: "Tab",
+      shiftKey: true,
+    });
+    fireEvent(reverseInput, reverseTab);
+    expect(reverseTab.defaultPrevented).toBe(true);
+    expect(screen.queryByRole("combobox", { name: "Search in" })).toBeNull();
+    fireEvent.click(select);
+    const escapeInput = screen.getByRole("combobox", { name: "Search in" });
+    await waitFor(() => expect(escapeInput).toHaveFocus());
+    fireEvent.keyDown(escapeInput, { key: "Escape" });
+    expect(screen.queryByRole("combobox", { name: "Search in" })).toBeNull();
+    expect(dialog).toBeVisible();
+    expect(select).toHaveFocus();
 
     search.focus();
     fireEvent.keyDown(dialog, { key: "Tab" });

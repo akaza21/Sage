@@ -115,7 +115,7 @@
   font-size: var(--font-size-sm);
 }
 
-.handoff-dialog__field select,
+.handoff-dialog__field .searchable-picker__trigger,
 .handoff-dialog__field textarea {
   width: 100%;
   padding: 8px;
@@ -131,7 +131,7 @@
   resize: vertical;
 }
 
-.handoff-dialog__field select:focus,
+.handoff-dialog__field .searchable-picker__trigger:focus,
 .handoff-dialog__field textarea:focus {
   border-color: var(--color-focus-ring);
   box-shadow: var(--focus-ring-inset);
@@ -160,7 +160,7 @@
 }
 
 .chat-search-dialog__query input,
-.chat-search-dialog__query select {
+.chat-search-dialog__query .searchable-picker__trigger {
   width: 100%;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
@@ -170,7 +170,7 @@
 }
 
 .chat-search-dialog__query input:focus,
-.chat-search-dialog__query select:focus {
+.chat-search-dialog__query .searchable-picker__trigger:focus {
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
   border-color: var(--color-focus-ring);

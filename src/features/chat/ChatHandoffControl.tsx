@@ -1,5 +1,12 @@
 import { ArrowRightLeft } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acp";
@@ -12,6 +19,7 @@ import {
 import { chatDisplayTitle } from "../../domain/chatTitle";
 import type { ChatMessage } from "../../domain/workbench";
 import { ModalDialog } from "../../ui/ModalDialog";
+import { SearchablePicker } from "../../ui/SearchablePicker";
 
 interface ChatHandoffControlProps {
   acpPage: AcpChatPage | null;
@@ -62,8 +70,17 @@ export function ChatHandoffControl({
   const sourceTab = tabs.find(
     (tab) => tab.id === activeTabId && tab.kind === "chat",
   );
-  const targets = tabs.filter(
-    (tab) => tab.kind === "chat" && tab.id !== sourceTab?.id,
+  const targets = useMemo(
+    () => tabs.filter((tab) => tab.kind === "chat" && tab.id !== sourceTab?.id),
+    [sourceTab?.id, tabs],
+  );
+  const targetCandidates = useMemo(
+    () =>
+      targets.map((target) => ({
+        id: target.id,
+        label: chatDisplayTitle(target.title),
+      })),
+    [targets],
   );
   const disabled = busy || projectTransitioning || !sourceTab || !project;
   const currentIntent =
@@ -88,6 +105,7 @@ export function ChatHandoffControl({
         setIntent(null);
         setSaving(false);
         setHandoffError(null);
+        queueMicrotask(() => triggerRef.current?.focus());
       }
     });
   }, [intent]);
@@ -98,6 +116,13 @@ export function ChatHandoffControl({
     setHandoffError(null);
     queueMicrotask(() => triggerRef.current?.focus());
   };
+  const chooseTarget = useCallback(
+    (targetChatId: string) => {
+      if (!currentIntent) return;
+      setIntent({ ...currentIntent, targetChatId });
+    },
+    [currentIntent],
+  );
 
   const open = () => {
     if (disabled || !sourceTab || !project || targets.length === 0) return;
@@ -182,23 +207,14 @@ export function ChatHandoffControl({
             </p>
             <label className="handoff-dialog__field">
               <span>Target Chat</span>
-              <select
-                aria-label="Target Chat"
+              <SearchablePicker
+                ariaLabel="Target Chat"
+                candidates={targetCandidates}
                 disabled={saving || projectTransitioning}
-                value={currentIntent.targetChatId}
-                onChange={(event) =>
-                  setIntent({
-                    ...currentIntent,
-                    targetChatId: event.target.value,
-                  })
-                }
-              >
-                {targets.map((target) => (
-                  <option key={target.id} value={target.id}>
-                    {chatDisplayTitle(target.title)}
-                  </option>
-                ))}
-              </select>
+                onSelect={chooseTarget}
+                portalTarget="closest-dialog"
+                selectedId={currentIntent.targetChatId}
+              />
             </label>
             <label className="handoff-dialog__field">
               <span>Handoff prompt</span>

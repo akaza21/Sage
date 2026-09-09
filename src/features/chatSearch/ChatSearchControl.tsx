@@ -1,9 +1,17 @@
 import { Search } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import { boundedError } from "../../domain/errors";
 import { ModalDialog } from "../../ui/ModalDialog";
+import { SearchablePicker } from "../../ui/SearchablePicker";
 import { MAX_CHAT_SEARCH_QUERY_BYTES } from "./chatSearchDomain";
 import { projectChatSearchDesktop } from "./chatSearchDesktop";
 import {
@@ -57,9 +65,9 @@ export function ChatSearchControl() {
     setPhase("idle");
     setResponse(null);
     setError(null);
+    const focusReturn = focusReturnRef.current;
+    focusReturnRef.current = null;
     if (restoreFocus) {
-      const focusReturn = focusReturnRef.current;
-      focusReturnRef.current = null;
       setTimeout(() => {
         if (focusReturn) focusReturn();
         else triggerRef.current?.focus();
@@ -71,14 +79,18 @@ export function ChatSearchControl() {
     if (!open || !scope) return;
     return useWorkbenchStore.subscribe((state) => {
       if (!matchesChatSearchScope(state, scope)) {
-        close(false);
+        close();
       }
     });
   }, [open, scope]);
 
-  const openSearch = (searchProjectId?: string) => {
+  const openSearch = (
+    searchProjectId?: string,
+    focusReturn?: (() => void) | null,
+  ) => {
     const state = useWorkbenchStore.getState();
     if (!state.project || state.projectTransitioning) return;
+    focusReturnRef.current = focusReturn ?? null;
     setScope({
       activeProjectId: state.project.id,
       searchProjectId: admitChatSearchFolder(
@@ -100,8 +112,7 @@ export function ChatSearchControl() {
     return subscribeChatSearchFolderRequest(() => {
       const folderId = takeChatSearchFolderRequest();
       if (folderId) {
-        focusReturnRef.current = takeChatSearchFocusReturn();
-        openSearch(folderId);
+        openSearch(folderId, takeChatSearchFocusReturn());
       }
     });
   }, []);
@@ -170,7 +181,7 @@ export function ChatSearchControl() {
       setError("This Chat result changed. Search again to continue.");
       return;
     }
-    close();
+    close(false);
     if (attached) {
       if (result.projectId === state.project?.id) {
         await activateChat(result.chatId);
@@ -182,16 +193,22 @@ export function ChatSearchControl() {
     await restoreChat(result.chatId, result.projectId);
   };
 
-  const chooseFolder = (searchProjectId: string) => {
-    if (!scope || searchProjectId === scope.searchProjectId) return;
-    requestGeneration.current += 1;
-    setScope({ ...scope, searchProjectId });
-    setPhase("idle");
-    setResponse(null);
-    setError(null);
-  };
-
-  const folders = chatSearchFolderOptions(projects);
+  const chooseFolder = useCallback(
+    (searchProjectId: string) => {
+      if (!scope || searchProjectId === scope.searchProjectId) return;
+      requestGeneration.current += 1;
+      setScope({ ...scope, searchProjectId });
+      setPhase("idle");
+      setResponse(null);
+      setError(null);
+    },
+    [scope],
+  );
+  const folders = useMemo(() => chatSearchFolderOptions(projects), [projects]);
+  const folderCandidates = useMemo(
+    () => folders.map((folder) => ({ id: folder.id, label: folder.name })),
+    [folders],
+  );
 
   return (
     <>
@@ -221,18 +238,14 @@ export function ChatSearchControl() {
             </p>
             <label className="chat-search-dialog__query">
               <span>Search in</span>
-              <select
-                aria-label="Search in"
+              <SearchablePicker
+                ariaLabel="Search in"
+                candidates={folderCandidates}
                 disabled={phase === "searching" || projectTransitioning}
-                value={scope.searchProjectId}
-                onChange={(event) => chooseFolder(event.currentTarget.value)}
-              >
-                {folders.map((folder) => (
-                  <option key={folder.id} value={folder.id}>
-                    {folder.name}
-                  </option>
-                ))}
-              </select>
+                onSelect={chooseFolder}
+                portalTarget="closest-dialog"
+                selectedId={scope.searchProjectId}
+              />
             </label>
             <label className="chat-search-dialog__query">
               <span>Search Chats</span>

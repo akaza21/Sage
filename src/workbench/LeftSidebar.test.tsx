@@ -320,8 +320,8 @@ it("opens Chat search on a truncated foreign folder without switching", () => {
   render(<LeftSidebar />);
   fireEvent.click(screen.getByRole("button", { name: "Show more" }));
   expect(switchProject).not.toHaveBeenCalled();
-  expect(screen.getByRole("combobox", { name: "Search in" })).toHaveValue(
-    "cross",
+  expect(screen.getByRole("button", { name: "Search in" })).toHaveTextContent(
+    "Cross",
   );
   expect(useWorkbenchStore.getState().project?.id).toBe("sage");
 });

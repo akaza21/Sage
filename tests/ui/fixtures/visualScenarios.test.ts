@@ -12,6 +12,13 @@ describe("visual scenario contract", () => {
       { name: "agent-activity-family", mode: "agent", resource: "empty" },
       { name: "agent-image", mode: "agent", resource: "empty" },
       { name: "agent-child-activity", mode: "agent", resource: "empty" },
+      {
+        name: "agent-picker-harness-model",
+        mode: "agent",
+        resource: "empty",
+      },
+      { name: "agent-picker-handoff", mode: "agent", resource: "empty" },
+      { name: "agent-composer-narrow", mode: "agent", resource: "empty" },
       { name: "editor", mode: "editor", resource: "file" },
       {
         name: "editor-picker-repository",

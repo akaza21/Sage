@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { AGENT_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
@@ -6,6 +6,7 @@ import {
   expectNoViewportOverflow,
   openScenario,
   settleTranscriptAtEnd,
+  takeCanonicalScreenshot,
 } from "./shared/visualBrowserPrimitives";
 import {
   expandChildActivityHierarchy,
@@ -14,16 +15,299 @@ import {
   runAgentCanonicalTest,
 } from "./agentVisualHelpers";
 
+async function expectOpenPickerContained(
+  page: Page,
+  input: Locator,
+  listbox: Locator,
+) {
+  const popup = input.locator(
+    "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' menu-popover ')][1]",
+  );
+  await expect(input).toBeFocused();
+  await expect(popup).toBeVisible();
+  await expect(listbox).toBeVisible();
+  const [inputBox, listboxBox, popupBox, viewport] = await Promise.all([
+    input.boundingBox(),
+    listbox.boundingBox(),
+    popup.boundingBox(),
+    page.evaluate(() => ({
+      height: window.innerHeight,
+      width: window.innerWidth,
+    })),
+  ]);
+  expect(inputBox).not.toBeNull();
+  expect(listboxBox).not.toBeNull();
+  expect(popupBox).not.toBeNull();
+  if (!inputBox || !listboxBox || !popupBox) return;
+  const inside = (
+    child: { x: number; y: number; width: number; height: number },
+    parent: { x: number; y: number; width: number; height: number },
+  ) =>
+    child.x >= parent.x &&
+    child.y >= parent.y &&
+    child.x + child.width <= parent.x + parent.width &&
+    child.y + child.height <= parent.y + parent.height;
+  const viewportBox = {
+    height: viewport.height,
+    width: viewport.width,
+    x: 0,
+    y: 0,
+  };
+  expect(inputBox.width).toBeGreaterThan(0);
+  expect(inputBox.height).toBeGreaterThan(0);
+  expect(listboxBox.width).toBeGreaterThan(0);
+  expect(listboxBox.height).toBeGreaterThan(0);
+  expect(popupBox.width).toBeGreaterThan(0);
+  expect(popupBox.height).toBeGreaterThan(0);
+  expect(inside(inputBox, popupBox)).toBe(true);
+  expect(inside(listboxBox, popupBox)).toBe(true);
+  expect(inside(popupBox, viewportBox)).toBe(true);
+}
+
+type ComposerControlBox = {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+};
+
+async function expectComposerControlsLaidOut(page: Page) {
+  const controls = [
+    page.getByRole("button", { name: "Harness" }),
+    page.getByRole("button", { name: "Model" }),
+    page.getByRole("textbox", { name: "Message agent" }),
+    page.getByRole("button", { name: "Send message" }),
+  ];
+  const boxes: ComposerControlBox[] = [];
+  for (const control of controls) {
+    await expect(control).toBeVisible();
+    const box = await control.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) return;
+    expect(box.width).toBeGreaterThan(0);
+    expect(box.height).toBeGreaterThan(0);
+    boxes.push({ height: box.height, width: box.width, x: box.x, y: box.y });
+  }
+  const viewport = await page.evaluate(() => ({
+    height: window.innerHeight,
+    width: window.innerWidth,
+  }));
+  for (const box of boxes) {
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+  }
+  for (let first = 0; first < boxes.length; first += 1) {
+    for (let second = first + 1; second < boxes.length; second += 1) {
+      const a = boxes[first];
+      const b = boxes[second];
+      if (!a || !b) continue;
+      const overlap =
+        a.x < b.x + b.width &&
+        b.x < a.x + a.width &&
+        a.y < b.y + b.height &&
+        b.y < a.y + a.height;
+      expect(overlap).toBe(false);
+    }
+  }
+}
+
 test.describe("Wave 2 canonical visual states", () => {
   test.use({ viewport: { width: 1380, height: 880 } });
 
-  for (const { name, mode } of VISUAL_SCENARIOS.filter((scenario) =>
-    AGENT_VISUAL_SCENARIOS.includes(scenario.name),
+  for (const { name, mode } of VISUAL_SCENARIOS.filter(
+    (scenario) =>
+      AGENT_VISUAL_SCENARIOS.includes(scenario.name) &&
+      ![
+        "agent-picker-harness-model",
+        "agent-picker-handoff",
+        "agent-composer-narrow",
+      ].includes(scenario.name),
   )) {
     test(`${name} stays visually stable`, async ({ page }) => {
       await runAgentCanonicalTest(page, name, mode);
     });
   }
+});
+
+test.describe("ED02 picker visual states", () => {
+  test("captures the ready harness and model picker state", async ({
+    page,
+  }) => {
+    const workbench = await openScenario(
+      page,
+      "agent-picker-harness-model",
+      "agent",
+    );
+    const trigger = page.getByRole("button", { name: "Harness" });
+    await trigger.click();
+    const input = page.getByRole("combobox", { name: "Harness" });
+    const listbox = page.getByRole("listbox", { name: "Harness" });
+    await expect(input).toBeFocused();
+    await expect(
+      listbox.getByRole("option", {
+        name: /Unavailable Codex.*Harness is unavailable/,
+      }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      listbox.getByRole("option", { name: "Codex — test only", exact: true }),
+    ).toBeVisible();
+    const unavailable = listbox.getByRole("option", {
+      name: /Unavailable Codex.*Harness is unavailable/,
+    });
+    await expect(unavailable).toHaveAttribute("aria-disabled", "true");
+    await input.fill("Unavailable");
+    await expect(listbox.getByRole("option")).toHaveCount(1);
+    await expect(listbox.getByRole("option")).toBeDisabled();
+    await input.fill("Codex");
+    await expect(listbox.getByRole("option")).toHaveCount(2);
+    await expect(
+      listbox.getByRole("option", { name: "Codex — test only", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await expect(trigger).toHaveText("Codex — test only");
+    await expect(trigger).toHaveAttribute("data-selected-id", "visual-acp");
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-visual-harness-selection-count",
+      "1",
+    );
+    const modelTrigger = page.getByRole("button", { name: "Model" });
+    await expect(modelTrigger).toBeDisabled();
+    await expect(
+      page.getByText("Select a ready harness to load models."),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() => {
+        const visualWindow = window as typeof window & {
+          __releaseVisualPickerHarnessReady?: () => void;
+        };
+        const release = visualWindow.__releaseVisualPickerHarnessReady;
+        if (!release) return false;
+        release();
+        return true;
+      }),
+    ).toBe(true);
+    await expect(modelTrigger).toBeEnabled();
+    await modelTrigger.click();
+    const modelInput = page.getByRole("combobox", { name: "Model" });
+    const modelListbox = page.getByRole("listbox", { name: "Model" });
+    await expect(modelListbox.getByRole("option")).toHaveCount(128);
+    await expect(
+      modelListbox.getByRole("option", {
+        name: "Fresh advertised model 1",
+        exact: true,
+      }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      modelListbox.getByRole("option", { name: "Old advertised model" }),
+    ).toHaveCount(0);
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await expect(modelTrigger).toHaveText("Fresh advertised model 2");
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-visual-model-selection-count",
+      "1",
+    );
+    await modelTrigger.click();
+    await expectOpenPickerContained(page, modelInput, modelListbox);
+    await expectNoViewportOverflow(page);
+    await takeCanonicalScreenshot(workbench, "agent-picker-harness-model");
+  });
+
+  test("captures the modal-safe handoff target picker", async ({ page }) => {
+    const workbench = await openScenario(page, "agent-picker-handoff", "agent");
+    await page.getByRole("button", { name: "Hand off chat" }).click();
+    const dialog = page.getByRole("dialog", { name: "Hand off this Chat" });
+    const trigger = dialog.getByRole("button", { name: "Target Chat" });
+    await expect(trigger).toHaveText("Target chat");
+    await trigger.click();
+    const input = dialog.getByRole("combobox", { name: "Target Chat" });
+    const listbox = dialog.getByRole("listbox", { name: "Target Chat" });
+    await expect(input).toBeFocused();
+    await expect(
+      listbox.getByRole("option", { name: "Target chat", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      dialog.getByText("Current: Target chat", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      listbox.getByRole("option", { name: "Target chat" }),
+    ).toBeVisible();
+    await expect(listbox.getByRole("option")).toHaveCount(63);
+    await page.keyboard.press("ArrowDown");
+    await expect(input).toHaveAttribute(
+      "aria-activedescendant",
+      /option-visual-chat-handoff-target/,
+    );
+    await page.keyboard.press("Enter");
+    await expect(trigger).toHaveText("Target chat");
+    await expect(trigger).toBeFocused();
+    await trigger.click();
+    await expectOpenPickerContained(page, input, listbox);
+    await expectNoViewportOverflow(page);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeVisible();
+    await expect(trigger).toBeFocused();
+    const draft = dialog.getByRole("textbox", { name: "Handoff prompt" });
+    await draft.fill("Edited but unsent visual handoff");
+    await expect(draft).toHaveValue("Edited but unsent visual handoff");
+    await expect(trigger).toHaveText("Target chat");
+    await expect(
+      page.getByRole("textbox", { name: "Message agent" }),
+    ).toHaveValue("");
+    await takeCanonicalScreenshot(workbench, "agent-picker-handoff");
+    await page.evaluate(async () => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      useWorkbenchStore.setState({ activeTabId: "visual-chat-handoff-target" });
+    });
+    await expect(dialog).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Hand off chat" }),
+    ).toBeFocused();
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-visual-handoff-dispatch-count",
+      "0",
+    );
+    await expect(
+      page.getByRole("textbox", { name: "Message agent" }),
+    ).toHaveValue("");
+  });
+
+  test("captures the compact narrow composer picker", async ({ page }) => {
+    await page.setViewportSize({ width: 720, height: 560 });
+    const workbench = await openScenario(
+      page,
+      "agent-composer-narrow",
+      "agent",
+    );
+    await expectComposerControlsLaidOut(page);
+    const harnessTrigger = page.getByRole("button", { name: "Harness" });
+    await harnessTrigger.click();
+    const input = page.getByRole("combobox", { name: "Harness" });
+    const listbox = page.getByRole("listbox", { name: "Harness" });
+    await expectOpenPickerContained(page, input, listbox);
+    await expectNoViewportOverflow(page);
+    await page.keyboard.press("Escape");
+    await expect(harnessTrigger).toBeFocused();
+    const modelTrigger = page.getByRole("button", { name: "Model" });
+    await modelTrigger.click();
+    await expectOpenPickerContained(
+      page,
+      page.getByRole("combobox", { name: "Model" }),
+      page.getByRole("listbox", { name: "Model" }),
+    );
+    await expectNoViewportOverflow(page);
+    await page.keyboard.press("Escape");
+    await expect(modelTrigger).toBeFocused();
+    await expectComposerControlsLaidOut(page);
+    await harnessTrigger.click();
+    await expectOpenPickerContained(page, input, listbox);
+    await expectNoViewportOverflow(page);
+    await takeCanonicalScreenshot(workbench, "agent-composer-narrow");
+  });
 });
 
 test.describe("V5b Agent image presentation", () => {
@@ -207,8 +491,8 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       const pane = panes.nth(index);
       const controls = await Promise.all(
         [
-          pane.getByRole("combobox", { name: "Harness" }),
-          pane.getByRole("combobox", { name: "Model" }),
+          pane.getByRole("button", { name: "Harness" }),
+          pane.getByRole("button", { name: "Model" }),
           pane.locator(".send-button"),
         ].map((control) =>
           control.evaluate((node) => node.getBoundingClientRect().y),
@@ -586,6 +870,71 @@ test.describe("Wave 2 200% zoom state", () => {
     await expectNoViewportOverflow(page);
     await settleTranscriptAtEnd(page);
     await expect(workbench).toHaveScreenshot("agent-zoom-200.png");
+
+    await openScenario(page, "agent-composer-narrow", "agent");
+    await page.getByRole("button", { name: "Harness" }).click();
+    const harnessInput = page.getByRole("combobox", { name: "Harness" });
+    const harnessListbox = page.getByRole("listbox", { name: "Harness" });
+    await expectOpenPickerContained(page, harnessInput, harnessListbox);
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Model" }).click();
+    await expectOpenPickerContained(
+      page,
+      page.getByRole("combobox", { name: "Model" }),
+      page.getByRole("listbox", { name: "Model" }),
+    );
+    await expectNoViewportOverflow(page);
+
+    await openScenario(page, "agent-picker-handoff", "agent");
+    await page.getByRole("button", { name: "Hand off chat" }).click();
+    await page.getByRole("button", { name: "Target Chat" }).click();
+    await expectOpenPickerContained(
+      page,
+      page.getByRole("combobox", { name: "Target Chat" }),
+      page.getByRole("listbox", { name: "Target Chat" }),
+    );
+    await expectNoViewportOverflow(page);
+
+    await openScenario(page, "agent-composer-narrow", "agent");
+    const titleSearch = page
+      .locator("header.title-bar")
+      .getByRole("button", { name: "Search chats" });
+    await titleSearch.click();
+    const searchDialog = page.getByRole("dialog", { name: "Search Chats" });
+    await expect(searchDialog).toBeVisible();
+    const folderTrigger = searchDialog.getByRole("button", {
+      name: "Search in",
+    });
+    await expect(folderTrigger).toHaveText("Sage");
+    await folderTrigger.click();
+    const folderInput = searchDialog.getByRole("combobox", {
+      name: "Search in",
+    });
+    const folderListbox = searchDialog.getByRole("listbox", {
+      name: "Search in",
+    });
+    await expect(folderInput).toBeFocused();
+    await expect(folderListbox.getByRole("option")).toHaveCount(2);
+    await expect(
+      folderListbox.getByRole("option", { name: "Sage", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      searchDialog.getByText("Current: Sage", { exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await expect(folderTrigger).toHaveText("All folders");
+    await expect(folderTrigger).toBeFocused();
+    await folderTrigger.click();
+    await expectOpenPickerContained(page, folderInput, folderListbox);
+    await expectNoViewportOverflow(page);
+    await page.keyboard.press("Escape");
+    await expect(searchDialog).toBeVisible();
+    await expect(folderTrigger).toBeFocused();
+    await searchDialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(searchDialog).toHaveCount(0);
+    await expect(titleSearch).toBeFocused();
+    await expectNoViewportOverflow(page);
   });
 
   test("keeps Agent activity cards bounded at 200% zoom", async ({ page }) => {

@@ -626,7 +626,7 @@ test("snapshot probe propagates malformed observations instead of retrying them"
 
 test("snapshot DOM classifies only the unique focused surface with zero projections", () => {
   const controls =
-    '<div class="composer__controls"><select><option selected>Codex</option></select><select><option selected>gpt-5.6</option></select></div><textarea aria-label="Message agent"></textarea>';
+    '<div class="composer__controls"><div class="searchable-picker"><button class="searchable-picker__trigger" aria-label="Harness" data-selected-id="codex">Codex</button></div><div class="searchable-picker"><button class="searchable-picker__trigger" aria-label="Model" data-selected-id="gpt-5.6">gpt-5.6</button></div></div><textarea aria-label="Message agent"></textarea>';
   const surface = `<section class="chat-surface" aria-label="Agent chat">${controls}</section>`;
   const pane = `<section class="agent-chat-pane agent-chat-pane--focused">${surface}</section>`;
   const evaluate = (markup) => {
@@ -663,7 +663,7 @@ test("snapshot DOM classifies only the unique focused surface with zero projecti
   );
   assert.equal(
     evaluate(
-      `<section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat">${controls.replace("<select><option selected>gpt-5.6</option></select>", "")}</section></section>`,
+      `<section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat">${controls.replace('<div class="searchable-picker"><button class="searchable-picker__trigger" aria-label="Model" data-selected-id="gpt-5.6">gpt-5.6</button></div>', "")}</section></section>`,
     ),
     null,
   );
@@ -870,16 +870,14 @@ test("clean Chat navigation accepts one top-level New chat and only an empty rep
 
 test("browser DOM contract selects the discovered Codex display and exposes exact two-turn ids", () => {
   const dom = new JSDOM(
-    `<!doctype html><main class="workbench workbench--editor"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor" checked><input type="radio" name="workbench-window-mode" value="agent"></div><button class="project-chat" aria-current="page">Chat</button><section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat"><div class="composer__controls"><select><option value="codex">Codex \u2014 ${CODEX_VERSION}</option></select><select><option value="gpt-5.6" selected>gpt-5.6</option></select></div><div class="session-state">Ready</div><textarea id="prompt-chat-1" aria-label="Message agent"></textarea><section class="acp-chat-projection" aria-label="Agent chat ACP" data-project-id="project-1" data-chat-id="chat-1" data-current-session-id="session-1" data-projection-revision="3"><section class="acp-turn" data-turn-id="turn-1" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="1"><header><span data-turn-status="turn-1" role="status" aria-label="Completed"></span></header><article data-item-id="item-1-user" data-message-role="user"><span class="acp-markdown">Reply with exactly: SAGE_ACP04_A_TURN_1</span></article><article data-item-id="item-1-assistant" data-message-role="assistant"><span class="acp-markdown">SAGE_ACP04_A_TURN_1</span></article></section><section class="acp-turn" data-turn-id="turn-2" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="2"><header><span data-turn-status="turn-2" role="status" aria-label="Completed"></span></header><article data-item-id="item-2-user" data-message-role="user"><span class="acp-markdown">Reply with exactly: SAGE_ACP04_A_TURN_2</span></article><article data-item-id="item-2-assistant" data-message-role="assistant"><span class="acp-markdown">SAGE_ACP04_A_TURN_2</span></article></section></section></section></section></main>`,
+    `<!doctype html><main class="workbench workbench--editor"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor" checked><input type="radio" name="workbench-window-mode" value="agent"></div><button class="project-chat" aria-current="page">Chat</button><section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat"><div class="composer__controls"><div class="searchable-picker"><button class="searchable-picker__trigger" aria-label="Harness" aria-controls="harness-listbox" aria-expanded="false" data-selected-id="simulator">Simulator</button></div><div class="searchable-picker"><button class="searchable-picker__trigger" aria-label="Model" aria-controls="model-listbox" aria-expanded="false" data-selected-id="gpt-5.6">gpt-5.6</button></div></div><div class="session-state">Ready</div><textarea id="prompt-chat-1" aria-label="Message agent"></textarea><section class="acp-chat-projection" aria-label="Agent chat ACP" data-project-id="project-1" data-chat-id="chat-1" data-current-session-id="session-1" data-projection-revision="3"><section class="acp-turn" data-turn-id="turn-1" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="1"><header><span data-turn-status="turn-1" role="status" aria-label="Completed"></span></header><article data-item-id="item-1-user" data-message-role="user"><span class="acp-markdown">Reply with exactly: SAGE_ACP04_A_TURN_1</span></article><article data-item-id="item-1-assistant" data-message-role="assistant"><span class="acp-markdown">SAGE_ACP04_A_TURN_1</span></article></section><section class="acp-turn" data-turn-id="turn-2" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="2"><header><span data-turn-status="turn-2" role="status" aria-label="Completed"></span></header><article data-item-id="item-2-user" data-message-role="assistant"><span class="acp-markdown">SAGE_ACP04_A_TURN_2</span></article></section></section></section></section></main>`,
   );
   const previous = {
     document: globalThis.document,
-    HTMLSelectElement: globalThis.HTMLSelectElement,
     Event: globalThis.Event,
   };
   Object.assign(globalThis, {
     document: dom.window.document,
-    HTMLSelectElement: dom.window.HTMLSelectElement,
     Event: dom.window.Event,
   });
   try {
@@ -889,6 +887,37 @@ test("browser DOM contract selects the discovered Codex display and exposes exac
         return this.textContent;
       },
     });
+    const secondTurn = dom.window.document.querySelector(
+      '[data-turn-id="turn-2"]',
+    );
+    const secondUser = secondTurn.querySelector('[data-item-id="item-2-user"]');
+    secondUser.dataset.messageRole = "user";
+    secondUser.textContent = `Reply with exactly: ${ECHOES[1]}`;
+    secondTurn.insertAdjacentHTML(
+      "beforeend",
+      `<article data-item-id="item-2-assistant" data-message-role="assistant"><span class="acp-markdown">${ECHOES[1]}</span></article>`,
+    );
+    const harness = dom.window.document.querySelector(
+      '.searchable-picker__trigger[aria-label="Harness"]',
+    );
+    harness.addEventListener("click", () => {
+      if (harness.getAttribute("aria-expanded") === "true") return;
+      harness.setAttribute("aria-expanded", "true");
+    });
+    const mountHarnessPicker = () => {
+      const popover = dom.window.document.createElement("div");
+      popover.id = "harness-popover";
+      popover.innerHTML = `<input class="searchable-picker__input" aria-label="Harness" aria-controls="harness-listbox"><div id="harness-listbox" role="listbox"><button role="option" data-option-id="codex">Codex — ${CODEX_VERSION}</button></div>`;
+      dom.window.document.body.append(popover);
+      const input = popover.querySelector("input");
+      input.focus();
+      popover.querySelector('[role="option"]').addEventListener("click", () => {
+        harness.dataset.selectedId = "codex";
+        harness.textContent = `Codex — ${CODEX_VERSION}`;
+        harness.setAttribute("aria-expanded", "false");
+        popover.remove();
+      });
+    };
     const ui = createAcp04Ui(CODEX_VERSION);
     assert.equal(eval(ui.editorReady), true);
     assert.equal(eval(ui.enterAgentFromEditor), true);
@@ -896,10 +925,38 @@ test("browser DOM contract selects the discovered Codex display and exposes exac
     dom.window.document.querySelector("main").className =
       "workbench workbench--agent";
     assert.equal(eval(ui.seededAgentReady), true);
+    assert.equal(eval(ui.openCodexPicker), true);
+    assert.equal(eval(ui.codexSelectable), false);
+    const decoy = dom.window.document.createElement("div");
+    decoy.innerHTML = `<input class="searchable-picker__input" aria-label="Harness" aria-controls="decoy-listbox"><div id="decoy-listbox" role="listbox"><button role="option">Codex — ${CODEX_VERSION}</button></div>`;
+    dom.window.document.body.append(decoy);
+    decoy.querySelector("input").focus();
+    assert.equal(eval(ui.selectCodex), false);
+    mountHarnessPicker();
     assert.equal(eval(ui.codexSelectable), true);
+    harness.disabled = true;
+    assert.equal(eval(ui.selectCodex), false);
+    harness.disabled = false;
     assert.equal(eval(ui.selectCodex), true);
     assert.equal(eval(ui.codexReady), true);
     assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).composerEnabled, true);
+    delete harness.dataset.selectedId;
+    assert.equal(eval(ui.codexReady), false);
+    assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).harness, null);
+    harness.dataset.selectedId = "codex";
+    const model = dom.window.document.querySelector(
+      '.searchable-picker__trigger[aria-label="Model"]',
+    );
+    model.dataset.selectedId = "";
+    assert.equal(eval(ui.codexReady), false);
+    assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).model, null);
+    model.dataset.selectedId = "gpt-5.6";
+    harness.disabled = true;
+    assert.equal(eval(ui.codexReady), false);
+    harness.disabled = false;
+    model.disabled = true;
+    assert.equal(eval(ui.codexReady), false);
+    model.disabled = false;
     const composer = dom.window.document.querySelector(
       'textarea[aria-label="Message agent"]',
     );
@@ -911,9 +968,11 @@ test("browser DOM contract selects the discovered Codex display and exposes exac
     assert.equal(eval(ui.codexReady), false);
     assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).composerEnabled, false);
     composer.nextElementSibling.remove();
-    const codex = dom.window.document.querySelector("select option");
+    const codex = dom.window.document.querySelector(
+      '.searchable-picker__trigger[aria-label="Harness"]',
+    );
     let changes = 0;
-    codex.parentElement.addEventListener("change", () => {
+    codex.addEventListener("click", () => {
       changes += 1;
     });
     codex.disabled = true;

@@ -7,6 +7,9 @@ export type VisualScenarioName =
   | "agent-activity-family"
   | "agent-image"
   | "agent-child-activity"
+  | "agent-picker-harness-model"
+  | "agent-picker-handoff"
+  | "agent-composer-narrow"
   | "editor"
   | "editor-picker-repository"
   | "editor-picker-repository-filtered"
@@ -50,6 +53,9 @@ export const AGENT_VISUAL_SCENARIOS: readonly VisualScenarioName[] = [
   "agent-activity-family",
   "agent-image",
   "agent-child-activity",
+  "agent-picker-harness-model",
+  "agent-picker-handoff",
+  "agent-composer-narrow",
 ];
 
 export const EDITOR_VISUAL_SCENARIOS: readonly VisualScenarioName[] = [

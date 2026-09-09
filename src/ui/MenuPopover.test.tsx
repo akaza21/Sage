@@ -242,4 +242,54 @@ describe("MenuPopover", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Expand" }));
     expect(menu.style.top).toBe("126px");
   });
+
+  it("rebinds closest-dialog geometry observers after the portal node moves", () => {
+    const observed: HTMLElement[][] = [];
+    const disconnected: boolean[] = [];
+    class ResizeObserverStub {
+      index = observed.length;
+      constructor(_callback: ResizeObserverCallback) {
+        observed.push([]);
+        disconnected.push(false);
+      }
+      observe(element: HTMLElement) {
+        observed[this.index].push(element);
+      }
+      disconnect() {
+        disconnected[this.index] = true;
+      }
+      unobserve() {}
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    function DialogHarness() {
+      const triggerRef = useRef<HTMLButtonElement>(null);
+      return (
+        <dialog open>
+          <button ref={triggerRef} type="button">
+            Target
+          </button>
+          <MenuPopover
+            ariaLabel="Target"
+            focusStrategy="none"
+            id="dialog-popup"
+            onDismiss={() => undefined}
+            open
+            portalTarget="closest-dialog"
+            role="none"
+            triggerRef={triggerRef}
+          >
+            <input aria-label="Target" role="combobox" />
+          </MenuPopover>
+        </dialog>
+      );
+    }
+    render(<DialogHarness />);
+    const popup = document.getElementById("dialog-popup");
+    expect(popup).not.toBeNull();
+    if (!popup) throw new Error("dialog popup missing");
+    expect(popup.closest("dialog")).not.toBeNull();
+    expect(observed).toHaveLength(2);
+    expect(disconnected[0]).toBe(true);
+    expect(observed[1]).toEqual([popup]);
+  });
 });

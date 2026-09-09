@@ -345,7 +345,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     );
     await picker.fill("read-only");
     const readonlyOption = listbox.getByRole("option", {
-      name: "Read-only root — packages/repository-31",
+      name: "Read-only root — packages/repository-31 Repository root is unavailable.",
       exact: true,
     });
     await expect(readonlyOption).toBeVisible();
@@ -636,6 +636,23 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(
       page.getByLabel("Source Control project tools", { exact: true }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Select repository", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("textbox", {
+        name: "Edit src/workbench/AgentChatPanes.tsx",
+      }),
+    ).toContainText("export function AgentChatPanes");
+    await expect(
+      page.locator(".file-surface .cm-content .cm-line span[class]").first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Loading Source Control…" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("status").filter({ hasText: "Loading File…" }),
+    ).toHaveCount(0);
     await expectNoViewportOverflow(page);
     await expect(workbench).toHaveScreenshot("editor-source-control.png");
   });
@@ -780,6 +797,90 @@ test.describe("Wave 2 200% zoom state", () => {
         })),
       )
       .toEqual({ devicePixelRatio: 2, innerWidth: 690 });
+    await page
+      .getByRole("button", { name: "Source Control", exact: true })
+      .click();
+    const renameTrigger = page.getByRole("button", {
+      name: "Branch to rename",
+    });
+    await expect(renameTrigger).toHaveText("feature/editor-polish");
+    await renameTrigger.click();
+    const renameInput = page.getByRole("combobox", {
+      name: "Branch to rename",
+    });
+    const renameListbox = page.getByRole("listbox", {
+      name: "Branch to rename",
+    });
+    await expect(renameInput).toBeFocused();
+    await expect(renameListbox.getByRole("option")).toHaveCount(3);
+    await expect(
+      renameListbox.getByRole("option", {
+        name: "feature/editor-polish",
+        exact: true,
+      }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      page.getByText("Current: feature/editor-polish", { exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await expect(renameInput).toHaveAttribute(
+      "aria-activedescendant",
+      /option-main$/,
+    );
+    await page.keyboard.press("Enter");
+    await expect(renameTrigger).toHaveText("main");
+    await expect(renameTrigger).toBeFocused();
+    await renameTrigger.click();
+    const renamePopup = renameInput.locator(
+      "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' menu-popover ')][1]",
+    );
+    await expect(renameInput).toBeFocused();
+    await expect(renamePopup).toBeVisible();
+    await expect(renameListbox).toBeVisible();
+    const [renameInputBox, renameListboxBox, renamePopupBox] =
+      await Promise.all([
+        renameInput.boundingBox(),
+        renameListbox.boundingBox(),
+        renamePopup.boundingBox(),
+      ]);
+    expect(renameInputBox).not.toBeNull();
+    expect(renameListboxBox).not.toBeNull();
+    expect(renamePopupBox).not.toBeNull();
+    if (renameInputBox && renameListboxBox && renamePopupBox) {
+      const viewport = await page.evaluate(() => ({
+        height: window.innerHeight,
+        width: window.innerWidth,
+      }));
+      for (const box of [renameInputBox, renameListboxBox, renamePopupBox]) {
+        expect(box.width).toBeGreaterThan(0);
+        expect(box.height).toBeGreaterThan(0);
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.y).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+        expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+      }
+      expect(renameInputBox.x).toBeGreaterThanOrEqual(renamePopupBox.x);
+      expect(renameInputBox.y).toBeGreaterThanOrEqual(renamePopupBox.y);
+      expect(renameInputBox.x + renameInputBox.width).toBeLessThanOrEqual(
+        renamePopupBox.x + renamePopupBox.width,
+      );
+      expect(renameInputBox.y + renameInputBox.height).toBeLessThanOrEqual(
+        renamePopupBox.y + renamePopupBox.height,
+      );
+      expect(renameListboxBox.x).toBeGreaterThanOrEqual(renamePopupBox.x);
+      expect(renameListboxBox.y).toBeGreaterThanOrEqual(renamePopupBox.y);
+      expect(renameListboxBox.x + renameListboxBox.width).toBeLessThanOrEqual(
+        renamePopupBox.x + renamePopupBox.width,
+      );
+      expect(renameListboxBox.y + renameListboxBox.height).toBeLessThanOrEqual(
+        renamePopupBox.y + renamePopupBox.height,
+      );
+    }
+    await expectNoViewportOverflow(page);
+    await page.keyboard.press("Escape");
+    await expect(renameTrigger).toBeFocused();
+    await page.getByRole("button", { name: "Explorer", exact: true }).click();
     await page.evaluate(async () => {
       const fixtures =
         await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");

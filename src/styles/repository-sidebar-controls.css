@@ -250,13 +250,13 @@
 
 .source-branch-create__label,
 .source-branch-create__label input,
-.source-branch-create__label select {
+.source-branch-create__label .searchable-picker {
   min-width: 0;
   flex: 1;
 }
 
 .source-branch-create__label input,
-.source-branch-create__label select {
+.source-branch-create__label .searchable-picker__trigger {
   width: 100%;
   padding: 5px 8px;
   border: 1px solid var(--color-border-subtle);

@@ -132,8 +132,8 @@ describe("TitleBar center chrome", () => {
     expect(titleSearch).toBeEnabled();
     fireEvent.click(titleSearch);
     const dialog = screen.getByRole("dialog", { name: "Search Chats" });
-    expect(screen.getByRole("combobox", { name: "Search in" })).toHaveValue(
-      "project-a",
+    expect(screen.getByRole("button", { name: "Search in" })).toHaveTextContent(
+      "Workspace",
     );
     expect(useWorkbenchStore.getState().sidebarView).toBe("explorer");
     expect(useWorkbenchStore.getState().sidebarOpen).toBe(false);

@@ -1,4 +1,5 @@
 import type { AgentArtifactOwner } from "../../../src/domain/agentArtifact";
+import type { ChatHandoffIntent } from "../../../src/domain/chatHandoff";
 import type { HarnessBrowseOwner } from "../../../src/features/preview/harnessBrowse";
 import type {
   RootRepositoryStatus,
@@ -75,6 +76,16 @@ export function applyVisualWorkbenchState(
   scenario: BuiltVisualScenario,
   tabs: WorkbenchTab[],
 ): void {
+  const visualWindow = window as typeof window & {
+    __releaseVisualPickerHarnessReady?: () => void;
+  };
+  delete visualWindow.__releaseVisualPickerHarnessReady;
+  delete document.documentElement.dataset.visualHarnessSelectionCount;
+  delete document.documentElement.dataset.visualModelSelectionCount;
+  delete document.documentElement.dataset.visualHandoffDispatchCount;
+  if (scenario.name === "agent-picker-handoff") {
+    document.documentElement.dataset.visualHandoffDispatchCount = "0";
+  }
   const chatIds = scenario.pages.map((pageValue) => pageValue.chatId);
   const activeTabId =
     scenario.resource === "file"
@@ -93,6 +104,25 @@ export function applyVisualWorkbenchState(
   const chatUiById = Object.fromEntries(
     chatIds.map((chatId) => [chatId, { ...emptyOwnership }]),
   );
+  const pickerHarnessScenario = scenario.name === "agent-picker-harness-model";
+  const handoffPickerScenario = scenario.name === "agent-picker-handoff";
+  const handoffTabs = handoffPickerScenario
+    ? [
+        ...tabs,
+        ...Array.from({ length: 62 }, (_, index) => ({
+          id: `visual-handoff-target-${index + 2}`,
+          kind: "chat" as const,
+          title: `Indexed target ${index + 2}`,
+          position: index + 2,
+          pinned: false,
+          dirty: false,
+        })),
+      ]
+    : tabs;
+  const freshModels = Array.from({ length: 128 }, (_, index) => ({
+    id: `visual-fresh-model-${index + 1}`,
+    name: `Fresh advertised model ${index + 1}`,
+  }));
   const rootListing = {
     resource: { rootId: ROOT_ID, relativePath: "" },
     entries: [
@@ -169,6 +199,7 @@ export function applyVisualWorkbenchState(
     message: null,
   };
 
+  const realHandoffChat = useWorkbenchStore.getState().handoffChat;
   useWorkbenchStore.setState({
     phase: "ready",
     error: null,
@@ -222,7 +253,7 @@ export function applyVisualWorkbenchState(
     projectGeneration: VISUAL_NATIVE_TRANSITION_EPOCH,
     nativeTransitionEpoch: VISUAL_NATIVE_TRANSITION_EPOCH,
     projectTransitioning: false,
-    tabs,
+    tabs: handoffTabs,
     archivedChats: [],
     activeTabId,
     selectedRootId: ROOT_ID,
@@ -240,10 +271,28 @@ export function applyVisualWorkbenchState(
         transport: "acp",
         bindingId: BINDING_ID,
       },
+      ...(pickerHarnessScenario
+        ? [
+            {
+              id: "visual-unavailable",
+              name: "Unavailable Codex",
+              description: "Disabled picker fixture",
+              installState: "unavailable" as const,
+              source: "development" as const,
+              accountModelDiscovery: false,
+              transport: "acp" as const,
+              bindingId: "visual-unavailable",
+            },
+          ]
+        : []),
     ],
-    selectedHarnessId: "visual-acp",
-    models: [{ id: MODEL_ID, name: "GPT-5" }],
-    selectedModelId: MODEL_ID,
+    selectedHarnessId: pickerHarnessScenario
+      ? "visual-unavailable"
+      : "visual-acp",
+    models: pickerHarnessScenario
+      ? [{ id: "visual-old-model", name: "Old advertised model" }]
+      : [{ id: MODEL_ID, name: "GPT-5" }],
+    selectedModelId: pickerHarnessScenario ? "visual-old-model" : MODEL_ID,
     harnessDiscoveryPhase: "ready",
     harnessDiscoveryError: null,
     sessionId: SESSION_ID,
@@ -308,6 +357,57 @@ export function applyVisualWorkbenchState(
     activateTab: async (tabId: string) => {
       useWorkbenchStore.setState({ activeTabId: tabId });
     },
+    ...(handoffPickerScenario
+      ? {
+          handoffChat: async (intent: ChatHandoffIntent) => {
+            const count = Number(
+              document.documentElement.dataset.visualHandoffDispatchCount ??
+                "0",
+            );
+            document.documentElement.dataset.visualHandoffDispatchCount =
+              String(count + 1);
+            return realHandoffChat(intent);
+          },
+        }
+      : {}),
+    ...(pickerHarnessScenario
+      ? {
+          selectHarness: async (harnessId: string) => {
+            if (harnessId !== "visual-acp") return;
+            const count = Number(
+              document.documentElement.dataset.visualHarnessSelectionCount ??
+                "0",
+            );
+            document.documentElement.dataset.visualHarnessSelectionCount =
+              String(count + 1);
+            useWorkbenchStore.setState({
+              selectedHarnessId: harnessId,
+              harnessDiscoveryPhase: "checking",
+              models: [],
+              selectedModelId: null,
+            });
+            visualWindow.__releaseVisualPickerHarnessReady = () => {
+              delete visualWindow.__releaseVisualPickerHarnessReady;
+              useWorkbenchStore.setState({
+                harnessDiscoveryPhase: "ready",
+                models: freshModels,
+                selectedModelId: freshModels[0]?.id ?? null,
+              });
+            };
+          },
+          selectModel: (modelId: string) => {
+            if (freshModels.some((model) => model.id === modelId)) {
+              const count = Number(
+                document.documentElement.dataset.visualModelSelectionCount ??
+                  "0",
+              );
+              document.documentElement.dataset.visualModelSelectionCount =
+                String(count + 1);
+              useWorkbenchStore.setState({ selectedModelId: modelId });
+            }
+          },
+        }
+      : {}),
     loadRepositoryInventory: async () => undefined,
     loadDirectory: async () => undefined,
     loadDiff: async () => undefined,
