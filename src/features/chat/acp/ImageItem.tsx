@@ -1,31 +1,31 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import type { AcpItem } from "../../../domain/acp";
 import { admittedImageDataUrl } from "../../../services/acpDesktopResponseImage";
 import { ModalDialog } from "../../../ui/ModalDialog";
 
 type ImageProjectionItem = Extract<AcpItem, { kind: "image" }>;
+type AdmittedImage = NonNullable<ReturnType<typeof admittedImageDataUrl>>;
 
 export function ImageItem({ item }: { item: ImageProjectionItem }) {
   const admitted = admittedImageDataUrl(
     item.payload.mediaType,
     item.payload.dataUrl,
   );
-  const [openFor, setOpenFor] = useState<string | null>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const titleId = useId();
-
-  // An image admission is owner-bound through the projection item. Clear the
-  // remembered dialog identity before a changed item or URL can reappear.
-  useEffect(() => {
-    setOpenFor(null);
-  }, [item.id, admitted?.dataUrl]);
-
   if (!admitted) return null;
 
-  const open = openFor === admitted.dataUrl;
+  // The key makes every projection identity transition a child unmount. Dialog
+  // state can therefore never resurrect an earlier admitted image on A→B→A.
+  const admissionKey = `${item.id}\u0000${admitted.dataUrl}`;
+  return <AdmittedImageItem key={admissionKey} admitted={admitted} />;
+}
+
+function AdmittedImageItem({ admitted }: { admitted: AdmittedImage }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
   const dismiss = () => {
-    setOpenFor(null);
+    setOpen(false);
     requestAnimationFrame(() => triggerRef.current?.focus());
   };
 
@@ -36,7 +36,7 @@ export function ImageItem({ item }: { item: ImageProjectionItem }) {
         type="button"
         className="acp-image__trigger"
         aria-label="Open image viewer"
-        onClick={() => setOpenFor(admitted.dataUrl)}
+        onClick={() => setOpen(true)}
       >
         <img
           className="acp-image__src"

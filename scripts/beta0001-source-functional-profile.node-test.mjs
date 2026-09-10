@@ -117,6 +117,23 @@ test("current evaluation consumes an explicit later attestation commit", () => {
   );
 });
 
+test("current evaluation rejects a dirty checkout before evidence", () => {
+  const fixture = attestedFixture();
+  writeFileSync(path.join(fixture.root, "dirty.txt"), "dirty\n");
+  assert.deepEqual(
+    currentWorkingTreeResult({
+      repositoryRoot: fixture.root,
+      attestationCommit: fixture.attestationCommit,
+    }),
+    {
+      sourceCommit: fixture.candidateCommit,
+      verdict: "incomplete",
+      acceptance: "local-green-only",
+      reason: "source-identity-dirty",
+    },
+  );
+});
+
 test("does not treat caller evidence descriptors as authority", () => {
   const fixture = attestedFixture();
   assert.equal(
@@ -327,18 +344,12 @@ test("authenticated failed evidence outranks missing evidence", () => {
   );
 });
 
-test("reports the dirty Sage checkout as source-identity-dirty with --attestation", () => {
+test("CLI reports the current checkout state with --attestation", () => {
   const repositoryRoot = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
   );
   const attestationCommit = git(repositoryRoot, ["rev-parse", "HEAD"]);
-  const attestedCandidate = JSON.parse(
-    git(repositoryRoot, [
-      "show",
-      `${attestationCommit}:local-evidence/BETA-0001/source-functional/attestation-v1.json`,
-    ]),
-  ).candidateCommit;
   assert.deepEqual(
     JSON.parse(
       execFileSync(
@@ -356,11 +367,6 @@ test("reports the dirty Sage checkout as source-identity-dirty with --attestatio
         { cwd: repositoryRoot, encoding: "utf8" },
       ),
     ),
-    {
-      verdict: "incomplete",
-      acceptance: "local-green-only",
-      reason: "source-identity-dirty",
-      sourceCommit: attestedCandidate,
-    },
+    currentWorkingTreeResult({ repositoryRoot, attestationCommit }),
   );
 });

@@ -35,7 +35,9 @@ import {
 } from "./visualDocumentFixtures";
 
 const VISUAL_NATIVE_TRANSITION_EPOCH = 0;
-const PREVIEW_OWNER_DEADLINE_MS = 500;
+// Keep the fixture wait bounded while allowing StrictMode's lazy Chat import to
+// settle under a fully concurrent Vitest run.
+const PREVIEW_OWNER_DEADLINE_MS = 2_000;
 
 function artifactOwner(
   chatId: AgentArtifactOwner["chatId"],

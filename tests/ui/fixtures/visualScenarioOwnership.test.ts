@@ -523,6 +523,11 @@ describe("visual scenario surface ownership", () => {
     expect(view.container.querySelector(".agent-chat-panes")).toBeNull();
     await act(async () => {
       await vi.dynamicImportSettled();
+      // Let the mounted Chat subscription publish its ownership signal in the
+      // same controlled render turn; do not depend on a load-sensitive poll.
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
     });
     await waitFor(() =>
       expect(view.container.querySelector(".agent-chat-panes")).not.toBeNull(),
@@ -574,7 +579,7 @@ describe("visual scenario surface ownership", () => {
   });
 
   it("runs the diff fixture card through the real snapshot loader without Git", async () => {
-    const view = render(
+    render(
       createElement(
         "div",
         null,
