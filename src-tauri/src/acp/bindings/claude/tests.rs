@@ -116,7 +116,9 @@ fn open_p02_claude_session(runtime: &mut super::runtime::ClaudeRuntime) {
 fn p02_claude_real_ingress_preflights_routes_service_and_preserves_string_id() {
     let root = std::env::temp_dir().join(format!("sage-p02-claude-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
-    fs::write(root.join("file.txt"), "one\ntwo\n").unwrap();
+    let root = root.canonicalize().unwrap();
+    let file = root.join("file.txt");
+    fs::write(&file, "one\ntwo\n").unwrap();
     let database = crate::persistence::Database::open(":memory:".as_ref()).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let owner = ReadTextOwner {
@@ -131,7 +133,7 @@ fn p02_claude_real_ingress_preflights_routes_service_and_preserves_string_id() {
         binding_digest: [7; 32],
         owner: owner.clone(),
     };
-    let path = serde_json::to_string(&root.join("file.txt").display().to_string()).unwrap();
+    let path = serde_json::to_string(&file.display().to_string()).unwrap();
     let request = format!(
         r#"{{"jsonrpc":"2.0","id":"claude-7","method":"fs/read_text_file","params":{{"sessionId":"claude-session-1","path":{},"line":2,"limit":1,"_meta":{{"opaque":true}}}}}}"#,
         path
