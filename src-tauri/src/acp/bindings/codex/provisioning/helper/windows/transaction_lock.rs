@@ -68,6 +68,7 @@ mod tests {
         let parent =
             std::env::temp_dir().join(format!("sage-codex-helper-lock-{}", Uuid::new_v4()));
         fs::create_dir(&parent).unwrap();
+        let parent = parent.canonicalize().unwrap();
         let package = parent.join("package");
         let first = TransactionLock::acquire(&package).unwrap();
         assert_eq!(

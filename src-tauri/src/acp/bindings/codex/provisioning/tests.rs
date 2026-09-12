@@ -26,6 +26,8 @@ struct TestProvisioning {
 impl TestProvisioning {
     fn new() -> Self {
         let base = std::env::temp_dir().join(format!("sage-codex-provision-{}", Uuid::new_v4()));
+        fs::create_dir_all(&base).unwrap();
+        let base = base.canonicalize().unwrap();
         let source = base.join("offline-source");
         let package_target = base.join("managed").join("package");
         let state_target = base.join("state").join("codex-app-server-fixture");

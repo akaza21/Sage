@@ -67,6 +67,8 @@ impl CustomPackage {
     fn with_paths(paths: Vec<PathBuf>) -> Self {
         assert_eq!(paths.len(), EXPECTED_FILE_COUNT);
         let base = std::env::temp_dir().join(format!("sage-codex-bounds-{}", Uuid::new_v4()));
+        fs::create_dir(&base).unwrap();
+        let base = base.canonicalize().unwrap();
         let package = base.join("package");
         let digest =
             decode_digest("ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb")
@@ -110,6 +112,8 @@ impl Drop for CustomPackage {
 impl TestPackage {
     fn new() -> Self {
         let base = std::env::temp_dir().join(format!("sage-codex-physical-{}", Uuid::new_v4()));
+        fs::create_dir(&base).unwrap();
+        let base = base.canonicalize().unwrap();
         let package = base.join("package");
         for (relative, bytes, _) in FIXTURE_FILES {
             let path = package.join(relative);
