@@ -40,6 +40,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "beta0001-source-functional-profile.node-test.mjs",
   "budget-lanes.node-test.mjs",
   "check-lanes.portable.node-test.mjs",
+  "ci-rust-phase.node-test.mjs",
   "css-highlight-policy.node-test.mjs",
   "css-hygiene-policy.node-test.mjs",
   "generate-source-manifest.node-test.mjs",
@@ -368,6 +369,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "check-lanes.native-posix.node-test.mjs",
     reason:
       "Native-POSIX successor lane for the Unix process-group escalation proof plus the Darwin arm of the contention proof.",
+  },
+  {
+    file: "ci-rust-phase.node-test.mjs",
+    reason:
+      "Portable Rust-matrix workflow source contract; reads the committed YAML only and requires no native capability.",
   },
   {
     file: "source-functional-av01-preview.node-test.mjs",

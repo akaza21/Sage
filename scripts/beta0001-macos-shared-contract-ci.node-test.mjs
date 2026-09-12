@@ -42,7 +42,6 @@ test("BETA-0001 macOS CI compiles and tests the named shared contracts", async (
   for (const command of [
     "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
     "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
-    "cargo test --manifest-path src-tauri/Cargo.toml",
     "cargo check --manifest-path src-tauri/Cargo.toml --release --lib",
   ]) {
     assert.ok(
