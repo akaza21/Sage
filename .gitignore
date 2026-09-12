@@ -39,3 +39,4 @@ npm-debug.log*
 
 # Local Cargo target location is a per-machine choice, never tracked.
 /.cargo/config.toml
+/.cargo/config

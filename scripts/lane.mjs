@@ -16,7 +16,7 @@
 // writers never share build locks. `done` deletes both.
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -70,6 +70,18 @@ const branchOf = (t) => `lane/${t}`;
 const pathOf = (t) => join(workDir, t);
 const targetOf = (t) => join(cargoDir, t);
 
+// Untracked per-worktree Cargo config (gitignored) so interactive builds and
+// `lane done` share one target. TOML literal string: no escaping needed.
+function writeCargoConfig(worktree, target) {
+  mkdirSync(join(worktree, ".cargo"), { recursive: true });
+  writeFileSync(
+    join(worktree, ".cargo", "config.toml"),
+    `[build]
+target-dir = '${target}'
+`,
+  );
+}
+
 function ensureMainClean() {
   if (git(["branch", "--show-current"]) !== "main")
     throw new Error("canonical checkout must be on main");
@@ -86,6 +98,7 @@ switch (cmd) {
     if (existsSync(path)) throw new Error(`${path} already exists`);
     git(["worktree", "add", "-b", branchOf(ticket), path, "origin/main"]);
     console.log(`worktree ${path} on ${branchOf(ticket)} from origin/main`);
+    writeCargoConfig(path, targetOf(ticket));
     run("npm", ["ci", "--no-audit", "--no-fund"], path);
     console.log(
       `\nlane ready:\n  cd ${path}\n  set CARGO_TARGET_DIR=${targetOf(ticket)}\n  npm run gate:fast`,

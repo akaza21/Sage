@@ -88,16 +88,20 @@ npm run lane new X    # one-writer worktree for ticket X; `lane done X` integrat
 ```
 
 The Cargo target directory is a per-machine choice and is never tracked.
-Set `CARGO_TARGET_DIR` in your environment, or create an untracked
-`.cargo/config.toml` (gitignored) such as:
+Either set `CARGO_TARGET_DIR` in the shell you build from, or create an
+untracked `.cargo/config.toml` in the checkout (gitignored; TOML literal
+string, so backslashes need no escaping):
 
 ```toml
 [build]
-target-dir = "C:\Sage-build\target"
+target-dir = 'C:\Sage-build\target'
 ```
 
-`npm run lane` gives every ticket worktree its own target under
-`D:SageCachescargo-target<ticket>`. CI runners use Cargo's default.
+`npm run lane new <ticket>` writes that file into the new worktree pointing
+at `C:\SageCaches\cargo-target\<ticket>`, and `lane done` uses the same
+directory for its gate, so a ticket never shares a target with another
+writer. The `npm run check:*` wrappers use their own `SAGE_CARGO_TARGET_DIR`
+(see WORKFLOW.md). CI runners use Cargo's default.
 
 After the native prerequisites are installed:
 
