@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   CHECK_LANES_EXPECTED_ORIGIN_LINES,
@@ -208,7 +209,7 @@ test("posix sub-lanes separate Linux escalation from the Darwin capability gate"
   assert.ok(!("skip" in laneGate("posix-darwin", "linux")));
   const posixFile = NATIVE_POSIX_BUDGET_TESTS[0];
   const body = await readFile(
-    path.join(path.dirname(new URL(import.meta.url).pathname), posixFile),
+    path.join(path.dirname(fileURLToPath(import.meta.url)), posixFile),
     "utf8",
   );
   const declared = extractDeclaredTestTitles(body, posixFile);
