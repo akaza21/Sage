@@ -20,6 +20,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The source-functional attestation test resolves the candidate commit
+          # named by the committed attestation manifest; that commit is an
+          # ancestor of HEAD and is absent from a depth-1 checkout.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
