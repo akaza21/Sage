@@ -367,26 +367,37 @@ mod tests {
         marked(&profile_root);
         fs::create_dir_all(&project_root).unwrap();
 
-        let profile = resolve_launch_profile(
+        let result = resolve_launch_profile(
             Some(profile_root.as_os_str()),
             Some(project_root.as_os_str()),
             normal_durable,
             normal_webview,
-        )
-        .unwrap();
+        );
 
-        let canonical = profile_root.canonicalize().unwrap();
-        assert_eq!(profile.durable_dir(), canonical.join("durable"));
-        assert_eq!(
-            profile.webview_dir(),
-            Some(canonical.join("webview").as_path())
-        );
-        assert_eq!(
-            profile.project_root(),
-            Some(project_root.canonicalize().unwrap().as_path())
-        );
-        assert!(profile.durable_dir().is_dir());
-        assert!(profile.webview_dir().unwrap().is_dir());
+        #[cfg(target_os = "macos")]
+        {
+            let error = result.expect_err("macOS disposable profiles are unsupported");
+            assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+            assert!(!profile_root.join("durable").exists());
+            assert!(!profile_root.join("webview").exists());
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let profile = result.unwrap();
+            let canonical = profile_root.canonicalize().unwrap();
+            assert_eq!(profile.durable_dir(), canonical.join("durable"));
+            assert_eq!(
+                profile.webview_dir(),
+                Some(canonical.join("webview").as_path())
+            );
+            assert_eq!(
+                profile.project_root(),
+                Some(project_root.canonicalize().unwrap().as_path())
+            );
+            assert!(profile.durable_dir().is_dir());
+            assert!(profile.webview_dir().unwrap().is_dir());
+        }
         fs::remove_dir_all(profile_root).unwrap();
         fs::remove_dir_all(project_root).unwrap();
     }

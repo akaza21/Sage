@@ -566,37 +566,84 @@ mod tests {
         assert!(select_text_lines(source, None, Some(0)).is_err());
     }
 
+    #[test]
+    fn directory_ingress_rejects_backslash_resource_paths_portably() {
+        let (root, workspace) = fixture_workspace();
+        let error = workspace
+            .list_directory(&ResourceRef {
+                root_id: "root-test".into(),
+                relative_path: "back\\slash.txt".into(),
+            })
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            AppError::InvalidRequest(message)
+                if message.contains("canonical root-relative spelling")
+        ));
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[cfg(unix)]
     #[test]
-    fn directory_ingress_rejects_backslash_and_non_utf8_names() {
+    fn directory_listing_rejects_backslash_entry_before_resource_egress() {
+        let (root, workspace) = fixture_workspace();
+        let unsupported = root.join("back\\slash.txt");
+        fs::write(&unsupported, "unsupported\n").unwrap();
+
+        let error = workspace
+            .list_directory(&ResourceRef {
+                root_id: "root-test".into(),
+                relative_path: String::new(),
+            })
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            AppError::InvalidRequest(message)
+                if message.contains("canonical root-relative spelling")
+        ));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    fn filesystem_rejected_invalid_name(error: &std::io::Error) -> bool {
+        const LINUX_EILSEQ: i32 = 84;
+        error.kind() == std::io::ErrorKind::InvalidFilename
+            || error.raw_os_error() == Some(LINUX_EILSEQ)
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn directory_ingress_rejects_linux_non_utf8_names() {
         use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
         let (root, workspace) = fixture_workspace();
-        fs::write(root.join("back\\slash.txt"), "unsupported\n").unwrap();
-        assert!(
-            workspace
-                .list_directory(&ResourceRef {
-                    root_id: "root-test".into(),
-                    relative_path: String::new(),
-                })
-                .unwrap_err()
-                .to_string()
-                .contains("canonical root-relative spelling")
-        );
-        fs::remove_file(root.join("back\\slash.txt")).unwrap();
-        for bytes in [b"non-utf8-\xff".to_vec(), b"non-utf8-\xfe".to_vec()] {
-            fs::write(root.join(OsString::from_vec(bytes)), "unsupported\n").unwrap();
+        let unsupported = root.join(OsString::from_vec(b"non-utf8-\xff".to_vec()));
+        match fs::write(&unsupported, "unsupported\n") {
+            Ok(()) => {}
+            Err(error) if filesystem_rejected_invalid_name(&error) => {
+                eprintln!(
+                    "skipping raw invalid-byte entry fixture: filesystem rejected the test name: {error}"
+                );
+                fs::remove_dir_all(root).unwrap();
+                return;
+            }
+            Err(error) => {
+                let cleanup = fs::remove_dir_all(&root);
+                panic!(
+                    "raw invalid-byte entry setup failed unexpectedly: {error}; cleanup: {cleanup:?}"
+                );
+            }
         }
-        assert!(
-            workspace
-                .list_directory(&ResourceRef {
-                    root_id: "root-test".into(),
-                    relative_path: String::new(),
-                })
-                .unwrap_err()
-                .to_string()
-                .contains("not valid UTF-8")
-        );
+        let error = workspace
+            .list_directory(&ResourceRef {
+                root_id: "root-test".into(),
+                relative_path: String::new(),
+            })
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            AppError::InvalidRequest(message) if message.contains("not valid UTF-8")
+        ));
         fs::remove_dir_all(root).unwrap();
     }
 

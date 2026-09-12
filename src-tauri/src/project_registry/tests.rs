@@ -271,7 +271,14 @@ fn project_limit_is_rejected_without_losing_the_registry() {
     assert_eq!(database.project_count().unwrap(), MAX_PROJECTS);
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
+fn filesystem_rejected_invalid_name(error: &std::io::Error) -> bool {
+    const LINUX_EILSEQ: i32 = 84;
+    error.kind() == std::io::ErrorKind::InvalidFilename
+        || error.raw_os_error() == Some(LINUX_EILSEQ)
+}
+
+#[cfg(target_os = "linux")]
 #[test]
 fn non_utf8_selected_root_is_rejected_before_sqlite_persistence() {
     use std::{ffi::OsString, os::unix::ffi::OsStringExt};
@@ -280,7 +287,16 @@ fn non_utf8_selected_root_is_rejected_before_sqlite_persistence() {
     let root = folders
         .base
         .join(OsString::from_vec(b"invalid-\xff".to_vec()));
-    fs::create_dir_all(&root).unwrap();
+    match fs::create_dir(&root) {
+        Ok(()) => {}
+        Err(error) if filesystem_rejected_invalid_name(&error) => {
+            eprintln!(
+                "skipping raw invalid-byte root fixture: filesystem rejected the test name: {error}"
+            );
+            return;
+        }
+        Err(error) => panic!("raw invalid-byte root setup failed unexpectedly: {error}"),
+    }
     let database = Database::open(Path::new(":memory:")).unwrap();
 
     assert!(matches!(
@@ -288,6 +304,20 @@ fn non_utf8_selected_root_is_rejected_before_sqlite_persistence() {
         Err(AppError::InvalidRequest(_))
     ));
     assert_eq!(database.project_count().unwrap(), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn non_utf8_selected_root_is_rejected_at_portable_persistence_boundary() {
+    use std::{ffi::OsString, os::unix::ffi::OsStringExt};
+
+    // macOS CI must not require the kernel/filesystem to create this fixture.
+    // The production persistence boundary still rejects its raw path bytes.
+    let root = PathBuf::from(OsString::from_vec(b"invalid-\xff".to_vec()));
+    assert!(matches!(
+        persisted_path_text(&root),
+        Err(AppError::InvalidRequest(message)) if message.contains("not valid UTF-8")
+    ));
 }
 
 #[test]

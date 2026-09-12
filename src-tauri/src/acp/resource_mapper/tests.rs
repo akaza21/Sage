@@ -352,20 +352,29 @@ fn windows_case_alias_maps_to_actual_root_relative_casing() {
     assert_eq!(mapped.relative_path.as_str(), "SourceCase/FileCase.RS");
 }
 
-#[cfg(not(windows))]
+#[cfg(unix)]
 #[test]
-fn case_variant_is_not_an_alias_on_case_sensitive_test_filesystems() {
+fn case_variant_follows_actual_filesystem_case_behavior() {
     let tree = TempTree::new();
     let project = tree.path().join("project");
     fs::create_dir(&project).unwrap();
     fs::write(project.join("ActualCase.rs"), "content").unwrap();
     let project = project.canonicalize().unwrap();
     let mapper = NativeResourceMapper::new([root("root-one", project.clone())]).unwrap();
+    let variant = project.join("actualcase.rs");
+    let variant_text = native(&variant);
+    let mapped = mapper.try_map_existing(&variant_text);
 
-    assert_eq!(
-        mapper.try_map_existing(&native(&project.join("actualcase.rs"))),
-        Err(ResourceMapError::PathMissing)
-    );
+    match variant.canonicalize() {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            assert_eq!(mapped, Err(ResourceMapError::PathMissing));
+        }
+        Ok(actual) if actual.to_str() == Some(variant_text.as_str()) => {
+            assert_eq!(mapped.unwrap().relative_path.as_str(), "actualcase.rs");
+        }
+        Ok(_) => assert_eq!(mapped, Err(ResourceMapError::PathNotCanonical)),
+        Err(error) => panic!("case-variant probe failed: {error}"),
+    }
     assert_eq!(
         mapper
             .try_map_existing(&native(&project.join("ActualCase.rs")))
