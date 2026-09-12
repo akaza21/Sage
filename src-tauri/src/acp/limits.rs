@@ -1,5 +1,5 @@
 use serde::Serialize;
-mod preview;
+pub(crate) mod preview;
 pub(crate) use preview::PREVIEW_LIMITS;
 
 pub(crate) const RETAINED_TOOL_OUTPUT_LINES: usize = 200;

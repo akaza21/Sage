@@ -235,10 +235,12 @@ impl<T> ReservedQueue<T> {
 /// The sole outbound queue for adapter payloads. Capacity accounts for the
 /// delimiter that `FrameWriter` appends, so retained wire bytes cannot exceed
 /// the frozen egress ceiling.
+#[allow(dead_code, reason = "fixture-only bounded egress queue")]
 pub(crate) struct EgressQueue {
     frames: ReservedQueue<OutboundFrame>,
 }
 
+#[allow(dead_code, reason = "fixture-only bounded egress queue")]
 impl EgressQueue {
     pub(crate) fn new() -> Result<Self, QueueError> {
         Self::with_limits(

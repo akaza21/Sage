@@ -139,6 +139,11 @@ describe("Agent center workbench window mode seam", () => {
         { name: "Agent" },
       ),
     );
+    // Agent surfaces are lazy. Settle that module under React act before
+    // asserting ownership, rather than relying on suite-load polling.
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
 
     await vi.waitFor(() => {
       expect(

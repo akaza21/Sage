@@ -116,6 +116,7 @@ impl IncrementalFrameDecoder {
 
     /// Discards all buffered state so a caller can explicitly reuse the
     /// decoder after terminating a malformed stream.
+    #[allow(dead_code, reason = "adapter framing reset seam")]
     pub(crate) fn reset(&mut self) {
         self.assembly.clear();
         self.pending.clear();
@@ -184,12 +185,14 @@ impl IncrementalFrameDecoder {
     }
 }
 
+#[allow(dead_code, reason = "adapter framing reader seam")]
 pub(crate) struct FrameReader<R> {
     input: R,
     read_buffer: [u8; READ_CHUNK_BYTES],
     decoder: IncrementalFrameDecoder,
 }
 
+#[allow(dead_code, reason = "adapter framing reader seam")]
 impl<R: AsyncRead + Unpin> FrameReader<R> {
     pub(crate) fn new(input: R) -> Self {
         Self {

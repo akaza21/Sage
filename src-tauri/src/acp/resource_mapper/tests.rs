@@ -108,6 +108,33 @@ fn rejects_a_resource_with_nested_root_membership() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn internal_symlink_alias_is_rejected_before_nested_root_selection_in_either_order() {
+    use std::os::unix::fs::symlink;
+
+    let tree = TempTree::new();
+    let outer = tree.path().join("outer");
+    let nested = outer.join("nested");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(nested.join("dirty.txt"), "disk").unwrap();
+    symlink("nested", outer.join("alias")).unwrap();
+    let outer = outer.canonicalize().unwrap();
+    let nested = nested.canonicalize().unwrap();
+    let alias = native(&outer.join("alias/dirty.txt"));
+
+    for roots in [
+        vec![root("outer", outer.clone()), root("nested", nested.clone())],
+        vec![root("nested", nested.clone()), root("outer", outer.clone())],
+    ] {
+        let mapper = NativeResourceMapper::new(roots).unwrap();
+        assert_eq!(
+            mapper.try_map_existing(&alias),
+            Err(ResourceMapError::PathNotCanonical)
+        );
+    }
+}
+
 #[test]
 fn shared_mapper_preserves_each_typed_unavailable_reason() {
     let tree = TempTree::new();
@@ -188,6 +215,56 @@ fn rejects_dot_repeated_separator_and_symlink_alias_ingress() {
         assert_eq!(
             mapper.try_map_existing(&native(&project.join("escape.rs"))),
             Err(ResourceMapError::PathNotCanonical)
+        );
+    }
+}
+
+#[test]
+fn admission_revalidation_rejects_same_root_leaf_replacement() {
+    let tree = TempTree::new();
+    let project = tree.path().join("project");
+    fs::create_dir(&project).unwrap();
+    let target = project.join("target.txt");
+    fs::write(&target, "admitted").unwrap();
+    let project = project.canonicalize().unwrap();
+    let mapper = NativeResourceMapper::new([root("root", project.clone())]).unwrap();
+    let admission = mapper.try_admit_existing(&native(&target)).unwrap();
+
+    let replacement = project.join("replacement.txt");
+    fs::write(&replacement, "replacement").unwrap();
+    fs::rename(replacement, &target).unwrap();
+
+    let fresh = NativeResourceMapper::new([root("root", project)]).unwrap();
+    assert_eq!(
+        fresh.revalidate_admission(&admission),
+        Err(ResourceMapError::IdentityChanged)
+    );
+}
+
+#[test]
+fn admission_revalidation_rejects_new_nested_root_in_either_order() {
+    let tree = TempTree::new();
+    let outer = tree.path().join("outer");
+    let nested = outer.join("nested");
+    fs::create_dir_all(&nested).unwrap();
+    let target = nested.join("target.txt");
+    fs::write(&target, "admitted").unwrap();
+    let outer = outer.canonicalize().unwrap();
+    let nested = nested.canonicalize().unwrap();
+    let admission = NativeResourceMapper::new([root("outer", outer.clone())])
+        .unwrap()
+        .try_admit_existing(&native(&target))
+        .unwrap();
+
+    for roots in [
+        vec![root("outer", outer.clone()), root("nested", nested.clone())],
+        vec![root("nested", nested.clone()), root("outer", outer.clone())],
+    ] {
+        assert_eq!(
+            NativeResourceMapper::new(roots)
+                .unwrap()
+                .revalidate_admission(&admission),
+            Err(ResourceMapError::IdentityChanged)
         );
     }
 }

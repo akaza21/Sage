@@ -1,22 +1,256 @@
-use std::path::PathBuf;
+use std::{
+    fs, io,
+    path::PathBuf,
+    pin::Pin,
+    task::{Context, Poll},
+};
+
+use tokio::io::AsyncWrite;
 
 use serde_json::{Value, json};
+use uuid::Uuid;
 
 use super::*;
 use crate::acp::{
-    contract::SageRootId,
+    contract::{
+        ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageRootId,
+    },
     intent::{
         IMAGE_BASE64_MAX, ImageMediaType, NormalizedPayload, SafeResourceRef, ToolCategory,
         UnavailableResourceReason,
     },
     lifecycle::{ItemLifecycle, ToolState, TurnState},
     limits::LIMITS,
+    runtime::read_text_file::{DeferredReadTextOwnerResolver, ExpectedOwnerScope},
+    service::{
+        DiskAllowedState, ReadTextClassification, ReadTextFileService, ReadTextFlushAck,
+        ReadTextFlushState, ReadTextOwner,
+    },
+    transport::{DeadlineAsyncWriter, FrameReader},
 };
+
+struct P02Capture(Vec<u8>);
+impl AsyncWrite for P02Capture {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        _: &mut Context<'_>,
+        bytes: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        self.0.extend_from_slice(bytes);
+        Poll::Ready(Ok(bytes.len()))
+    }
+    fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+    fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
+struct P02Owner(ReadTextOwner);
+impl DeferredReadTextOwnerResolver for P02Owner {
+    fn owner_for_external_session(
+        &self,
+        session: &str,
+        expected: &ExpectedOwnerScope,
+    ) -> Option<ReadTextOwner> {
+        (session == "claude-session-1" && expected.owner == self.0).then(|| self.0.clone())
+    }
+}
+
+fn p02_frame(value: Value) -> crate::acp::transport::Frame {
+    let mut bytes = serde_json::to_vec(&value).unwrap();
+    bytes.push(b'\n');
+    tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(FrameReader::new(bytes.as_slice()).read_frame())
+        .unwrap()
+        .unwrap()
+}
+
+fn open_p02_claude_session(runtime: &mut super::runtime::ClaudeRuntime) {
+    use crate::acp::bindings::adapter::{AdapterCommand, EgressResolution, HarnessAdapter};
+    let initialize = runtime.command(AdapterCommand::Initialize).unwrap();
+    let initialize_id =
+        serde_json::from_slice::<Value>(initialize.frame().payload()).unwrap()["id"]
+            .as_u64()
+            .unwrap();
+    runtime
+        .resolve_egress(initialize.into_token(), EgressResolution::Queued)
+        .unwrap();
+    runtime
+        .ingest(
+            &p02_frame(json!({
+                "jsonrpc":"2.0", "id":initialize_id, "result": {
+                    "protocolVersion":1, "agentCapabilities":{},
+                    "models":[{"id":"claude-reviewed","name":"Claude"}]
+                }
+            })),
+            &FixtureResources,
+        )
+        .unwrap();
+    let session = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\fixture\root".into(),
+            model: None,
+        })
+        .unwrap();
+    let session_id = serde_json::from_slice::<Value>(session.frame().payload()).unwrap()["id"]
+        .as_u64()
+        .unwrap();
+    runtime
+        .resolve_egress(session.into_token(), EgressResolution::Written)
+        .unwrap();
+    runtime
+        .ingest(
+            &p02_frame(json!({
+                "jsonrpc":"2.0", "id":session_id,
+                "result":{"sessionId":"claude-session-1"}
+            })),
+            &FixtureResources,
+        )
+        .unwrap();
+}
+
+#[test]
+fn p02_claude_real_ingress_preflights_routes_service_and_preserves_string_id() {
+    let root = std::env::temp_dir().join(format!("sage-p02-claude-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("file.txt"), "one\ntwo\n").unwrap();
+    let database = crate::persistence::Database::open(":memory:".as_ref()).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let owner = ReadTextOwner {
+        project_id: SageProjectId::parse(&project.id).unwrap(),
+        project_generation: ProjectGeneration::new(1).unwrap(),
+        chat_id: SageChatId::parse("chat-p02").unwrap(),
+        session_id: SageAgentSessionId::parse("session-claude-runtime").unwrap(),
+        runtime_epoch: RuntimeEpoch::new(3).unwrap(),
+    };
+    let service = ReadTextFileService::new(database);
+    let expected = ExpectedOwnerScope {
+        binding_digest: [7; 32],
+        owner: owner.clone(),
+    };
+    let request = format!(
+        r#"{{"jsonrpc":"2.0","id":"claude-7","method":"fs/read_text_file","params":{{"sessionId":"claude-session-1","path":"{}","line":2,"limit":1,"_meta":{{"opaque":true}}}}}}"#,
+        root.join("file.txt").display()
+    );
+    let mut bytes = request.as_bytes().to_vec();
+    bytes.push(b'\n');
+    let frame = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(FrameReader::new(bytes.as_slice()).read_frame())
+        .unwrap()
+        .unwrap();
+    let mut runtime = super::runtime::ClaudeRuntime::fixture();
+    open_p02_claude_session(&mut runtime);
+    let handoff = runtime
+        .ingest_deferred_read_text_file(&frame, &expected, &P02Owner(owner.clone()), &service)
+        .unwrap();
+    for state in [
+        ReadTextFlushState::Classify {
+            state: ReadTextClassification::NotOpen,
+            editor_revision: None,
+        },
+        ReadTextFlushState::DiskAllowed {
+            state: DiskAllowedState::NotOpen,
+            editor_revision: None,
+        },
+    ] {
+        service
+            .acknowledge(ReadTextFlushAck {
+                owner: handoff.begin.event.owner.clone(),
+                resource: handoff.begin.event.resource.clone(),
+                expected_editor_revision: handoff.begin.event.expected_editor_revision,
+                token: handoff.begin.event.token.clone().into(),
+                state,
+            })
+            .unwrap();
+    }
+    let mut egress = DeadlineAsyncWriter::new(P02Capture(Vec::new()));
+    let receipt = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(
+            handoff
+                .begin
+                .receiver
+                .blocking_receive()
+                .unwrap()
+                .deliver_response(&handoff.request_id, &mut egress),
+        )
+        .unwrap();
+    let bytes = egress.into_inner().0;
+    assert!(
+        serde_json::to_string(&receipt.receipt().payload)
+            .unwrap()
+            .contains("outcome=success")
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&bytes[..bytes.len() - 1]).unwrap(),
+        json!({"jsonrpc":"2.0","id":"claude-7","result":{"content":"two\n"}})
+    );
+    for malformed in [
+        request.replace("\"id\":\"claude-7\"", "\"id\":1.5"),
+        request.replace("\"id\":\"claude-7\"", "\"id\":9223372036854775808"),
+        request.replace("\"_meta\":{\"opaque\":true}", "\"_meta\":true"),
+        request.replace("\"claude-session-1\"", "\"foreign-session\""),
+    ] {
+        let frame = p02_frame(serde_json::from_str(&malformed).unwrap());
+        assert!(
+            runtime
+                .ingest_deferred_read_text_file(
+                    &frame,
+                    &expected,
+                    &P02Owner(owner.clone()),
+                    &service
+                )
+                .is_err()
+        );
+    }
+    // Every immutable runtime and owner-scope field is independently bound.
+    let frame = p02_frame(serde_json::from_str(&request).unwrap());
+    let mut wrong_binding = expected.clone();
+    wrong_binding.binding_digest = [8; 32];
+    let mut wrong_project = expected.clone();
+    wrong_project.owner.project_id = SageProjectId::parse("project-other").unwrap();
+    let mut wrong_generation = expected.clone();
+    wrong_generation.owner.project_generation = ProjectGeneration::new(2).unwrap();
+    let mut wrong_chat = expected.clone();
+    wrong_chat.owner.chat_id = SageChatId::parse("chat-other").unwrap();
+    let mut wrong_session = expected.clone();
+    wrong_session.owner.session_id = SageAgentSessionId::parse("session-other").unwrap();
+    let mut wrong_epoch = expected.clone();
+    wrong_epoch.owner.runtime_epoch = RuntimeEpoch::new(4).unwrap();
+    for scope in [
+        wrong_binding,
+        wrong_project,
+        wrong_generation,
+        wrong_chat,
+        wrong_session,
+        wrong_epoch,
+    ] {
+        assert!(
+            runtime
+                .ingest_deferred_read_text_file(&frame, &scope, &P02Owner(owner.clone()), &service)
+                .is_err()
+        );
+    }
+    fs::remove_dir_all(root).unwrap();
+}
 
 const PNG_1X1: &str =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
 
 struct FixtureResources;
+
+impl crate::acp::bindings::adapter::ResourceMapper for FixtureResources {
+    fn map_existing(
+        &self,
+        absolute_path: &str,
+    ) -> Result<SafeResourceRef, UnavailableResourceReason> {
+        self.map_absolute(absolute_path)
+    }
+}
 
 impl ResourceMapper for FixtureResources {
     fn map_absolute(

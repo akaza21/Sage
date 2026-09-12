@@ -48,7 +48,7 @@ impl OmpTranslator {
             json!({
                 "protocolVersion": 1,
                 "clientCapabilities": {
-                    "fs": {"readTextFile": false, "writeTextFile": false},
+                    "fs": {"readTextFile": true, "writeTextFile": false},
                     "terminal": false
                 },
                 "clientInfo": {"name": "Sage", "title": "Sage", "version": "0"}

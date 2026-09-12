@@ -496,4 +496,29 @@ describe("ACP desktop bridge", () => {
     dispose();
     expect(unlisten).toHaveBeenCalledOnce();
   });
+
+  it("invokes the exact native P-02 acknowledgement envelope", async () => {
+    invokeMock.mockResolvedValue(undefined);
+    const ack = {
+      owner: {
+        projectId: "project-a",
+        projectGeneration: "7",
+        chatId: "chat-a",
+        sessionId: "session-a",
+        runtimeEpoch: "2",
+      },
+      resource: { rootId: "root-a", relativePath: "file.txt" },
+      expectedEditorRevision: null,
+      token: "p02-1",
+      state: {
+        kind: "diskAllowed" as const,
+        state: "notOpen" as const,
+        editorRevision: null,
+      },
+    };
+    await acpDesktop.acknowledgeReadTextFileFlush(ack);
+    expect(invokeMock).toHaveBeenCalledWith("acknowledge_acp_read_text_file", {
+      ack,
+    });
+  });
 });

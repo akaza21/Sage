@@ -11,13 +11,22 @@ use crate::acp::{
 };
 
 pub(super) trait CodexOperationCancellation: Send + Sync {
-    fn request_parent_shutdown(&self) -> Result<(), CodexDiscoveryRunError>;
+    fn request_parent_shutdown_until(
+        &self,
+        deadline: Instant,
+    ) -> Result<(), CodexDiscoveryRunError>;
 }
 
 struct TreeCancellation(TreeControl);
 
 impl CodexOperationCancellation for TreeCancellation {
-    fn request_parent_shutdown(&self) -> Result<(), CodexDiscoveryRunError> {
+    fn request_parent_shutdown_until(
+        &self,
+        deadline: Instant,
+    ) -> Result<(), CodexDiscoveryRunError> {
+        if Instant::now() >= deadline {
+            return Err(CodexDiscoveryRunError::Timeout);
+        }
         self.0
             .request_termination(TreeExit::ParentShutdown)
             .map_err(|_| CodexDiscoveryRunError::Cleanup)
@@ -217,12 +226,35 @@ impl CodexOperationGate {
         cancellation.and(self.wait_for_idle(timeout, was_running))
     }
 
-    pub(super) fn invalidate_ephemeral_and_wait(
+    /// Project replacement owns this absolute deadline before cancellation is
+    /// dispatched. Invalidation and idle settlement both consume that one
+    /// budget; no later layer may mint a fresh relative timeout.
+    pub(super) fn invalidate_ephemeral_and_wait_until(
         &self,
-        timeout: Duration,
+        deadline: Instant,
     ) -> Result<(), CodexDiscoveryRunError> {
-        let (was_running, cancellation) = self.invalidate_ephemeral();
-        cancellation.and(self.wait_for_idle(timeout, was_running))
+        if Instant::now() >= deadline {
+            return Err(CodexDiscoveryRunError::Timeout);
+        }
+        self.invalidation_epoch.fetch_add(1, Ordering::AcqRel);
+        let (was_running, cancellation) = {
+            let mut active = self
+                .active
+                .lock()
+                .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
+            if !active.running || active.class == Some(OperationClass::Live) {
+                (false, None)
+            } else {
+                active.cancel_requested = true;
+                (true, active.cancellation.clone())
+            }
+        };
+        // Cancellation may call back into gate observation, so it must run
+        // after releasing `active` and under the same caller-owned deadline.
+        if let Some(cancellation) = cancellation {
+            cancellation.request_parent_shutdown_until(deadline)?;
+        }
+        self.wait_until(deadline, was_running)
     }
 
     pub(super) fn shutdown(&self, timeout: Duration) -> Result<(), CodexDiscoveryRunError> {
@@ -249,7 +281,10 @@ impl CodexOperationGate {
             }
             Err(_) => return (true, Err(CodexDiscoveryRunError::Cleanup)),
         };
-        let result = cancellation.map_or(Ok(()), |value| value.request_parent_shutdown());
+        let deadline = Instant::now() + Duration::from_millis(1);
+        let result = cancellation.map_or(Ok(()), |value| {
+            value.request_parent_shutdown_until(deadline)
+        });
         (true, result)
     }
 
@@ -273,7 +308,7 @@ impl CodexOperationGate {
             }
         };
         let result = cancellation.map_or(Ok(()), |cancellation| {
-            cancellation.request_parent_shutdown()
+            cancellation.request_parent_shutdown_until(Instant::now() + Duration::from_millis(1))
         });
         (true, result)
     }
@@ -283,12 +318,20 @@ impl CodexOperationGate {
         timeout: Duration,
         require_settlement: bool,
     ) -> Result<(), CodexDiscoveryRunError> {
-        if !require_settlement {
-            return Ok(());
-        }
         let deadline = Instant::now()
             .checked_add(timeout)
             .ok_or(CodexDiscoveryRunError::Timeout)?;
+        self.wait_until(deadline, require_settlement)
+    }
+
+    fn wait_until(
+        &self,
+        deadline: Instant,
+        require_settlement: bool,
+    ) -> Result<(), CodexDiscoveryRunError> {
+        if !require_settlement {
+            return Ok(());
+        }
         let mut active = self
             .active
             .lock()
@@ -349,7 +392,10 @@ mod tests {
     }
 
     impl CodexOperationCancellation for TestCancellation {
-        fn request_parent_shutdown(&self) -> Result<(), CodexDiscoveryRunError> {
+        fn request_parent_shutdown_until(
+            &self,
+            _deadline: Instant,
+        ) -> Result<(), CodexDiscoveryRunError> {
             self.requested.store(true, Ordering::Release);
             Ok(())
         }
@@ -404,7 +450,7 @@ mod tests {
         active.register_cancellation(cancellation.clone()).unwrap();
 
         assert_eq!(
-            gate.invalidate_ephemeral_and_wait(Duration::from_millis(10)),
+            gate.invalidate_ephemeral_and_wait_until(Instant::now() + Duration::from_millis(10)),
             Ok(())
         );
         assert!(!cancellation.requested.load(Ordering::Acquire));

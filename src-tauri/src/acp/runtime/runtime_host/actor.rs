@@ -42,7 +42,14 @@ impl<E: RuntimeEngine> Actor<E> {
     pub(super) fn run(mut self, mailbox: &HostMailbox) {
         while let Some(envelope) = mailbox.wait_next() {
             let stop = matches!(envelope.command, HostCommand::Shutdown);
-            let result = self.dispatch(envelope.command, envelope.deadline);
+            // Defense in depth: mailbox dequeue and actor dispatch are
+            // separate scheduling points, so queued expiry must be checked at
+            // both boundaries using the caller's original absolute deadline.
+            let result = if Instant::now() >= envelope.deadline {
+                Err(HostError::Deadline)
+            } else {
+                self.dispatch(envelope.command, envelope.deadline)
+            };
             let stopped = stop && matches!(result, Ok(HostReply::Outcome(HostOutcome::Shutdown)));
             let _ = envelope.reply.send(result);
             if stopped {

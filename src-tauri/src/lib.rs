@@ -1,4 +1,10 @@
 pub mod acp;
+// These four real-process lifecycle tests share OS scheduling and child-reaping
+// resources. Hold this guard outside their runtimes, through runtime shutdown;
+// all other tests remain parallel. Logical capacity pools stay test-local.
+#[cfg(test)]
+static SERIAL_PROCESS_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 mod app_preview_commands;
 mod chat_archive;
 mod chat_archive_commands;
@@ -304,6 +310,7 @@ pub fn run() {
             commands::acp::cancel_acp_turn,
             commands::acp::close_acp_session,
             commands::acp::permission::resolve_permission_decision,
+            commands::acp::read_text_file::acknowledge_acp_read_text_file,
             commands::acp::edit_disposition::record_agent_edit_disposition,
             workspace::search::command::search_workspace,
             workspace::search::command::cancel_workspace_search,

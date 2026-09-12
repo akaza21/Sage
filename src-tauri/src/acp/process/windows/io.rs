@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
@@ -9,7 +9,6 @@ use crate::acp::limits::LIMITS;
 use crate::acp::redaction::{SafeDiagnostic, SafeStderrDiagnostic, StderrRing};
 use crate::acp::transport::{
     Frame, FrameError, FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame,
-    write_json_line_blocking,
 };
 
 use super::super::supervisor::LaunchError;
@@ -27,7 +26,16 @@ impl StdinEndpoint {
         let Some(output) = self.0.as_mut() else {
             return FrameWriteOutcome::ZeroByteFailure;
         };
-        write_json_line_blocking(output, frame)
+        let payload = frame.payload();
+        match output
+            .write_all(payload)
+            .and_then(|()| output.write_all(b"\n"))
+            .and_then(|()| output.flush())
+        {
+            Ok(()) => FrameWriteOutcome::Complete,
+            Err(_) if payload.is_empty() => FrameWriteOutcome::ZeroByteFailure,
+            Err(_) => FrameWriteOutcome::DeliveryUnknown { bytes_written: 0 },
+        }
     }
 
     pub(crate) fn close(&mut self) {

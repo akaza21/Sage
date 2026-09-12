@@ -824,8 +824,31 @@ function productionLineCount(source) {
   }).length;
 }
 
+const p02LegacySymbols = [
+  "BoundedP02ResponseWriter",
+  "BlockingP02ResponseWriter",
+  "PhysicalWriteControl",
+];
 for (const file of productionFiles) {
   const source = await readFile(path.join(root, file), "utf8");
+  if (p02LegacySymbols.some((symbol) => source.includes(symbol))) {
+    fail(`${file} retains a forbidden legacy P-02 blocking delivery symbol.`);
+  }
+  if (
+    file === "src-tauri/src/acp/service/read_text_file/terminal/delivery.rs" &&
+    source.includes("std::io::Write")
+  ) {
+    fail(
+      `${file} must use sealed asynchronous P-02 egress, not std::io::Write.`,
+    );
+  }
+  if (
+    (file.startsWith("src-tauri/src/acp/service/read_text_file/") ||
+      file.startsWith("src-tauri/src/acp/transport/")) &&
+    source.includes("#![allow(dead_code")
+  ) {
+    fail(`${file} must not use module-wide dead-code suppression.`);
+  }
   const forbiddenRuntimePatterns = [
     ["agent_client_protocol::Builder", "ACP runtime Builder"],
     ["agent_client_protocol::Stdio", "ACP runtime Stdio"],

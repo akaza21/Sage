@@ -114,7 +114,7 @@ impl ClaudeRuntime {
     }
 
     #[cfg(test)]
-    fn fixture() -> Self {
+    pub(super) fn fixture() -> Self {
         Self::new(
             [7; 32],
             RuntimeEpoch::new(3).expect("runtime epoch"),

@@ -1,6 +1,9 @@
 use std::path::{Component, Path, PathBuf};
 
-use crate::project_registry::MAX_ROOTS_PER_PROJECT;
+use crate::{
+    project_registry::MAX_ROOTS_PER_PROJECT,
+    workspace::{RootIdentity, leaf_identity, open_workspace_text_file},
+};
 
 use super::{
     bindings::adapter::ResourceMapper,
@@ -34,12 +37,48 @@ pub(crate) enum ResourceMapError {
     PathMissing,
     ForeignPath,
     AmbiguousRoot,
+    /// A native root or leaf no longer denotes the object admitted at ingress.
+    IdentityChanged,
     InvalidResource,
 }
 
+#[derive(Clone)]
 struct CanonicalRoot {
     root_id: SageRootId,
     native_root: PathBuf,
+    identity: RootIdentity,
+}
+
+/// Native-only proof that binds P-02's logical resource to the root and leaf
+/// identities observed at absolute-path ingress. It must not cross IPC or a
+/// durable receipt boundary.
+#[derive(Clone)]
+pub(crate) struct NativeResourceAdmission {
+    resource: SafeResourceRef,
+    root_identity: RootIdentity,
+    file_identity: RootIdentity,
+    roots: Vec<AdmittedRootIdentity>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct AdmittedRootIdentity {
+    root_id: SageRootId,
+    canonical_native_root: PathBuf,
+    identity: RootIdentity,
+}
+
+impl NativeResourceAdmission {
+    pub(crate) fn resource(&self) -> &SafeResourceRef {
+        &self.resource
+    }
+
+    pub(crate) fn root_identity(&self) -> RootIdentity {
+        self.root_identity
+    }
+
+    pub(crate) fn file_identity(&self) -> RootIdentity {
+        self.file_identity
+    }
 }
 
 /// Immutable per-project root snapshot used by harness adapters. Constructing
@@ -87,9 +126,14 @@ impl NativeResourceMapper {
             }
             canonical_roots.push(CanonicalRoot {
                 root_id: configured.root_id,
+                identity: crate::workspace::root_identity_path(&actual)
+                    .map_err(|_| ResourceMapError::RootMissing)?,
                 native_root: actual,
             });
         }
+        // Root registration order is not authority. A stable ordering makes a
+        // later fresh mapper comparison reject only a real root-set change.
+        canonical_roots.sort_by(|left, right| left.root_id.as_str().cmp(right.root_id.as_str()));
 
         Ok(Self {
             roots: canonical_roots,
@@ -100,6 +144,16 @@ impl NativeResourceMapper {
         &self,
         absolute_path: &str,
     ) -> Result<SafeResourceRef, ResourceMapError> {
+        Ok(self.try_admit_existing(absolute_path)?.resource)
+    }
+
+    /// Maps an existing P-02 path and captures the root/leaf handles' native
+    /// identities. The final handle is the same no-follow component walk used
+    /// for bounded reads, never a canonicalize-then-reopen approximation.
+    pub(crate) fn try_admit_existing(
+        &self,
+        absolute_path: &str,
+    ) -> Result<NativeResourceAdmission, ResourceMapError> {
         validate_path_bytes(absolute_path, false)?;
         let supplied = Path::new(absolute_path);
         if !supplied.is_absolute() {
@@ -129,8 +183,75 @@ impl NativeResourceMapper {
             .strip_prefix(&root.native_root)
             .map_err(|_| ResourceMapError::ForeignPath)?;
         let relative = canonical_relative_path(relative)?;
-        SafeResourceRef::new(root.root_id.clone(), relative)
-            .map_err(|_| ResourceMapError::InvalidResource)
+        let resource = SafeResourceRef::new(root.root_id.clone(), relative)
+            .map_err(|_| ResourceMapError::InvalidResource)?;
+        let file = open_workspace_text_file(
+            &root.native_root,
+            root.identity,
+            resource.relative_path.as_str(),
+            None,
+        )
+        .map_err(|_| ResourceMapError::IdentityChanged)?;
+        let metadata = file
+            .metadata()
+            .map_err(|_| ResourceMapError::IdentityChanged)?;
+        if !metadata.is_file() {
+            return Err(ResourceMapError::PathMissing);
+        }
+        let file_identity =
+            leaf_identity(&file, &metadata).map_err(|_| ResourceMapError::IdentityChanged)?;
+        Ok(NativeResourceAdmission {
+            resource,
+            root_identity: root.identity,
+            file_identity,
+            roots: self
+                .roots
+                .iter()
+                .map(|root| AdmittedRootIdentity {
+                    root_id: root.root_id.clone(),
+                    canonical_native_root: root.native_root.clone(),
+                    identity: root.identity,
+                })
+                .collect(),
+        })
+    }
+
+    /// Verifies an ingress admission using a freshly constructed mapper. This
+    /// intentionally reconstructs only the admitted root plus relative path;
+    /// callers cannot redirect revalidation through a new absolute spelling.
+    pub(crate) fn revalidate_admission(
+        &self,
+        admission: &NativeResourceAdmission,
+    ) -> Result<(), ResourceMapError> {
+        let roots: Vec<_> = self
+            .roots
+            .iter()
+            .map(|root| AdmittedRootIdentity {
+                root_id: root.root_id.clone(),
+                canonical_native_root: root.native_root.clone(),
+                identity: root.identity,
+            })
+            .collect();
+        if roots != admission.roots {
+            return Err(ResourceMapError::IdentityChanged);
+        }
+        let root = self
+            .roots
+            .iter()
+            .find(|root| root.root_id == admission.resource.root_id)
+            .ok_or(ResourceMapError::IdentityChanged)?;
+        let path = root
+            .native_root
+            .join(admission.resource.relative_path.as_str());
+        let path = path.to_str().ok_or(ResourceMapError::PathNotCanonical)?;
+        let current = self.try_admit_existing(path)?;
+        if current.resource != admission.resource
+            || current.root_identity != admission.root_identity
+            || current.file_identity != admission.file_identity
+        {
+            return Err(ResourceMapError::IdentityChanged);
+        }
+        Ok(())
     }
 }
 
@@ -153,7 +274,8 @@ impl ResourceMapError {
             Self::PathNotCanonical
             | Self::PathNotAbsolute
             | Self::RootNotCanonical
-            | Self::RootNotAbsolute => UnavailableResourceReason::Noncanonical,
+            | Self::RootNotAbsolute
+            | Self::IdentityChanged => UnavailableResourceReason::Noncanonical,
             Self::TooManyRoots
             | Self::RootPathBytes
             | Self::RootNotDirectory

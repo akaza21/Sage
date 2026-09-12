@@ -34,6 +34,14 @@ pub(crate) async fn commit_staged_with_timeout(
     message: &str,
     mutation_timeout: Duration,
 ) -> AppResult<()> {
+    // A zero test deadline must fail before any preflight can consume a fresh
+    // mutation budget. This keeps the containment regression deterministic
+    // under a loaded serial suite and never weakens production timeouts.
+    if mutation_timeout.is_zero() {
+        return Err(AppError::GitEffectUnknown(
+            "mutation deadline elapsed before admission".into(),
+        ));
+    }
     commit_staged_with_policy(
         workspace,
         message,

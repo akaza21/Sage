@@ -1,4 +1,5 @@
 mod limits;
+mod p02_read;
 
 use rusqlite::{OptionalExtension, params};
 

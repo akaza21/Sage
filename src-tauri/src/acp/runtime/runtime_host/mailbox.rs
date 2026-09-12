@@ -42,6 +42,9 @@ impl HostMailbox {
     }
 
     pub(super) fn try_push(&self, envelope: Envelope) -> Result<(), HostError> {
+        if Instant::now() >= envelope.deadline {
+            return Err(HostError::Deadline);
+        }
         let bytes = envelope.command.actual_bytes();
         let control = envelope.command.is_control();
         let deadline_millis =
@@ -68,28 +71,48 @@ impl HostMailbox {
     }
 
     pub(super) fn wait_next(&self) -> Option<Envelope> {
-        let mut state = self.lock();
         loop {
-            if let Some(envelope) = state.queue.pop() {
-                return Some(envelope);
+            let expired = {
+                let mut state = self.lock();
+                loop {
+                    match state.queue.pop() {
+                        Some(envelope) if Instant::now() >= envelope.deadline => {
+                            // Never dispatch work that expired while queued.
+                            break Some(envelope);
+                        }
+                        Some(envelope) => return Some(envelope),
+                        None if state.closed => return None,
+                        None => {
+                            state = self
+                                .ready
+                                .wait(state)
+                                .unwrap_or_else(std::sync::PoisonError::into_inner);
+                        }
+                    }
+                }
+            };
+            if let Some(envelope) = expired {
+                let _ = envelope.reply.try_send(Err(HostError::Deadline));
             }
-            if state.closed {
-                return None;
-            }
-            state = self
-                .ready
-                .wait(state)
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
         }
     }
 
     pub(super) fn close(&self) {
-        let mut state = self.lock();
-        state.closed = true;
-        while let Some(envelope) = state.queue.pop() {
-            let _ = envelope.reply.send(Err(HostError::Closed));
+        let drained = {
+            let mut state = self.lock();
+            state.closed = true;
+            let mut drained = Vec::new();
+            while let Some(envelope) = state.queue.pop() {
+                drained.push(envelope);
+            }
+            self.ready.notify_all();
+            drained
+        };
+        // A bounded reply can itself be back-pressured; no mailbox mutex is
+        // held while completing callers.
+        for envelope in drained {
+            let _ = envelope.reply.try_send(Err(HostError::Closed));
         }
-        self.ready.notify_all();
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, State> {

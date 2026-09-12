@@ -5,13 +5,12 @@
 //! represented as `TrustedCooperativeTree` in the launch contract.
 
 use std::{
-    io::Read,
+    io::{Read, Write},
     process::{ChildStdin, ChildStdout},
 };
 
 use crate::acp::transport::{
     Frame, FrameError, FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame,
-    write_json_line_blocking,
 };
 
 mod containment;
@@ -29,7 +28,16 @@ impl StdinEndpoint {
         self.0
             .as_mut()
             .map_or(FrameWriteOutcome::ZeroByteFailure, |stdin| {
-                write_json_line_blocking(stdin, frame)
+                let payload = frame.payload();
+                match stdin
+                    .write_all(payload)
+                    .and_then(|()| stdin.write_all(b"\n"))
+                    .and_then(|()| stdin.flush())
+                {
+                    Ok(()) => FrameWriteOutcome::Complete,
+                    Err(_) if payload.is_empty() => FrameWriteOutcome::ZeroByteFailure,
+                    Err(_) => FrameWriteOutcome::DeliveryUnknown { bytes_written: 0 },
+                }
             })
     }
 

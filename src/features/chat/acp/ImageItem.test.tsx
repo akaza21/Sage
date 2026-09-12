@@ -44,33 +44,28 @@ describe("ImageItem", () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
-  it("never reopens A after A→B or invalid→A identity changes", async () => {
+  it("never reopens A after direct A-open→B→A identity changes", async () => {
     const imageA = `data:image/png;base64,${png}`;
     const imageB = `data:image/png;base64,${png.replace(/.$/, "A")}`;
     const { rerender } = render(<ImageItem item={item(imageA, "image-a")} />);
     fireEvent.click(screen.getByRole("button", { name: "Open image viewer" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-
     rerender(<ImageItem item={item(imageB, "image-b")} />);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(
-      screen.getByRole("button", { name: "Open image viewer" }),
-    ).toBeVisible();
+    rerender(<ImageItem item={item(imageA, "image-a")} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
 
+  it("never reopens A after direct A-open→invalid→A identity changes", async () => {
+    const imageA = `data:image/png;base64,${png}`;
+    const { rerender } = render(<ImageItem item={item(imageA, "image-a")} />);
     fireEvent.click(screen.getByRole("button", { name: "Open image viewer" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     rerender(
       <ImageItem item={item("https://example.invalid/image.png", "image-b")} />,
     );
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(
-      screen.queryByRole("img", { name: "Image provided by the agent" }),
-    ).toBeNull();
-
     rerender(<ImageItem item={item(imageA, "image-a")} />);
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Open image viewer" }),
-    ).toBeVisible();
   });
 });

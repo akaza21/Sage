@@ -25,6 +25,7 @@ import type {
 import { utf8ByteLength } from "../domain/text";
 import { invokeNative } from "../ports/nativeInvoke";
 import { subscribePreviewProjectionChanges } from "./acpDesktopPreview";
+import { acknowledgeReadTextFileFlush } from "./acpDesktopReadText";
 import {
   isOneOf,
   isRecord,
@@ -163,7 +164,7 @@ function safeProjectionChanged(
   } as AcpProjectionChangedEvent;
 }
 
-function safeFailure(value: unknown): AcpCommandFailure {
+export function safeFailure(value: unknown): AcpCommandFailure {
   if (isRecord(value)) {
     const kind = value.kind;
     const message = safeMessage(value.message);
@@ -379,6 +380,8 @@ export const acpDesktop = {
     }
     return safe;
   },
+
+  acknowledgeReadTextFileFlush,
 
   async subscribeProjectionChanges(
     onChange: (event: AcpProjectionChangedEvent) => void,

@@ -282,16 +282,17 @@ fn initialize_advertises_curated_host_tools_including_browse() {
     assert_eq!(value["method"], "initialize");
     assert_eq!(
         value["params"]["clientCapabilities"],
-        json!({"_meta":{"sage":{"tools":[
-            "sage.read_text", "sage.apply_file", "_sage/browse"
-        ]}}})
+        json!({
+            "fs":{"readTextFile":true,"writeTextFile":false},
+            "terminal":false,
+            "_meta":{"sage":{"tools":["sage.apply_file", "_sage/browse"]}}
+        })
     );
     assert!(
         value["params"]["clientCapabilities"]
             .get("availableTools")
             .is_none()
     );
-    assert!(value["params"]["clientCapabilities"].get("fs").is_none());
 }
 
 #[test]

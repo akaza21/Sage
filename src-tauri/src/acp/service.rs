@@ -44,6 +44,13 @@ mod intent_snapshot;
 mod permission;
 pub(crate) use permission::PermissionDecisionIntent;
 mod file_snapshot;
+mod project_switch;
+mod read_text_file;
+#[cfg(test)]
+pub(crate) use read_text_file::{DiskAllowedState, ReadTextClassification, ReadTextFlushState};
+pub(crate) use read_text_file::{
+    ReadTextBegin, ReadTextFileService, ReadTextFlushAck, ReadTextNextAction, ReadTextOwner,
+};
 #[allow(dead_code)] // Fixed production observation boundary; lifecycle wiring is separate.
 mod renderer_recreation;
 mod renderer_recreation_orchestrator;
@@ -70,7 +77,6 @@ pub(crate) use renderer_recreation_orchestrator::RendererRecreationReloadLifecyc
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 use runtime_identity::CodexRuntimeIdentityLedger;
 use runtime_slot::RuntimeSlot;
-use shutdown::map_discovery_shutdown;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CodexSessionError {
@@ -100,6 +106,7 @@ pub(crate) struct AcpService {
     publisher: Arc<dyn ProjectionPublisher>,
     notifier: Option<Arc<ProjectionNotifier>>,
     page_reads: PageReadAdmission,
+    read_text_files: ReadTextFileService,
     codex: CodexBindingRegistration,
     codex_gate: Arc<codex_operation::CodexOperationGate>,
     codex_discovery: Arc<CodexDiscoveryManager>,
@@ -120,6 +127,12 @@ pub(crate) struct AcpService {
 }
 
 impl AcpService {
+    /// Future admitted ACP pumps own path mapping and event delivery; this
+    /// narrow service owns only the bounded read/ack linearization state.
+    pub(crate) fn read_text_file_service(&self) -> &ReadTextFileService {
+        &self.read_text_files
+    }
+
     fn build(
         database: Database,
         publisher: Arc<dyn ProjectionPublisher>,
@@ -170,6 +183,7 @@ impl AcpService {
         let codex_auth =
             CodexAuthManager::new(configuration.codex.clone(), Arc::clone(&codex_gate));
         Ok(Self {
+            read_text_files: ReadTextFileService::new(database.clone()),
             database,
             scheduler,
             journal,
@@ -308,28 +322,6 @@ impl AcpService {
         chat_id: SageChatId,
     ) -> Result<IntentSnapshot, StoreError> {
         load_intent_snapshot(&self.database, project_id, project_generation, chat_id)
-    }
-
-    pub(crate) fn project_switched(
-        &self,
-        active_project: &SageProjectId,
-    ) -> Result<(), crate::acp::runtime::HostError> {
-        let discovery = self
-            .codex_discovery
-            .project_switched(Duration::from_millis(
-                crate::acp::limits::LIMITS.deadlines_ms.explicit_close,
-            ))
-            .map_err(map_discovery_shutdown);
-        self.scheduler.project_switched(active_project);
-        self.codex_auth.invalidate();
-        let runtime = self.runtime.active();
-        if let Some(runtime) = runtime {
-            let _ = runtime.project_switched(active_project.clone());
-        }
-        if let Some(notifier) = &self.notifier {
-            notifier.set_active_project(active_project.clone());
-        }
-        discovery
     }
 
     pub(crate) fn acknowledge_projection_bootstrap(&self) {

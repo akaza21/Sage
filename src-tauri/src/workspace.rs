@@ -14,12 +14,27 @@ pub(crate) mod file_create;
 pub(crate) mod file_rename;
 pub(crate) mod file_walk;
 mod git_resource;
+mod identity;
 pub(crate) mod notify;
 pub(crate) mod resource_trash;
 pub(crate) mod search;
+mod text_read;
+#[allow(
+    unused_imports,
+    reason = "workspace read entrypoints are consumed by deferred ACP adapters"
+)]
+pub(crate) use text_read::{
+    MAX_TEXT_FILE_BYTES, decode_text_bytes, open_workspace_text_file, read_text_bytes_bounded,
+    select_text_lines,
+};
+
+#[cfg(windows)]
+pub(crate) use identity::root_identity_file;
+#[cfg(unix)]
+pub(crate) use identity::root_identity_metadata;
+pub(crate) use identity::{leaf_identity, root_identity_path};
 
 pub(crate) const MAX_DIRECTORY_ENTRIES: usize = 500;
-const MAX_TEXT_FILE_BYTES: u64 = 2 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
@@ -155,8 +170,11 @@ impl Workspace {
 
     pub fn read_text_file(&self, resource: &ResourceRef) -> AppResult<TextFile> {
         let relative_path = self.validate_resource(resource, false)?;
-        let path = self.resolve_existing(&relative_path, false)?;
-        let metadata = path.metadata()?;
+        // Open through a held root before metadata/read. No later pathname is
+        // reopened, closing final-link and parent/path replacement races.
+        let mut file =
+            open_workspace_text_file(&self.root, self.root_identity, &relative_path, None)?;
+        let metadata = file.metadata()?;
         if !metadata.is_file() {
             return Err(AppError::InvalidRequest("resource is not a file".into()));
         }
@@ -166,15 +184,10 @@ impl Workspace {
                 MAX_TEXT_FILE_BYTES / 1024 / 1024
             )));
         }
-
-        let bytes = fs::read(path)?;
-        if bytes.iter().take(8_192).any(|byte| *byte == 0) {
-            return Err(AppError::InvalidRequest(
-                "binary files cannot be opened in the text view".into(),
-            ));
-        }
-        let content = String::from_utf8(bytes)
-            .map_err(|_| AppError::InvalidRequest("file is not valid UTF-8".into()))?;
+        // Metadata is only early rejection; the same handle gets the bounded
+        // +1 probe, so a growing source cannot evade admission.
+        let bytes = read_text_bytes_bounded(&mut file)?;
+        let content = decode_text_bytes(bytes)?;
         let line_ending = detect_line_ending(&content).into();
         let modified_at = metadata
             .modified()
@@ -184,7 +197,51 @@ impl Workspace {
 
         Ok(TextFile {
             resource: self.resource_unchecked(&relative_path),
-            byte_len: metadata.len(),
+            byte_len: content.len() as u64,
+            content,
+            line_ending,
+            modified_at,
+        })
+    }
+
+    /// P-02 leaf-identity read. Unlike `read_text_file`, this never
+    /// canonicalizes the leaf and reopens it: component validation plus the
+    /// held-root walk compare the admitted final handle before reading it.
+    pub(crate) fn read_text_file_with_identity(
+        &self,
+        resource: &ResourceRef,
+        expected_file: RootIdentity,
+    ) -> AppResult<TextFile> {
+        if resource.root_id != self.root_id {
+            return Err(AppError::InvalidRequest(
+                "resource root does not match workspace".into(),
+            ));
+        }
+        validate_relative_path(&resource.relative_path, false)?;
+        let mut file = open_workspace_text_file(
+            &self.root,
+            self.root_identity,
+            &resource.relative_path,
+            Some(expected_file),
+        )?;
+        let metadata = file.metadata()?;
+        if metadata.len() > MAX_TEXT_FILE_BYTES {
+            return Err(AppError::ResourceLimit(format!(
+                "file exceeds the {} MiB text-view limit",
+                MAX_TEXT_FILE_BYTES / 1024 / 1024
+            )));
+        }
+        let bytes = read_text_bytes_bounded(&mut file)?;
+        let content = decode_text_bytes(bytes)?;
+        let line_ending = detect_line_ending(&content).into();
+        let modified_at = metadata
+            .modified()
+            .ok()
+            .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| duration.as_millis() as u64);
+        Ok(TextFile {
+            resource: self.resource_unchecked(&resource.relative_path),
+            byte_len: content.len() as u64,
             content,
             line_ending,
             modified_at,
@@ -263,75 +320,6 @@ impl Workspace {
             relative_path: relative_path.into(),
         }
     }
-}
-
-#[cfg(unix)]
-pub(crate) fn root_identity_path(path: &Path) -> AppResult<RootIdentity> {
-    root_identity_metadata(&path.metadata()?)
-}
-
-#[cfg(unix)]
-pub(crate) fn root_identity_metadata(metadata: &fs::Metadata) -> AppResult<RootIdentity> {
-    use std::os::unix::fs::MetadataExt;
-
-    let mut file_id = [0_u8; 16];
-    file_id[8..].copy_from_slice(&metadata.ino().to_be_bytes());
-    Ok(RootIdentity {
-        volume: metadata.dev(),
-        file_id,
-    })
-}
-
-#[cfg(windows)]
-pub(crate) fn root_identity_path(path: &Path) -> AppResult<RootIdentity> {
-    use std::{fs::OpenOptions, os::windows::fs::OpenOptionsExt};
-    use windows_sys::Win32::Storage::FileSystem::{
-        FILE_FLAG_BACKUP_SEMANTICS, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ,
-        FILE_SHARE_WRITE,
-    };
-
-    let file = OpenOptions::new()
-        .access_mode(FILE_READ_ATTRIBUTES)
-        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
-        .open(path)?;
-    root_identity_file(&file)
-}
-
-#[cfg(windows)]
-pub(crate) fn root_identity_file(file: &fs::File) -> AppResult<RootIdentity> {
-    use std::os::windows::io::AsRawHandle;
-    use windows_sys::Win32::Foundation::HANDLE;
-    use windows_sys::Win32::Storage::FileSystem::{
-        FILE_ID_INFO, FileIdInfo, GetFileInformationByHandleEx,
-    };
-
-    let mut information = FILE_ID_INFO::default();
-    // SAFETY: the file handle is live and the typed output has its exact Windows size.
-    if unsafe {
-        GetFileInformationByHandleEx(
-            file.as_raw_handle() as HANDLE,
-            FileIdInfo,
-            (&raw mut information).cast(),
-            u32::try_from(std::mem::size_of::<FILE_ID_INFO>()).map_err(|_| {
-                AppError::InvalidRequest("Windows file identity size overflow".into())
-            })?,
-        )
-    } == 0
-    {
-        return Err(std::io::Error::last_os_error().into());
-    }
-    Ok(RootIdentity {
-        volume: information.VolumeSerialNumber,
-        file_id: information.FileId.Identifier,
-    })
-}
-
-#[cfg(not(any(unix, windows)))]
-pub(crate) fn root_identity_path(_path: &Path) -> AppResult<RootIdentity> {
-    Err(AppError::InvalidRequest(
-        "safe file creation is unavailable on this platform".into(),
-    ))
 }
 
 fn validate_relative_path(relative_path: &str, allow_root: bool) -> AppResult<()> {
@@ -517,6 +505,67 @@ mod tests {
         assert_ne!(low.stable_bytes(), high.stable_bytes());
     }
 
+    #[test]
+    fn bounded_reader_accepts_exact_cap_and_rejects_plus_one() {
+        let root = std::env::temp_dir().join(format!("sage-workspace-cap-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let exact = root.join("exact.txt");
+        fs::write(&exact, vec![b'x'; MAX_TEXT_FILE_BYTES as usize]).unwrap();
+        assert_eq!(
+            read_text_bytes_bounded(&mut fs::File::open(&exact).unwrap())
+                .unwrap()
+                .len(),
+            MAX_TEXT_FILE_BYTES as usize
+        );
+        let plus_one = root.join("plus-one.txt");
+        fs::write(
+            &plus_one,
+            vec![b'x'; text_read::TEXT_FILE_READ_PROBE_BYTES as usize],
+        )
+        .unwrap();
+        assert!(matches!(
+            read_text_bytes_bounded(&mut fs::File::open(&plus_one).unwrap()),
+            Err(AppError::ResourceLimit(_))
+        ));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn held_handle_rechecks_growth_after_metadata_preflight() {
+        let root = std::env::temp_dir().join(format!("sage-workspace-growth-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("growth.txt");
+        fs::write(&source, b"small").unwrap();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let hook =
+            text_read::test_hook::AfterMetadataGuard::install(std::sync::Arc::clone(&barrier));
+        let writer_source = source.clone();
+        let writer_barrier = std::sync::Arc::clone(&barrier);
+        let writer = std::thread::spawn(move || {
+            writer_barrier.wait();
+            fs::write(&writer_source, vec![b'x'; MAX_TEXT_FILE_BYTES as usize + 1]).unwrap();
+            writer_barrier.wait();
+        });
+        let result = hook.read(&mut fs::File::open(&source).unwrap());
+        writer.join().unwrap();
+        drop(hook);
+        assert!(matches!(result, Err(AppError::ResourceLimit(_))));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn acp_line_selection_preserves_source_newlines_and_rejects_zero() {
+        let source = "one\r\ntwo\r\nthree";
+        assert_eq!(
+            select_text_lines(source, None, Some(2)).unwrap(),
+            "one\r\ntwo\r\n"
+        );
+        assert_eq!(select_text_lines(source, Some(3), None).unwrap(), "three");
+        assert_eq!(select_text_lines(source, Some(4), None).unwrap(), "");
+        assert!(select_text_lines(source, Some(0), None).is_err());
+        assert!(select_text_lines(source, None, Some(0)).is_err());
+    }
+
     #[cfg(unix)]
     #[test]
     fn directory_ingress_rejects_backslash_and_non_utf8_names() {
@@ -548,6 +597,87 @@ mod tests {
                 .to_string()
                 .contains("not valid UTF-8")
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn final_fifo_is_rejected_without_blocking_the_source_open() {
+        use std::{
+            ffi::CString,
+            os::raw::{c_char, c_int},
+            time::Duration,
+        };
+
+        unsafe extern "C" {
+            fn mkfifo(path: *const c_char, mode: u32) -> c_int;
+        }
+        let (root, workspace) = fixture_workspace();
+        let fifo = root.join("in-root.fifo");
+        let name = CString::new(fifo.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: `name` is a valid, NUL-terminated path in this test root.
+        assert_eq!(unsafe { mkfifo(name.as_ptr(), 0o600) }, 0);
+        let resource = workspace.resource("in-root.fifo").unwrap();
+        let (result_tx, result_rx) = std::sync::mpsc::sync_channel(1);
+        let read_workspace = workspace.clone();
+        let worker = std::thread::spawn(move || {
+            let _ = result_tx.send(read_workspace.read_text_file(&resource));
+        });
+        let result = match result_rx.recv_timeout(Duration::from_millis(250)) {
+            Ok(result) => result,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                // Actively release a regressed blocking FIFO open before
+                // joining: a timeout assertion must never strand this test.
+                let unblock = std::fs::OpenOptions::new().write(true).open(&fifo);
+                assert!(unblock.is_ok(), "failed to unblock FIFO reader");
+                let result = result_rx
+                    .recv_timeout(Duration::from_secs(1))
+                    .expect("FIFO reader remained blocked after active cleanup");
+                worker.join().expect("FIFO reader worker panicked");
+                panic!("FIFO source open exceeded 250 ms: {result:?}");
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                worker.join().expect("FIFO reader worker panicked");
+                panic!("FIFO reader worker disconnected");
+            }
+        };
+        worker.join().expect("FIFO reader worker panicked");
+        assert!(result.is_err());
+        fs::remove_file(fifo).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn held_handle_read_rejects_a_final_symlink_and_parent_swap() {
+        use std::os::unix::fs::symlink;
+
+        let (root, workspace) = fixture_workspace();
+        let outside = root.with_extension("outside.txt");
+        fs::write(&outside, "outside\n").unwrap();
+        symlink(&outside, root.join("final-link.txt")).unwrap();
+        assert!(
+            workspace
+                .read_text_file(&ResourceRef {
+                    root_id: "root-test".into(),
+                    relative_path: "final-link.txt".into()
+                })
+                .is_err()
+        );
+        // A replacement before read is resolved only through held no-follow
+        // directories; an outside parent symlink is rejected, not followed.
+        fs::rename(root.join("src"), root.join("src-old")).unwrap();
+        symlink(root.parent().unwrap(), root.join("src")).unwrap();
+        assert!(
+            workspace
+                .read_text_file(&ResourceRef {
+                    root_id: "root-test".into(),
+                    relative_path: "src/main.rs".into()
+                })
+                .is_err()
+        );
+        fs::remove_file(root.join("src")).unwrap();
+        fs::remove_file(outside).unwrap();
         fs::remove_dir_all(root).unwrap();
     }
 

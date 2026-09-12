@@ -30,7 +30,7 @@ use crate::{
             ActivateSessionCommand, CompleteActivationCommand, DatabaseAcpStore,
             PrepareTurnCommand, SendObservation, StartSessionCommand, load_chat_page,
         },
-        transport::{FrameWriteOutcome, write_json_line_blocking},
+        transport::FrameWriteOutcome,
     },
     persistence::Database,
 };
@@ -202,10 +202,7 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
         adapter
             .resolve_egress(egress.token().clone(), EgressResolution::Queued)
             .unwrap();
-        let outcome = write_json_line_blocking(
-            &mut InjectedFailureWriter::new(after_bytes),
-            egress.frame(),
-        );
+        let outcome = write_fixture_frame(&mut InjectedFailureWriter::new(after_bytes), egress.frame());
         let FrameWriteOutcome::DeliveryUnknown { bytes_written } = outcome else {
             panic!("injected positive-byte failure must make delivery unknown");
         };
@@ -251,6 +248,36 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
             "automaticReplay": after > before,
         })
     })
+}
+
+fn write_fixture_frame(
+    output: &mut InjectedFailureWriter,
+    frame: &crate::acp::transport::OutboundFrame,
+) -> FrameWriteOutcome {
+    let mut written = 0usize;
+    for bytes in [frame.payload(), b"\n".as_slice()] {
+        let mut offset = 0usize;
+        while offset < bytes.len() {
+            match output.write(&bytes[offset..]) {
+                Ok(0) | Err(_) if written == 0 => return FrameWriteOutcome::ZeroByteFailure,
+                Ok(0) | Err(_) => {
+                    return FrameWriteOutcome::DeliveryUnknown {
+                        bytes_written: written,
+                    };
+                }
+                Ok(count) => {
+                    written += count;
+                    offset += count;
+                }
+            }
+        }
+    }
+    if output.flush().is_err() {
+        return FrameWriteOutcome::DeliveryUnknown {
+            bytes_written: written,
+        };
+    }
+    FrameWriteOutcome::Complete
 }
 
 struct InjectedFailureWriter {

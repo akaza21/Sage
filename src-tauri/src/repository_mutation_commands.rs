@@ -481,6 +481,7 @@ mod tests {
 
     #[test]
     fn nonconvergent_reap_returns_containment_without_a_final_projection() {
+        let _serial = crate::SERIAL_PROCESS_TESTS.lock().unwrap();
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
             let root = base.join("repo");
@@ -630,6 +631,7 @@ mod tests {
 
     #[test]
     fn potentially_running_cleanup_blocks_mutations_until_bounded_reaper_proves_exit() {
+        let _serial = crate::SERIAL_PROCESS_TESTS.lock().unwrap();
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
             let root = base.join("repo");
@@ -777,6 +779,7 @@ mod tests {
 
     #[test]
     fn exhausted_real_reapers_quarantine_exact_eight_and_keep_admission_charged() {
+        let _serial = crate::SERIAL_PROCESS_TESTS.lock().unwrap();
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
             let root = base.join("repo");

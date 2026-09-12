@@ -74,7 +74,10 @@ fn cooperative_supervisor_streams_one_frame_and_releases_its_lease_at_root_exit(
 
 #[test]
 fn cooperative_supervisor_terminates_the_admitted_root_before_releasing_capacity() {
-    let spec = shell_spec("sleep 5");
+    let _serial = crate::SERIAL_PROCESS_TESTS.lock().unwrap();
+    // Keep the sleeper in the admitted root PID: a shell child can inherit
+    // stderr and hold its drain open after the shell itself has been killed.
+    let spec = shell_spec("exec sleep 5");
     let pool = TreeCapacityPool::isolated_ade_0006a();
     let tree = launch(&spec, pool.try_acquire(spec.limits.descendants).unwrap()).unwrap();
     let (_, _, control) = tree.into_parts();

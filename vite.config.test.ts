@@ -269,8 +269,9 @@ describe("desktop-native chunk topology", () => {
 
     expect(ordinaryGraph.entryCount).toBe(1);
     expect(groupedGraph.entryCount).toBe(1);
-    expect(ordinaryGraph.allModules).toHaveLength(414);
-    expect(ordinaryGraph.initialModules).toHaveLength(263);
+    // P-02's typed no-content acknowledgement bridge is production-reachable.
+    expect(ordinaryGraph.allModules).toHaveLength(415);
+    expect(ordinaryGraph.initialModules).toHaveLength(264);
     for (const snapshotModule of [
       "/src/domain/agentDiff.ts",
       "/src/services/acpFileSnapshot.ts",

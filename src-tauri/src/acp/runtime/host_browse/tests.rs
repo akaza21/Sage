@@ -4,11 +4,10 @@ use super::*;
 
 #[test]
 fn curated_host_tools_advertise_browse_without_harness_names() {
-    assert_eq!(CURATED_READ_TOOL_NAME, "sage.read_text");
     assert_eq!(CURATED_APPLY_FILE_TOOL_NAME, "sage.apply_file");
     assert_eq!(CURATED_BROWSE_TOOL_NAME, "_sage/browse");
     assert!(is_advertised_host_tool("_sage/browse"));
-    assert!(is_advertised_host_tool("sage.read_text"));
+    assert!(!is_advertised_host_tool("sage.read_text"));
     assert!(is_advertised_host_tool("sage.apply_file"));
     assert!(!is_advertised_host_tool("sage.write_text"));
     assert!(!is_advertised_host_tool("shell"));
@@ -27,13 +26,13 @@ fn initialize_capabilities_advertise_only_namespaced_curated_tools() {
     let capabilities = advertised_host_client_capabilities();
     assert_eq!(
         capabilities,
-        json!({"_meta":{"sage":{"tools":[
-            "sage.read_text", "sage.apply_file", "_sage/browse"
-        ]}}})
+        json!({
+            "fs":{"readTextFile":true,"writeTextFile":false},
+            "terminal":false,
+            "_meta":{"sage":{"tools":["sage.apply_file", "_sage/browse"]}}
+        })
     );
     assert!(capabilities.get("availableTools").is_none());
-    assert!(capabilities.get("fs").is_none());
-    assert!(capabilities.get("terminal").is_none());
     assert!(!is_advertised_host_tool("sage.write_text"));
     assert!(!is_advertised_host_tool("fs/read_text_file"));
 }

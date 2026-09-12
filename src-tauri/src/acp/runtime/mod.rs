@@ -16,6 +16,7 @@ mod mailbox;
 mod normalizer;
 mod notifier;
 pub(crate) mod permissions;
+pub(crate) mod read_text_file;
 
 #[allow(unused_imports)]
 pub(crate) use activation_pump::{

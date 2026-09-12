@@ -18,6 +18,10 @@ use super::{
 #[path = "runtime/support.rs"]
 mod support;
 
+#[path = "runtime/admission.rs"]
+mod admission;
+#[path = "runtime/read_text_file.rs"]
+mod read_text_file;
 #[path = "runtime/snapshots.rs"]
 mod snapshots;
 use snapshots::ItemSnapshots;
@@ -89,21 +93,8 @@ pub(crate) struct OmpRuntime {
 }
 
 impl OmpRuntime {
-    pub(crate) fn from_binding(
-        binding: &ResearchBinding,
-        binding_digest: [u8; 32],
-        runtime_epoch: RuntimeEpoch,
-        session_id: SageAgentSessionId,
-    ) -> Result<Self, AdapterRuntimeError> {
-        let _ = (binding_digest, runtime_epoch, session_id);
-        binding
-            .require_launch_admission()
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        Err(AdapterRuntimeError::LaunchUnavailable)
-    }
-
     #[cfg(test)]
-    fn fixture(
+    pub(crate) fn fixture(
         capabilities: OmpBindingCapabilities,
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,

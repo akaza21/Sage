@@ -8,7 +8,6 @@ use url::Url;
 use crate::acp::contract::SafeText;
 use crate::acp::intent::NormalizedPayload;
 
-pub(crate) const CURATED_READ_TOOL_NAME: &str = "sage.read_text";
 pub(crate) const CURATED_APPLY_FILE_TOOL_NAME: &str = "sage.apply_file";
 pub(crate) const CURATED_BROWSE_TOOL_NAME: &str = "_sage/browse";
 pub(crate) const MAX_HARNESS_BROWSE_URL_BYTES: usize = 2048;
@@ -44,19 +43,22 @@ pub(crate) struct BrowseHost {
 }
 
 pub(crate) fn advertised_host_tools() -> &'static [&'static str] {
-    &[
-        CURATED_READ_TOOL_NAME,
-        CURATED_APPLY_FILE_TOOL_NAME,
-        CURATED_BROWSE_TOOL_NAME,
-    ]
+    &[CURATED_APPLY_FILE_TOOL_NAME, CURATED_BROWSE_TOOL_NAME]
 }
 
 pub(crate) fn is_advertised_host_tool(name: &str) -> bool {
     advertised_host_tools().contains(&name)
 }
 
+/// The shared ACP conformance shape. Production callers must only use this
+/// after installing the owner-bound P-02 read route; deferred bindings test it
+/// as wire conformance and do not become live by serializing it.
 pub(crate) fn advertised_host_client_capabilities() -> Value {
-    json!({ "_meta": { "sage": { "tools": advertised_host_tools() } } })
+    json!({
+        "fs": { "readTextFile": true, "writeTextFile": false },
+        "terminal": false,
+        "_meta": { "sage": { "tools": advertised_host_tools() } }
+    })
 }
 
 pub(crate) fn admit_browse_url(raw: &str) -> Option<String> {

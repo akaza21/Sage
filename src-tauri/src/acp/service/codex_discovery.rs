@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::acp::{
     bindings::codex::{
@@ -208,9 +208,14 @@ impl CodexDiscoveryManager {
         self.gate.invalidate_and_wait(timeout)
     }
 
-    pub(crate) fn project_switched(&self, timeout: Duration) -> Result<(), CodexDiscoveryRunError> {
+    /// Project replacement passes its original absolute deadline through to
+    /// cancellation dispatch and gate settlement.
+    pub(crate) fn project_switched_until(
+        &self,
+        deadline: Instant,
+    ) -> Result<(), CodexDiscoveryRunError> {
         self.clear_cache();
-        self.gate.invalidate_ephemeral_and_wait(timeout)
+        self.gate.invalidate_ephemeral_and_wait_until(deadline)
     }
 
     pub(crate) fn shutdown(&self, timeout: Duration) -> Result<(), CodexDiscoveryRunError> {
@@ -391,7 +396,10 @@ mod tests {
     }
 
     impl CodexOperationCancellation for TestCancellation {
-        fn request_parent_shutdown(&self) -> Result<(), CodexDiscoveryRunError> {
+        fn request_parent_shutdown_until(
+            &self,
+            _deadline: std::time::Instant,
+        ) -> Result<(), CodexDiscoveryRunError> {
             *self.requested.lock().unwrap() = true;
             self.changed.notify_all();
             if self.fail_dispatch {

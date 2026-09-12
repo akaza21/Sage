@@ -218,6 +218,17 @@ impl RuntimeHost {
         self.outcome(HostCommand::ProjectSwitched(project))
     }
 
+    /// Project replacement is admitted under the caller's single absolute
+    /// deadline; unlike `project_switched`, this never starts a fresh ordinary
+    /// RPC budget after discovery or P-02 settlement consumed time.
+    pub(crate) fn project_switched_until(
+        &self,
+        project: crate::acp::contract::SageProjectId,
+        deadline: Instant,
+    ) -> Result<HostOutcome, HostError> {
+        self.outcome_until(HostCommand::ProjectSwitched(project), deadline)
+    }
+
     pub(crate) fn state(&self) -> Result<HostState, HostError> {
         match self.submit(HostCommand::State)? {
             HostReply::State(state) => Ok(state),
@@ -288,6 +299,17 @@ impl RuntimeHost {
         }
     }
 
+    fn outcome_until(
+        &self,
+        command: HostCommand,
+        deadline: Instant,
+    ) -> Result<HostOutcome, HostError> {
+        match self.submit_until(command, deadline)? {
+            HostReply::Outcome(outcome) => Ok(outcome),
+            HostReply::Prepared(_) | HostReply::State(_) => Err(HostError::State),
+        }
+    }
+
     fn submit(&self, command: HostCommand) -> Result<HostReply, HostError> {
         let timeout = self.response_timeout(&command);
         self.submit_with_timeout(command, timeout)
@@ -298,18 +320,29 @@ impl RuntimeHost {
         command: HostCommand,
         timeout: Duration,
     ) -> Result<HostReply, HostError> {
-        let started = Instant::now();
+        let deadline = Instant::now()
+            .checked_add(timeout)
+            .ok_or(HostError::Deadline)?;
+        self.submit_until(command, deadline)
+    }
+
+    /// Submits and waits against the caller's original absolute deadline.
+    /// The mailbox envelope retains this exact value, including queue time.
+    pub(super) fn submit_until(
+        &self,
+        command: HostCommand,
+        deadline: Instant,
+    ) -> Result<HostReply, HostError> {
         match self.lifecycle.load(Ordering::Acquire) {
             HOST_RUNNING => {}
             HOST_AWAITING_EXIT => return Err(HostError::RecoveryRequired),
             HOST_SHUTDOWN_ACKNOWLEDGED | HOST_JOINED => return Err(HostError::Closed),
             _ => return Err(HostError::RecoveryRequired),
         }
-        if timeout.is_zero() {
+        if Instant::now() >= deadline {
             self.fail_deadline();
             return Err(HostError::Deadline);
         }
-        let deadline = started + timeout;
         let (reply, response) = mpsc::sync_channel(1);
         self.mailbox.try_push(Envelope {
             command,

@@ -1,16 +1,205 @@
+use std::{
+    fs, io,
+    pin::Pin,
+    task::{Context, Poll},
+};
+
+use tokio::io::AsyncWrite;
+
 use serde_json::{Value, json};
+use uuid::Uuid;
 
 use crate::acp::{
-    contract::{SageRootId, ToolState},
+    contract::{
+        ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageRootId,
+        ToolState,
+    },
     intent::{NormalizedPayload, SafeResourceRef, ToolCategory, UnavailableResourceReason},
     limits::LIMITS,
+    runtime::read_text_file::{DeferredReadTextOwnerResolver, ExpectedOwnerScope},
+    service::{
+        DiskAllowedState, ReadTextFileService, ReadTextFlushAck, ReadTextFlushState, ReadTextOwner,
+    },
+    transport::DeadlineAsyncWriter,
 };
 
 use super::{
     AdapterEvent, ArtifactIdentity, CandidateManifest, CuratedOmpBinding, OMP_BUN_MINIMUM,
     OMP_LICENSE, OMP_PACKAGE, OMP_SOURCE_COMMIT, OMP_VERSION, OmpBindingError, OmpPlatform,
-    OmpTranslator, Operation, PromptTerminal, ResourceMapper, TranslationError,
+    OmpRuntime, OmpTranslator, Operation, PromptTerminal, ResourceMapper, TranslationError,
 };
+
+struct P02Capture(Vec<u8>);
+impl AsyncWrite for P02Capture {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        _: &mut Context<'_>,
+        bytes: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        self.0.extend_from_slice(bytes);
+        Poll::Ready(Ok(bytes.len()))
+    }
+    fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+    fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
+struct P02Owner(ReadTextOwner);
+impl DeferredReadTextOwnerResolver for P02Owner {
+    fn owner_for_external_session(
+        &self,
+        session: &str,
+        expected: &ExpectedOwnerScope,
+    ) -> Option<ReadTextOwner> {
+        (session == "omp-session-1" && expected.owner == self.0).then(|| self.0.clone())
+    }
+}
+
+#[test]
+fn p02_omp_real_ingress_preflights_routes_service_and_preserves_numeric_id() {
+    let root = std::env::temp_dir().join(format!("sage-p02-omp-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("file.txt"), "one\ntwo\n").unwrap();
+    let database = crate::persistence::Database::open(":memory:".as_ref()).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let owner = ReadTextOwner {
+        project_id: SageProjectId::parse(&project.id).unwrap(),
+        project_generation: ProjectGeneration::new(1).unwrap(),
+        chat_id: SageChatId::parse("chat-p02").unwrap(),
+        session_id: SageAgentSessionId::parse("session-omp-runtime").unwrap(),
+        runtime_epoch: RuntimeEpoch::new(3).unwrap(),
+    };
+    let service = ReadTextFileService::new(database);
+    let expected = ExpectedOwnerScope {
+        binding_digest: [11; 32],
+        owner: owner.clone(),
+    };
+    // Deferred ingress is intentionally at the runtime boundary, not the
+    // translator: the fixture carries its immutable native identity and an
+    // already-established active external session.
+    let (curated, candidate) = admitted_candidate(true);
+    let mut runtime = OmpRuntime::fixture(
+        curated
+            .validate_candidate(&candidate)
+            .unwrap()
+            .capabilities(),
+        RuntimeEpoch::new(3).unwrap(),
+        SageAgentSessionId::parse("session-omp-runtime").unwrap(),
+    );
+    runtime.external_session =
+        Some(crate::acp::intent::ExternalId::new("sessionId", "omp-session-1").unwrap());
+    let request = format!(
+        r#"{{"jsonrpc":"2.0","id":7,"method":"fs/read_text_file","params":{{"sessionId":"omp-session-1","path":"{}","line":2,"limit":1,"_meta":{{"opaque":true}}}}}}"#,
+        root.join("file.txt").display()
+    );
+    let handoff = runtime
+        .ingest_deferred_read_text_file(
+            request.as_bytes(),
+            &expected,
+            &P02Owner(owner.clone()),
+            &service,
+        )
+        .unwrap();
+    service
+        .acknowledge(ReadTextFlushAck {
+            owner: handoff.begin.event.owner.clone(),
+            resource: handoff.begin.event.resource.clone(),
+            expected_editor_revision: handoff.begin.event.expected_editor_revision,
+            token: handoff.begin.event.token.clone().into(),
+            state: ReadTextFlushState::Classify {
+                state: crate::acp::service::ReadTextClassification::NotOpen,
+                editor_revision: None,
+            },
+        })
+        .unwrap();
+    service
+        .acknowledge(ReadTextFlushAck {
+            owner: handoff.begin.event.owner.clone(),
+            resource: handoff.begin.event.resource.clone(),
+            expected_editor_revision: handoff.begin.event.expected_editor_revision,
+            token: handoff.begin.event.token.clone().into(),
+            state: ReadTextFlushState::DiskAllowed {
+                state: DiskAllowedState::NotOpen,
+                editor_revision: None,
+            },
+        })
+        .unwrap();
+    let mut egress = DeadlineAsyncWriter::new(P02Capture(Vec::new()));
+    let receipt = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(
+            handoff
+                .begin
+                .receiver
+                .blocking_receive()
+                .unwrap()
+                .deliver_response(&handoff.request_id, &mut egress),
+        )
+        .unwrap();
+    let bytes = egress.into_inner().0;
+    assert!(
+        serde_json::to_string(&receipt.receipt().payload)
+            .unwrap()
+            .contains("outcome=success")
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&bytes[..bytes.len() - 1]).unwrap(),
+        json!({"jsonrpc":"2.0","id":7,"result":{"content":"two\n"}})
+    );
+    assert!(bytes.ends_with(b"\n"));
+    for malformed in [
+        request.replace("\"id\":7", "\"id\":1.5"),
+        request.replace("\"id\":7", "\"id\":9223372036854775808"),
+        request.replace("\"_meta\":{\"opaque\":true}", "\"_meta\":true"),
+        request.replace("\"omp-session-1\"", "\"foreign-session\""),
+    ] {
+        assert!(matches!(
+            runtime.ingest_deferred_read_text_file(
+                malformed.as_bytes(),
+                &expected,
+                &P02Owner(owner.clone()),
+                &service
+            ),
+            Err(crate::acp::bindings::adapter::AdapterRuntimeError::Frame)
+        ));
+    }
+    // Runtime identity and every owner-scope field must match exactly.
+    let mut wrong_binding = expected.clone();
+    wrong_binding.binding_digest = [12; 32];
+    let mut wrong_project = expected.clone();
+    wrong_project.owner.project_id = SageProjectId::parse("project-other").unwrap();
+    let mut wrong_generation = expected.clone();
+    wrong_generation.owner.project_generation = ProjectGeneration::new(2).unwrap();
+    let mut wrong_chat = expected.clone();
+    wrong_chat.owner.chat_id = SageChatId::parse("chat-other").unwrap();
+    let mut wrong_session = expected.clone();
+    wrong_session.owner.session_id = SageAgentSessionId::parse("session-other").unwrap();
+    let mut wrong_epoch = expected.clone();
+    wrong_epoch.owner.runtime_epoch = RuntimeEpoch::new(4).unwrap();
+    for scope in [
+        wrong_binding,
+        wrong_project,
+        wrong_generation,
+        wrong_chat,
+        wrong_session,
+        wrong_epoch,
+    ] {
+        assert!(
+            runtime
+                .ingest_deferred_read_text_file(
+                    request.as_bytes(),
+                    &scope,
+                    &P02Owner(owner.clone()),
+                    &service
+                )
+                .is_err()
+        );
+    }
+    fs::remove_dir_all(root).unwrap();
+}
 
 struct FixtureResources;
 struct RejectResources;
@@ -216,13 +405,13 @@ fn artifact_paths_addons_and_bun_are_mechanically_bounded() {
 }
 
 #[test]
-fn initialize_stays_deny_only_and_all_browse_extensions_fail_closed() {
+fn initialize_advertises_p02_read_conformance_and_browse_extensions_fail_closed() {
     let mut translator = translator(11);
     let request = translator.begin(Operation::Initialize).unwrap().remove(0);
     let value: Value = serde_json::from_str(request.line.trim()).expect("initialize");
     assert_eq!(
         value["params"]["clientCapabilities"]["fs"]["readTextFile"],
-        false
+        true
     );
     assert_eq!(
         value["params"]["clientCapabilities"]["fs"]["writeTextFile"],

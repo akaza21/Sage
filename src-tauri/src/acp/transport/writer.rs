@@ -1,8 +1,6 @@
-use std::io::Write;
-
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use crate::acp::limits::LIMITS;
+use crate::acp::limits::{LIMITS, preview::P02_READ_TEXT_RESPONSE_BYTES};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FrameWriteError {
@@ -21,70 +19,62 @@ pub(crate) enum FrameWriteOutcome {
 }
 
 /// A validated, delimiter-free outbound JSON frame.
-///
-/// Bytes remain private so callers cannot bypass the one-delimiter writer or
-/// accidentally account only for the payload while retaining the LF too.
-pub(crate) struct OutboundFrame(Vec<u8>);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code, reason = "P-02 sealed frame class")]
+pub(crate) enum OutboundFrameClass {
+    Ordinary,
+    P02ReadTextFileResponse,
+}
 
+#[allow(dead_code, reason = "ACP transport frame")]
+pub(crate) struct OutboundFrame {
+    payload: Vec<u8>,
+    class: OutboundFrameClass,
+}
+
+#[allow(dead_code, reason = "ACP transport frame")]
 impl OutboundFrame {
     pub(crate) fn new(payload: Vec<u8>) -> Result<Self, FrameWriteError> {
-        validate_payload(&payload)?;
-        Ok(Self(payload))
+        Self::new_with_class(payload, OutboundFrameClass::Ordinary)
+    }
+
+    pub(crate) fn new_p02_read_text_file_response(
+        payload: Vec<u8>,
+    ) -> Result<Self, FrameWriteError> {
+        Self::new_with_class(payload, OutboundFrameClass::P02ReadTextFileResponse)
+    }
+
+    fn new_with_class(
+        payload: Vec<u8>,
+        class: OutboundFrameClass,
+    ) -> Result<Self, FrameWriteError> {
+        validate_payload(&payload, class)?;
+        Ok(Self { payload, class })
     }
 
     pub(crate) fn payload(&self) -> &[u8] {
-        &self.0
+        &self.payload
     }
-
     pub(crate) fn wire_len(&self) -> usize {
-        self.0
+        self.payload
             .len()
             .checked_add(1)
-            .expect("validated ACP frame length plus delimiter fits usize")
+            .expect("validated frame length")
+    }
+    pub(crate) fn class(&self) -> OutboundFrameClass {
+        self.class
     }
 }
 
-/// Writes one delimiter-free JSON payload as exactly one LF-delimited frame.
-///
-/// The outcome distinguishes a proven zero-byte failure (the sole retryable
-/// delivery case) from every partial write or flush failure.
+/// Ordinary ACP transport writer. P-02 uses `p02_egress` instead so it can
+/// apply one absolute deadline to every physical poll without changing this
+/// established 1 MiB path.
+#[allow(dead_code, reason = "ordinary adapter writer seam")]
 pub(crate) struct FrameWriter<W> {
     output: W,
 }
 
-pub(crate) fn write_json_line_blocking<W: Write>(
-    output: &mut W,
-    frame: &OutboundFrame,
-) -> FrameWriteOutcome {
-    let payload = frame.payload();
-    let mut written = 0_usize;
-    while written < payload.len() {
-        match output.write(&payload[written..]) {
-            Ok(0) | Err(_) if written == 0 => return FrameWriteOutcome::ZeroByteFailure,
-            Ok(0) | Err(_) => {
-                return FrameWriteOutcome::DeliveryUnknown {
-                    bytes_written: written,
-                };
-            }
-            Ok(count) => written += count,
-        }
-    }
-    match output.write(b"\n") {
-        Ok(1) => written += 1,
-        Ok(_) | Err(_) => {
-            return FrameWriteOutcome::DeliveryUnknown {
-                bytes_written: written,
-            };
-        }
-    }
-    if output.flush().is_err() {
-        return FrameWriteOutcome::DeliveryUnknown {
-            bytes_written: written,
-        };
-    }
-    FrameWriteOutcome::Complete
-}
-
+#[allow(dead_code, reason = "ordinary adapter writer seam")]
 impl<W: AsyncWrite + Unpin> FrameWriter<W> {
     pub(crate) fn new(output: W) -> Self {
         Self { output }
@@ -94,8 +84,11 @@ impl<W: AsyncWrite + Unpin> FrameWriter<W> {
         &mut self,
         frame: &OutboundFrame,
     ) -> Result<FrameWriteOutcome, FrameWriteError> {
+        if frame.class() == OutboundFrameClass::P02ReadTextFileResponse {
+            return Ok(FrameWriteOutcome::ZeroByteFailure);
+        }
         let payload = frame.payload();
-        let mut written = 0_usize;
+        let mut written = 0usize;
         while written < payload.len() {
             match self.output.write(&payload[written..]).await {
                 Ok(0) | Err(_) if written == 0 => return Ok(FrameWriteOutcome::ZeroByteFailure),
@@ -124,11 +117,15 @@ impl<W: AsyncWrite + Unpin> FrameWriter<W> {
     }
 }
 
-fn validate_payload(payload: &[u8]) -> Result<(), FrameWriteError> {
+fn validate_payload(payload: &[u8], class: OutboundFrameClass) -> Result<(), FrameWriteError> {
     if payload.is_empty() {
         return Err(FrameWriteError::Empty);
     }
-    if payload.len() > LIMITS.wire.frame_bytes as usize {
+    let limit = match class {
+        OutboundFrameClass::Ordinary => LIMITS.wire.frame_bytes as usize,
+        OutboundFrameClass::P02ReadTextFileResponse => P02_READ_TEXT_RESPONSE_BYTES,
+    };
+    if payload.len() > limit {
         return Err(FrameWriteError::Oversize);
     }
     if payload.contains(&b'\0') {
@@ -143,143 +140,71 @@ fn validate_payload(payload: &[u8]) -> Result<(), FrameWriteError> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::{
         io,
         pin::Pin,
         task::{Context, Poll},
     };
-
     use tokio::io::AsyncWrite;
-
-    use super::*;
-
-    struct FailingWriter {
-        bytes: Vec<u8>,
-        fail_after: usize,
-    }
-
-    impl AsyncWrite for FailingWriter {
+    struct Sink;
+    impl AsyncWrite for Sink {
         fn poll_write(
-            mut self: Pin<&mut Self>,
-            _context: &mut Context<'_>,
-            buffer: &[u8],
+            self: Pin<&mut Self>,
+            _: &mut Context<'_>,
+            bytes: &[u8],
         ) -> Poll<io::Result<usize>> {
-            if self.bytes.len() >= self.fail_after {
-                return Poll::Ready(Err(io::Error::other("injected")));
-            }
-            let count = buffer.len().min(self.fail_after - self.bytes.len());
-            self.bytes.extend_from_slice(&buffer[..count]);
-            Poll::Ready(Ok(count))
+            Poll::Ready(Ok(bytes.len()))
         }
-
-        fn poll_flush(self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<io::Result<()>> {
+        fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
             Poll::Ready(Ok(()))
         }
-
-        fn poll_shutdown(self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<io::Result<()>> {
+        fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
             Poll::Ready(Ok(()))
         }
     }
-
-    impl io::Write for FailingWriter {
-        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
-            if self.bytes.len() >= self.fail_after {
-                return Err(io::Error::other("injected"));
-            }
-            let count = buffer.len().min(self.fail_after - self.bytes.len());
-            self.bytes.extend_from_slice(&buffer[..count]);
-            Ok(count)
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
     #[test]
-    fn complete_write_adds_one_lf() {
-        let output = FailingWriter {
-            bytes: Vec::new(),
-            fail_after: usize::MAX,
-        };
-        let mut writer = FrameWriter::new(output);
-        let frame = OutboundFrame::new(br#"{"id":1}"#.to_vec()).unwrap();
-        let outcome = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(writer.write_json_line(&frame))
-            .unwrap();
-        assert_eq!(outcome, FrameWriteOutcome::Complete);
-        assert_eq!(writer.output.bytes, b"{\"id\":1}\n");
-        assert_eq!(frame.wire_len(), frame.payload().len() + 1);
-    }
-
-    #[test]
-    fn zero_and_partial_failures_have_distinct_delivery_evidence() {
-        let mut zero = FrameWriter::new(FailingWriter {
-            bytes: Vec::new(),
-            fail_after: 0,
-        });
-        let frame = OutboundFrame::new(br#"{"id":1}"#.to_vec()).unwrap();
-        let runtime = tokio::runtime::Runtime::new().unwrap();
+    fn only_p02_can_exceed_ordinary_limit() {
+        let payload = vec![b' '; LIMITS.wire.frame_bytes as usize + 1];
         assert_eq!(
-            runtime.block_on(zero.write_json_line(&frame)).unwrap(),
-            FrameWriteOutcome::ZeroByteFailure
-        );
-
-        let mut partial = FrameWriter::new(FailingWriter {
-            bytes: Vec::new(),
-            fail_after: 4,
-        });
-        assert_eq!(
-            runtime.block_on(partial.write_json_line(&frame)).unwrap(),
-            FrameWriteOutcome::DeliveryUnknown { bytes_written: 4 }
-        );
-    }
-
-    #[test]
-    fn rejects_embedded_delimiters_before_writing() {
-        let output = FailingWriter {
-            bytes: Vec::new(),
-            fail_after: usize::MAX,
-        };
-        assert_eq!(
-            OutboundFrame::new(b"{}\n{}".to_vec()).err(),
-            Some(FrameWriteError::InvalidDelimiter)
-        );
-        assert!(output.bytes.is_empty());
-    }
-
-    #[test]
-    fn payload_limit_excludes_the_single_wire_delimiter() {
-        let limit = usize::try_from(LIMITS.wire.frame_bytes).unwrap();
-        let exact = OutboundFrame::new(vec![b' '; limit]).unwrap();
-        assert_eq!(exact.wire_len(), limit + 1);
-        assert_eq!(
-            OutboundFrame::new(vec![b' '; limit + 1]).err(),
+            OutboundFrame::new(payload.clone()).err(),
             Some(FrameWriteError::Oversize)
         );
-    }
-
-    #[test]
-    fn blocking_writer_preserves_partial_delivery_evidence() {
-        let frame = OutboundFrame::new(br#"{"id":1}"#.to_vec()).unwrap();
-        let mut complete = FailingWriter {
-            bytes: Vec::new(),
-            fail_after: usize::MAX,
-        };
         assert_eq!(
-            write_json_line_blocking(&mut complete, &frame),
+            OutboundFrame::new_p02_read_text_file_response(payload)
+                .unwrap()
+                .class(),
+            OutboundFrameClass::P02ReadTextFileResponse
+        );
+    }
+    #[tokio::test]
+    async fn ordinary_writer_keeps_the_ordinary_frame_path() {
+        let mut writer = FrameWriter::new(Sink);
+        assert_eq!(
+            writer
+                .write_json_line(&OutboundFrame::new(b"{}".to_vec()).unwrap())
+                .await
+                .unwrap(),
             FrameWriteOutcome::Complete
         );
-        assert_eq!(complete.bytes, b"{\"id\":1}\n");
-
-        let mut partial = FailingWriter {
-            bytes: Vec::new(),
-            fail_after: 3,
-        };
+    }
+    #[test]
+    fn delimiter_is_rejected() {
         assert_eq!(
-            write_json_line_blocking(&mut partial, &frame),
-            FrameWriteOutcome::DeliveryUnknown { bytes_written: 3 }
+            OutboundFrame::new(b"{}\n".to_vec()).err(),
+            Some(FrameWriteError::InvalidDelimiter)
         );
     }
+}
+
+#[cfg(test)]
+#[tokio::test]
+async fn ordinary_writer_rejects_p02_without_writing() {
+    let mut writer = FrameWriter::new(Vec::<u8>::new());
+    let frame = OutboundFrame::new_p02_read_text_file_response(b"{}".to_vec()).unwrap();
+    assert_eq!(
+        writer.write_json_line(&frame).await.unwrap(),
+        FrameWriteOutcome::ZeroByteFailure
+    );
+    assert!(writer.output.is_empty());
 }

@@ -6,20 +6,18 @@ import type { HarnessBrowseOwner } from "../../preview/harnessBrowse";
 import {
   CURATED_APPLY_FILE_TOOL_NAME,
   CURATED_BROWSE_TOOL_NAME,
-  CURATED_READ_TOOL_NAME,
   createToolHost,
 } from "./toolHost";
 
 const acpDirectory = path.resolve(import.meta.dirname);
 
-describe("curated read tool-host seam", () => {
-  it("admits only the literal curated read and typed apply tools", () => {
+describe("curated tool-host seam", () => {
+  it("admits only typed apply and browse tools", () => {
     const toolHost = createToolHost();
 
-    expect(CURATED_READ_TOOL_NAME).toBe("sage.read_text");
     expect(CURATED_APPLY_FILE_TOOL_NAME).toBe("sage.apply_file");
     expect(CURATED_BROWSE_TOOL_NAME).toBe("_sage/browse");
-    expect(toolHost.canInvoke("sage.read_text")).toBe(true);
+    expect(toolHost.canInvoke("sage.read_text")).toBe(false);
     expect(toolHost.canInvoke("sage.apply_file")).toBe(true);
     expect(toolHost.canInvoke("_sage/browse")).toBe(true);
     expect(toolHost.canInvoke("sage.browse")).toBe(false);

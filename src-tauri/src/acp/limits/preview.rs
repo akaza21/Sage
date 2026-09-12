@@ -29,6 +29,12 @@ pub(crate) struct PreviewLimits {
     pub(crate) revision_max: u64,
 }
 
+/// ACP P-02 whole-source cap, its exact `+1` disk probe, and the sole
+/// expanded response ceiling (six JSON bytes per input byte plus envelope).
+pub(crate) const P02_READ_TEXT_SOURCE_BYTES: usize = 2 * 1024 * 1024;
+pub(crate) const P02_READ_TEXT_PROBE_BYTES: usize = P02_READ_TEXT_SOURCE_BYTES + 1;
+pub(crate) const P02_READ_TEXT_RESPONSE_BYTES: usize = P02_READ_TEXT_SOURCE_BYTES * 6 + 65_536;
+
 pub(crate) const PREVIEW_LIMITS: PreviewLimits = PreviewLimits {
     identifier_bytes: 512,
     error_bytes: 8_192,
