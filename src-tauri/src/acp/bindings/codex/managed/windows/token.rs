@@ -141,3 +141,24 @@ fn copy_valid_sid(sid: PSID) -> Result<Vec<u8>, ManagedStagingError> {
     // SAFETY: a valid SID is readable for GetLengthSid bytes.
     Ok(unsafe { std::slice::from_raw_parts(sid.cast::<u8>(), bytes) }.to_vec())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn well_known_administrator_and_token_user_sids_stay_distinct() {
+        let token = ProcessToken::open().unwrap();
+        let administrators_sid = well_known_sid(WinBuiltinAdministratorsSid).unwrap();
+
+        assert_ne!(administrators_sid, token.user_sid);
+        assert_eq!(
+            token.classify_owner(&administrators_sid),
+            OwnerClass::BuiltinAdministrators
+        );
+        assert_eq!(
+            token.classify_owner(&token.user_sid),
+            OwnerClass::CurrentUser
+        );
+    }
+}

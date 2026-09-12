@@ -378,23 +378,127 @@ mod tests {
 
     use super::*;
 
+    struct FixtureDirectory(PathBuf);
+
+    impl Drop for FixtureDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn snapshot_with_package_node(
+        base: &Path,
+        token_user_digest: [u8; 32],
+        package_node: NodeSecurityClaims,
+    ) -> ManagedSecuritySnapshot {
+        ManagedSecuritySnapshot {
+            token_user_digest,
+            package_nodes: vec![
+                NodeSecurityClaims {
+                    path: base.to_owned(),
+                    directory: true,
+                    owner: OwnerClass::BuiltinAdministrators,
+                    dacl_present: true,
+                    dacl_protected: true,
+                    descriptor_digest: [0; 32],
+                    descriptor_bytes: 1,
+                    effective_access: 0,
+                    foreign_mutation_grant: false,
+                },
+                package_node,
+            ],
+            state_root: NodeSecurityClaims {
+                path: base.to_owned(),
+                directory: true,
+                owner: OwnerClass::CurrentUser,
+                dacl_present: true,
+                dacl_protected: true,
+                descriptor_digest: [0; 32],
+                descriptor_bytes: 1,
+                effective_access: super::super::STATE_REQUIRED_ACCESS,
+                foreign_mutation_grant: false,
+            },
+        }
+    }
+
     #[test]
-    fn ordinary_user_owned_file_is_observed_as_mutable_not_managed() {
+    fn ordinary_mutable_file_is_rejected_for_every_owner_class() {
         let base = std::env::temp_dir().join(format!("sage-managed-acl-{}", Uuid::new_v4()));
         fs::create_dir(&base).unwrap();
+        let _cleanup = FixtureDirectory(base.clone());
         let path = base.join("ordinary-file");
         fs::write(&path, b"fixture").unwrap();
-        {
-            let handle = OpenOptions::new()
-                .read(true)
-                .share_mode(FILE_SHARE_READ)
-                .open(&path)
-                .unwrap();
-            let token = ProcessToken::open().unwrap();
-            let claims = claims_for_handle(path.clone(), false, &handle, &token, false).unwrap();
-            assert_eq!(claims.owner, OwnerClass::CurrentUser);
-            assert_ne!(claims.effective_access & DANGEROUS_ACCESS, 0);
+        let handle = OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(&path)
+            .unwrap();
+        let token = ProcessToken::open().unwrap();
+        let claims = claims_for_handle(path.clone(), false, &handle, &token, false).unwrap();
+
+        // Preserve and exercise the exact owner Windows reported. Hosted images
+        // may inherit BuiltinAdministrators rather than CurrentUser here.
+        assert_eq!(claims.path, path);
+        assert!(!claims.directory);
+        assert!(claims.dacl_present);
+        assert_ne!(claims.effective_access & DANGEROUS_ACCESS, 0);
+        let token_user_digest = Sha256::digest(&token.user_sid).into();
+        assert_eq!(
+            super::super::validate_snapshot(&snapshot_with_package_node(
+                &base,
+                token_user_digest,
+                claims.clone(),
+            )),
+            Err(ManagedStagingError::PackageAcl)
+        );
+
+        // Apply the real dangerous-access observation to every owner class while
+        // neutralizing the independent foreign-grant predicate.
+        for owner in [
+            OwnerClass::LocalSystem,
+            OwnerClass::BuiltinAdministrators,
+            OwnerClass::CurrentUser,
+            OwnerClass::Other,
+        ] {
+            let mut dangerous_claims = claims.clone();
+            dangerous_claims.owner = owner;
+            dangerous_claims.foreign_mutation_grant = false;
+            assert_eq!(
+                super::super::validate_snapshot(&snapshot_with_package_node(
+                    &base,
+                    token_user_digest,
+                    dangerous_claims,
+                )),
+                Err(ManagedStagingError::PackageAcl),
+                "dangerous ordinary file was admitted for owner {owner:?}"
+            );
         }
-        fs::remove_dir_all(base).unwrap();
+
+        // Paired safe controls isolate both policy dimensions: LocalSystem and
+        // BuiltinAdministrators must pass once dangerous access is removed,
+        // while CurrentUser and Other must remain rejected on ownership alone.
+        for (owner, expected) in [
+            (OwnerClass::LocalSystem, Ok(())),
+            (OwnerClass::BuiltinAdministrators, Ok(())),
+            (
+                OwnerClass::CurrentUser,
+                Err(ManagedStagingError::PackageAcl),
+            ),
+            (OwnerClass::Other, Err(ManagedStagingError::PackageAcl)),
+        ] {
+            let mut safe_control = claims.clone();
+            safe_control.owner = owner;
+            safe_control.effective_access &= !DANGEROUS_ACCESS;
+            safe_control.foreign_mutation_grant = false;
+            assert_eq!(
+                super::super::validate_snapshot(&snapshot_with_package_node(
+                    &base,
+                    token_user_digest,
+                    safe_control,
+                )),
+                expected,
+                "safe-access owner policy drifted for {owner:?}"
+            );
+        }
     }
 }
