@@ -302,12 +302,17 @@ mod tests {
     use super::*;
     #[test]
     fn inbound_handoff_is_strict_and_preserves_string_or_numeric_id() {
+        let fixture_path = if cfg!(windows) {
+            "C:/fixture/file.txt"
+        } else {
+            "/fixture/file.txt"
+        };
         for (id, expected) in [("\"request-1\"", "\"request-1\""), ("42", "42")] {
             let raw = format!(
-                "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"fs/read_text_file\",\"params\":{{\"sessionId\":\"fixture-session\",\"path\":\"/fixture/file.txt\",\"line\":2,\"limit\":1}}}}"
+                "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"fs/read_text_file\",\"params\":{{\"sessionId\":\"fixture-session\",\"path\":\"{fixture_path}\",\"line\":2,\"limit\":1}}}}"
             );
             let handoff = decode_read_text_file_handoff(raw.as_bytes()).unwrap();
-            assert_eq!(handoff.absolute_path, "/fixture/file.txt");
+            assert_eq!(handoff.absolute_path, fixture_path);
             let response = encode_read_text_file_response(&handoff.request_id, "text").unwrap();
             assert!(
                 String::from_utf8(response.payload().to_vec())
@@ -316,12 +321,20 @@ mod tests {
             );
         }
         for invalid in [
-            br#"{"jsonrpc":"2.0","id":1.5,"method":"fs/read_text_file","params":{"sessionId":"s","path":"/x"}}"#.as_slice(),
-            br#"{"jsonrpc":"2.0","id":9223372036854775808,"method":"fs/read_text_file","params":{"sessionId":"s","path":"/x"}}"#.as_slice(),
-            br#"{"jsonrpc":"2.0","id":1,"method":"fs/read_text_file","params":{"sessionId":"s","path":"/x","_meta":true}}"#.as_slice(),
-            br#"{"jsonrpc":"2.0","id":1,"method":"fs/read_text_file","params":{"sessionId":"s","path":"/x","extra":true}}"#.as_slice(),
+            format!(
+                r#"{{"jsonrpc":"2.0","id":1.5,"method":"fs/read_text_file","params":{{"sessionId":"s","path":"{fixture_path}"}}}}"#
+            ),
+            format!(
+                r#"{{"jsonrpc":"2.0","id":9223372036854775808,"method":"fs/read_text_file","params":{{"sessionId":"s","path":"{fixture_path}"}}}}"#
+            ),
+            format!(
+                r#"{{"jsonrpc":"2.0","id":1,"method":"fs/read_text_file","params":{{"sessionId":"s","path":"{fixture_path}","_meta":true}}}}"#
+            ),
+            format!(
+                r#"{{"jsonrpc":"2.0","id":1,"method":"fs/read_text_file","params":{{"sessionId":"s","path":"{fixture_path}","extra":true}}}}"#
+            ),
         ] {
-            assert!(decode_read_text_file_handoff(invalid).is_err());
+            assert!(decode_read_text_file_handoff(invalid.as_bytes()).is_err());
         }
     }
 }

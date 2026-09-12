@@ -340,7 +340,8 @@ fn exact_v6_source_upgrades_to_v7_without_losing_epoch_children() {
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row
                 .get::<_, i64>(0))
             .unwrap(),
-        9
+        // v10 adds the tenth schema_migrations row.
+        10
     );
     assert!(
         migrated

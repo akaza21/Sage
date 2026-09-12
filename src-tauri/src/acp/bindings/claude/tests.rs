@@ -131,9 +131,10 @@ fn p02_claude_real_ingress_preflights_routes_service_and_preserves_string_id() {
         binding_digest: [7; 32],
         owner: owner.clone(),
     };
+    let path = serde_json::to_string(&root.join("file.txt").display().to_string()).unwrap();
     let request = format!(
-        r#"{{"jsonrpc":"2.0","id":"claude-7","method":"fs/read_text_file","params":{{"sessionId":"claude-session-1","path":"{}","line":2,"limit":1,"_meta":{{"opaque":true}}}}}}"#,
-        root.join("file.txt").display()
+        r#"{{"jsonrpc":"2.0","id":"claude-7","method":"fs/read_text_file","params":{{"sessionId":"claude-session-1","path":{},"line":2,"limit":1,"_meta":{{"opaque":true}}}}}}"#,
+        path
     );
     let mut bytes = request.as_bytes().to_vec();
     bytes.push(b'\n');
