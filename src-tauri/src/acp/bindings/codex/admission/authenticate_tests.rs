@@ -86,14 +86,41 @@ fn journey_fixture_entrypoint() -> EntrypointIdentity {
     }
 }
 
-fn signed_role_admission_fixture() -> (
+type SignedRoleAdmissionFixture = (
     MetadataValidatedPacket,
     SignedInstalledRole,
     ReproducedPackagePrerequisite,
     CodexAuthorityPrerequisite,
     CodexLaunchEnvironment,
     TestCleanup,
-) {
+);
+
+fn signed_role_admission_fixture() -> SignedRoleAdmissionFixture {
+    let parent =
+        std::env::temp_dir().join(format!("sage-codex-admission-{}", uuid::Uuid::new_v4()));
+    signed_role_admission_fixture_at(parent)
+}
+
+fn canonical_fixture_root(parent: &std::path::Path) -> PathBuf {
+    use std::path::{Component, Prefix};
+
+    std::fs::create_dir_all(parent).unwrap();
+    let canonical = parent.canonicalize().unwrap();
+    let mut components = canonical.components();
+    let drive = match components.next() {
+        Some(Component::Prefix(prefix)) => match prefix.kind() {
+            Prefix::Disk(drive) | Prefix::VerbatimDisk(drive) => drive,
+            _ => panic!("fixture root must resolve to a local Windows drive"),
+        },
+        _ => panic!("fixture root must resolve to an absolute Windows path"),
+    };
+    assert_eq!(components.next(), Some(Component::RootDir));
+    let mut canonical = PathBuf::from(format!("{}:\\", char::from(drive)));
+    canonical.extend(components);
+    canonical
+}
+
+fn signed_role_admission_fixture_at(parent: PathBuf) -> SignedRoleAdmissionFixture {
     use serde_json::{Value, json};
 
     const PACKET: &[u8] =
@@ -102,8 +129,7 @@ fn signed_role_admission_fixture() -> (
         include_bytes!("../../../../../testdata/acp/codex/security-policy-v1.json");
     const CONFIG: &[u8] = include_bytes!("../../../../../testdata/acp/codex/config-v1.toml");
 
-    let parent =
-        std::env::temp_dir().join(format!("sage-codex-admission-{}", uuid::Uuid::new_v4()));
+    let parent = canonical_fixture_root(&parent);
     let home = parent
         .join("CodexState")
         .join("codex-app-server-0.145.0-7b0ab167");
@@ -158,6 +184,55 @@ fn signed_role_admission_fixture() -> (
         environment,
         TestCleanup(parent),
     )
+}
+
+#[test]
+fn shared_admission_fixture_canonicalizes_root_before_deriving_authority() {
+    let raw_parent = std::env::temp_dir().join(format!(
+        "sage-codex-admission-alias-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let aliased_parent = raw_parent.join("lexical-alias").join("..");
+    let expected_parent = canonical_fixture_root(&aliased_parent);
+    assert_ne!(aliased_parent, expected_parent);
+
+    let (packet, role, reproduced, authority, environment, cleanup) =
+        signed_role_admission_fixture_at(aliased_parent);
+    let expected_home = expected_parent
+        .join("CodexState")
+        .join("codex-app-server-0.145.0-7b0ab167");
+    assert_eq!(cleanup.0, expected_parent);
+    assert_eq!(packet.codex_home(), expected_home);
+    assert_eq!(
+        environment
+            .entries()
+            .iter()
+            .find(|(key, _)| key == "CODEX_HOME")
+            .map(|(_, value)| value.as_str()),
+        expected_home.to_str()
+    );
+    reproduced.revalidate(&packet).unwrap();
+    authority.revalidate(&packet, &reproduced).unwrap();
+    environment.revalidate(&packet).unwrap();
+    assert_eq!(role.binding_id, packet.metadata().binding_id);
+    let expected_temp = expected_home.join("tmp");
+    for key in ["TEMP", "TMP"] {
+        assert_eq!(
+            environment
+                .entries()
+                .iter()
+                .find(|(candidate, _)| candidate == key)
+                .map(|(_, value)| value.as_str()),
+            expected_temp.to_str()
+        );
+    }
+
+    let registration = CodexBindingRegistration::unavailable_for_test();
+    let admitted = registration
+        .authenticate_signed_installed_role(&packet, role, reproduced, authority, environment)
+        .unwrap();
+    admitted.revalidate().unwrap();
+    assert!(Arc::ptr_eq(&admitted, &registration.refresh().unwrap()));
 }
 
 #[test]
