@@ -292,25 +292,34 @@ fn effect_unknown_recovery_never_projects_a_replacement_root_identity() {
 #[test]
 fn ordinary_git_failure_never_exposes_an_absolute_repository_path() {
     let fixture = TwoRootProject::new();
+    let native_root = std::path::absolute(&fixture.root_a).unwrap();
+    assert!(native_root.is_absolute());
+    let missing_object_store = native_root.join("missing-object-store");
+    let alternates = fixture.root_a.join(".git/objects/info/alternates");
+    fs::create_dir_all(alternates.parent().unwrap()).unwrap();
+    fs::write(alternates, format!("{}\n", missing_object_store.display())).unwrap();
+    let head = Command::new("git")
+        .arg("-C")
+        .arg(&fixture.root_a)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .unwrap();
+    assert!(head.status.success());
+    let head = String::from_utf8(head.stdout).unwrap();
+    let head = head.trim();
+    fs::remove_file(
+        fixture
+            .root_a
+            .join(".git/objects")
+            .join(&head[..2])
+            .join(&head[2..]),
+    )
+    .unwrap();
+
     let database = Database::open(&fixture.base.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&fixture.root_a).unwrap();
     let root_id = database.root_records(&project.id).unwrap()[0].id.clone();
     let state = AppState::new(database);
-    let branch = Command::new("git")
-        .arg("-C")
-        .arg(&fixture.root_a)
-        .args(["symbolic-ref", "HEAD"])
-        .output()
-        .unwrap();
-    assert!(branch.status.success());
-    let branch = String::from_utf8(branch.stdout).unwrap();
-    let lock = fixture
-        .root_a
-        .join(".git")
-        .join(format!("{}.lock", branch.trim()));
-    fs::create_dir_all(lock.parent().unwrap()).unwrap();
-    fs::write(&lock, "held").unwrap();
-
     let error = tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(commit_git_repository_inner(
@@ -323,9 +332,15 @@ fn ordinary_git_failure_never_exposes_an_absolute_repository_path() {
             0,
         ))
         .unwrap_err();
-    let raw = error.to_string().replace('\\', "/");
-    let native_root = fixture.root_a.to_string_lossy().replace('\\', "/");
-    assert!(raw.contains(&native_root));
+    assert!(matches!(&error, AppError::Git(_)));
+    let raw = error.to_string().replace(std::path::MAIN_SEPARATOR, "/");
+    let native_root = native_root
+        .to_string_lossy()
+        .replace(std::path::MAIN_SEPARATOR, "/");
+    assert!(
+        raw.contains(&native_root),
+        "fixture must produce a raw Git failure containing the native absolute repository root: {raw}"
+    );
 
     let public = commit_command_error(error);
     let message = match public {
@@ -333,7 +348,11 @@ fn ordinary_git_failure_never_exposes_an_absolute_repository_path() {
         _ => panic!("ordinary Git failure must remain a failed command"),
     };
     assert!(message.len() <= 512);
-    assert!(!message.replace('\\', "/").contains(&native_root));
+    assert!(
+        !message
+            .replace(std::path::MAIN_SEPARATOR, "/")
+            .contains(&native_root)
+    );
     assert!(!message.contains(".git"));
 }
 
