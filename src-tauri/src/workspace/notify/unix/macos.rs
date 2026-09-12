@@ -1,13 +1,17 @@
 use super::{AtomicBool, Ordering, unix_events};
 use std::{
+    ffi::CString,
     fs::{File, OpenOptions},
     io,
     os::{
         fd::{AsRawFd, FromRawFd, OwnedFd},
         raw::{c_int, c_void},
-        unix::fs::{MetadataExt, OpenOptionsExt},
+        unix::{
+            ffi::OsStrExt,
+            fs::{MetadataExt, OpenOptionsExt},
+        },
     },
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     ptr,
 };
 
@@ -57,6 +61,7 @@ struct Timespec {
 
 unsafe extern "C" {
     fn kqueue() -> c_int;
+    fn openat(fd: c_int, path: *const i8, flags: c_int, ...) -> c_int;
     fn fcntl(fd: c_int, cmd: c_int, ...) -> c_int;
     fn kevent(
         kq: c_int,
@@ -71,20 +76,31 @@ unsafe extern "C" {
 struct Target {
     path: PathBuf,
     file: Option<File>,
+    missing_notified: bool,
 }
 
 pub(crate) struct Prepared {
     kq: OwnedFd,
     directories: Vec<File>,
     target: Option<Target>,
+    initial_notice: Option<unix_events::UnixWatchKind>,
 }
 
-fn register(kq: &OwnedFd, file: &File) -> io::Result<()> {
+const WORKSPACE_MASK: u32 = NOTE_DELETE | NOTE_WRITE | NOTE_EXTEND | NOTE_ATTRIB | NOTE_RENAME;
+
+fn event_error(editor: bool, event: &Kevent) -> io::Result<()> {
+    if editor && event.flags & EV_ERROR != 0 {
+        return Err(io::Error::from_raw_os_error(event.data as c_int));
+    }
+    Ok(())
+}
+
+fn register(kq: &OwnedFd, file: &File, editor: bool) -> io::Result<()> {
     let change = Kevent {
         ident: file.as_raw_fd() as usize,
         filter: EVFILT_VNODE,
         flags: EV_ADD | EV_CLEAR,
-        fflags: NOTE_DELETE | NOTE_WRITE | NOTE_EXTEND | NOTE_ATTRIB | NOTE_RENAME | NOTE_REVOKE,
+        fflags: WORKSPACE_MASK | if editor { NOTE_REVOKE } else { 0 },
         ..Kevent::empty()
     };
     if unsafe { kevent(kq.as_raw_fd(), &change, 1, ptr::null_mut(), 0, ptr::null()) } < 0 {
@@ -94,6 +110,10 @@ fn register(kq: &OwnedFd, file: &File) -> io::Result<()> {
 }
 
 pub(super) fn prepare(directories: &[PathBuf]) -> io::Result<Prepared> {
+    prepare_mode(directories, false)
+}
+
+fn prepare_mode(directories: &[PathBuf], editor: bool) -> io::Result<Prepared> {
     let fd = unsafe { kqueue() };
     if fd < 0 {
         return Err(io::Error::last_os_error());
@@ -114,48 +134,108 @@ pub(super) fn prepare(directories: &[PathBuf]) -> io::Result<Prepared> {
         kq,
         directories: Vec::new(),
         target: None,
+        initial_notice: None,
     };
     for directory in directories {
-        let file = OpenOptions::new()
-            .read(true)
-            .custom_flags(O_DIRECTORY | O_CLOEXEC)
-            .open(directory)?;
-        register(&prepared.kq, &file)?;
+        let file = if editor {
+            open_editor_parent(directory)?
+        } else {
+            OpenOptions::new()
+                .read(true)
+                .custom_flags(O_DIRECTORY | O_CLOEXEC)
+                .open(directory)?
+        };
+        register(&prepared.kq, &file, editor)?;
         prepared.directories.push(file);
     }
     Ok(prepared)
+}
+
+fn open_editor_parent(path: &Path) -> io::Result<File> {
+    if !path.is_absolute() {
+        return Err(io::Error::other("editor parent must be absolute"));
+    }
+    let mut directory = File::open("/")?;
+    for (index, component) in path.components().enumerate() {
+        if index >= 256 {
+            return Err(io::Error::other("editor parent depth bound"));
+        }
+        let Component::Normal(name) = component else {
+            if component == Component::RootDir {
+                continue;
+            }
+            return Err(io::Error::other("editor parent component"));
+        };
+        let name =
+            CString::new(name.as_bytes()).map_err(|_| io::Error::other("editor parent name"))?;
+        let fd = unsafe {
+            openat(
+                directory.as_raw_fd(),
+                name.as_ptr(),
+                O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        directory = unsafe { File::from_raw_fd(fd) };
+    }
+    Ok(directory)
 }
 
 pub(super) fn prepare_editor(path: &Path) -> io::Result<Prepared> {
     let parent = path
         .parent()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "editor watch parent"))?;
-    let mut prepared = prepare(&[parent.to_path_buf()])?;
+    let mut prepared = prepare_mode(&[parent.to_path_buf()], true)?;
     prepared.target = Some(Target {
         path: path.to_path_buf(),
         file: None,
+        missing_notified: false,
     });
     // Parent is registered first, so replacement during target registration remains queued.
-    if prepared.reconcile_target()? == unix_events::UnixWatchKind::Deleted {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "editor watch target",
-        ));
-    }
+    prepared.initial_notice = prepared
+        .reconcile_target()?
+        .filter(|kind| *kind == unix_events::UnixWatchKind::Deleted);
     Ok(prepared)
 }
 
 impl Prepared {
-    fn reconcile_target(&mut self) -> io::Result<unix_events::UnixWatchKind> {
+    fn reconcile_target(&mut self) -> io::Result<Option<unix_events::UnixWatchKind>> {
         let target = self.target.as_mut().expect("editor target");
-        let metadata = match target.path.symlink_metadata() {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                target.file = None;
-                return Ok(unix_events::UnixWatchKind::Deleted);
-            }
-            Err(error) => return Err(error),
+        let parent = &self.directories[0];
+        // Validate the pathname still identifies the held parent. The subsequent open is
+        // relative to that FD, so a rename/symlink swap after this check cannot redirect it.
+        let current = target
+            .path
+            .parent()
+            .expect("editor parent")
+            .symlink_metadata()?;
+        let held = parent.metadata()?;
+        if !current.is_dir() || current.dev() != held.dev() || current.ino() != held.ino() {
+            return Err(io::Error::other("editor watch parent identity changed"));
+        }
+        let name = CString::new(target.path.file_name().expect("editor name").as_bytes())
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "editor watch name"))?;
+        let fd = unsafe {
+            openat(
+                parent.as_raw_fd(),
+                name.as_ptr(),
+                O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC,
+            )
         };
+        if fd < 0 {
+            let error = io::Error::last_os_error();
+            if error.kind() != io::ErrorKind::NotFound {
+                return Err(error);
+            }
+            target.file = None;
+            let notify = !target.missing_notified;
+            target.missing_notified = true;
+            return Ok(notify.then_some(unix_events::UnixWatchKind::Deleted));
+        }
+        let file = unsafe { File::from_raw_fd(fd) };
+        let metadata = file.metadata()?;
         if !metadata.is_file() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -165,33 +245,30 @@ impl Prepared {
         let same_file = target
             .file
             .as_ref()
-            .map(|file| file.metadata())
+            .map(|old| old.metadata())
             .transpose()?
             .is_some_and(|old| old.dev() == metadata.dev() && old.ino() == metadata.ino());
         if !same_file {
-            // Closing a vnode FD removes its kevent. Never accumulate old target registrations.
+            // At most one temporary candidate FD; drop the old registration before replacing it.
             target.file = None;
-            let file = match OpenOptions::new()
-                .read(true)
-                .custom_flags(O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-                .open(&target.path)
-            {
-                Ok(file) => file,
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                    return Ok(unix_events::UnixWatchKind::Deleted);
-                }
-                Err(error) => return Err(error),
-            };
-            if !file.metadata()?.is_file() {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "editor watch regular file",
-                ));
-            }
-            register(&self.kq, &file)?;
+            register(&self.kq, &file, true)?;
             target.file = Some(file);
         }
-        Ok(unix_events::UnixWatchKind::Changed)
+        target.missing_notified = false;
+        Ok(Some(unix_events::UnixWatchKind::Changed))
+    }
+
+    fn editor_delivery(
+        &self,
+        kind: unix_events::UnixWatchKind,
+    ) -> Result<(String, u32), super::super::WorkspaceNotifyError> {
+        let name = self
+            .target
+            .as_ref()
+            .and_then(|target| target.path.file_name())
+            .and_then(|name| name.to_str());
+        unix_events::unix_watch_delivery(name, kind)
+            .or_else(|_| unix_events::unix_watch_delivery(None, kind))
     }
 }
 
@@ -204,6 +281,12 @@ pub(super) fn run(
         tv_sec: 0,
         tv_nsec: 100_000_000,
     };
+    if !cancelled.load(Ordering::Acquire)
+        && let Some(kind) = prepared.initial_notice.take()
+        && let Ok((relative, action)) = prepared.editor_delivery(kind)
+    {
+        deliver(relative, action);
+    }
     while !cancelled.load(Ordering::Acquire) {
         let mut event = Kevent::empty();
         let ready = unsafe {
@@ -229,9 +312,7 @@ pub(super) fn run(
         if ready == 0 {
             continue;
         }
-        if event.flags & EV_ERROR != 0 {
-            return Err(io::Error::from_raw_os_error(event.data as c_int));
-        }
+        event_error(prepared.target.is_some(), &event)?;
         let delivery = if prepared.target.is_some() {
             let parent_event = prepared
                 .directories
@@ -246,14 +327,10 @@ pub(super) fn run(
                 return Err(io::Error::other("editor watch target revoked"));
             }
             // Reattach BEFORE delivery so a write triggered by resync cannot race readiness.
-            let kind = prepared.reconcile_target()?;
-            let name = prepared
-                .target
-                .as_ref()
-                .and_then(|target| target.path.file_name())
-                .and_then(|name| name.to_str());
-            unix_events::unix_watch_delivery(name, kind)
-                .or_else(|_| unix_events::unix_watch_delivery(None, kind))
+            let Some(kind) = prepared.reconcile_target()? else {
+                continue;
+            };
+            prepared.editor_delivery(kind)
         } else {
             // Workspace directory events retain the existing unnamed overflow/resync contract.
             unix_events::unix_watch_delivery(None, unix_events::UnixWatchKind::Changed)
@@ -266,3 +343,7 @@ pub(super) fn run(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "macos_tests.rs"]
+mod tests;

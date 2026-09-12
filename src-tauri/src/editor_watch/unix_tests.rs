@@ -21,6 +21,10 @@ struct WatchTest {
 
 impl WatchTest {
     fn start() -> Self {
+        Self::start_with_target(true)
+    }
+
+    fn start_with_target(present: bool) -> Self {
         let directory = std::env::temp_dir().join(format!(
             "sage-editor-watch-unix-{}-{}",
             std::process::id(),
@@ -30,8 +34,12 @@ impl WatchTest {
                 .as_nanos(),
         ));
         fs::create_dir(&directory).unwrap();
+        let directory = directory.canonicalize().unwrap();
         let path = directory.join("notes.md");
         fs::write(&path, "initial").unwrap();
+        if !present {
+            fs::remove_file(&path).unwrap();
+        }
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
         // Same prepare-before-spawn seam as production: target exists before registration.
@@ -133,7 +141,12 @@ fn macos_editor_watch_delete_recreate_and_write_reopens_target() {
     let mut test = WatchTest::start();
     fs::remove_file(&test.path).unwrap();
     test.expect(EditorExternalWatchKind::Deleted);
-    test.settle();
+    fs::write(test.directory.join("sibling.md"), "unrelated").unwrap();
+    assert!(
+        test.notices
+            .recv_timeout(Duration::from_millis(250))
+            .is_err()
+    );
     fs::write(&test.path, "initial").unwrap();
     test.expect(EditorExternalWatchKind::Changed);
     test.settle();
@@ -211,17 +224,21 @@ fn macos_editor_watch_rejects_symlink_replacement() {
 
 #[cfg(target_os = "macos")]
 #[test]
-fn macos_editor_watch_missing_initial_target_fails_preparation() {
-    let mut test = WatchTest::start();
-    test.cancel();
-    fs::remove_file(&test.path).unwrap();
-    assert_eq!(
-        prepare_editor_watch(&test.path)
-            .err()
-            .expect("missing target fails")
-            .kind(),
-        std::io::ErrorKind::NotFound
+fn macos_editor_watch_missing_during_prepare_reports_once_then_recovers() {
+    let mut test = WatchTest::start_with_target(false);
+    test.expect(EditorExternalWatchKind::Deleted);
+    fs::write(test.directory.join("sibling.md"), "unrelated").unwrap();
+    assert!(
+        test.notices
+            .recv_timeout(Duration::from_millis(250))
+            .is_err()
     );
+    fs::write(&test.path, "initial").unwrap();
+    test.expect(EditorExternalWatchKind::Changed);
+    test.settle();
+    test.write_in_place();
+    test.expect(EditorExternalWatchKind::Changed);
+    test.cancel();
 }
 
 #[cfg(target_os = "macos")]
