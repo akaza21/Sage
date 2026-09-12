@@ -24,6 +24,10 @@ import { fileURLToPath } from "node:url";
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const logDir = resolve(repo, "work", "gate-logs");
 mkdirSync(logDir, { recursive: true });
+// tauri::generate_context! panics if frontendDist (../dist) is absent, which
+// is the case in a fresh worktree before the first `npm run build`. Rust steps
+// only need the directory to exist; the build step fills it.
+mkdirSync(resolve(repo, "dist"), { recursive: true });
 
 const manifest = "src-tauri/Cargo.toml";
 const cargoTest = [

@@ -11,6 +11,7 @@
 // Layout (override with SAGE_WORK_DIR / SAGE_CARGO_DIR):
 //   worktree      <SAGE_WORK_DIR>/<ticket>          default C:\SageWork or ~/SageWork
 //   cargo target  <SAGE_CARGO_DIR>/<ticket>         default C:\SageCaches\cargo-target
+//                 (also written to <worktree>/.cargo/config.toml, gitignored)
 //
 // Each lane gets its own node_modules (npm ci) and Cargo target so concurrent
 // writers never share build locks. `done` deletes both.
@@ -101,7 +102,10 @@ switch (cmd) {
     writeCargoConfig(path, targetOf(ticket));
     run("npm", ["ci", "--no-audit", "--no-fund"], path);
     console.log(
-      `\nlane ready:\n  cd ${path}\n  set CARGO_TARGET_DIR=${targetOf(ticket)}\n  npm run gate:fast`,
+      `
+lane ready:
+  cd ${path}
+  npm run gate:fast   (Cargo target ${targetOf(ticket)} via untracked .cargo/config.toml)`,
     );
     break;
   }
