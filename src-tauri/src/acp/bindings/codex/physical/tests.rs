@@ -63,12 +63,16 @@ struct CustomPackage {
     files: Vec<ExpectedPhysicalFile>,
 }
 
+fn canonical_fixture_base(prefix: &str) -> PathBuf {
+    let base = std::env::temp_dir().join(format!("{prefix}-{}", Uuid::new_v4()));
+    fs::create_dir_all(&base).unwrap();
+    base.canonicalize().unwrap()
+}
+
 impl CustomPackage {
     fn with_paths(paths: Vec<PathBuf>) -> Self {
         assert_eq!(paths.len(), EXPECTED_FILE_COUNT);
-        let base = std::env::temp_dir().join(format!("sage-codex-bounds-{}", Uuid::new_v4()));
-        fs::create_dir(&base).unwrap();
-        let base = base.canonicalize().unwrap();
+        let base = canonical_fixture_base("sage-codex-bounds");
         let package = base.join("package");
         let digest =
             decode_digest("ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb")
@@ -111,9 +115,7 @@ impl Drop for CustomPackage {
 
 impl TestPackage {
     fn new() -> Self {
-        let base = std::env::temp_dir().join(format!("sage-codex-physical-{}", Uuid::new_v4()));
-        fs::create_dir(&base).unwrap();
-        let base = base.canonicalize().unwrap();
+        let base = canonical_fixture_base("sage-codex-physical");
         let package = base.join("package");
         for (relative, bytes, _) in FIXTURE_FILES {
             let path = package.join(relative);
@@ -159,6 +161,25 @@ fn exact_eight_file_closure_returns_a_non_launch_proof_without_creating_state() 
     assert_eq!(proof.artifact_count(), EXPECTED_FILE_COUNT);
     assert_eq!(proof.byte_len(), 8);
     assert!(!fixture.codex_home.exists());
+}
+
+#[test]
+fn fixture_package_and_state_paths_are_derived_from_the_same_canonical_base() {
+    let fixture = TestPackage::new();
+    assert_eq!(fixture.base.canonicalize().unwrap(), fixture.base);
+    assert_eq!(fixture.package, fixture.base.join("package"));
+    assert_eq!(
+        fixture.codex_home,
+        fixture.base.join("state").join("codex-app-server-fixture")
+    );
+
+    let custom_paths = (0..EXPECTED_FILE_COUNT)
+        .map(|index| PathBuf::from(format!("root-{index}")))
+        .collect();
+    let custom = CustomPackage::with_paths(custom_paths);
+    assert_eq!(custom.base.canonicalize().unwrap(), custom.base);
+    assert_eq!(custom.package, custom.base.join("package"));
+    assert_eq!(custom.codex_home, custom.base.join("state"));
 }
 
 #[test]
