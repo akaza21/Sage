@@ -84,156 +84,19 @@ pub(crate) fn run_prepared(
 }
 
 #[cfg(target_os = "macos")]
-mod macos {
-    use super::{AtomicBool, Ordering, unix_events};
-    use std::{
-        ffi::CString,
-        os::raw::{c_int, c_void},
-        path::Path,
-        ptr,
-        time::Duration,
-    };
+mod macos;
 
-    const O_RDONLY: c_int = 0;
-    const O_DIRECTORY: c_int = 0x10_0000;
-    const O_CLOEXEC: c_int = 0x100_0000;
-    const EVFILT_VNODE: i16 = -4;
-    const EV_ADD: u16 = 0x0001;
-    const EV_CLEAR: u16 = 0x0020;
-    const NOTE_DELETE: u32 = 0x0000_0001;
-    const NOTE_WRITE: u32 = 0x0000_0002;
-    const NOTE_EXTEND: u32 = 0x0000_0004;
-    const NOTE_ATTRIB: u32 = 0x0000_0008;
-    const NOTE_RENAME: u32 = 0x0000_0020;
+#[cfg(target_os = "macos")]
+pub(crate) fn prepare_editor_watch(path: &std::path::Path) -> std::io::Result<macos::Prepared> {
+    macos::prepare_editor(path)
+}
 
-    #[repr(C)]
-    struct Kevent {
-        ident: usize,
-        filter: i16,
-        flags: u16,
-        fflags: u32,
-        data: isize,
-        udata: *mut c_void,
-    }
-
-    #[repr(C)]
-    struct Timespec {
-        tv_sec: i64,
-        tv_nsec: i64,
-    }
-
-    unsafe extern "C" {
-        fn open(path: *const i8, oflag: c_int, ...) -> c_int;
-        fn close(fd: c_int) -> c_int;
-        fn kqueue() -> c_int;
-        fn kevent(
-            kq: c_int,
-            changelist: *const Kevent,
-            nchanges: c_int,
-            eventlist: *mut Kevent,
-            nevents: c_int,
-            timeout: *const Timespec,
-        ) -> c_int;
-    }
-
-    pub(crate) struct Prepared {
-        kq: c_int,
-        dir_fds: Vec<c_int>,
-    }
-
-    impl Drop for Prepared {
-        fn drop(&mut self) {
-            unsafe {
-                close(self.kq);
-                for dir_fd in &self.dir_fds {
-                    close(*dir_fd);
-                }
-            }
-        }
-    }
-
-    pub(super) fn prepare(directories: &[std::path::PathBuf]) -> std::io::Result<Prepared> {
-        let kq = unsafe { kqueue() };
-        if kq < 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-        let mut dir_fds = Vec::new();
-        for directory in directories {
-            let path = CString::new(directory.to_string_lossy().as_bytes()).map_err(|_| {
-                std::io::Error::new(std::io::ErrorKind::InvalidInput, "notify path")
-            })?;
-            let dir_fd = unsafe { open(path.as_ptr(), O_RDONLY | O_DIRECTORY | O_CLOEXEC) };
-            if dir_fd < 0 {
-                let error = std::io::Error::last_os_error();
-                unsafe {
-                    close(kq);
-                    for fd in &dir_fds {
-                        close(*fd);
-                    }
-                }
-                return Err(error);
-            }
-            let change = Kevent {
-                ident: dir_fd as usize,
-                filter: EVFILT_VNODE,
-                flags: EV_ADD | EV_CLEAR,
-                fflags: NOTE_DELETE | NOTE_WRITE | NOTE_EXTEND | NOTE_ATTRIB | NOTE_RENAME,
-                data: 0,
-                udata: ptr::null_mut(),
-            };
-            let registered = unsafe { kevent(kq, &change, 1, ptr::null_mut(), 0, ptr::null()) };
-            if registered < 0 {
-                let error = std::io::Error::last_os_error();
-                unsafe {
-                    close(kq);
-                    close(dir_fd);
-                    for fd in &dir_fds {
-                        close(*fd);
-                    }
-                }
-                return Err(error);
-            }
-            dir_fds.push(dir_fd);
-        }
-        Ok(Prepared { kq, dir_fds })
-    }
-
-    pub(super) fn run(
-        prepared: Prepared,
-        cancelled: &AtomicBool,
-        deliver: &mut impl FnMut(String, u32),
-    ) -> std::io::Result<()> {
-        let timeout = Timespec {
-            tv_sec: 0,
-            tv_nsec: Duration::from_millis(100).as_nanos() as i64,
-        };
-        while !cancelled.load(Ordering::Acquire) {
-            let mut event = Kevent {
-                ident: 0,
-                filter: 0,
-                flags: 0,
-                fflags: 0,
-                data: 0,
-                udata: ptr::null_mut(),
-            };
-            let ready = unsafe { kevent(prepared.kq, ptr::null(), 0, &mut event, 1, &timeout) };
-            if cancelled.load(Ordering::Acquire) {
-                break;
-            }
-            if ready < 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            if ready == 0 {
-                continue;
-            }
-            if let Ok((relative, action)) =
-                unix_events::unix_watch_delivery(None, unix_events::UnixWatchKind::Changed)
-            {
-                deliver(relative, action);
-            }
-        }
-        Ok(())
-    }
+#[cfg(target_os = "linux")]
+pub(crate) fn prepare_editor_watch(path: &std::path::Path) -> std::io::Result<linux::Prepared> {
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "editor watch parent")
+    })?;
+    prepare_watch(&[parent.to_path_buf()])
 }
 
 #[cfg(target_os = "linux")]
