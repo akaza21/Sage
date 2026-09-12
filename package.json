@@ -26,6 +26,12 @@
     "check:integration": "node scripts/check-integration.mjs",
     "check:release": "node scripts/check-release.mjs",
     "check": "npm run format:check && npm run lint && npm run test && npm run test:budgets && npm run build && npm run test:web-bundle && npm run check:policy",
+    "gate:static": "node scripts/gate.mjs static",
+    "gate:fast": "node scripts/gate.mjs fast",
+    "gate:rust": "node scripts/gate.mjs rust",
+    "gate:full": "node scripts/gate.mjs full",
+    "lane": "node scripts/lane.mjs",
+    "smoke": "node scripts/app-smoke.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

@@ -76,6 +76,17 @@ npm run check
 node scripts/validate-performance-budgets.mjs
 ```
 
+Native local gates (Windows, macOS, Linux):
+
+```powershell
+npm run gate:static   # policy, prettier, eslint, tsc, rustfmt (about a minute)
+npm run gate:fast     # static + Vitest + strict Clippy
+npm run gate:rust     # three-phase Rust tests (parallel, then git-process and preview serially)
+npm run gate:full     # fast + rust + budgets + build + bundle cap
+npm run smoke         # headless rendered-app walkthrough with screenshots
+npm run lane new X    # one-writer worktree for ticket X; `lane done X` integrates to main
+```
+
 After the native prerequisites are installed:
 
 ```powershell
