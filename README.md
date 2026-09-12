@@ -87,6 +87,18 @@ npm run smoke         # headless rendered-app walkthrough with screenshots
 npm run lane new X    # one-writer worktree for ticket X; `lane done X` integrates to main
 ```
 
+The Cargo target directory is a per-machine choice and is never tracked.
+Set `CARGO_TARGET_DIR` in your environment, or create an untracked
+`.cargo/config.toml` (gitignored) such as:
+
+```toml
+[build]
+target-dir = "C:\Sage-build\target"
+```
+
+`npm run lane` gives every ticket worktree its own target under
+`D:SageCachescargo-target<ticket>`. CI runners use Cargo's default.
+
 After the native prerequisites are installed:
 
 ```powershell
