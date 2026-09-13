@@ -288,6 +288,21 @@ impl TreeControl {
     pub(crate) fn total_processes(&self) -> Result<u32, LaunchError> {
         self.0.job.total_processes()
     }
+
+    #[cfg(test)]
+    pub(super) fn settled_root_and_stderr_membership_snapshot(&self) -> (u32, u32) {
+        assert_eq!(try_observe_exit(self.0.process.raw()), Ok(true));
+        assert_eq!(self.0.stderr.wait_until(Instant::now()), Ok(()));
+        self.0.job.membership_snapshot()
+    }
+
+    #[cfg(test)]
+    pub(super) fn contains_exact_handle(
+        &self,
+        process: windows_sys::Win32::Foundation::HANDLE,
+    ) -> bool {
+        self.0.job.contains_exact_handle(process)
+    }
 }
 
 const MAX_DIAGNOSTIC_IMAGE_BYTES: u64 = 512 * 1024 * 1024;

@@ -58,6 +58,20 @@ Syntax highlighting, LSP, project search, Git mutation/history, file watching,
 PTYs, and managed-release wiring for Claude Code, Codex CLI, and Pi remain
 staged work. Observed-local or dormant harness source is not release admission.
 
+## Windows ACP convergence guarantee
+
+For a launched Windows ACP tree, `ZeroProcessToken` means the retained root
+process is signaled, the owned Job reports no active processes, and the
+supervisor's stderr drain has completed. The Job remains owned with
+no-breakaway and kill-on-close armed until final `TreeControl` drop; issuing a
+token does not itself close the Job. This is not proof that all descendant
+process objects have signaled or that every file handle has been released.
+Callers must not use the token alone as permission to delete a directory or
+assume filesystem locks are gone. No upper bound on descendant object
+settlement was established. See the
+[settlement evidence](docs/work-items/SUPERVISOR-DESCENDANT-SETTLEMENT/evidence.md),
+including the separately outstanding Cargo-target lease contract defect.
+
 ## Stack
 
 - Tauri 2 and Rust

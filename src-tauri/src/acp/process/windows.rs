@@ -2,6 +2,8 @@ mod artifact;
 mod authority;
 mod batch;
 mod clock;
+#[cfg(test)]
+mod descendant_settlement_tests;
 mod encoding;
 mod io;
 mod job;

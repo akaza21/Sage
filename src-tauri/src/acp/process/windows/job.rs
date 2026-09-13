@@ -73,6 +73,28 @@ impl JobBoundary {
         Ok(self.accounting()?.TotalProcesses)
     }
 
+    #[cfg(test)]
+    pub(super) fn membership_snapshot(&self) -> (u32, u32) {
+        super::descendant_settlement_tests::membership_snapshot(self.0.raw())
+    }
+
+    #[cfg(test)]
+    pub(super) fn contains_exact_handle(&self, process: HANDLE) -> bool {
+        let mut member = 0;
+        // SAFETY: both handles are retained by the diagnostic test and supervisor.
+        assert_ne!(
+            unsafe {
+                windows_sys::Win32::System::JobObjects::IsProcessInJob(
+                    process,
+                    self.0.raw(),
+                    &mut member,
+                )
+            },
+            0
+        );
+        member != 0
+    }
+
     fn accounting(&self) -> Result<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, LaunchError> {
         let mut accounting = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
         // SAFETY: accounting is writable and the information class matches it.
@@ -153,6 +175,25 @@ fn verify_job(job: HANDLE, active_limit: u32) -> Result<(), LaunchError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accounting_zero_does_not_require_descendant_object_settlement() {
+        // Deterministic model of the separately reproduced Windows ordering.
+        // This input is a Job counter, not a query of every descendant handle.
+        let observations = std::cell::Cell::new(0);
+        assert_eq!(
+            bounded_zero_wait(
+                || {
+                    observations.set(observations.get() + 1);
+                    Ok(0)
+                },
+                Instant::now(),
+                || panic!("accounting zero must not acquire a sleep-based settlement assumption"),
+            ),
+            Ok(())
+        );
+        assert_eq!(observations.get(), 1);
+    }
 
     #[test]
     fn teardown_wait_reaches_exact_zero_and_times_out_nonzero() {
