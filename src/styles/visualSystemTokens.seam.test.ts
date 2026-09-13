@@ -14,16 +14,28 @@ const rootBlock = visualSystemSource.match(
 describe("Wave 2 visual-system tokens", () => {
   it("freezes semantic color roles and maps the legacy surface names to them", () => {
     expect(rootBlock).toBeDefined();
-    expect(rootBlock).toMatch(/--color-canvas:\s*#0e1116;/);
-    expect(rootBlock).toMatch(/--color-panel:\s*#141820;/);
-    expect(rootBlock).toMatch(/--color-surface:\s*#1a1f28;/);
-    expect(rootBlock).toMatch(/--color-text-primary:\s*#e8edf5;/);
+    expect(rootBlock).toMatch(/--color-canvas:\s*#141414;/);
+    expect(rootBlock).toMatch(/--color-panel:\s*#141414;/);
+    expect(rootBlock).toMatch(/--color-surface:\s*#232323;/);
+    expect(rootBlock).toMatch(/--color-surface-hover:\s*#2a2a2a;/);
+    expect(rootBlock).toMatch(/--color-surface-active:\s*#2a4b6d;/);
+    expect(rootBlock).toMatch(
+      /--color-surface-selected:\s*var\(--color-surface-active\);/,
+    );
+    expect(rootBlock).toMatch(/--color-border-subtle:\s*#242424;/);
+    expect(rootBlock).toMatch(/--color-border-strong:\s*#2a2a2a;/);
+    expect(rootBlock).toMatch(/--color-text-primary:\s*#c5c5c5;/);
+    expect(rootBlock).toMatch(/--color-text-secondary:\s*#adadad;/);
+    expect(rootBlock).toMatch(/--color-text-muted:\s*#858585;/);
+    expect(rootBlock).toMatch(/--color-text-disabled:\s*#656565;/);
     expect(rootBlock).toMatch(/--color-status-foreground:\s*#fff;/);
-    expect(rootBlock).toMatch(/--color-file-script:\s*#4c8dff;/);
+    expect(rootBlock).toMatch(/--color-file-script:\s*#4c9df3;/);
     expect(rootBlock).toMatch(/--color-file-python:\s*#e2b66b;/);
     expect(rootBlock).toMatch(/--color-file-rust:\s*#ef9a9a;/);
-    expect(rootBlock).toMatch(/--color-file-media:\s*#7aa9ff;/);
-    expect(rootBlock).toMatch(/--color-accent:\s*#4c8dff;/);
+    expect(rootBlock).toMatch(/--color-file-media:\s*#75b4f7;/);
+    expect(rootBlock).toMatch(/--color-accent:\s*#4c9df3;/);
+    expect(rootBlock).toMatch(/--color-accent-hover:\s*#75b4f7;/);
+    expect(rootBlock).toMatch(/--color-accent-muted:\s*#2a4b6d;/);
     expect(rootBlock).toMatch(
       /--color-focus-ring:\s*var\(--color-accent-hover\);/,
     );
@@ -36,7 +48,20 @@ describe("Wave 2 visual-system tokens", () => {
     expect(rootBlock).toMatch(/--color-file-data:\s*#d7c078;/);
     expect(rootBlock).toMatch(/--bg:\s*var\(--color-canvas\);/);
     expect(rootBlock).toMatch(/--surface:\s*var\(--color-panel\);/);
+    expect(rootBlock).toMatch(/--surface-raised:\s*var\(--color-surface\);/);
+    expect(rootBlock).toMatch(
+      /--surface-hover:\s*var\(--color-surface-hover\);/,
+    );
+    expect(rootBlock).toMatch(
+      /--surface-active:\s*var\(--color-surface-active\);/,
+    );
+    expect(rootBlock).toMatch(/--border:\s*var\(--color-border-subtle\);/);
+    expect(rootBlock).toMatch(
+      /--border-strong:\s*var\(--color-border-strong\);/,
+    );
     expect(rootBlock).toMatch(/--text:\s*var\(--color-text-primary\);/);
+    expect(rootBlock).toMatch(/--text-soft:\s*var\(--color-text-secondary\);/);
+    expect(rootBlock).toMatch(/--text-muted:\s*var\(--color-text-muted\);/);
     expect(rootBlock).toMatch(/--accent:\s*var\(--color-accent\);/);
   });
 

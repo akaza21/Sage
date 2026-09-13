@@ -1,7 +1,7 @@
 /*
  * Editor-only finish derived from docs/design/EDITOR-VSCODE-REFERENCE.md.
- * The mode boundary is intentional: Agent keeps its reading-oriented palette,
- * while Editor uses compact, neutral workbench planes.
+ * The mode boundary is intentional: Editor keeps its compact geometry and
+ * explicit document-role projection while Agent shares the neutral foundation.
  */
 .workbench--editor,
 .new-file-dialog--editor,
