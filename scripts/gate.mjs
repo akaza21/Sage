@@ -21,6 +21,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { plans, stepConfiguration } from "./gate-plan.mjs";
+
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const logDir = resolve(repo, "work", "gate-logs");
 mkdirSync(logDir, { recursive: true });
@@ -29,168 +31,48 @@ mkdirSync(logDir, { recursive: true });
 // only need the directory to exist; the build step fills it.
 mkdirSync(resolve(repo, "dist"), { recursive: true });
 
-export function environmentForGateStep(name, environment = process.env) {
-  if (name !== "vitest") return environment;
-  return {
-    ...environment,
-    VITEST_MAX_WORKERS: environment.VITEST_MAX_WORKERS ?? "1",
-    VITEST_MIN_WORKERS: environment.VITEST_MIN_WORKERS ?? "1",
-  };
-}
-
-const manifest = "src-tauri/Cargo.toml";
-const cargoTest = [
-  "cargo",
-  "test",
-  "--manifest-path",
-  manifest,
-  "--all-features",
-];
-
-const vitestEnvironment = environmentForGateStep("vitest");
-
-const steps = {
-  policy: ["node", "scripts/generate-acp-fixture-cases.mjs", "--check"],
-  "policy-modules": ["node", "scripts/check-policy.mjs"],
-  prettier: ["npx", "prettier", "--check", "."],
-  eslint: ["npx", "eslint", "."],
-  typescript: ["npx", "tsc", "--noEmit"],
-  rustfmt: [
-    "cargo",
-    "fmt",
-    "--manifest-path",
-    manifest,
-    "--all",
-    "--",
-    "--check",
-  ],
-  vitest: {
-    command: ["npx", "vitest", "run", "--exclude", "tests/ui/**/*.spec.ts"],
-    env: vitestEnvironment,
-  },
-  clippy: [
-    "cargo",
-    "clippy",
-    "--manifest-path",
-    manifest,
-    "--all-targets",
-    "--all-features",
-    "--",
-    "-D",
-    "warnings",
-  ],
-  "rust-parallel": [
-    ...cargoTest,
-    "--",
-    "--skip",
-    "repository_mutation_commands::tests::",
-    "--skip",
-    "app_preview",
-  ],
-  "rust-git-proc": [
-    ...cargoTest,
-    "repository_mutation_commands::tests::",
-    "--",
-    "--test-threads=1",
-  ],
-  "rust-preview": [...cargoTest, "app_preview", "--", "--test-threads=1"],
-  budgets: ["node", "scripts/budget-lanes.mjs", "--check"],
-  build: ["npm", "run", "build"],
-  "web-bundle": ["node", "scripts/verify-web-bundle.mjs"],
-};
-
-const plans = {
-  static: [
-    "policy",
-    "policy-modules",
-    "prettier",
-    "eslint",
-    "typescript",
-    "rustfmt",
-  ],
-  fast: [
-    "policy",
-    "policy-modules",
-    "prettier",
-    "eslint",
-    "typescript",
-    "rustfmt",
-    "vitest",
-    "clippy",
-  ],
-  rust: ["rust-parallel", "rust-git-proc", "rust-preview"],
-  full: [
-    "policy",
-    "policy-modules",
-    "prettier",
-    "eslint",
-    "typescript",
-    "rustfmt",
-    "vitest",
-    "clippy",
-    "rust-parallel",
-    "rust-git-proc",
-    "rust-preview",
-    "budgets",
-    "build",
-    "web-bundle",
-  ],
-};
-
-function stepConfiguration(name) {
-  const configured = steps[name];
-  return Array.isArray(configured)
-    ? { command: configured, env: process.env }
-    : configured;
-}
-
-function main(argv = process.argv.slice(2)) {
-  const stopOnFail = argv.includes("--stop-on-fail");
-  const mode = argv.find((a) => !a.startsWith("--")) ?? "fast";
-  const plan = plans[mode];
-  if (!plan) {
-    console.error(
-      `unknown mode "${mode}"; expected one of ${Object.keys(plans).join(", ")}`,
-    );
-    return 2;
-  }
-
-  const shell = process.platform === "win32";
-  let failed = 0;
-  const started = Date.now();
-  console.log(`gate ${mode}: ${plan.length} steps, logs in ${logDir}`);
-
-  for (const name of plan) {
-    const { command, env } = stepConfiguration(name);
-    const [cmd, ...cmdArgs] = command;
-    const t0 = Date.now();
-    const result = spawnSync(cmd, cmdArgs, {
-      cwd: repo,
-      shell,
-      encoding: "utf8",
-      maxBuffer: 256 * 1024 * 1024,
-      env,
-    });
-    const seconds = ((Date.now() - t0) / 1000).toFixed(0);
-    const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-    writeFileSync(resolve(logDir, `${name}.log`), output);
-    const ok = result.status === 0;
-    if (!ok) failed += 1;
-    console.log(
-      `${name.padEnd(16)} ${ok ? "PASS" : "FAIL"}  ${seconds.padStart(5)}s${
-        ok ? "" : `   (work/gate-logs/${name}.log)`
-      }`,
-    );
-    if (!ok && stopOnFail) break;
-  }
-
-  const total = ((Date.now() - started) / 1000).toFixed(0);
-  console.log(
-    `gate ${mode}: ${failed === 0 ? "PASS" : `${failed} FAILED`} in ${total}s`,
+const args = process.argv.slice(2);
+const stopOnFail = args.includes("--stop-on-fail");
+const mode = args.find((a) => !a.startsWith("--")) ?? "fast";
+const plan = plans[mode];
+if (!plan) {
+  console.error(
+    `unknown mode "${mode}"; expected one of ${Object.keys(plans).join(", ")}`,
   );
-  return failed === 0 ? 0 : 1;
+  process.exit(2);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  process.exit(main());
+const shell = process.platform === "win32";
+let failed = 0;
+const started = Date.now();
+console.log(`gate ${mode}: ${plan.length} steps, logs in ${logDir}`);
+
+for (const name of plan) {
+  const { command, env } = stepConfiguration(name);
+  const [cmd, ...cmdArgs] = command;
+  const t0 = Date.now();
+  const result = spawnSync(cmd, cmdArgs, {
+    cwd: repo,
+    shell,
+    encoding: "utf8",
+    maxBuffer: 256 * 1024 * 1024,
+    env,
+  });
+  const seconds = ((Date.now() - t0) / 1000).toFixed(0);
+  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  writeFileSync(resolve(logDir, `${name}.log`), output);
+  const ok = result.status === 0;
+  if (!ok) failed += 1;
+  console.log(
+    `${name.padEnd(16)} ${ok ? "PASS" : "FAIL"}  ${seconds.padStart(5)}s${
+      ok ? "" : `   (work/gate-logs/${name}.log)`
+    }`,
+  );
+  if (!ok && stopOnFail) break;
 }
+
+const total = ((Date.now() - started) / 1000).toFixed(0);
+console.log(
+  `gate ${mode}: ${failed === 0 ? "PASS" : `${failed} FAILED`} in ${total}s`,
+);
+process.exit(failed === 0 ? 0 : 1);
