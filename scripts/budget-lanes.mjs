@@ -44,6 +44,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "css-highlight-policy.node-test.mjs",
   "css-hygiene-policy.node-test.mjs",
   "generate-source-manifest.node-test.mjs",
+  "gate.node-test.mjs",
   "lane.node-test.mjs",
   "q02-shared-helpers-policy.node-test.mjs",
   "validate-ade0006a-c0b.node-test.mjs",
@@ -400,6 +401,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "lane.node-test.mjs",
     reason:
       "Portable lane cleanup receipt and recovery proof; uses injected operations, temporary files, and disposable Git repositories without native lock-holder behavior.",
+  },
+  {
+    file: "gate.node-test.mjs",
+    reason:
+      "Portable gate environment contract proves the deterministic Vitest worker defaults and explicit operator overrides.",
   },
 ]);
 

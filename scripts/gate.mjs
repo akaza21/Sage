@@ -29,6 +29,15 @@ mkdirSync(logDir, { recursive: true });
 // only need the directory to exist; the build step fills it.
 mkdirSync(resolve(repo, "dist"), { recursive: true });
 
+export function environmentForGateStep(name, environment = process.env) {
+  if (name !== "vitest") return environment;
+  return {
+    ...environment,
+    VITEST_MAX_WORKERS: environment.VITEST_MAX_WORKERS ?? "1",
+    VITEST_MIN_WORKERS: environment.VITEST_MIN_WORKERS ?? "1",
+  };
+}
+
 const manifest = "src-tauri/Cargo.toml";
 const cargoTest = [
   "cargo",
@@ -37,6 +46,8 @@ const cargoTest = [
   manifest,
   "--all-features",
 ];
+
+const vitestEnvironment = environmentForGateStep("vitest");
 
 const steps = {
   policy: ["node", "scripts/generate-acp-fixture-cases.mjs", "--check"],
@@ -53,7 +64,10 @@ const steps = {
     "--",
     "--check",
   ],
-  vitest: ["npx", "vitest", "run", "--exclude", "tests/ui/**/*.spec.ts"],
+  vitest: {
+    command: ["npx", "vitest", "run", "--exclude", "tests/ui/**/*.spec.ts"],
+    env: vitestEnvironment,
+  },
   clippy: [
     "cargo",
     "clippy",
@@ -123,47 +137,60 @@ const plans = {
   ],
 };
 
-const args = process.argv.slice(2);
-const stopOnFail = args.includes("--stop-on-fail");
-const mode = args.find((a) => !a.startsWith("--")) ?? "fast";
-const plan = plans[mode];
-if (!plan) {
-  console.error(
-    `unknown mode "${mode}"; expected one of ${Object.keys(plans).join(", ")}`,
-  );
-  process.exit(2);
+function stepConfiguration(name) {
+  const configured = steps[name];
+  return Array.isArray(configured)
+    ? { command: configured, env: process.env }
+    : configured;
 }
 
-const shell = process.platform === "win32";
-let failed = 0;
-const started = Date.now();
-console.log(`gate ${mode}: ${plan.length} steps, logs in ${logDir}`);
+function main(argv = process.argv.slice(2)) {
+  const stopOnFail = argv.includes("--stop-on-fail");
+  const mode = argv.find((a) => !a.startsWith("--")) ?? "fast";
+  const plan = plans[mode];
+  if (!plan) {
+    console.error(
+      `unknown mode "${mode}"; expected one of ${Object.keys(plans).join(", ")}`,
+    );
+    return 2;
+  }
 
-for (const name of plan) {
-  const [cmd, ...cmdArgs] = steps[name];
-  const t0 = Date.now();
-  const result = spawnSync(cmd, cmdArgs, {
-    cwd: repo,
-    shell,
-    encoding: "utf8",
-    maxBuffer: 256 * 1024 * 1024,
-    env: process.env,
-  });
-  const seconds = ((Date.now() - t0) / 1000).toFixed(0);
-  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-  writeFileSync(resolve(logDir, `${name}.log`), output);
-  const ok = result.status === 0;
-  if (!ok) failed += 1;
+  const shell = process.platform === "win32";
+  let failed = 0;
+  const started = Date.now();
+  console.log(`gate ${mode}: ${plan.length} steps, logs in ${logDir}`);
+
+  for (const name of plan) {
+    const { command, env } = stepConfiguration(name);
+    const [cmd, ...cmdArgs] = command;
+    const t0 = Date.now();
+    const result = spawnSync(cmd, cmdArgs, {
+      cwd: repo,
+      shell,
+      encoding: "utf8",
+      maxBuffer: 256 * 1024 * 1024,
+      env,
+    });
+    const seconds = ((Date.now() - t0) / 1000).toFixed(0);
+    const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    writeFileSync(resolve(logDir, `${name}.log`), output);
+    const ok = result.status === 0;
+    if (!ok) failed += 1;
+    console.log(
+      `${name.padEnd(16)} ${ok ? "PASS" : "FAIL"}  ${seconds.padStart(5)}s${
+        ok ? "" : `   (work/gate-logs/${name}.log)`
+      }`,
+    );
+    if (!ok && stopOnFail) break;
+  }
+
+  const total = ((Date.now() - started) / 1000).toFixed(0);
   console.log(
-    `${name.padEnd(16)} ${ok ? "PASS" : "FAIL"}  ${seconds.padStart(5)}s${
-      ok ? "" : `   (work/gate-logs/${name}.log)`
-    }`,
+    `gate ${mode}: ${failed === 0 ? "PASS" : `${failed} FAILED`} in ${total}s`,
   );
-  if (!ok && stopOnFail) break;
+  return failed === 0 ? 0 : 1;
 }
 
-const total = ((Date.now() - started) / 1000).toFixed(0);
-console.log(
-  `gate ${mode}: ${failed === 0 ? "PASS" : `${failed} FAILED`} in ${total}s`,
-);
-process.exit(failed === 0 ? 0 : 1);
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  process.exit(main());
+}
