@@ -10,7 +10,8 @@ The product is intentionally narrower than a VS Code fork:
 - Explorer, Search, Source Control, Problems, and Outline live on the right;
 - the Rust host owns persistence, filesystem, Git, PTYs, and ACP processes;
 - the WebView is a disposable projection;
-- Claude Code, Codex, and Pi are curated, install-on-demand ACP harnesses;
+- Codex CLI, Claude Code, and Pi are first-class Sage ADE targets under
+  ADR-0008, with separately staged managed-release admission;
 - harness selection always happens before model selection;
 - ordinary folders and multi-root projects are the default;
 - worktrees are optional.
@@ -29,10 +30,12 @@ SQLite project/root registry
 
 Ordinary folders can create projects through the native picker, projects can
 hold up to eight ordered roots, and up to 64 projects restore their own tabs,
-selection, sessions, messages, and dirty buffers. The WebView never receives
-absolute paths. Late work from an old project or selection is rejected, and a
-post-commit projection failure blocks for bounded authoritative recovery rather
-than reviving stale UI.
+selection, sessions, messages, and dirty buffers. Native project/resource paths
+remain native-only. A known defect currently allows an absolute discovered
+harness executable path to cross IPC; that path exposure is under repair in a
+separate ticket and must not be described as an existing guarantee. Late work
+from an old project or selection is rejected, and a post-commit projection
+failure blocks for bounded authoritative recovery rather than reviving stale UI.
 
 The final custom-protocol executable is 5,118,976 bytes and the unsigned NSIS
 installer is 1,848,425 bytes. Five clean packaged launches put Chat at 231.766
@@ -43,10 +46,12 @@ capability remain enabled.
 
 ADE-0005 implementation self-check is complete, but fresh-context independent
 review and independent verification have not been recorded. See
-`docs/development/CURRENT-STATE.md`; no ADE-0006 work item is specified.
+`docs/development/CURRENT-STATE.md`; ADE-0006A and the staged ADE-0006B/C/D/E
+harness work items are specified, but none is release-admitted.
 
 Syntax highlighting, LSP, project search, Git mutation/history, file watching,
-PTYs, and real Claude Code, Codex, and Pi ACP processes remain subsequent work.
+PTYs, and managed-release wiring for Claude Code, Codex CLI, and Pi remain
+staged work. Observed-local or dormant harness source is not release admission.
 
 ## Stack
 
