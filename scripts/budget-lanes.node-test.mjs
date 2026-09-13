@@ -60,7 +60,7 @@ test("every original check-lanes case has a declared successor", () => {
 
 test("lane split and runner tests are explicitly recorded", () => {
   const justifications = verifyLaneJustifications();
-  assert.equal(justifications.justified, 9);
+  assert.equal(justifications.justified, 10);
   assert.ok(discoverBudgetTestFiles().includes("ci-rust-phase.node-test.mjs"));
   assert.equal(laneOfBudgetTest("ci-rust-phase.node-test.mjs"), "portable");
   assert.ok(
@@ -72,6 +72,8 @@ test("lane split and runner tests are explicitly recorded", () => {
     laneOfBudgetTest("q02-shared-helpers-policy.node-test.mjs"),
     "portable",
   );
+  assert.ok(discoverBudgetTestFiles().includes("lane.node-test.mjs"));
+  assert.equal(laneOfBudgetTest("lane.node-test.mjs"), "portable");
 });
 
 test("mixed check-lanes source is retired from the discovered set", () => {

@@ -108,6 +108,25 @@ directory for its gate, so a ticket never shares a target with another
 writer. The `npm run check:*` wrappers use their own `SAGE_CARGO_TARGET_DIR`
 (see WORKFLOW.md). CI runners use Cargo's default.
 
+`npm run lane -- done <ticket>` has two truthful integration outcomes. A
+zero exit prints `cleanup complete` only after the exact lane commit has been
+fast-forwarded into local `main`, publication succeeded when requested, every
+recorded lane resource is absent, and the cleanup receipt has been removed. A
+nonzero `LANE PARTIAL SUCCESS` means local integration already happened but a
+later publication, receipt, or teardown stage did not finish; it reports the
+full commit, push truth, failed stage, remaining states, and the exact command
+to run again. After successful publication—or intentionally with `--no-push`—
+the command first writes an atomic pending receipt at
+`work/lane-receipts/<ticket>.json`, so rerunning the same `done` command enters
+cleanup-only recovery without fetching, rebasing, gating, merging, or pushing
+`main` again. `LANE CLEANUP BLOCKED` instead means the receipt or current Git /
+filesystem authority is unsafe; it performs no destructive cleanup.
+
+`--no-push` is explicitly local-only: its receipt records push requested and
+succeeded as false, and cleanup neither inspects nor deletes a remote lane ref.
+Neither local integration nor publication is CI, independent review, product
+acceptance, or release evidence.
+
 After the native prerequisites are installed:
 
 ```powershell

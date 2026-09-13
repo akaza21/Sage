@@ -44,6 +44,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "css-highlight-policy.node-test.mjs",
   "css-hygiene-policy.node-test.mjs",
   "generate-source-manifest.node-test.mjs",
+  "lane.node-test.mjs",
   "q02-shared-helpers-policy.node-test.mjs",
   "validate-ade0006a-c0b.node-test.mjs",
   "validate-performance-budgets.node-test.mjs",
@@ -394,6 +395,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "q02-shared-helpers-policy.node-test.mjs",
     reason:
       "Portable Q02 bounded source-policy scanner proof; uses injected temporary filesystem entries and no platform lane capability.",
+  },
+  {
+    file: "lane.node-test.mjs",
+    reason:
+      "Portable lane cleanup receipt and recovery proof; uses injected operations, temporary files, and disposable Git repositories without native lock-holder behavior.",
   },
 ]);
 
