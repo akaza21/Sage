@@ -2,7 +2,22 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 describe("Devin / VS Code dark tokens", () => {
+  it("escapes every regular-expression metacharacter in selectors", () => {
+    const selector = '.bar:not(:disabled)[aria-pressed="true"]';
+    const escaped = escapeRegExp(selector);
+
+    expect(escaped).toBe('\\.bar:not\\(:disabled\\)\\[aria-pressed="true"\\]');
+    expect(selector).toMatch(new RegExp(`^${escaped}$`));
+    expect('Xbar:notX:disabledX[aria-pressed="true"]').not.toMatch(
+      new RegExp(`^${escaped}$`),
+    );
+  });
+
   it("keeps the default canvas neutral and meaningful states blue", () => {
     const css = [
       readFileSync(resolve("src/styles/global.css"), "utf8"),
@@ -41,7 +56,7 @@ describe("Devin / VS Code dark tokens", () => {
       const stylesheet = readFileSync(resolve(path), "utf8");
       expect(stylesheet, selector).toMatch(
         new RegExp(
-          `${selector.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}[^{}]*\\{[^}]*var\\(--color-plane-raised\\)`,
+          `${escapeRegExp(selector)}[^{}]*\\{[^}]*var\\(--color-plane-raised\\)`,
           "s",
         ),
       );

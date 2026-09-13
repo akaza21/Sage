@@ -77,7 +77,7 @@ describe("Devin-dark theme tokens", () => {
     expect(themeSource).not.toMatch(/#9ad19b|#101210/);
   });
 
-  it("reserves the active surface role for genuine interaction states", () => {
+  it("reserves active and selected surface roles for intentional states", () => {
     const activeSurfaceConsumers = readSourceStylesheets().flatMap(
       (stylesheet) =>
         [
@@ -85,11 +85,14 @@ describe("Devin-dark theme tokens", () => {
             /(?<selector>[^{}]+)\{(?<body>[^{}]*)\}/g,
           ),
         ]
-          .filter(
-            (match) =>
-              !match.groups?.selector.trim().endsWith(":root") &&
-              match.groups?.body.includes("var(--color-surface-active)"),
-          )
+          .filter((match) => {
+            if (match.groups?.selector.trim().endsWith(":root")) return false;
+            const body = match.groups?.body ?? "";
+            return [
+              "var(--color-surface-active)",
+              "var(--color-surface-selected)",
+            ].some((token) => body.includes(token));
+          })
           .map((match) => ({
             path: stylesheet.path.replaceAll("\\", "/"),
             selector: match.groups?.selector.replace(/\s+/g, " ").trim(),
@@ -98,8 +101,25 @@ describe("Devin-dark theme tokens", () => {
 
     expect(activeSurfaceConsumers).toEqual([
       {
+        path: "features/chat/acp/acp-chat.css",
+        selector: ".acp-message--user",
+      },
+      {
+        path: "features/files/explorer-surface.css",
+        selector: ".tree__row--selected",
+      },
+      {
+        path: "features/search/workspace-search.css",
+        selector:
+          '.workspace-search__query-actions button[aria-pressed="true"]',
+      },
+      {
         path: "styles/chat-navigation-surface.css",
         selector: ".project-chat-row--active",
+      },
+      {
+        path: "styles/chat-surface.css",
+        selector: ".message--user",
       },
       {
         path: "styles/editor-activity-bar.css",
@@ -118,6 +138,10 @@ describe("Devin-dark theme tokens", () => {
       {
         path: "styles/file-editor-surface.css",
         selector: '.file-header__preview[aria-pressed="true"]',
+      },
+      {
+        path: "styles/source-control-changes.css",
+        selector: ".source-change--selected",
       },
       {
         path: "workbench/workbench-window-mode.css",

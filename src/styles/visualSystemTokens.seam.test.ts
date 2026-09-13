@@ -71,10 +71,14 @@ describe("Wave 2 visual-system tokens", () => {
   });
 
   it("declares and projects Editor file-icon roles explicitly", () => {
+    expect(rootBlock).toMatch(/--doc-plane-raised:\s*#2a2a2a;/);
     expect(rootBlock).toMatch(/--doc-file-script:\s*#4c9df3;/);
+    expect(rootBlock).toMatch(/--doc-file-python:\s*#e2b66b;/);
+    expect(rootBlock).toMatch(/--doc-file-rust:\s*#ef9a9a;/);
+    expect(rootBlock).toMatch(/--doc-file-data:\s*#d7c078;/);
     expect(rootBlock).toMatch(/--doc-file-media:\s*#75b4f7;/);
     expect(editorVisualReferenceSource).toMatch(
-      /@media \(forced-colors: none\)\s*\{[\s\S]*--color-file-script:\s*var\(--doc-file-script\);[\s\S]*--color-file-media:\s*var\(--doc-file-media\);/,
+      /@media \(forced-colors: none\)\s*\{[\s\S]*--color-plane-raised:\s*var\(--doc-plane-raised\);[\s\S]*--color-file-script:\s*var\(--doc-file-script\);[\s\S]*--color-file-python:\s*var\(--doc-file-python\);[\s\S]*--color-file-rust:\s*var\(--doc-file-rust\);[\s\S]*--color-file-data:\s*var\(--doc-file-data\);[\s\S]*--color-file-media:\s*var\(--doc-file-media\);/,
     );
   });
 

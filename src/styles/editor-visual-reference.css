@@ -22,6 +22,7 @@
     --color-canvas: var(--doc-canvas);
     --color-panel: var(--doc-panel);
     --color-surface: var(--doc-surface);
+    --color-plane-raised: var(--doc-plane-raised);
     --color-surface-hover: var(--doc-surface-hover);
     --color-surface-active: var(--doc-surface-active);
     --color-surface-selected: var(--doc-surface-selected);
@@ -33,6 +34,9 @@
     --color-text-disabled: var(--doc-text-disabled);
     --color-text-inverse: var(--doc-text-inverse);
     --color-file-script: var(--doc-file-script);
+    --color-file-python: var(--doc-file-python);
+    --color-file-rust: var(--doc-file-rust);
+    --color-file-data: var(--doc-file-data);
     --color-file-media: var(--doc-file-media);
     --color-accent: var(--doc-accent);
     --color-accent-hover: var(--doc-accent-hover);

@@ -66,6 +66,7 @@
   --doc-canvas: #141414;
   --doc-panel: #141414;
   --doc-surface: #232323;
+  --doc-plane-raised: #2a2a2a;
   --doc-surface-hover: #2a2a2a;
   --doc-surface-active: #2a4b6d;
   --doc-surface-selected: #2a4b6d;
@@ -77,6 +78,9 @@
   --doc-text-disabled: #656565;
   --doc-text-inverse: #07111c;
   --doc-file-script: #4c9df3;
+  --doc-file-python: #e2b66b;
+  --doc-file-rust: #ef9a9a;
+  --doc-file-data: #d7c078;
   --doc-file-media: #75b4f7;
   --doc-accent: #4c9df3;
   --doc-accent-hover: #75b4f7;
@@ -490,6 +494,7 @@ textarea:disabled,
     --doc-canvas: Canvas;
     --doc-panel: Canvas;
     --doc-surface: Canvas;
+    --doc-plane-raised: Canvas;
     --doc-surface-hover: Highlight;
     --doc-surface-active: Highlight;
     --doc-surface-selected: Highlight;
@@ -501,6 +506,9 @@ textarea:disabled,
     --doc-text-disabled: GrayText;
     --doc-text-inverse: HighlightText;
     --doc-file-script: LinkText;
+    --doc-file-python: CanvasText;
+    --doc-file-rust: CanvasText;
+    --doc-file-data: CanvasText;
     --doc-file-media: LinkText;
     --doc-accent: LinkText;
     --doc-accent-hover: LinkText;

@@ -49,6 +49,7 @@ describe("document token authority", () => {
     "--doc-canvas",
     "--doc-panel",
     "--doc-surface",
+    "--doc-plane-raised",
     "--doc-surface-hover",
     "--doc-surface-active",
     "--doc-surface-selected",
@@ -60,6 +61,9 @@ describe("document token authority", () => {
     "--doc-text-disabled",
     "--doc-text-inverse",
     "--doc-file-script",
+    "--doc-file-python",
+    "--doc-file-rust",
+    "--doc-file-data",
     "--doc-file-media",
     "--doc-accent",
     "--doc-accent-hover",
@@ -141,8 +145,7 @@ describe("document token authority", () => {
         token === "--doc-elevation-popover" ||
         token === "--doc-elevation-floating" ||
         token === "--doc-text-inverse" ||
-        token === "--doc-file-script" ||
-        token === "--doc-file-media" ||
+        token.startsWith("--doc-file-") ||
         token === "--doc-accent-foreground"
       ) {
         continue;
@@ -156,6 +159,7 @@ describe("document token authority", () => {
       "--doc-canvas",
       "--doc-panel",
       "--doc-surface",
+      "--doc-plane-raised",
       "--doc-surface-hover",
       "--doc-surface-active",
       "--doc-surface-selected",
@@ -167,6 +171,9 @@ describe("document token authority", () => {
       "--doc-text-disabled",
       "--doc-text-inverse",
       "--doc-file-script",
+      "--doc-file-python",
+      "--doc-file-rust",
+      "--doc-file-data",
       "--doc-file-media",
       "--doc-accent",
       "--doc-accent-hover",

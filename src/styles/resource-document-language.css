@@ -23,6 +23,7 @@
   --color-canvas: var(--doc-canvas);
   --color-panel: var(--doc-panel);
   --color-surface: var(--doc-surface);
+  --color-plane-raised: var(--doc-plane-raised);
   --color-surface-hover: var(--doc-surface-hover);
   --color-surface-active: var(--doc-surface-active);
   --color-surface-selected: var(--doc-surface-selected);
