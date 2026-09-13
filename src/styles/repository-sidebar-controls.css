@@ -182,7 +182,7 @@
 .source-change-group > summary span:last-child {
   padding: 1px 5px;
   border-radius: var(--radius-pill);
-  background: var(--color-surface-active);
+  background: var(--color-plane-raised);
   font-variant-numeric: tabular-nums;
 }
 

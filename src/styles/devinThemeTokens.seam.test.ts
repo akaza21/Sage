@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -12,6 +12,46 @@ const rootBlock = themeSource.match(/:root\s*\{(?<declarations>[^}]*)\}/)
 const forcedColorsStart = themeSource.indexOf("@media (forced-colors: active)");
 const ordinaryThemeSource = themeSource.slice(0, forcedColorsStart);
 const forcedColorsSource = themeSource.slice(forcedColorsStart);
+const MAX_SOURCE_ENTRIES = 20_000;
+const MAX_SOURCE_STYLESHEETS = 500;
+
+function readSourceStylesheets() {
+  const sourceRoot = resolve(process.cwd(), "src");
+  const pendingDirectories = [sourceRoot];
+  const stylesheets: Array<{ path: string; source: string }> = [];
+  let visitedEntries = 0;
+
+  while (pendingDirectories.length > 0) {
+    const directory = pendingDirectories.pop();
+    if (directory == null) break;
+    const entries = readdirSync(directory, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      visitedEntries += 1;
+      if (visitedEntries > MAX_SOURCE_ENTRIES) {
+        throw new Error(
+          `Source stylesheet inventory exceeded ${MAX_SOURCE_ENTRIES} entries`,
+        );
+      }
+      const absolutePath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        pendingDirectories.push(absolutePath);
+      } else if (entry.isFile() && entry.name.endsWith(".css")) {
+        if (stylesheets.length >= MAX_SOURCE_STYLESHEETS) {
+          throw new Error(
+            `Source stylesheet inventory exceeded ${MAX_SOURCE_STYLESHEETS} CSS files`,
+          );
+        }
+        stylesheets.push({
+          path: relative(sourceRoot, absolutePath),
+          source: readFileSync(absolutePath, "utf8"),
+        });
+      }
+    }
+  }
+
+  return stylesheets.sort((left, right) => left.path.localeCompare(right.path));
+}
 
 describe("Devin-dark theme tokens", () => {
   it("uses a neutral near-black canvas and reserves blue for meaning", () => {
@@ -19,6 +59,7 @@ describe("Devin-dark theme tokens", () => {
     expect(rootBlock).toMatch(/--color-canvas:\s*#141414;/);
     expect(rootBlock).toMatch(/--color-accent:\s*#4c9df3;/);
     expect(rootBlock).toMatch(/--color-accent-hover:\s*#75b4f7;/);
+    expect(rootBlock).toMatch(/--color-plane-raised:\s*#2a2a2a;/);
     expect(rootBlock).toMatch(/--bg:\s*var\(--color-canvas\);/);
     expect(rootBlock).toMatch(/--surface:\s*var\(--color-panel\);/);
     expect(rootBlock).toMatch(/--surface-raised:\s*var\(--color-surface\);/);
@@ -36,6 +77,59 @@ describe("Devin-dark theme tokens", () => {
     expect(themeSource).not.toMatch(/#9ad19b|#101210/);
   });
 
+  it("reserves the active surface role for genuine interaction states", () => {
+    const activeSurfaceConsumers = readSourceStylesheets().flatMap(
+      (stylesheet) =>
+        [
+          ...stylesheet.source.matchAll(
+            /(?<selector>[^{}]+)\{(?<body>[^{}]*)\}/g,
+          ),
+        ]
+          .filter(
+            (match) =>
+              !match.groups?.selector.trim().endsWith(":root") &&
+              match.groups?.body.includes("var(--color-surface-active)"),
+          )
+          .map((match) => ({
+            path: stylesheet.path.replaceAll("\\", "/"),
+            selector: match.groups?.selector.replace(/\s+/g, " ").trim(),
+          })),
+    );
+
+    expect(activeSurfaceConsumers).toEqual([
+      {
+        path: "styles/chat-navigation-surface.css",
+        selector: ".project-chat-row--active",
+      },
+      {
+        path: "styles/editor-activity-bar.css",
+        selector: ".activity-rail__button--active",
+      },
+      {
+        path: "styles/editor-interactions.css",
+        selector:
+          ".workbench--editor :where( .title-bar__search, .title-bar__mode, .activity-rail__button, .sidebar__heading button, .file-header__preview, .status-bar__button, .tab__activate, .tab__close, .tree__row, .root-tree__heading, .source-change, .source-change__action, .source-change__resolve, .source-change__confirmation-button, .source-branch__switch, .source-branch__delete, .source-branch-create button, .source-remote__action, .repository-commit__footer button, .workspace-search__details-toggle, .workspace-search__query-actions button, .workspace-search__input button, .workspace-search__result, .problem-card, .outline-card, .editor-find__button, .editor-welcome__actions button ):active:not(:disabled)",
+      },
+      {
+        path: "styles/editor-interactions.css",
+        selector:
+          '.workbench--editor :where( .file-header__preview, .status-bar__button, .editor-find__button, .workspace-search__query-actions button )[aria-pressed="true"]',
+      },
+      {
+        path: "styles/file-editor-surface.css",
+        selector: '.file-header__preview[aria-pressed="true"]',
+      },
+      {
+        path: "workbench/workbench-window-mode.css",
+        selector: ".title-bar__mode--active",
+      },
+      {
+        path: "workbench/workbench-window-mode.css",
+        selector: '.agent-artifact-pane__follow[aria-pressed="true"]',
+      },
+    ]);
+  });
+
   it("keeps the default authority safe for Agent portals and forced colors", () => {
     expect(forcedColorsStart).toBeGreaterThan(-1);
     expect(themeSource).not.toMatch(
@@ -44,7 +138,7 @@ describe("Devin-dark theme tokens", () => {
     expect(ordinaryThemeSource).not.toMatch(/\.workbench--agent[^{]*\{/);
     expect(themeSource).not.toContain("@media (forced-colors: none)");
     expect(forcedColorsSource).toMatch(
-      /:root\s*\{[\s\S]*--color-canvas:\s*Canvas;[\s\S]*--color-surface-active:\s*Highlight;[\s\S]*--color-accent:\s*LinkText;[\s\S]*--highlight-focus-edge:\s*Highlight;/,
+      /:root\s*\{[\s\S]*--color-canvas:\s*Canvas;[\s\S]*--color-plane-raised:\s*Canvas;[\s\S]*--color-surface-active:\s*Highlight;[\s\S]*--color-accent:\s*LinkText;[\s\S]*--highlight-focus-edge:\s*Highlight;/,
     );
   });
 

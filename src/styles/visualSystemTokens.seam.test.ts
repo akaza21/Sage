@@ -10,6 +10,10 @@ const visualSystemSource = readFileSync(
 const rootBlock = visualSystemSource.match(
   /:root\s*\{(?<declarations>[\s\S]*?)\n\}/,
 )?.groups?.declarations;
+const editorVisualReferenceSource = readFileSync(
+  resolve(process.cwd(), "src/styles/editor-visual-reference.css"),
+  "utf8",
+);
 
 describe("Wave 2 visual-system tokens", () => {
   it("freezes semantic color roles and maps the legacy surface names to them", () => {
@@ -17,6 +21,7 @@ describe("Wave 2 visual-system tokens", () => {
     expect(rootBlock).toMatch(/--color-canvas:\s*#141414;/);
     expect(rootBlock).toMatch(/--color-panel:\s*#141414;/);
     expect(rootBlock).toMatch(/--color-surface:\s*#232323;/);
+    expect(rootBlock).toMatch(/--color-plane-raised:\s*#2a2a2a;/);
     expect(rootBlock).toMatch(/--color-surface-hover:\s*#2a2a2a;/);
     expect(rootBlock).toMatch(/--color-surface-active:\s*#2a4b6d;/);
     expect(rootBlock).toMatch(
@@ -63,6 +68,14 @@ describe("Wave 2 visual-system tokens", () => {
     expect(rootBlock).toMatch(/--text-soft:\s*var\(--color-text-secondary\);/);
     expect(rootBlock).toMatch(/--text-muted:\s*var\(--color-text-muted\);/);
     expect(rootBlock).toMatch(/--accent:\s*var\(--color-accent\);/);
+  });
+
+  it("declares and projects Editor file-icon roles explicitly", () => {
+    expect(rootBlock).toMatch(/--doc-file-script:\s*#4c9df3;/);
+    expect(rootBlock).toMatch(/--doc-file-media:\s*#75b4f7;/);
+    expect(editorVisualReferenceSource).toMatch(
+      /@media \(forced-colors: none\)\s*\{[\s\S]*--color-file-script:\s*var\(--doc-file-script\);[\s\S]*--color-file-media:\s*var\(--doc-file-media\);/,
+    );
   });
 
   it("uses one typography, four-pixel spacing, density, radius, and icon ramp", () => {

@@ -59,6 +59,8 @@ describe("document token authority", () => {
     "--doc-text-muted",
     "--doc-text-disabled",
     "--doc-text-inverse",
+    "--doc-file-script",
+    "--doc-file-media",
     "--doc-accent",
     "--doc-accent-hover",
     "--doc-accent-muted",
@@ -139,6 +141,8 @@ describe("document token authority", () => {
         token === "--doc-elevation-popover" ||
         token === "--doc-elevation-floating" ||
         token === "--doc-text-inverse" ||
+        token === "--doc-file-script" ||
+        token === "--doc-file-media" ||
         token === "--doc-accent-foreground"
       ) {
         continue;
@@ -162,6 +166,8 @@ describe("document token authority", () => {
       "--doc-text-muted",
       "--doc-text-disabled",
       "--doc-text-inverse",
+      "--doc-file-script",
+      "--doc-file-media",
       "--doc-accent",
       "--doc-accent-hover",
       "--doc-accent-muted",

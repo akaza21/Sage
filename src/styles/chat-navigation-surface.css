@@ -179,7 +179,7 @@
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
   outline: none;
-  background: var(--color-surface-active);
+  background: var(--color-plane-raised);
   font: inherit;
 }
 

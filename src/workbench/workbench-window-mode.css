@@ -252,7 +252,7 @@
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-pill);
   color: var(--color-text-secondary);
-  background: var(--color-surface-active);
+  background: var(--color-plane-raised);
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
   line-height: 1;

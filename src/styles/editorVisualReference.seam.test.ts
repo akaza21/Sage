@@ -28,9 +28,13 @@ describe("Editor visual-reference seam", () => {
     expect(css).toContain("@media (forced-colors: none)");
     expect(css).toContain("--color-canvas: var(--doc-canvas)");
     expect(css).toContain("--color-border-subtle: var(--doc-border-subtle)");
+    expect(css).toContain("--color-file-script: var(--doc-file-script)");
+    expect(css).toContain("--color-file-media: var(--doc-file-media)");
     expect(css).toContain("--color-accent: var(--doc-accent)");
     expect(global).toMatch(/--doc-canvas\s*:\s*[^;]+;/);
     expect(global).toMatch(/--doc-border-subtle\s*:\s*[^;]+;/);
+    expect(global).toMatch(/--doc-file-script\s*:\s*#4c9df3;/);
+    expect(global).toMatch(/--doc-file-media\s*:\s*#75b4f7;/);
     expect(global).toMatch(/--doc-accent\s*:\s*[^;]+;/);
     expect(css).not.toMatch(/^:root\b/m);
   });

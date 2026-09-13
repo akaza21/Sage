@@ -32,6 +32,8 @@
     --color-text-muted: var(--doc-text-muted);
     --color-text-disabled: var(--doc-text-disabled);
     --color-text-inverse: var(--doc-text-inverse);
+    --color-file-script: var(--doc-file-script);
+    --color-file-media: var(--doc-file-media);
     --color-accent: var(--doc-accent);
     --color-accent-hover: var(--doc-accent-hover);
     --color-accent-muted: var(--doc-accent-muted);

@@ -5,6 +5,7 @@
   --color-canvas: #141414;
   --color-panel: #141414;
   --color-surface: #232323;
+  --color-plane-raised: #2a2a2a;
   --color-surface-hover: #2a2a2a;
   --color-surface-active: #2a4b6d;
   --color-surface-selected: var(--color-surface-active);
@@ -75,6 +76,8 @@
   --doc-text-muted: #858585;
   --doc-text-disabled: #656565;
   --doc-text-inverse: #07111c;
+  --doc-file-script: #4c9df3;
+  --doc-file-media: #75b4f7;
   --doc-accent: #4c9df3;
   --doc-accent-hover: #75b4f7;
   --doc-accent-muted: #2a4b6d;
@@ -445,6 +448,7 @@ textarea:disabled,
     --color-canvas: Canvas;
     --color-panel: Canvas;
     --color-surface: Canvas;
+    --color-plane-raised: Canvas;
     --color-surface-hover: Highlight;
     --color-surface-active: Highlight;
     --color-surface-selected: Highlight;
@@ -496,6 +500,8 @@ textarea:disabled,
     --doc-text-muted: GrayText;
     --doc-text-disabled: GrayText;
     --doc-text-inverse: HighlightText;
+    --doc-file-script: LinkText;
+    --doc-file-media: LinkText;
     --doc-accent: LinkText;
     --doc-accent-hover: LinkText;
     --doc-accent-muted: Canvas;
