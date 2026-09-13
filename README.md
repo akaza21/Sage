@@ -31,11 +31,16 @@ SQLite project/root registry
 Ordinary folders can create projects through the native picker, projects can
 hold up to eight ordered roots, and up to 64 projects restore their own tabs,
 selection, sessions, messages, and dirty buffers. Native project/resource paths
-remain native-only. A known defect currently allows an absolute discovered
-harness executable path to cross IPC; that path exposure is under repair in a
-separate ticket and must not be described as an existing guarantee. Late work
-from an old project or selection is rejected, and a post-commit projection
-failure blocks for bounded authoritative recovery rather than reviving stale UI.
+remain native-only. Harness catalog projections likewise never send absolute
+executable paths to the WebView: executable identity stays in Rust, and the
+catalog sends curated IDs, availability metadata, and at most a 32-character
+dotted numeric display version (not raw CLI output). This is a native identity
+projection guarantee, not a promise to scrub user-authored file/chat content.
+Boot-time unsupervised CLI version execution remains a known, separately
+deferred defect; this path repair does not change observed-local Codex admission.
+Late work from an old project or selection is rejected, and a post-commit
+projection failure blocks for bounded authoritative recovery rather than
+reviving stale UI.
 
 The final custom-protocol executable is 5,118,976 bytes and the unsigned NSIS
 installer is 1,848,425 bytes. Five clean packaged launches put Chat at 231.766

@@ -33,7 +33,6 @@ test("frozen workbench transport types have an explicit field freeze", () => {
     "accountModelDiscovery",
     "bindingId",
     "description",
-    "executablePath",
     "id",
     "installState",
     "name",

@@ -161,8 +161,12 @@ impl HarnessCatalog {
         #[cfg(all(windows, feature = "acp-fixture"))]
         if self.characterization_available {
             let mut definitions = definitions;
+            let simulator_position = definitions
+                .iter()
+                .position(|entry| entry.id == SIMULATOR_ID)
+                .expect("curated catalog contains the simulator");
             definitions.insert(
-                4,
+                simulator_position,
                 definition(
                     "sage-characterization",
                     "Sage Characterization Fixture",
@@ -183,9 +187,7 @@ impl HarnessCatalog {
     ) -> Vec<HarnessDefinition> {
         for definition in &mut definitions {
             if let Some(discovered) = self.discovered(&definition.id) {
-                definition.executable_path =
-                    Some(discovered.executable.to_string_lossy().into_owned());
-                definition.version = Some(discovered.version.clone());
+                definition.version = safe_display_version(&discovered.version);
             }
         }
         definitions
@@ -243,6 +245,23 @@ impl HarnessCatalog {
     }
 }
 
+/// Untrusted CLI version prose may contain paths or secrets. Project only a
+/// bounded dotted numeric token, never the executable identity or raw output.
+fn safe_display_version(version: &str) -> Option<String> {
+    version.split_ascii_whitespace().find_map(|token| {
+        let token = token.strip_prefix('v').unwrap_or(token);
+        let parts: Vec<_> = token.split('.').collect();
+        (token.len() <= 32
+            && (2..=4).contains(&parts.len())
+            && parts.iter().all(|part| {
+                !part.is_empty()
+                    && part.len() <= 8
+                    && part.bytes().all(|byte| byte.is_ascii_digit())
+            }))
+        .then(|| token.to_owned())
+    })
+}
+
 struct CuratedProtocol<'a> {
     transport: HarnessTransport,
     binding_id: Option<&'a str>,
@@ -292,7 +311,6 @@ fn definition(
         transport: protocol.transport,
         binding_id: protocol.binding_id.map(str::to_owned),
         account_model_discovery: protocol.account_model_discovery,
-        executable_path: None,
         version: None,
     };
     definition
@@ -304,6 +322,14 @@ fn definition(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn by_id(definitions: &[HarnessDefinition], id: &str) -> HarnessDefinition {
+        definitions
+            .iter()
+            .find(|definition| definition.id == id)
+            .unwrap()
+            .clone()
+    }
 
     #[test]
     fn model_options_are_scoped_to_the_selected_harness() {
@@ -323,25 +349,33 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["codex", "pi", "claude-code", "oh-my-pi", SIMULATOR_ID]
         );
-        assert_eq!(definitions[0].transport, HarnessTransport::Acp);
+        assert_eq!(
+            by_id(&definitions, "codex").transport,
+            HarnessTransport::Acp
+        );
         assert!(matches!(
-            definitions[0].install_state.as_str(),
+            by_id(&definitions, "codex").install_state.as_str(),
             "notInstalled" | "unavailable" | "available"
         ));
         assert_eq!(
-            definitions[0].binding_id.as_deref(),
+            by_id(&definitions, "codex").binding_id.as_deref(),
             Some("codex-app-server")
         );
-        assert!(definitions[1..4].iter().all(|definition| {
-            definition.transport == HarnessTransport::Acp && definition.binding_id.is_none()
-        }));
-        assert_eq!(definitions[4].transport, HarnessTransport::LegacySimulator);
-        assert!(definitions[4].binding_id.is_none());
+        for id in ["pi", "claude-code", "oh-my-pi"] {
+            let entry = by_id(&definitions, id);
+            assert_eq!(entry.transport, HarnessTransport::Acp);
+            entry.validate_transport_contract().unwrap();
+        }
+        assert_eq!(
+            by_id(&definitions, SIMULATOR_ID).transport,
+            HarnessTransport::LegacySimulator
+        );
+        assert!(by_id(&definitions, SIMULATOR_ID).binding_id.is_none());
     }
 
     #[test]
     fn transport_contract_rejects_ambiguous_or_invalid_bindings() {
-        let mut definition = HarnessCatalog::default().definitions().remove(0);
+        let mut definition = by_id(&HarnessCatalog::default().definitions(), "codex");
         definition.install_state = "available".into();
         definition.binding_id = None;
         assert!(definition.validate_transport_contract().is_err());
@@ -359,14 +393,112 @@ mod tests {
     #[test]
     fn transport_metadata_serializes_with_explicit_camel_case_fields() {
         let definitions = HarnessCatalog::default().definitions();
-        let codex = serde_json::to_value(&definitions[0]).unwrap();
+        let codex = serde_json::to_value(by_id(&definitions, "codex")).unwrap();
         assert_eq!(codex["transport"], "acp");
         assert_eq!(codex["bindingId"], "codex-app-server");
         assert_eq!(codex["accountModelDiscovery"], true);
-        let simulator = serde_json::to_value(&definitions[4]).unwrap();
+        let simulator = serde_json::to_value(by_id(&definitions, SIMULATOR_ID)).unwrap();
         assert_eq!(simulator["transport"], "legacySimulator");
         assert!(simulator["bindingId"].is_null());
         assert_eq!(simulator["accountModelDiscovery"], false);
+    }
+
+    #[test]
+    fn harness_bootstrap_projection_drops_native_paths_and_untrusted_version_prose() {
+        let mut catalog = HarnessCatalog::with_codex_registration_and_presence(
+            CodexBindingRegistration::unavailable_for_test(),
+            CodexHostPresence::Absent,
+        );
+        let sentinel = std::env::temp_dir().join("private-inventory-sentinel");
+        catalog.discovered = ["codex", "pi", "claude-code", "oh-my-pi"]
+            .into_iter()
+            .map(|id| InstalledHarness {
+                id,
+                executable: sentinel.join(id),
+                version:
+                    "C:\\private-inventory-sentinel\\cli.exe /home/private-inventory-sentinel 1.2.3"
+                        .into(),
+            })
+            .collect();
+        let database =
+            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let root =
+            std::env::temp_dir().join(format!("sage-harness-projection-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        database.create_project_from_root(&root).unwrap();
+        let mut state = crate::state::AppState::new(database);
+        state.harnesses = catalog;
+        let snapshot = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(crate::resource_commands::build_bootstrap_snapshot(
+                &state, 0,
+            ))
+            .unwrap();
+        let catalog = &state.harnesses;
+        std::fs::remove_dir_all(root).unwrap();
+        let json = serde_json::to_string(&snapshot).unwrap();
+        assert!(!json.contains("private-inventory-sentinel"));
+        assert!(!json.contains("executablePath"));
+        for id in ["codex", "pi", "claude-code", "oh-my-pi"] {
+            let entry = by_id(&snapshot.harnesses, id);
+            assert_eq!(entry.install_state, "unavailable");
+            assert_eq!(entry.version.as_deref(), Some("1.2.3"));
+            let value = serde_json::to_value(&entry).unwrap();
+            let keys: std::collections::BTreeSet<_> = value
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect();
+            assert_eq!(
+                keys,
+                [
+                    "id",
+                    "name",
+                    "description",
+                    "installState",
+                    "source",
+                    "transport",
+                    "bindingId",
+                    "accountModelDiscovery",
+                    "version"
+                ]
+                .into_iter()
+                .collect()
+            );
+            assert!(
+                value
+                    .as_object()
+                    .unwrap()
+                    .values()
+                    .filter_map(serde_json::Value::as_str)
+                    .all(|text| !text.contains(['/', '\\', ':']))
+            );
+            assert!(catalog.models(id).unwrap().is_empty());
+        }
+        assert!(!catalog.codex.is_available());
+        for id in ["pi", "claude-code", "oh-my-pi"] {
+            assert!(by_id(&snapshot.harnesses, id).binding_id.is_none());
+        }
+    }
+
+    #[test]
+    fn harness_display_version_never_echoes_paths_or_control_characters() {
+        assert_eq!(
+            safe_display_version("codex-cli v1.2.3"),
+            Some("1.2.3".into())
+        );
+        for text in [
+            "C:\\private\\1.2.exe",
+            "/home/private/1.2",
+            "https://host/1.2",
+            "1.2\u{1b}",
+            "1.123456789",
+            "",
+            "private label",
+        ] {
+            assert_eq!(safe_display_version(text), None, "{text}");
+        }
     }
 
     #[test]
@@ -423,7 +555,7 @@ mod tests {
             crate::acp::bindings::codex::CodexBindingRegistration::unavailable_for_test(),
             CodexHostPresence::Absent,
         );
-        let codex = catalog.definitions().remove(0);
+        let codex = by_id(&catalog.definitions(), "codex");
         assert_eq!(codex.install_state, "notInstalled");
         assert!(catalog.models("codex").unwrap().is_empty());
     }
@@ -434,7 +566,7 @@ mod tests {
             crate::acp::bindings::codex::CodexBindingRegistration::unavailable_for_test(),
             CodexHostPresence::Present,
         );
-        let codex = catalog.definitions().remove(0);
+        let codex = by_id(&catalog.definitions(), "codex");
         assert_eq!(codex.install_state, "unavailable");
         assert_eq!(codex.binding_id.as_deref(), Some("codex-app-server"));
         assert!(catalog.models("codex").unwrap().is_empty());
@@ -449,7 +581,7 @@ mod tests {
             registration,
             CodexHostPresence::Absent,
         );
-        let codex = catalog.definitions().remove(0);
+        let codex = by_id(&catalog.definitions(), "codex");
         assert_eq!(codex.install_state, "available");
         assert_eq!(codex.binding_id.as_deref(), Some("codex-app-server"));
         assert!(catalog.models("codex").unwrap().is_empty());

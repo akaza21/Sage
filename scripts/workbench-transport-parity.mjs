@@ -32,7 +32,6 @@ export const FROZEN_WORKBENCH_TRANSPORT_FIELDS = Object.freeze({
     "accountModelDiscovery",
     "bindingId",
     "description",
-    "executablePath",
     "id",
     "installState",
     "name",

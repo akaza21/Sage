@@ -11,7 +11,6 @@ pub struct HarnessDefinition {
     pub transport: HarnessTransport,
     pub binding_id: Option<String>,
     pub account_model_discovery: bool,
-    pub executable_path: Option<String>,
     pub version: Option<String>,
 }
 
