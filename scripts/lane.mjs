@@ -184,7 +184,7 @@ function integrationDetails(lane, flags, ops) {
 function line(value) {
   return String(value)
     .replace(/[\r\n]+/g, " ")
-    .slice(0, 240);
+    .slice(0, 8192);
 }
 
 function resumeCommand(lane, receipt) {
@@ -208,11 +208,17 @@ function printPartial(output, lane, receipt, result) {
   output.error(`resume: ${resumeCommand(lane, receipt)}`);
 }
 
-function printBlocked(output, lane, error) {
+function printBlocked(output, lane, error, receipt) {
   output.error("LANE CLEANUP BLOCKED");
+  if (receipt) {
+    output.error(`commit: ${receipt.integratedCommit}`);
+    output.error(
+      `push: requested=${receipt.push.requested} succeeded=${receipt.push.succeeded}`,
+    );
+  }
   output.error(`failed stage: ${error.stage ?? "authority"}`);
   output.error(`reason: ${line(error.message)}`);
-  output.error(`resume: npm run lane -- done ${lane.ticket}`);
+  output.error(`resume: ${resumeCommand(lane, receipt ?? {})}`);
 }
 
 function postIntegrationReceipt(details) {
@@ -262,10 +268,15 @@ function done(lane, flags, ops, output) {
     try {
       ensureMainClean(lane, ops);
     } catch (error) {
-      printBlocked(output, lane, {
-        stage: "canonical",
-        message: error.message,
-      });
+      printBlocked(
+        output,
+        lane,
+        {
+          stage: "canonical",
+          message: error.message,
+        },
+        receipt,
+      );
       return 1;
     }
   } else {
@@ -305,7 +316,7 @@ function done(lane, flags, ops, output) {
     }
   } catch (error) {
     if (error instanceof CleanupBlockedError) {
-      printBlocked(output, lane, error);
+      printBlocked(output, lane, error, receipt);
       return 1;
     }
     throw error;

@@ -232,7 +232,7 @@ export function readPendingReceipt(lane, ops) {
     return {
       state: "invalid",
       error: new ReceiptError(
-        "exclusive temporary receipt exists; cleanup authority is ambiguous",
+        `stale temporary receipt: ${lane.nextReceiptPath}; see docs/development/WORKFLOW.md#lane-cleanup-recovery`,
       ),
     };
   }
@@ -258,7 +258,7 @@ export function readPendingReceipt(lane, ops) {
     }
     const receipt = validateReceipt(JSON.parse(body), lane);
     if (body !== `${JSON.stringify(receipt, null, 2)}\n`) {
-      throw new ReceiptError("receipt bytes are not in canonical strict form");
+      throw new ReceiptError("receipt JSON formatting is not supported");
     }
     return { state: "valid", receipt };
   } catch (error) {

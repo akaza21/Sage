@@ -147,10 +147,7 @@ export function verifyCleanupAuthority(lane, receipt, ops) {
       blocked("worktree", "registered lane worktree is not clean");
     }
     if (worktree.path === "residual") {
-      blocked(
-        "worktree-path",
-        "unregistered residual worktree path exists; refusing raw deletion or prune",
-      );
+      blocked("worktree-path", residualReason(lane));
     }
     if (worktree.worktree === "registered" && local !== "matching") {
       blocked(
@@ -220,6 +217,10 @@ function partial(stage, error, lane, receipt, ops) {
   };
 }
 
+function residualReason(lane) {
+  return `unregistered residual worktree path: ${lane.worktreePath}; see docs/development/WORKFLOW.md#lane-cleanup-recovery`;
+}
+
 function worktreeConverged(lane, receipt, ops) {
   const state = inspectWorktree(lane, receipt, ops);
   return state.worktree === "absent" && state.path === "absent";
@@ -274,6 +275,10 @@ export function cleanupFromReceipt(lane, receipt, ops) {
       receipt,
       ops,
     );
+    if (failed?.states.path === "residual") {
+      failed.failedStage = "worktree-path";
+      failed.error = new Error(residualReason(lane));
+    }
     if (failed) return failed;
   }
 

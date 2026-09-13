@@ -9,6 +9,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -16,6 +17,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { inspectCargoTarget } from "./lane-cleanup.mjs";
 import { createSystemOps } from "./lane-ops.mjs";
 import {
   createLaneIdentity,
@@ -58,6 +60,7 @@ function makeFixture(options = {}) {
     laneStatus: "",
     ancestor: true,
     localTip: commit,
+    integratedTip: commit,
     remoteTip: options.remoteTip === undefined ? commit : options.remoteTip,
     remoteError: undefined,
     mainPushError: undefined,
@@ -183,7 +186,7 @@ function makeFixture(options = {}) {
       assert.equal(revision, "HEAD");
       return path.resolve(cwd) === path.resolve(lane.worktreePath)
         ? commit
-        : commit;
+        : state.integratedTip;
     },
     mergeBranch(branch) {
       assert.equal(branch, lane.branch);
@@ -292,6 +295,98 @@ function writeRawReceipt(fixture, body) {
 function destructive(actions) {
   return actions.filter((action) => /remove|delete|force/.test(action));
 }
+
+test("fresh integration reports commit and push truth when cleanup authority blocks", () => {
+  const fixture = makeFixture();
+  try {
+    fixture.state.remoteError = new Error("remote lane inspection unavailable");
+    assert.equal(fixture.run(["done", fixture.ticket, "--gate=fast"]), 1);
+    assert.deepEqual(fixture.actions, [
+      "fetch",
+      "rebase",
+      "gate-fast",
+      "merge",
+      "main-push",
+      "receipt-write",
+      "receipt-rename",
+    ]);
+    assert.match(fixture.errors.join("\n"), /LANE CLEANUP BLOCKED/);
+    assert.ok(fixture.errors.includes(`commit: ${commit}`));
+    assert.ok(fixture.errors.includes("push: requested=true succeeded=true"));
+    assert.equal(readPendingReceipt(fixture.lane, fixture.ops).state, "valid");
+    assert.deepEqual(destructive(fixture.actions), []);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+test("fast-forward identity mismatch writes no receipt and performs no cleanup", () => {
+  const fixture = makeFixture();
+  try {
+    fixture.state.integratedTip = otherCommit;
+    assert.equal(fixture.run(["done", fixture.ticket, "--gate=fast"]), 1);
+    assert.match(
+      fixture.errors.join("\n"),
+      /fast-forward integration did not land the exact lane commit/,
+    );
+    assert.deepEqual(fixture.actions, [
+      "fetch",
+      "rebase",
+      "gate-fast",
+      "merge",
+    ]);
+    assert.equal(existsSync(fixture.lane.receiptPath), false);
+    assert.deepEqual(destructive(fixture.actions), []);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+test("stale temporary receipt reports its absolute path and recovery guidance", () => {
+  const fixture = makeFixture();
+  try {
+    mkdirSync(fixture.lane.receiptRoot, { recursive: true });
+    writeFileSync(fixture.lane.nextReceiptPath, "{}");
+    assert.equal(fixture.run(["done", fixture.ticket]), 1);
+    assert.ok(fixture.errors.join("\n").includes(fixture.lane.nextReceiptPath));
+    assert.match(
+      fixture.errors.join("\n"),
+      /WORKFLOW.md#lane-cleanup-recovery/,
+    );
+    assert.deepEqual(fixture.actions, []);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+test("real Cargo junction or symlink is unsafe and is never removed", () => {
+  const fixture = makeFixture();
+  try {
+    installReceipt(fixture);
+    removeDirectory(fixture.lane.cargoTargetPath);
+    const outside = path.join(fixture.root, "preserved-target");
+    mkdirSync(outside);
+    const sentinel = path.join(outside, "sentinel");
+    writeFileSync(sentinel, "preserve");
+    // Node's junction type creates the same directory reparse point as mklink /J,
+    // without requiring Windows symlink privilege or shell quoting.
+    symlinkSync(
+      outside,
+      fixture.lane.cargoTargetPath,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    assert.equal(inspectCargoTarget(fixture.lane, fixture.ops), "unsafe");
+    assert.equal(fixture.run(["done", fixture.ticket]), 1);
+    assert.deepEqual(destructive(fixture.actions), []);
+    assert.equal(readFileSync(sentinel, "utf8"), "preserve");
+    assert.equal(
+      lstatSync(fixture.lane.cargoTargetPath).isSymbolicLink(),
+      true,
+    );
+  } finally {
+    fixture.dispose();
+  }
+});
 
 test("pushed done records publication before ordered teardown", () => {
   const fixture = makeFixture();
@@ -935,6 +1030,12 @@ test("worktree removal leaving an unregistered residual stops later stages", () 
     };
     assert.equal(fixture.run(["done", fixture.ticket]), 1);
     assert.match(fixture.errors.join("\n"), /path=residual/);
+    assert.match(fixture.errors.join("\n"), /failed stage: worktree-path/);
+    assert.ok(fixture.errors.join("\n").includes(fixture.lane.worktreePath));
+    assert.match(
+      fixture.errors.join("\n"),
+      /WORKFLOW.md#lane-cleanup-recovery/,
+    );
     assert.deepEqual(fixture.actions, ["worktree-remove"]);
     assert.equal(existsSync(fixture.lane.receiptPath), true);
   } finally {

@@ -43,6 +43,7 @@ export function createSystemOps({ repo, platform = process.platform }) {
       }
     },
     mkdir: (target) => mkdirSync(target, { recursive: true }),
+    // No fsync durability claim: reader validation rejects torn writes.
     writeExclusive: (target, body) =>
       writeFileSync(target, body, { encoding: "utf8", flag: "wx" }),
     rename: renameSync,
