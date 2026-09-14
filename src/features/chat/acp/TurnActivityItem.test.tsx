@@ -32,6 +32,52 @@ function item<T extends AcpItem["kind"]>(
 }
 
 describe("TurnActivityItem", () => {
+  it("freezes a completed Thought while a streaming Thought advances", () => {
+    const thought = item("thoughtSummary", { summary: "Checking the files." });
+    thought.createdAt = 1_000;
+    thought.updatedAt = 9_000;
+    thought.terminalAt = 3_000;
+    const { rerender } = render(
+      <TurnActivityItem item={thought} nowMs={20_000} />,
+    );
+    expect(screen.getByText("Thought 2s")).toBeVisible();
+
+    rerender(<TurnActivityItem item={thought} nowMs={99_000} />);
+    expect(screen.getByText("Thought 2s")).toBeVisible();
+
+    const streaming = {
+      ...thought,
+      lifecycle: "streaming",
+      terminalAt: null,
+    } as typeof thought;
+    rerender(<TurnActivityItem item={streaming} nowMs={4_000} />);
+    expect(screen.getByText("Thought 3s")).toBeVisible();
+    rerender(<TurnActivityItem item={streaming} nowMs={5_000} />);
+    expect(screen.getByText("Thought 4s")).toBeVisible();
+
+    rerender(
+      <TurnActivityItem
+        item={{ ...thought, terminalAt: 500 } as typeof thought}
+        nowMs={99_000}
+      />,
+    );
+    expect(screen.getByText("Thought")).toBeVisible();
+
+    rerender(
+      <TurnActivityItem
+        item={
+          {
+            ...thought,
+            terminalAt: null,
+            updatedAt: 500,
+          } as typeof thought
+        }
+        nowMs={99_000}
+      />,
+    );
+    expect(screen.getByText("Thought")).toBeVisible();
+  });
+
   it("presents Plan progress and human-readable entry states", () => {
     const plan = item("plan", {
       entries: [

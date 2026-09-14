@@ -56,10 +56,14 @@ function rootLabelKey(roots: AcpChatPresentationProps["projectRoots"]): string {
 const ItemView = memo(
   function ItemView({
     item,
+    linkedToolResult,
+    workingItems,
     interactive,
     onOpenResource,
   }: {
     item: AcpItem;
+    linkedToolResult?: Extract<AcpItem, { kind: "toolUpdateResult" }>;
+    workingItems?: readonly AcpItem[];
     interactive: boolean;
     onOpenResource?: AcpChatPresentationProps["onOpenResource"];
   }) {
@@ -86,11 +90,17 @@ const ItemView = memo(
                 </time>
               ) : null}
             </header>
-            <ChatMarkdown text={item.payload.text} />
+            <ChatMarkdown
+              text={item.payload.text}
+              streaming={
+                item.lifecycle === "started" || item.lifecycle === "streaming"
+              }
+            />
           </article>
         );
       }
       case "thoughtSummary":
+        return <TurnActivityItem item={item} workingItems={workingItems} />;
       case "plan":
       case "usage":
       case "error":
@@ -100,6 +110,9 @@ const ItemView = memo(
         return (
           <ToolItem
             item={item}
+            linkedResult={
+              item.kind === "toolCall" ? linkedToolResult : undefined
+            }
             allowBrowse={interactive}
             onOpenResource={interactive ? onOpenResource : undefined}
           />
@@ -123,6 +136,9 @@ const ItemView = memo(
   (left, right) =>
     left.item.id === right.item.id &&
     left.item.revision === right.item.revision &&
+    left.linkedToolResult?.id === right.linkedToolResult?.id &&
+    left.linkedToolResult?.revision === right.linkedToolResult?.revision &&
+    left.workingItems === right.workingItems &&
     left.interactive === right.interactive &&
     left.onOpenResource === right.onOpenResource,
 );
@@ -141,7 +157,39 @@ const Turn = memo(
     countIncomplete: boolean;
     onOpenResource?: AcpChatPresentationProps["onOpenResource"];
   }) {
-    const primary = turn.items.filter(
+    const calls = new Set(
+      turn.items.flatMap((item) => (item.kind === "toolCall" ? [item.id] : [])),
+    );
+    const linkedResults = new Map<
+      AcpItem["id"],
+      Extract<AcpItem, { kind: "toolUpdateResult" }>
+    >();
+    for (const item of turn.items) {
+      if (
+        item.kind !== "toolUpdateResult" ||
+        !item.payload.callItemId ||
+        !calls.has(item.payload.callItemId)
+      )
+        continue;
+      const retained = linkedResults.get(item.payload.callItemId);
+      if (
+        !retained ||
+        item.ordinal > retained.ordinal ||
+        (item.ordinal === retained.ordinal &&
+          item.updatedAt > retained.updatedAt)
+      )
+        linkedResults.set(item.payload.callItemId, item);
+    }
+    const presentedItems = turn.items.filter(
+      (item) =>
+        item.kind !== "toolUpdateResult" ||
+        !item.payload.callItemId ||
+        !calls.has(item.payload.callItemId),
+    );
+    const workingItems = presentedItems.map((item) =>
+      item.kind === "toolCall" ? (linkedResults.get(item.id) ?? item) : item,
+    );
+    const primary = presentedItems.filter(
       (item) =>
         item.origin === "primary" &&
         item.kind !== "fileChangeDiff" &&
@@ -176,10 +224,13 @@ const Turn = memo(
         onOpenResource?.(resource, "diff", actionOrigin, diffRef),
       [actionOrigin, onOpenResource],
     );
-    const thought = turn.items.find((item) => item.kind === "thoughtSummary");
+    const thought = presentedItems.find(
+      (item) => item.kind === "thoughtSummary",
+    );
     return (
       <section
         className="acp-turn"
+        data-turn-state={turn.state}
         aria-label={`Turn ${turn.ordinal}`}
         data-turn-id={turn.id}
         data-session-id={turn.sessionId}
@@ -188,7 +239,7 @@ const Turn = memo(
       >
         <header className="acp-turn__header">
           <span
-            className="acp-state"
+            className="acp-state acp-turn__state"
             role="status"
             aria-label={turnStateLabels[turn.state]}
             aria-live="off"
@@ -201,12 +252,21 @@ const Turn = memo(
         </header>
         <div className="acp-turn__items">
           {thought ? (
-            <TurnActivityItem item={thought} workingItems={turn.items} />
+            <ItemView
+              item={thought}
+              workingItems={workingItems}
+              interactive={interactive}
+            />
           ) : null}
           {primary.map((item) => (
             <ItemView
               key={item.id}
               item={item}
+              linkedToolResult={
+                item.kind === "toolCall"
+                  ? linkedResults.get(item.id)
+                  : undefined
+              }
               interactive={interactive}
               onOpenResource={
                 interactive && onOpenResource ? openForTurn : undefined
@@ -218,10 +278,15 @@ const Turn = memo(
               key={activity.id}
               activity={activity}
               activities={turn.activities}
-              items={turn.items}
+              items={presentedItems}
               renderItem={(item) => (
                 <ItemView
                   item={item}
+                  linkedToolResult={
+                    item.kind === "toolCall"
+                      ? linkedResults.get(item.id)
+                      : undefined
+                  }
                   interactive={interactive}
                   onOpenResource={
                     interactive && onOpenResource ? openForTurn : undefined

@@ -12,6 +12,7 @@ const languageNames: Readonly<Record<string, string>> = {
   json: "JSON",
   md: "Markdown",
   markdown: "Markdown",
+  mermaid: "Mermaid",
   py: "Python",
   python: "Python",
   rs: "Rust",
@@ -29,9 +30,11 @@ function codeLanguageLabel(language: string) {
 function ChatCodeBlock({
   language,
   source,
+  streaming = false,
 }: {
   language: string;
   source: string;
+  streaming?: boolean;
 }) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
     "idle",
@@ -51,18 +54,29 @@ function ChatCodeBlock({
     <section className="acp-code-block" aria-label={`${label} code`}>
       <header className="acp-code-block__header">
         <span>{label}</span>
-        <button type="button" aria-label="Copy code" onClick={copySource}>
-          {copyState === "copied" ? (
-            <Check size={14} aria-hidden="true" />
-          ) : (
-            <Copy size={14} aria-hidden="true" />
-          )}
-          {copyState === "copied"
-            ? "Copied"
-            : copyState === "error"
-              ? "Copy failed"
-              : "Copy"}
-        </button>
+        <span className="acp-code-block__actions">
+          {streaming ? (
+            <span
+              className="acp-code-block__streaming"
+              role="status"
+              aria-label="Receiving diagram source"
+            >
+              Receiving…
+            </span>
+          ) : null}
+          <button type="button" aria-label="Copy code" onClick={copySource}>
+            {copyState === "copied" ? (
+              <Check size={14} aria-hidden="true" />
+            ) : (
+              <Copy size={14} aria-hidden="true" />
+            )}
+            {copyState === "copied"
+              ? "Copied"
+              : copyState === "error"
+                ? "Copy failed"
+                : "Copy"}
+          </button>
+        </span>
       </header>
       <pre>
         <code>{source}</code>
@@ -71,10 +85,17 @@ function ChatCodeBlock({
   );
 }
 
-export function ChatMarkdown({ text }: { text: string }) {
+export function ChatMarkdown({
+  text,
+  streaming = false,
+}: {
+  text: string;
+  streaming?: boolean;
+}) {
   // The exact text is the parser authority; unrelated projection updates do
   // not parse a retained message again.
   const document = useMemo(() => renderMarkdownPreview(text), [text]);
+  const openFence = streaming && hasUnclosedFence(text);
   return (
     <div className="acp-markdown">
       {document.blocks.map((block, index) => {
@@ -82,7 +103,14 @@ export function ChatMarkdown({ text }: { text: string }) {
           block.kind === "code" &&
           block.language.toLowerCase() === "mermaid"
         ) {
-          return (
+          return openFence && index === document.blocks.length - 1 ? (
+            <ChatCodeBlock
+              key={`mermaid:${index}`}
+              language={block.language}
+              source={block.text}
+              streaming
+            />
+          ) : (
             <MermaidFigureBoundary
               key={`mermaid:${index}`}
               source={block.text}
@@ -122,4 +150,14 @@ export function ChatMarkdown({ text }: { text: string }) {
       ) : null}
     </div>
   );
+}
+
+function hasUnclosedFence(source: string): boolean {
+  return source
+    .replace(/\r\n/gu, "\n")
+    .split("\n")
+    .reduce(
+      (open, line) => (/^```/u.test(line.trimEnd()) ? !open : open),
+      false,
+    );
 }

@@ -22,14 +22,14 @@ const planStateLabels = {
   failed: "Failed",
 } as const;
 
-function thoughtLabel(createdAt: number, nowMs: number) {
+function thoughtDurationLabel(createdAt: number, endAt: number): string | null {
   if (
     !Number.isFinite(createdAt) ||
-    !Number.isFinite(nowMs) ||
-    nowMs <= createdAt
+    !Number.isFinite(endAt) ||
+    endAt < createdAt
   )
-    return "Thought briefly";
-  const seconds = Math.floor((nowMs - createdAt) / 1_000);
+    return null;
+  const seconds = Math.floor((endAt - createdAt) / 1_000);
   return seconds > 0 ? `Thought ${seconds}s` : "Thought briefly";
 }
 
@@ -55,14 +55,21 @@ function workingToolStatus(item: WorkingToolItem) {
 function ThoughtActivity({
   item,
   workingItems,
+  nowMs,
 }: {
   item: Extract<AcpItem, { kind: "thoughtSummary" }>;
   workingItems: readonly AcpItem[];
+  nowMs: number;
 }) {
   useAgentRailViewPrefs();
   const working = workingItems
     .filter(isWorkingTool)
     .slice(0, MAX_THOUGHT_WORKING_ROWS);
+  const terminal = ["completed", "failed", "cancelled", "unsupported"].includes(
+    item.lifecycle,
+  );
+  const endAt = terminal ? (item.terminalAt ?? item.updatedAt) : nowMs;
+  const label = thoughtDurationLabel(item.createdAt, endAt);
   return (
     <details
       className="acp-activity-card acp-activity-card--thought acp-details acp-thought"
@@ -70,7 +77,7 @@ function ThoughtActivity({
       data-activity-state={working.length > 0 ? "inProgress" : "completed"}
     >
       <summary>
-        <span>{thoughtLabel(item.createdAt, agentRailClockMs())}</span>
+        <span>{label ?? "Thought"}</span>
         <span className="acp-state">
           {working.length > 0 ? "In progress" : "Details"}
         </span>
@@ -178,13 +185,21 @@ function ErrorActivity({
 export function TurnActivityItem({
   item,
   workingItems = [],
+  nowMs = agentRailClockMs(),
 }: {
   item: TurnActivityProjectionItem;
   workingItems?: readonly AcpItem[];
+  nowMs?: number;
 }) {
   switch (item.kind) {
     case "thoughtSummary":
-      return <ThoughtActivity item={item} workingItems={workingItems} />;
+      return (
+        <ThoughtActivity
+          item={item}
+          workingItems={workingItems}
+          nowMs={nowMs}
+        />
+      );
     case "plan":
       return <PlanActivity item={item} />;
     case "usage":

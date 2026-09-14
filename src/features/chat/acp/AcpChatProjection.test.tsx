@@ -252,6 +252,103 @@ describe("AcpChatProjection", () => {
     vi.resetModules();
   });
 
+  it("keeps one tool card when an admitted result names its call", async () => {
+    const next = page("completed");
+    const call = activityItem("call", "activity", {
+      origin: "primary",
+      activityId: null,
+      kind: "toolCall",
+      lifecycle: "streaming",
+      terminalAt: null,
+      toolState: "inProgress",
+      payload: {
+        presentation: {
+          kind: "generic",
+          label: "Issue tracker lookup",
+          summary: "Read the admitted issue summary",
+        },
+        inputSummary: "Issue 42",
+      },
+    });
+    const thought = activityItem("thought-linked-tool", "activity", {
+      origin: "primary",
+      activityId: null,
+      kind: "thoughtSummary",
+      toolState: null,
+      payload: { summary: "Checking issue state" },
+    });
+    const result = activityItem("result", "activity", {
+      origin: "primary",
+      activityId: null,
+      kind: "toolUpdateResult",
+      toolState: "completed",
+      payload: {
+        callItemId: "call" as AcpItem["id"],
+        presentation: {
+          kind: "generic",
+          label: "Issue tracker lookup",
+          summary: "Read the admitted issue summary",
+        },
+        outputSummary: "Issue 42 is ready.",
+      },
+    });
+    next.turns[0].items = [thought, call];
+
+    const { container, rerender } = render(
+      <AcpChatProjection page={next} active />,
+    );
+    await screen.findByRole("group", { name: "Issue tracker lookup" });
+    const card = container.querySelector('[data-acp-item-id="call"]');
+    expect(container.querySelectorAll(".acp-tool-card")).toHaveLength(1);
+    expect(card).not.toHaveAttribute("data-tool-result-id");
+    expect(card).toHaveAttribute("data-activity-state", "inProgress");
+    expect(container.querySelector(".acp-thought__working")).not.toBeNull();
+
+    const revised = structuredClone(next);
+    revised.turns[0].revision = "4" as never;
+    revised.turns[0].items = [thought, call, result];
+    rerender(<AcpChatProjection page={revised} active />);
+    expect(container.querySelectorAll(".acp-tool-card")).toHaveLength(1);
+    expect(container.querySelector('[data-acp-item-id="call"]')).toBe(card);
+    expect(card).toHaveAttribute("data-tool-result-id", "result");
+    expect(card).toHaveAttribute("data-activity-state", "completed");
+    expect(card).toHaveTextContent("Issue 42 is ready.");
+    expect(container.querySelector(".acp-thought__working")).toBeNull();
+  });
+
+  it("does not guess a call/result association without an admitted call ID", async () => {
+    const next = page("completed");
+    const presentation = {
+      kind: "generic" as const,
+      label: "Same label",
+      summary: "Same summary",
+    };
+    next.turns[0].items = [
+      activityItem("unlinked-call", "activity", {
+        origin: "primary",
+        activityId: null,
+        kind: "toolCall",
+        toolState: "inProgress",
+        payload: { presentation, inputSummary: null },
+      }),
+      activityItem("unlinked-result", "activity", {
+        origin: "primary",
+        activityId: null,
+        kind: "toolUpdateResult",
+        toolState: "completed",
+        payload: {
+          callItemId: null,
+          presentation,
+          outputSummary: "Retained result",
+        },
+      }),
+    ];
+
+    const { container } = render(<AcpChatProjection page={next} active />);
+    await screen.findAllByText("Same label");
+    expect(container.querySelectorAll(".acp-tool-card")).toHaveLength(2);
+  });
+
   it("keeps retained Turn status accessible without replaying it", async () => {
     render(<AcpChatProjection page={page("waitingUser")} active />);
     const status = await screen.findByRole("status", {

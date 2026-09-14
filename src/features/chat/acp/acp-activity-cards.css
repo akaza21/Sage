@@ -18,6 +18,19 @@
   border-left-color: var(--color-warning);
 }
 
+.acp-activity-card[data-activity-state="completed"] {
+  border-left-color: var(--color-success);
+}
+
+.acp-activity-card[data-activity-state="declined"] {
+  border-left-color: var(--color-warning);
+}
+
+.acp-activity-card[data-activity-state="cancelled"] {
+  border-left-color: var(--color-text-muted);
+  border-left-style: dashed;
+}
+
 .acp-activity-card[data-activity-state="failed"],
 .acp-activity-card--error {
   border-left-color: var(--color-danger);
@@ -71,6 +84,18 @@
   animation: sage-working-pulse 1.4s ease-in-out infinite;
 }
 
+.acp-activity-card[data-activity-state="completed"] > header .acp-state {
+  color: var(--color-success);
+}
+
+.acp-activity-card[data-activity-state="declined"] > header .acp-state {
+  color: var(--color-warning);
+}
+
+.acp-activity-card[data-activity-state="failed"] > header .acp-state {
+  color: var(--color-danger);
+}
+
 .acp-activity-card p {
   margin: var(--space-1) 0 0;
   overflow-wrap: anywhere;
@@ -113,9 +138,29 @@
   margin-top: var(--space-1);
 }
 
+.acp-tool-command-frame {
+  max-width: 100%;
+  margin-top: var(--space-2);
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-canvas);
+}
+
+.acp-tool-command-frame .acp-tool-command__disclosure {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-warning);
+  background: var(--color-warning-muted);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-xs);
+  white-space: normal;
+}
+
 .acp-tool-command {
   max-width: 100%;
-  margin: var(--space-2) 0 0;
+  margin: 0;
   padding: var(--space-3);
   overflow: auto;
   border-radius: var(--radius-sm);

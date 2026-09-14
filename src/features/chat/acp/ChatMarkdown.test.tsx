@@ -28,6 +28,28 @@ describe("ChatMarkdown code blocks", () => {
     expect(await screen.findByText("Copied")).toBeInTheDocument();
   });
 
+  it("keeps an unfinished streaming Mermaid fence as receiving source", () => {
+    const { rerender } = render(
+      <ChatMarkdown text={"```mermaid\ngraph TD\nA -->"} streaming />,
+    );
+
+    expect(
+      screen.getByRole("region", { name: "Mermaid code" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: "Receiving diagram source" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("img", { name: /Mermaid/ })).toBeNull();
+    expect(screen.queryByText(/could not be drawn/i)).toBeNull();
+
+    rerender(
+      <ChatMarkdown text={"```mermaid\ngraph TD\nA --> B\n```"} streaming />,
+    );
+    expect(
+      screen.queryByRole("status", { name: "Receiving diagram source" }),
+    ).toBeNull();
+  });
+
   it("parses only when exact markdown text changes", () => {
     const parse = vi.spyOn(markdownPreview, "renderMarkdownPreview");
     const { rerender } = render(<ChatMarkdown text="Retained text" />);
