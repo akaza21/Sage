@@ -374,6 +374,36 @@ describe("Agent artifact file chips", () => {
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
   });
 
+  it("counts an idle Preview on the collapsed edge for a focused Chat", () => {
+    const onExpandedChange = vi.fn();
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: "chat-focused",
+          kind: "chat",
+          title: "Focused",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-focused",
+    });
+
+    render(
+      <AgentArtifactPane
+        expanded={false}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: "Open files, changes, and preview, 1 resource",
+      }),
+    ).toHaveTextContent("Ready");
+  });
+
   it("counts a live Preview on the collapsed edge without File or Diff tabs", () => {
     const onExpandedChange = vi.fn();
     useWorkbenchStore.setState({
@@ -1044,6 +1074,38 @@ describe("Agent artifact file chips", () => {
       "true",
     );
     expect(screen.getByText("Preview is idle")).toBeInTheDocument();
+  });
+
+  it("keeps a spaced tab id connected to its pending description", () => {
+    useWorkbenchStore.setState((current) => ({
+      tabs: [
+        ...current.tabs,
+        {
+          id: "diff:root-a:src/new file.ts",
+          kind: "diff",
+          title: "new file.ts",
+          position: current.tabs.length,
+          pinned: false,
+          dirty: false,
+          resource: { rootId: "root-a", relativePath: "src/new file.ts" },
+        },
+      ],
+    }));
+    admit("diff:root-a:src/new file.ts");
+    useAgentArtifactFollowStore
+      .getState()
+      .pin(focusedOwner, { kind: "tab", tabId: "file:app" });
+    useAgentArtifactFollowStore.getState().observe(focusedOwner, {
+      kind: "tab",
+      tabId: "diff:root-a:src/new file.ts",
+    });
+    render(<AgentArtifactPane />);
+
+    const pending = screen.getByRole("tab", { name: "Diff src/new file.ts" });
+    expect(pending).toHaveAccessibleDescription("New resource");
+    expect(pending.getAttribute("aria-describedby")).toMatch(
+      /^agent-artifact-pending-[0-9]+$/,
+    );
   });
 
   it("pins an explicitly selected resource tab for the focused Chat", () => {

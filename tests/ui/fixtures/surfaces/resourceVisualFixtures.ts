@@ -3,6 +3,8 @@ import type { AgentArtifactOwner } from "../../../../src/domain/agentArtifact";
 import type { HarnessBrowseOwner } from "../../../../src/features/preview/harnessBrowse";
 import type { WorkbenchTab } from "../../../../src/domain/workbench";
 import { diffCacheKey } from "../../../../src/domain/diffIdentity";
+import { acpProjectionStoreFor } from "../../../../src/app/acpProjectionRegistry";
+import { openAgentArtifact } from "../../../../src/app/openAgentArtifact";
 import { useWorkbenchStore } from "../../../../src/app/store";
 import { useAgentArtifactAdmissionStore } from "../../../../src/app/agentArtifactAdmissionStore";
 import { useAgentArtifactFollowStore } from "../../../../src/app/agentArtifactFollowStore";
@@ -162,49 +164,80 @@ export async function installVisualAgentArtifactPinnedFixture() {
     throw new Error("Visual Agent pinned fixture requires a Chat");
   }
   const owner = artifactOwner(chat.id as AgentArtifactOwner["chatId"]);
-  const fileTab: WorkbenchTab = {
-    id: "visual-pinned-file-tab",
-    kind: "file",
-    title: "AgentChatPanes.tsx",
-    position: chats.length,
-    pinned: false,
-    dirty: true,
-    resource: fileResource,
-  };
-  const diffTab: WorkbenchTab = {
-    ...fileTab,
-    id: "visual-pending-diff-tab",
-    kind: "diff",
-    title: "AgentChatPanes.tsx changes",
-    position: chats.length + 1,
-    dirty: false,
-  };
-  useWorkbenchStore.setState({
-    tabs: [...chats, fileTab, diffTab],
-    activeTabId: fileTab.id,
-    activeEditor: {
-      phase: "ready",
-      resource: fileResource,
-      document: editorDocument(),
-      content: editorContent,
-      revision: 1,
-      persistedRevision: 0,
-      persisting: false,
-      saving: false,
-      message: null,
+  const projection = acpProjectionStoreFor(owner.chatId).getState();
+  const page = projection.page;
+  const turn = page?.turns[0];
+  const item = turn?.items.find(
+    (candidate) => candidate.id === visualSnapshotDiffRef.itemId,
+  );
+  if (!page || !turn || !item || item.kind !== "fileChangeDiff") {
+    throw new Error("Visual Agent pinned fixture requires its saved Diff card");
+  }
+  item.payload.changes = [
+    {
+      resource: { kind: "resource", resource: fileResource },
+      operation: "updated",
+      originalResource: null,
+      summary: "Refined the dual-chat layout",
+      additions: 28,
+      deletions: 11,
+      pairState: "available",
+      snapshotRevision: visualSnapshotDiffRef.snapshotRevision,
+      oldBytes: 54,
+      newBytes: 54,
+      contentDigest: visualSnapshotDiffRef.contentDigest,
     },
+  ];
+  const opened = await openAgentArtifact({
+    owner,
+    target: "file",
+    resource: fileResource,
   });
-  useAgentArtifactAdmissionStore.getState().admit({ owner, tabId: fileTab.id });
-  useAgentArtifactAdmissionStore.getState().admit({ owner, tabId: diffTab.id });
+  if (!opened) throw new Error("Visual Agent file open was rejected");
+  const fileTab = useWorkbenchStore
+    .getState()
+    .tabs.find((tab) => tab.kind === "file" && tab.resource === fileResource);
+  if (!fileTab) throw new Error("Visual Agent file tab was not created");
+  useWorkbenchStore.setState((current) => ({
+    tabs: current.tabs.map((tab) =>
+      tab.id === fileTab.id ? { ...tab, dirty: true } : tab,
+    ),
+  }));
   useAgentArtifactFollowStore
     .getState()
     .pin(owner, { kind: "tab", tabId: fileTab.id });
-  useAgentArtifactFollowStore
-    .getState()
-    .observe(owner, { kind: "tab", tabId: diffTab.id });
   await new Promise<void>((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   );
+}
+
+export async function openVisualPinnedDiffThroughProduction() {
+  const state = useWorkbenchStore.getState();
+  const chat = state.tabs.find((tab) => tab.kind === "chat");
+  if (!chat || state.project?.id !== PROJECT_ID) {
+    throw new Error("Visual Agent pending Diff requires a Chat");
+  }
+  const owner = artifactOwner(chat.id as AgentArtifactOwner["chatId"]);
+  const diffTab: WorkbenchTab = {
+    id: "visual pending diff tab",
+    kind: "diff",
+    title: "AgentChatPanes.tsx changes",
+    position: state.tabs.length,
+    pinned: false,
+    dirty: false,
+    resource: fileResource,
+    diffRef: visualSnapshotDiffRef,
+  };
+  useWorkbenchStore.setState((current) => ({
+    tabs: [...current.tabs, diffTab],
+  }));
+  const opened = await openAgentArtifact({
+    owner,
+    target: "diff",
+    resource: fileResource,
+    diffRef: visualSnapshotDiffRef,
+  });
+  if (!opened) throw new Error("Visual Agent pending Diff was rejected");
 }
 
 export async function installVisualAgentArtifactFollowFixture() {

@@ -104,11 +104,11 @@ test.describe("AV-01 projection-fixture browser routes", () => {
 });
 
 test.describe("Wave 2 accessibility and responsive states", () => {
-  test("makes a newer admitted resource unmistakable while pinned", async ({
+  test("shows a File or Diff opened through production as new while pinned", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1_380, height: 880 });
-    await openAgentScenario(page, "agent-single");
+    await openAgentScenario(page, "diff");
     await page.evaluate(async () => {
       const fixtures =
         await import("/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts");
@@ -126,6 +126,12 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(file).toHaveAttribute("aria-selected", "true");
     await expect(file.getByText("File", { exact: true })).toBeVisible();
     await expect(file.getByTitle("Unsaved changes")).toBeVisible();
+    await expect(diff).toHaveCount(0);
+    await page.evaluate(async () => {
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts");
+      await fixtures.openVisualPinnedDiffThroughProduction();
+    });
     await expect(diff).toHaveAttribute("aria-selected", "false");
     await expect(diff.getByText("Diff", { exact: true })).toBeVisible();
     await expect(diff).toHaveAccessibleDescription("New resource");
@@ -178,6 +184,21 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       name: "Following latest resource",
     });
     await expect(following).toHaveAttribute("aria-pressed", "true");
+    await following.hover();
+    expect(
+      await following.evaluate(
+        (node) => getComputedStyle(node).backgroundColor,
+      ),
+    ).toBe(
+      await page.evaluate(() => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--color-surface-active)";
+        document.body.append(probe);
+        const resolved = getComputedStyle(probe).color;
+        probe.remove();
+        return resolved;
+      }),
+    );
     await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
     await expect(
       page
@@ -711,6 +732,38 @@ test.describe("V6a Agent right-resource state shell", () => {
       }),
     ).toBeFocused();
     await expectNoViewportOverflow(page);
+  });
+
+  test("fits the collapsed idle Preview receipt in the desktop rail", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1_380, height: 880 });
+    const workbench = await openAgentScenario(page, "agent-single");
+    await expect(workbench).not.toHaveClass(/workbench--compact/);
+    const toggle = page.getByRole("button", {
+      name: "Open files, changes, and preview, 1 resource",
+    });
+    await expect(toggle).toContainText("Ready");
+    const geometry = await toggle.evaluate((node) => {
+      const label = node.querySelector<HTMLElement>(
+        ".agent-artifact-pane__edge-copy",
+      );
+      if (!label) throw new Error("Collapsed resource label is missing");
+      const button = node.getBoundingClientRect();
+      const copy = label.getBoundingClientRect();
+      return {
+        button: button.toJSON(),
+        copy: copy.toJSON(),
+        writingMode: getComputedStyle(label).writingMode,
+      };
+    });
+    expect(geometry.writingMode).toBe("vertical-rl");
+    expect(geometry.copy.width).toBeGreaterThan(0);
+    expect(geometry.copy.height).toBeGreaterThan(0);
+    expect(geometry.copy.left).toBeGreaterThanOrEqual(geometry.button.left);
+    expect(geometry.copy.right).toBeLessThanOrEqual(geometry.button.right);
+    expect(geometry.copy.top).toBeGreaterThanOrEqual(geometry.button.top);
+    expect(geometry.copy.bottom).toBeLessThanOrEqual(geometry.button.bottom);
   });
 
   test("announces File loading and failure without changing its surface", async ({

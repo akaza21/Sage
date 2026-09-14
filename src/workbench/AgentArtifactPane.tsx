@@ -207,7 +207,7 @@ export function AgentArtifactPane({
     return (
       <>
         <AgentArtifactCollapsedPane
-          count={artifacts.length + (previewOpen ? 1 : 0)}
+          count={artifacts.length + (focusedOwner ? 1 : 0)}
           edgeTriggerRef={edgeTriggerRef}
           onExpand={() => onExpandedChange?.(true)}
           paneRef={paneRef}

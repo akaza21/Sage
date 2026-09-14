@@ -225,7 +225,7 @@
   order: 2;
 }
 
-.agent-artifact-pane__follow:hover,
+.agent-artifact-pane__follow:hover:not([aria-pressed="true"]),
 .agent-artifact-pane__collapse:hover {
   color: var(--color-text-primary);
   background: var(--color-surface-hover);

@@ -97,7 +97,7 @@ export async function openAgentArtifact(
     owner: intent.owner,
     tabId: tab.id,
   });
-  useAgentArtifactFollowStore.getState().pin(intent.owner, {
+  useAgentArtifactFollowStore.getState().observe(intent.owner, {
     kind: "tab",
     tabId: tab.id,
   });

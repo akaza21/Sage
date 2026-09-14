@@ -49,6 +49,8 @@ export function AgentArtifactTabStrip({
     (target) => target.kind === "tab",
   );
   const pendingLabel = pendingTargets.length > 0 ? "New" : null;
+  const descriptionIdForTab = (index: number) =>
+    `agent-artifact-pending-${index}`;
   const modeLabel = following ? "Following latest" : "Pinned";
   const followTitle = following
     ? "Following the newest resource from this Chat"
@@ -59,7 +61,7 @@ export function AgentArtifactTabStrip({
     <>
       <nav className="tab-strip" aria-label="Agent artifact tabs">
         <div ref={scrollRef} className="tab-strip__scroll">
-          {artifacts.map((tab) => {
+          {artifacts.map((tab, index) => {
             const selected =
               selectedTarget?.kind === "tab" && tab.id === selectedTarget.tabId;
             const stats = artifactChipStatsForTab(
@@ -91,7 +93,7 @@ export function AgentArtifactTabStrip({
                   aria-selected={selected}
                   aria-label={accessibleName}
                   aria-describedby={
-                    pending ? `${tab.id}-new-resource` : undefined
+                    pending ? descriptionIdForTab(index) : undefined
                   }
                   data-resource-root-id={tab.resource?.rootId}
                   data-resource-relative-path={tab.resource?.relativePath}
@@ -140,7 +142,7 @@ export function AgentArtifactTabStrip({
                   ) : null}
                   {pending ? (
                     <span
-                      id={`${tab.id}-new-resource`}
+                      id={descriptionIdForTab(index)}
                       className="agent-artifact-tab__new"
                       title="New resource arrived while pinned"
                     >

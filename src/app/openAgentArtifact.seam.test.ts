@@ -116,7 +116,7 @@ describe("openAgentArtifact", () => {
         ownerA,
       ),
     ).toMatchObject({
-      mode: "pinned",
+      mode: "follow",
       selected: { kind: "tab", tabId: fileTab().id },
     });
     expect(
@@ -125,8 +125,64 @@ describe("openAgentArtifact", () => {
         ownerB,
       ),
     ).toMatchObject({
-      mode: "pinned",
+      mode: "follow",
       selected: { kind: "tab", tabId: fileTab().id },
+    });
+  });
+
+  it("keeps the deliberate selection pinned when a later File arrives", async () => {
+    const firstResource = resource;
+    const secondResource = {
+      rootId: "root-a",
+      relativePath: "src/new file.ts",
+    };
+    useWorkbenchStore.setState({
+      openFile: vi.fn(async (selected) => {
+        const tab = {
+          id: `file:${selected.rootId}:${selected.relativePath}`,
+          kind: "file" as const,
+          title: selected.relativePath,
+          position: useWorkbenchStore.getState().tabs.length,
+          pinned: false,
+          dirty: false,
+          resource: selected,
+        };
+        useWorkbenchStore.setState((current) => ({
+          tabs: [
+            ...current.tabs.filter((candidate) => candidate.id !== tab.id),
+            tab,
+          ],
+          activeTabId: tab.id,
+        }));
+      }),
+    });
+
+    await expect(
+      openAgentArtifact({
+        owner: ownerA,
+        target: "file",
+        resource: firstResource,
+      }),
+    ).resolves.toBe(true);
+    const firstTarget = { kind: "tab" as const, tabId: fileTab().id };
+    useAgentArtifactFollowStore.getState().pin(ownerA, firstTarget);
+    await expect(
+      openAgentArtifact({
+        owner: ownerA,
+        target: "file",
+        resource: secondResource,
+      }),
+    ).resolves.toBe(true);
+
+    expect(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        ownerA,
+      ),
+    ).toMatchObject({
+      mode: "pinned",
+      selected: firstTarget,
+      pending: [{ kind: "tab", tabId: "file:root-a:src/new file.ts" }],
     });
   });
 

@@ -18,13 +18,20 @@
 }
 
 .agent-artifact-pane__edge-copy {
-  display: inline-flex;
+  display: block;
   min-width: 0;
-  align-items: center;
-  overflow: hidden;
+  overflow: visible;
   font-size: var(--font-size-xs);
-  text-overflow: ellipsis;
   white-space: nowrap;
+  writing-mode: vertical-rl;
+}
+
+.agent-artifact-pane--collapsed .agent-artifact-pane__edge-action {
+  min-height: 104px;
+  justify-content: flex-start;
+  flex-direction: column;
+  gap: 7px;
+  padding: 13px 0 8px;
 }
 
 .workbench--agent .agent-artifact-pane .tab[data-resource-kind="preview"] {
@@ -195,17 +202,6 @@
 @container agent-workbench (max-width: 760px) {
   .agent-artifact-pane--collapsed .agent-artifact-pane__edge-action {
     width: 44px;
-    min-height: 104px;
-    justify-content: flex-start;
-    flex-direction: column;
-    gap: 7px;
-    padding: 13px 0 8px;
-  }
-
-  .agent-artifact-pane--collapsed .agent-artifact-pane__edge-copy {
-    display: block;
-    overflow: visible;
-    writing-mode: vertical-rl;
   }
 
   .workbench--agent .agent-artifact-pane__follow {
