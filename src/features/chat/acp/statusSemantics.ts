@@ -1,4 +1,16 @@
-import type { AcpItem, ToolState, TurnState } from "../../../domain/acp";
+import type {
+  AcpItem,
+  ItemLifecycle,
+  ToolState,
+  TurnState,
+} from "../../../domain/acp";
+
+export const terminalItemLifecycles: ReadonlySet<ItemLifecycle> = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+  "unsupported",
+]);
 
 export const terminalTurnStates: ReadonlySet<TurnState> = new Set([
   "completed",

@@ -18,7 +18,7 @@ import { PermissionItem } from "./PermissionItem";
 import { ToolItem, type OpenResourceTarget } from "./ToolItem";
 import { TurnActivityItem } from "./TurnActivityItem";
 import { UnknownItem } from "./UnknownItem";
-import { turnStateLabels } from "./statusSemantics";
+import { terminalToolStates, turnStateLabels } from "./statusSemantics";
 
 export type AcpChatPresentationProps = {
   page: AcpChatPage;
@@ -157,38 +157,47 @@ const Turn = memo(
     countIncomplete: boolean;
     onOpenResource?: AcpChatPresentationProps["onOpenResource"];
   }) {
-    const calls = new Set(
-      turn.items.flatMap((item) => (item.kind === "toolCall" ? [item.id] : [])),
-    );
-    const linkedResults = new Map<
-      AcpItem["id"],
-      Extract<AcpItem, { kind: "toolUpdateResult" }>
-    >();
-    for (const item of turn.items) {
-      if (
-        item.kind !== "toolUpdateResult" ||
-        !item.payload.callItemId ||
-        !calls.has(item.payload.callItemId)
-      )
-        continue;
-      const retained = linkedResults.get(item.payload.callItemId);
-      if (
-        !retained ||
-        item.ordinal > retained.ordinal ||
-        (item.ordinal === retained.ordinal &&
-          item.updatedAt > retained.updatedAt)
-      )
-        linkedResults.set(item.payload.callItemId, item);
-    }
-    const presentedItems = turn.items.filter(
-      (item) =>
-        item.kind !== "toolUpdateResult" ||
-        !item.payload.callItemId ||
-        !calls.has(item.payload.callItemId),
-    );
-    const workingItems = presentedItems.map((item) =>
-      item.kind === "toolCall" ? (linkedResults.get(item.id) ?? item) : item,
-    );
+    const { linkedResults, presentedItems, workingItems } = useMemo(() => {
+      const calls = new Map(
+        turn.items.flatMap((item) =>
+          item.kind === "toolCall" ? [[item.id, item] as const] : [],
+        ),
+      );
+      const results = new Map<
+        AcpItem["id"],
+        Extract<AcpItem, { kind: "toolUpdateResult" }>
+      >();
+      for (const item of turn.items) {
+        if (item.kind !== "toolUpdateResult" || !item.payload.callItemId)
+          continue;
+        const call = calls.get(item.payload.callItemId);
+        const retained = results.get(item.payload.callItemId);
+        if (
+          call &&
+          item.activityId === call.activityId &&
+          (!retained ||
+            item.ordinal > retained.ordinal ||
+            (item.ordinal === retained.ordinal &&
+              item.updatedAt > retained.updatedAt))
+        )
+          results.set(item.payload.callItemId, item);
+      }
+      const presented = turn.items.filter(
+        (item) =>
+          item.kind !== "toolUpdateResult" ||
+          !item.payload.callItemId ||
+          results.get(item.payload.callItemId)?.id !== item.id,
+      );
+      return {
+        linkedResults: results,
+        presentedItems: presented,
+        workingItems: presented.map((item) =>
+          item.kind === "toolCall" && !terminalToolStates.has(item.toolState)
+            ? (results.get(item.id) ?? item)
+            : item,
+        ),
+      };
+    }, [turn.items]);
     const primary = presentedItems.filter(
       (item) =>
         item.origin === "primary" &&
@@ -278,7 +287,7 @@ const Turn = memo(
               key={activity.id}
               activity={activity}
               activities={turn.activities}
-              items={presentedItems}
+              items={turn.items}
               renderItem={(item) => (
                 <ItemView
                   item={item}

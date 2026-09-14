@@ -9,7 +9,7 @@ export type MarkdownPreviewBlock =
   | { kind: "heading"; level: 1 | 2 | 3; text: string }
   | { kind: "paragraph"; text: string }
   | { kind: "list"; items: readonly string[] }
-  | { kind: "code"; text: string; language: string }
+  | { kind: "code"; text: string; language: string; fenceClosed: boolean }
   | { kind: "quote"; text: string };
 
 export interface MarkdownPreviewDocument {
@@ -88,6 +88,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
             kind: "code",
             text: code.lines.join("\n"),
             language: code.language,
+            fenceClosed: true,
           },
           truncated,
           stop,
@@ -146,6 +147,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
         kind: "code",
         text: code.lines.join("\n"),
         language: code.language,
+        fenceClosed: false,
       },
       truncated,
       stop,

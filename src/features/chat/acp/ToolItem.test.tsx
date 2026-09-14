@@ -125,20 +125,13 @@ describe("ToolItem", () => {
     );
   });
 
-  it("turns the admitted truncation marker into Sage disclosure without changing output whitespace", () => {
+  it("keeps harness truncation text verbatim while identifying retained output as Sage chrome", () => {
     const output =
       "[output truncated] retained tail\n\tindented line\n\nfinal line\n";
     render(<ToolItem item={commandItem("toolUpdateResult", output)} />);
 
-    expect(
-      screen.getByText("Sage retained only the latest command output."),
-    ).toBeVisible();
-    expect(screen.getByLabelText("Command output").textContent).toBe(
-      "retained tail\n\tindented line\n\nfinal line\n",
-    );
-    expect(screen.getByLabelText("Command output")).not.toHaveTextContent(
-      "[output truncated]",
-    );
+    expect(screen.getByText("Retained command output")).toBeVisible();
+    expect(screen.getByLabelText("Command output").textContent).toBe(output);
   });
 
   it("shows command output and its safe File action in one card", () => {

@@ -2,6 +2,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ChatMarkdown } from "./ChatMarkdown";
+import {
+  MAX_MARKDOWN_PREVIEW_BLOCKS,
+  renderMarkdownPreview,
+} from "../../files/markdownPreview";
 import * as markdownPreview from "../../files/markdownPreview";
 
 afterEach(() => {
@@ -45,6 +49,25 @@ describe("ChatMarkdown code blocks", () => {
     rerender(
       <ChatMarkdown text={"```mermaid\ngraph TD\nA --> B\n```"} streaming />,
     );
+    expect(
+      screen.queryByRole("status", { name: "Receiving diagram source" }),
+    ).toBeNull();
+  });
+
+  it("does not mark a closed retained Mermaid block as receiving when later source is capped", () => {
+    const text = [
+      "```mermaid",
+      "graph TD",
+      "A --> B",
+      "```",
+      ...Array.from(
+        { length: MAX_MARKDOWN_PREVIEW_BLOCKS },
+        (_, index) => `\n# Block ${index}`,
+      ),
+      "\n```mermaid\ngraph TD\nC -->",
+    ].join("\n");
+    expect(renderMarkdownPreview(text).truncated).toBe(true);
+    render(<ChatMarkdown text={text} streaming />);
     expect(
       screen.queryByRole("status", { name: "Receiving diagram source" }),
     ).toBeNull();

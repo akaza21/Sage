@@ -56,7 +56,12 @@ describe("renderMarkdownPreview", () => {
       { kind: "paragraph", text: "Hello world and docs." },
       { kind: "list", items: ["one", "two"] },
       { kind: "quote", text: "quoted" },
-      { kind: "code", text: "code <em>line</em>", language: "" },
+      {
+        kind: "code",
+        text: "code <em>line</em>",
+        language: "",
+        fenceClosed: true,
+      },
       { kind: "paragraph", text: "diagram" },
     ]);
     expect(JSON.stringify(document)).not.toContain("https://example.test");
@@ -68,7 +73,24 @@ describe("renderMarkdownPreview", () => {
       ["```mermaid", "graph TD", "A --> B", "```"].join("\n"),
     );
     expect(document.blocks).toEqual([
-      { kind: "code", text: "graph TD\nA --> B", language: "mermaid" },
+      {
+        kind: "code",
+        text: "graph TD\nA --> B",
+        language: "mermaid",
+        fenceClosed: true,
+      },
+    ]);
+  });
+
+  it("marks an unfinished fence on the exact retained code block", () => {
+    const document = renderMarkdownPreview("```mermaid\ngraph TD\nA -->");
+    expect(document.blocks).toEqual([
+      {
+        kind: "code",
+        text: "graph TD\nA -->",
+        language: "mermaid",
+        fenceClosed: false,
+      },
     ]);
   });
 

@@ -1,10 +1,17 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
+import {
+  resetAgentRailViewPrefs,
+  syncAgentRailClock,
+} from "../../../workbench/agentRailViewPrefs";
 import { TurnActivityItem } from "./TurnActivityItem";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetAgentRailViewPrefs();
+});
 
 function item<T extends AcpItem["kind"]>(
   kind: T,
@@ -76,6 +83,48 @@ describe("TurnActivityItem", () => {
       />,
     );
     expect(screen.getByText("Thought")).toBeVisible();
+  });
+
+  it("responds to the real clock store only while a Thought is streaming", () => {
+    const thought = item("thoughtSummary", { summary: "Checking the files." });
+    thought.createdAt = 1_000;
+    thought.updatedAt = 3_000;
+    thought.terminalAt = null;
+    thought.lifecycle = "streaming";
+    act(() => syncAgentRailClock(4_000));
+    const { rerender } = render(<TurnActivityItem item={thought} />);
+    expect(screen.getByText("Thought 3s")).toBeVisible();
+
+    act(() => syncAgentRailClock(5_000));
+    expect(screen.getByText("Thought 4s")).toBeVisible();
+
+    const terminal = {
+      ...thought,
+      lifecycle: "completed",
+      terminalAt: 3_000,
+    } as typeof thought;
+    rerender(<TurnActivityItem item={terminal} />);
+    expect(screen.getByText("Thought 2s")).toBeVisible();
+    act(() => syncAgentRailClock(9_000));
+    expect(screen.getByText("Thought 2s")).toBeVisible();
+  });
+
+  it("renders an unfinished streaming Mermaid Thought as receiving source", () => {
+    const thought = item("thoughtSummary", {
+      summary: "```mermaid\ngraph TD\nA -->",
+    });
+    thought.lifecycle = "streaming";
+    thought.terminalAt = null;
+    const { container } = render(
+      <TurnActivityItem item={thought} nowMs={thought.createdAt} />,
+    );
+    const details = container.querySelector("details");
+    expect(details).not.toBeNull();
+    details!.open = true;
+    expect(
+      screen.getByRole("status", { name: "Receiving diagram source" }),
+    ).toBeVisible();
+    expect(screen.queryByText(/could not be drawn/i)).toBeNull();
   });
 
   it("presents Plan progress and human-readable entry states", () => {

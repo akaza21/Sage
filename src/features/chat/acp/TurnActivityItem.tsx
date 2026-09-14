@@ -4,6 +4,7 @@ import {
   useAgentRailViewPrefs,
 } from "../../../workbench/agentRailViewPrefs";
 import { ChatMarkdown } from "./ChatMarkdown";
+import { terminalItemLifecycles, terminalToolStates } from "./statusSemantics";
 
 type TurnActivityProjectionItem = Extract<
   AcpItem,
@@ -36,7 +37,7 @@ function thoughtDurationLabel(createdAt: number, endAt: number): string | null {
 function isWorkingTool(item: AcpItem): item is WorkingToolItem {
   return (
     (item.kind === "toolCall" || item.kind === "toolUpdateResult") &&
-    item.toolState === "inProgress"
+    !terminalToolStates.has(item.toolState)
   );
 }
 
@@ -59,16 +60,15 @@ function ThoughtActivity({
 }: {
   item: Extract<AcpItem, { kind: "thoughtSummary" }>;
   workingItems: readonly AcpItem[];
-  nowMs: number;
+  nowMs?: number;
 }) {
   useAgentRailViewPrefs();
+  const liveNowMs = nowMs ?? agentRailClockMs();
   const working = workingItems
     .filter(isWorkingTool)
     .slice(0, MAX_THOUGHT_WORKING_ROWS);
-  const terminal = ["completed", "failed", "cancelled", "unsupported"].includes(
-    item.lifecycle,
-  );
-  const endAt = terminal ? (item.terminalAt ?? item.updatedAt) : nowMs;
+  const terminal = terminalItemLifecycles.has(item.lifecycle);
+  const endAt = terminal ? (item.terminalAt ?? item.updatedAt) : liveNowMs;
   const label = thoughtDurationLabel(item.createdAt, endAt);
   return (
     <details
@@ -82,7 +82,10 @@ function ThoughtActivity({
           {working.length > 0 ? "In progress" : "Details"}
         </span>
       </summary>
-      <ChatMarkdown text={item.payload.summary} />
+      <ChatMarkdown
+        text={item.payload.summary}
+        streaming={!terminalItemLifecycles.has(item.lifecycle)}
+      />
       {working.length > 0 ? (
         <ul className="acp-thought__working" aria-label="Working tools">
           {working.map((workingItem) => (
@@ -185,7 +188,7 @@ function ErrorActivity({
 export function TurnActivityItem({
   item,
   workingItems = [],
-  nowMs = agentRailClockMs(),
+  nowMs,
 }: {
   item: TurnActivityProjectionItem;
   workingItems?: readonly AcpItem[];

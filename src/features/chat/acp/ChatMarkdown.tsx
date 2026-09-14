@@ -95,7 +95,6 @@ export function ChatMarkdown({
   // The exact text is the parser authority; unrelated projection updates do
   // not parse a retained message again.
   const document = useMemo(() => renderMarkdownPreview(text), [text]);
-  const openFence = streaming && hasUnclosedFence(text);
   return (
     <div className="acp-markdown">
       {document.blocks.map((block, index) => {
@@ -103,7 +102,7 @@ export function ChatMarkdown({
           block.kind === "code" &&
           block.language.toLowerCase() === "mermaid"
         ) {
-          return openFence && index === document.blocks.length - 1 ? (
+          return streaming && !block.fenceClosed ? (
             <ChatCodeBlock
               key={`mermaid:${index}`}
               language={block.language}
@@ -150,14 +149,4 @@ export function ChatMarkdown({
       ) : null}
     </div>
   );
-}
-
-function hasUnclosedFence(source: string): boolean {
-  return source
-    .replace(/\r\n/gu, "\n")
-    .split("\n")
-    .reduce(
-      (open, line) => (/^```/u.test(line.trimEnd()) ? !open : open),
-      false,
-    );
 }

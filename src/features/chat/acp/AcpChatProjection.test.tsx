@@ -316,6 +316,126 @@ describe("AcpChatProjection", () => {
     expect(container.querySelector(".acp-thought__working")).toBeNull();
   });
 
+  it("keeps a terminal call state and call presentation over a stale result", async () => {
+    const next = page("completed");
+    const call = activityItem("terminal-call", "activity", {
+      origin: "primary",
+      activityId: null,
+      kind: "toolCall",
+      lifecycle: "failed",
+      toolState: "failed",
+      payload: {
+        presentation: {
+          kind: "web",
+          label: "Browse preview",
+          summary: "Opened http://127.0.0.1:5173/from-call",
+        },
+        inputSummary: "http://127.0.0.1:5173/from-input",
+      },
+    });
+    const stale = activityItem("stale-result", "activity", {
+      origin: "primary",
+      activityId: null,
+      kind: "toolUpdateResult",
+      lifecycle: "streaming",
+      terminalAt: null,
+      toolState: "inProgress",
+      payload: {
+        callItemId: "terminal-call" as AcpItem["id"],
+        presentation: {
+          kind: "generic",
+          label: "Wrong replacement",
+          summary: "Wrong result presentation",
+        },
+        outputSummary: "Stale result detail",
+      },
+    });
+    next.turns[0].items = [call, stale];
+
+    const before = structuredClone(next);
+    before.turns[0].items = [call];
+    const { container, rerender } = render(
+      <AcpChatProjection page={before} active />,
+    );
+    const card = await screen.findByRole("group", { name: "Browse preview" });
+    const revised = structuredClone(next);
+    revised.turns[0].revision = "4" as never;
+    rerender(<AcpChatProjection page={revised} active />);
+    expect(container.querySelectorAll(".acp-tool-card")).toHaveLength(1);
+    expect(container.querySelector('[data-acp-item-id="terminal-call"]')).toBe(
+      card,
+    );
+    expect(card).toHaveAttribute("data-activity-kind", "web");
+    expect(card).toHaveAttribute("data-activity-state", "failed");
+    expect(container.querySelector(".acp-thought__working")).toBeNull();
+    expect(card).toHaveTextContent("from-call");
+    expect(screen.queryByText("Wrong replacement")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Open in Sage browser" }),
+    ).toBeVisible();
+  });
+
+  it("does not hide activity anchored to a linked result", async () => {
+    const next = page("completed");
+    const call = activityItem("tree-call", "activity-root", {
+      kind: "toolCall",
+      toolState: "inProgress",
+      payload: {
+        presentation: {
+          kind: "generic",
+          label: "Root call",
+          summary: null,
+        },
+        inputSummary: null,
+      },
+    });
+    const result = activityItem("tree-result", "activity-root", {
+      kind: "toolUpdateResult",
+      toolState: "completed",
+      payload: {
+        callItemId: "tree-call" as AcpItem["id"],
+        presentation: {
+          kind: "generic",
+          label: "Root result",
+          summary: null,
+        },
+        outputSummary: "done",
+      },
+    });
+    const child = activityItem("tree-child", "activity-child", {
+      kind: "unsupported",
+      toolState: null,
+      payload: {
+        category: "extension.future",
+        summary: "Retained child",
+        truncated: false,
+      },
+    });
+    next.turns[0].items = [call, result, child];
+    next.turns[0].activities = [
+      activity("activity-root", null, "item-text", 1),
+      activity("activity-child", "activity-root", "tree-result", 2),
+    ];
+
+    render(<AcpChatProjection page={next} active />);
+    const group = await screen.findByRole("group", {
+      name: "Harness activity: Root activity",
+    });
+    fireEvent.click(
+      within(group).getByText("Root activity").closest("summary")!,
+    );
+    const resultNode = group.querySelector<HTMLElement>(
+      '[data-sage-id="tree-result"]',
+    )!;
+    resultNode.focus();
+    fireEvent.keyDown(resultNode, { key: "ArrowRight" });
+    expect(
+      within(group)
+        .getAllByRole("treeitem")
+        .find((item) => item.getAttribute("aria-level") === "2"),
+    ).toHaveTextContent("Unsupported activity");
+  });
+
   it("does not guess a call/result association without an admitted call ID", async () => {
     const next = page("completed");
     const presentation = {

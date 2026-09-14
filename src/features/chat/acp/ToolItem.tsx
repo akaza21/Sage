@@ -26,23 +26,6 @@ interface ToolItemProps {
   onOpenResource?: (resource: ResourceRef, target: OpenResourceTarget) => void;
 }
 
-const TRUNCATED_OUTPUT_PREFIX = "[output truncated]";
-
-function commandOutputPresentation(output: string | null): {
-  text: string | null;
-  truncated: boolean;
-} {
-  if (output === "") return { text: null, truncated: false };
-  if (!output?.startsWith(TRUNCATED_OUTPUT_PREFIX)) {
-    return { text: output, truncated: false };
-  }
-  const remainder = output.slice(TRUNCATED_OUTPUT_PREFIX.length);
-  return {
-    text: remainder.startsWith(" ") ? remainder.slice(1) : remainder,
-    truncated: true,
-  };
-}
-
 function ResourceLocations({
   locations,
   target,
@@ -89,10 +72,12 @@ function ResourceLocations({
 
 function Presentation({
   item,
+  outputSummary,
   allowBrowse,
   onOpenResource,
   descriptionId,
 }: Pick<ToolItemProps, "item" | "allowBrowse" | "onOpenResource"> & {
+  outputSummary: string | null;
   descriptionId: string;
 }) {
   const presentation = item.payload.presentation;
@@ -137,9 +122,7 @@ function Presentation({
         extractAdmittedBrowseUrl(
           "inputSummary" in payload ? (payload.inputSummary ?? "") : "",
         ) ??
-        extractAdmittedBrowseUrl(
-          "outputSummary" in payload ? (payload.outputSummary ?? "") : "",
-        );
+        extractAdmittedBrowseUrl(outputSummary ?? "");
       return (
         <>
           {presentation.summary ? <p>{presentation.summary}</p> : null}
@@ -179,24 +162,20 @@ function Presentation({
       );
     }
     case "command": {
-      const output = commandOutputPresentation(
-        item.payload.outputSummary ?? null,
-      );
+      const output = outputSummary;
       return (
         <>
-          {output.text !== null ? (
+          {output ? (
             <div className="acp-tool-command-frame">
-              {output.truncated ? (
-                <p className="acp-tool-command__disclosure" role="note">
-                  Sage retained only the latest command output.
-                </p>
-              ) : null}
+              <p className="acp-tool-command__disclosure" role="note">
+                Retained command output
+              </p>
               <pre
                 id={descriptionId}
                 className="acp-tool-command"
                 aria-label="Command output"
               >
-                {output.text}
+                {output}
               </pre>
             </div>
           ) : null}
@@ -220,32 +199,36 @@ export function ToolItem({
   onOpenResource,
 }: ToolItemProps) {
   const descriptionId = useId();
-  const presentedItem = linkedResult ?? item;
-  const linkedInput =
+  const callOutput =
+    "outputSummary" in item.payload
+      ? (item.payload.outputSummary ?? null)
+      : null;
+  const outputSummary =
+    callOutput ?? linkedResult?.payload.outputSummary ?? null;
+  const inputSummary =
     item.kind === "toolCall" ? item.payload.inputSummary : null;
   const detail =
-    presentedItem.payload.presentation.kind === "command"
-      ? (presentedItem.payload.outputSummary ?? null)
-      : linkedResult
-        ? (linkedResult.payload.outputSummary ?? linkedInput)
-        : presentedItem.kind === "toolCall"
-          ? presentedItem.payload.inputSummary
-          : presentedItem.payload.outputSummary;
+    item.payload.presentation.kind === "command"
+      ? outputSummary
+      : (outputSummary ?? inputSummary);
   const commandOutput =
-    presentedItem.payload.presentation.kind === "command" &&
-    (presentedItem.payload.outputSummary ?? null) !== null;
-  const label = presentedItem.payload.presentation.label;
-  const status = toolStateLabels[presentedItem.toolState];
-  const terminal = terminalToolStates.has(presentedItem.toolState);
-  const kind = presentedItem.payload.presentation.kind;
+    item.payload.presentation.kind === "command" && outputSummary !== null;
+  const callTerminal = terminalToolStates.has(item.toolState);
+  const visualState = callTerminal
+    ? item.toolState
+    : (linkedResult?.toolState ?? item.toolState);
+  const label = item.payload.presentation.label;
+  const status = toolStateLabels[visualState];
+  const terminal = terminalToolStates.has(visualState);
+  const kind = item.payload.presentation.kind;
   return (
     <article
-      className={`acp-activity-card acp-activity-card--tool acp-tool-card acp-tool-card--${presentedItem.toolState}`}
+      className={`acp-activity-card acp-activity-card--tool acp-tool-card acp-tool-card--${visualState}`}
       role="group"
       aria-label={label}
       aria-describedby={detail ? descriptionId : undefined}
       data-activity-kind={kind}
-      data-activity-state={presentedItem.toolState}
+      data-activity-state={visualState}
       data-acp-item-id={item.id}
       data-tool-result-id={linkedResult?.id}
     >
@@ -267,7 +250,8 @@ export function ToolItem({
         </span>
       </header>
       <Presentation
-        item={presentedItem}
+        item={item}
+        outputSummary={outputSummary}
         allowBrowse={allowBrowse}
         onOpenResource={onOpenResource}
         descriptionId={descriptionId}
