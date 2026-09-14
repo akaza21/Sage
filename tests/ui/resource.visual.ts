@@ -861,7 +861,7 @@ test.describe("V6a Agent right-resource state shell", () => {
           width: bounds.width,
         };
       }),
-    ).toEqual({ copy: "Waiting", width: 44, height: 104 });
+    ).toEqual({ copy: "Ready", width: 44, height: 104 });
 
     await toggle.click();
     await expect(

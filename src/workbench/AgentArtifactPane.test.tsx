@@ -1358,7 +1358,7 @@ describe("Agent artifact file chips", () => {
     );
   });
 
-  it("names the collapsed toggle with a truthful File/Diff count badge", () => {
+  it("names the collapsed toggle with a truthful resource count badge", () => {
     const onExpandedChange = vi.fn();
     render(
       <AgentArtifactPane
@@ -1368,10 +1368,10 @@ describe("Agent artifact file chips", () => {
     );
 
     const toggle = screen.getByRole("button", {
-      name: "Open files, changes, and preview, 1 resource",
+      name: "Open files, changes, and preview, 2 resources",
     });
-    expect(toggle).toHaveAttribute("title", "Open resources (1)");
-    expect(within(toggle).getByText("1")).toBeInTheDocument();
+    expect(toggle).toHaveAttribute("title", "Open resources (2)");
+    expect(within(toggle).getByText("2")).toBeInTheDocument();
   });
 
   it("moves Preview through idle -> active -> close -> idle in the actual pane", () => {
