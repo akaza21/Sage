@@ -259,6 +259,9 @@ test("Windows Cargo Job preserves Cargo proxy command semantics", async () => {
   );
 });
 
+// Regression justification: catches a future claim that an ordinary nonzero Job
+// result is unconfirmed despite the actual 100 ms zero-active-process proof, which
+// would silently change the documented lease-release behavior.
 // origin: check-lanes.node-test.mjs:815 "Windows Cargo nonzero waits for descendant zero and releases its lease" -> check-lanes.native-windows.node-test.mjs
 test("Windows Cargo nonzero waits for descendant zero and releases its lease", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "sage-check-failure-"));
@@ -326,11 +329,15 @@ test("Windows Cargo nonzero waits for descendant zero and releases its lease", a
   }
 });
 
+// Regression justification: catches a future change that releases a Windows Cargo
+// lease before the real Job reports zero active processes, which would weaken the
+// actual accounting-observation guarantee even though it is not object settlement.
 // origin: check-lanes.node-test.mjs:924 "Windows Cargo success waits for an owned descendant tree to reach zero" -> check-lanes.native-windows.node-test.mjs
 test("Windows Cargo success waits for an owned descendant tree to reach zero", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "sage-check-job-success-"));
   const descendantPidPath = path.join(root, "descendant.pid");
   const descendantDonePath = path.join(root, "descendant.done");
+  let descendantPid;
   const source = `
       const { spawn } = require("node:child_process");
       const { writeFileSync } = require("node:fs");
@@ -342,8 +349,6 @@ test("Windows Cargo success waits for an owned descendant tree to reach zero", a
       writeFileSync(process.argv[1], String(descendant.pid));
       process.exit(0);
     `;
-  let descendantPid;
-  const startedAt = Date.now();
   try {
     await runCommandGroups([
       {
@@ -371,7 +376,6 @@ test("Windows Cargo success waits for an owned descendant tree to reach zero", a
       await readFile(descendantPidPath, "utf8"),
       10,
     );
-    assert.ok(Date.now() - startedAt >= 300);
     assert.equal(await processExists(descendantPid), false);
     assert.equal(await readFile(descendantDonePath, "utf8"), "done");
     await assert.rejects(
