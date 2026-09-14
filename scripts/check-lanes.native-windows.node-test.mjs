@@ -259,9 +259,10 @@ test("Windows Cargo Job preserves Cargo proxy command semantics", async () => {
   );
 });
 
-// Regression justification: catches a future claim that an ordinary nonzero Job
-// result is unconfirmed despite the actual 100 ms zero-active-process proof, which
-// would silently change the documented lease-release behavior.
+// Regression justification: catches an unintentional change to the current behavior
+// where an ordinary nonzero can retain the 100 ms zero-active-process proof and
+// release the lease. This open defect-chain behavior may deliberately change with
+// a future contract remediation, which should update this test.
 // origin: check-lanes.node-test.mjs:815 "Windows Cargo nonzero waits for descendant zero and releases its lease" -> check-lanes.native-windows.node-test.mjs
 test("Windows Cargo nonzero waits for descendant zero and releases its lease", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "sage-check-failure-"));
