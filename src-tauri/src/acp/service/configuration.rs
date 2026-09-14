@@ -16,7 +16,6 @@ use super::AcpService;
 #[cfg(all(windows, feature = "acp-fixture"))]
 use super::CharacterizationBinding;
 
-#[derive(Default)]
 pub(super) struct ServiceConfiguration {
     pub(super) registry: Arc<BindingRegistry>,
     #[cfg(all(windows, feature = "acp-fixture"))]

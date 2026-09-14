@@ -162,3 +162,88 @@ impl std::fmt::Debug for BindingRegistry {
             .finish_non_exhaustive()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[cfg(windows)]
+    use super::*;
+
+    #[cfg(windows)]
+    impl BindingRegistry {
+        fn with_codex_and_wire(admission: CodexBindingRegistration, wire: WireIdentity) -> Self {
+            let mut registry = Self::with_codex(admission);
+            registry.codex.wire = wire;
+            registry
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn wire_mismatch_revokes_shared_admission_and_cannot_be_retried_as_valid() {
+        use crate::{acp::service::AcpService, harnesses::HarnessCatalog, persistence::Database};
+
+        for wire in [
+            WireIdentity {
+                protocol: "mismatched-protocol",
+                schema_sha256: CODEX_SCHEMA_SHA256,
+            },
+            WireIdentity {
+                protocol: CODEX_PROTOCOL_IDENTITY,
+                schema_sha256: "mismatched-schema",
+            },
+        ] {
+            let admission = CodexBindingRegistration::admitted_for_test();
+            let valid = BindingRegistry::with_codex(admission.clone());
+            let mismatched = Arc::new(BindingRegistry::with_codex_and_wire(
+                admission.clone(),
+                wire,
+            ));
+            let catalog = HarnessCatalog::with_registry(Arc::clone(&mismatched));
+            let service = AcpService::new_with_registry_for_test(
+                Database::open(std::path::Path::new(":memory:")).unwrap(),
+                Arc::clone(&mismatched),
+            )
+            .unwrap();
+            assert!(valid.resolve(CODEX_BINDING_ID).is_ok());
+            assert!(admission.is_available());
+            assert_eq!(
+                catalog
+                    .definitions()
+                    .iter()
+                    .find(|entry| entry.id == "codex")
+                    .unwrap()
+                    .install_state,
+                "available"
+            );
+
+            assert!(matches!(
+                mismatched.resolve(CODEX_BINDING_ID),
+                Err(RegistryUnavailable::Admission(
+                    CodexAdmissionUnavailable::Drift
+                ))
+            ));
+            assert_eq!(
+                admission.unavailable(),
+                Some(CodexAdmissionUnavailable::Drift)
+            );
+            assert!(matches!(
+                valid.resolve(CODEX_BINDING_ID),
+                Err(RegistryUnavailable::Admission(
+                    CodexAdmissionUnavailable::Drift
+                ))
+            ));
+            assert!(!service.accepts_codex_binding(
+                &crate::acp::intent::BindingId::new("bindingId", CODEX_BINDING_ID).unwrap()
+            ));
+            assert_ne!(
+                catalog
+                    .definitions()
+                    .iter()
+                    .find(|entry| entry.id == "codex")
+                    .unwrap()
+                    .install_state,
+                "available"
+            );
+        }
+    }
+}
