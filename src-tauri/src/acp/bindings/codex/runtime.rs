@@ -32,6 +32,9 @@ use snapshots::ItemSnapshots;
 #[path = "runtime/harness.rs"]
 mod harness;
 
+mod factory;
+pub(crate) use factory::CodexRuntimeFactory;
+
 pub(crate) struct CodexRuntime {
     launch_authority: RuntimeLaunchAuthority,
     inner: CodexAdapter,

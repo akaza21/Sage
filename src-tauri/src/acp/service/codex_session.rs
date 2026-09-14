@@ -3,7 +3,10 @@ use std::path::Path;
 use rusqlite::{OptionalExtension, params};
 
 use crate::acp::{
-    bindings::codex::{CodexProjectRootAuthority, CodexRuntime},
+    bindings::{
+        codex::{CodexProjectRootAuthority, CodexRuntimeFactory},
+        runtime::{NativeRuntime, RuntimeFactory},
+    },
     contract::SafeText,
     intent::{ExternalId, ModelId},
     runtime::{ActivationIntent, ActivationMode},
@@ -15,7 +18,7 @@ use super::{AcpService, CodexSessionError};
 
 pub(super) struct PreparedCodexActivation {
     pub(super) owner: RuntimeOwner,
-    pub(super) runtime: CodexRuntime,
+    pub(super) runtime: NativeRuntime,
     pub(super) intent: ActivationIntent,
     #[cfg(any(debug_assertions, feature = "diagnostics"))]
     pub(super) harness_version: String,
@@ -126,12 +129,11 @@ impl AcpService {
         };
         #[cfg(any(debug_assertions, feature = "diagnostics"))]
         let harness_version = binding.harness_version().to_owned();
-        let runtime = CodexRuntime::from_admitted_binding(
+        let runtime = CodexRuntimeFactory {
             binding,
             project_root,
-            owner.runtime_epoch,
-            owner.session_id.clone(),
-        )
+        }
+        .construct(owner.runtime_epoch, owner.session_id.clone())
         .map_err(|_| CodexSessionError::Intent)?;
         Ok((
             command,

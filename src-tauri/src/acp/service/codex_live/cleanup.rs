@@ -243,7 +243,7 @@ impl AcpService {
         &self,
         abort: &ActivationAbortIntent,
         handoff: ActivationZeroProcessHandoff<
-            CodexRuntime,
+            NativeRuntime,
             CoordinatorActivationJournal,
             NativeResourceMapper,
             crate::acp::process::ZeroProcessToken,
@@ -327,7 +327,7 @@ impl AcpService {
     pub(super) async fn recover_runner_start(
         &self,
         abort: &ActivationAbortIntent,
-        failure: ActivationStartFailure<CodexRuntime, NativeResourceMapper, StdinEndpoint>,
+        failure: ActivationStartFailure<NativeRuntime, NativeResourceMapper, StdinEndpoint>,
         host: Arc<RuntimeHost>,
         runner: Arc<LiveRunnerHandle>,
         active: Option<ActiveCodexOperation>,

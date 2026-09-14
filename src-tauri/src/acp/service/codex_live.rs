@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::acp::{
-    bindings::codex::{CodexProjectRootAuthority, CodexRuntime},
+    bindings::{codex::CodexProjectRootAuthority, runtime::NativeRuntime},
     intent::IntentSnapshot,
     limits::LIMITS,
     process::{PlatformSupervisor, StdinEndpoint, TreeCapacityPool, TreeControl, TreeExit},
@@ -34,7 +34,7 @@ pub(super) struct ActivationAbortIntent {
 }
 
 type CodexActivationDriver = ActivationProcessDriver<
-    CodexRuntime,
+    NativeRuntime,
     CoordinatorActivationJournal,
     NativeResourceMapper,
     StdinEndpoint,
