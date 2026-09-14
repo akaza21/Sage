@@ -207,7 +207,7 @@ export function AgentArtifactPane({
     return (
       <>
         <AgentArtifactCollapsedPane
-          count={artifacts.length}
+          count={artifacts.length + (previewOpen ? 1 : 0)}
           edgeTriggerRef={edgeTriggerRef}
           onExpand={() => onExpandedChange?.(true)}
           paneRef={paneRef}
@@ -274,9 +274,10 @@ export function AgentArtifactPane({
               <span className="placeholder-surface__icon" aria-hidden="true">
                 <Files size={19} strokeWidth={1.7} />
               </span>
-              <h1 id={emptyTitleId}>No resources yet</h1>
+              <h1 id={emptyTitleId}>Waiting for this Chat</h1>
               <p>
-                Files, changes, and previews from this Chat will appear here.
+                Open a file or change from the conversation. Preview will appear
+                when this Chat starts a loopback server.
               </p>
             </section>
           ) : null}

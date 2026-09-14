@@ -64,7 +64,7 @@ describe("Preview projection store", () => {
     release();
   });
 
-  it("accepts a noncontiguous first revision, updates an equal phase, and rejects stale or illegal transitions", () => {
+  it("retains typed same-phase failures and rejects stale or illegal transitions", () => {
     const store = createPreviewProjectionStore();
     store.getState().activate(owner);
     store.getState().accept(event("2"));

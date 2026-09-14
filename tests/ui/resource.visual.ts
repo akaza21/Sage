@@ -73,7 +73,7 @@ test.describe("AV-01 projection-fixture browser routes", () => {
       await expect(
         resources.getByText(
           phase === "starting"
-            ? "Preview is starting"
+            ? "Starting process"
             : phase === "health-failed"
               ? "Preview failed"
               : "Preview exited",
@@ -85,6 +85,11 @@ test.describe("AV-01 projection-fixture browser routes", () => {
           phase === "health-failed"
             ? "Preview did not become healthy before its deadline."
             : "Preview exited before it became ready.";
+        const reason =
+          phase === "health-failed" ? "Health timeout" : "Early exit";
+        await expect(
+          resources.getByText(reason, { exact: true }),
+        ).toBeVisible();
         await expect(resources.getByText(detail, { exact: true })).toHaveCount(
           1,
         );
@@ -99,6 +104,38 @@ test.describe("AV-01 projection-fixture browser routes", () => {
 });
 
 test.describe("Wave 2 accessibility and responsive states", () => {
+  test("makes a newer admitted resource unmistakable while pinned", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1_380, height: 880 });
+    await openAgentScenario(page, "agent-single");
+    await page.evaluate(async () => {
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts");
+      await fixtures.installVisualAgentArtifactPinnedFixture();
+    });
+    const resources = page.getByRole("complementary", {
+      name: "Agent artifacts",
+    });
+    const file = resources.getByRole("tab", {
+      name: "File src/workbench/AgentChatPanes.tsx",
+    });
+    const diff = resources.getByRole("tab", {
+      name: "Diff src/workbench/AgentChatPanes.tsx",
+    });
+    await expect(file).toHaveAttribute("aria-selected", "true");
+    await expect(file.getByText("File", { exact: true })).toBeVisible();
+    await expect(file.getByTitle("Unsaved changes")).toBeVisible();
+    await expect(diff).toHaveAttribute("aria-selected", "false");
+    await expect(diff.getByText("Diff", { exact: true })).toBeVisible();
+    await expect(diff).toHaveAccessibleDescription("New resource");
+    await expect(
+      resources.getByRole("button", {
+        name: "Pinned resource, new File or Diff available",
+      }),
+    ).toContainText("New");
+  });
+
   test("keeps Follow latest and pinned resources scoped to each Chat", async ({
     page,
   }) => {
@@ -130,11 +167,17 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         .filter({ hasText: "Editor consistency pass" }),
     ).toHaveAttribute("aria-pressed", "true");
 
-    const follow = resources.getByRole("button", {
-      name: "Follow latest resource",
+    const pinned = resources.getByRole("button", {
+      name: "Pinned resource, new Preview available",
     });
-    await follow.click();
-    await expect(follow).toHaveAttribute("aria-pressed", "true");
+    await expect(pinned).toContainText("Pinned");
+    await expect(pinned).toContainText("New");
+    await expect(tabs.nth(1)).toHaveAccessibleDescription("New resource");
+    await pinned.click();
+    const following = resources.getByRole("button", {
+      name: "Following latest resource",
+    });
+    await expect(following).toHaveAttribute("aria-pressed", "true");
     await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
     await expect(
       page
@@ -651,12 +694,10 @@ test.describe("V6a Agent right-resource state shell", () => {
     expect(focusRing.width).toBeGreaterThanOrEqual(1);
     await page.keyboard.press("Enter");
     await expect(
-      page.getByRole("heading", { name: "No resources yet" }),
+      page.getByRole("heading", { name: "Waiting for this Chat" }),
     ).toBeVisible();
     await expect(
-      page.getByText(
-        "Files, changes, and previews from this Chat will appear here.",
-      ),
+      page.getByText(/Open a file or change from the conversation/),
     ).toBeVisible();
     await expect(workbench).toHaveScreenshot("agent-resource-empty.png");
     const collapse = page.getByRole("button", {
@@ -760,13 +801,18 @@ test.describe("V6a Agent right-resource state shell", () => {
     expect(
       await toggle.evaluate((node) => {
         const bounds = node.getBoundingClientRect();
-        return { width: bounds.width, height: bounds.height };
+        return {
+          copy: node.querySelector(".agent-artifact-pane__edge-copy")
+            ?.textContent,
+          height: bounds.height,
+          width: bounds.width,
+        };
       }),
-    ).toEqual({ width: 44, height: 44 });
+    ).toEqual({ copy: "Waiting", width: 44, height: 104 });
 
     await toggle.click();
     await expect(
-      page.getByRole("heading", { name: "No resources yet" }),
+      page.getByRole("heading", { name: "Waiting for this Chat" }),
     ).toBeVisible();
     await expect(page.locator(".center-region")).toHaveAttribute("inert");
     await expectNoViewportOverflow(page);
@@ -790,7 +836,7 @@ test.describe("V6a Agent resource shell at 200%", () => {
     await expect(toggle.locator("small")).toHaveCount(0);
     await toggle.click();
     await expect(
-      page.getByRole("heading", { name: "No resources yet" }),
+      page.getByRole("heading", { name: "Waiting for this Chat" }),
     ).toBeVisible();
     await expectNoViewportOverflow(page);
   });

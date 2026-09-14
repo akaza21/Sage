@@ -47,6 +47,9 @@ describe("HarnessBrowserSurface", () => {
     expect(screen.getByLabelText("Preview address")).toHaveValue(
       "http://127.0.0.1:5173/app",
     );
+    expect(
+      screen.getByRole("status", { name: "Loopback preview active" }),
+    ).toHaveTextContent("Local");
 
     rerender(<HarnessBrowserSurface owner={ownerB} />);
     expect(screen.queryByTitle("Sage browser")).toBeNull();
@@ -61,10 +64,13 @@ describe("HarnessBrowserSurface", () => {
   it("renders idle as a quiet status notice without a loader or alert icon", () => {
     render(<HarnessBrowserSurface owner={ownerA} />);
 
-    const notice = screen.getByRole("status");
+    const notice = screen.getByRole("status", { name: "" });
     expect(notice).toHaveClass("resource-state--idle");
     expect(notice.querySelector("svg")).toBeNull();
     expect(screen.getByText("Preview is idle")).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: "No preview connected" }),
+    ).toHaveTextContent("Idle");
     expect(screen.queryByTitle("Sage browser")).toBeNull();
     expect(
       screen.getByRole("button", { name: "Reload preview" }),
@@ -76,7 +82,7 @@ describe("HarnessBrowserSurface", () => {
     render(<HarnessBrowserSurface owner={null} />);
 
     expect(screen.queryByTitle("Sage browser")).toBeNull();
-    const notice = screen.getByRole("status");
+    const notice = screen.getByRole("status", { name: "" });
     expect(notice).toHaveClass("resource-state--idle");
     expect(notice.querySelector("svg")).toBeNull();
     expect(screen.getByText("Preview unavailable")).toBeInTheDocument();

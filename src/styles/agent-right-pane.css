@@ -1,0 +1,269 @@
+.workbench--agent .agent-artifact-pane__follow[aria-pressed="true"] {
+  color: var(--color-accent-hover);
+  background: color-mix(in srgb, var(--color-accent-muted) 48%, transparent);
+}
+
+.agent-artifact-pane__follow--pinned {
+  color: var(--color-text-secondary);
+}
+
+.agent-artifact-pane__follow--pending {
+  color: var(--color-warning);
+  background: var(--color-warning-muted);
+}
+
+.agent-artifact-pane__follow-new {
+  padding: 1px 4px;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 38%, transparent);
+  border-radius: var(--radius-pill);
+  color: var(--color-warning);
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
+}
+
+.agent-artifact-pane__edge-copy {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  overflow: hidden;
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench--agent .agent-artifact-pane .tab[data-resource-kind="preview"] {
+  min-width: 112px;
+}
+
+.agent-artifact-pane .tab--pending:not(.tab--active) {
+  box-shadow: inset 0 2px 0 var(--color-warning);
+}
+
+.agent-artifact-tab__kind {
+  flex: 0 0 auto;
+  color: var(--color-text-secondary);
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.tab--active .agent-artifact-tab__kind {
+  color: var(--color-text-primary);
+}
+
+.agent-artifact-tab__new {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border: 1px solid var(--color-warning-muted);
+  border-radius: var(--radius-circle);
+  background: var(--color-warning);
+}
+
+.harness-browser > .agent-preview-lifecycle {
+  grid-row: 3;
+}
+
+.agent-preview-lifecycle {
+  display: flex;
+  min-height: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: 28px;
+  color: var(--color-text-secondary);
+  text-align: left;
+}
+
+.agent-preview-lifecycle__icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-circle);
+  background: var(--color-plane-raised);
+}
+
+.agent-preview-lifecycle__copy {
+  display: grid;
+  min-width: 0;
+  max-width: 38ch;
+  gap: 4px;
+}
+
+.agent-preview-lifecycle__line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.agent-preview-lifecycle__line strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.agent-preview-lifecycle__reason {
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+.agent-preview-lifecycle__detail {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+}
+
+.agent-preview-lifecycle--compact {
+  min-height: 32px;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-panel);
+}
+
+.agent-preview-lifecycle--compact .agent-preview-lifecycle__icon {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+}
+
+.agent-preview-lifecycle--compact .agent-preview-lifecycle__copy {
+  max-width: none;
+}
+
+.agent-preview-lifecycle--compact.agent-preview-lifecycle--failed {
+  background: var(--color-danger-muted);
+}
+
+.agent-preview-lifecycle--active {
+  color: var(--color-success);
+}
+
+.agent-preview-lifecycle--failed {
+  color: var(--color-danger);
+}
+
+.agent-preview-lifecycle--starting {
+  color: var(--color-accent-hover);
+}
+
+.agent-preview-lifecycle--starting .agent-preview-lifecycle__icon svg {
+  animation: sage-working-pulse 1.4s ease-in-out infinite;
+}
+
+.agent-preview-lifecycle--stopped {
+  color: var(--color-warning);
+}
+
+.agent-preview-target__identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-preview-target__state {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.harness-browser__connection {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.harness-browser__connection > span[aria-hidden="true"] {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-circle);
+  background: currentColor;
+}
+
+.harness-browser__connection--active {
+  color: var(--color-success);
+}
+
+@container agent-workbench (max-width: 760px) {
+  .agent-artifact-pane--collapsed .agent-artifact-pane__edge-action {
+    width: 44px;
+    min-height: 104px;
+    justify-content: flex-start;
+    flex-direction: column;
+    gap: 7px;
+    padding: 13px 0 8px;
+  }
+
+  .agent-artifact-pane--collapsed .agent-artifact-pane__edge-copy {
+    display: block;
+    overflow: visible;
+    writing-mode: vertical-rl;
+  }
+
+  .workbench--agent .agent-artifact-pane__follow {
+    width: 36px;
+    min-width: 36px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .workbench--agent .agent-artifact-pane__follow > span:first-of-type {
+    display: none;
+  }
+
+  .workbench--agent
+    .agent-artifact-pane
+    .tab:not([data-resource-kind="preview"]) {
+    min-width: 196px;
+  }
+
+  .workbench--agent .agent-artifact-pane .tab[data-resource-kind="preview"] {
+    min-width: 104px;
+  }
+
+  .harness-browser__connection-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-preview-lifecycle--starting .agent-preview-lifecycle__icon svg {
+    animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .agent-artifact-pane .tab--pending:not(.tab--active) {
+    box-shadow: inset 0 2px 0 Highlight;
+  }
+
+  .agent-artifact-tab__new {
+    border-color: Canvas;
+    background: Highlight;
+  }
+
+  .agent-artifact-pane__follow--pending,
+  .agent-preview-lifecycle--failed {
+    border: 1px solid CanvasText;
+  }
+}

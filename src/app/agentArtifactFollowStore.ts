@@ -17,8 +17,15 @@ export type AgentArtifactFollowRecord = {
   mode: "follow" | "pinned";
   selected: AgentArtifactTarget | null;
   recent: readonly AgentArtifactTarget[];
+  pending: readonly AgentArtifactTarget[];
   lastPreviewRevision: number;
 };
+
+export function agentArtifactPendingTargets(
+  record: AgentArtifactFollowRecord | null | undefined,
+): readonly AgentArtifactTarget[] {
+  return record?.mode === "pinned" ? record.pending : [];
+}
 
 interface AgentArtifactFollowStore {
   records: readonly AgentArtifactFollowRecord[];
@@ -111,6 +118,7 @@ function initialRecord(owner: AgentArtifactOwner): AgentArtifactFollowRecord {
     mode: "follow",
     selected: null,
     recent: [],
+    pending: [],
     lastPreviewRevision: 0,
   };
 }
@@ -139,12 +147,18 @@ export const useAgentArtifactFollowStore = create<AgentArtifactFollowStore>(
         return;
       }
       const recent = withRecentTarget(current.recent, target);
+      const pending =
+        current.mode === "pinned" &&
+        !sameAgentArtifactTarget(target, current.selected)
+          ? withRecentTarget(current.pending, target)
+          : current.pending;
       set({
         records: replaceOwnerRecord(get().records, {
           ...current,
           owner,
           selected: current.mode === "follow" ? target : current.selected,
           recent,
+          pending,
           lastPreviewRevision:
             target.kind === "preview"
               ? previewRevision!
@@ -165,6 +179,7 @@ export const useAgentArtifactFollowStore = create<AgentArtifactFollowStore>(
           mode: "pinned",
           selected: target,
           recent: withRecentTarget(current.recent, target),
+          pending: [],
         }),
       });
     },
@@ -176,7 +191,8 @@ export const useAgentArtifactFollowStore = create<AgentArtifactFollowStore>(
         records: replaceOwnerRecord(get().records, {
           ...current,
           mode: "follow",
-          selected: current.recent.at(-1) ?? null,
+          selected: current.pending.at(-1) ?? current.recent.at(-1) ?? null,
+          pending: [],
         }),
       });
     },
@@ -191,6 +207,11 @@ export const useAgentArtifactFollowStore = create<AgentArtifactFollowStore>(
       const current = agentArtifactFollowRecordFor(get().records, owner);
       if (!current) return;
       const retainedRecent = current.recent.filter((target) =>
+        available.some((candidate) =>
+          sameAgentArtifactTarget(candidate, target),
+        ),
+      );
+      const pending = current.pending.filter((target) =>
         available.some((candidate) =>
           sameAgentArtifactTarget(candidate, target),
         ),
@@ -218,10 +239,16 @@ export const useAgentArtifactFollowStore = create<AgentArtifactFollowStore>(
         current.mode === "pinned" && selectedAvailable ? "pinned" : "follow";
       const selected =
         mode === "pinned" ? current.selected : (recent.at(-1) ?? null);
+      const samePending =
+        pending.length === current.pending.length &&
+        pending.every((target, index) =>
+          sameAgentArtifactTarget(target, current.pending[index]),
+        );
       if (
         mode === current.mode &&
         sameAgentArtifactTarget(selected, current.selected) &&
-        recent.length === current.recent.length
+        recent.length === current.recent.length &&
+        samePending
       ) {
         return;
       }
@@ -231,6 +258,7 @@ export const useAgentArtifactFollowStore = create<AgentArtifactFollowStore>(
           mode,
           selected,
           recent,
+          pending: mode === "pinned" ? pending : [],
         }),
       });
     },
@@ -238,6 +266,9 @@ export const useAgentArtifactFollowStore = create<AgentArtifactFollowStore>(
       if (!validTabId(tabId)) return;
       const records = get().records.flatMap((record) => {
         const recent = record.recent.filter(
+          (target) => target.kind !== "tab" || target.tabId !== tabId,
+        );
+        const pending = record.pending.filter(
           (target) => target.kind !== "tab" || target.tabId !== tabId,
         );
         const selectedClosed =
@@ -254,6 +285,7 @@ export const useAgentArtifactFollowStore = create<AgentArtifactFollowStore>(
               ? (recent.at(-1) ?? null)
               : record.selected,
             recent,
+            pending: selectedClosed ? [] : pending,
           },
         ];
       });

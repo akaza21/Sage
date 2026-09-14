@@ -154,6 +154,59 @@ export async function installVisualAgentResourceState(
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 }
 
+export async function installVisualAgentArtifactPinnedFixture() {
+  const state = useWorkbenchStore.getState();
+  const chats = state.tabs.filter((tab) => tab.kind === "chat");
+  const chat = chats[0];
+  if (!chat || state.project?.id !== PROJECT_ID) {
+    throw new Error("Visual Agent pinned fixture requires a Chat");
+  }
+  const owner = artifactOwner(chat.id as AgentArtifactOwner["chatId"]);
+  const fileTab: WorkbenchTab = {
+    id: "visual-pinned-file-tab",
+    kind: "file",
+    title: "AgentChatPanes.tsx",
+    position: chats.length,
+    pinned: false,
+    dirty: true,
+    resource: fileResource,
+  };
+  const diffTab: WorkbenchTab = {
+    ...fileTab,
+    id: "visual-pending-diff-tab",
+    kind: "diff",
+    title: "AgentChatPanes.tsx changes",
+    position: chats.length + 1,
+    dirty: false,
+  };
+  useWorkbenchStore.setState({
+    tabs: [...chats, fileTab, diffTab],
+    activeTabId: fileTab.id,
+    activeEditor: {
+      phase: "ready",
+      resource: fileResource,
+      document: editorDocument(),
+      content: editorContent,
+      revision: 1,
+      persistedRevision: 0,
+      persisting: false,
+      saving: false,
+      message: null,
+    },
+  });
+  useAgentArtifactAdmissionStore.getState().admit({ owner, tabId: fileTab.id });
+  useAgentArtifactAdmissionStore.getState().admit({ owner, tabId: diffTab.id });
+  useAgentArtifactFollowStore
+    .getState()
+    .pin(owner, { kind: "tab", tabId: fileTab.id });
+  useAgentArtifactFollowStore
+    .getState()
+    .observe(owner, { kind: "tab", tabId: diffTab.id });
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
+}
+
 export async function installVisualAgentArtifactFollowFixture() {
   const state = useWorkbenchStore.getState();
   const chats = state.tabs.filter((tab) => tab.kind === "chat");

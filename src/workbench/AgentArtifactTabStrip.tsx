@@ -1,6 +1,9 @@
-import { Eye, GitCompareArrows, Pin, X } from "lucide-react";
+import { Eye, GitCompareArrows, Pin, Radio, X } from "lucide-react";
+import { useRef } from "react";
 
 import {
+  agentArtifactPendingTargets,
+  sameAgentArtifactTarget,
   type AgentArtifactFollowRecord,
   type AgentArtifactTarget,
   useAgentArtifactFollowStore,
@@ -35,10 +38,27 @@ export function AgentArtifactTabStrip({
   activateTab,
   closeTab,
 }: AgentArtifactTabStripProps) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const pendingTargets = agentArtifactPendingTargets(record);
+  const latestPendingTarget = pendingTargets.at(-1) ?? null;
+  const following = record?.mode !== "pinned";
+  const previewPending = pendingTargets.some(
+    (target) => target.kind === "preview",
+  );
+  const fileOrDiffPending = pendingTargets.some(
+    (target) => target.kind === "tab",
+  );
+  const pendingLabel = pendingTargets.length > 0 ? "New" : null;
+  const modeLabel = following ? "Following latest" : "Pinned";
+  const followTitle = following
+    ? "Following the newest resource from this Chat"
+    : latestPendingTarget
+      ? "A newer resource arrived. Select to follow it."
+      : "Pinned to this resource. Select to follow the newest resource.";
   return (
     <>
       <nav className="tab-strip" aria-label="Agent artifact tabs">
-        <div className="tab-strip__scroll">
+        <div ref={scrollRef} className="tab-strip__scroll">
           {artifacts.map((tab) => {
             const selected =
               selectedTarget?.kind === "tab" && tab.id === selectedTarget.tabId;
@@ -47,12 +67,22 @@ export function AgentArtifactTabStrip({
               focusedOwner ? focusedPage : null,
             );
             const [fullPath, basename, directory] = artifactTabParts(tab);
-            const accessibleName = `${tab.kind === "file" ? "File" : "Diff"} ${fullPath}`;
+            const kindLabel = tab.kind === "file" ? "File" : "Diff";
+            const accessibleName = `${kindLabel} ${fullPath}`;
+            const pending = pendingTargets.some((target) =>
+              sameAgentArtifactTarget(target, {
+                kind: "tab",
+                tabId: tab.id,
+              }),
+            );
             return (
               <div
-                className={`tab ${selected ? "tab--active" : ""}`}
+                className={`tab ${selected ? "tab--active" : ""}${
+                  pending ? " tab--pending" : ""
+                }`}
                 key={tab.id}
                 role="presentation"
+                data-resource-kind={tab.kind}
               >
                 <button
                   className="tab__activate"
@@ -60,6 +90,9 @@ export function AgentArtifactTabStrip({
                   role="tab"
                   aria-selected={selected}
                   aria-label={accessibleName}
+                  aria-describedby={
+                    pending ? `${tab.id}-new-resource` : undefined
+                  }
                   data-resource-root-id={tab.resource?.rootId}
                   data-resource-relative-path={tab.resource?.relativePath}
                   title={fullPath}
@@ -85,6 +118,9 @@ export function AgentArtifactTabStrip({
                       aria-hidden="true"
                     />
                   )}
+                  <span className="agent-artifact-tab__kind" aria-hidden="true">
+                    {kindLabel}
+                  </span>
                   <span className="tab__path" aria-hidden="true">
                     <span className="tab__dir">{directory}</span>
                     <span className="tab__basename">{basename}</span>
@@ -102,6 +138,15 @@ export function AgentArtifactTabStrip({
                       {stats.deletionsLabel}
                     </span>
                   ) : null}
+                  {pending ? (
+                    <span
+                      id={`${tab.id}-new-resource`}
+                      className="agent-artifact-tab__new"
+                      title="New resource arrived while pinned"
+                    >
+                      <span className="sr-only">New resource</span>
+                    </span>
+                  ) : null}
                 </button>
                 <button
                   className="tab__close"
@@ -116,8 +161,11 @@ export function AgentArtifactTabStrip({
           })}
           {focusedOwner !== null ? (
             <div
-              className={`tab ${previewSelected ? "tab--active" : ""}`}
+              className={`tab ${previewSelected ? "tab--active" : ""}${
+                previewPending ? " tab--pending" : ""
+              }`}
               role="presentation"
+              data-resource-kind="preview"
             >
               <button
                 className="tab__activate"
@@ -125,6 +173,9 @@ export function AgentArtifactTabStrip({
                 role="tab"
                 aria-selected={previewSelected}
                 aria-label="Preview"
+                aria-describedby={
+                  previewPending ? "preview-new-resource" : undefined
+                }
                 onClick={() =>
                   useAgentArtifactFollowStore
                     .getState()
@@ -132,7 +183,18 @@ export function AgentArtifactTabStrip({
                 }
               >
                 <Eye size={15} strokeWidth={1.8} aria-hidden="true" />
-                <span>Preview</span>
+                <span className="agent-artifact-tab__kind" aria-hidden="true">
+                  Preview
+                </span>
+                {previewPending ? (
+                  <span
+                    id="preview-new-resource"
+                    className="agent-artifact-tab__new"
+                    title="New resource arrived while pinned"
+                  >
+                    <span className="sr-only">New resource</span>
+                  </span>
+                ) : null}
               </button>
             </div>
           ) : null}
@@ -140,20 +202,48 @@ export function AgentArtifactTabStrip({
       </nav>
       {focusedOwner && record && availableTargets.length > 1 ? (
         <button
-          className="agent-artifact-pane__follow"
+          className={`agent-artifact-pane__follow agent-artifact-pane__follow--${record.mode}${
+            latestPendingTarget ? " agent-artifact-pane__follow--pending" : ""
+          }`}
           type="button"
-          aria-label="Follow latest resource"
-          aria-pressed={record.mode === "follow"}
-          title={
-            record.mode === "follow"
-              ? "Following the newest resource from this Chat"
-              : "Resume following the newest resource from this Chat"
+          aria-label={
+            following
+              ? "Following latest resource"
+              : previewPending && fileOrDiffPending
+                ? "Pinned resource, new File, Diff, and Preview available"
+                : previewPending
+                  ? "Pinned resource, new Preview available"
+                  : fileOrDiffPending
+                    ? "Pinned resource, new File or Diff available"
+                    : "Pinned resource"
           }
-          onClick={() =>
-            useAgentArtifactFollowStore.getState().followLatest(focusedOwner)
-          }
+          aria-pressed={following}
+          title={followTitle}
+          onClick={() => {
+            useAgentArtifactFollowStore.getState().followLatest(focusedOwner);
+            requestAnimationFrame(() => {
+              scrollRef.current
+                ?.querySelector<HTMLElement>(
+                  '[role="tab"][aria-selected="true"]',
+                )
+                ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+            });
+          }}
         >
-          <Pin size={15} aria-hidden="true" />
+          {following ? (
+            <Radio size={14} strokeWidth={1.9} aria-hidden="true" />
+          ) : (
+            <Pin size={14} strokeWidth={1.9} aria-hidden="true" />
+          )}
+          <span>{modeLabel}</span>
+          {pendingLabel ? (
+            <span
+              className="agent-artifact-pane__follow-new"
+              aria-hidden="true"
+            >
+              {pendingLabel}
+            </span>
+          ) : null}
         </button>
       ) : null}
     </>

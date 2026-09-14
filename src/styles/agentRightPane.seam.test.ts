@@ -1,0 +1,28 @@
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+describe("Agent right-pane stylesheet seam", () => {
+  it("keeps right-pane refinement in its owned stylesheet", async () => {
+    const [entry, css] = await Promise.all([
+      readFile(resolve("src/workbench/Workbench.tsx"), "utf8"),
+      readFile(resolve("src/styles/agent-right-pane.css"), "utf8"),
+    ]);
+
+    expect(entry).toContain('import "../styles/agent-right-pane.css";');
+    expect(css).toContain(".agent-artifact-pane__follow--pending");
+    expect(css).toContain(".agent-artifact-tab__kind");
+    expect(css).toContain(".agent-preview-lifecycle--failed");
+    expect(css).toContain(".harness-browser__connection--active");
+    expect(css).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.agent-preview-lifecycle--starting \.agent-preview-lifecycle__icon svg\s*\{\s*animation: none;\s*\}\s*\}/,
+    );
+    expect(css).toMatch(
+      /@media \(forced-colors: active\)\s*\{(?:(?!@media)[\s\S])*?\.agent-artifact-tab__new\s*\{[^}]*background: Highlight;[^}]*\}/,
+    );
+    expect(css).toMatch(
+      /\.harness-browser > \.agent-preview-lifecycle\s*\{\s*grid-row: 3;/,
+    );
+  });
+});

@@ -87,6 +87,21 @@ export function HarnessBrowserSurface({
       aria-label="Sage browser"
     >
       <header className="harness-browser__chrome">
+        <span
+          className={`harness-browser__connection harness-browser__connection--${
+            session ? "active" : "idle"
+          }`}
+          aria-label={
+            session ? "Loopback preview active" : "No preview connected"
+          }
+          title={session ? "Loopback preview active" : "No preview connected"}
+          role="status"
+        >
+          <span aria-hidden="true" />
+          <span className="harness-browser__connection-label">
+            {session ? "Local" : "Idle"}
+          </span>
+        </span>
         <div
           className="harness-browser__controls"
           aria-label="Preview controls"

@@ -253,7 +253,7 @@ describe("Agent artifact file chips", () => {
     expect(within(expand).queryByText("Changes")).toBeNull();
     expect(within(expand).queryByText("Preview")).toBeNull();
     expect(
-      screen.queryByRole("heading", { name: "No resources yet" }),
+      screen.queryByRole("heading", { name: "Waiting for this Chat" }),
     ).toBeNull();
 
     fireEvent.click(expand);
@@ -263,12 +263,10 @@ describe("Agent artifact file chips", () => {
       <AgentArtifactPane expanded onExpandedChange={onExpandedChange} />,
     );
     expect(
-      screen.getByRole("heading", { name: "No resources yet" }),
+      screen.getByRole("heading", { name: "Waiting for this Chat" }),
     ).toBeVisible();
     expect(
-      screen.getByText(
-        "Files, changes, and previews from this Chat will appear here.",
-      ),
+      screen.getByText(/Open a file or change from the conversation/),
     ).toBeVisible();
     fireEvent.keyDown(screen.getByLabelText("Agent artifacts"), {
       key: "Escape",
@@ -336,9 +334,7 @@ describe("Agent artifact file chips", () => {
 
     expect(screen.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "Files, changes, and previews from this Chat will appear here.",
-      ),
+      screen.getByText(/Open a file or change from the conversation/),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
@@ -355,6 +351,7 @@ describe("Agent artifact file chips", () => {
     render(<AgentArtifactPane />);
 
     const matched = screen.getByRole("tab", { name: /app\.ts/ });
+    expect(within(matched).getByText("File")).toBeInTheDocument();
     expect(within(matched).getByText("+3")).toBeInTheDocument();
     expect(within(matched).getByText("-1")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: /other\.ts$/ })).toBeNull();
@@ -375,6 +372,40 @@ describe("Agent artifact file chips", () => {
       screen.queryByText("No dev or start scripts were found."),
     ).toBeNull();
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+  });
+
+  it("counts a live Preview on the collapsed edge without File or Diff tabs", () => {
+    const onExpandedChange = vi.fn();
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: "chat-focused",
+          kind: "chat",
+          title: "Focused",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-focused",
+    });
+    applyBrowseIntent({
+      owner: previewOwner,
+      url: "http://127.0.0.1:5173/preview",
+    });
+
+    render(
+      <AgentArtifactPane
+        expanded={false}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: "Open files, changes, and preview, 1 resource",
+      }),
+    ).toHaveTextContent("Ready");
   });
 
   it("keeps a standalone manual browser quiet when native Preview is unavailable", () => {
@@ -538,6 +569,7 @@ describe("Agent artifact file chips", () => {
     );
     expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(screen.getByRole("alert")).toHaveTextContent("Preview failed");
+    expect(screen.getByRole("alert")).toHaveTextContent("Health timeout");
     expect(screen.queryByText("Preview is unavailable")).toBeNull();
     expect(document.querySelector(".agent-preview-stack")).toHaveAttribute(
       "data-preview-phase",
@@ -710,6 +742,7 @@ describe("Agent artifact file chips", () => {
     );
     expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(screen.getByRole("alert")).toHaveTextContent("Preview failed");
+    expect(screen.getByRole("alert")).toHaveTextContent("Health timeout");
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Preview did not become healthy before its deadline.",
     );
@@ -791,7 +824,7 @@ describe("Agent artifact file chips", () => {
     );
     emit("3", "stopping", null);
     expect(screen.queryByTitle("Sage browser")).toBeNull();
-    expect(screen.getByText("Preview is stopping")).toBeInTheDocument();
+    expect(screen.getByText("Stopping process")).toBeInTheDocument();
     emit("4", "stopped", null);
     expect(screen.queryByTitle("Sage browser")).toBeNull();
     expect(screen.getByText("Preview stopped")).toBeInTheDocument();
@@ -856,13 +889,31 @@ describe("Agent artifact file chips", () => {
         },
       } as PreviewProjectionChangedEvent),
     );
-    expect(screen.getByText("Preview is starting")).toBeInTheDocument();
+    expect(screen.getByText("Starting process")).toBeInTheDocument();
     act(() =>
       receive?.({
         kind: "preview",
         preview: {
           ...previewOwner,
           previewRevision: "3",
+          phase: "starting",
+          failure: "conflict",
+          target,
+          origin: null,
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+    const conflict = screen
+      .getByText("Ownership conflict")
+      .closest('[role="status"]');
+    expect(conflict).toHaveTextContent("Starting process");
+    expect(conflict).toHaveTextContent("Ownership conflict");
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "4",
           phase: "healthFailed",
           failure: "healthTimeout",
           target,
@@ -876,7 +927,7 @@ describe("Agent artifact file chips", () => {
         kind: "preview",
         preview: {
           ...previewOwner,
-          previewRevision: "4",
+          previewRevision: "5",
           phase: "starting",
           failure: null,
           target,
@@ -889,7 +940,7 @@ describe("Agent artifact file chips", () => {
         kind: "preview",
         preview: {
           ...previewOwner,
-          previewRevision: "5",
+          previewRevision: "6",
           phase: "exited",
           failure: "exitedEarly",
           target,
@@ -898,12 +949,13 @@ describe("Agent artifact file chips", () => {
       } as PreviewProjectionChangedEvent),
     );
     expect(screen.getByText("Preview exited")).toBeInTheDocument();
+    expect(screen.getByText("Early exit")).toBeInTheDocument();
     act(() =>
       receive?.({
         kind: "preview",
         preview: {
           ...previewOwner,
-          previewRevision: "6",
+          previewRevision: "7",
           phase: "starting",
           failure: null,
           target,
@@ -916,7 +968,7 @@ describe("Agent artifact file chips", () => {
         kind: "preview",
         preview: {
           ...previewOwner,
-          previewRevision: "7",
+          previewRevision: "8",
           phase: "stopping",
           failure: null,
           target,
@@ -924,7 +976,7 @@ describe("Agent artifact file chips", () => {
         },
       } as PreviewProjectionChangedEvent),
     );
-    expect(screen.getByText("Preview is stopping")).toBeInTheDocument();
+    expect(screen.getByText("Stopping process")).toBeInTheDocument();
     expect(
       screen.getByText("Stopping the native Preview process."),
     ).toBeInTheDocument();
@@ -933,7 +985,7 @@ describe("Agent artifact file chips", () => {
         kind: "preview",
         preview: {
           ...previewOwner,
-          previewRevision: "8",
+          previewRevision: "9",
           phase: "stopped",
           failure: null,
           target,
@@ -971,11 +1023,17 @@ describe("Agent artifact file chips", () => {
       "false",
     );
     const follow = screen.getByRole("button", {
-      name: "Follow latest resource",
+      name: "Pinned resource, new Preview available",
     });
     expect(follow).toHaveAttribute("aria-pressed", "false");
+    expect(follow).toHaveTextContent("Pinned");
+    expect(follow).toHaveTextContent("New");
+    expect(
+      screen.getByRole("tab", { name: "Preview" }),
+    ).toHaveAccessibleDescription("New resource");
     fireEvent.click(follow);
     expect(follow).toHaveAttribute("aria-pressed", "true");
+    expect(follow).toHaveAccessibleName("Following latest resource");
     expect(screen.getByRole("tab", { name: "Preview" })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -1142,6 +1200,7 @@ describe("Agent artifact file chips", () => {
     render(<AgentArtifactPane />);
 
     const matched = screen.getByRole("tab", { name: /app\.ts/ });
+    expect(within(matched).getByText("Diff")).toBeInTheDocument();
     expect(within(matched).getByText("+3")).toBeInTheDocument();
     expect(within(matched).getByText("-1")).toBeInTheDocument();
   });

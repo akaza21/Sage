@@ -31,6 +31,9 @@ export function AgentArtifactCollapsedPane({
         onClick={onExpand}
       >
         <PanelRightOpen size={17} strokeWidth={1.8} aria-hidden="true" />
+        <span className="agent-artifact-pane__edge-copy" aria-hidden="true">
+          {count > 0 ? "Ready" : "Waiting"}
+        </span>
         {count > 0 ? (
           <span className="agent-artifact-pane__count" aria-hidden="true">
             {count}

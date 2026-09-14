@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import {
   agentArtifactFollowRecordFor,
+  agentArtifactPendingTargets,
   MAX_AGENT_ARTIFACT_FOLLOW_OWNERS,
   MAX_AGENT_ARTIFACT_TARGETS,
   useAgentArtifactFollowStore,
@@ -43,6 +44,7 @@ describe("Agent artifact follow state", () => {
       mode: "pinned",
       selected: { kind: "tab", tabId: "file:a" },
       recent: [{ kind: "tab", tabId: "file:a" }, { kind: "preview" }],
+      pending: [{ kind: "preview" }],
       lastPreviewRevision: 2,
     });
 
@@ -56,6 +58,42 @@ describe("Agent artifact follow state", () => {
       mode: "follow",
       selected: { kind: "preview" },
     });
+  });
+
+  it("identifies only a newer target that arrived while pinned", () => {
+    const store = useAgentArtifactFollowStore.getState();
+    store.observe(ownerA, { kind: "tab", tabId: "file:a" });
+    store.pin(ownerA, { kind: "tab", tabId: "file:a" });
+    expect(
+      agentArtifactPendingTargets(
+        agentArtifactFollowRecordFor(
+          useAgentArtifactFollowStore.getState().records,
+          ownerA,
+        ),
+      ),
+    ).toEqual([]);
+
+    store.observe(ownerA, { kind: "preview" }, 2);
+    store.observe(ownerA, { kind: "tab", tabId: "diff:b" });
+    store.observe(ownerA, { kind: "tab", tabId: "file:a" });
+    expect(
+      agentArtifactPendingTargets(
+        agentArtifactFollowRecordFor(
+          useAgentArtifactFollowStore.getState().records,
+          ownerA,
+        ),
+      ),
+    ).toEqual([{ kind: "preview" }, { kind: "tab", tabId: "diff:b" }]);
+
+    store.followLatest(ownerA);
+    expect(
+      agentArtifactPendingTargets(
+        agentArtifactFollowRecordFor(
+          useAgentArtifactFollowStore.getState().records,
+          ownerA,
+        ),
+      ),
+    ).toEqual([]);
   });
 
   it("restores independent state for two exact Chat owners sharing a tab", () => {

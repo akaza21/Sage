@@ -7,7 +7,8 @@ import type {
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 import { HarnessBrowserSurface } from "./HarnessBrowserSurface";
 import type { HarnessBrowseOwner } from "./harnessBrowse";
-import { previewNotice, previewOrigin } from "./previewPresentation";
+import { PreviewLifecycleStatus } from "./PreviewLifecycleStatus";
+import { previewOrigin } from "./previewPresentation";
 import type { PreviewTargetRef } from "./previewDesktop";
 import { useHarnessBrowseSession } from "./useHarnessBrowseSession";
 
@@ -45,6 +46,7 @@ export function AgentPreviewPresentation({
       "stopping",
     ].includes(projection.phase),
   );
+  const phase = projection?.phase ?? null;
   const activeTarget = projection?.target ?? null;
   const replacesNativePresentation = Boolean(
     projection &&
@@ -53,18 +55,18 @@ export function AgentPreviewPresentation({
       (lastAdmittedNativeOrigin &&
         previewOrigin(session.href) === lastAdmittedNativeOrigin)),
   );
-  const nativeNotice = projection
-    ? previewNotice(projection.phase, projection.failure)
-    : null;
-  const inlineNativeNotice =
+  const showInlineLifecycle = Boolean(
     !replacesNativePresentation &&
     !error &&
-    (projection?.phase === "healthFailed" || projection?.phase === "exited")
-      ? nativeNotice
-      : null;
+    projection &&
+    projection.phase !== "idle",
+  );
   const replacement =
-    replacesNativePresentation && nativeNotice ? (
-      <ResourceStateNotice {...nativeNotice} />
+    replacesNativePresentation && projection ? (
+      <PreviewLifecycleStatus
+        failure={projection.failure}
+        phase={projection.phase}
+      />
     ) : undefined;
   const targetRows = useMemo(
     () =>
@@ -77,13 +79,20 @@ export function AgentPreviewPresentation({
             className="agent-preview-target"
             key={`${target.rootId}:${target.scriptName}`}
           >
-            <span
-              className="agent-preview-target__name"
-              title={target.scriptName}
-            >
-              {target.scriptName}
+            <span className="agent-preview-target__identity">
+              <span
+                className="agent-preview-target__name"
+                title={target.scriptName}
+              >
+                {target.scriptName}
+              </span>
+              {selected && phase ? (
+                <span className="agent-preview-target__state">
+                  {phase === "active" ? "Running" : "Selected"}
+                </span>
+              ) : null}
             </span>
-            {selected && projection?.phase === "active" ? (
+            {selected && phase === "active" ? (
               <button
                 type="button"
                 className="button button--compact button--danger"
@@ -112,7 +121,7 @@ export function AgentPreviewPresentation({
       onStart,
       onStop,
       owner,
-      projection?.phase,
+      phase,
       targets,
     ],
   );
@@ -121,7 +130,7 @@ export function AgentPreviewPresentation({
     <div
       className="agent-preview-stack"
       data-preview-listener-ready={listenerReady ? "true" : "false"}
-      data-preview-phase={projection?.phase ?? "none"}
+      data-preview-phase={phase ?? "none"}
       data-preview-target-identity={
         activeTarget
           ? `${activeTarget.rootId}:${activeTarget.scriptName}`
@@ -134,8 +143,12 @@ export function AgentPreviewPresentation({
           title="Preview is unavailable"
           detail={error}
         />
-      ) : inlineNativeNotice ? (
-        <ResourceStateNotice {...inlineNativeNotice} />
+      ) : showInlineLifecycle && projection ? (
+        <PreviewLifecycleStatus
+          compact
+          failure={projection.failure}
+          phase={projection.phase}
+        />
       ) : null}
       {targetRows.length > 0 ? (
         <div
