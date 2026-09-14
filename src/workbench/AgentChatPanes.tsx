@@ -23,7 +23,11 @@ import { pinUnreadAckIds } from "../features/chat/acp/chatUnread";
 import { setHarnessBrowseOwner } from "../features/preview/harnessBrowse";
 import type { HarnessBrowseOwner } from "../features/preview/harnessBrowse";
 import { ChatSurface } from "../features/chat/ChatSurface";
+import { ChatSessionStrip } from "../features/chat/ChatSessionStrip";
+import { useAcpChatLiveSnapshot } from "../features/chat/acp/useAcpChatLiveSnapshot";
+import type { WorkbenchTab } from "../domain/workbench";
 import { AgentChatPane } from "./AgentChatPane";
+import { AgentTaskHeader } from "./AgentTaskHeader";
 import {
   AGENT_CHAT_SPLIT_MAX,
   AGENT_CHAT_SPLIT_MIN,
@@ -49,6 +53,10 @@ function sameVisibleIds(left: readonly string[], right: readonly string[]) {
   return true;
 }
 
+function isChatTab(tab: WorkbenchTab | undefined): tab is WorkbenchTab {
+  return tab?.kind === "chat";
+}
+
 export function AgentChatPanes({ compact = false }: { compact?: boolean }) {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
@@ -70,6 +78,8 @@ export function AgentChatPanes({ compact = false }: { compact?: boolean }) {
   const [resizing, setResizing] = useState(false);
   const [containerWidth, setContainerWidth] = useState<number | null>(null);
   const panesRef = useRef<HTMLDivElement>(null);
+  const closeTab = useWorkbenchStore((state) => state.closeTab);
+  const createChat = useWorkbenchStore((state) => state.createChat);
   const previousFocusedId = usePinnedAgentChatOwner();
   const chatIds = useMemo(() => collectChatTabIds(tabs), [tabs]);
   const nextVisibleIds =
@@ -150,6 +160,15 @@ export function AgentChatPanes({ compact = false }: { compact?: boolean }) {
   }, [displayedIds, focusedOwner]);
 
   const hasVisibleChats = nextVisibleIds.length > 0;
+  const focusedTab = tabs.find((tab) => tab.id === focusedId) ?? null;
+  const chatTabs = useMemo(
+    () => chatIds.map((id) => tabs.find((tab) => tab.id === id)).filter(isChatTab),
+    [chatIds, tabs],
+  );
+  const focusedSnapshot = useAcpChatLiveSnapshot(
+    focusedId ?? "",
+    Boolean(focusedId),
+  );
   useLayoutEffect(() => {
     const panes = panesRef.current;
     if (!panes || !hasVisibleChats) return;
@@ -227,54 +246,72 @@ export function AgentChatPanes({ compact = false }: { compact?: boolean }) {
 
   const split = displayedIds.length > 1;
   return (
-    <div
-      ref={panesRef}
-      className={`agent-chat-panes${split ? " agent-chat-panes--split" : ""}`}
-      role="tabpanel"
-      style={
-        split
-          ? {
-              gridTemplateColumns: `minmax(0, ${splitPercent}fr) 8px minmax(0, ${
-                100 - splitPercent
-              }fr)`,
-            }
-          : undefined
-      }
-    >
-      {displayedIds.map((id, index) => {
-        const tab = tabs.find((candidate) => candidate.id === id);
-        if (!tab) return null;
-        return (
-          <Fragment key={id}>
-            <AgentChatPane
-              tab={tab}
-              focused={id === focusedId}
-              onFocus={() => void activateTab(id)}
-            />
-            {split && index === 0 ? (
-              <div
-                className={`agent-chat-splitter${
-                  resizing ? " agent-chat-splitter--active" : ""
-                }`}
-                role="separator"
-                aria-label="Resize chat panes"
-                aria-orientation="vertical"
-                aria-valuemin={AGENT_CHAT_SPLIT_MIN}
-                aria-valuemax={AGENT_CHAT_SPLIT_MAX}
-                aria-valuenow={splitPercent}
-                tabIndex={0}
-                onKeyDown={resizeByKeyboard}
-                onPointerDown={beginResize}
-                onPointerMove={(event) => {
-                  if (resizing) setSplitFromPointer(event);
-                }}
-                onPointerUp={endResize}
-                onPointerCancel={endResize}
+    <div className="agent-chat-center">
+      <AgentTaskHeader
+        tab={focusedTab}
+        chatCount={chatTabs.length}
+        snapshot={focusedSnapshot}
+      />
+      <ChatSessionStrip
+        tabs={chatTabs}
+        selectedId={focusedId}
+        onSelect={(id) => void activateTab(id)}
+        onClose={closeTab}
+        onCreate={() => void createChat()}
+        disabled={projectTransitioning}
+      />
+      <div
+        ref={panesRef}
+        id="agent-chat-panel"
+        aria-labelledby={focusedId ? `agent-chat-tab-${focusedId}` : undefined}
+        className={`agent-chat-panes${split ? " agent-chat-panes--split" : ""}`}
+        role="tabpanel"
+        style={
+          split
+            ? {
+                gridTemplateColumns: `minmax(0, ${splitPercent}fr) 8px minmax(0, ${
+                  100 - splitPercent
+                }fr)`,
+              }
+            : undefined
+        }
+      >
+        {displayedIds.map((id, index) => {
+          const tab = tabs.find((candidate) => candidate.id === id);
+          if (!tab) return null;
+          return (
+            <Fragment key={id}>
+              <AgentChatPane
+                tab={tab}
+                focused={id === focusedId}
+                snapshot={id === focusedId ? focusedSnapshot : undefined}
+                onFocus={() => void activateTab(id)}
               />
-            ) : null}
-          </Fragment>
-        );
-      })}
+              {split && index === 0 ? (
+                <div
+                  className={`agent-chat-splitter${
+                    resizing ? " agent-chat-splitter--active" : ""
+                  }`}
+                  role="separator"
+                  aria-label="Resize chat panes"
+                  aria-orientation="vertical"
+                  aria-valuemin={AGENT_CHAT_SPLIT_MIN}
+                  aria-valuemax={AGENT_CHAT_SPLIT_MAX}
+                  aria-valuenow={splitPercent}
+                  tabIndex={0}
+                  onKeyDown={resizeByKeyboard}
+                  onPointerDown={beginResize}
+                  onPointerMove={(event) => {
+                    if (resizing) setSplitFromPointer(event);
+                  }}
+                  onPointerUp={endResize}
+                  onPointerCancel={endResize}
+                />
+              ) : null}
+            </Fragment>
+          );
+        })}
+      </div>
     </div>
   );
 }

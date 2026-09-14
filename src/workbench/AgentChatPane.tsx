@@ -1,5 +1,6 @@
 import { chatDisplayTitle } from "../domain/chatTitle";
 import type { WorkbenchTab } from "../domain/workbench";
+import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
 import {
   ackChatUnread,
   chatActivityFingerprint,
@@ -14,12 +15,15 @@ export function AgentChatPane({
   tab,
   focused,
   onFocus,
+  snapshot: providedSnapshot,
 }: {
   tab: WorkbenchTab;
   focused: boolean;
   onFocus: () => void;
+  snapshot?: ChatLiveSnapshot;
 }) {
-  const snapshot = useAcpChatLiveSnapshot(tab.id, true);
+  const ownSnapshot = useAcpChatLiveSnapshot(tab.id, !providedSnapshot);
+  const snapshot = providedSnapshot ?? ownSnapshot;
   const title = chatDisplayTitle(tab.title);
   const activityFingerprint = chatActivityFingerprint(snapshot);
   if (focused && activityFingerprint.length > 0) {
