@@ -26,6 +26,7 @@ mod trust_root;
 // `_sage/browse`.
 const CODEX_BROWSE_TOOL_NAME: &str = "sage_browse";
 
+pub(crate) use admission::BINDING_ID as CODEX_BINDING_ID;
 pub(crate) use admission::{
     AdmittedCodexBinding, CodexAdmissionUnavailable, CodexBindingRegistration,
     startup_codex_binding_registration,
@@ -54,6 +55,10 @@ pub(crate) use host_presence::{CodexHostPresence, observe_codex_host_presence};
 pub(crate) use incoming::{IncomingEvent, IngressDisposition, ResourceMapper};
 pub(crate) use managed::{
     ManagedStagingError, ManagedStagingPrerequisite, inspect_managed_staging,
+};
+pub(crate) use manifest::{
+    PINNED_PROTOCOL_IDENTITY as CODEX_PROTOCOL_IDENTITY,
+    PINNED_SCHEMA_SHA256 as CODEX_SCHEMA_SHA256,
 };
 pub(crate) use manifest::{PhysicalAdmissionUnavailable, Platform, parse_packet_metadata};
 pub(crate) use physical::{

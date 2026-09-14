@@ -19,7 +19,8 @@ const PINNED_PACKAGE_SHA1: &str = "b24ffe0d63bcac64fe802c4c7d79176fb42e8337";
 const PINNED_PACKAGE_INTEGRITY: &str = "sha512-u0h9lk094CaXRSqE34SBW2dRaQTPa6fASXqehczWH9QdsU62mBsiAgAdp6tCG4i+YzPmmhjD8FdXNnYGNmwuMg==";
 const PINNED_PACKAGE_PACKED_BYTES: u64 = 150_852_388;
 const PINNED_PACKAGE_UNPACKED_BYTES: u64 = 427_151_500;
-const PINNED_SCHEMA_SHA256: &str =
+pub(crate) const PINNED_PROTOCOL_IDENTITY: &str = "codex-app-server-0.145.0-7b0ab167";
+pub(crate) const PINNED_SCHEMA_SHA256: &str =
     "7b0ab1679be705644a1b6c3f486f15e2f90e5f900486d90073b1dc5f0cf4c62c";
 const PINNED_CODEX_HOME_SUFFIX: &str = r"CodexState\codex-app-server-0.145.0-7b0ab167";
 
@@ -288,7 +289,7 @@ fn validate_packet_metadata(metadata: &CuratedPacketMetadata) -> Result<(), Pack
 
 fn pinned_capability_ceiling() -> CuratedCapabilityCeiling {
     CuratedCapabilityCeiling {
-        protocol_identity: "codex-app-server-0.145.0-7b0ab167".into(),
+        protocol_identity: PINNED_PROTOCOL_IDENTITY.into(),
         new_session: true,
         resume_session: true,
         load_session: true,

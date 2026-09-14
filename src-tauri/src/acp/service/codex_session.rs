@@ -4,7 +4,7 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::acp::{
     bindings::{
-        codex::{CodexProjectRootAuthority, CodexRuntimeFactory},
+        codex::CodexProjectRootAuthority,
         runtime::{NativeRuntime, RuntimeFactory},
     },
     contract::SafeText,
@@ -40,9 +40,10 @@ impl AcpService {
         project_root: &CodexProjectRootAuthority,
         mut command: StartSessionCommand,
     ) -> Result<SessionMutation, CodexSessionError> {
-        let binding = self
+        let admitted = self
             .refresh_codex_binding()
             .map_err(CodexSessionError::Binding)?;
+        let binding = admitted.binding();
         if command.binding_id.as_str() != binding.binding_id() {
             return Err(CodexSessionError::Intent);
         }
@@ -70,9 +71,10 @@ impl AcpService {
         mut command: ActivateSessionCommand,
         project_root: CodexProjectRootAuthority,
     ) -> Result<(ActivateSessionCommand, PreparedCodexActivation), CodexSessionError> {
-        let binding = self
+        let admitted = self
             .refresh_codex_binding()
             .map_err(CodexSessionError::Binding)?;
+        let binding = admitted.binding();
         if project_root.project_id() != &command.project_id {
             return Err(CodexSessionError::Intent);
         }
@@ -112,8 +114,8 @@ impl AcpService {
             },
             _ => return Err(CodexSessionError::Intent),
         };
-        let ceiling = binding
-            .capability_ceiling()
+        let ceiling = admitted
+            .supported_capabilities()
             .map_err(CodexSessionError::Binding)?;
         command.artifact_digest = binding.artifact_digest().to_owned();
         let intent = ActivationIntent {
@@ -129,12 +131,10 @@ impl AcpService {
         };
         #[cfg(any(debug_assertions, feature = "diagnostics"))]
         let harness_version = binding.harness_version().to_owned();
-        let runtime = CodexRuntimeFactory {
-            binding,
-            project_root,
-        }
-        .construct(owner.runtime_epoch, owner.session_id.clone())
-        .map_err(|_| CodexSessionError::Intent)?;
+        let runtime = admitted
+            .into_factory(project_root)
+            .construct(owner.runtime_epoch, owner.session_id.clone())
+            .map_err(|_| CodexSessionError::Intent)?;
         Ok((
             command,
             PreparedCodexActivation {

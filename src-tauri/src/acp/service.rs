@@ -8,7 +8,10 @@ use std::{
 
 use crate::{
     acp::{
-        bindings::codex::CodexBindingRegistration,
+        bindings::registry::{
+            AdmittedBindingRecord, AuthProvider, BindingRegistry, ModelProvider,
+            RegistryUnavailable,
+        },
         contract::{ProjectGeneration, SageChatId, SageProjectId},
         intent::{AcpChatPage, BindingId, IntentSnapshot, PageCursor},
         page_admission::{PageAdmissionError, PageReadAdmission, PageReadLease},
@@ -21,6 +24,9 @@ use crate::{
     },
     persistence::Database,
 };
+
+#[cfg(test)]
+use crate::acp::bindings::codex::CodexBindingRegistration;
 
 #[cfg(all(test, windows))]
 use crate::acp::{
@@ -107,7 +113,7 @@ pub(crate) struct AcpService {
     notifier: Option<Arc<ProjectionNotifier>>,
     page_reads: PageReadAdmission,
     read_text_files: ReadTextFileService,
-    codex: CodexBindingRegistration,
+    registry: Arc<BindingRegistry>,
     codex_gate: Arc<codex_operation::CodexOperationGate>,
     codex_discovery: Arc<CodexDiscoveryManager>,
     codex_auth: Arc<CodexAuthManager>,
@@ -178,10 +184,18 @@ impl AcpService {
             notifier.set_active_project(project_id);
         }
         let codex_gate = codex_operation::CodexOperationGate::new();
-        let codex_discovery =
-            CodexDiscoveryManager::with_gate(configuration.codex.clone(), Arc::clone(&codex_gate));
-        let codex_auth =
-            CodexAuthManager::new(configuration.codex.clone(), Arc::clone(&codex_gate));
+        let record = configuration.registry.codex();
+        let codex_discovery = match record.model_provider {
+            ModelProvider::CodexAccount => CodexDiscoveryManager::with_gate(
+                record.admission().clone(),
+                Arc::clone(&codex_gate),
+            ),
+        };
+        let codex_auth = match record.auth_provider {
+            AuthProvider::CodexHarness => {
+                CodexAuthManager::new(record.admission().clone(), Arc::clone(&codex_gate))
+            }
+        };
         Ok(Self {
             read_text_files: ReadTextFileService::new(database.clone()),
             database,
@@ -193,7 +207,7 @@ impl AcpService {
             publisher,
             notifier,
             page_reads: PageReadAdmission::default(),
-            codex: configuration.codex,
+            registry: configuration.registry,
             codex_gate,
             codex_discovery,
             codex_auth,
@@ -247,7 +261,12 @@ impl AcpService {
 
     #[cfg(test)]
     pub(crate) fn codex_registration(&self) -> CodexBindingRegistration {
-        self.codex.clone()
+        self.registry.codex().admission().clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn binding_registry(&self) -> &Arc<BindingRegistry> {
+        &self.registry
     }
 
     #[cfg(all(test, windows))]
@@ -260,10 +279,15 @@ impl AcpService {
         let binding = self
             .refresh_codex_binding()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        CodexRuntime::from_admitted_binding(binding, project_root, runtime_epoch, session_id)
-            .inspect_err(|_| {
-                self.codex.invalidate_drift();
-            })
+        CodexRuntime::from_admitted_binding(
+            Arc::clone(binding.binding()),
+            project_root,
+            runtime_epoch,
+            session_id,
+        )
+        .inspect_err(|_| {
+            self.registry.codex().admission().invalidate_drift();
+        })
     }
 
     pub(crate) fn codex_discovery_manager(&self) -> Arc<CodexDiscoveryManager> {
@@ -283,19 +307,25 @@ impl AcpService {
 
     pub(crate) fn accepts_codex_binding(&self, requested: &BindingId) -> bool {
         self.refresh_codex_binding()
-            .is_ok_and(|binding| binding.binding_id() == requested.as_str())
+            .is_ok_and(|binding| binding.binding().binding_id() == requested.as_str())
     }
 
     pub(super) fn refresh_codex_binding(
         &self,
-    ) -> Result<
-        Arc<crate::acp::bindings::codex::AdmittedCodexBinding>,
-        crate::acp::bindings::codex::CodexAdmissionUnavailable,
-    > {
-        self.codex.refresh().inspect_err(|_| {
-            self.codex_discovery.invalidate();
-            self.codex_auth.invalidate();
-        })
+    ) -> Result<AdmittedBindingRecord<'_>, crate::acp::bindings::codex::CodexAdmissionUnavailable>
+    {
+        self.registry
+            .resolve(self.registry.codex().binding_id())
+            .map_err(|error| match error {
+                RegistryUnavailable::Admission(reason) => reason,
+                RegistryUnavailable::UnknownBinding => {
+                    crate::acp::bindings::codex::CodexAdmissionUnavailable::IndependentAdmission
+                }
+            })
+            .inspect_err(|_| {
+                self.codex_discovery.invalidate();
+                self.codex_auth.invalidate();
+            })
     }
 
     pub(crate) fn reserve_page_read(
@@ -367,7 +397,10 @@ impl std::fmt::Debug for AcpService {
             .field("journal", &self.journal)
             .field("sessions", &self.sessions)
             .field("runtime_active", &self.runtime.is_active())
-            .field("codex_admitted", &self.codex.is_available())
+            .field(
+                "codex_admitted",
+                &self.registry.codex().admission().is_available(),
+            )
             .field("notification_active", &self.notifier.is_some())
             .finish_non_exhaustive()
     }

@@ -11,7 +11,7 @@ use super::{
     reproduction::ReproducedPackagePrerequisite,
 };
 
-const BINDING_ID: &str = "codex-app-server";
+pub(crate) const BINDING_ID: &str = "codex-app-server";
 const BINDING_DIGEST_INPUT: &[u8] = b"sage:codex-app-server:0.145.0:windows-x86_64:7b0ab1679be705644a1b6c3f486f15e2f90e5f900486d90073b1dc5f0cf4c62c";
 const BINDING_DIGEST: [u8; 32] = [
     0xf8, 0xc2, 0xb9, 0x95, 0xbe, 0x26, 0x3f, 0xe4, 0xbf, 0x00, 0x97, 0x40, 0x43, 0x31, 0x26, 0x73,

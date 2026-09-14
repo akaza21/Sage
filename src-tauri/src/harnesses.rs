@@ -1,12 +1,19 @@
+use std::sync::Arc;
+
 use crate::{
-    acp::bindings::codex::{
-        CodexBindingRegistration, CodexHostPresence, observe_codex_host_presence,
-        startup_codex_binding_registration,
+    acp::bindings::{
+        codex::{CodexHostPresence, observe_codex_host_presence},
+        registry::{BindingRegistry, ModelProvider},
     },
     domain::{HarnessDefinition, HarnessTransport, ModelOption},
     error::{AppError, AppResult},
     harness_discovery::{InstalledHarness, discover_installed_harnesses},
 };
+
+#[cfg(test)]
+use crate::acp::bindings::codex::CodexBindingRegistration;
+#[cfg(all(test, windows, feature = "acp-fixture"))]
+use crate::acp::bindings::codex::startup_codex_binding_registration;
 
 pub const SIMULATOR_ID: &str = "sage-simulator";
 pub const SIMULATOR_DEFAULT_MODEL_ID: &str = "sim-fast";
@@ -14,7 +21,7 @@ pub const SIMULATOR_DEEP_MODEL_ID: &str = "sim-deep";
 
 #[derive(Debug)]
 pub struct HarnessCatalog {
-    codex: CodexBindingRegistration,
+    registry: Arc<BindingRegistry>,
     discovered: Vec<InstalledHarness>,
     #[cfg(test)]
     presence_override: Option<CodexHostPresence>,
@@ -24,14 +31,14 @@ pub struct HarnessCatalog {
 
 impl Default for HarnessCatalog {
     fn default() -> Self {
-        Self::with_codex_registration(startup_codex_binding_registration())
+        Self::with_registry(Arc::new(BindingRegistry::default()))
     }
 }
 
 impl HarnessCatalog {
-    pub(crate) fn with_codex_registration(codex: CodexBindingRegistration) -> Self {
+    pub(crate) fn with_registry(registry: Arc<BindingRegistry>) -> Self {
         Self {
-            codex,
+            registry,
             discovered: discover_installed_harnesses(),
             #[cfg(test)]
             presence_override: None,
@@ -41,12 +48,17 @@ impl HarnessCatalog {
     }
 
     #[cfg(test)]
+    pub(crate) fn with_codex_registration(codex: CodexBindingRegistration) -> Self {
+        Self::with_registry(Arc::new(BindingRegistry::with_codex(codex)))
+    }
+
+    #[cfg(test)]
     pub(crate) fn with_codex_registration_and_presence(
         codex: CodexBindingRegistration,
         presence: CodexHostPresence,
     ) -> Self {
         Self {
-            codex,
+            registry: Arc::new(BindingRegistry::with_codex(codex)),
             discovered: Vec::new(),
             presence_override: Some(presence),
             #[cfg(all(windows, feature = "acp-fixture"))]
@@ -57,25 +69,30 @@ impl HarnessCatalog {
     pub(crate) fn refresh_codex_registration(
         &self,
     ) -> Result<(), crate::acp::bindings::codex::CodexAdmissionUnavailable> {
-        self.codex.refresh().map(drop)
+        self.registry.codex().admission().refresh().map(drop)
     }
 
     #[cfg(test)]
     pub(crate) fn codex_registration(&self) -> CodexBindingRegistration {
-        self.codex.clone()
+        self.registry.codex().admission().clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn binding_registry(&self) -> &Arc<BindingRegistry> {
+        &self.registry
     }
 
     #[cfg(all(test, windows, feature = "acp-fixture"))]
     pub(crate) fn with_characterization() -> Self {
-        Self::with_codex_registration_and_characterization(startup_codex_binding_registration())
+        Self::with_registry_and_characterization(Arc::new(BindingRegistry::with_codex(
+            startup_codex_binding_registration(),
+        )))
     }
 
     #[cfg(all(windows, feature = "acp-fixture"))]
-    pub(crate) fn with_codex_registration_and_characterization(
-        codex: CodexBindingRegistration,
-    ) -> Self {
+    pub(crate) fn with_registry_and_characterization(registry: Arc<BindingRegistry>) -> Self {
         Self {
-            codex,
+            registry,
             discovered: discover_installed_harnesses(),
             #[cfg(test)]
             presence_override: None,
@@ -92,7 +109,7 @@ impl HarnessCatalog {
     }
 
     fn codex_install_state(&self) -> &'static str {
-        if self.codex.is_available() {
+        if self.registry.codex().admission().is_available() {
             "available"
         } else if self.discovered("codex").is_some() || self.observed_presence().is_present() {
             "unavailable"
@@ -115,6 +132,15 @@ impl HarnessCatalog {
             .find(|candidate| candidate.id == harness_id)
     }
 
+    fn registered_protocol(&self, harness_id: &str) -> CuratedProtocol<'_> {
+        match self.registry.for_harness(harness_id) {
+            Some(record) => match record.model_provider {
+                ModelProvider::CodexAccount => CuratedProtocol::account_models(record.binding_id()),
+            },
+            None => CuratedProtocol::acp(None),
+        }
+    }
+
     pub fn definitions(&self) -> Vec<HarnessDefinition> {
         let definitions = vec![
             definition(
@@ -123,7 +149,7 @@ impl HarnessCatalog {
                 "Launches the discovered local CLI through curated ACP integration.",
                 self.codex_install_state(),
                 "builtIn",
-                CuratedProtocol::account_models("codex-app-server"),
+                self.registered_protocol("codex"),
             ),
             definition(
                 "pi",
@@ -476,7 +502,7 @@ mod tests {
             );
             assert!(catalog.models(id).unwrap().is_empty());
         }
-        assert!(!catalog.codex.is_available());
+        assert!(!catalog.codex_registration().is_available());
         for id in ["pi", "claude-code", "oh-my-pi"] {
             assert!(by_id(&snapshot.harnesses, id).binding_id.is_none());
         }

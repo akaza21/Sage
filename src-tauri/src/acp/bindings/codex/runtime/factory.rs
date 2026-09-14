@@ -13,10 +13,23 @@ use crate::acp::{
 use super::CodexRuntime;
 
 /// Consumes the same admitted binding and single-root authority as the concrete
-/// constructor. Admission and model validation remain with the existing caller.
+/// constructor. Only an admitted binding can supply factory authority; model
+/// validation remains with the existing caller.
 pub(crate) struct CodexRuntimeFactory {
-    pub(crate) binding: Arc<AdmittedCodexBinding>,
-    pub(crate) project_root: CodexProjectRootAuthority,
+    binding: Arc<AdmittedCodexBinding>,
+    project_root: CodexProjectRootAuthority,
+}
+
+impl CodexRuntimeFactory {
+    pub(crate) fn from_admitted_binding(
+        binding: Arc<AdmittedCodexBinding>,
+        project_root: CodexProjectRootAuthority,
+    ) -> Self {
+        Self {
+            binding,
+            project_root,
+        }
+    }
 }
 
 impl RuntimeFactory for CodexRuntimeFactory {

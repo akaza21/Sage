@@ -1,6 +1,6 @@
 use crate::{
     acp::{
-        bindings::codex::startup_codex_binding_registration,
+        bindings::registry::BindingRegistry,
         contract::{ProjectGeneration, SageProjectId},
         intent::{ACP_PROJECTION_CHANGED_EVENT, ProjectionChangedV1},
         runtime::{NotificationError, NotificationSink, NotificationSinkFuture},
@@ -84,9 +84,9 @@ impl AppState {
         let transition_epoch = trash_recovery
             .as_ref()
             .map_or(0, |recovery| recovery.transition_epoch);
-        let codex = startup_codex_binding_registration();
-        let acp =
-            AcpService::new_with_codex_for_test(database.clone(), codex.clone()).map_err(|_| {
+        let registry = std::sync::Arc::new(BindingRegistry::default());
+        let acp = AcpService::new_with_registry_for_test(database.clone(), registry.clone())
+            .map_err(|_| {
                 crate::error::AppError::InvalidRequest(
                     "bounded ACP restart recovery failed; durable history was preserved".into(),
                 )
@@ -95,7 +95,7 @@ impl AppState {
             database,
             settings,
             acp,
-            harnesses: HarnessCatalog::with_codex_registration(codex),
+            harnesses: HarnessCatalog::with_registry(registry),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
@@ -111,11 +111,11 @@ impl AppState {
         let transition_epoch = trash_recovery
             .as_ref()
             .map_or(0, |recovery| recovery.transition_epoch);
-        let codex = startup_codex_binding_registration();
-        let acp = AcpService::new_with_notification_sink_and_codex(
+        let registry = std::sync::Arc::new(BindingRegistry::default());
+        let acp = AcpService::new_with_notification_sink_and_registry(
             database.clone(),
             std::sync::Arc::new(DesktopProjectionSink(app)),
-            codex.clone(),
+            registry.clone(),
         )
         .map_err(|_| {
             crate::error::AppError::InvalidRequest(
@@ -126,7 +126,7 @@ impl AppState {
             database,
             settings,
             acp,
-            harnesses: HarnessCatalog::with_codex_registration(codex),
+            harnesses: HarnessCatalog::with_registry(registry),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
@@ -144,12 +144,12 @@ impl AppState {
         let transition_epoch = trash_recovery
             .as_ref()
             .map_or(0, |recovery| recovery.transition_epoch);
-        let codex = startup_codex_binding_registration();
+        let registry = std::sync::Arc::new(BindingRegistry::default());
         let acp = AcpService::new_with_characterization_sink(
             database.clone(),
             std::sync::Arc::new(DesktopProjectionSink(app)),
             binding,
-            codex.clone(),
+            registry.clone(),
         )
         .map_err(|_| {
             crate::error::AppError::InvalidRequest(
@@ -160,7 +160,7 @@ impl AppState {
             database,
             settings,
             acp,
-            harnesses: HarnessCatalog::with_codex_registration_and_characterization(codex),
+            harnesses: HarnessCatalog::with_registry_and_characterization(registry),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
@@ -178,9 +178,9 @@ impl AppState {
         let transition_epoch = trash_recovery
             .as_ref()
             .map_or(0, |recovery| recovery.transition_epoch);
-        let codex = startup_codex_binding_registration();
+        let registry = std::sync::Arc::new(BindingRegistry::default());
         let acp =
-            AcpService::new_characterization_for_test(database.clone(), binding, codex.clone())
+            AcpService::new_characterization_for_test(database.clone(), binding, registry.clone())
                 .map_err(|_| {
                     crate::error::AppError::InvalidRequest(
                         "bounded ACP restart recovery failed; durable history was preserved".into(),
@@ -190,7 +190,7 @@ impl AppState {
             database,
             settings,
             acp,
-            harnesses: HarnessCatalog::with_codex_registration_and_characterization(codex),
+            harnesses: HarnessCatalog::with_registry_and_characterization(registry),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
@@ -225,12 +225,64 @@ mod tests {
     #[test]
     fn app_state_shares_one_codex_registration_with_service_and_catalog() {
         let state = AppState::new(Database::open(std::path::Path::new(":memory:")).unwrap());
+        assert!(std::sync::Arc::ptr_eq(
+            state.acp.binding_registry(),
+            state.harnesses.binding_registry(),
+        ));
         assert!(
             state
                 .acp
                 .codex_registration()
                 .same_authority(&state.harnesses.codex_registration())
         );
+    }
+
+    #[test]
+    fn shared_registry_rejects_unknown_dormant_and_unavailable_launch_authority() {
+        use crate::acp::{
+            bindings::{codex::CodexAdmissionUnavailable, registry::RegistryUnavailable},
+            intent::BindingId,
+        };
+
+        let state = AppState::new(Database::open(std::path::Path::new(":memory:")).unwrap());
+        let registry = state.acp.binding_registry();
+        for id in ["unknown", "pi", "claude-code", "oh-my-pi"] {
+            assert!(registry.for_harness(id).is_none());
+            assert!(matches!(
+                registry.resolve(id),
+                Err(RegistryUnavailable::UnknownBinding)
+            ));
+            assert!(
+                !state
+                    .acp
+                    .accepts_codex_binding(&BindingId::new("bindingId", id).unwrap())
+            );
+        }
+        // A known catalog identity must not become launch authority after admission is lost.
+        registry.codex().admission().invalidate_drift();
+        assert!(matches!(
+            registry.resolve("codex-app-server"),
+            Err(RegistryUnavailable::Admission(
+                CodexAdmissionUnavailable::Drift
+            ))
+        ));
+        assert!(
+            !state
+                .acp
+                .accepts_codex_binding(&BindingId::new("bindingId", "codex-app-server").unwrap(),)
+        );
+        let definitions = state.harnesses.definitions();
+        let codex = definitions
+            .iter()
+            .find(|entry| entry.id == "codex")
+            .unwrap();
+        assert_ne!(codex.install_state, "available");
+        assert_eq!(codex.binding_id.as_deref(), Some("codex-app-server"));
+        for id in ["pi", "claude-code", "oh-my-pi"] {
+            let entry = definitions.iter().find(|entry| entry.id == id).unwrap();
+            assert!(entry.binding_id.is_none());
+            assert_ne!(entry.install_state, "available");
+        }
     }
 
     #[test]
