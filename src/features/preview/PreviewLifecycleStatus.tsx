@@ -1,11 +1,4 @@
-import {
-  CircleAlert,
-  CircleCheck,
-  CircleDot,
-  CircleStop,
-  LoaderCircle,
-  PlugZap,
-} from "lucide-react";
+import { CircleAlert, LoaderCircle } from "lucide-react";
 
 import type {
   PreviewFailure,
@@ -18,14 +11,6 @@ import {
   previewPhaseLabel,
   previewPhaseTone,
 } from "./previewPresentation";
-
-const ICONS = {
-  active: CircleCheck,
-  failed: CircleAlert,
-  idle: CircleDot,
-  starting: LoaderCircle,
-  stopped: CircleStop,
-} as const;
 
 export function PreviewLifecycleStatus({
   compact = false,
@@ -43,7 +28,7 @@ export function PreviewLifecycleStatus({
     : failure === "conflict"
       ? "stopped"
       : tone;
-  const Icon = ICONS[presentationTone];
+  const failureIcon = presentationTone === "failed";
   const failureLabel = previewFailureLabel(failure);
   const title = terminalFailure ? "Preview failed" : previewPhaseLabel(phase);
   const detail = previewFailureMessage(failure) ?? previewPhaseDetail(phase);
@@ -57,10 +42,10 @@ export function PreviewLifecycleStatus({
       aria-atomic="true"
     >
       <span className="agent-preview-lifecycle__icon" aria-hidden="true">
-        {phase === "waitingForOrigin" ? (
-          <PlugZap size={16} strokeWidth={1.8} />
+        {failureIcon ? (
+          <CircleAlert size={16} strokeWidth={1.8} />
         ) : (
-          <Icon size={16} strokeWidth={1.8} />
+          <LoaderCircle size={16} strokeWidth={1.8} />
         )}
       </span>
       <span className="agent-preview-lifecycle__copy">

@@ -216,6 +216,11 @@
   cursor: pointer;
 }
 
+.agent-artifact-pane__follow[aria-pressed="true"] {
+  color: var(--color-accent-hover);
+  background: var(--color-surface-active);
+}
+
 .agent-artifact-pane__collapse {
   order: 2;
 }

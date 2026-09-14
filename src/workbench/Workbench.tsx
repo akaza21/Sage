@@ -43,7 +43,6 @@ import {
   writeWorkbenchLayout,
 } from "./workbenchLayoutStorage";
 import "./workbench-window-mode.css";
-import "../styles/agent-right-pane.css";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 
 registerWorkbenchSurfaces();

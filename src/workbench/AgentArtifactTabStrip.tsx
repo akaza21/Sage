@@ -1,4 +1,4 @@
-import { Eye, GitCompareArrows, Pin, Radio, X } from "lucide-react";
+import { Eye, GitCompareArrows, Pin, X } from "lucide-react";
 import { useRef } from "react";
 
 import {
@@ -231,7 +231,7 @@ export function AgentArtifactTabStrip({
           }}
         >
           {following ? (
-            <Radio size={14} strokeWidth={1.9} aria-hidden="true" />
+            <Eye size={14} strokeWidth={1.9} aria-hidden="true" />
           ) : (
             <Pin size={14} strokeWidth={1.9} aria-hidden="true" />
           )}

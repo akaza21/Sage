@@ -270,7 +270,9 @@ describe("desktop-native chunk topology", () => {
     expect(ordinaryGraph.entryCount).toBe(1);
     expect(groupedGraph.entryCount).toBe(1);
     // P-02's typed no-content acknowledgement bridge is production-reachable.
-    expect(ordinaryGraph.allModules).toHaveLength(415);
+    // AGENT-RIGHT-PANE adds one bounded lifecycle presentation component;
+    // its CSS is chained through an existing initial stylesheet module.
+    expect(ordinaryGraph.allModules).toHaveLength(416);
     expect(ordinaryGraph.initialModules).toHaveLength(264);
     for (const snapshotModule of [
       "/src/domain/agentDiff.ts",

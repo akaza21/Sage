@@ -6,11 +6,11 @@ import { describe, expect, it } from "vitest";
 describe("Agent right-pane stylesheet seam", () => {
   it("keeps right-pane refinement in its owned stylesheet", async () => {
     const [entry, css] = await Promise.all([
-      readFile(resolve("src/workbench/Workbench.tsx"), "utf8"),
+      readFile(resolve("src/styles/agent-rail-surface.css"), "utf8"),
       readFile(resolve("src/styles/agent-right-pane.css"), "utf8"),
     ]);
 
-    expect(entry).toContain('import "../styles/agent-right-pane.css";');
+    expect(entry).toContain('@import "./agent-right-pane.css";');
     expect(css).toContain(".agent-artifact-pane__follow--pending");
     expect(css).toContain(".agent-artifact-tab__kind");
     expect(css).toContain(".agent-preview-lifecycle--failed");
