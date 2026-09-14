@@ -145,14 +145,14 @@ impl CharacterizationBinding {
 }
 
 impl AcpService {
-    pub(crate) fn characterization_enabled(&self) -> bool {
-        self.characterization.is_some()
-    }
-
     pub(crate) fn accepts_characterization(&self, binding_id: &BindingId) -> bool {
         self.characterization
             .as_ref()
             .is_some_and(|binding| binding.accepts(binding_id))
+    }
+
+    pub(crate) fn accepts_characterization_new_session(&self, binding_id: &BindingId) -> bool {
+        self.accepts_characterization(binding_id)
     }
 
     pub(crate) fn characterization_artifact_digest(&self) -> Option<String> {

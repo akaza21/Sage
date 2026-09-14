@@ -7,13 +7,14 @@ pub(crate) mod permission;
 pub(crate) mod read_text_file;
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 pub(crate) mod runtime_identity;
+mod session_operations;
 mod session_routes;
 
 pub(crate) use session_routes::{activate_acp_session_inner, start_acp_session_inner};
 
 use errors::{
-    binding_unavailable, codex_discovery_error, codex_session_error, intent_error, internal_error,
-    page_admission_error, safe_message, store_error,
+    binding_unavailable, codex_discovery_error, dispatch_error, intent_error, internal_error,
+    page_admission_error, safe_message, session_error, store_error,
 };
 
 use tauri::State;
@@ -170,47 +171,9 @@ pub async fn send_acp_turn(
     send_acp_turn_inner(&state, request).await
 }
 
-pub(crate) async fn send_acp_turn_inner(
-    state: &AppState,
-    request: SendAcpTurnRequest,
-) -> Result<AcpMutationResponse, AcpIpcError> {
-    let (project_id, generation, chat_id) = send_owner(&request);
-    let (_transition, snapshot) =
-        snapshot_for(state, project_id.clone(), generation, chat_id.clone()).await?;
-    validate_send(&request, &snapshot)?;
-    #[cfg(all(windows, feature = "acp-fixture"))]
-    if state.acp.characterization_enabled() {
-        return characterization::send(state, request);
-    }
-    if let SendAcpTurnRequest::Session {
-        project_id,
-        project_generation,
-        chat_id,
-        expected_projection_revision,
-        client_intent_id,
-        session_id,
-        runtime_epoch,
-        prompt,
-    } = request
-    {
-        state
-            .acp
-            .send_codex_turn(PrepareTurnCommand {
-                project_id: project_id.clone(),
-                project_generation,
-                chat_id: chat_id.clone(),
-                session_id,
-                runtime_epoch,
-                expected_projection_revision,
-                client_intent_id,
-                prompt,
-                now_millis: crate::persistence::now_millis(),
-            })
-            .map_err(codex_session_error)?;
-        return mutation_response(state, project_id, chat_id);
-    }
-    Err(binding_unavailable())
-}
+pub(crate) use session_operations::{
+    cancel_acp_turn_inner, close_acp_session_inner, send_acp_turn_inner,
+};
 
 #[tauri::command]
 pub async fn cancel_acp_turn(
@@ -220,93 +183,12 @@ pub async fn cancel_acp_turn(
     cancel_acp_turn_inner(&state, request).await
 }
 
-pub(crate) async fn cancel_acp_turn_inner(
-    state: &AppState,
-    request: CancelAcpTurnRequest,
-) -> Result<AcpMutationResponse, AcpIpcError> {
-    let (_transition, snapshot) = snapshot_for(
-        state,
-        request.project_id.clone(),
-        request.project_generation,
-        request.chat_id.clone(),
-    )
-    .await?;
-    validate_cancel_intent(&request, &snapshot).map_err(intent_error)?;
-    #[cfg(all(windows, feature = "acp-fixture"))]
-    if state.acp.characterization_enabled() {
-        return characterization::cancel(state, request);
-    }
-    let project_id = request.project_id.clone();
-    let chat_id = request.chat_id.clone();
-    state
-        .acp
-        .cancel_codex_turn(HostCancelIntent {
-            owner: RuntimeOwner {
-                project_id: request.project_id,
-                chat_id: request.chat_id,
-                session_id: request.session_id,
-                runtime_epoch: request.runtime_epoch,
-            },
-            turn_id: request.turn_id,
-            client_intent_id: request.client_intent_id,
-            now_millis: crate::persistence::now_millis(),
-        })
-        .map_err(codex_session_error)?;
-    mutation_response(state, project_id, chat_id)
-}
-
 #[tauri::command]
 pub async fn close_acp_session(
     state: State<'_, AppState>,
     request: CloseAcpSessionRequest,
 ) -> Result<AcpMutationResponse, AcpIpcError> {
     close_acp_session_inner(&state, request).await
-}
-
-pub(crate) async fn close_acp_session_inner(
-    state: &AppState,
-    request: CloseAcpSessionRequest,
-) -> Result<AcpMutationResponse, AcpIpcError> {
-    let (_transition, snapshot) = snapshot_for(
-        state,
-        request.project_id.clone(),
-        request.project_generation,
-        request.chat_id.clone(),
-    )
-    .await?;
-    validate_base_intent(
-        &request.project_id,
-        request.project_generation,
-        &request.chat_id,
-        request.expected_projection_revision,
-        &snapshot,
-    )
-    .map_err(intent_error)?;
-    if snapshot.session_id.as_ref() != Some(&request.session_id) {
-        return Err(intent_error(IntentError::ForeignSession));
-    }
-    if snapshot.runtime_epoch != Some(request.runtime_epoch) {
-        return Err(intent_error(IntentError::StaleRuntimeEpoch));
-    }
-    #[cfg(all(windows, feature = "acp-fixture"))]
-    if state.acp.characterization_enabled() {
-        return characterization::close(state, request);
-    }
-    let project_id = request.project_id.clone();
-    let chat_id = request.chat_id.clone();
-    state
-        .acp
-        .close_codex_session(CloseSessionCommand {
-            project_id: request.project_id,
-            chat_id: request.chat_id,
-            expected_projection_revision: request.expected_projection_revision,
-            client_intent_id: request.client_intent_id,
-            session_id: request.session_id,
-            runtime_epoch: request.runtime_epoch,
-            now_millis: crate::persistence::now_millis(),
-        })
-        .map_err(codex_session_error)?;
-    mutation_response(state, project_id, chat_id)
 }
 
 async fn snapshot_for<'a>(

@@ -18,7 +18,7 @@ use super::adapter::{
 
 pub(crate) trait RuntimeFactory {
     fn construct(
-        self,
+        self: Box<Self>,
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<NativeRuntime, AdapterRuntimeError>;

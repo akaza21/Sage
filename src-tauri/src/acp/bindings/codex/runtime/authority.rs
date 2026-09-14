@@ -48,6 +48,19 @@ impl CodexProjectRootAuthority {
     pub(crate) fn for_test(authority: ProjectRootAuthority) -> Self {
         Self(authority)
     }
+
+    #[cfg(test)]
+    pub(crate) fn clone_for_test(&self) -> Self {
+        Self(
+            ProjectRootAuthority::for_test(
+                self.project_id().clone(),
+                self.project_generation(),
+                self.root_id().clone(),
+                self.as_path(),
+            )
+            .expect("retained test root authority is valid"),
+        )
+    }
 }
 
 impl Database {

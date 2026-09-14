@@ -4,12 +4,19 @@
 
 use std::sync::Arc;
 
-use crate::acp::intent::CapabilitySnapshotV1;
+use crate::{
+    acp::{intent::CapabilitySnapshotV1, resource_mapper::ConfiguredResourceRoot},
+    persistence::Database,
+    state::ActiveProjectContext,
+};
 
-use super::codex::{
-    AdmittedCodexBinding, CODEX_BINDING_ID, CODEX_PROTOCOL_IDENTITY, CODEX_SCHEMA_SHA256,
-    CodexAdmissionUnavailable, CodexBindingRegistration, CodexProjectRootAuthority,
-    CodexRuntimeFactory, startup_codex_binding_registration,
+use super::{
+    codex::{
+        AdmittedCodexBinding, CODEX_BINDING_ID, CODEX_PROTOCOL_IDENTITY, CODEX_SCHEMA_SHA256,
+        CodexAdmissionUnavailable, CodexBindingRegistration, CodexProjectRootAuthority,
+        CodexRuntimeFactory, startup_codex_binding_registration,
+    },
+    runtime::RuntimeFactory,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -28,20 +35,70 @@ pub(crate) struct WireIdentity {
     pub(crate) schema_sha256: &'static str,
 }
 
-type LaunchFactory =
-    fn(Arc<AdmittedCodexBinding>, CodexProjectRootAuthority) -> CodexRuntimeFactory;
+/// Curated root selection is native metadata. Commands never choose a harness
+/// root policy from an IPC request.
+#[derive(Debug, Clone, Copy)]
+enum RootPolicy {
+    CodexSingleProject,
+}
+
+/// Opaque native root authority passed only from an admitted registry record to
+/// its factory. The concrete authority stays inside curated native routing.
+pub(crate) enum BindingProjectRoot {
+    Codex(CodexProjectRootAuthority),
+}
+
+impl BindingProjectRoot {
+    pub(crate) fn configured_resource_root(&self) -> ConfiguredResourceRoot {
+        match self {
+            Self::Codex(root) => ConfiguredResourceRoot {
+                root_id: root.root_id().clone(),
+                canonical_native_root: root.as_path().to_owned(),
+            },
+        }
+    }
+
+    pub(crate) fn codex(&self) -> &CodexProjectRootAuthority {
+        match self {
+            Self::Codex(root) => root,
+        }
+    }
+}
+
+type LaunchFactory = fn(Arc<AdmittedCodexBinding>, BindingProjectRoot) -> Box<dyn RuntimeFactory>;
 type SupportedCapabilities =
     fn(&AdmittedCodexBinding) -> Result<CapabilitySnapshotV1, CodexAdmissionUnavailable>;
+type TurnDispatch =
+    fn(
+        &crate::acp::service::AcpService,
+        crate::acp::store::PrepareTurnCommand,
+    ) -> Result<crate::acp::runtime::HostOutcome, crate::acp::service::CodexSessionError>;
+type CancelDispatch =
+    fn(
+        &crate::acp::service::AcpService,
+        crate::acp::runtime::HostCancelIntent,
+    ) -> Result<crate::acp::runtime::HostOutcome, crate::acp::service::CodexSessionError>;
+type CloseDispatch =
+    fn(
+        &crate::acp::service::AcpService,
+        crate::acp::store::CloseSessionCommand,
+    ) -> Result<crate::acp::runtime::HostOutcome, crate::acp::service::CodexSessionError>;
 
 /// No Serialize or Debug: admission authority can contain native paths. This
-/// slice registers only Codex; typed provider/factory choices are not plugins.
+/// slice registers only Codex in production; typed choices are curated metadata,
+/// not plugins.
 pub(crate) struct BindingRecord {
     harness_id: &'static str,
     binding_id: &'static str,
+    admitted_binding_id: &'static str,
     wire: WireIdentity,
+    root_policy: RootPolicy,
     admission: CodexBindingRegistration,
     launch_factory: LaunchFactory,
     supported_capabilities: SupportedCapabilities,
+    turn_dispatch: TurnDispatch,
+    cancel_dispatch: CancelDispatch,
+    close_dispatch: CloseDispatch,
     pub(crate) model_provider: ModelProvider,
     pub(crate) auth_provider: AuthProvider,
 }
@@ -59,10 +116,26 @@ impl BindingRecord {
         &self.admission
     }
 
+    pub(crate) fn dispatch_cancel(
+        &self,
+        service: &crate::acp::service::AcpService,
+        intent: crate::acp::runtime::HostCancelIntent,
+    ) -> Result<crate::acp::runtime::HostOutcome, crate::acp::service::CodexSessionError> {
+        (self.cancel_dispatch)(service, intent)
+    }
+
+    pub(crate) fn dispatch_close(
+        &self,
+        service: &crate::acp::service::AcpService,
+        command: crate::acp::store::CloseSessionCommand,
+    ) -> Result<crate::acp::runtime::HostOutcome, crate::acp::service::CodexSessionError> {
+        (self.close_dispatch)(service, command)
+    }
+
     fn admit(&self) -> Result<AdmittedBindingRecord<'_>, CodexAdmissionUnavailable> {
         let binding = self.admission.refresh()?;
         let metadata = binding.packet().metadata();
-        if binding.binding_id() != self.binding_id
+        if binding.binding_id() != self.admitted_binding_id
             || metadata.capability_ceiling.protocol_identity != self.wire.protocol
             || metadata.app_server_schema_sha256 != self.wire.schema_sha256
         {
@@ -77,13 +150,17 @@ impl BindingRecord {
 }
 
 /// Constructible only by refreshing the record's admission authority. Catalog
-/// identity alone never yields a factory, including for an unavailable Codex.
+/// identity alone never yields a factory, including for an unavailable binding.
 pub(crate) struct AdmittedBindingRecord<'a> {
     record: &'a BindingRecord,
     binding: Arc<AdmittedCodexBinding>,
 }
 
 impl AdmittedBindingRecord<'_> {
+    pub(crate) fn binding_id(&self) -> &'static str {
+        self.record.binding_id()
+    }
+
     pub(crate) fn binding(&self) -> &Arc<AdmittedCodexBinding> {
         &self.binding
     }
@@ -94,8 +171,29 @@ impl AdmittedBindingRecord<'_> {
         (self.record.supported_capabilities)(&self.binding)
     }
 
-    pub(crate) fn into_factory(self, root: CodexProjectRootAuthority) -> CodexRuntimeFactory {
+    pub(crate) fn project_root(
+        &self,
+        database: &Database,
+        context: &ActiveProjectContext<'_>,
+    ) -> Result<BindingProjectRoot, ()> {
+        match self.record.root_policy {
+            RootPolicy::CodexSingleProject => database
+                .codex_project_root_authority(context)
+                .map(BindingProjectRoot::Codex)
+                .map_err(|_| ()),
+        }
+    }
+
+    pub(crate) fn into_factory(self, root: BindingProjectRoot) -> Box<dyn RuntimeFactory> {
         (self.record.launch_factory)(self.binding, root)
+    }
+
+    pub(crate) fn dispatch_turn(
+        &self,
+        service: &crate::acp::service::AcpService,
+        command: crate::acp::store::PrepareTurnCommand,
+    ) -> Result<crate::acp::runtime::HostOutcome, crate::acp::service::CodexSessionError> {
+        (self.record.turn_dispatch)(service, command)
     }
 }
 
@@ -107,6 +205,8 @@ pub(crate) enum RegistryUnavailable {
 
 pub(crate) struct BindingRegistry {
     codex: BindingRecord,
+    #[cfg(test)]
+    test_binding: Option<BindingRecord>,
 }
 
 impl Default for BindingRegistry {
@@ -121,16 +221,23 @@ impl BindingRegistry {
             codex: BindingRecord {
                 harness_id: "codex",
                 binding_id: CODEX_BINDING_ID,
+                admitted_binding_id: CODEX_BINDING_ID,
                 wire: WireIdentity {
                     protocol: CODEX_PROTOCOL_IDENTITY,
                     schema_sha256: CODEX_SCHEMA_SHA256,
                 },
+                root_policy: RootPolicy::CodexSingleProject,
                 admission,
-                launch_factory: CodexRuntimeFactory::from_admitted_binding,
+                launch_factory: codex_launch_factory,
                 supported_capabilities: AdmittedCodexBinding::capability_ceiling,
+                turn_dispatch: crate::acp::service::AcpService::send_session_turn,
+                cancel_dispatch: crate::acp::service::AcpService::cancel_session_turn,
+                close_dispatch: crate::acp::service::AcpService::close_session,
                 model_provider: ModelProvider::CodexAccount,
                 auth_provider: AuthProvider::CodexHarness,
             },
+            #[cfg(test)]
+            test_binding: None,
         }
     }
 
@@ -139,18 +246,52 @@ impl BindingRegistry {
     }
 
     pub(crate) fn for_harness(&self, id: &str) -> Option<&BindingRecord> {
-        (self.codex.harness_id() == id).then_some(&self.codex)
+        if self.codex.harness_id() == id {
+            return Some(&self.codex);
+        }
+        #[cfg(test)]
+        if let Some(record) = self.test_binding.as_ref()
+            && record.harness_id() == id
+        {
+            return Some(record);
+        }
+        None
     }
 
     pub(crate) fn resolve(
         &self,
         binding_id: &str,
     ) -> Result<AdmittedBindingRecord<'_>, RegistryUnavailable> {
-        if self.codex.binding_id != binding_id {
-            return Err(RegistryUnavailable::UnknownBinding);
-        }
-        self.codex.admit().map_err(RegistryUnavailable::Admission)
+        self.route(binding_id)?
+            .admit()
+            .map_err(RegistryUnavailable::Admission)
     }
+
+    pub(crate) fn route(&self, binding_id: &str) -> Result<&BindingRecord, RegistryUnavailable> {
+        self.record(binding_id)
+            .ok_or(RegistryUnavailable::UnknownBinding)
+    }
+
+    fn record(&self, binding_id: &str) -> Option<&BindingRecord> {
+        if self.codex.binding_id == binding_id {
+            return Some(&self.codex);
+        }
+        #[cfg(test)]
+        if let Some(record) = self.test_binding.as_ref()
+            && record.binding_id == binding_id
+        {
+            return Some(record);
+        }
+        None
+    }
+}
+
+fn codex_launch_factory(
+    binding: Arc<AdmittedCodexBinding>,
+    root: BindingProjectRoot,
+) -> Box<dyn RuntimeFactory> {
+    let BindingProjectRoot::Codex(root) = root;
+    Box::new(CodexRuntimeFactory::from_admitted_binding(binding, root))
 }
 
 impl std::fmt::Debug for BindingRegistry {
@@ -164,18 +305,142 @@ impl std::fmt::Debug for BindingRegistry {
 }
 
 #[cfg(test)]
+pub(crate) const TEST_BINDING_ID: &str = "registry-test-app-server";
+
+#[cfg(test)]
+static TEST_FACTORY_CONSTRUCTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(test)]
+static TEST_TURN_DISPATCHED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(test)]
+static TEST_CANCEL_DISPATCHED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(test)]
+static TEST_CLOSE_DISPATCHED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(test)]
+impl BindingRegistry {
+    #[cfg(windows)]
+    pub(crate) fn with_test_binding(
+        codex: CodexBindingRegistration,
+        test_binding: CodexBindingRegistration,
+    ) -> Self {
+        let mut registry = Self::with_codex(codex);
+        registry.test_binding = Some(BindingRecord {
+            harness_id: "registry-test",
+            binding_id: TEST_BINDING_ID,
+            admitted_binding_id: CODEX_BINDING_ID,
+            wire: WireIdentity {
+                protocol: CODEX_PROTOCOL_IDENTITY,
+                schema_sha256: CODEX_SCHEMA_SHA256,
+            },
+            root_policy: RootPolicy::CodexSingleProject,
+            admission: test_binding,
+            launch_factory: test_launch_factory,
+            supported_capabilities: AdmittedCodexBinding::capability_ceiling,
+            turn_dispatch: test_turn_dispatch,
+            cancel_dispatch: test_cancel_dispatch,
+            close_dispatch: test_close_dispatch,
+            model_provider: ModelProvider::CodexAccount,
+            auth_provider: AuthProvider::CodexHarness,
+        });
+        registry
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn test_registration(&self) -> Option<CodexBindingRegistration> {
+        self.test_binding
+            .as_ref()
+            .map(|record| record.admission().clone())
+    }
+
+    #[cfg(windows)]
+    fn with_codex_and_wire(admission: CodexBindingRegistration, wire: WireIdentity) -> Self {
+        let mut registry = Self::with_codex(admission);
+        registry.codex.wire = wire;
+        registry
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn take_test_factory_construction_for_test() -> bool {
+    TEST_FACTORY_CONSTRUCTED.swap(false, std::sync::atomic::Ordering::AcqRel)
+}
+
+#[cfg(test)]
+pub(crate) fn take_test_turn_dispatch_for_test() -> bool {
+    TEST_TURN_DISPATCHED.swap(false, std::sync::atomic::Ordering::AcqRel)
+}
+
+#[cfg(test)]
+pub(crate) fn take_test_cancel_dispatch_for_test() -> bool {
+    TEST_CANCEL_DISPATCHED.swap(false, std::sync::atomic::Ordering::AcqRel)
+}
+
+#[cfg(test)]
+pub(crate) fn take_test_close_dispatch_for_test() -> bool {
+    TEST_CLOSE_DISPATCHED.swap(false, std::sync::atomic::Ordering::AcqRel)
+}
+
+#[cfg(test)]
+struct TestRuntimeFactory(CodexRuntimeFactory);
+
+#[cfg(test)]
+impl RuntimeFactory for TestRuntimeFactory {
+    fn construct(
+        self: Box<Self>,
+        runtime_epoch: crate::acp::contract::RuntimeEpoch,
+        session_id: crate::acp::contract::SageAgentSessionId,
+    ) -> Result<super::runtime::NativeRuntime, super::adapter::AdapterRuntimeError> {
+        TEST_FACTORY_CONSTRUCTED.store(true, std::sync::atomic::Ordering::Release);
+        Box::new(self.0).construct(runtime_epoch, session_id)
+    }
+}
+
+#[cfg(test)]
+fn test_launch_factory(
+    binding: Arc<AdmittedCodexBinding>,
+    root: BindingProjectRoot,
+) -> Box<dyn RuntimeFactory> {
+    let BindingProjectRoot::Codex(root) = root;
+    Box::new(TestRuntimeFactory(
+        CodexRuntimeFactory::from_admitted_binding(binding, root),
+    ))
+}
+
+#[cfg(test)]
+fn test_turn_dispatch(
+    _: &crate::acp::service::AcpService,
+    _: crate::acp::store::PrepareTurnCommand,
+) -> Result<crate::acp::runtime::HostOutcome, crate::acp::service::CodexSessionError> {
+    TEST_TURN_DISPATCHED.store(true, std::sync::atomic::Ordering::Release);
+    Err(crate::acp::service::CodexSessionError::Intent)
+}
+
+#[cfg(test)]
+fn test_cancel_dispatch(
+    _: &crate::acp::service::AcpService,
+    _: crate::acp::runtime::HostCancelIntent,
+) -> Result<crate::acp::runtime::HostOutcome, crate::acp::service::CodexSessionError> {
+    TEST_CANCEL_DISPATCHED.store(true, std::sync::atomic::Ordering::Release);
+    Err(crate::acp::service::CodexSessionError::Intent)
+}
+
+#[cfg(test)]
+fn test_close_dispatch(
+    _: &crate::acp::service::AcpService,
+    _: crate::acp::store::CloseSessionCommand,
+) -> Result<crate::acp::runtime::HostOutcome, crate::acp::service::CodexSessionError> {
+    TEST_CLOSE_DISPATCHED.store(true, std::sync::atomic::Ordering::Release);
+    Err(crate::acp::service::CodexSessionError::Intent)
+}
+
+#[cfg(test)]
 mod tests {
     #[cfg(windows)]
     use super::*;
-
-    #[cfg(windows)]
-    impl BindingRegistry {
-        fn with_codex_and_wire(admission: CodexBindingRegistration, wire: WireIdentity) -> Self {
-            let mut registry = Self::with_codex(admission);
-            registry.codex.wire = wire;
-            registry
-        }
-    }
 
     #[cfg(windows)]
     #[test]

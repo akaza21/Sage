@@ -4,11 +4,11 @@ use std::{
 };
 
 use crate::acp::{
-    bindings::{codex::CodexProjectRootAuthority, runtime::NativeRuntime},
+    bindings::runtime::NativeRuntime,
     intent::IntentSnapshot,
     limits::LIMITS,
     process::{PlatformSupervisor, StdinEndpoint, TreeCapacityPool, TreeControl, TreeExit},
-    resource_mapper::{ConfiguredResourceRoot, NativeResourceMapper},
+    resource_mapper::NativeResourceMapper,
     runtime::{
         ActivationProcessDriver, ActivationPump, ActivationStartFailure,
         ActivationZeroProcessHandoff, CoordinatorActivationJournal, CoordinatorShutdownHandoff,

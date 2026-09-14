@@ -34,7 +34,7 @@ impl CodexRuntimeFactory {
 
 impl RuntimeFactory for CodexRuntimeFactory {
     fn construct(
-        self,
+        self: Box<Self>,
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<NativeRuntime, AdapterRuntimeError> {

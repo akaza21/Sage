@@ -2,7 +2,31 @@ use super::live_recovery::{ClosedShutdownAuthority, LiveHostRecovery, LiveHostRe
 use super::*;
 
 impl AcpService {
+    #[cfg(test)]
     pub(crate) fn send_codex_turn(
+        &self,
+        command: PrepareTurnCommand,
+    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
+        self.send_session_turn(command)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn cancel_codex_turn(
+        &self,
+        intent: crate::acp::runtime::HostCancelIntent,
+    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
+        self.cancel_session_turn(intent)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn close_codex_session(
+        &self,
+        command: crate::acp::store::CloseSessionCommand,
+    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
+        self.close_session(command)
+    }
+
+    pub(crate) fn send_session_turn(
         &self,
         command: PrepareTurnCommand,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
@@ -24,7 +48,7 @@ impl AcpService {
         }
     }
 
-    pub(crate) fn cancel_codex_turn(
+    pub(crate) fn cancel_session_turn(
         &self,
         intent: crate::acp::runtime::HostCancelIntent,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
@@ -106,7 +130,7 @@ impl AcpService {
         }
     }
 
-    pub(crate) fn close_codex_session(
+    pub(crate) fn close_session(
         &self,
         command: crate::acp::store::CloseSessionCommand,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {

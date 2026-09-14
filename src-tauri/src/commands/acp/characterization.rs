@@ -78,6 +78,13 @@ pub(super) async fn activate(
     mutation_response(state, project_id, chat_id)
 }
 
+fn binding_unavailable() -> AcpIpcError {
+    AcpIpcError::Unavailable {
+        reason: AcpUnavailableReason::BindingUnavailable,
+        message: safe_message("The characterized artifact is not admitted for this launch."),
+    }
+}
+
 pub(super) fn send(
     state: &AppState,
     request: SendAcpTurnRequest,
@@ -158,14 +165,7 @@ pub(super) fn close(
     mutation_response(state, project_id, chat_id)
 }
 
-fn binding_unavailable() -> AcpIpcError {
-    AcpIpcError::Unavailable {
-        reason: AcpUnavailableReason::BindingUnavailable,
-        message: safe_message("The characterized artifact is not admitted for this launch."),
-    }
-}
-
-fn map_error(error: CharacterizationError) -> AcpIpcError {
+pub(super) fn map_error(error: CharacterizationError) -> AcpIpcError {
     match error {
         CharacterizationError::Artifact | CharacterizationError::Launch => binding_unavailable(),
         CharacterizationError::Intent => AcpIpcError::Conflict {

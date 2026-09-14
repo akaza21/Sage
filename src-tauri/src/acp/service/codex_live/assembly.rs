@@ -1,16 +1,32 @@
 use super::*;
 
 impl AcpService {
+    #[cfg(test)]
     pub(crate) async fn activate_codex_session(
         &self,
         command: ActivateSessionCommand,
-        project_root: CodexProjectRootAuthority,
+        project_root: crate::acp::bindings::codex::CodexProjectRootAuthority,
     ) -> Result<(), CodexSessionError> {
-        let root = ConfiguredResourceRoot {
-            root_id: project_root.root_id().clone(),
-            canonical_native_root: project_root.as_path().to_owned(),
-        };
-        let (command, mut prepared) = self.prepare_codex_activation(command, project_root)?;
+        let admitted = self
+            .refresh_codex_binding()
+            .map_err(CodexSessionError::Binding)?;
+        self.activate_session(
+            admitted,
+            command,
+            crate::acp::bindings::registry::BindingProjectRoot::Codex(project_root),
+        )
+        .await
+    }
+
+    pub(crate) async fn activate_session(
+        &self,
+        admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
+        command: ActivateSessionCommand,
+        project_root: crate::acp::bindings::registry::BindingProjectRoot,
+    ) -> Result<(), CodexSessionError> {
+        let root = project_root.configured_resource_root();
+        let (command, mut prepared) =
+            self.prepare_session_activation(admitted, command, project_root)?;
         let abort = ActivationAbortIntent::from_prepared(&prepared);
         let resources = NativeResourceMapper::new([root]).map_err(|_| CodexSessionError::Intent)?;
         let (operation_deadline, cleanup_deadline) = deadlines()?;

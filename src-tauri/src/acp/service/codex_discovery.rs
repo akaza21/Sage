@@ -265,6 +265,22 @@ impl CodexDiscoveryManager {
         binding_digest: [u8; 32],
         model: Option<crate::acp::intent::ModelId>,
     ) {
+        self.seed_session_validation_for_binding_for_test(
+            project_root,
+            binding_digest,
+            crate::acp::bindings::codex::CODEX_BINDING_ID,
+            model,
+        );
+    }
+
+    #[cfg(all(test, windows))]
+    pub(crate) fn seed_session_validation_for_binding_for_test(
+        &self,
+        project_root: &CodexProjectRootAuthority,
+        binding_digest: [u8; 32],
+        binding_id: &str,
+        model: Option<crate::acp::intent::ModelId>,
+    ) {
         use crate::acp::{
             contract::{RequiredText, RuntimeEpoch},
             intent::BindingId,
@@ -299,7 +315,7 @@ impl CodexDiscoveryManager {
                 project_id: project_root.project_id().clone(),
                 project_generation: project_root.project_generation(),
                 root_id: scope.root_id,
-                binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
+                binding_id: BindingId::new("bindingId", binding_id).unwrap(),
                 runtime_epoch,
                 account: CodexDiscoveryAccount::ManagedChatgpt,
                 models,

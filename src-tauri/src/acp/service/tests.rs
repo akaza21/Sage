@@ -297,8 +297,13 @@ fn codex_activation_intent_uses_new_only_for_an_exact_created_cold_session() {
             .await
             .unwrap();
         let authority = codex_root(&project_id, &project.roots[0].id, &root);
+        let admitted = service
+            .binding_registry()
+            .resolve(crate::acp::bindings::codex::CODEX_BINDING_ID)
+            .unwrap();
         let (command, prepared) = service
-            .prepare_codex_activation(
+            .prepare_session_activation(
+                admitted,
                 ActivateSessionCommand {
                     project_id: project_id.clone(),
                     chat_id: chat_id.clone(),
@@ -309,7 +314,7 @@ fn codex_activation_intent_uses_new_only_for_an_exact_created_cold_session() {
                     artifact_digest: "forged".into(),
                     now_millis: crate::persistence::now_millis(),
                 },
-                authority,
+                crate::acp::bindings::registry::BindingProjectRoot::Codex(authority),
             )
             .unwrap();
 
@@ -395,8 +400,13 @@ fn codex_activation_intent_resumes_only_the_exact_durable_external_session() {
             .await
             .unwrap();
         let authority = codex_root(&project_id, &project.roots[0].id, &root);
+        let admitted = service
+            .binding_registry()
+            .resolve(crate::acp::bindings::codex::CODEX_BINDING_ID)
+            .unwrap();
         let (_, prepared) = service
-            .prepare_codex_activation(
+            .prepare_session_activation(
+                admitted,
                 ActivateSessionCommand {
                     project_id,
                     chat_id,
@@ -407,7 +417,7 @@ fn codex_activation_intent_resumes_only_the_exact_durable_external_session() {
                     artifact_digest: "forged".into(),
                     now_millis: crate::persistence::now_millis(),
                 },
-                authority,
+                crate::acp::bindings::registry::BindingProjectRoot::Codex(authority),
             )
             .unwrap();
 

@@ -97,6 +97,11 @@ pub(crate) enum CodexSessionError {
     LaunchSetup(CodexLaunchSetupError),
 }
 
+pub(crate) enum SessionDispatchError {
+    Binding,
+    Operation(CodexSessionError),
+}
+
 pub(crate) struct AcpService {
     database: Database,
     scheduler: Scheduler,
@@ -212,11 +217,15 @@ impl AcpService {
         self.codex_runtime_identity.observation()
     }
 
+    #[cfg(test)]
     pub(crate) fn accepts_codex_binding(&self, requested: &BindingId) -> bool {
         self.refresh_codex_binding()
-            .is_ok_and(|binding| binding.binding().binding_id() == requested.as_str())
+            .is_ok_and(|binding| binding.binding_id() == requested.as_str())
     }
 
+    /// Fixed provider lookup only. Requested session binding IDs must resolve
+    /// through `resolve_session_binding`, where unknown IDs remain hard failures.
+    #[cfg(test)]
     pub(super) fn refresh_codex_binding(
         &self,
     ) -> Result<AdmittedBindingRecord<'_>, crate::acp::bindings::codex::CodexAdmissionUnavailable>
@@ -233,6 +242,60 @@ impl AcpService {
                 self.codex_discovery.invalidate();
                 self.codex_auth.invalidate();
             })
+    }
+
+    pub(crate) fn resolve_session_binding(
+        &self,
+        requested: &BindingId,
+    ) -> Result<AdmittedBindingRecord<'_>, RegistryUnavailable> {
+        self.registry
+            .resolve(requested.as_str())
+            .inspect_err(|error| {
+                if matches!(
+                    error,
+                    RegistryUnavailable::Admission(
+                        crate::acp::bindings::codex::CodexAdmissionUnavailable::Drift
+                    )
+                ) {
+                    self.codex_discovery.invalidate();
+                    self.codex_auth.invalidate();
+                }
+            })
+    }
+
+    pub(crate) fn dispatch_session_turn(
+        &self,
+        binding_id: &BindingId,
+        command: crate::acp::store::PrepareTurnCommand,
+    ) -> Result<crate::acp::runtime::HostOutcome, SessionDispatchError> {
+        self.resolve_session_binding(binding_id)
+            .map_err(|_| SessionDispatchError::Binding)?
+            .dispatch_turn(self, command)
+            .map_err(SessionDispatchError::Operation)
+    }
+
+    pub(crate) fn dispatch_session_cancel(
+        &self,
+        binding_id: &BindingId,
+        intent: crate::acp::runtime::HostCancelIntent,
+    ) -> Result<crate::acp::runtime::HostOutcome, SessionDispatchError> {
+        self.registry
+            .route(binding_id.as_str())
+            .map_err(|_| SessionDispatchError::Binding)?
+            .dispatch_cancel(self, intent)
+            .map_err(SessionDispatchError::Operation)
+    }
+
+    pub(crate) fn dispatch_session_close(
+        &self,
+        binding_id: &BindingId,
+        command: crate::acp::store::CloseSessionCommand,
+    ) -> Result<crate::acp::runtime::HostOutcome, SessionDispatchError> {
+        self.registry
+            .route(binding_id.as_str())
+            .map_err(|_| SessionDispatchError::Binding)?
+            .dispatch_close(self, command)
+            .map_err(SessionDispatchError::Operation)
     }
 
     pub(crate) fn reserve_page_read(

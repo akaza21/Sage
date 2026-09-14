@@ -3,10 +3,7 @@ use std::path::Path;
 use rusqlite::{OptionalExtension, params};
 
 use crate::acp::{
-    bindings::{
-        codex::CodexProjectRootAuthority,
-        runtime::{NativeRuntime, RuntimeFactory},
-    },
+    bindings::runtime::NativeRuntime,
     contract::SafeText,
     intent::{ExternalId, ModelId},
     runtime::{ActivationIntent, ActivationMode},
@@ -35,21 +32,38 @@ struct DurableSession {
 }
 
 impl AcpService {
+    #[cfg(test)]
     pub(crate) async fn start_codex_session(
         &self,
-        project_root: &CodexProjectRootAuthority,
-        mut command: StartSessionCommand,
+        project_root: &crate::acp::bindings::codex::CodexProjectRootAuthority,
+        command: StartSessionCommand,
     ) -> Result<SessionMutation, CodexSessionError> {
         let admitted = self
             .refresh_codex_binding()
             .map_err(CodexSessionError::Binding)?;
+        self.start_session(
+            admitted,
+            &crate::acp::bindings::registry::BindingProjectRoot::Codex(
+                project_root.clone_for_test(),
+            ),
+            command,
+        )
+        .await
+    }
+
+    pub(crate) async fn start_session(
+        &self,
+        admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
+        project_root: &crate::acp::bindings::registry::BindingProjectRoot,
+        mut command: StartSessionCommand,
+    ) -> Result<SessionMutation, CodexSessionError> {
         let binding = admitted.binding();
-        if command.binding_id.as_str() != binding.binding_id() {
+        if command.binding_id.as_str() != admitted.binding_id() {
             return Err(CodexSessionError::Intent);
         }
         self.codex_discovery
             .validate_session_model(
-                project_root,
+                project_root.codex(),
                 &command.binding_id,
                 binding.binding_digest(),
                 command.model_id.as_ref(),
@@ -66,19 +80,29 @@ impl AcpService {
             .map_err(Into::into)
     }
 
-    pub(super) fn prepare_codex_activation(
+    pub(super) fn prepare_session_activation(
         &self,
+        admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
         mut command: ActivateSessionCommand,
-        project_root: CodexProjectRootAuthority,
+        project_root: crate::acp::bindings::registry::BindingProjectRoot,
     ) -> Result<(ActivateSessionCommand, PreparedCodexActivation), CodexSessionError> {
-        let admitted = self
-            .refresh_codex_binding()
-            .map_err(CodexSessionError::Binding)?;
+        self.prepare_session_activation_inner(admitted, &mut command, project_root)
+            .map(|prepared| (command, prepared))
+    }
+
+    fn prepare_session_activation_inner(
+        &self,
+        admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
+        command: &mut ActivateSessionCommand,
+        project_root: crate::acp::bindings::registry::BindingProjectRoot,
+    ) -> Result<PreparedCodexActivation, CodexSessionError> {
+        let registered_binding_id = admitted.binding_id();
         let binding = admitted.binding();
-        if project_root.project_id() != &command.project_id {
+        let codex_root = project_root.codex();
+        if codex_root.project_id() != &command.project_id {
             return Err(CodexSessionError::Intent);
         }
-        project_root
+        codex_root
             .revalidate()
             .map_err(|_| CodexSessionError::Intent)?;
         let owner = RuntimeOwner {
@@ -88,7 +112,7 @@ impl AcpService {
             runtime_epoch: command.runtime_epoch,
         };
         let session = load_durable_session(&self.database, &owner)?;
-        if session.binding_id != binding.binding_id()
+        if session.binding_id != registered_binding_id
             || session.binding_digest != binding.binding_digest_hex()
             || session.harness_version.as_deref() != Some(binding.harness_version())
         {
@@ -99,7 +123,7 @@ impl AcpService {
             .map(|value| ModelId::new("modelId", value))
             .transpose()
             .map_err(|_| CodexSessionError::Intent)?;
-        let native_root = native_app_server_root(project_root.as_path())?;
+        let native_root = native_app_server_root(codex_root.as_path())?;
         let mode = match (
             session.state.as_str(),
             session.residency.as_str(),
@@ -135,16 +159,13 @@ impl AcpService {
             .into_factory(project_root)
             .construct(owner.runtime_epoch, owner.session_id.clone())
             .map_err(|_| CodexSessionError::Intent)?;
-        Ok((
-            command,
-            PreparedCodexActivation {
-                owner,
-                runtime,
-                intent,
-                #[cfg(any(debug_assertions, feature = "diagnostics"))]
-                harness_version,
-            },
-        ))
+        Ok(PreparedCodexActivation {
+            owner,
+            runtime,
+            intent,
+            #[cfg(any(debug_assertions, feature = "diagnostics"))]
+            harness_version,
+        })
     }
 }
 

@@ -122,6 +122,39 @@ fn state_with_admitted_codex_project() -> (AppState, String, String, std::path::
 }
 
 #[cfg(windows)]
+fn state_with_registry_test_binding_project() -> (AppState, String, String, std::path::PathBuf) {
+    let root = std::env::temp_dir().join(format!("sage-acp-command-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let database = Database::open(Path::new(":memory:")).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let chat_id = database
+        .bootstrap_snapshot()
+        .unwrap()
+        .active_tab_id
+        .unwrap();
+    let codex = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
+    let test_binding = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
+    let registry = Arc::new(
+        crate::acp::bindings::registry::BindingRegistry::with_test_binding(codex, test_binding),
+    );
+    let acp = crate::acp::service::AcpService::new_with_registry_for_test(
+        database.clone(),
+        Arc::clone(&registry),
+    )
+    .unwrap();
+    let state = AppState {
+        database,
+        settings: crate::settings_store::SettingsStore::in_memory().unwrap(),
+        acp,
+        harnesses: crate::harnesses::HarnessCatalog::with_registry(registry),
+        editor_operations: crate::editor_coordination::EditorOperationCoordinator::default(),
+        project_transitions: tokio::sync::Mutex::new(0),
+        startup_recovery_notice: None,
+    };
+    (state, project.id, chat_id, root)
+}
+
+#[cfg(windows)]
 #[derive(Clone, Copy)]
 enum CommandHostMode {
     Idle,
@@ -443,6 +476,64 @@ async fn start_admitted_command_session(
     .unwrap()
 }
 
+#[cfg(windows)]
+async fn start_registry_test_command_session(
+    state: &AppState,
+    project_id: &SageProjectId,
+    chat_id: &SageChatId,
+) -> SageAgentSessionId {
+    let context = state
+        .lock_active_project(project_id, ProjectGeneration::ZERO)
+        .await
+        .unwrap();
+    let authority = state
+        .database
+        .codex_project_root_authority(&context)
+        .unwrap();
+    drop(context);
+    let binding = state
+        .acp
+        .binding_registry()
+        .test_registration()
+        .unwrap()
+        .refresh()
+        .unwrap();
+    state
+        .acp
+        .codex_discovery_manager()
+        .seed_session_validation_for_binding_for_test(
+            &authority,
+            binding.binding_digest(),
+            crate::acp::bindings::registry::TEST_BINDING_ID,
+            None,
+        );
+    let page = state
+        .acp
+        .load_chat_page(project_id.clone(), chat_id.clone(), None)
+        .unwrap();
+    start_acp_session_inner(
+        state,
+        StartAcpSessionRequest {
+            project_id: project_id.clone(),
+            project_generation: ProjectGeneration::ZERO,
+            chat_id: chat_id.clone(),
+            expected_projection_revision: page.projection_revision,
+            client_intent_id: ClientIntentId::new(),
+            binding_id: BindingId::new(
+                "bindingId",
+                crate::acp::bindings::registry::TEST_BINDING_ID,
+            )
+            .unwrap(),
+            model_id: None,
+        },
+    )
+    .await
+    .unwrap()
+    .projection
+    .current_session_id
+    .unwrap()
+}
+
 #[test]
 fn dark_codex_discovery_is_typed_and_does_not_mutate_sqlite() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -602,8 +693,135 @@ fn page_read_uses_native_generation_and_projects_v5_history() {
     });
 }
 
+#[cfg(windows)]
 #[test]
-fn unavailable_binding_is_typed_and_never_mutates_durable_history() {
+fn start_preserves_project_root_failure_classification() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, chat, root) = state_with_admitted_codex_project();
+        let project_id = SageProjectId::parse(project).unwrap();
+        let chat_id = SageChatId::parse(chat).unwrap();
+        let original_root: (String, String) = state
+            .database
+            .connection()
+            .query_row(
+                "SELECT id,absolute_path FROM project_roots WHERE project_id=?1",
+                [project_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        state
+            .database
+            .connection()
+            .execute(
+                "INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal)
+                 VALUES(?1,?2,?3,?4,1)",
+                rusqlite::params![
+                    "root-extra",
+                    project_id.as_str(),
+                    original_root.1,
+                    "test-extra-canonical-key",
+                ],
+            )
+            .unwrap();
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+
+        let result = start_acp_session_inner(
+            &state,
+            StartAcpSessionRequest {
+                project_id,
+                project_generation: ProjectGeneration::ZERO,
+                chat_id,
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
+                model_id: None,
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(AcpIpcError::Unavailable { reason, message })
+                if reason == AcpUnavailableReason::CapabilityUnavailable
+                    && message.as_str() == "Codex beta requires one unchanged Project root."
+        ));
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[cfg(all(windows, feature = "acp-fixture"))]
+#[test]
+fn characterization_new_session_send_preserves_invalid_request_classification() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        use crate::acp::service::{
+            CharacterizationArtifact, CharacterizationBinding, CharacterizationCase,
+        };
+
+        let root = std::env::temp_dir().join(format!("sage-acp-characterization-{}", Uuid::new_v4()));
+        let project_root = root.join("project");
+        fs::create_dir_all(&project_root).unwrap();
+        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let project = database.create_project_from_root(&project_root).unwrap();
+        let chat = database.bootstrap_snapshot().unwrap().active_tab_id.unwrap();
+        let artifact_path = std::env::current_exe().unwrap();
+        let metadata = std::fs::metadata(&artifact_path).unwrap();
+        let bytes = std::fs::read(&artifact_path).unwrap();
+        use sha2::Digest;
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(bytes);
+        let artifact = CharacterizationArtifact::new(
+            artifact_path,
+            hasher.finalize().into(),
+            metadata.len(),
+        )
+        .unwrap();
+        let state = AppState::try_new_characterization(
+            database,
+            CharacterizationBinding::new(artifact, CharacterizationCase::TurnSuccess, &root).unwrap(),
+        )
+        .unwrap();
+        let project_id = SageProjectId::parse(project.id).unwrap();
+        let chat_id = SageChatId::parse(chat).unwrap();
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+
+        let result = send_acp_turn_inner(
+            &state,
+            SendAcpTurnRequest::NewSession {
+                project_id,
+                project_generation: ProjectGeneration::ZERO,
+                chat_id,
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                binding_id: BindingId::new(
+                    "bindingId",
+                    crate::acp::service::CHARACTERIZATION_BINDING_ID,
+                )
+                .unwrap(),
+                model_id: None,
+                prompt: Prompt::new("prompt", "fixture new session").unwrap(),
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(AcpIpcError::InvalidRequest { message })
+                if message.as_str() == "Start and activate the characterized session before sending."
+        ));
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[test]
+fn unknown_requested_binding_is_rejected_before_any_durable_mutation() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let (state, project, chat, root) = state_with_project();
         let project = SageProjectId::parse(project).unwrap();
@@ -617,8 +835,8 @@ fn unavailable_binding_is_typed_and_never_mutates_durable_history() {
             .connection()
             .query_row(
                 "SELECT (SELECT COUNT(*) FROM agent_sessions),
-                            (SELECT COUNT(*) FROM session_facts),
-                            (SELECT projection_revision FROM chats WHERE id=?1)",
+                        (SELECT COUNT(*) FROM session_facts),
+                        (SELECT projection_revision FROM chats WHERE id=?1)",
                 [chat.as_str()],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
@@ -648,8 +866,8 @@ fn unavailable_binding_is_typed_and_never_mutates_durable_history() {
             .connection()
             .query_row(
                 "SELECT (SELECT COUNT(*) FROM agent_sessions),
-                            (SELECT COUNT(*) FROM session_facts),
-                            (SELECT projection_revision FROM chats WHERE id=?1)",
+                        (SELECT COUNT(*) FROM session_facts),
+                        (SELECT projection_revision FROM chats WHERE id=?1)",
                 [chat.as_str()],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
@@ -744,6 +962,78 @@ fn admitted_registration_rejects_a_foreign_binding_name() {
 
 #[cfg(windows)]
 #[test]
+fn test_binding_routes_through_registry_resolution_before_durable_start() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, chat, root) = state_with_registry_test_binding_project();
+        let project_id = SageProjectId::parse(project).unwrap();
+        let chat_id = SageChatId::parse(chat).unwrap();
+        let context = state
+            .lock_active_project(&project_id, ProjectGeneration::ZERO)
+            .await
+            .unwrap();
+        let authority = state
+            .database
+            .codex_project_root_authority(&context)
+            .unwrap();
+        drop(context);
+        let binding = state
+            .acp
+            .binding_registry()
+            .test_registration()
+            .unwrap()
+            .refresh()
+            .unwrap();
+        state
+            .acp
+            .codex_discovery_manager()
+            .seed_session_validation_for_binding_for_test(
+                &authority,
+                binding.binding_digest(),
+                crate::acp::bindings::registry::TEST_BINDING_ID,
+                None,
+            );
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+
+        let result = start_acp_session_inner(
+            &state,
+            StartAcpSessionRequest {
+                project_id: project_id.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat_id.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                binding_id: BindingId::new(
+                    "bindingId",
+                    crate::acp::bindings::registry::TEST_BINDING_ID,
+                )
+                .unwrap(),
+                model_id: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let durable: (String, String) = state
+            .database
+            .connection()
+            .query_row(
+                "SELECT binding_id,binding_digest FROM agent_sessions WHERE id=?1",
+                [result.projection.current_session_id.unwrap().as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(durable.0, crate::acp::bindings::registry::TEST_BINDING_ID);
+        assert_eq!(durable.1, binding.binding_digest_hex());
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
 fn admitted_codex_start_command_routes_to_the_durable_service() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let (state, project, chat, root) = state_with_admitted_codex_project();
@@ -796,6 +1086,232 @@ fn admitted_codex_start_command_routes_to_the_durable_service() {
         assert_eq!(durable.0, "codex-app-server");
         assert_eq!(durable.1, binding.binding_digest_hex());
         assert_eq!(durable.2, "created");
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn test_binding_activation_uses_the_registry_factory_path() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, chat, root) = state_with_registry_test_binding_project();
+        let project_id = SageProjectId::parse(project).unwrap();
+        let chat_id = SageChatId::parse(chat).unwrap();
+        let context = state
+            .lock_active_project(&project_id, ProjectGeneration::ZERO)
+            .await
+            .unwrap();
+        let authority = state
+            .database
+            .codex_project_root_authority(&context)
+            .unwrap();
+        drop(context);
+        let binding = state
+            .acp
+            .binding_registry()
+            .test_registration()
+            .unwrap()
+            .refresh()
+            .unwrap();
+        state
+            .acp
+            .codex_discovery_manager()
+            .seed_session_validation_for_binding_for_test(
+                &authority,
+                binding.binding_digest(),
+                crate::acp::bindings::registry::TEST_BINDING_ID,
+                None,
+            );
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+        let started = start_acp_session_inner(
+            &state,
+            StartAcpSessionRequest {
+                project_id: project_id.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat_id.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                binding_id: BindingId::new(
+                    "bindingId",
+                    crate::acp::bindings::registry::TEST_BINDING_ID,
+                )
+                .unwrap(),
+                model_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(
+            !crate::acp::bindings::registry::take_test_factory_construction_for_test(),
+            "start must not construct a runtime"
+        );
+        let session_id = started.projection.current_session_id.clone().unwrap();
+        let activation = activate_acp_session_inner(
+            &state,
+            ActivateAcpSessionRequest {
+                project_id: project_id.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat_id.clone(),
+                expected_projection_revision: started.projection.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: session_id.clone(),
+                runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+            },
+        )
+        .await;
+        assert!(activation.is_err(), "test fixture launch must fail closed");
+        assert!(
+            crate::acp::bindings::registry::take_test_factory_construction_for_test(),
+            "activation must construct through the test record's registry factory"
+        );
+        let dispatch = state.acp.dispatch_session_turn(
+            &BindingId::new("bindingId", crate::acp::bindings::registry::TEST_BINDING_ID).unwrap(),
+            PrepareTurnCommand {
+                project_id,
+                project_generation: ProjectGeneration::ZERO,
+                chat_id,
+                session_id,
+                runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+                expected_projection_revision: started.projection.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                prompt: Prompt::new("prompt", "test dispatch").unwrap(),
+                now_millis: crate::persistence::now_millis(),
+            },
+        );
+        assert!(dispatch.is_err(), "test dispatch must fail closed");
+        assert!(
+            crate::acp::bindings::registry::take_test_turn_dispatch_for_test(),
+            "send must dispatch through the test record rather than the shared live operation"
+        );
+        let cancel = state.acp.dispatch_session_cancel(
+            &BindingId::new("bindingId", crate::acp::bindings::registry::TEST_BINDING_ID).unwrap(),
+            HostCancelIntent {
+                owner: RuntimeOwner {
+                    project_id: SageProjectId::parse("project-dispatch").unwrap(),
+                    chat_id: SageChatId::parse("chat-dispatch").unwrap(),
+                    session_id: SageAgentSessionId::parse("session-dispatch").unwrap(),
+                    runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+                },
+                turn_id: SageTurnId::parse("turn-dispatch").unwrap(),
+                client_intent_id: ClientIntentId::new(),
+                now_millis: crate::persistence::now_millis(),
+            },
+        );
+        assert!(cancel.is_err(), "test cancel dispatch must fail closed");
+        assert!(
+            crate::acp::bindings::registry::take_test_cancel_dispatch_for_test(),
+            "cancel must route through the test record without re-admission"
+        );
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn test_binding_session_operations_dispatch_by_durable_binding_id() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, chat, root) = state_with_registry_test_binding_project();
+        let project_id = SageProjectId::parse(project).unwrap();
+        let chat_id = SageChatId::parse(chat).unwrap();
+        let session_id = start_registry_test_command_session(&state, &project_id, &chat_id).await;
+        let owner = RuntimeOwner {
+            project_id: project_id.clone(),
+            chat_id: chat_id.clone(),
+            session_id: session_id.clone(),
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+        };
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+        let activated = {
+            let mut connection = state.database.connection();
+            activate_session(
+                &mut connection,
+                ActivateSessionCommand {
+                    project_id: project_id.clone(),
+                    chat_id: chat_id.clone(),
+                    expected_projection_revision: page.projection_revision,
+                    client_intent_id: ClientIntentId::new(),
+                    session_id: session_id.clone(),
+                    runtime_epoch: owner.runtime_epoch,
+                    artifact_digest: "11".repeat(32),
+                    now_millis: crate::persistence::now_millis(),
+                },
+            )
+            .unwrap()
+        };
+        assert_eq!(activated.runtime_epoch, Some(owner.runtime_epoch));
+        let host = Arc::new(
+            RuntimeHost::start(CommandHostEngine {
+                database: state.database.clone(),
+                owner: owner.clone(),
+                calls: Arc::new(Mutex::new(Vec::new())),
+                turn_id: None,
+            })
+            .unwrap(),
+        );
+        host.activate(owner.clone()).unwrap();
+        state.acp.install_runtime_for_test(owner.clone(), host);
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+
+        let send = send_acp_turn_inner(
+            &state,
+            SendAcpTurnRequest::Session {
+                project_id: project_id.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat_id.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: session_id.clone(),
+                runtime_epoch: owner.runtime_epoch,
+                prompt: Prompt::new("prompt", "dispatch by durable binding").unwrap(),
+            },
+        )
+        .await;
+        assert!(send.is_err(), "test turn dispatch must fail closed");
+        assert!(
+            crate::acp::bindings::registry::take_test_turn_dispatch_for_test(),
+            "send must select the test record from the durable binding ID"
+        );
+
+        let current = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+        state
+            .acp
+            .binding_registry()
+            .test_registration()
+            .unwrap()
+            .induce_drift_for_test();
+        let close = close_acp_session_inner(
+            &state,
+            CloseAcpSessionRequest {
+                project_id,
+                project_generation: ProjectGeneration::ZERO,
+                chat_id,
+                expected_projection_revision: current.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id,
+                runtime_epoch: owner.runtime_epoch,
+            },
+        )
+        .await;
+        assert!(close.is_err(), "test close dispatch must fail closed");
+        assert!(
+            crate::acp::bindings::registry::take_test_close_dispatch_for_test(),
+            "close must select the test record from the durable binding ID"
+        );
+        state.acp.shutdown_blocking().unwrap();
         drop(state);
         fs::remove_dir_all(root).unwrap();
     });
