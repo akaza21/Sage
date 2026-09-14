@@ -272,7 +272,8 @@ describe("desktop-native chunk topology", () => {
     // P-02's typed no-content acknowledgement bridge is production-reachable.
     // AGENT-RIGHT-PANE adds one bounded lifecycle presentation component;
     // its CSS is chained through an existing initial stylesheet module.
-    expect(ordinaryGraph.allModules).toHaveLength(416);
+    // AP-U2 adds two bounded center-chat modules: the tab strip and task header.
+    expect(ordinaryGraph.allModules).toHaveLength(418);
     expect(ordinaryGraph.initialModules).toHaveLength(264);
     for (const snapshotModule of [
       "/src/domain/agentDiff.ts",

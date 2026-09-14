@@ -47,7 +47,9 @@ describe("ChatSessionStrip", () => {
       "true",
     );
     fireEvent.click(screen.getByRole("tab", { name: "Implementation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Archive chat Design" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Archive chat Design" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "New agent chat" }));
     expect(onSelect).toHaveBeenCalledWith("chat:implementation");
     expect(onClose).toHaveBeenCalledWith("chat:design");

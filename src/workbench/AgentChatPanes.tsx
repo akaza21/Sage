@@ -162,7 +162,8 @@ export function AgentChatPanes({ compact = false }: { compact?: boolean }) {
   const hasVisibleChats = nextVisibleIds.length > 0;
   const focusedTab = tabs.find((tab) => tab.id === focusedId) ?? null;
   const chatTabs = useMemo(
-    () => chatIds.map((id) => tabs.find((tab) => tab.id === id)).filter(isChatTab),
+    () =>
+      chatIds.map((id) => tabs.find((tab) => tab.id === id)).filter(isChatTab),
     [chatIds, tabs],
   );
   const focusedSnapshot = useAcpChatLiveSnapshot(

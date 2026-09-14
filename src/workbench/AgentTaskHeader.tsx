@@ -64,7 +64,9 @@ export function AgentTaskHeader({
   return (
     <header className="agent-task-header">
       <div className="agent-task-header__breadcrumb" aria-label="Chat location">
-        <span className="agent-task-header__project">{currentProject.name}</span>
+        <span className="agent-task-header__project">
+          {currentProject.name}
+        </span>
         <span className="agent-task-header__separator" aria-hidden="true">
           /
         </span>
@@ -86,7 +88,11 @@ export function AgentTaskHeader({
                 }
               }}
             />
-            <button type="submit" aria-label="Save chat name" disabled={projectTransitioning}>
+            <button
+              type="submit"
+              aria-label="Save chat name"
+              disabled={projectTransitioning}
+            >
               <Check size={13} aria-hidden="true" />
             </button>
             <button
