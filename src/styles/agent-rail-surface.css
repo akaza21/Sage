@@ -46,3 +46,200 @@
 .agent-rail-filter__menu {
   width: min(208px, calc(100vw - 16px));
 }
+
+.agent-rail-search-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) var(--control-height-compact);
+  gap: 3px;
+}
+
+.agent-rail-search {
+  display: grid;
+  height: var(--control-height-compact);
+  grid-template-columns: 18px minmax(0, 1fr) 22px;
+  align-items: center;
+  padding: 0 4px 0 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+}
+
+.agent-rail-search:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+
+.agent-rail-search__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.agent-rail-search input {
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px;
+  border: 0;
+  outline: 0;
+  color: var(--color-text-primary);
+  background: transparent;
+  font: inherit;
+  font-size: var(--font-size-sm);
+}
+
+.agent-rail-search input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.agent-rail-search button {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.agent-rail-search button:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.agent-rail-search-row__global {
+  display: grid;
+  width: var(--control-height-compact);
+  height: var(--control-height-compact);
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.agent-rail-search-row__global:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.agent-rail-search-row__global:disabled {
+  color: var(--color-text-disabled);
+  cursor: default;
+}
+
+.agent-rail-section {
+  padding: 4px 8px;
+}
+
+.agent-rail-section + .agent-rail-section {
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.agent-rail-section__header {
+  display: grid;
+  height: var(--control-height-compact);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.agent-rail-section__disclosure {
+  display: flex;
+  min-width: 0;
+  height: var(--control-height-compact);
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.agent-rail-section__disclosure:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.agent-rail-section__actions {
+  display: flex;
+  align-items: center;
+}
+
+.agent-rail-section__actions > button {
+  display: grid;
+  width: var(--control-height-compact);
+  height: var(--control-height-compact);
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.agent-rail-section__actions > button:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.agent-rail-section__empty {
+  margin: 2px 8px 6px 20px;
+  color: var(--color-text-disabled);
+  font-size: var(--font-size-xs);
+}
+
+.agent-rail-flat-list {
+  display: grid;
+  gap: 2px;
+}
+
+.agent-rail-flat-list .project-chats {
+  padding: 0;
+}
+
+.agent-rail-identity {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.agent-rail-identity strong,
+.agent-rail-identity span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-rail-identity strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.agent-rail-identity span {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+@media (forced-colors: active) {
+  .agent-rail-search:focus-within {
+    outline: 1px solid Highlight;
+    outline-offset: 1px;
+    border-color: Highlight;
+    box-shadow: none;
+  }
+}

@@ -6,7 +6,6 @@ import {
   type AgentRailOrdering,
   type AgentRailShowField,
   type AgentRailStatusFilter,
-  type AgentRailStatusSectionId,
 } from "./agentRailStatusView";
 
 export interface AgentRailViewPrefs {
@@ -114,9 +113,7 @@ export function toggleAgentRailSection(id: string) {
   emit();
 }
 
-export function collapseAllAgentRailSections(
-  ids: ReadonlyArray<AgentRailStatusSectionId>,
-) {
+export function collapseAllAgentRailSections(ids: ReadonlyArray<string>) {
   for (const id of ids) collapsed.add(id);
   prefs = { ...prefs };
   emit();

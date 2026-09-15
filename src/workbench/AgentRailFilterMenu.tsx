@@ -10,6 +10,13 @@ import {
   AGENT_RAIL_STATUS_LABELS,
   AGENT_RAIL_STATUS_SECTIONS,
 } from "./agentRailStatusView";
+
+const AGENT_RAIL_COLLAPSIBLE_SECTIONS = [
+  "pinned",
+  "projects",
+  "recent",
+  ...AGENT_RAIL_STATUS_SECTIONS,
+] as const;
 import {
   collapseAllAgentRailSections,
   setAgentRailGrouping,
@@ -184,7 +191,7 @@ export function AgentRailFilterMenu({
           role="menuitem"
           tabIndex={-1}
           onClick={() => {
-            collapseAllAgentRailSections(AGENT_RAIL_STATUS_SECTIONS);
+            collapseAllAgentRailSections(AGENT_RAIL_COLLAPSIBLE_SECTIONS);
             closeAndRestoreFocus();
           }}
         >

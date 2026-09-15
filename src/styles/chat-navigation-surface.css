@@ -11,6 +11,10 @@
   grid-template-columns: minmax(0, 1fr) minmax(28px, auto);
 }
 
+.project-chat-row--flat .project-chat {
+  height: var(--control-height-compact);
+}
+
 .project-chat-row:hover {
   background: var(--color-surface-hover);
 }
@@ -267,6 +271,40 @@
   color: var(--color-accent);
 }
 
+.project-chat__status-chip {
+  display: inline-flex;
+  max-width: 88px;
+  min-height: 18px;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  padding: 0 6px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-chat__status-chip--working,
+.project-chat__status-chip--recovering,
+.project-chat__status-chip--waiting {
+  color: var(--color-warning);
+  background: var(--color-warning-muted);
+}
+
+.project-chat__status-chip--failed {
+  color: var(--color-danger);
+  background: var(--color-danger-muted);
+}
+
+.project-chat__status-chip--unread {
+  color: var(--color-text-primary);
+  background: var(--color-plane-raised);
+}
+
 .project-chat__state--unread::before {
   width: 5px;
   height: 5px;
@@ -283,6 +321,10 @@
   border-radius: var(--radius-circle);
   background: var(--color-accent);
   animation: sage-working-pulse 1.4s ease-in-out infinite;
+}
+
+.project-chat__working--status {
+  background: var(--color-warning);
 }
 
 .project-chat__workspace {
@@ -303,6 +345,14 @@
 
 .project-chat__git svg {
   flex: 0 0 auto;
+}
+
+.project-chat__git--chip {
+  min-height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-plane-raised);
 }
 
 .project-chat--active {
@@ -353,16 +403,18 @@
   width: 23px;
   height: 23px;
   place-items: center;
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-circle);
-  color: var(--color-accent-hover);
-  background: var(--color-accent-muted);
+  color: var(--color-text-secondary);
+  background: var(--color-plane-raised);
   font-size: var(--font-size-xs);
   font-weight: 700;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .project-chat__actions,
-  .project-chat__state {
+  .project-chat__state,
+  .project-chat__status-chip {
     transition: none;
   }
 
@@ -379,8 +431,14 @@
   }
 
   .project-chat__state,
-  .project-chat__identity {
+  .project-chat__identity,
+  .project-chat__status-chip {
     color: CanvasText;
+  }
+
+  .project-chat__status-chip {
+    border-color: CanvasText;
+    background: Canvas;
   }
 
   .project-chat__working,

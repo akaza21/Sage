@@ -572,7 +572,7 @@ describe("compact Workbench project tools", () => {
     expect(useWorkbenchStore.getState().activeTabId).toBe("file:a");
   });
 
-  it("routes the Agent New Chat control through one creation action", async () => {
+  it("routes the Agent New task control through one creation action", async () => {
     const createChat = vi.fn(async () => undefined);
     useWorkbenchStore.setState({
       createChat,
@@ -583,7 +583,7 @@ describe("compact Workbench project tools", () => {
     openAgentNavigation();
 
     const newChatControls = screen.getAllByRole("button", {
-      name: "New chat",
+      name: "New task",
     });
     expect(newChatControls).toHaveLength(1);
     const beforeClick = createChat.mock.calls.length;
@@ -634,7 +634,7 @@ describe("compact Workbench project tools", () => {
 
     const searchChats = within(
       screen.getByRole("dialog", { name: "Projects and chats" }),
-    ).getByRole("button", { name: "Search chats" });
+    ).getByRole("button", { name: "Search all chats" });
     expect(searchChats).toBeEnabled();
     searchChats.focus();
     expect(searchChats).toHaveFocus();

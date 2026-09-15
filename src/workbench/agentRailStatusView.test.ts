@@ -174,6 +174,7 @@ describe("agent rail status grouping", () => {
       }),
     ).toBe("53d");
     expect(agentRailAgeStamp({ live: true, nowMs: now })).toBe("now");
+    expect(agentRailAgeStamp({ live: true, nowMs: 0 })).toBe("");
     expect(agentRailAgeStamp({ live: false, nowMs: now })).toBe("");
   });
 

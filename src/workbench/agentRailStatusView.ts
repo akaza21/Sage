@@ -95,6 +95,7 @@ export function agentRailAgeStamp(input: {
   live: boolean;
   nowMs: number;
 }): string {
+  if (!Number.isFinite(input.nowMs) || input.nowMs <= 0) return "";
   if (
     typeof input.updatedAt === "number" &&
     Number.isFinite(input.updatedAt) &&
@@ -118,7 +119,7 @@ export function classifyAgentRailSection(input: {
   return "done";
 }
 
-function compareRailChats(
+export function compareAgentRailViewChats(
   left: AgentRailChat,
   right: AgentRailChat,
   ordering: AgentRailOrdering,
@@ -155,7 +156,9 @@ export function groupAgentRailByStatus(input: {
               unread: input.unreadByChatId[chat.id] === true,
             }) === id,
         )
-        .sort((left, right) => compareRailChats(left, right, ordering));
+        .sort((left, right) =>
+          compareAgentRailViewChats(left, right, ordering),
+        );
       if (chats.length === 0) continue;
       if (remaining <= 0) {
         truncated = true;

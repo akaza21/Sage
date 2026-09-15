@@ -1,20 +1,9 @@
-import {
-  ChevronDown,
-  ChevronRight,
-  FolderOpen,
-  GitBranch,
-  PanelLeftOpen,
-  Plus,
-  SquarePen,
-  X,
-} from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Search, SquarePen, X, PanelLeftOpen } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../app/store";
-import {
-  ChatSearchControl,
-  ChatSearchTrigger,
-} from "../features/chatSearch/ChatSearchControl";
+import { MAX_CHAT_SEARCH_QUERY_BYTES } from "../features/chatSearch/chatSearchDomain";
+import { ChatSearchControl } from "../features/chatSearch/ChatSearchControl";
 import { CHAT_SEARCH_ALL_FOLDERS_ID } from "../features/chatSearch/chatSearchFanout";
 import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
 import {
@@ -25,19 +14,17 @@ import {
   sessionRailGitLabel,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
-import { AgentRailFilterMenu } from "./AgentRailFilterMenu";
 import {
   collectAgentRailPinIds,
+  deriveAgentRailSections,
+  filterAgentRailGroups,
   groupAgentRailProjects,
 } from "./agentChatRail";
-import { groupAgentRailByStatus } from "./agentRailStatusView";
+import { AgentRailSections } from "./AgentRailSections";
 import {
-  agentRailSectionCollapsed,
   syncAgentRailClock,
-  toggleAgentRailSection,
   useAgentRailViewPrefs,
 } from "./agentRailViewPrefs";
-import { ProjectChatNavigation } from "./ProjectChatNavigation";
 
 export function LeftSidebar({
   compact = false,
@@ -67,11 +54,6 @@ export function LeftSidebar({
     (state) => state.projectTransitioning,
   );
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
-  const [railTick, setRailTick] = useState(0);
-  const drawerRef = useRef<HTMLElement>(null);
-  const drawerTriggerRef = useRef<HTMLButtonElement>(null);
-  const searchTriggerRef = useRef<HTMLButtonElement>(null);
-  const wasDrawerOpen = useRef(false);
   const gitLabel = sessionRailGitLabel(
     useWorkbenchStore(
       (state) =>
@@ -79,11 +61,21 @@ export function LeftSidebar({
         state.selectedRepositoryStatus?.branch,
     ),
   );
-  const groups = groupAgentRailProjects({
-    projects,
-    currentProjectId: project?.id ?? null,
-    currentChats: tabs.filter((tab) => tab.kind === "chat"),
-  });
+  const [railTick, setRailTick] = useState(0);
+  const [query, setQuery] = useState("");
+  const drawerRef = useRef<HTMLElement>(null);
+  const drawerTriggerRef = useRef<HTMLButtonElement>(null);
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const wasDrawerOpen = useRef(false);
+  const groups = useMemo(
+    () =>
+      groupAgentRailProjects({
+        projects,
+        currentProjectId: project?.id ?? null,
+        currentChats: tabs.filter((tab) => tab.kind === "chat"),
+      }),
+    [project?.id, projects, tabs],
+  );
   const prefs = useAgentRailViewPrefs();
   pinSessionRailIds(collectAgentRailPinIds(groups, project?.id ?? null));
   const unreadByChatId: Record<string, boolean> = {};
@@ -96,12 +88,25 @@ export function LeftSidebar({
       });
     }
   }
-  const statusSections = groupAgentRailByStatus({
-    groups,
-    unreadByChatId,
-    statusFilter: prefs.statusFilter,
-    ordering: prefs.ordering,
-  });
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const filteredGroups = useMemo(
+    () => filterAgentRailGroups(groups, normalizedQuery),
+    [groups, normalizedQuery],
+  );
+  const chatCountByProjectId = useMemo(
+    () =>
+      Object.fromEntries(
+        groups.map((group) => [
+          group.id,
+          group.totalChatCount ?? group.chats.length,
+        ]),
+      ),
+    [groups],
+  );
+  const sections = useMemo(
+    () => deriveAgentRailSections(filteredGroups, chatCountByProjectId),
+    [chatCountByProjectId, filteredGroups],
+  );
 
   const railEpoch = groups
     .map((group) =>
@@ -168,177 +173,90 @@ export function LeftSidebar({
         <button
           className="project-action project-action--primary"
           type="button"
-          title="New chat"
+          title="New task"
+          aria-label="New task"
           onClick={() => void createChat()}
         >
           <SquarePen size={16} aria-hidden="true" />
-          New chat
+          <span>New task</span>
         </button>
-        <ChatSearchTrigger triggerRef={searchTriggerRef} />
-      </div>
-
-      <div className="project-sidebar__scroll">
-        <section className="project-section" data-rail-tick={railTick}>
-          <div className="project-section__title">
-            <span>{prefs.grouping === "status" ? "Chats" : "Projects"}</span>
-            <AgentRailFilterMenu onMarkAllRead={markAllRead} />
-            {prefs.grouping === "folder" ? (
+        <div className="agent-rail-search-row">
+          <div className="agent-rail-search">
+            <Search size={14} aria-hidden="true" />
+            <label
+              className="agent-rail-search__label"
+              htmlFor="rail-task-search"
+            >
+              Filter rail tasks
+            </label>
+            <input
+              id="rail-task-search"
+              type="search"
+              aria-label="Search tasks"
+              placeholder="Search tasks…"
+              maxLength={MAX_CHAT_SEARCH_QUERY_BYTES}
+              value={query}
+              onChange={(event) => setQuery(event.currentTarget.value)}
+            />
+            {query ? (
               <button
                 type="button"
-                aria-label="Open folder as project"
-                title="Open folder as project"
-                onClick={() => void createProject()}
+                aria-label="Clear task search"
+                title="Clear task search"
+                onClick={() => setQuery("")}
               >
-                <Plus size={14} aria-hidden="true" />
+                <X size={12} aria-hidden="true" />
               </button>
             ) : null}
           </div>
-          {prefs.grouping === "status"
-            ? statusSections.map((section) => {
-                const collapsed = agentRailSectionCollapsed(section.id);
-                return (
-                  <section
-                    className="agent-rail-status"
-                    key={section.id}
-                    aria-label={section.label}
-                  >
-                    <button
-                      className="agent-rail-status__header"
-                      type="button"
-                      aria-expanded={!collapsed}
-                      onClick={() => toggleAgentRailSection(section.id)}
-                    >
-                      <span>{section.label}</span>
-                      {collapsed ? (
-                        <ChevronRight size={14} aria-hidden="true" />
-                      ) : (
-                        <ChevronDown size={14} aria-hidden="true" />
-                      )}
-                    </button>
-                    {collapsed
-                      ? null
-                      : section.groups.map((item) => (
-                          <div className="project-entry" key={item.id}>
-                            <div className="project-entry__header">
-                              <button
-                                className={`project-row ${
-                                  item.id === project?.id
-                                    ? "project-row--active"
-                                    : ""
-                                }`}
-                                type="button"
-                                title={`Open project ${item.name}`}
-                                onClick={() => void switchProject(item.id)}
-                              >
-                                <FolderOpen size={16} aria-hidden="true" />
-                                <span>{item.name}</span>
-                              </button>
-                            </div>
-                            <ProjectChatNavigation
-                              projectId={item.id}
-                              chats={item.chats}
-                              archived={
-                                section.id === "done" && item.id === project?.id
-                                  ? undefined
-                                  : item.archived
-                              }
-                              truncated={false}
-                              selected={item.id === project?.id}
-                              workspaceLabel={
-                                prefs.show.workspace ? item.name : undefined
-                              }
-                              showUpdated={prefs.show.updated}
-                              showBranch={prefs.show.branch}
-                              hideArchived={
-                                !prefs.showArchived || section.id !== "done"
-                              }
-                              attentionMark={section.id === "attention"}
-                              onShowMore={requestChatSearchInFolder}
-                            />
-                          </div>
-                        ))}
-                    {!collapsed && section.truncated ? (
-                      <button
-                        className="project-chat-more"
-                        type="button"
-                        title="More"
-                        onClick={() =>
-                          requestChatSearchInFolder(CHAT_SEARCH_ALL_FOLDERS_ID)
-                        }
-                      >
-                        More
-                      </button>
-                    ) : null}
-                  </section>
-                );
-              })
-            : groups.map((item) => {
-                const selected = item.id === project?.id;
-                const expanded =
-                  selected || item.chats.length > 0 || item.archived.length > 0;
-                return (
-                  <div className="project-entry" key={item.id}>
-                    <div className="project-entry__header">
-                      <button
-                        className={`project-row ${
-                          selected ? "project-row--active" : ""
-                        }`}
-                        type="button"
-                        aria-current={selected ? "page" : undefined}
-                        title={`Open project ${item.name}`}
-                        onClick={() => void switchProject(item.id)}
-                      >
-                        <FolderOpen size={16} aria-hidden="true" />
-                        <span>{item.name}</span>
-                        {selected && gitLabel ? (
-                          <span className="project-row__branch">
-                            <GitBranch size={10} aria-hidden="true" />
-                            {gitLabel}
-                          </span>
-                        ) : (
-                          <span className="project-row__count">
-                            {item.rootCount}
-                          </span>
-                        )}
-                        {expanded ? (
-                          <ChevronDown size={14} aria-hidden="true" />
-                        ) : (
-                          <ChevronRight size={14} aria-hidden="true" />
-                        )}
-                      </button>
-                      <button
-                        className="project-entry__new-chat"
-                        type="button"
-                        aria-label={`New chat in ${item.name}`}
-                        title={`New chat in ${item.name}`}
-                        onClick={() => void createChat(item.id)}
-                      >
-                        <SquarePen size={12} aria-hidden="true" />
-                      </button>
-                    </div>
-                    {expanded ? (
-                      <ProjectChatNavigation
-                        projectId={item.id}
-                        chats={item.chats}
-                        archived={selected ? undefined : item.archived}
-                        truncated={item.truncated}
-                        selected={selected}
-                        showUpdated={prefs.show.updated}
-                        showBranch={prefs.show.branch}
-                        hideArchived={!prefs.showArchived}
-                        onShowMore={requestChatSearchInFolder}
-                      />
-                    ) : null}
-                  </div>
-                );
-              })}
-          {projects.length === 0 ? (
-            <p className="project-empty-copy">
-              New chat starts under Local. Open a folder when you want files.
-            </p>
-          ) : null}
-        </section>
+          <button
+            ref={searchTriggerRef}
+            className="agent-rail-search-row__global"
+            type="button"
+            aria-label="Search all chats"
+            title="Search all chats"
+            disabled={!project || projectTransitioning}
+            onClick={(event) => {
+              if (!project || projectTransitioning) return;
+              const trigger = event.currentTarget;
+              requestChatSearchInFolder(project.id, () => trigger.focus());
+            }}
+          >
+            <Search size={13} aria-hidden="true" />
+          </button>
+        </div>
       </div>
+
+      <div className="project-sidebar__scroll" data-rail-tick={railTick}>
+        <AgentRailSections
+          pinned={sections.pinned}
+          projects={sections.projects}
+          recent={sections.recent}
+          currentProjectId={project?.id ?? null}
+          unreadByChatId={unreadByChatId}
+          prefs={prefs}
+          currentBranchLabel={gitLabel}
+          emptyProjects={projects.length === 0 && !normalizedQuery}
+          createChat={createChat}
+          createProject={createProject}
+          switchProject={switchProject}
+          onShowMore={requestChatSearchInFolder}
+          onShowAll={() =>
+            requestChatSearchInFolder(CHAT_SEARCH_ALL_FOLDERS_ID)
+          }
+          onMarkAllRead={markAllRead}
+        />
+      </div>
+
+      <footer className="project-sidebar__account">
+        <span className="account-avatar" aria-hidden="true">
+          {(project?.name.trim()[0] ?? "L").toLocaleUpperCase()}
+        </span>
+        <span className="agent-rail-identity">
+          <strong>{project?.name ?? "Local"}</strong>
+          <span>Local workspace</span>
+        </span>
+      </footer>
     </>
   );
 
@@ -371,7 +289,7 @@ export function LeftSidebar({
       {open ? (
         <section
           ref={drawerRef}
-          className="project-sidebar__drawer"
+          className="project-sidebar__drawer project-sidebar__drawer--agent-v1"
           role="dialog"
           aria-label="Projects and chats"
           tabIndex={-1}

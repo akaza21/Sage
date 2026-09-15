@@ -3,13 +3,16 @@ import type {
   ArchivedChatSummary,
   ProjectListItem,
 } from "../domain/workbench";
+import { compareAgentRailViewChats } from "./agentRailStatusView";
 
 export const MAX_AGENT_CHAT_MOVE_DESTINATIONS = 32;
 export const MAX_AGENT_RAIL_PROJECTS = 64;
 export const MAX_AGENT_RAIL_CHATS_PER_PROJECT = 8;
 export const MAX_AGENT_RAIL_PIN_IDS = 64;
+export const MAX_AGENT_RAIL_RECENT_CHATS = 8;
 export const MAX_AGENT_RAIL_ARCHIVED_PER_PROJECT = 64;
 export const LOCAL_PROJECT_NAME = "Local";
+export const UNKNOWN_PROJECT_NAME = "Unknown project";
 
 export interface AgentRailProjectGroup {
   id: string;
@@ -18,6 +21,7 @@ export interface AgentRailProjectGroup {
   chats: AgentRailChat[];
   archived: ArchivedChatSummary[];
   truncated: boolean;
+  totalChatCount?: number;
 }
 
 function admittedProjectId(value: unknown): string | null {
@@ -71,12 +75,28 @@ export function groupAgentRailProjects(input: {
   currentChats: ReadonlyArray<Partial<AgentRailChat>>;
 }): AgentRailProjectGroup[] {
   const groups: AgentRailProjectGroup[] = [];
-  const limit = Math.min(input.projects.length, MAX_AGENT_RAIL_PROJECTS);
-  for (let index = 0; index < limit; index += 1) {
+  const currentProjectId = admittedProjectId(input.currentProjectId);
+  let currentProjectIndex = -1;
+  for (let index = 0; index < input.projects.length; index += 1) {
+    if (input.projects[index]?.id === currentProjectId) {
+      currentProjectIndex = index;
+      break;
+    }
+  }
+  const projectIndexes = Array.from(
+    { length: Math.min(input.projects.length, MAX_AGENT_RAIL_PROJECTS) },
+    (_, index) => index,
+  );
+  if (currentProjectIndex >= MAX_AGENT_RAIL_PROJECTS) {
+    projectIndexes[projectIndexes.length - 1] = currentProjectIndex;
+  }
+  let currentIncluded = false;
+  for (const index of projectIndexes) {
     const project = input.projects[index];
     const id = admittedProjectId(project?.id);
     if (!id || !project) continue;
-    const current = id === input.currentProjectId;
+    const current = id === currentProjectId;
+    currentIncluded ||= current;
     const source = current
       ? admitRailChats(input.currentChats, 64)
       : admitRailChats(project.railChats, MAX_AGENT_RAIL_CHATS_PER_PROJECT);
@@ -100,6 +120,24 @@ export function groupAgentRailProjects(input: {
         : source.overflow || project.railChatsTruncated === true,
     });
   }
+
+  if (
+    !currentIncluded &&
+    currentProjectId &&
+    groups.length < MAX_AGENT_RAIL_PROJECTS
+  ) {
+    const source = admitRailChats(input.currentChats, 64);
+    if (source.chats.length > 0) {
+      groups.push({
+        id: currentProjectId,
+        name: UNKNOWN_PROJECT_NAME,
+        rootCount: 0,
+        chats: source.chats.sort(compareAgentRailChats),
+        archived: [],
+        truncated: false,
+      });
+    }
+  }
   return groups;
 }
 
@@ -120,6 +158,102 @@ function admitArchivedChats(
     }
     if (next.length >= limit) break;
     next.push({ id, title: chat.title });
+  }
+  return next;
+}
+
+export interface AgentRailChatItem {
+  projectId: string;
+  projectName: string;
+  projectChatCount: number;
+  chat: AgentRailChat;
+}
+
+export interface AgentRailSections {
+  pinned: AgentRailChatItem[];
+  projects: AgentRailProjectGroup[];
+  recent: AgentRailChatItem[];
+}
+
+export function deriveAgentRailSections(
+  groups: ReadonlyArray<AgentRailProjectGroup>,
+  chatCountByProjectId?: Readonly<Record<string, number>>,
+): AgentRailSections {
+  const pinned: AgentRailChatItem[] = [];
+  const recentCandidates: AgentRailChatItem[] = [];
+  const projects: AgentRailProjectGroup[] = [];
+
+  for (const group of groups) {
+    const projectChats: AgentRailChat[] = [];
+    const projectChatCount =
+      chatCountByProjectId?.[group.id] ??
+      group.totalChatCount ??
+      group.chats.length;
+    for (const chat of group.chats) {
+      const item = {
+        projectId: group.id,
+        projectName: group.name,
+        projectChatCount,
+        chat,
+      };
+      if (chat.pinned && pinned.length < MAX_AGENT_RAIL_PIN_IDS) {
+        pinned.push(item);
+      } else {
+        projectChats.push(chat);
+        if (
+          !chat.pinned &&
+          typeof chat.updatedAt === "number" &&
+          Number.isFinite(chat.updatedAt) &&
+          chat.updatedAt > 0
+        ) {
+          recentCandidates.push(item);
+        }
+      }
+    }
+    projects.push({
+      ...group,
+      chats: projectChats,
+      totalChatCount: projectChatCount,
+    });
+  }
+
+  recentCandidates.sort((left, right) =>
+    compareAgentRailViewChats(left.chat, right.chat, "recency"),
+  );
+  return {
+    pinned,
+    projects,
+    recent: recentCandidates.slice(0, MAX_AGENT_RAIL_RECENT_CHATS),
+  };
+}
+
+export function filterAgentRailGroups(
+  groups: ReadonlyArray<AgentRailProjectGroup>,
+  normalizedQuery: string,
+): AgentRailProjectGroup[] {
+  if (!normalizedQuery) return groups.slice();
+  const next: AgentRailProjectGroup[] = [];
+  for (const group of groups) {
+    const groupMatches = group.name
+      .toLocaleLowerCase()
+      .includes(normalizedQuery);
+    const chats = groupMatches
+      ? group.chats
+      : group.chats.filter((chat) =>
+          chat.title.toLocaleLowerCase().includes(normalizedQuery),
+        );
+    const archived = groupMatches
+      ? group.archived
+      : group.archived.filter((chat) =>
+          chat.title.toLocaleLowerCase().includes(normalizedQuery),
+        );
+    if (chats.length === 0 && archived.length === 0 && !groupMatches) continue;
+    next.push({
+      ...group,
+      chats,
+      archived,
+      truncated: group.truncated,
+    });
   }
   return next;
 }

@@ -273,8 +273,11 @@ describe("desktop-native chunk topology", () => {
     // AGENT-RIGHT-PANE adds one bounded lifecycle presentation component;
     // its CSS is chained through an existing initial stylesheet module.
     // AP-U2 adds two bounded center-chat modules: the tab strip and task header.
-    expect(ordinaryGraph.allModules).toHaveLength(418);
-    expect(ordinaryGraph.initialModules).toHaveLength(264);
+    // AP-U1 adds one bounded Agent rail sections presentation component;
+    // wiring it into AgentWorkbenchBody makes that component plus three existing
+    // rail-only modules reachable from the initial desktop graph.
+    expect(ordinaryGraph.allModules).toHaveLength(419);
+    expect(ordinaryGraph.initialModules).toHaveLength(268);
     for (const snapshotModule of [
       "/src/domain/agentDiff.ts",
       "/src/services/acpFileSnapshot.ts",

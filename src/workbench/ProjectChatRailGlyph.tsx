@@ -3,9 +3,11 @@ import type { AgentRailTrailingState } from "./agentRailStatusView";
 export function ProjectChatRailGlyph({
   state,
   dateTime,
+  relative = false,
 }: {
   state: AgentRailTrailingState | null;
   dateTime?: string;
+  relative?: boolean;
 }) {
   if (!state) return null;
   const live = state.kind === "working" || state.kind === "recovering";
@@ -16,6 +18,7 @@ export function ProjectChatRailGlyph({
         dateTime={dateTime}
       >
         {state.label}
+        {relative && /^\d+(?:[mhd]|d\+)$/.test(state.label) ? " ago" : ""}
       </time>
     );
   }

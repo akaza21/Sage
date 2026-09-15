@@ -126,6 +126,65 @@ it("shows one prioritized trailing state per chat and keeps actions separate", (
   );
 });
 
+it("suffixes only numeric recent ages", () => {
+  syncAgentRailClock(Date.UTC(2026, 7, 26, 18, 0, 0));
+  useWorkbenchStore.setState({
+    project: { id: "project-a", name: "A", roots: [] },
+    tabs: [],
+    activeTabId: null,
+  });
+  render(
+    <ProjectChatNavigation
+      projectId="project-a"
+      chats={[
+        {
+          id: "chat:now",
+          title: "Now",
+          position: 0,
+          pinned: false,
+          status: "idle",
+          updatedAt: Date.UTC(2026, 7, 26, 17, 59, 30),
+        },
+        {
+          id: "chat:yesterday",
+          title: "Yesterday",
+          position: 1,
+          pinned: false,
+          status: "idle",
+          updatedAt: Date.UTC(2026, 7, 25, 12, 0, 0),
+        },
+        {
+          id: "chat:hours",
+          title: "Hours",
+          position: 2,
+          pinned: false,
+          status: "idle",
+          updatedAt: Date.UTC(2026, 7, 26, 16, 0, 0),
+        },
+        {
+          id: "chat:capped",
+          title: "Capped",
+          position: 3,
+          pinned: false,
+          status: "idle",
+          updatedAt: Date.UTC(2026, 3, 1, 18, 0, 0),
+        },
+      ]}
+      selected
+      relativeTimeSuffix
+      suppressActive
+      showActions={false}
+    />,
+  );
+
+  expect(screen.getByText("now")).toBeInTheDocument();
+  expect(screen.getByText("yesterday")).toBeInTheDocument();
+  expect(screen.getByText("2h ago")).toBeInTheDocument();
+  expect(screen.getByText("99d+ ago")).toBeInTheDocument();
+  expect(screen.queryByText("now ago")).toBeNull();
+  expect(screen.queryByText("yesterday ago")).toBeNull();
+});
+
 it("animates only a live working turn and marks waiting as attention", () => {
   useWorkbenchStore.setState({
     project: { id: "project-a", name: "A", roots: [] },
@@ -165,7 +224,6 @@ it("animates only a live working turn and marks waiting as attention", () => {
       projectId="project-a"
       chats={currentChats()}
       selected
-      attentionMark
     />,
   );
 
@@ -428,7 +486,7 @@ it("clears the rail unread dot after an unseen Done session is opened", () => {
     screen
       .getByTitle("Open chat Alpha")
       .closest(".project-chat-row")
-      ?.querySelector("[aria-label='Working']"),
+      ?.querySelector(".project-chat__state--working"),
   ).toBeInTheDocument();
   expect(
     screen

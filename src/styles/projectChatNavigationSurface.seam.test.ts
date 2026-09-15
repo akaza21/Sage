@@ -62,10 +62,13 @@ describe("Project and chat navigation stylesheet seams", () => {
     expect(projectCss).toMatch(
       /\.project-sidebar__actions\s*\{[^}]*padding:\s*6px\s+8px;/s,
     );
-    expect(projectCss).toMatch(/\.project-section\s*\{[^}]*padding:\s*8px/s);
+    expect(projectCss).not.toMatch(/\.project-section\b/);
     expect(projectCss).toMatch(/\.project-row\s*\{[^}]*height:\s*28px;/s);
     expect(projectCss).toMatch(
       /\.project-row \.project-row__branch\s*\{[^}]*border:\s*0;/s,
+    );
+    expect(projectCss).toMatch(
+      /\.project-row \.project-row__branch--chip\s*\{[^}]*border:\s*1px solid var\(--color-border-strong\);[^}]*border-radius:\s*var\(--radius-pill\);/s,
     );
   });
 
