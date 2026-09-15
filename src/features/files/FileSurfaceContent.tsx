@@ -70,6 +70,7 @@ export function FileSurfaceContent({
   path,
   previewing,
   transitioning,
+  readOnly = false,
   onCaretOffset,
   onEditorChange,
   onSurfaceKeyDown,
@@ -85,6 +86,7 @@ export function FileSurfaceContent({
   path: string;
   previewing: boolean;
   transitioning: boolean;
+  readOnly?: boolean;
   onCaretOffset: (offset: number) => void;
   onEditorChange: (content: string) => void;
   onSurfaceKeyDown: KeyboardEventHandler<HTMLElement>;
@@ -95,7 +97,7 @@ export function FileSurfaceContent({
       className="file-surface resource-document"
       aria-label={`File editor ${path}`}
       aria-keyshortcuts="F12"
-      onKeyDown={onSurfaceKeyDown}
+      onKeyDownCapture={onSurfaceKeyDown}
     >
       <FileEditorHeader
         path={path}
@@ -149,14 +151,14 @@ export function FileSurfaceContent({
             />
           ) : null}
           <EditorAdapter
-            key={activeResourceKey}
+            key={`${activeResourceKey}:${readOnly ? "read-only" : "editable"}`}
             ref={editorInputRef}
             ariaLabel={`Edit ${path}`}
             documentIdentity={`${activeResourceKey}\0${editor.revision}\0${editor.document.buffer.fingerprint}`}
             path={path}
             content={editor.content}
             maxContentLength={MAX_EDITABLE_CONTENT_BYTES}
-            disabled={editor.saving || transitioning}
+            disabled={editor.saving || transitioning || readOnly}
             onChange={onEditorChange}
             onCaretOffset={onCaretOffset}
           />

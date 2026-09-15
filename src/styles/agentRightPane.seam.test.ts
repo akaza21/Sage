@@ -13,6 +13,8 @@ describe("Agent right-pane stylesheet seam", () => {
 
     expect(entry).toContain('@import "./agent-right-pane.css";');
     expect(css).toContain(".agent-artifact-pane__follow--pending");
+    expect(css).toContain(".agent-artifact-header__provenance");
+    expect(css).toContain(".agent-artifact-header__view-only");
     expect(css).toContain(".agent-artifact-tab__kind");
     expect(css).toContain(".agent-preview-lifecycle--failed");
     expect(css).toContain(".harness-browser__connection--active");
@@ -26,7 +28,7 @@ describe("Agent right-pane stylesheet seam", () => {
       /\.harness-browser > \.agent-preview-lifecycle\s*\{\s*grid-row: 3;/,
     );
     expect(modeShell).not.toMatch(
-      /agent-artifact-pane__(?:edge-copy|follow--pending|follow-new)|agent-artifact-tab__(?:kind|new)|agent-preview-lifecycle|harness-browser__connection/,
+      /agent-artifact-(?:pane__(?:edge-copy|follow--pending|follow-new)|header__|tab__(?:kind|new))|agent-preview-lifecycle|harness-browser__connection/,
     );
   });
 });

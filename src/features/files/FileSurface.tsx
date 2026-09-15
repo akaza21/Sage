@@ -13,7 +13,13 @@ import { goToLineSelection } from "./goToLine";
 import { localSymbolNavigation } from "../language/outlineNavigation";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
 
-export function FileSurface({ tab }: { tab: WorkbenchTab }) {
+export function FileSurface({
+  tab,
+  readOnly = false,
+}: {
+  tab: WorkbenchTab;
+  readOnly?: boolean;
+}) {
   const editorInputRef = useRef<EditorAdapterHandle>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const {
@@ -41,6 +47,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
   const goToOpen = goToSessionKey === activeResourceKey;
 
   const [languageNavigationStatus, setLanguageNavigationStatus] = useState("");
+  const reviewReadOnly = readOnly && !projectTransitioning;
   const onCaretOffset = useEditorCaretPublisher(
     !previewing &&
       editor?.phase === "ready" &&
@@ -74,6 +81,24 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
     setGoToError(false);
     editorInputRef.current?.focus();
   }
+
+  useEffect(() => {
+    if (!readOnly || previewing) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key.toLowerCase() !== "f" ||
+        (!event.ctrlKey && !event.metaKey) ||
+        event.altKey
+      )
+        return;
+      event.preventDefault();
+      setGoToSessionKey("");
+      setGoToError(false);
+      openFind();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [openFind, previewing, readOnly]);
 
   function submitGoToLine() {
     const selection = goToLineSelection(findContent, goToQuery);
@@ -147,8 +172,9 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
       path={path}
       previewing={previewing}
       transitioning={projectTransitioning}
+      readOnly={reviewReadOnly}
       onCaretOffset={onCaretOffset}
-      onEditorChange={updateEditorContent}
+      onEditorChange={readOnly ? () => undefined : updateEditorContent}
       onSurfaceKeyDown={(event) => {
         handleFileSurfaceCommandKey(event, {
           previewing,
@@ -164,9 +190,7 @@ export function FileSurface({ tab }: { tab: WorkbenchTab }) {
           openFind: openFindFromSurface,
           openGoToLine,
           goToLocalSymbol,
-          save: () => {
-            void saveActiveEditor();
-          },
+          save: readOnly ? () => undefined : () => void saveActiveEditor(),
         });
       }}
       onTogglePreview={() => {

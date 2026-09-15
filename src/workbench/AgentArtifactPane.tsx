@@ -20,10 +20,14 @@ import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
 import { orderedTabs } from "../app/tabState";
 import { useWorkbenchStore } from "../app/store";
-import { agentArtifactVisible } from "./agentArtifactAdmission";
+import {
+  agentArtifactAdmitted,
+  agentArtifactVisible,
+} from "./agentArtifactAdmission";
 import { AgentArtifactCollapsedPane } from "./AgentArtifactCollapsedPane";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { activeArtifactForTarget } from "./agentArtifactTabPresentation";
+import { AgentArtifactHeader } from "./AgentArtifactHeader";
 import { AgentArtifactTabStrip } from "./AgentArtifactTabStrip";
 import { agentPreviewControllerOwner } from "./agentPreviewControllerOwner";
 import { useAgentArtifactFollowLifecycle } from "./useAgentArtifactFollowLifecycle";
@@ -42,10 +46,12 @@ export function AgentArtifactPane({
   expanded = true,
   focusOnExpand = false,
   onExpandedChange,
+  onOpenInEditor,
 }: {
   expanded?: boolean;
   focusOnExpand?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
+  onOpenInEditor?: (tabId: string) => void;
 } = {}) {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
@@ -162,6 +168,20 @@ export function AgentArtifactPane({
     />
   );
   const activeArtifact = activeArtifactForTarget(artifacts, selectedTarget);
+  const activeArtifactAdmitted = Boolean(
+    activeArtifact &&
+    agentArtifactAdmitted(admissions, focusedOwner, activeArtifact.id),
+  );
+  const selectedPosition = availableTargets.findIndex((target) =>
+    sameAgentArtifactTarget(target, selectedTarget),
+  );
+  const stepArtifact = (direction: -1 | 1) => {
+    if (!focusedOwner || selectedPosition < 0) return;
+    const target = availableTargets[selectedPosition + direction];
+    if (!target) return;
+    useAgentArtifactFollowStore.getState().pin(focusedOwner, target);
+    if (target.kind === "tab") void activateTab(target.tabId);
+  };
   const focusedRuntimeEpoch =
     focusedPage?.sessions.find(
       (session) => session.id === focusedOwner?.sessionId,
@@ -223,7 +243,7 @@ export function AgentArtifactPane({
         ref={paneRef}
         className={`agent-artifact-pane${
           hasResources ? "" : " agent-artifact-pane--empty"
-        }`}
+        }${activeArtifact ? " agent-artifact-pane--with-header" : ""}`}
         aria-label="Agent artifacts"
         data-owner-project-id={focusedOwner?.projectId}
         data-owner-chat-id={focusedOwner?.chatId}
@@ -262,9 +282,21 @@ export function AgentArtifactPane({
             <strong>Files, changes, and preview</strong>
           )}
         </header>
+        {activeArtifact ? (
+          <AgentArtifactHeader
+            key={activeArtifact.id}
+            tab={activeArtifact}
+            admitted={activeArtifactAdmitted}
+            page={focusedOwner ? focusedPage : null}
+            position={selectedPosition}
+            total={availableTargets.length}
+            onStep={stepArtifact}
+            onOpenInEditor={() => onOpenInEditor?.(activeArtifact.id)}
+          />
+        ) : null}
         <div ref={setCanvasNode} className="agent-artifact-pane__canvas">
           {!previewSelected && activeArtifact
-            ? renderFileOrDiffCanvas(activeArtifact)
+            ? renderFileOrDiffCanvas(activeArtifact, { readOnly: true })
             : null}
           {!previewSelected && !activeArtifact ? (
             <section

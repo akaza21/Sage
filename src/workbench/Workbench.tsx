@@ -277,6 +277,25 @@ export function Workbench() {
     setAgentArtifactExpanded(expanded);
     if (expanded) setAgentNavigationOpen(false);
   }, []);
+  const openArtifactInEditor = useCallback((tabId: string) => {
+    void (async () => {
+      const before = useWorkbenchStore.getState();
+      if (
+        before.projectTransitioning ||
+        !before.tabs.some((tab) => tab.id === tabId)
+      )
+        return;
+      await before.activateTab(tabId);
+      const after = useWorkbenchStore.getState();
+      if (
+        after.projectTransitioning ||
+        after.projectGeneration !== before.projectGeneration ||
+        after.activeTabId !== tabId
+      )
+        return;
+      setWindowMode("editor");
+    })();
+  }, []);
   const drawerOpen =
     isCompactDrawerOpen(compact, sidebarOpen, windowMode) ||
     (compact &&
@@ -322,6 +341,7 @@ export function Workbench() {
               onAgentLeftRailWidthChange={setAgentLeftRailWidth}
               agentArtifactWidth={agentArtifactWidth}
               onAgentArtifactWidthChange={setAgentArtifactWidth}
+              onOpenArtifactInEditor={openArtifactInEditor}
             />
           )}
         />

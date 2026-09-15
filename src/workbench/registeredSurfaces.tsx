@@ -45,18 +45,22 @@ function LazyToolSurface({
 
 function LazyCanvasSurface({
   tab,
+  readOnly,
   label,
   load,
 }: {
   tab: WorkbenchTab;
+  readOnly?: boolean;
   label: string;
-  load: () => Promise<{ default: React.ComponentType<{ tab: WorkbenchTab }> }>;
+  load: () => Promise<{
+    default: React.ComponentType<{ tab: WorkbenchTab; readOnly?: boolean }>;
+  }>;
 }) {
   return (
     <LazyModuleBoundary
       label={label}
       load={load}
-      render={(Surface) => <Surface tab={tab} />}
+      render={(Surface) => <Surface tab={tab} readOnly={readOnly} />}
     />
   );
 }
@@ -73,8 +77,13 @@ export function registerWorkbenchSurfaces(): void {
   registerCanvasSurface("diff", ({ tab }) => (
     <LazyCanvasSurface tab={tab} label="Diff" load={loadDiffSurface} />
   ));
-  registerCanvasSurface("file", ({ tab }) => (
-    <LazyCanvasSurface tab={tab} label="File" load={loadFileSurface} />
+  registerCanvasSurface("file", ({ tab, readOnly }) => (
+    <LazyCanvasSurface
+      tab={tab}
+      readOnly={readOnly}
+      label="File"
+      load={loadFileSurface}
+    />
   ));
   registerToolSurface("explorer", ExplorerSurface);
   registerToolSurface("search", () => (

@@ -159,6 +159,10 @@
   grid-template-rows: 42px minmax(0, 1fr);
 }
 
+.agent-artifact-pane--with-header {
+  grid-template-rows: 42px auto minmax(0, 1fr);
+}
+
 .agent-artifact-pane--collapsed {
   grid-template-rows: minmax(0, 1fr);
   box-shadow: inset 1px 0 var(--color-border-subtle);

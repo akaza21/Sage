@@ -217,6 +217,7 @@ afterEach(() => {
   clearAgentChatOwner();
   useAgentArtifactAdmissionStore.getState().clear();
   useAgentArtifactFollowStore.getState().clear();
+  vi.unstubAllGlobals();
   useWorkbenchStore.setState(initialState, true);
 });
 
@@ -357,6 +358,65 @@ describe("Agent artifact file chips", () => {
     expect(screen.queryByRole("tab", { name: /other\.ts$/ })).toBeNull();
 
     expect(screen.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
+  });
+
+  it("renders a truthful artifact header and pins navigation through its ordered targets", () => {
+    admit("file:app");
+    render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
+
+    expect(screen.getByText("Opened by Sage")).toBeVisible();
+    expect(screen.getByText("VIEW ONLY")).toBeVisible();
+    expect(screen.getByText("src/app.ts")).toBeVisible();
+    expect(screen.getByText("1 of 2")).toHaveAttribute("aria-live", "polite");
+    expect(
+      screen.getByRole("button", { name: "Previous artifact" }),
+    ).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next artifact" }));
+    expect(screen.queryByText("2 of 2")).toBeNull();
+    expect(screen.queryByText("Opened by Sage")).toBeNull();
+    expect(screen.queryByText("VIEW ONLY")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open in Editor" })).toBeNull();
+    expect(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        focusedOwner,
+      ),
+    ).toMatchObject({
+      mode: "pinned",
+      selected: { kind: "preview" },
+    });
+  });
+
+  it("does not claim Sage opened an edit-summary-visible tab", () => {
+    render(<AgentArtifactPane />);
+
+    expect(screen.queryByText("Opened by Sage")).toBeNull();
+  });
+
+  it("copies the repository-relative path", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      clipboard: { writeText },
+    });
+    render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("src/app.ts"));
+    expect(
+      screen.getByRole("button", { name: "Path copied" }),
+    ).toHaveTextContent("Copied");
+    fireEvent.click(screen.getByRole("button", { name: "Next artifact" }));
+    expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open in Editor" })).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
+    expect(screen.getByRole("button", { name: "Copy path" })).toHaveTextContent(
+      "Copy path",
+    );
   });
 
   it("opens Agent Preview as a loopback browser without the app-script starter", () => {

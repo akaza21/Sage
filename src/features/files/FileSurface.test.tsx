@@ -270,6 +270,30 @@ describe("FileSurface durability cadence", () => {
     );
   });
 
+  it("renders a file read-only when the host owns its review surface", async () => {
+    setReadyEditor();
+    render(<FileSurface tab={tab} readOnly />);
+
+    const editor = await screen.findByRole("textbox", { name: `Edit ${path}` });
+    expect(editor).toHaveAttribute("aria-readonly", "true");
+    replaceEditorContent(editor, "must not be accepted");
+    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+      phase: "ready",
+      content: document.buffer.content,
+      revision: 0,
+    });
+
+    fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
+    expect(screen.getByRole("textbox", { name: "Find text" })).toBeVisible();
+    fireEvent.keyDown(editor, { key: "g", ctrlKey: true });
+    expect(screen.getByRole("textbox", { name: "Go to line" })).toBeVisible();
+    fireEvent.keyDown(editor, { key: "s", ctrlKey: true });
+    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+      content: document.buffer.content,
+      revision: 0,
+    });
+  });
+
   it("freezes editor input while a Project transition owns the projection", async () => {
     setReadyEditor();
     useWorkbenchStore.setState({ projectTransitioning: true });

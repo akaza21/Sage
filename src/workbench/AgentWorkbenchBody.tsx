@@ -21,6 +21,7 @@ export function AgentWorkbenchBody({
   onAgentLeftRailWidthChange,
   agentArtifactWidth,
   onAgentArtifactWidthChange,
+  onOpenArtifactInEditor,
 }: {
   compact: boolean;
   style: CSSProperties | undefined;
@@ -33,6 +34,7 @@ export function AgentWorkbenchBody({
   onAgentLeftRailWidthChange: (width: number) => void;
   agentArtifactWidth: number;
   onAgentArtifactWidthChange: (width: number) => void;
+  onOpenArtifactInEditor: (tabId: string) => void;
 }) {
   return (
     <div className="workbench__body" style={style}>
@@ -70,6 +72,7 @@ export function AgentWorkbenchBody({
         expanded={artifactExpanded}
         focusOnExpand={compact}
         onExpandedChange={onArtifactExpandedChange}
+        onOpenInEditor={onOpenArtifactInEditor}
       />
     </div>
   );

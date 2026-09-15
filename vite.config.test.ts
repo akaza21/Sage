@@ -276,7 +276,9 @@ describe("desktop-native chunk topology", () => {
     // AP-U1 adds one bounded Agent rail sections presentation component;
     // wiring it into AgentWorkbenchBody makes that component plus three existing
     // rail-only modules reachable from the initial desktop graph.
-    expect(ordinaryGraph.allModules).toHaveLength(419);
+    // AP-U4 adds the artifact-header presentation module and the one lucide icon
+    // it is the sole consumer of.
+    expect(ordinaryGraph.allModules).toHaveLength(421);
     expect(ordinaryGraph.initialModules).toHaveLength(268);
     for (const snapshotModule of [
       "/src/domain/agentDiff.ts",
