@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { Check, Circle, LoaderCircle, XCircle } from "lucide-react";
+
 import type { AcpItem } from "../../../domain/acp";
 import {
   agentRailClockMs,
@@ -22,6 +25,20 @@ const planStateLabels = {
   completed: "Completed",
   failed: "Failed",
 } as const;
+
+function PlanStateIcon({ state }: { state: keyof typeof planStateLabels }) {
+  if (state === "completed") return <Check size={14} aria-hidden="true" />;
+  if (state === "inProgress")
+    return (
+      <LoaderCircle
+        className="acp-plan__working"
+        size={14}
+        aria-hidden="true"
+      />
+    );
+  if (state === "failed") return <XCircle size={14} aria-hidden="true" />;
+  return <Circle size={14} aria-hidden="true" />;
+}
 
 function thoughtDurationLabel(createdAt: number, endAt: number): string | null {
   if (
@@ -104,36 +121,50 @@ function ThoughtActivity({
 }
 
 function PlanActivity({ item }: { item: Extract<AcpItem, { kind: "plan" }> }) {
+  const [expanded, setExpanded] = useState(true);
   const complete = item.payload.entries.filter(
     (entry) => entry.state === "completed",
   ).length;
+  const activityState = item.payload.entries.some(
+    (entry) => entry.state === "failed",
+  )
+    ? "failed"
+    : complete === item.payload.entries.length
+      ? "completed"
+      : "inProgress";
   return (
     <section
       className="acp-activity-card acp-activity-card--plan acp-plan"
       aria-label="Agent plan"
       data-activity-kind="plan"
-      data-activity-state={
-        item.payload.entries.some((entry) => entry.state === "failed")
-          ? "failed"
-          : complete === item.payload.entries.length
-            ? "completed"
-            : "inProgress"
-      }
+      data-activity-state={activityState}
     >
-      <header>
+      <button
+        className="acp-plan__summary"
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
         <strong>Plan</strong>
         <span className="acp-state" role="status" aria-live="off">
-          {complete} of {item.payload.entries.length} complete
+          {expanded
+            ? `Hide · ${complete} of ${item.payload.entries.length} complete`
+            : `${complete} of ${item.payload.entries.length} complete`}
         </span>
-      </header>
-      <ol>
-        {item.payload.entries.map((entry, index) => (
-          <li key={`${index}:${entry.label}`}>
-            <span>{entry.label}</span>
-            <span className="acp-state">{planStateLabels[entry.state]}</span>
-          </li>
-        ))}
-      </ol>
+      </button>
+      {expanded ? (
+        <ol>
+          {item.payload.entries.map((entry, index) => (
+            <li key={`${index}:${entry.label}`} data-plan-state={entry.state}>
+              <PlanStateIcon state={entry.state} />
+              <span>{entry.label}</span>
+              <span className="acp-plan__state">
+                {planStateLabels[entry.state]}
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
     </section>
   );
 }

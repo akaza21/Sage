@@ -25,6 +25,23 @@
   padding: 0 var(--space-2);
 }
 
+.acp-file-changes__header {
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.acp-file-changes__header:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--highlight-focus-halo-shadow);
+}
+
 .edit-summary__icon,
 .acp-file-changes__header > svg {
   display: grid;
@@ -39,6 +56,12 @@
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acp-file-changes__error {
+  color: var(--color-danger);
+  font-size: var(--font-size-xs);
   white-space: nowrap;
 }
 
@@ -225,6 +248,7 @@
   }
 
   .edit-file:focus-visible,
+  .acp-file-changes__header:focus-visible,
   .acp-file-changes li > .acp-resource-action:focus-visible,
   .acp-file-changes__disposition button {
     outline: 1px solid CanvasText;

@@ -278,8 +278,9 @@ describe("desktop-native chunk topology", () => {
     // rail-only modules reachable from the initial desktop graph.
     // AP-U4 adds the artifact-header presentation module and the one lucide icon
     // it is the sole consumer of.
-    expect(ordinaryGraph.allModules).toHaveLength(421);
-    expect(ordinaryGraph.initialModules).toHaveLength(268);
+    // AP-U3 adds bounded tool-rollup and current-request usage projections.
+    expect(ordinaryGraph.allModules).toHaveLength(426);
+    expect(ordinaryGraph.initialModules).toHaveLength(269);
     for (const snapshotModule of [
       "/src/domain/agentDiff.ts",
       "/src/services/acpFileSnapshot.ts",

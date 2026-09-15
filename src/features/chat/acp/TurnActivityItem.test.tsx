@@ -1,4 +1,11 @@
-import { act, cleanup, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
@@ -148,6 +155,11 @@ describe("TurnActivityItem", () => {
       "data-activity-state",
       "failed",
     );
+    const disclosure = within(region).getByRole("button", { name: /plan/i });
+    expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(disclosure);
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(within(region).queryByRole("list")).toBeNull();
   });
 
   it("renders reported and unknown Usage as compact metadata", () => {

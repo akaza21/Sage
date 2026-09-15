@@ -12,6 +12,7 @@ import type { AcpChatPage } from "../../domain/acp";
 import type { ResourceRef } from "../../domain/workbench";
 import { composerDisabledReason } from "./composerDisabledReason";
 import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
+import { currentChatUsage } from "./acp/chatUsage";
 import { terminalTurnStates, type OpenResourceTarget } from "./acp";
 
 export function useChatSurfaceModel({
@@ -145,7 +146,14 @@ export function useChatSurfaceModel({
           (!model.selectedSession || model.selectedSession.capabilities.prompt),
         )
       : model.harnessAvailable;
-    return { activeAcpTurn, workingTurnCount, canCloseSession, canPrompt };
+    const usage = model.useNativeAcp ? currentChatUsage(page) : null;
+    return {
+      activeAcpTurn,
+      workingTurnCount,
+      canCloseSession,
+      canPrompt,
+      usage,
+    };
   }, [
     discoveryPhase,
     model.bindingId,
@@ -154,7 +162,7 @@ export function useChatSurfaceModel({
     model.useNativeAcp,
     page,
   ]);
-  const { activeAcpTurn, workingTurnCount, canCloseSession, canPrompt } =
+  const { activeAcpTurn, workingTurnCount, canCloseSession, canPrompt, usage } =
     turnEligibility;
   const actionBusy = model.useNativeAcp ? acpActions.busy : sending;
   const composerEnabled = canPrompt && !activeAcpTurn;
@@ -238,6 +246,7 @@ export function useChatSurfaceModel({
     workingTurnCount,
     canCloseSession,
     canPrompt,
+    usage,
     composerEnabled,
     composerHotkeyEnabled:
       focused && composerEnabled && !actionBusy && !projectTransitioning,

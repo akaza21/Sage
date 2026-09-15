@@ -16,6 +16,7 @@ import { HarnessActivity } from "./HarnessActivity";
 import { ImageItem } from "./ImageItem";
 import { PermissionItem } from "./PermissionItem";
 import { ToolItem, type OpenResourceTarget } from "./ToolItem";
+import { PrimaryActivities } from "./PrimaryActivities";
 import { TurnActivityItem } from "./TurnActivityItem";
 import { UnknownItem } from "./UnknownItem";
 import { terminalToolStates, turnStateLabels } from "./statusSemantics";
@@ -102,6 +103,7 @@ const ItemView = memo(
       case "thoughtSummary":
         return <TurnActivityItem item={item} workingItems={workingItems} />;
       case "plan":
+        return <TurnActivityItem item={item} />;
       case "usage":
       case "error":
         return <TurnActivityItem item={item} />;
@@ -267,21 +269,25 @@ const Turn = memo(
               interactive={interactive}
             />
           ) : null}
-          {primary.map((item) => (
-            <ItemView
-              key={item.id}
-              item={item}
-              linkedToolResult={
-                item.kind === "toolCall"
-                  ? linkedResults.get(item.id)
-                  : undefined
-              }
-              interactive={interactive}
-              onOpenResource={
-                interactive && onOpenResource ? openForTurn : undefined
-              }
-            />
-          ))}
+          <PrimaryActivities
+            items={primary}
+            linkedResults={linkedResults}
+            interactive={interactive}
+            onOpenResource={
+              interactive && onOpenResource ? openForTurn : undefined
+            }
+            renderItem={(item, linkedToolResult) => (
+              <ItemView
+                key={item.id}
+                item={item}
+                linkedToolResult={linkedToolResult}
+                interactive={interactive}
+                onOpenResource={
+                  interactive && onOpenResource ? openForTurn : undefined
+                }
+              />
+            )}
+          />
           {roots.map((activity) => (
             <HarnessActivity
               key={activity.id}

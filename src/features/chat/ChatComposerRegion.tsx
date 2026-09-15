@@ -1,6 +1,7 @@
 import { ArrowUp } from "lucide-react";
 import type { FormEventHandler, RefObject } from "react";
 
+import type { AcpItem } from "../../domain/acp";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 import {
@@ -26,6 +27,7 @@ export function ChatComposerRegion({
   missingBindingNotice,
   disabledReason,
   project,
+  usage,
   onSubmit,
   onTextChange,
   onCancelTurn,
@@ -45,6 +47,7 @@ export function ChatComposerRegion({
   missingBindingNotice: boolean;
   disabledReason: string | null;
   project: { name: string } | null | undefined;
+  usage: Extract<AcpItem, { kind: "usage" }>["payload"] | null;
   onSubmit: FormEventHandler<HTMLFormElement>;
   onTextChange: (text: string) => void;
   onCancelTurn: (() => void) | null;
@@ -134,7 +137,7 @@ export function ChatComposerRegion({
           </button>
         )}
       </div>
-      <ComposerContext project={project} />
+      <ComposerContext project={project} usage={usage} />
     </form>
   );
 }

@@ -465,8 +465,54 @@ describe("AcpChatProjection", () => {
     ];
 
     const { container } = render(<AcpChatProjection page={next} active />);
-    await screen.findAllByText("Same label");
+    const rollup = await screen.findByText("Tool activity · 2 items");
+    fireEvent.click(rollup);
     expect(container.querySelectorAll(".acp-tool-card")).toHaveLength(2);
+    expect(
+      [...container.querySelectorAll(".acp-tool-card")].map((card) =>
+        card.getAttribute("data-acp-item-id"),
+      ),
+    ).toEqual(["unlinked-call", "unlinked-result"]);
+  });
+
+  it("keeps unlinked tool results in their original turn position", async () => {
+    const next = page("completed");
+    const presentation = {
+      kind: "generic" as const,
+      label: "Ordered activity",
+      summary: null,
+    };
+    next.turns[0].items = [
+      activityItem("call-one", "activity", {
+        origin: "primary",
+        activityId: null,
+        kind: "toolCall",
+        toolState: "completed",
+        payload: { presentation, inputSummary: null },
+      }),
+      textItem(),
+      activityItem("result-one", "activity", {
+        origin: "primary",
+        activityId: null,
+        kind: "toolUpdateResult",
+        toolState: "completed",
+        payload: {
+          callItemId: null,
+          presentation,
+          outputSummary: "Retained result",
+        },
+      }),
+    ];
+
+    const { container } = render(<AcpChatProjection page={next} active />);
+    await screen.findAllByText("Ordered activity");
+    expect(
+      [...container.querySelectorAll("[data-acp-item-id], .acp-message")].map(
+        (element) =>
+          element.getAttribute("data-acp-item-id") ??
+          element.getAttribute("data-message-role"),
+      ),
+    ).toEqual(["call-one", "assistant", "result-one"]);
   });
 
   it("keeps retained Turn status accessible without replaying it", async () => {

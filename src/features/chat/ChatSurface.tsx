@@ -68,6 +68,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     workingTurnCount,
     canCloseSession,
     canPrompt,
+    usage,
     composerEnabled,
     composerHotkeyEnabled,
     disabledReason,
@@ -224,6 +225,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         }
         disabledReason={disabledReason}
         project={project}
+        usage={usage}
         onSubmit={submit}
         onTextChange={setComposerText}
         onCancelTurn={cancelTurn}

@@ -49,6 +49,7 @@ export function TurnEditSummary({
   onRecordDisposition,
 }: TurnEditSummaryProps) {
   const summary = projectAgentEditSummary(page, turn);
+  const [expanded, setExpanded] = useState(true);
   const [recording, setRecording] = useState<AgentEditDispositionState | null>(
     null,
   );
@@ -99,25 +100,45 @@ export function TurnEditSummary({
     }
   }
 
+  const fileLabel = summaryIncomplete
+    ? `Showing ${summary.changes.length} edited ${summary.changes.length === 1 ? "file" : "files"}`
+    : `Edited ${summary.changes.length} ${summary.changes.length === 1 ? "file" : "files"}`;
+  const canCollapse = hasInteractiveChanges;
+
   return (
     <section
       className="acp-file-changes"
       aria-label={`Files edited in turn ${turn.ordinal}`}
       data-session-attempt={turn.sessionId}
     >
-      <header className="acp-file-changes__header">
-        <Files size={16} aria-hidden="true" />
-        <strong>
-          {summaryIncomplete
-            ? `Showing ${summary.changes.length} edited ${summary.changes.length === 1 ? "file" : "files"}`
-            : `Edited ${summary.changes.length} ${summary.changes.length === 1 ? "file" : "files"}`}
-        </strong>
-        <span className="acp-file-changes__totals" aria-label="Line changes">
-          <span>+{additions}</span>
-          <span>-{deletions}</span>
-        </span>
-      </header>
-      {summary.changes.length > 0 ? (
+      {canCollapse ? (
+        <button
+          className="acp-file-changes__header"
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <Files size={16} aria-hidden="true" />
+          <strong>{fileLabel}</strong>
+          {dispositionError ? (
+            <span className="acp-file-changes__error">Needs attention</span>
+          ) : null}
+          <span className="acp-file-changes__totals" aria-label="Line changes">
+            <span>+{additions}</span>
+            <span>-{deletions}</span>
+          </span>
+        </button>
+      ) : (
+        <header className="acp-file-changes__header">
+          <Files size={16} aria-hidden="true" />
+          <strong>{fileLabel}</strong>
+          <span className="acp-file-changes__totals" aria-label="Line changes">
+            <span>+{additions}</span>
+            <span>-{deletions}</span>
+          </span>
+        </header>
+      )}
+      {(!canCollapse || expanded) && summary.changes.length > 0 ? (
         <ul>
           {summary.changes.map((change, index) => {
             const location = change.resource;
@@ -192,7 +213,9 @@ export function TurnEditSummary({
           })}
         </ul>
       ) : null}
-      {hasInteractiveChanges && onRecordDisposition ? (
+      {(!canCollapse || expanded) &&
+      hasInteractiveChanges &&
+      onRecordDisposition ? (
         <div className="acp-file-changes__disposition">
           <button
             type="button"
@@ -213,23 +236,23 @@ export function TurnEditSummary({
           </span>
         </div>
       ) : null}
-      {dispositionError ? (
+      {(!canCollapse || expanded) && dispositionError ? (
         <p className="acp-file-changes__disclosure" role="alert">
           The edit disposition was not recorded. No workspace files were
           changed.
         </p>
       ) : null}
-      {summary.omittedCount > 0 ? (
+      {(!canCollapse || expanded) && summary.omittedCount > 0 ? (
         <p className="acp-file-changes__disclosure">
           {summary.omittedCount} additional changed files not shown.
         </p>
       ) : null}
-      {summary.sourceTruncated ? (
+      {(!canCollapse || expanded) && summary.sourceTruncated ? (
         <p className="acp-file-changes__disclosure">
           The agent reported further changed files that are not shown.
         </p>
       ) : null}
-      {summary.rejectedUnsafeOrStale ? (
+      {(!canCollapse || expanded) && summary.rejectedUnsafeOrStale ? (
         <p className="acp-file-changes__disclosure">
           Unsafe or stale change records were not shown.
         </p>

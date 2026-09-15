@@ -102,9 +102,45 @@
   white-space: pre-wrap;
 }
 
+.acp-plan__summary {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 26px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.acp-plan__summary:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--highlight-focus-halo-shadow);
+}
+
+.acp-plan__summary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.acp-plan__summary .acp-state {
+  justify-self: end;
+  text-align: right;
+}
+
 .acp-plan ol {
   display: grid;
-  gap: var(--space-1);
+  gap: var(--space-2);
   margin: var(--space-2) 0 0;
   padding-left: var(--space-6);
 }
@@ -112,20 +148,58 @@
 .acp-plan li {
   min-width: 0;
   padding-left: var(--space-1);
+  color: var(--color-text-muted);
+}
+
+.acp-plan li > svg {
+  display: inline-block;
+  margin: 0 var(--space-1) 0 0;
+  vertical-align: text-bottom;
 }
 
 .acp-plan li::marker {
   color: var(--color-text-muted);
 }
 
-.acp-plan li > span:first-child {
+.acp-plan li > span:first-of-type {
   overflow-wrap: anywhere;
 }
 
-.acp-plan li > .acp-state {
+.acp-plan__state {
   display: block;
   margin-top: 2px;
-  text-align: left;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.acp-plan li[data-plan-state="completed"] {
+  color: var(--color-success);
+}
+
+.acp-plan li[data-plan-state="inProgress"] {
+  color: var(--color-warning);
+}
+
+.acp-plan li[data-plan-state="pending"] {
+  color: var(--color-text-muted);
+}
+
+.acp-plan li[data-plan-state="failed"] {
+  color: var(--color-danger);
+}
+
+.acp-plan__working {
+  animation: sage-working-pulse 1.4s ease-in-out infinite;
+}
+
+.acp-tool-rollup__items {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.acp-tool-rollup__items .acp-activity-card {
+  margin-left: var(--space-2);
 }
 
 .acp-usage {
@@ -269,7 +343,9 @@
     background: Canvas;
   }
 
-  .acp-activity-card > summary:focus-visible {
-    outline-color: Highlight;
+  .acp-activity-card > summary:focus-visible,
+  .acp-plan__summary:focus-visible {
+    outline: 1px solid CanvasText;
+    box-shadow: none;
   }
 }
