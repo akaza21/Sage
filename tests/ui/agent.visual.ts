@@ -907,7 +907,9 @@ test.describe("Wave 2 200% zoom state", () => {
     await expect(handoffTrigger).toHaveCount(1);
     await expect(handoffTrigger).toBeEnabled();
     await handoffTrigger.click();
-    await page.getByRole("button", { name: "Target Chat" }).click();
+    await page
+      .getByRole("button", { name: "Target Chat", exact: true })
+      .click();
     await expectOpenPickerContained(
       page,
       page.getByRole("combobox", { name: "Target Chat" }),

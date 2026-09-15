@@ -17,12 +17,12 @@ export async function assertAgentLandmarks(page: Page) {
   });
   await expect(
     projectSidebar.getByRole("button", {
-      name: "New chat",
+      name: "New task",
       exact: true,
     }),
   ).toBeVisible();
   await expect(
-    projectSidebar.getByRole("button", { name: "Search chats" }),
+    projectSidebar.getByRole("button", { name: "Search all chats" }),
   ).toBeVisible();
 }
 
