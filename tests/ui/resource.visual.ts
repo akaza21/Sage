@@ -1,5 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import {
+  fileResource,
+  visualSnapshotNewText,
+  visualSnapshotOldText,
+} from "./fixtures/visualDocumentFixtures";
+import { snapshotFileDiff } from "../../src/features/diff/snapshotDiff";
 import { RESOURCE_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { PREVIEW_PROJECTION_FIXTURE_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
@@ -501,12 +507,44 @@ test.describe("Wave 2 accessibility and responsive states", () => {
 
     const editorDiffPage = await context.newPage();
     await editorDiffPage.setViewportSize({ width: 1380, height: 880 });
-    await openScenario(editorDiffPage, "diff", "editor");
+    // The immutable snapshot fixture must open through the Agent FileChange
+    // card. Editor's document-language comparison is intentionally separate:
+    // it seeds the repository-style visual diff through the Editor's real
+    // canvas, rather than retaining an Agent-only snapshot after its owner
+    // unmounts on a mode switch.
+    await openScenario(editorDiffPage, "editor", "editor");
+    await editorDiffPage.evaluate(
+      async ({ resource, diff }) => {
+        const { useWorkbenchStore } = await import("/src/app/store.ts");
+        const { diffCacheKey: cacheKey } =
+          await import("/src/domain/diffIdentity.ts");
+        const snapshot = useWorkbenchStore.getState();
+        await snapshot.openDiff(resource);
+        useWorkbenchStore.setState({
+          diffs: {
+            ...useWorkbenchStore.getState().diffs,
+            [cacheKey(undefined, resource)]: { phase: "ready", value: diff },
+          },
+        });
+      },
+      {
+        resource: fileResource,
+        diff: snapshotFileDiff(
+          fileResource,
+          visualSnapshotOldText,
+          visualSnapshotNewText,
+        ),
+      },
+    );
+    await expect(
+      editorDiffPage.locator(".diff-surface .diff-editor"),
+    ).toBeVisible();
     const editorDiffAppearance = await readDiffAppearance(editorDiffPage);
 
     const agentDiffPage = await context.newPage();
     await agentDiffPage.setViewportSize({ width: 1380, height: 880 });
-    await openScenario(agentDiffPage, "diff", "agent");
+    await openAgentScenario(agentDiffPage, "diff");
+    await openAgentSnapshotDiff(agentDiffPage);
     const agentDiffAppearance = await readDiffAppearance(agentDiffPage);
 
     expect(agentDiffAppearance).toEqual(editorDiffAppearance);

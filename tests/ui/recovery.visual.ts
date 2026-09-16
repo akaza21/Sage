@@ -63,11 +63,13 @@ test.describe("Wave 2 accessibility and responsive states", () => {
   test("honors reduced motion", async ({ page }) => {
     await page.setViewportSize({ width: 1380, height: 880 });
     await page.emulateMedia({ reducedMotion: "reduce" });
-    const workbench = await openScenario(page, "waiting", "agent");
+    await openScenario(page, "waiting", "agent");
 
-    await expect(
-      page.getByRole("status", { name: "1 working turn" }),
-    ).toBeVisible();
-    await expect(workbench).toHaveScreenshot("agent-reduced-motion.png");
+    const working = page.locator(".project-chat__working");
+    await expect(working).toBeVisible();
+    // Playwright disables animations for visual snapshots, so inspect the
+    // actual animated rail marker. Its dedicated reduced-motion rule clears
+    // the animation name rather than relying on browser defaults.
+    await expect(working).toHaveCSS("animation-name", "none");
   });
 });

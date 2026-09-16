@@ -185,8 +185,8 @@ seconds.
 Exactly 15 candidate PNGs were inspected at original resolution, accepted, and
 copied into the WSL checkout: `agent-activity-family`, `agent-child-activity`,
 `agent-dual`, `agent-dual-medium`, `agent-forced-colors`, `agent-image`,
-`agent-keyboard-focus`, `agent-long`, `agent-reduced-motion`,
-`agent-resource-empty`, `agent-single`, `editor-control-states`, `error`,
+`agent-keyboard-focus`, `agent-long`, `agent-resource-empty`, `agent-single`,
+`editor-control-states`, `error`,
 `preview`, and `waiting`. Together they occupy 1,009,398 bytes.
 
 The primary intended Agent delta is removal of the legacy active Chat-row shape:
