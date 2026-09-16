@@ -229,12 +229,14 @@ impl HarnessCatalog {
                         "Short deterministic responses for the walking skeleton.".into(),
                     ),
                     is_default: Some(true),
+                    context_window: None,
                 },
                 ModelOption {
                     id: SIMULATOR_DEEP_MODEL_ID.into(),
                     name: "Simulator Deep".into(),
                     description: Some("A second option for testing model changes.".into()),
                     is_default: Some(false),
+                    context_window: None,
                 },
             ]);
         }
@@ -360,7 +362,28 @@ mod tests {
     #[test]
     fn model_options_are_scoped_to_the_selected_harness() {
         let catalog = HarnessCatalog::default();
-        assert_eq!(catalog.models(SIMULATOR_ID).unwrap().len(), 2);
+        let models = catalog.models(SIMULATOR_ID).unwrap();
+        assert_eq!(models.len(), 2);
+        assert!(models.iter().all(|model| model.context_window.is_none()));
+        let serialized = serde_json::to_value(&models).unwrap();
+        assert!(
+            serialized
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|model| model.get("contextWindow").is_none())
+        );
+        let known = ModelOption {
+            id: "model-known".into(),
+            name: "Known".into(),
+            description: None,
+            is_default: None,
+            context_window: Some(272_000),
+        };
+        assert_eq!(
+            serde_json::to_value(known).unwrap()["contextWindow"],
+            272_000
+        );
         assert!(catalog.models("codex").unwrap().is_empty());
         assert!(catalog.models("oh-my-pi").unwrap().is_empty());
     }

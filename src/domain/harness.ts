@@ -35,4 +35,6 @@ export interface ModelOption {
   name: string;
   description?: string;
   isDefault?: boolean;
+  /** Positive token capacity; absent when Sage has no exact-model fact. */
+  contextWindow?: number;
 }

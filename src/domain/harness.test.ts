@@ -1,5 +1,5 @@
 import { expect, expectTypeOf, it } from "vitest";
-import type { HarnessDefinition } from "./harness";
+import type { HarnessDefinition, ModelOption } from "./harness";
 
 it("keeps native executable paths out of the WebView harness DTO", () => {
   expectTypeOf<"executablePath">().not.toExtend<keyof HarnessDefinition>();
@@ -30,4 +30,20 @@ it("keeps native executable paths out of the WebView harness DTO", () => {
   ]);
   expect(harness.bindingId).toBeNull();
   expect(harness.installState).toBe("unavailable");
+});
+
+it("distinguishes a known model context window from an unknown one", () => {
+  expectTypeOf<ModelOption["contextWindow"]>().toEqualTypeOf<
+    number | undefined
+  >();
+  const known: ModelOption = {
+    id: "model-known",
+    name: "Known",
+    contextWindow: 272_000,
+  };
+  const unknown: ModelOption = { id: "model-unknown", name: "Unknown" };
+
+  expect(known.contextWindow).toBe(272_000);
+  expect("contextWindow" in unknown).toBe(false);
+  expect(unknown.contextWindow).toBeUndefined();
 });

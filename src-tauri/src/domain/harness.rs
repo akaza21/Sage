@@ -54,4 +54,6 @@ pub struct ModelOption {
     pub name: String,
     pub description: Option<String>,
     pub is_default: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u32>,
 }

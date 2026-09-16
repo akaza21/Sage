@@ -39,7 +39,7 @@ export const FROZEN_WORKBENCH_TRANSPORT_FIELDS = Object.freeze({
     "transport",
     "version",
   ],
-  ModelOption: ["description", "id", "isDefault", "name"],
+  ModelOption: ["contextWindow", "description", "id", "isDefault", "name"],
 });
 
 export function snakeToCamel(value) {
