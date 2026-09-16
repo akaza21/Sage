@@ -4,7 +4,7 @@
 //   node scripts/gate.mjs static   cheap static checks only (seconds)
 //   node scripts/gate.mjs fast     static + frontend tests + clippy (minutes)
 //   node scripts/gate.mjs rust     three-phase Rust test sequence only
-//   node scripts/gate.mjs full     fast + rust + build + bundle + budgets
+//   node scripts/gate.mjs full     fast + rust + build + bundle + budgets + visual
 //
 // Rust tests must run in three phases: tests that spawn real child processes
 // and assert bounded deadlines fail under CPU contention, so the parallel phase

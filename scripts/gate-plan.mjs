@@ -57,6 +57,7 @@ export const steps = {
   budgets: ["node", "scripts/budget-lanes.mjs", "--check"],
   build: ["npm", "run", "build"],
   "web-bundle": ["node", "scripts/verify-web-bundle.mjs"],
+  ui: ["npm", "run", "test:ui"],
 };
 
 export const plans = {
@@ -68,6 +69,9 @@ export const plans = {
     "typescript",
     "rustfmt",
   ],
+  // fast is the standing landing gate: it deliberately excludes the Rust test
+  // phases, budgets, build, web-bundle, and visual suite; full is the per-wave
+  // coverage gate.
   fast: [
     "policy",
     "policy-modules",
@@ -94,6 +98,7 @@ export const plans = {
     "budgets",
     "build",
     "web-bundle",
+    "ui",
   ],
 };
 
