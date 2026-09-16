@@ -7,18 +7,16 @@ import {
   useAgentRailViewPrefs,
 } from "../../../workbench/agentRailViewPrefs";
 import { ChatMarkdown } from "./ChatMarkdown";
-import { terminalItemLifecycles, terminalToolStates } from "./statusSemantics";
+import { terminalItemLifecycles } from "./statusSemantics";
+import { isActiveTool, isWorkingTool, workingToolStatus } from "./workingTool";
 
 type TurnActivityProjectionItem = Extract<
   AcpItem,
   { kind: "thoughtSummary" | "plan" | "usage" | "error" }
 >;
-type WorkingToolItem = Extract<
-  AcpItem,
-  { kind: "toolCall" | "toolUpdateResult" }
->;
 
 const MAX_THOUGHT_WORKING_ROWS = 64;
+const MAX_PLAN_WORKING_ROWS = 3;
 const planStateLabels = {
   pending: "Pending",
   inProgress: "In progress",
@@ -51,25 +49,6 @@ function thoughtDurationLabel(createdAt: number, endAt: number): string | null {
   return seconds > 0 ? `Thought ${seconds}s` : "Thought briefly";
 }
 
-function isWorkingTool(item: AcpItem): item is WorkingToolItem {
-  return (
-    (item.kind === "toolCall" || item.kind === "toolUpdateResult") &&
-    !terminalToolStates.has(item.toolState)
-  );
-}
-
-function workingToolStatus(item: WorkingToolItem) {
-  const presentation = item.payload.presentation;
-  if (presentation.kind === "search") {
-    return `Searching… ${presentation.querySummary}`;
-  }
-  const detail =
-    item.kind === "toolCall"
-      ? item.payload.inputSummary
-      : item.payload.outputSummary;
-  return detail || "Working…";
-}
-
 function ThoughtActivity({
   item,
   workingItems,
@@ -81,6 +60,7 @@ function ThoughtActivity({
 }) {
   useAgentRailViewPrefs();
   const liveNowMs = nowMs ?? agentRailClockMs();
+  const active = workingItems.filter(isActiveTool);
   const working = workingItems
     .filter(isWorkingTool)
     .slice(0, MAX_THOUGHT_WORKING_ROWS);
@@ -91,12 +71,12 @@ function ThoughtActivity({
     <details
       className="acp-activity-card acp-activity-card--thought acp-details acp-thought"
       data-activity-kind="thought"
-      data-activity-state={working.length > 0 ? "inProgress" : "completed"}
+      data-activity-state={active.length > 0 ? "inProgress" : "completed"}
     >
       <summary>
         <span>{label ?? "Thought"}</span>
         <span className="acp-state">
-          {working.length > 0 ? "In progress" : "Details"}
+          {active.length > 0 ? "In progress" : "Details"}
         </span>
       </summary>
       <ChatMarkdown
@@ -120,7 +100,13 @@ function ThoughtActivity({
   );
 }
 
-function PlanActivity({ item }: { item: Extract<AcpItem, { kind: "plan" }> }) {
+function PlanActivity({
+  item,
+  workingItems,
+}: {
+  item: Extract<AcpItem, { kind: "plan" }>;
+  workingItems: readonly AcpItem[];
+}) {
   const [expanded, setExpanded] = useState(true);
   const complete = item.payload.entries.filter(
     (entry) => entry.state === "completed",
@@ -132,6 +118,12 @@ function PlanActivity({ item }: { item: Extract<AcpItem, { kind: "plan" }> }) {
     : complete === item.payload.entries.length
       ? "completed"
       : "inProgress";
+  const inProgressIndex = item.payload.entries.findIndex(
+    (entry) => entry.state === "inProgress",
+  );
+  const working = workingItems.filter(isWorkingTool);
+  const visibleWorking = working.slice(0, MAX_PLAN_WORKING_ROWS);
+  const omittedWorkingCount = working.length - visibleWorking.length;
   return (
     <section
       className="acp-activity-card acp-activity-card--plan acp-plan"
@@ -161,6 +153,28 @@ function PlanActivity({ item }: { item: Extract<AcpItem, { kind: "plan" }> }) {
               <span className="acp-plan__state">
                 {planStateLabels[entry.state]}
               </span>
+              {index === inProgressIndex && visibleWorking.length > 0 ? (
+                <ul
+                  className="acp-plan__activity"
+                  aria-label="Current activity"
+                >
+                  {visibleWorking.map((workingItem) => (
+                    <li key={workingItem.id}>
+                      <span className="acp-plan__pulse" aria-hidden="true" />
+                      <span>
+                        <span>{workingItem.payload.presentation.label}</span>
+                        <span>{workingToolStatus(workingItem)}</span>
+                      </span>
+                    </li>
+                  ))}
+                  {omittedWorkingCount > 0 ? (
+                    <li className="acp-plan__working-more">
+                      {omittedWorkingCount} more activity item
+                      {omittedWorkingCount === 1 ? "" : "s"} running
+                    </li>
+                  ) : null}
+                </ul>
+              ) : null}
             </li>
           ))}
         </ol>
@@ -235,7 +249,7 @@ export function TurnActivityItem({
         />
       );
     case "plan":
-      return <PlanActivity item={item} />;
+      return <PlanActivity item={item} workingItems={workingItems} />;
     case "usage":
       return <UsageActivity item={item} />;
     case "error":

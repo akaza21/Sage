@@ -8,11 +8,12 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { AcpItem } from "../../../domain/acp";
+import type { AcpChatPage, AcpItem } from "../../../domain/acp";
 import {
   resetAgentRailViewPrefs,
   syncAgentRailClock,
 } from "../../../workbench/agentRailViewPrefs";
+import { AcpChatPresentation } from "./AcpChatPresentation";
 import { TurnActivityItem } from "./TurnActivityItem";
 
 afterEach(() => {
@@ -160,6 +161,185 @@ describe("TurnActivityItem", () => {
     fireEvent.click(disclosure);
     expect(disclosure).toHaveAttribute("aria-expanded", "false");
     expect(within(region).queryByRole("list")).toBeNull();
+  });
+
+  it("keeps Thought active while a tool waits for approval", () => {
+    const thought = item("thoughtSummary", { summary: "Waiting on approval." });
+    const waiting = {
+      ...item("error", {
+        code: "unused",
+        message: "unused",
+        recoverable: false,
+      }),
+      id: "tool-waiting",
+      kind: "toolCall" as const,
+      lifecycle: "streaming" as const,
+      terminalAt: null,
+      toolState: "waitingForApproval" as const,
+      payload: {
+        presentation: {
+          kind: "generic" as const,
+          label: "Run tool",
+          summary: null,
+        },
+        inputSummary: null,
+      },
+    } as unknown as Extract<AcpItem, { kind: "toolCall" }>;
+    const { container } = render(
+      <TurnActivityItem item={thought} workingItems={[waiting]} />,
+    );
+    const details = container.querySelector("details");
+    expect(details).toHaveAttribute("data-activity-state", "inProgress");
+    expect(within(details!).getByText("In progress")).toBeVisible();
+    expect(within(details!).queryByLabelText("Working tools")).toBeNull();
+  });
+
+  it("shows bounded current work only under the in-progress plan entry", () => {
+    const plan = item("plan", {
+      entries: [
+        { label: "Inspect", state: "completed" },
+        { label: "Implement", state: "inProgress" },
+      ],
+    });
+    const workingItems = Array.from({ length: 6 }, (_, index) => ({
+      ...item("error", {
+        code: `unused-${index}`,
+        message: "unused",
+        recoverable: false,
+      }),
+      id: `tool-working-${index}`,
+      kind: "toolCall" as const,
+      lifecycle: "streaming" as const,
+      terminalAt: null,
+      toolState:
+        index < 4
+          ? ("inProgress" as const)
+          : index === 4
+            ? ("pending" as const)
+            : ("waitingForApproval" as const),
+      payload: {
+        presentation: {
+          kind: "generic" as const,
+          label: `Run tool ${index + 1}`,
+          summary: null,
+        },
+        inputSummary: index === 0 ? null : `Doing work ${index + 1}`,
+      },
+    })) as unknown as Extract<AcpItem, { kind: "toolCall" }>[];
+
+    const { container } = render(
+      <TurnActivityItem item={plan} workingItems={workingItems} />,
+    );
+    const region = screen.getByRole("region", { name: "Agent plan" });
+    expect(within(region).getByText("Run tool 1")).toBeVisible();
+    expect(within(region).getAllByText("In progress").length).toBeGreaterThan(
+      1,
+    );
+    expect(within(region).getByText("Run tool 3")).toBeVisible();
+    expect(within(region).queryByText("Run tool 4")).toBeNull();
+    expect(within(region).queryByText("Run tool 5")).toBeNull();
+    expect(within(region).queryByText("Run tool 6")).toBeNull();
+    expect(
+      within(region).getByText("1 more activity item running"),
+    ).toBeVisible();
+    const completed = within(region).getByText("Inspect").closest("li");
+    expect(completed).not.toContainElement(
+      within(region).getByText("Run tool 1"),
+    );
+    expect(
+      container.querySelector('[aria-live]:not([aria-live="off"])'),
+    ).toBeNull();
+  });
+
+  it("renders no plan detail when no tool is running and preserves collapse state", () => {
+    const plan = item("plan", {
+      entries: [{ label: "Implement", state: "inProgress" }],
+    });
+    const page = {
+      projectId: "project-1",
+      chatId: "chat-1",
+      title: "Plan detail",
+      projectionRevision: "1",
+      currentSessionId: "session-1",
+      sessions: [],
+      turns: [
+        {
+          id: "turn-1",
+          sessionId: "session-1",
+          runtimeEpoch: "1",
+          ordinal: 1,
+          state: "running",
+          revision: "1",
+          createdAt: 1,
+          updatedAt: 2,
+          terminalAt: null,
+          items: [plan],
+          activities: [],
+        },
+      ],
+      nextCursor: null,
+    } as unknown as AcpChatPage;
+    const { rerender } = render(
+      <AcpChatPresentation
+        page={page}
+        hasEarlier={false}
+        loadingEarlier={false}
+        historyError={null}
+        projectRoots={[]}
+        retentionIncomplete={false}
+      />,
+    );
+    const region = screen.getByRole("region", { name: "Agent plan" });
+    expect(within(region).queryByLabelText("Current activity")).toBeNull();
+
+    const disclosure = within(region).getByRole("button", { name: /plan/i });
+    fireEvent.click(disclosure);
+    const working = {
+      ...item("error", {
+        code: "unused",
+        message: "unused",
+        recoverable: false,
+      }),
+      id: "tool-working",
+      kind: "toolCall" as const,
+      lifecycle: "streaming" as const,
+      terminalAt: null,
+      toolState: "inProgress" as const,
+      payload: {
+        presentation: {
+          kind: "generic" as const,
+          label: "Run tool",
+          summary: null,
+        },
+        inputSummary: "Checking current state",
+      },
+    } as unknown as Extract<AcpItem, { kind: "toolCall" }>;
+    const nextPage = {
+      ...page,
+      projectionRevision: "2" as never,
+      turns: [
+        {
+          ...page.turns[0],
+          revision: "2" as never,
+          updatedAt: 3,
+          items: [plan, working],
+        },
+      ],
+    } as AcpChatPage;
+    rerender(
+      <AcpChatPresentation
+        page={nextPage}
+        hasEarlier={false}
+        loadingEarlier={false}
+        historyError={null}
+        projectRoots={[]}
+        retentionIncomplete={false}
+      />,
+    );
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(within(region).queryByLabelText("Current activity")).toBeNull();
+    fireEvent.click(disclosure);
+    expect(within(region).getByText("Run tool")).toBeVisible();
   });
 
   it("renders reported and unknown Usage as compact metadata", () => {

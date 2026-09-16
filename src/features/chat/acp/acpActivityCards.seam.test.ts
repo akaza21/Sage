@@ -18,6 +18,10 @@ describe("ACP activity-card stylesheet seam", () => {
     expect(projection).toMatch(/import "\.\/acp-activity-cards\.css";/);
     expect(cards).toMatch(/^\.acp-activity-card\s*\{/m);
     expect(cards).toMatch(/data-activity-state="inProgress"/);
+    expect(cards).toMatch(
+      /\.acp-plan__working\s*\{[^}]*animation:\s*sage-working-pulse/s,
+    );
+    expect(cards).toMatch(/\.acp-plan__activity\s*\{/);
     expect(cards).toMatch(/@media \(prefers-reduced-motion: reduce\)/);
     expect(cards).toMatch(/@media \(forced-colors: active\)/);
     expect(legacy).not.toMatch(/^\.acp-tool-card\b/m);

@@ -103,7 +103,7 @@ const ItemView = memo(
       case "thoughtSummary":
         return <TurnActivityItem item={item} workingItems={workingItems} />;
       case "plan":
-        return <TurnActivityItem item={item} />;
+        return <TurnActivityItem item={item} workingItems={workingItems} />;
       case "usage":
       case "error":
         return <TurnActivityItem item={item} />;
@@ -140,7 +140,9 @@ const ItemView = memo(
     left.item.revision === right.item.revision &&
     left.linkedToolResult?.id === right.linkedToolResult?.id &&
     left.linkedToolResult?.revision === right.linkedToolResult?.revision &&
-    left.workingItems === right.workingItems &&
+    (left.item.kind !== "thoughtSummary" && left.item.kind !== "plan"
+      ? true
+      : left.workingItems === right.workingItems) &&
     left.interactive === right.interactive &&
     left.onOpenResource === right.onOpenResource,
 );
@@ -281,6 +283,7 @@ const Turn = memo(
                 key={item.id}
                 item={item}
                 linkedToolResult={linkedToolResult}
+                workingItems={workingItems}
                 interactive={interactive}
                 onOpenResource={
                   interactive && onOpenResource ? openForTurn : undefined
