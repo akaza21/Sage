@@ -24,27 +24,66 @@ function countLabel(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+function distinctResourceCount(
+  items: readonly ToolProjectionItem[],
+): number | null {
+  const pathsByRoot = new Map<string, Set<string>>();
+  for (const item of items) {
+    const presentation = item.payload.presentation;
+    if (
+      (presentation.kind !== "file" && presentation.kind !== "diff") ||
+      presentation.resources.length === 0 ||
+      presentation.resources.some((location) => location.kind === "unavailable")
+    ) {
+      return null;
+    }
+    for (const location of presentation.resources) {
+      if (location.kind !== "resource") continue;
+      const paths =
+        pathsByRoot.get(location.resource.rootId) ?? new Set<string>();
+      paths.add(location.resource.relativePath);
+      pathsByRoot.set(location.resource.rootId, paths);
+    }
+  }
+  return [...pathsByRoot.values()].reduce(
+    (count, paths) => count + paths.size,
+    0,
+  );
+}
+
+function resourceRollupLabel(
+  activity: "File" | "Diff",
+  items: readonly ToolProjectionItem[],
+): string {
+  const resourceCount = distinctResourceCount(items);
+  return `${activity} activity · ${
+    resourceCount === null
+      ? countLabel(items.length, "item")
+      : countLabel(resourceCount, "file")
+  }`;
+}
+
 export function toolRollupLabel(
   kind: ToolPresentation["kind"],
-  count: number,
+  items: readonly ToolProjectionItem[],
 ): string {
   switch (kind) {
     case "command":
-      return `Ran ${countLabel(count, "command")}`;
+      return `Ran ${countLabel(items.length, "command")}`;
     case "file":
-      return `File activity · ${countLabel(count, "item")}`;
+      return resourceRollupLabel("File", items);
     case "diff":
-      return `Diff activity · ${countLabel(count, "item")}`;
+      return resourceRollupLabel("Diff", items);
     case "search":
-      return `Search activity · ${countLabel(count, "item")}`;
+      return `Search activity · ${countLabel(items.length, "item")}`;
     case "web":
-      return `Web activity · ${countLabel(count, "item")}`;
+      return `Web activity · ${countLabel(items.length, "item")}`;
     case "mcp":
-      return `MCP activity · ${countLabel(count, "item")}`;
+      return `MCP activity · ${countLabel(items.length, "item")}`;
     case "subagent":
-      return `Subagent activity · ${countLabel(count, "item")}`;
+      return `Subagent activity · ${countLabel(items.length, "item")}`;
     case "generic":
-      return `Tool activity · ${countLabel(count, "item")}`;
+      return `Tool activity · ${countLabel(items.length, "item")}`;
   }
 }
 

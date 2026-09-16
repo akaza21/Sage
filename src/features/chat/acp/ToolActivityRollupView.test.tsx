@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { AcpItem } from "../../../domain/acp";
+import type { AcpItem, SafeResourceLocation } from "../../../domain/acp";
 import { ToolActivityRollup } from "./ToolActivityRollupView";
 import {
   groupPrimaryActivities,
@@ -16,10 +16,11 @@ type ToolItem = Extract<AcpItem, { kind: "toolCall" }>;
 function tool(
   id: string,
   kind: ToolItem["payload"]["presentation"]["kind"],
+  resources: readonly SafeResourceLocation[] = [],
 ): ToolItem {
   const presentation =
     kind === "file" || kind === "diff"
-      ? { kind, label: `${kind} activity`, resources: [] }
+      ? { kind, label: `${kind} activity`, resources }
       : kind === "command"
         ? { kind, label: "Command activity", summary: null, resources: [] }
         : kind === "search"
@@ -60,6 +61,27 @@ function tool(
   } as ToolItem;
 }
 
+const mainFile: SafeResourceLocation = {
+  kind: "resource",
+  resource: { rootId: "root-a", relativePath: "src/main.ts" },
+};
+
+const otherFile: SafeResourceLocation = {
+  kind: "resource",
+  resource: { rootId: "root-a", relativePath: "src/other.ts" },
+};
+
+const samePathOtherRoot: SafeResourceLocation = {
+  kind: "resource",
+  resource: { rootId: "root-b", relativePath: "src/main.ts" },
+};
+
+const unavailableFile: SafeResourceLocation = {
+  kind: "unavailable",
+  reason: "foreign",
+  label: "Outside the project",
+};
+
 describe("ToolActivityRollup", () => {
   it("groups only consecutive presentation kinds and bounds a group", () => {
     const items = [
@@ -79,10 +101,49 @@ describe("ToolActivityRollup", () => {
     expect(grouped[2]).toMatchObject({ kind: "item", item: { id: "file-3" } });
   });
 
-  it("uses kind-faithful counts without inferring file or diff intent", () => {
-    expect(toolRollupLabel("command", 2)).toBe("Ran 2 commands");
-    expect(toolRollupLabel("file", 2)).toBe("File activity · 2 items");
-    expect(toolRollupLabel("diff", 2)).toBe("Diff activity · 2 items");
+  it("counts distinct resource identities for complete file and diff groups", () => {
+    const repeatedFile = [
+      tool("file-1", "file", [mainFile]),
+      tool("file-2", "file", [mainFile]),
+      tool("file-3", "file", [mainFile]),
+    ];
+
+    expect(toolRollupLabel("file", repeatedFile)).toBe(
+      "File activity · 1 file",
+    );
+    expect(
+      toolRollupLabel("diff", [
+        tool("diff-1", "diff", [mainFile]),
+        tool("diff-2", "diff", [samePathOtherRoot]),
+      ]),
+    ).toBe("Diff activity · 2 files");
+  });
+
+  it("keeps item counts when a group has no locations", () => {
+    const items = [tool("file-1", "file"), tool("file-2", "file")];
+
+    expect(toolRollupLabel("file", items)).toBe("File activity · 2 items");
+  });
+
+  it("keeps item counts for mixed location coverage", () => {
+    const items = [tool("file-1", "file", [mainFile]), tool("file-2", "file")];
+
+    expect(toolRollupLabel("file", items)).toBe("File activity · 2 items");
+  });
+
+  it("keeps item counts when a location is unavailable", () => {
+    const items = [
+      tool("file-1", "file", [mainFile]),
+      tool("file-2", "file", [unavailableFile]),
+    ];
+
+    expect(toolRollupLabel("file", items)).toBe("File activity · 2 items");
+  });
+
+  it("uses call counts for presentation kinds without resources", () => {
+    expect(toolRollupLabel("command", [tool("command", "command")])).toBe(
+      "Ran 1 command",
+    );
   });
 
   it("reflects failed, declined, cancelled, or active members in the rollup state", () => {
@@ -117,8 +178,8 @@ describe("ToolActivityRollup", () => {
   });
 
   it("expands into the existing ToolItem cards", () => {
-    const first = tool("file-1", "file");
-    const second = tool("file-2", "file");
+    const first = tool("file-1", "file", [mainFile]);
+    const second = tool("file-2", "file", [otherFile]);
     render(
       <ToolActivityRollup
         rollup={{ kind: "file", items: [first, second] }}
@@ -131,7 +192,7 @@ describe("ToolActivityRollup", () => {
     expect(disclosure).not.toBeNull();
     expect(disclosure).not.toHaveAttribute("open");
     expect(screen.queryByRole("group", { name: "file activity" })).toBeNull();
-    fireEvent.click(screen.getByText("File activity · 2 items"));
+    fireEvent.click(screen.getByText("File activity · 2 files"));
     expect(
       screen.getAllByRole("group", { name: "file activity" }),
     ).toHaveLength(2);
