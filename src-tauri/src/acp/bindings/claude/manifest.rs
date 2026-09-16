@@ -1,9 +1,15 @@
 use std::path::{Component, Path, PathBuf};
 
-const SOURCE_COMMIT: &str = "e56f344691a56c07e5dae2ebeb6ad2a6416f8c9d";
-const ADAPTER_VERSION: &str = "0.64.0";
-const ACP_SDK_VERSION: &str = "1.3.0";
-const CLAUDE_SDK_VERSION: &str = "0.3.220";
+const SOURCE_COMMIT: &str = "c2e4815029ef3962787ecaefe208b0b6f8b81302";
+const ADAPTER_VERSION: &str = "0.76.0";
+const ACP_SDK_VERSION: &str = "1.4.0";
+const CLAUDE_SDK_VERSION: &str = "0.3.257";
+const ZOD_VERSION: &str = "4.6.4";
+const ENTRYPOINT: &str = "dist/index.js";
+const NODE_ENGINE: &str = ">=22";
+const NODE_VERSION: &str = "22.18.0";
+const ARTIFACT_SHA256: &str = "9d73d1f0f121fb96cc8badb28c22d5bff02d8582eb2e40360a81c189e1b9422a";
+const RUNTIME_SHA256: &str = "c22d1c59a1f767a1ed0178445a027f2257d318c55430fc819d48f269586822b7";
 const LICENSE: &str = "Apache-2.0";
 const MAX_FIXED_ARGUMENTS: usize = 16;
 const MAX_ARGUMENT_BYTES: usize = 4_096;
@@ -12,14 +18,20 @@ const MAX_ENVIRONMENT_KEYS: usize = 32;
 /// Candidate metadata may be inspected and tested, but never authorizes launch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CandidateManifest {
-    pub source_commit: String,
+    pub source_commit: Option<String>,
     pub adapter_version: String,
     pub acp_sdk_version: String,
     pub claude_sdk_version: String,
+    pub zod_version: String,
+    pub entrypoint: String,
+    pub node_engine: String,
+    pub node_version: String,
     pub license: String,
     pub artifact_path: PathBuf,
+    /// SHA-256 of the exact executable adapter entrypoint at `artifact_path`.
     pub artifact_sha256: String,
     pub runtime_path: PathBuf,
+    /// SHA-256 of the exact Node executable at `runtime_path`.
     pub runtime_sha256: String,
     pub isolated_state_dir: PathBuf,
     pub fixed_arguments: Vec<String>,
@@ -48,19 +60,26 @@ pub(crate) fn validate_research_candidate(
     candidate: CandidateManifest,
     forbidden_state_dirs: &[PathBuf],
 ) -> Result<ResearchCandidate, ManifestError> {
-    if candidate.source_commit != SOURCE_COMMIT
-        || candidate.adapter_version != ADAPTER_VERSION
-        || candidate.acp_sdk_version != ACP_SDK_VERSION
-        || candidate.claude_sdk_version != CLAUDE_SDK_VERSION
-        || candidate.license != LICENSE
-    {
-        return Err(ManifestError::IdentityMismatch);
-    }
     validate_absolute_file_path(&candidate.artifact_path)?;
     validate_absolute_file_path(&candidate.runtime_path)?;
     validate_absolute_directory_path(&candidate.isolated_state_dir)?;
     validate_sha256(&candidate.artifact_sha256)?;
     validate_sha256(&candidate.runtime_sha256)?;
+
+    if candidate.source_commit.as_deref() != Some(SOURCE_COMMIT)
+        || candidate.adapter_version != ADAPTER_VERSION
+        || candidate.acp_sdk_version != ACP_SDK_VERSION
+        || candidate.claude_sdk_version != CLAUDE_SDK_VERSION
+        || candidate.zod_version != ZOD_VERSION
+        || candidate.entrypoint != ENTRYPOINT
+        || candidate.node_engine != NODE_ENGINE
+        || candidate.node_version != NODE_VERSION
+        || candidate.license != LICENSE
+        || candidate.artifact_sha256 != ARTIFACT_SHA256
+        || candidate.runtime_sha256 != RUNTIME_SHA256
+    {
+        return Err(ManifestError::IdentityMismatch);
+    }
 
     if candidate.fixed_arguments.len() > MAX_FIXED_ARGUMENTS
         || candidate.fixed_arguments.iter().any(|argument| {

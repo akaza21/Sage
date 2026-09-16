@@ -1067,15 +1067,19 @@ fn foreign_sessions_or_orphan_tools_fail_without_projection() {
 #[test]
 fn research_manifest_is_exact_bounded_single_root_and_never_launchable() {
     let candidate = CandidateManifest {
-        source_commit: "e56f344691a56c07e5dae2ebeb6ad2a6416f8c9d".into(),
-        adapter_version: "0.64.0".into(),
-        acp_sdk_version: "1.3.0".into(),
-        claude_sdk_version: "0.3.220".into(),
+        source_commit: Some("c2e4815029ef3962787ecaefe208b0b6f8b81302".into()),
+        adapter_version: "0.76.0".into(),
+        acp_sdk_version: "1.4.0".into(),
+        claude_sdk_version: "0.3.257".into(),
+        zod_version: "4.6.4".into(),
+        entrypoint: "dist/index.js".into(),
+        node_engine: ">=22".into(),
+        node_version: "22.18.0".into(),
         license: "Apache-2.0".into(),
         artifact_path: absolute("claude-adapter.js"),
-        artifact_sha256: "a".repeat(64),
+        artifact_sha256: "9d73d1f0f121fb96cc8badb28c22d5bff02d8582eb2e40360a81c189e1b9422a".into(),
         runtime_path: absolute("node.exe"),
-        runtime_sha256: "b".repeat(64),
+        runtime_sha256: "c22d1c59a1f767a1ed0178445a027f2257d318c55430fc819d48f269586822b7".into(),
         isolated_state_dir: absolute("isolated-state"),
         fixed_arguments: vec!["claude-adapter.js".into()],
         environment_keys: vec!["CLAUDE_CONFIG_DIR".into()],
@@ -1085,6 +1089,54 @@ fn research_manifest_is_exact_bounded_single_root_and_never_launchable() {
     assert!(matches!(
         validated.require_launch_admission(),
         Err(ManifestError::ArtifactGraphNotAdmitted)
+    ));
+    let mut identity_mismatch = candidate.clone();
+    identity_mismatch.zod_version = "4.6.3".into();
+    assert!(matches!(
+        validate_research_candidate(identity_mismatch, &[]),
+        Err(ManifestError::IdentityMismatch)
+    ));
+    let mut missing_source_commit = candidate.clone();
+    missing_source_commit.source_commit = None;
+    assert!(matches!(
+        validate_research_candidate(missing_source_commit, &[]),
+        Err(ManifestError::IdentityMismatch)
+    ));
+    let mut entrypoint_mismatch = candidate.clone();
+    entrypoint_mismatch.entrypoint = "dist/lib.js".into();
+    assert!(matches!(
+        validate_research_candidate(entrypoint_mismatch, &[]),
+        Err(ManifestError::IdentityMismatch)
+    ));
+    let mut engine_mismatch = candidate.clone();
+    engine_mismatch.node_engine = ">=22.19.0".into();
+    assert!(matches!(
+        validate_research_candidate(engine_mismatch, &[]),
+        Err(ManifestError::IdentityMismatch)
+    ));
+    let mut runtime_mismatch = candidate.clone();
+    runtime_mismatch.node_version = "22.19.0".into();
+    assert!(matches!(
+        validate_research_candidate(runtime_mismatch, &[]),
+        Err(ManifestError::IdentityMismatch)
+    ));
+    let mut malformed_digest = candidate.clone();
+    malformed_digest.artifact_sha256 = "z".repeat(64);
+    assert!(matches!(
+        validate_research_candidate(malformed_digest, &[]),
+        Err(ManifestError::Hash)
+    ));
+    let mut artifact_mismatch = candidate.clone();
+    artifact_mismatch.artifact_sha256 = "0".repeat(64);
+    assert!(matches!(
+        validate_research_candidate(artifact_mismatch, &[]),
+        Err(ManifestError::IdentityMismatch)
+    ));
+    let mut runtime_digest_mismatch = candidate.clone();
+    runtime_digest_mismatch.runtime_sha256 = "0".repeat(64);
+    assert!(matches!(
+        validate_research_candidate(runtime_digest_mismatch, &[]),
+        Err(ManifestError::IdentityMismatch)
     ));
     let mut multi_root = candidate.clone();
     multi_root.project_root_count = 2;
