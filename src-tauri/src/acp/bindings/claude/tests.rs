@@ -723,36 +723,48 @@ fn tool_and_diff_normalization_excludes_raw_commands_secrets_and_paths() {
     let start = translator
         .translate_notification(&encoded(&frames[0]), &FixtureResources)
         .unwrap();
-    assert!(matches!(
-        &start[0],
+    match &start[0] {
         AdapterEvent::Item {
             lifecycle: ItemLifecycle::Started,
             tool_state: Some(ToolState::Pending),
-            payload: NormalizedPayload::ToolCall {
-                category: ToolCategory::File,
-                input_summary: None,
-                ..
-            },
+            payload:
+                NormalizedPayload::ToolCall {
+                    category: ToolCategory::File,
+                    input_summary: None,
+                    locations,
+                    ..
+                },
             ..
-        }
-    ));
+        } => assert!(matches!(
+            locations.as_slice(),
+            [crate::acp::intent::SafeResourceLocation::Resource { resource }]
+                if resource.relative_path.as_str() == "src/lib.rs"
+        )),
+        other => panic!("unexpected event: {other:?}"),
+    }
 
     let completed = translator
         .translate_notification(&encoded(&frames[1]), &FixtureResources)
         .unwrap();
     assert_eq!(completed.len(), 3);
-    assert!(matches!(
-        &completed[0],
+    match &completed[0] {
         AdapterEvent::Item {
             lifecycle: ItemLifecycle::Completed,
             tool_state: Some(ToolState::Completed),
-            payload: NormalizedPayload::ToolUpdateResult {
-                output_summary: None,
-                ..
-            },
+            payload:
+                NormalizedPayload::ToolUpdateResult {
+                    output_summary: None,
+                    locations,
+                    ..
+                },
             ..
-        }
-    ));
+        } => assert!(matches!(
+            locations.as_slice(),
+            [crate::acp::intent::SafeResourceLocation::Resource { resource }]
+                if resource.relative_path.as_str() == "src/lib.rs"
+        )),
+        other => panic!("unexpected event: {other:?}"),
+    }
     match &completed[1] {
         AdapterEvent::Item {
             payload:
@@ -909,6 +921,38 @@ fn command_tool_initial_and_sparse_updates_retain_only_typed_output_and_location
             },
             ..
         }] if locations.as_slice().is_empty()
+    ));
+}
+
+#[test]
+fn file_tool_locations_reject_over_cap_and_malformed_entries() {
+    fn update(locations: Value) -> Value {
+        json!({
+            "method": "session/update", "params": {"sessionId": "claude-session-1", "update": {
+                "sessionUpdate": "tool_call", "toolCallId": "file-locations", "kind": "edit",
+                "status": "pending", "locations": locations
+            }}
+        })
+    }
+
+    let over_cap = Value::Array(
+        (0..=crate::acp::intent::COMMAND_RESOURCE_LIMIT)
+            .map(|_| json!({"path": r"C:\fixture\root\src\lib.rs"}))
+            .collect(),
+    );
+    let mut translator = ClaudeTranslator::new("claude-session-1").unwrap();
+    assert!(matches!(
+        translator.translate_notification(&encoded(&update(over_cap)), &FixtureResources),
+        Err(TranslationError::ToolLimit)
+    ));
+
+    let mut translator = ClaudeTranslator::new("claude-session-1").unwrap();
+    assert!(matches!(
+        translator.translate_notification(
+            &encoded(&update(json!([{"url": "https://example.com"}]))),
+            &FixtureResources,
+        ),
+        Err(TranslationError::MalformedFrame)
     ));
 }
 

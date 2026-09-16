@@ -511,6 +511,30 @@ fn chat_page_projects_legacy_and_current_command_tool_rows_and_rejects_foreign_t
         "toolUpdateResult",
         r#"{"kind":"toolUpdateResult","payload":{"category":"command","label":"Command","outputSummary":"safe","locations":[{"kind":"resource","resource":{"rootId":"root-one","relativePath":"src/lib.rs"}},{"kind":"unavailable","reason":"missing","label":"Path does not exist"}]}}"#,
     );
+    insert(
+        &connection,
+        &session,
+        "file-call",
+        3,
+        "toolCall",
+        r#"{"kind":"toolCall","payload":{"category":"file","label":"Read file","inputSummary":null,"locations":[{"kind":"resource","resource":{"rootId":"root-one","relativePath":"src/lib.rs"}},{"kind":"unavailable","reason":"missing","label":"Path does not exist"}]}}"#,
+    );
+    insert(
+        &connection,
+        &session,
+        "diff-result",
+        4,
+        "toolUpdateResult",
+        r#"{"kind":"toolUpdateResult","payload":{"category":"diff","label":"Apply diff","outputSummary":null,"locations":[{"kind":"resource","resource":{"rootId":"root-one","relativePath":"src/main.rs"}}]}}"#,
+    );
+    insert(
+        &connection,
+        &session,
+        "empty-file-call",
+        5,
+        "toolCall",
+        r#"{"kind":"toolCall","payload":{"category":"file","label":"Read file","inputSummary":null}}"#,
+    );
     let page = load_chat_page(
         &connection,
         SageProjectId::parse("project-one").unwrap(),
@@ -532,6 +556,32 @@ fn chat_page_projects_legacy_and_current_command_tool_rows_and_rejects_foreign_t
             ..
         }
     ));
+    let items = page.turns.as_slice()[0].items.as_slice();
+    assert!(matches!(
+        &items[3].content,
+        crate::acp::projection::ItemContent::ToolCall {
+            presentation: crate::acp::projection::ToolPresentation::File { resources, .. },
+            ..
+        } if resources.as_slice().len() == 2
+    ));
+    assert!(matches!(
+        &items[4].content,
+        crate::acp::projection::ItemContent::ToolUpdateResult {
+            presentation: crate::acp::projection::ToolPresentation::Diff { resources, .. },
+            ..
+        } if matches!(
+            resources.as_slice(),
+            [crate::acp::intent::SafeResourceLocation::Resource { resource }]
+                if resource.relative_path.as_str() == "src/main.rs"
+        )
+    ));
+    assert!(matches!(
+        &items[5].content,
+        crate::acp::projection::ItemContent::ToolCall {
+            presentation: crate::acp::projection::ToolPresentation::File { resources, .. },
+            ..
+        } if resources.as_slice().is_empty()
+    ));
 
     let mut foreign = setup();
     let session = seed(&mut foreign, "foreign-command");
@@ -545,6 +595,20 @@ fn chat_page_projects_legacy_and_current_command_tool_rows_and_rejects_foreign_t
             None
         ),
         Err(StoreError::Corrupt("resource root membership"))
+    ));
+
+    let mut unsafe_label = setup();
+    let session = seed(&mut unsafe_label, "unsafe-unavailable-label");
+    let body = r#"{"kind":"toolCall","payload":{"category":"file","label":"File","inputSummary":null,"locations":[{"kind":"unavailable","reason":"foreign","label":"C:\\private\\secret.txt"}]}}"#;
+    insert(&unsafe_label, &session, "unsafe-label", 0, "toolCall", body);
+    assert!(matches!(
+        load_chat_page(
+            &unsafe_label,
+            SageProjectId::parse("project-one").unwrap(),
+            SageChatId::parse("chat-one").unwrap(),
+            None
+        ),
+        Err(StoreError::Corrupt("unavailable resource label"))
     ));
 }
 

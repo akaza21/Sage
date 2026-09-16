@@ -54,11 +54,11 @@ pub enum ToolPresentation {
     },
     File {
         label: SafeText<512>,
-        resources: BoundedVec<SafeResourceLocation, 256>,
+        resources: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
     },
     Diff {
         label: SafeText<512>,
-        resources: BoundedVec<SafeResourceLocation, 256>,
+        resources: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
     },
     Command {
         label: SafeText<512>,

@@ -4,15 +4,17 @@ use crate::acp::{
         SageAgentSessionId, SageChatId, SageItemId, SageProjectId, SageRootId, SageServerRequestId,
         SageTurnId,
     },
-    intent::{NormalizedPayload, SafeResourceLocation, ToolCategory},
+    intent::NormalizedPayload,
     lifecycle::ServerRequestState,
     projection::{
         FileChangeProjection, FileOperation, ItemContent, ItemOrigin, ItemProjection, PlanEntry,
-        PlanEntryState, TextRole, ToolPresentation,
+        PlanEntryState, TextRole,
     },
 };
 
 use super::StoreError;
+
+mod resource_locations;
 
 pub(super) struct ItemRow {
     pub id: String,
@@ -57,7 +59,7 @@ pub(super) fn decode_item(
     if kind_text(normalized.kind()) != row.kind {
         return Err(StoreError::Corrupt("item kind mismatch"));
     }
-    validate_resource_membership(&normalized, project_roots)?;
+    resource_locations::validate_membership(&normalized, project_roots)?;
     if matches!(normalized, NormalizedPayload::PermissionRequest { .. })
         && row.external_item_id.is_none()
     {
@@ -106,28 +108,6 @@ pub(super) fn decode_item(
         tool_state,
         content,
     })
-}
-
-fn validate_resource_membership(
-    payload: &NormalizedPayload,
-    project_roots: &[SageRootId],
-) -> Result<(), StoreError> {
-    let locations: Vec<&SafeResourceLocation> = match payload {
-        NormalizedPayload::FileChangeDiff { resource, .. } => vec![resource],
-        NormalizedPayload::ToolCall { locations, .. }
-        | NormalizedPayload::ToolUpdateResult { locations, .. } => {
-            locations.as_slice().iter().collect()
-        }
-        _ => vec![],
-    };
-    for location in locations {
-        if let SafeResourceLocation::Resource { resource } = location
-            && !project_roots.iter().any(|root| root == &resource.root_id)
-        {
-            return Err(StoreError::Corrupt("resource root membership"));
-        }
-    }
-    Ok(())
 }
 
 fn content(
@@ -284,52 +264,9 @@ fn projected_line_count(value: Option<u64>) -> Option<u32> {
 /// Legacy summary-only rows (no pair metadata) decode as unavailable, never
 /// as fabricated empty text. Malformed admitted metadata fails closed.
 mod file_pair;
+mod tool_presentation;
 use file_pair::admitted_pair_view;
-
-fn presentation(
-    category: ToolCategory,
-    label: SafeText<512>,
-    locations: BoundedVec<SafeResourceLocation, { crate::acp::intent::COMMAND_RESOURCE_LIMIT }>,
-) -> Result<ToolPresentation, StoreError> {
-    let empty = || BoundedVec::new("resources", vec![]).map_err(contract);
-    Ok(match category {
-        ToolCategory::File => ToolPresentation::File {
-            label,
-            resources: empty()?,
-        },
-        ToolCategory::Diff => ToolPresentation::Diff {
-            label,
-            resources: empty()?,
-        },
-        ToolCategory::Command => ToolPresentation::Command {
-            label,
-            summary: None,
-            resources: locations,
-        },
-        ToolCategory::Search => ToolPresentation::Search {
-            query_summary: SafeText::new("query", label.as_str()).map_err(contract)?,
-            label,
-            resources: BoundedVec::new("resources", vec![]).map_err(contract)?,
-        },
-        ToolCategory::Web => ToolPresentation::Web {
-            label,
-            summary: None,
-        },
-        ToolCategory::Mcp => ToolPresentation::Mcp {
-            server_label: SafeText::new("server", "MCP").map_err(contract)?,
-            tool_label: label.clone(),
-            label,
-        },
-        ToolCategory::Subagent => ToolPresentation::Subagent {
-            label,
-            activity_id: None,
-        },
-        ToolCategory::Other => ToolPresentation::Generic {
-            label,
-            summary: None,
-        },
-    })
-}
+use tool_presentation::presentation;
 
 fn parse_legacy_text(
     value: &str,

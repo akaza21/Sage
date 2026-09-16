@@ -8,6 +8,7 @@
         "toolCallId": "tool-1",
         "kind": "edit",
         "status": "pending",
+        "locations": [{ "path": "C:\\fixture\\root\\src\\lib.rs" }],
         "title": "Edit C:\\private\\secret.txt",
         "rawInput": { "command": "secret-command", "token": "sk-ant-fixture" }
       }
@@ -22,6 +23,7 @@
         "toolCallId": "tool-1",
         "kind": "edit",
         "status": "completed",
+        "locations": [{ "path": "C:\\fixture\\root\\src\\lib.rs" }],
         "rawOutput": "secret-command sk-ant-fixture",
         "content": [
           {

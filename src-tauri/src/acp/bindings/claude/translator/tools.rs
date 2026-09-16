@@ -39,20 +39,27 @@ impl ClaudeTranslator {
             return Err(TranslationError::ToolLimit);
         }
         let command = category == crate::acp::intent::ToolCategory::Command;
+        let protocol_locations = path_locations(category, update, resources)?;
         let command_snapshot = command
-            .then(|| command_update_payload(update, resources))
+            .then(|| command_update_payload(update, protocol_locations.clone()))
             .transpose()?
             .map(|patch| patch.apply((None, Default::default())));
         if let Some(snapshot) = command_snapshot.as_ref() {
             self.validate_command_snapshot(id.as_str(), snapshot)?;
         }
+        let locations = protocol_locations.unwrap_or_else(|| {
+            command_snapshot
+                .as_ref()
+                .map(|(_, locations)| locations.clone())
+                .unwrap_or_default()
+        });
         self.tools.insert(id.as_str().to_owned(), state);
         self.tool_categories
             .insert(id.as_str().to_owned(), category);
         if let Some(snapshot) = command_snapshot {
             self.store_command_snapshot(id.as_str(), snapshot);
         }
-        let (output_summary, locations) = self.command_snapshot(id.as_str());
+        let (output_summary, _) = self.command_snapshot(id.as_str());
         Ok(AdapterEvent::Item {
             external_key: id,
             lifecycle: lifecycle_for_tool(state),
@@ -62,11 +69,7 @@ impl ClaudeTranslator {
                 label: SafeText::new("toolLabel", category_label(category))?,
                 input_summary: browse_tool_summary("toolInput", update),
                 output_summary: command.then_some(output_summary).flatten(),
-                locations: if command {
-                    locations
-                } else {
-                    Default::default()
-                },
+                locations,
             },
         })
     }
@@ -88,18 +91,21 @@ impl ClaudeTranslator {
             .get(id.as_str())
             .copied()
             .ok_or(TranslationError::OrphanToolUpdate)?;
-        let patch = if category == crate::acp::intent::ToolCategory::Command {
-            Some(command_update_payload(update, resources)?)
-        } else {
-            None
-        };
-        if next == current && patch.as_ref().is_none_or(CommandPatch::is_omitted) {
+        let command = category == crate::acp::intent::ToolCategory::Command;
+        let protocol_locations = path_locations(category, update, resources)?;
+        let command_patch = command
+            .then(|| command_update_payload(update, protocol_locations.clone()))
+            .transpose()?;
+        if next == current
+            && command_patch.as_ref().is_none_or(CommandPatch::is_omitted)
+            && protocol_locations.is_none()
+        {
             return Ok(vec![AdapterEvent::IgnoredDuplicate]);
         }
         if next != current {
             transition_tool(current, next)?;
         }
-        let command_snapshot = if let Some(patch) = patch {
+        let command_snapshot = if let Some(patch) = command_patch {
             let snapshot = self.command_snapshot(id.as_str());
             let merged = patch.apply(snapshot);
             self.validate_command_snapshot(id.as_str(), &merged)?;
@@ -107,14 +113,16 @@ impl ClaudeTranslator {
         } else {
             None
         };
-        let (output_summary, locations) = if let Some(snapshot) = command_snapshot.as_ref() {
-            snapshot.clone()
+        let (output_summary, snapshot_locations) = command_snapshot
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| self.command_snapshot(id.as_str()));
+        let output_summary = if command {
+            output_summary
         } else {
-            (
-                browse_tool_summary("toolOutput", update),
-                Default::default(),
-            )
+            browse_tool_summary("toolOutput", update)
         };
+        let locations = protocol_locations.unwrap_or(snapshot_locations);
         let mut events = vec![AdapterEvent::Item {
             external_key: id.clone(),
             lifecycle: lifecycle_for_tool(next),
@@ -338,9 +346,51 @@ impl CommandPatch {
     }
 }
 
-fn command_update_payload(
+/// Maps path-bearing protocol locations without retaining native paths.
+/// Omission is distinct from an explicit empty/null replacement on updates.
+fn path_locations(
+    category: crate::acp::intent::ToolCategory,
     update: &Map<String, Value>,
     resources: &impl ResourceMapper,
+) -> Result<Option<BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>>, TranslationError> {
+    if !matches!(
+        category,
+        crate::acp::intent::ToolCategory::File
+            | crate::acp::intent::ToolCategory::Diff
+            | crate::acp::intent::ToolCategory::Command
+    ) {
+        return Ok(None);
+    }
+    match update.get("locations") {
+        None => Ok(None),
+        Some(Value::Null) => Ok(Some(Default::default())),
+        Some(Value::Array(locations)) => {
+            if locations.len() > COMMAND_RESOURCE_LIMIT {
+                return Err(TranslationError::ToolLimit);
+            }
+            let mut mapped = Vec::with_capacity(locations.len());
+            for location in locations {
+                let path = location
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .ok_or(TranslationError::MalformedFrame)?;
+                mapped.push(match resources.map_absolute(path) {
+                    Ok(resource) => SafeResourceLocation::Resource { resource },
+                    Err(reason) => SafeResourceLocation::unavailable(reason),
+                });
+            }
+            Ok(Some(BoundedVec::<
+                SafeResourceLocation,
+                { COMMAND_RESOURCE_LIMIT },
+            >::new("toolLocations", mapped)?))
+        }
+        Some(_) => Err(TranslationError::MalformedFrame),
+    }
+}
+
+fn command_update_payload(
+    update: &Map<String, Value>,
+    locations: Option<BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>>,
 ) -> Result<CommandPatch, TranslationError> {
     let output = match update.get("content") {
         None => None,
@@ -361,28 +411,6 @@ fn command_update_payload(
                     .then(|| super::super::sanitize::normalized_text::<65536>("toolOutput", &text))
                     .transpose()?,
             )
-        }
-        Some(_) => return Err(TranslationError::MalformedFrame),
-    };
-    let locations = match update.get("locations") {
-        None => None,
-        Some(Value::Null) => Some(Default::default()),
-        Some(Value::Array(locations)) => {
-            if locations.len() > COMMAND_RESOURCE_LIMIT {
-                return Err(TranslationError::ToolLimit);
-            }
-            let mut mapped = Vec::with_capacity(locations.len());
-            for location in locations {
-                let path = location
-                    .get("path")
-                    .and_then(Value::as_str)
-                    .ok_or(TranslationError::MalformedFrame)?;
-                mapped.push(match resources.map_absolute(path) {
-                    Ok(resource) => SafeResourceLocation::Resource { resource },
-                    Err(reason) => SafeResourceLocation::unavailable(reason),
-                });
-            }
-            Some(BoundedVec::new("commandLocations", mapped)?)
         }
         Some(_) => return Err(TranslationError::MalformedFrame),
     };
