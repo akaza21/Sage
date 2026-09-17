@@ -1,5 +1,5 @@
-mod command_snapshots;
 mod kinds;
+mod tool_snapshots;
 
 use serde_json::{Map, Value};
 
@@ -16,9 +16,9 @@ use crate::acp::bindings::omp::{
     wire::{normalized_text, opaque_id, sanitized_command_output},
 };
 
-use command_snapshots::{CommandPatch, command_update_payload};
 pub(crate) use kinds::{category_label, external_id, object, tool_category};
 use kinds::{lifecycle, line_count, optional_item_id, parse_tool_state, required_string};
+use tool_snapshots::{CommandPatch, command_update_payload, path_locations};
 
 const MAX_EVENTS_PER_FRAME: usize = 16;
 const MAX_PLAN_ENTRIES: usize = 128;
@@ -108,12 +108,19 @@ impl OmpTranslator {
             }
         }
         let command = category == crate::acp::intent::ToolCategory::Command;
-        let snapshot = command
-            .then(|| command_update_payload(update, resources))
-            .transpose()?
-            .map(|patch| patch.apply((None, Default::default())));
+        let protocol_locations = path_locations(category, update, resources)?;
+        let snapshot = if command {
+            Some(
+                command_update_payload(update, protocol_locations.clone())?
+                    .apply((None, Default::default())),
+            )
+        } else {
+            protocol_locations
+                .clone()
+                .map(|locations| (None, locations))
+        };
         if let Some(snapshot) = snapshot.as_ref() {
-            self.validate_command_snapshot(id.as_str(), snapshot)?;
+            self.validate_tool_snapshot(id.as_str(), snapshot)?;
         }
         {
             let active = self.live_turn()?;
@@ -123,9 +130,10 @@ impl OmpTranslator {
                 .insert(id.as_str().to_owned(), category);
         }
         if let Some(snapshot) = snapshot {
-            self.store_command_snapshot(id.as_str(), snapshot)?;
+            self.store_tool_snapshot(id.as_str(), snapshot)?;
         }
-        let (output_summary, locations) = self.command_snapshot(id.as_str())?;
+        let (output_summary, snapshot_locations) = self.tool_snapshot(id.as_str())?;
+        let locations = protocol_locations.unwrap_or(snapshot_locations);
         let mut events = vec![AdapterEvent::Item {
             external_key: id.clone(),
             lifecycle: lifecycle(state),
@@ -135,11 +143,7 @@ impl OmpTranslator {
                 label: SafeText::new("toolLabel", category_label(category))?,
                 input_summary: browse_tool_summary("toolInput", update),
                 output_summary: command.then_some(output_summary).flatten(),
-                locations: if command {
-                    locations
-                } else {
-                    Default::default()
-                },
+                locations,
             },
             update_mode: ItemUpdateMode::Replace,
         }];
@@ -180,31 +184,38 @@ impl OmpTranslator {
             .copied()
             .ok_or(TranslationError::Correlation)?;
         let next = parse_tool_state(update.get("status"), current)?;
-        let patch = (category == crate::acp::intent::ToolCategory::Command)
-            .then(|| command_update_payload(update, resources))
+        let protocol_locations = path_locations(category, update, resources)?;
+        let command = category == crate::acp::intent::ToolCategory::Command;
+        let patch = command
+            .then(|| command_update_payload(update, protocol_locations.clone()))
             .transpose()?;
-        if next == current && patch.as_ref().is_none_or(CommandPatch::is_omitted) {
+        if next == current
+            && patch.as_ref().is_none_or(CommandPatch::is_omitted)
+            && protocol_locations.is_none()
+        {
             return Ok(vec![AdapterEvent::IgnoredDuplicate]);
         }
         if next != current && !current.can_transition_to(next) {
             return Err(TranslationError::ToolTransition);
         }
-        let command_snapshot = if let Some(patch) = patch {
-            let snapshot = self.command_snapshot(id.as_str())?;
-            let merged = patch.apply(snapshot);
-            self.validate_command_snapshot(id.as_str(), &merged)?;
-            Some(merged)
+        let stored_snapshot = self.tool_snapshot(id.as_str())?;
+        let next_snapshot = if let Some(patch) = patch {
+            Some(patch.apply(stored_snapshot.clone()))
         } else {
-            None
+            protocol_locations
+                .clone()
+                .map(|locations| (stored_snapshot.0.clone(), locations))
         };
-        let (output_summary, locations) = if let Some(snapshot) = command_snapshot.as_ref() {
-            snapshot.clone()
+        if let Some(snapshot) = next_snapshot.as_ref() {
+            self.validate_tool_snapshot(id.as_str(), snapshot)?;
+        }
+        let effective_snapshot = next_snapshot.as_ref().cloned().unwrap_or(stored_snapshot);
+        let output_summary = if command {
+            effective_snapshot.0.clone()
         } else {
-            (
-                browse_tool_summary("toolOutput", update),
-                Default::default(),
-            )
+            browse_tool_summary("toolOutput", update)
         };
+        let locations = effective_snapshot.1.clone();
         let mut events = vec![AdapterEvent::Item {
             external_key: id.clone(),
             lifecycle: lifecycle(next),
@@ -316,8 +327,8 @@ impl OmpTranslator {
             }
         }
         self.live_turn()?.tools.insert(id.as_str().to_owned(), next);
-        if let Some(snapshot) = command_snapshot {
-            self.store_command_snapshot(id.as_str(), snapshot)?;
+        if let Some(snapshot) = next_snapshot {
+            self.store_tool_snapshot(id.as_str(), snapshot)?;
         }
         Ok(events)
     }

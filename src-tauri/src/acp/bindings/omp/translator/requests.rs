@@ -141,8 +141,8 @@ impl OmpTranslator {
             terminal: None,
             tools: BTreeMap::new(),
             tool_categories: BTreeMap::new(),
-            command_snapshots: BTreeMap::new(),
-            command_snapshot_bytes: 0,
+            tool_snapshots: BTreeMap::new(),
+            tool_snapshot_bytes: 0,
         });
         Ok(vec![outbound])
     }

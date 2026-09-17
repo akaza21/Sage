@@ -44,14 +44,14 @@ pub(super) struct ActiveTurn {
     terminal: Option<PromptTerminal>,
     tools: BTreeMap<String, crate::acp::contract::ToolState>,
     tool_categories: BTreeMap<String, crate::acp::intent::ToolCategory>,
-    command_snapshots: BTreeMap<
+    tool_snapshots: BTreeMap<
         String,
         (
             Option<SafeText<65536>>,
             BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
         ),
     >,
-    command_snapshot_bytes: usize,
+    tool_snapshot_bytes: usize,
 }
 
 pub(crate) trait ResourceMapper {

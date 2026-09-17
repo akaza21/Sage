@@ -14,7 +14,10 @@ use crate::acp::{
         ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageRootId,
         ToolState,
     },
-    intent::{NormalizedPayload, SafeResourceRef, ToolCategory, UnavailableResourceReason},
+    intent::{
+        COMMAND_RESOURCE_LIMIT, NormalizedPayload, SafeResourceLocation, SafeResourceRef,
+        ToolCategory, UnavailableResourceReason,
+    },
     limits::LIMITS,
     runtime::read_text_file::{DeferredReadTextOwnerResolver, ExpectedOwnerScope},
     service::{
@@ -206,6 +209,7 @@ fn p02_omp_real_ingress_preflights_routes_service_and_preserves_numeric_id() {
 
 struct FixtureResources;
 struct RejectResources;
+struct LongResources;
 
 impl ResourceMapper for FixtureResources {
     fn map_absolute(&self, path: &str) -> Result<SafeResourceRef, UnavailableResourceReason> {
@@ -224,6 +228,17 @@ impl ResourceMapper for FixtureResources {
 impl ResourceMapper for RejectResources {
     fn map_absolute(&self, _path: &str) -> Result<SafeResourceRef, UnavailableResourceReason> {
         Err(UnavailableResourceReason::Foreign)
+    }
+}
+
+impl ResourceMapper for LongResources {
+    fn map_absolute(&self, path: &str) -> Result<SafeResourceRef, UnavailableResourceReason> {
+        SafeResourceRef::new(
+            SageRootId::parse("root-fixture")
+                .map_err(|_| UnavailableResourceReason::Unsupported)?,
+            path.trim_start_matches('/'),
+        )
+        .map_err(|_| UnavailableResourceReason::Unsupported)
     }
 }
 
@@ -881,6 +896,315 @@ fn failed_resource_mapping_emits_a_typed_nonclickable_location() {
     assert!(matches!(
         fresh.ingest(valid, &FixtureResources).unwrap().as_slice(),
         [AdapterEvent::TurnRunning { .. }, AdapterEvent::Item { .. }]
+    ));
+}
+
+#[test]
+fn file_and_diff_tools_project_protocol_locations_on_calls_and_updates() {
+    let cases = [
+        ("read", "Read file", ToolCategory::File),
+        ("other", "Apply diff", ToolCategory::Diff),
+    ];
+    for (index, (kind, title, expected)) in cases.into_iter().enumerate() {
+        let mut adapter = translator(170 + index as u64);
+        initialize(&mut adapter, false);
+        new_session(&mut adapter);
+        begin_prompt(&mut adapter);
+        let tool_id = format!("located-{index}");
+        let start = serde_json::to_vec(&json!({
+            "jsonrpc":"2.0", "method":"session/update", "params":{
+                "sessionId":"omp-session-1", "update":{
+                    "sessionUpdate":"tool_call", "toolCallId":tool_id, "kind":kind,
+                    "title":title, "status":"pending",
+                    "locations":[{"path":"C:\\fixture\\src\\lib.rs"}]
+                }
+            }
+        }))
+        .unwrap();
+        let events = adapter.ingest(&start, &FixtureResources).unwrap();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            AdapterEvent::Item {
+                payload: NormalizedPayload::ToolCall { category, locations, .. },
+                ..
+            } if *category == expected
+                && matches!(
+                    locations.as_slice(),
+                    [SafeResourceLocation::Resource { resource }]
+                        if resource.relative_path.as_str() == "src/lib.rs"
+                )
+        )));
+
+        let update = serde_json::to_vec(&json!({
+            "jsonrpc":"2.0", "method":"session/update", "params":{
+                "sessionId":"omp-session-1", "update":{
+                    "sessionUpdate":"tool_call_update", "toolCallId":tool_id,
+                    "status":"in_progress"
+                }
+            }
+        }))
+        .unwrap();
+        let events = adapter.ingest(&update, &FixtureResources).unwrap();
+        assert!(matches!(
+            events.as_slice(),
+            [AdapterEvent::Item {
+                payload: NormalizedPayload::ToolUpdateResult { category, locations, .. },
+                ..
+            }] if *category == expected
+                && matches!(
+                    locations.as_slice(),
+                    [SafeResourceLocation::Resource { resource }]
+                        if resource.relative_path.as_str() == "src/lib.rs"
+                )
+        ));
+
+        let cleared_locations = if index == 0 { Value::Null } else { json!([]) };
+        let clear = serde_json::to_vec(&json!({
+            "jsonrpc":"2.0", "method":"session/update", "params":{
+                "sessionId":"omp-session-1", "update":{
+                    "sessionUpdate":"tool_call_update", "toolCallId":tool_id,
+                    "status":"completed", "locations":cleared_locations
+                }
+            }
+        }))
+        .unwrap();
+        let events = adapter.ingest(&clear, &FixtureResources).unwrap();
+        assert!(matches!(
+            events.as_slice(),
+            [AdapterEvent::Item {
+                payload: NormalizedPayload::ToolUpdateResult { category, locations, .. },
+                ..
+            }] if *category == expected && locations.as_slice().is_empty()
+        ));
+    }
+}
+
+#[test]
+fn tool_protocol_locations_are_bounded_malformed_safe_and_exclude_web() {
+    fn file_call(tool_id: &str, locations: Value) -> Vec<u8> {
+        serde_json::to_vec(&json!({
+            "jsonrpc":"2.0", "method":"session/update", "params":{
+                "sessionId":"omp-session-1", "update":{
+                    "sessionUpdate":"tool_call", "toolCallId":tool_id, "kind":"edit",
+                    "status":"pending", "locations":locations
+                }
+            }
+        }))
+        .unwrap()
+    }
+
+    let exact = Value::Array(
+        (0..COMMAND_RESOURCE_LIMIT)
+            .map(|_| json!({"path":"C:\\fixture\\src\\lib.rs"}))
+            .collect(),
+    );
+    let mut exact_adapter = translator(180);
+    initialize(&mut exact_adapter, false);
+    new_session(&mut exact_adapter);
+    begin_prompt(&mut exact_adapter);
+    let exact_events = exact_adapter
+        .ingest(&file_call("exact-locations", exact), &FixtureResources)
+        .unwrap();
+    assert!(exact_events.iter().any(|event| matches!(
+        event,
+        AdapterEvent::Item {
+            payload: NormalizedPayload::ToolCall { locations, .. },
+            ..
+        } if locations.as_slice().len() == COMMAND_RESOURCE_LIMIT
+    )));
+
+    let over_cap = Value::Array(
+        (0..=COMMAND_RESOURCE_LIMIT)
+            .map(|_| json!({"path":"C:\\fixture\\src\\lib.rs"}))
+            .collect(),
+    );
+    let mut over_cap_adapter = translator(181);
+    initialize(&mut over_cap_adapter, false);
+    new_session(&mut over_cap_adapter);
+    begin_prompt(&mut over_cap_adapter);
+    assert!(matches!(
+        over_cap_adapter.ingest(
+            &file_call("over-cap-locations", over_cap),
+            &FixtureResources
+        ),
+        Err(TranslationError::Limit("tool locations"))
+    ));
+
+    for (epoch, malformed) in [
+        (182, json!([{"url":"https://example.com/private"}])),
+        (183, json!({"path":"C:\\fixture\\src\\lib.rs"})),
+    ] {
+        let mut adapter = translator(epoch);
+        initialize(&mut adapter, false);
+        new_session(&mut adapter);
+        begin_prompt(&mut adapter);
+        assert!(matches!(
+            adapter.ingest(
+                &file_call("malformed-locations", malformed),
+                &FixtureResources
+            ),
+            Err(TranslationError::MalformedFrame)
+        ));
+    }
+
+    let secret_path = r"C:\Users\private\secret.txt";
+    let mut unavailable_adapter = translator(184);
+    initialize(&mut unavailable_adapter, false);
+    new_session(&mut unavailable_adapter);
+    begin_prompt(&mut unavailable_adapter);
+    let unavailable = unavailable_adapter
+        .ingest(
+            &file_call("unavailable-location", json!([{"path":secret_path}])),
+            &RejectResources,
+        )
+        .unwrap();
+    assert!(unavailable.iter().any(|event| matches!(
+        event,
+        AdapterEvent::Item {
+            payload: NormalizedPayload::ToolCall { locations, .. },
+            ..
+        } if matches!(
+            locations.as_slice(),
+            [SafeResourceLocation::Unavailable {
+                reason: UnavailableResourceReason::Foreign,
+                label,
+            }] if label.as_str() == "Path is outside the active project roots"
+        )
+    )));
+    let rendered = format!("{unavailable:?}");
+    assert!(!rendered.contains(secret_path));
+    assert!(!rendered.contains("Users"));
+    assert!(!rendered.contains("secret.txt"));
+
+    let mut web_adapter = translator(185);
+    initialize(&mut web_adapter, false);
+    new_session(&mut web_adapter);
+    begin_prompt(&mut web_adapter);
+    let web = br#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"omp-session-1","update":{"sessionUpdate":"tool_call","toolCallId":"web-location","kind":"fetch","status":"pending","locations":[{"url":"https://example.com/private"}]}}}"#;
+    let web = web_adapter.ingest(web, &FixtureResources).unwrap();
+    assert!(web.iter().any(|event| matches!(
+        event,
+        AdapterEvent::Item {
+            payload: NormalizedPayload::ToolCall {
+                category: ToolCategory::Web,
+                locations,
+                ..
+            },
+            ..
+        } if locations.as_slice().is_empty()
+    )));
+}
+
+#[test]
+fn file_location_snapshots_share_the_existing_aggregate_byte_bound() {
+    let long_path = format!("/{}", "x".repeat(16_000));
+    let locations = Value::Array(
+        (0..COMMAND_RESOURCE_LIMIT)
+            .map(|_| json!({"path":long_path}))
+            .collect(),
+    );
+    let mut adapter = translator(186);
+    initialize(&mut adapter, false);
+    new_session(&mut adapter);
+    begin_prompt(&mut adapter);
+    for index in 0..8 {
+        let frame = serde_json::to_vec(&json!({
+            "jsonrpc":"2.0", "method":"session/update", "params":{
+                "sessionId":"omp-session-1", "update":{
+                    "sessionUpdate":"tool_call", "toolCallId":format!("large-file-{index}"),
+                    "kind":"read", "status":"pending", "locations":locations
+                }
+            }
+        }))
+        .unwrap();
+        adapter.ingest(&frame, &LongResources).unwrap();
+    }
+    let plus_one = serde_json::to_vec(&json!({
+        "jsonrpc":"2.0", "method":"session/update", "params":{
+            "sessionId":"omp-session-1", "update":{
+                "sessionUpdate":"tool_call", "toolCallId":"large-file-plus-one",
+                "kind":"read", "status":"pending", "locations":locations
+            }
+        }
+    }))
+    .unwrap();
+    assert!(matches!(
+        adapter.ingest(&plus_one, &LongResources),
+        Err(TranslationError::Limit("tool snapshot bytes"))
+    ));
+}
+
+#[test]
+fn command_protocol_locations_replace_snapshot_locations_and_sparse_updates_retain_them() {
+    let mut adapter = translator(186);
+    initialize(&mut adapter, false);
+    new_session(&mut adapter);
+    begin_prompt(&mut adapter);
+    let initial = json!({
+        "jsonrpc":"2.0", "method":"session/update", "params":{
+            "sessionId":"omp-session-1", "update":{
+                "sessionUpdate":"tool_call", "toolCallId":"command-precedence", "kind":"execute",
+                "status":"pending", "content":[{"type":"text","text":"output"}],
+                "locations":[{"path":"C:\\foreign\\snapshot.rs"}]
+            }
+        }
+    });
+    let initial = adapter
+        .ingest(&serde_json::to_vec(&initial).unwrap(), &RejectResources)
+        .unwrap();
+    assert!(initial.iter().any(|event| matches!(
+        event,
+        AdapterEvent::Item {
+            payload: NormalizedPayload::ToolCall { locations, .. },
+            ..
+        } if matches!(
+            locations.as_slice(),
+            [SafeResourceLocation::Unavailable {
+                reason: UnavailableResourceReason::Foreign,
+                ..
+            }]
+        )
+    )));
+
+    let protocol_update = json!({
+        "jsonrpc":"2.0", "method":"session/update", "params":{
+            "sessionId":"omp-session-1", "update":{
+                "sessionUpdate":"tool_call_update", "toolCallId":"command-precedence",
+                "status":"in_progress",
+                "locations":[{"path":"C:\\fixture\\src\\lib.rs"}]
+            }
+        }
+    });
+    let protocol_update = adapter
+        .ingest(
+            &serde_json::to_vec(&protocol_update).unwrap(),
+            &FixtureResources,
+        )
+        .unwrap();
+    assert!(matches!(
+        protocol_update.as_slice(),
+        [AdapterEvent::Item {
+            payload: NormalizedPayload::ToolUpdateResult { locations, .. },
+            ..
+        }] if matches!(
+            locations.as_slice(),
+            [SafeResourceLocation::Resource { resource }]
+                if resource.relative_path.as_str() == "src/lib.rs"
+        )
+    ));
+
+    let sparse_update = br#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"omp-session-1","update":{"sessionUpdate":"tool_call_update","toolCallId":"command-precedence","status":"completed"}}}"#;
+    let sparse_update = adapter.ingest(sparse_update, &RejectResources).unwrap();
+    assert!(matches!(
+        sparse_update.as_slice(),
+        [AdapterEvent::Item {
+            payload: NormalizedPayload::ToolUpdateResult { locations, .. },
+            ..
+        }] if matches!(
+            locations.as_slice(),
+            [SafeResourceLocation::Resource { resource }]
+                if resource.relative_path.as_str() == "src/lib.rs"
+        )
     ));
 }
 

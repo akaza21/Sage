@@ -126,8 +126,8 @@ impl OmpTranslator {
                 active.terminal = Some(terminal);
                 active.tools.clear();
                 active.tool_categories.clear();
-                active.command_snapshots.clear();
-                active.command_snapshot_bytes = 0;
+                active.tool_snapshots.clear();
+                active.tool_snapshot_bytes = 0;
                 Ok(vec![AdapterEvent::TurnTerminal {
                     turn_key: active.turn_key.clone(),
                     terminal,
