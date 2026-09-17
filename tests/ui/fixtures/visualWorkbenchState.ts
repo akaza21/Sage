@@ -79,14 +79,22 @@ export function applyVisualWorkbenchState(
   tabs: WorkbenchTab[],
 ): void {
   const visualWindow = window as typeof window & {
+    __activateVisualHandoffTarget?: () => void;
     __releaseVisualPickerHarnessReady?: () => void;
   };
+  delete visualWindow.__activateVisualHandoffTarget;
   delete visualWindow.__releaseVisualPickerHarnessReady;
   delete document.documentElement.dataset.visualHarnessSelectionCount;
   delete document.documentElement.dataset.visualModelSelectionCount;
   delete document.documentElement.dataset.visualHandoffDispatchCount;
   if (scenario.name === "agent-picker-handoff") {
     document.documentElement.dataset.visualHandoffDispatchCount = "0";
+    visualWindow.__activateVisualHandoffTarget = () => {
+      delete visualWindow.__activateVisualHandoffTarget;
+      useWorkbenchStore.setState({
+        activeTabId: "visual-chat-handoff-target",
+      });
+    };
   }
   const chatIds = scenario.pages.map((pageValue) => pageValue.chatId);
   const activeTabId =

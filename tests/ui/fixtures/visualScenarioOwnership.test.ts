@@ -249,6 +249,25 @@ describe("visual scenario surface ownership", () => {
     ]);
   });
 
+  it("exposes a synchronous handoff invalidation action only for its scenario", () => {
+    const visualWindow = window as typeof window & {
+      __activateVisualHandoffTarget?: () => void;
+    };
+    const handoffScenario = buildVisualScenario("agent-picker-handoff");
+    applyVisualWorkbenchState(handoffScenario, fixtureTabs(handoffScenario));
+
+    expect(visualWindow.__activateVisualHandoffTarget).toBeTypeOf("function");
+    visualWindow.__activateVisualHandoffTarget?.();
+    expect(useWorkbenchStore.getState().activeTabId).toBe(
+      "visual-chat-handoff-target",
+    );
+    expect(visualWindow.__activateVisualHandoffTarget).toBeUndefined();
+
+    const editorScenario = buildVisualScenario("editor");
+    applyVisualWorkbenchState(editorScenario, fixtureTabs(editorScenario));
+    expect(visualWindow.__activateVisualHandoffTarget).toBeUndefined();
+  });
+
   it("seeds the Editor repository fixture as one authoritative ready inventory", () => {
     const scenario = buildVisualScenario("editor");
     applyVisualWorkbenchState(scenario, fixtureTabs(scenario));

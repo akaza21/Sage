@@ -273,10 +273,17 @@ test.describe("ED02 picker visual states", () => {
       sourceChat.getByRole("textbox", { name: "Message agent" }),
     ).toHaveValue("");
     await takeCanonicalScreenshot(workbench, "agent-picker-handoff");
-    await page.evaluate(async () => {
-      const { useWorkbenchStore } = await import("/src/app/store.ts");
-      useWorkbenchStore.setState({ activeTabId: "visual-chat-handoff-target" });
-    });
+    expect(
+      await page.evaluate(() => {
+        const visualWindow = window as typeof window & {
+          __activateVisualHandoffTarget?: () => void;
+        };
+        const activateTarget = visualWindow.__activateVisualHandoffTarget;
+        if (!activateTarget) return false;
+        activateTarget();
+        return true;
+      }),
+    ).toBe(true);
     await expect(dialog).toHaveCount(0);
     await expect(handoffTrigger).toBeFocused();
     await expect(page.locator("html")).toHaveAttribute(
