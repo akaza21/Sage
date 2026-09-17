@@ -53,6 +53,7 @@ const sendRequest: SendAcpTurnRequest = {
   ...sessionRequest,
   target: "session",
   prompt: "hello",
+  attachedContext: [],
 };
 const cancelRequest: CancelAcpTurnRequest = {
   ...sessionRequest,
@@ -260,6 +261,60 @@ describe("ACP desktop bridge", () => {
       AcpDesktopError,
     );
     expect(invokeMock).toHaveBeenCalledWith("start_acp_session", { request });
+  });
+
+  it.each([
+    { kind: "recoveryRequired", promptDispatch: "notStarted" },
+    { kind: "internal", promptDispatch: "notStarted" },
+    { kind: "recoveryRequired", promptDispatch: "unknown" },
+    { kind: "internal", promptDispatch: "unknown" },
+  ] as const)(
+    "preserves native $kind dispatch status $promptDispatch",
+    async ({ kind, promptDispatch }) => {
+      setDesktopRuntime(true);
+      const failure = { kind, message: "Native failure" };
+      for (const rejection of [
+        { ...failure, promptDispatch },
+        { failure, promptDispatch },
+      ]) {
+        invokeMock.mockRejectedValue(rejection);
+        await expect(acpDesktop.sendTurn(sendRequest)).rejects.toMatchObject({
+          failure: { kind, promptDispatch },
+        });
+      }
+    },
+  );
+
+  it("preserves proof that a send failed before prompt dispatch", async () => {
+    setDesktopRuntime(true);
+    invokeMock.mockRejectedValue({
+      failure: {
+        kind: "recoveryRequired",
+        message: "Attached context failed its integrity check.",
+      },
+      promptDispatch: "notStarted",
+    });
+
+    await expect(acpDesktop.sendTurn(sendRequest)).rejects.toMatchObject({
+      failure: {
+        kind: "recoveryRequired",
+        promptDispatch: "notStarted",
+      },
+    });
+
+    invokeMock.mockRejectedValue({
+      failure: {
+        kind: "recoveryRequired",
+        message: "Delivery is unknown.",
+      },
+      promptDispatch: "unknown",
+    });
+    await expect(acpDesktop.sendTurn(sendRequest)).rejects.toMatchObject({
+      failure: { kind: "recoveryRequired" },
+    });
+    await expect(acpDesktop.sendTurn(sendRequest)).rejects.not.toMatchObject({
+      failure: { promptDispatch: "notStarted" },
+    });
   });
 
   it.each([

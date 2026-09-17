@@ -3,6 +3,7 @@ import { useStore } from "zustand";
 
 import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../../app/store";
+import type { DiffLineCommentContext } from "../../../domain/attachedContext";
 import type {
   CuratedBindingId,
   CuratedModelId,
@@ -110,13 +111,21 @@ export function useAcpChatActions(boundChatId?: string | null) {
             { sending: state.busy, error: state.error?.message ?? null },
           );
         },
-        clearComposer: (context, prompt) => {
+        clearComposer: (context, prompt, attachedContext) => {
           const workbench = useWorkbenchStore.getState();
-          workbench.clearChatComposer(ownershipIntent(context), prompt);
+          workbench.clearChatComposer(
+            ownershipIntent(context),
+            prompt,
+            attachedContext,
+          );
         },
-        restoreComposer: (context, prompt) => {
+        restoreComposer: (context, prompt, attachedContext) => {
           const workbench = useWorkbenchStore.getState();
-          workbench.restoreChatComposer(ownershipIntent(context), prompt);
+          workbench.restoreChatComposer(
+            ownershipIntent(context),
+            prompt,
+            attachedContext,
+          );
         },
       }),
     [boundChatId],
@@ -132,9 +141,10 @@ export function useAcpChatActions(boundChatId?: string | null) {
     cancellableTurnId: page ? cancellableTurnId(page) : null,
     submit: (
       prompt: string,
+      attachedContext: readonly DiffLineCommentContext[],
       bindingId: CuratedBindingId,
       modelId: CuratedModelId | null,
-    ) => controller.submit(prompt, bindingId, modelId),
+    ) => controller.submit(prompt, attachedContext, bindingId, modelId),
     cancel: (turnId: SageTurnId) => controller.cancel(turnId),
     close: () => controller.close(),
     clearError: () => {

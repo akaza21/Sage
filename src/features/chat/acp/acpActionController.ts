@@ -1,8 +1,9 @@
+import { validateAttachedContexts } from "../../../domain/attachedContext";
+import type { DiffLineCommentContext } from "../../../domain/attachedContext";
 import type {
   AcpChatPage,
   AcpMutationResult,
   AgentSessionProjection,
-  CancelAcpTurnRequest,
   ClientIntentId,
   CuratedBindingId,
   CuratedModelId,
@@ -15,7 +16,7 @@ import type {
   ProjectionCommitDisposition,
 } from "../../../app/acpProjectionStore";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
-import { cancellableTurnId } from "./acpTurnState";
+import { createAcpSessionActions } from "./acpSessionActions";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentNonterminalTurn } from "./currentNonterminalTurn";
 
@@ -55,8 +56,16 @@ interface AcpActionDependencies {
     page: AcpChatPage,
   ) => ProjectionCommitDisposition;
   onStateChange?: (state: AcpActionState) => void;
-  clearComposer?: (context: AcpActionContext, prompt: string) => void;
-  restoreComposer?: (context: AcpActionContext, prompt: string) => void;
+  clearComposer?: (
+    context: AcpActionContext,
+    prompt: string,
+    attachedContext: readonly DiffLineCommentContext[],
+  ) => void;
+  restoreComposer?: (
+    context: AcpActionContext,
+    prompt: string,
+    attachedContext: readonly DiffLineCommentContext[],
+  ) => void;
   createIntentId?: () => ClientIntentId;
 }
 
@@ -130,6 +139,9 @@ function requireSelectedSession(
 }
 
 function definitePromptNonDispatch(error: AcpDesktopError): boolean {
+  if (error.failure.promptDispatch) {
+    return error.failure.promptDispatch === "notStarted";
+  }
   return !["recoveryRequired", "internal"].includes(error.failure.kind);
 }
 
@@ -213,11 +225,29 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
 
   const submit = (
     prompt: string,
+    attachedContext: readonly DiffLineCommentContext[],
     bindingId: CuratedBindingId,
     modelId: CuratedModelId | null,
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const normalizedPrompt = prompt.trim();
+    let boundedContext: readonly DiffLineCommentContext[];
+    try {
+      boundedContext = validateAttachedContexts(attachedContext);
+    } catch (error) {
+      if (captured) {
+        emitState(captured, {
+          busy: false,
+          cancellingTurnId: null,
+          error: localFailure(
+            error instanceof Error
+              ? error.message
+              : "Attached context is invalid.",
+          ),
+        });
+      }
+      return Promise.resolve("rejected");
+    }
     if (!captured || !normalizedPrompt) return Promise.resolve("rejected");
     if (currentNonterminalTurn(captured.page)) {
       emitState(captured, {
@@ -300,8 +330,15 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           sessionId: session.id,
           runtimeEpoch: session.runtimeEpoch,
           prompt: normalizedPrompt,
+          ...(boundedContext.length > 0
+            ? { attachedContext: boundedContext }
+            : {}),
         };
-        dependencies.clearComposer?.(captured, normalizedPrompt);
+        dependencies.clearComposer?.(
+          captured,
+          normalizedPrompt,
+          boundedContext,
+        );
         promptCallStarted = true;
         const sent = await commands.sendTurn(request);
         return apply(captured, sent) ? "applied" : "ignoredStale";
@@ -309,93 +346,26 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
         const error = typedError(value);
         updateState({ error });
         if (!promptCallStarted || definitePromptNonDispatch(error)) {
-          dependencies.restoreComposer?.(captured, normalizedPrompt);
+          dependencies.restoreComposer?.(
+            captured,
+            normalizedPrompt,
+            boundedContext,
+          );
         }
         return "rejected";
       }
     });
   };
 
-  const cancel = (turnId: SageTurnId): Promise<AcpActionOutcome> => {
-    const captured = dependencies.getContext();
-    if (!captured || cancellableTurnId(captured.page) !== turnId) {
-      return Promise.resolve("rejected");
-    }
-    return enqueue(captured, async (updateState) => {
-      const context = dependencies.getContext();
-      if (!sameScope(context, captured) || !context) return "ignoredStale";
-      const session = currentSession(context.page);
-      const turn = context.page.turns.find(
-        (candidate) => candidate.id === turnId,
-      );
-      if (
-        !session?.runtimeEpoch ||
-        !turn ||
-        cancellableTurnId(context.page) !== turnId
-      ) {
-        return "rejected";
-      }
-      updateState({ cancellingTurnId: turnId });
-      try {
-        const request: CancelAcpTurnRequest = {
-          ...captured.scope,
-          projectGeneration: captured.commandProjectGeneration,
-          expectedProjectionRevision: context.page.projectionRevision,
-          clientIntentId: nextIntentId(),
-          sessionId: session.id,
-          runtimeEpoch: session.runtimeEpoch,
-          turnId,
-          expectedTurnState: turn.state,
-          expectedTurnRevision: turn.revision,
-        };
-        const result = await commands.cancelTurn(request);
-        return apply(captured, result) ? "applied" : "ignoredStale";
-      } catch (value) {
-        updateState({ error: typedError(value) });
-        return "rejected";
-      } finally {
-        updateState({ cancellingTurnId: null });
-      }
-    });
-  };
+  const { cancel, close } = createAcpSessionActions({
+    getContext: dependencies.getContext,
+    enqueue,
+    apply,
+    sameScope,
+    nextIntentId,
+    cancelTurn: commands.cancelTurn,
+    closeSession: commands.closeSession,
+  });
 
-  const close = (): Promise<AcpActionOutcome> => {
-    const captured = dependencies.getContext();
-    const session = captured ? currentSession(captured.page) : null;
-    if (
-      !captured ||
-      !session?.runtimeEpoch ||
-      !session.capabilities.closeSession
-    ) {
-      return Promise.resolve("rejected");
-    }
-    return enqueue(captured, async (updateState) => {
-      const context = dependencies.getContext();
-      if (!sameScope(context, captured) || !context) return "ignoredStale";
-      const current = currentSession(context.page);
-      if (!current?.runtimeEpoch || !current.capabilities.closeSession) {
-        return "rejected";
-      }
-      try {
-        const result = await commands.closeSession({
-          ...captured.scope,
-          projectGeneration: captured.commandProjectGeneration,
-          expectedProjectionRevision: context.page.projectionRevision,
-          clientIntentId: nextIntentId(),
-          sessionId: current.id,
-          runtimeEpoch: current.runtimeEpoch,
-        });
-        return apply(captured, result) ? "applied" : "ignoredStale";
-      } catch (value) {
-        updateState({ error: typedError(value) });
-        return "rejected";
-      }
-    });
-  };
-
-  return {
-    submit,
-    cancel,
-    close,
-  };
+  return { submit, cancel, close };
 }

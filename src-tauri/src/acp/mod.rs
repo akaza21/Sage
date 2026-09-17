@@ -1,3 +1,4 @@
+pub(crate) mod attached_context;
 pub(crate) mod bindings;
 #[cfg(feature = "acp-fixture")]
 mod characterization_observation;

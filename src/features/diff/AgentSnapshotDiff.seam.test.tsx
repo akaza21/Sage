@@ -16,6 +16,7 @@ import {
   snapshotRef as ref,
   snapshotResource as resource,
 } from "../../app/agentDiff.testFixture";
+import { pinAgentChatOwner } from "../../app/agentChatOwner";
 import { openAgentArtifact } from "../../app/openAgentArtifact";
 import { useWorkbenchStore } from "../../app/store";
 import { acpDesktop } from "../../services/acpDesktop";
@@ -47,6 +48,7 @@ afterEach(() => {
   clearAcpProjectionRegistry();
   useAgentArtifactAdmissionStore.getState().clear();
   useAgentArtifactFollowStore.getState().clear();
+  pinAgentChatOwner(null);
   useWorkbenchStore.setState(initial, true);
 });
 function OpenSurface() {
@@ -127,6 +129,99 @@ describe("actual saved-edit card to shared Diff surface", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("current Chat session");
     expect(acpDesktop.getFileSnapshot).toHaveBeenCalledOnce();
   });
+  it("adds a line comment only to the exact pinned Chat composer", async () => {
+    const page = snapshotPage();
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: ref.chatId,
+          kind: "chat",
+          title: page.title,
+          position: 0,
+          pinned: true,
+          dirty: false,
+        },
+      ],
+      activeTabId: ref.chatId,
+      chatOwnershipEpoch: 1,
+      chatUiById: {
+        [ref.chatId]: {
+          composerText: "Fix this",
+          attachedContext: [],
+          sending: false,
+          error: null,
+          requestGeneration: 0,
+        },
+      },
+    });
+    await openAgentArtifact({
+      owner: ref,
+      target: "diff",
+      resource,
+      diffRef: ref,
+    });
+    pinAgentChatOwner(ref.chatId);
+
+    const diffTab = useWorkbenchStore
+      .getState()
+      .tabs.find((tab) => tab.kind === "diff")!;
+    const collapsePane = vi.fn();
+    render(
+      <div onKeyDown={collapsePane}>
+        <DiffSurface tab={diffTab} readOnly />
+      </div>,
+    );
+    expect(
+      await screen.findByRole("table", { name: "Unified file diff" }),
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Comment on old line 1" }),
+    );
+    const input = screen.getByRole("textbox", {
+      name: "Comment on old line 1",
+    });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(collapsePane).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Comment on old line 1" }),
+      ).toHaveFocus(),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Comment on old line 1" }),
+    );
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Comment on old line 1" }),
+      { target: { value: "Keep the old guard" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add to prompt" }));
+
+    expect(
+      useWorkbenchStore.getState().chatUiById[ref.chatId].attachedContext,
+    ).toEqual([
+      expect.objectContaining({
+        kind: "diffLineComment",
+        diffRef: ref,
+        side: "old",
+        startLine: "1",
+        endLine: "1",
+        note: "Keep the old guard",
+      }),
+    ]);
+    const owner = useWorkbenchStore
+      .getState()
+      .captureChatOwnership(ref.chatId)!;
+    act(() => {
+      useWorkbenchStore.getState().setChatActionState(owner, {
+        sending: true,
+        error: null,
+      });
+    });
+    expect(
+      screen.queryAllByRole("button", { name: /Comment on/ }),
+    ).toHaveLength(0);
+  });
+
   it("rejects no-ref, foreign owner, forged version and stale selected-item opens", async () => {
     const openDiff = vi.spyOn(useWorkbenchStore.getState(), "openDiff");
     for (const diffRef of [

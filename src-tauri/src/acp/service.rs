@@ -45,6 +45,7 @@ mod intent_snapshot;
 mod permission;
 pub(crate) use permission::PermissionDecisionIntent;
 mod file_snapshot;
+pub(crate) use file_snapshot::verify_current_owner;
 mod project_switch;
 mod read_text_file;
 #[cfg(test)]
@@ -100,6 +101,36 @@ pub(crate) enum CodexSessionError {
 pub(crate) enum SessionDispatchError {
     Binding,
     Operation(CodexSessionError),
+}
+
+/// Carries positive pre-invocation proof without inferring it from an error kind.
+#[derive(Debug)]
+pub(crate) struct PromptSendError<E> {
+    pub error: E,
+    pub prompt_dispatch: crate::acp::intent::PromptDispatch,
+}
+
+impl<E> PromptSendError<E> {
+    pub(crate) fn not_started(error: E) -> Self {
+        Self {
+            error,
+            prompt_dispatch: crate::acp::intent::PromptDispatch::NotStarted,
+        }
+    }
+
+    pub(crate) fn unknown(error: E) -> Self {
+        Self {
+            error,
+            prompt_dispatch: crate::acp::intent::PromptDispatch::Unknown,
+        }
+    }
+
+    pub(crate) fn map<F>(self, map: impl FnOnce(E) -> F) -> PromptSendError<F> {
+        PromptSendError {
+            error: map(self.error),
+            prompt_dispatch: self.prompt_dispatch,
+        }
+    }
 }
 
 pub(crate) struct AcpService {
@@ -267,11 +298,11 @@ impl AcpService {
         &self,
         binding_id: &BindingId,
         command: crate::acp::store::PrepareTurnCommand,
-    ) -> Result<crate::acp::runtime::HostOutcome, SessionDispatchError> {
+    ) -> Result<crate::acp::runtime::HostOutcome, PromptSendError<SessionDispatchError>> {
         self.resolve_session_binding(binding_id)
-            .map_err(|_| SessionDispatchError::Binding)?
+            .map_err(|_| PromptSendError::not_started(SessionDispatchError::Binding))?
             .dispatch_turn(self, command)
-            .map_err(SessionDispatchError::Operation)
+            .map_err(|failure| failure.map(SessionDispatchError::Operation))
     }
 
     pub(crate) fn dispatch_session_cancel(

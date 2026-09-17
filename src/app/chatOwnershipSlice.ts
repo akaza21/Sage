@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand";
 
+import type { DiffLineCommentContext } from "../domain/attachedContext";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import {
   boundedChatError,
@@ -7,6 +8,7 @@ import {
   type ChatOwnershipEntry,
   type ChatOwnershipIntent,
 } from "../domain/chatOwnership";
+import { createAttachedContextActions } from "./chatAttachedContextState";
 import type { WorkbenchState } from "./store";
 import { nextProjectGeneration } from "./projectIntent";
 import { emptyChatOwnershipEntry as emptyEntry } from "./chatOwnershipProjection";
@@ -17,11 +19,24 @@ export interface ChatOwnershipSlice {
   chatError: string | null;
   captureChatOwnership: (chatId?: string) => ChatOwnershipIntent | null;
   setChatComposer: (intent: ChatOwnershipIntent, text: string) => boolean;
+  attachChatContext: (
+    intent: ChatOwnershipIntent,
+    context: DiffLineCommentContext,
+  ) => boolean;
+  detachChatContext: (
+    intent: ChatOwnershipIntent,
+    contextKey: string,
+  ) => boolean;
   clearChatComposer: (
     intent: ChatOwnershipIntent,
     expectedPrompt: string,
+    expectedContext: readonly DiffLineCommentContext[],
   ) => boolean;
-  restoreChatComposer: (intent: ChatOwnershipIntent, prompt: string) => boolean;
+  restoreChatComposer: (
+    intent: ChatOwnershipIntent,
+    prompt: string,
+    context: readonly DiffLineCommentContext[],
+  ) => boolean;
   setChatActionState: (
     intent: ChatOwnershipIntent,
     state: { sending: boolean; error: string | null },
@@ -114,37 +129,42 @@ export const createChatOwnershipSlice: StateCreator<
     });
     return true;
   },
-  clearChatComposer: (intent, expectedPrompt) => {
-    const state = get();
-    if (!ownsChat(state, intent)) return false;
-    const entry = state.chatUiById[intent.chatId] ?? emptyEntry();
-    if (entry.composerText.trim() !== expectedPrompt) return false;
-    const updated = { ...entry, composerText: "" };
-    const active = activeChatId(state) === intent.chatId;
-    set({
-      chatUiById: { ...state.chatUiById, [intent.chatId]: updated },
-      ...(active ? { composerText: "" } : {}),
-    });
-    return true;
-  },
-  restoreChatComposer: (intent, prompt) => {
-    const state = get();
-    if (!ownsChat(state, intent)) return false;
-    const entry = state.chatUiById[intent.chatId] ?? emptyEntry();
-    if (entry.composerText) return false;
-    let composerText: string;
+  attachChatContext: (intent, context) =>
+    createAttachedContextActions({
+      get,
+      set,
+      ownsChat,
+      activeChatId,
+    }).attachChatContext(intent, context),
+  detachChatContext: (intent, contextKey) =>
+    createAttachedContextActions({
+      get,
+      set,
+      ownsChat,
+      activeChatId,
+    }).detachChatContext(intent, contextKey),
+  clearChatComposer: (intent, prompt, context) =>
+    createAttachedContextActions({
+      get,
+      set,
+      ownsChat,
+      activeChatId,
+    }).clearAttachedComposer(intent, prompt, context),
+  restoreChatComposer: (intent, prompt, context) => {
     try {
-      composerText = validateChatComposerText(prompt);
+      return createAttachedContextActions({
+        get,
+        set,
+        ownsChat,
+        activeChatId,
+      }).restoreAttachedComposer(
+        intent,
+        validateChatComposerText(prompt),
+        context,
+      );
     } catch {
       return false;
     }
-    const updated = { ...entry, composerText };
-    const active = activeChatId(state) === intent.chatId;
-    set({
-      chatUiById: { ...state.chatUiById, [intent.chatId]: updated },
-      ...(active ? { composerText } : {}),
-    });
-    return true;
   },
   setChatActionState: (intent, actionState) => {
     const state = get();

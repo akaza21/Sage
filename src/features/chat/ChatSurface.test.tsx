@@ -1716,12 +1716,14 @@ describe("ChatSurface per-chat composer", () => {
       chatUiById: {
         "chat-a": {
           composerText: "",
+          attachedContext: [],
           sending: false,
           error: null,
           requestGeneration: 0,
         },
         "chat-b": {
           composerText: "",
+          attachedContext: [],
           sending: false,
           error: null,
           requestGeneration: 0,
@@ -1953,6 +1955,72 @@ describe("ChatSurface composer focus hotkey", () => {
     );
     fireEvent.keyDown(window, { key: "l", ctrlKey: true });
     expect(composer).not.toHaveFocus();
+  });
+});
+
+describe("ChatSurface attached context", () => {
+  it("renders a removable diff comment chip for the bound Chat", () => {
+    const chatId = "chat-context";
+    hooks.page = { ...projection(), chatId: chatId as never };
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: chatId,
+          kind: "chat",
+          title: "Context",
+          position: 0,
+          pinned: true,
+          dirty: false,
+        },
+      ],
+      activeTabId: chatId,
+      project: { id: "project-a", name: "A", roots: [] },
+      chatOwnershipEpoch: 1,
+      chatUiById: {
+        [chatId]: {
+          composerText: "Fix this",
+          attachedContext: [
+            {
+              kind: "diffLineComment",
+              diffRef: {
+                projectId: "project-a",
+                chatId,
+                sessionId: "session-a",
+                runtimeEpoch: "1",
+                turnId: "turn-a",
+                itemId: "item-a",
+                diffOrdinal: 0,
+                snapshotRevision: "1",
+                rootId: "root-a",
+                relativePath: "src/AgentView.tsx",
+                contentDigest: "a".repeat(64),
+              } as never,
+              side: "new",
+              startLine: "27",
+              endLine: "31",
+              note: "Keep the selection explicit",
+            },
+          ],
+          sending: false,
+          error: null,
+          requestGeneration: 0,
+        },
+      },
+      composerText: "Fix this",
+    });
+
+    render(<ChatSurface chatId={chatId} />);
+    expect(screen.getByLabelText("Attached context")).toHaveTextContent(
+      "Comment · src/AgentView.tsx:27-31",
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Remove Comment · src/AgentView.tsx:27-31 context",
+      }),
+    );
+    expect(
+      useWorkbenchStore.getState().chatUiById[chatId].attachedContext,
+    ).toEqual([]);
   });
 });
 

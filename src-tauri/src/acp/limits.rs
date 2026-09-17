@@ -8,6 +8,10 @@ pub(crate) const DIFF_SIDE_BYTES_MAX: usize = 262_144;
 /// Retained immutable versions per Turn, including multiple versions of one item.
 pub(crate) const DIFFS_PER_TURN: i64 = 32;
 pub const COMMAND_RESOURCE_LIMIT: usize = 64;
+/// A prompt carries only a small review set, not an unbounded annotation log.
+pub const ATTACHED_CONTEXT_LIMIT: usize = 8;
+/// One attached user note is capped at one quarter of the WebView composer budget.
+pub const ATTACHED_CONTEXT_NOTE_BYTES: usize = 4 * 1024;
 /// A one-byte sensitive token may expand to this replacement in command output.
 pub(crate) const COMMAND_OUTPUT_REDACTION_BYTES: usize = "[redacted]".len();
 

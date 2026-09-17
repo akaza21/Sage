@@ -38,7 +38,7 @@ use crate::acp::{
     contract::{EntityRevision, RuntimeEpoch, SageAgentSessionId, SageTurnId, TurnState},
     intent::{
         ActivateAcpSessionRequest, CancelAcpTurnRequest, CloseAcpSessionRequest, Prompt,
-        SendAcpTurnRequest,
+        PromptDispatch, SendAcpTurnFailure, SendAcpTurnRequest,
     },
     runtime::{
         HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, PromptWrite, RuntimeEngine,
@@ -54,6 +54,10 @@ use crate::acp::{
 };
 #[cfg(windows)]
 use std::sync::Mutex;
+
+#[cfg(windows)]
+#[path = "tests/attached_context.rs"]
+mod attached_context;
 
 pub(super) fn state_with_project() -> (AppState, String, String, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-acp-command-{}", Uuid::new_v4()));
@@ -167,6 +171,8 @@ struct CommandHostEngine {
     owner: RuntimeOwner,
     calls: Arc<Mutex<Vec<&'static str>>>,
     turn_id: Option<SageTurnId>,
+    prompts: Option<Arc<Mutex<Vec<String>>>>,
+    fail_dispatch: bool,
 }
 
 // Database's connection mutex is deliberately non-reentrant. Keep every
@@ -183,6 +189,12 @@ impl RuntimeEngine for CommandHostEngine {
 
     fn prepare_prompt(&mut self, intent: &HostPromptIntent) -> Result<SageTurnId, HostError> {
         self.calls.lock().unwrap().push("prepare");
+        if let Some(prompts) = &self.prompts {
+            prompts
+                .lock()
+                .unwrap()
+                .push(intent.command.prompt.as_str().to_owned());
+        }
         let prepared = {
             let mut connection = self.database.connection();
             prepare_turn(&mut connection, intent.command.clone()).map_err(|_| HostError::Intent)?
@@ -197,6 +209,9 @@ impl RuntimeEngine for CommandHostEngine {
         turn_id: &SageTurnId,
     ) -> Result<PromptWrite, HostError> {
         self.calls.lock().unwrap().push("dispatch");
+        if self.fail_dispatch {
+            return Err(HostError::RecoveryRequired);
+        }
         if owner != &self.owner || self.turn_id.as_ref() != Some(turn_id) {
             return Err(HostError::Intent);
         }
@@ -402,6 +417,8 @@ fn install_command_host(
             owner: owner.clone(),
             calls: Arc::clone(&calls),
             turn_id: None,
+            prompts: None,
+            fail_dispatch: false,
         })
         .unwrap(),
     );
@@ -761,27 +778,30 @@ fn characterization_new_session_send_preserves_invalid_request_classification() 
             CharacterizationArtifact, CharacterizationBinding, CharacterizationCase,
         };
 
-        let root = std::env::temp_dir().join(format!("sage-acp-characterization-{}", Uuid::new_v4()));
+        let root =
+            std::env::temp_dir().join(format!("sage-acp-characterization-{}", Uuid::new_v4()));
         let project_root = root.join("project");
         fs::create_dir_all(&project_root).unwrap();
         let database = Database::open(std::path::Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&project_root).unwrap();
-        let chat = database.bootstrap_snapshot().unwrap().active_tab_id.unwrap();
+        let chat = database
+            .bootstrap_snapshot()
+            .unwrap()
+            .active_tab_id
+            .unwrap();
         let artifact_path = std::env::current_exe().unwrap();
         let metadata = std::fs::metadata(&artifact_path).unwrap();
         let bytes = std::fs::read(&artifact_path).unwrap();
         use sha2::Digest;
         let mut hasher = sha2::Sha256::new();
         hasher.update(bytes);
-        let artifact = CharacterizationArtifact::new(
-            artifact_path,
-            hasher.finalize().into(),
-            metadata.len(),
-        )
-        .unwrap();
+        let artifact =
+            CharacterizationArtifact::new(artifact_path, hasher.finalize().into(), metadata.len())
+                .unwrap();
         let state = AppState::try_new_characterization(
             database,
-            CharacterizationBinding::new(artifact, CharacterizationCase::TurnSuccess, &root).unwrap(),
+            CharacterizationBinding::new(artifact, CharacterizationCase::TurnSuccess, &root)
+                .unwrap(),
         )
         .unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
@@ -806,14 +826,17 @@ fn characterization_new_session_send_preserves_invalid_request_classification() 
                 .unwrap(),
                 model_id: None,
                 prompt: Prompt::new("prompt", "fixture new session").unwrap(),
+                attached_context: Default::default(),
             },
         )
         .await;
 
         assert!(matches!(
             result,
-            Err(AcpIpcError::InvalidRequest { message })
-                if message.as_str() == "Start and activate the characterized session before sending."
+            Err(SendAcpTurnFailure {
+                failure: AcpIpcError::InvalidRequest { message },
+                prompt_dispatch: PromptDispatch::NotStarted,
+            }) if message.as_str() == "Start and activate the characterized session before sending."
         ));
         drop(state);
         fs::remove_dir_all(root).unwrap();
@@ -1253,6 +1276,8 @@ fn test_binding_session_operations_dispatch_by_durable_binding_id() {
                 owner: owner.clone(),
                 calls: Arc::new(Mutex::new(Vec::new())),
                 turn_id: None,
+                prompts: None,
+                fail_dispatch: false,
             })
             .unwrap(),
         );
@@ -1274,6 +1299,7 @@ fn test_binding_session_operations_dispatch_by_durable_binding_id() {
                 session_id: session_id.clone(),
                 runtime_epoch: owner.runtime_epoch,
                 prompt: Prompt::new("prompt", "dispatch by durable binding").unwrap(),
+                attached_context: Default::default(),
             },
         )
         .await;
@@ -1428,6 +1454,7 @@ fn admitted_codex_send_command_routes_only_to_the_exact_owned_host() {
                 session_id: session_id.clone(),
                 runtime_epoch: owner.runtime_epoch,
                 prompt: Prompt::new("prompt", "route this prompt").unwrap(),
+                attached_context: Default::default(),
             },
         )
         .await
@@ -1453,14 +1480,18 @@ fn admitted_codex_send_command_routes_only_to_the_exact_owned_host() {
                 session_id,
                 runtime_epoch: RuntimeEpoch::new(2).unwrap(),
                 prompt: Prompt::new("prompt", "must reject").unwrap(),
+                attached_context: Default::default(),
             },
         )
         .await;
         assert!(matches!(
             stale,
-            Err(AcpIpcError::Conflict {
-                resource: AcpConflictResource::RuntimeEpoch,
-                ..
+            Err(SendAcpTurnFailure {
+                failure: AcpIpcError::Conflict {
+                    resource: AcpConflictResource::RuntimeEpoch,
+                    ..
+                },
+                prompt_dispatch: PromptDispatch::NotStarted,
             })
         ));
         state.acp.shutdown_blocking().unwrap();

@@ -2,6 +2,7 @@ import { type FormEvent, useCallback, useEffect, useMemo, useRef } from "react";
 
 import { openAgentArtifact } from "../../app/openAgentArtifact";
 import type { AgentDiffRef } from "../../domain/agentDiff";
+import type { DiffLineCommentContext } from "../../domain/attachedContext";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type {
   CuratedBindingId,
@@ -22,6 +23,7 @@ export function useChatSurfaceModel({
   page,
   discoveryPhase,
   composerText = "",
+  attachedContext = [],
   sending = false,
   chatError = null,
   projectTransitioning = false,
@@ -41,6 +43,7 @@ export function useChatSurfaceModel({
   page: AcpChatPage | null;
   discoveryPhase: HarnessDiscoveryPhase;
   composerText: string;
+  attachedContext: readonly DiffLineCommentContext[];
   sending: boolean;
   chatError: string | null;
   projectTransitioning: boolean;
@@ -51,6 +54,7 @@ export function useChatSurfaceModel({
     cancellableTurnId: TurnProjection["id"] | null;
     submit: (
       text: string,
+      attachedContext: readonly DiffLineCommentContext[],
       bindingId: CuratedBindingId,
       modelId: CuratedModelId | null,
     ) => Promise<unknown>;
@@ -165,18 +169,21 @@ export function useChatSurfaceModel({
   const { activeAcpTurn, workingTurnCount, canCloseSession, canPrompt, usage } =
     turnEligibility;
   const actionBusy = model.useNativeAcp ? acpActions.busy : sending;
-  const composerEnabled = canPrompt && !activeAcpTurn;
-  const disabledReason = composerDisabledReason({
-    actionBusy,
-    activeTurn: Boolean(activeAcpTurn),
-    availableBinding: model.availableBinding,
-    canPrompt,
-    harnessAvailable: model.harnessAvailable,
-    harnessDiscoveryPhase: discoveryPhase,
-    projectTransitioning,
-    selectedHarness: Boolean(model.selectedHarness),
-    useNativeAcp: model.useNativeAcp,
-  });
+  const legacyAttachments = !model.useNativeAcp && attachedContext.length > 0;
+  const composerEnabled = canPrompt && !activeAcpTurn && !legacyAttachments;
+  const disabledReason = legacyAttachments
+    ? "Attached diff comments require an ACP harness. Remove them or select an ACP harness."
+    : composerDisabledReason({
+        actionBusy,
+        activeTurn: Boolean(activeAcpTurn),
+        availableBinding: model.availableBinding,
+        canPrompt,
+        harnessAvailable: model.harnessAvailable,
+        harnessDiscoveryPhase: discoveryPhase,
+        projectTransitioning,
+        selectedHarness: Boolean(model.selectedHarness),
+        useNativeAcp: model.useNativeAcp,
+      });
   const submit = useCallback(
     (event: FormEvent) => {
       event.preventDefault();
@@ -190,18 +197,22 @@ export function useChatSurfaceModel({
           return;
         void acpActions.submit(
           composerText,
+          attachedContext,
           model.bindingId,
           model.selectedModelId,
         );
         return;
       }
+      if (legacyAttachments) return;
       void sendPrompt();
     },
     [
       acpActions,
       actionBusy,
+      attachedContext,
       composerEnabled,
       composerText,
+      legacyAttachments,
       model.bindingId,
       model.selectedModelId,
       model.useNativeAcp,

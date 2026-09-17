@@ -1,14 +1,17 @@
 import { FileDiff } from "lucide-react";
 import { useEffect } from "react";
 
+import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { snapshotProjectionRevision } from "../../app/agentDiffAdmission";
 import { diffCacheKey } from "../../domain/diffIdentity";
 import { isSnapshotDiffTab } from "../../domain/agentDiffIdentity";
 import { sameResource } from "../../domain/resourceIdentity";
+import type { DiffLineCommentContext } from "../../domain/attachedContext";
 import type { DiffLineKind, WorkbenchTab } from "../../domain/workbench";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
+import { DiffLineCommentComposer } from "./DiffLineCommentComposer";
 
 const linePrefix: Record<DiffLineKind, string> = {
   context: " ",
@@ -17,15 +20,27 @@ const linePrefix: Record<DiffLineKind, string> = {
   meta: "\\",
 };
 
-export function DiffSurface({ tab }: { tab: WorkbenchTab }) {
+export function DiffSurface({
+  tab,
+  readOnly = false,
+}: {
+  tab: WorkbenchTab;
+  readOnly?: boolean;
+}) {
   return tab.diffRef ? (
-    <SnapshotDiffSurface tab={tab} />
+    <SnapshotDiffSurface tab={tab} commentEnabled={readOnly} />
   ) : (
     <DiffDocument tab={tab} unavailable={isSnapshotDiffTab(tab)} />
   );
 }
 
-function SnapshotDiffSurface({ tab }: { tab: WorkbenchTab }) {
+function SnapshotDiffSurface({
+  tab,
+  commentEnabled,
+}: {
+  tab: WorkbenchTab;
+  commentEnabled: boolean;
+}) {
   const project = useWorkbenchStore((state) => state.project);
   const projectGeneration = useWorkbenchStore(
     (state) => state.projectGeneration,
@@ -42,16 +57,34 @@ function SnapshotDiffSurface({ tab }: { tab: WorkbenchTab }) {
         projection,
       ) !== null,
   );
-  return <DiffDocument tab={tab} unavailable={!current} />;
+  return (
+    <DiffDocument
+      tab={tab}
+      unavailable={!current}
+      commentEnabled={commentEnabled && current}
+    />
+  );
 }
 
 function DiffDocument({
   tab,
   unavailable = false,
+  commentEnabled = false,
 }: {
   tab: WorkbenchTab;
   unavailable?: boolean;
+  commentEnabled?: boolean;
 }) {
+  const focusedChatId = usePinnedAgentChatOwner();
+  const captureChatOwnership = useWorkbenchStore(
+    (state) => state.captureChatOwnership,
+  );
+  const attachChatContext = useWorkbenchStore(
+    (state) => state.attachChatContext,
+  );
+  const commentBusy = useWorkbenchStore((state) =>
+    focusedChatId ? (state.chatUiById[focusedChatId]?.sending ?? false) : true,
+  );
   const tabResource = tab.resource;
   const tabRepository = tab.repository;
   const path = tabResource?.relativePath ?? tab.title;
@@ -73,6 +106,17 @@ function DiffDocument({
     : repositories.roots
         .flatMap((repository) => repository.changes)
         .find((candidate) => sameResource(candidate.resource, tabResource));
+
+  const canComment =
+    commentEnabled &&
+    !commentBusy &&
+    Boolean(tab.diffRef) &&
+    focusedChatId === tab.diffRef?.chatId;
+  const addContext = (context: DiffLineCommentContext) => {
+    if (!canComment || !focusedChatId) return false;
+    const intent = captureChatOwnership(focusedChatId);
+    return intent ? attachChatContext(intent, context) : false;
+  };
 
   useEffect(() => {
     if (tabResource && !unavailable) {
@@ -140,13 +184,26 @@ function DiffDocument({
               </div>
               {hunk.lines.map((line, lineIndex) => (
                 <div
-                  className={`diff-line diff-line--${line.kind}`}
+                  className={`diff-line diff-line--${line.kind}${canComment ? " diff-line--commentable" : ""}`}
                   role="row"
                   key={`${hunkIndex}:${lineIndex}`}
                 >
-                  <span>{line.oldLine}</span>
-                  <span>{line.newLine}</span>
-                  <code>
+                  <span role="cell">{line.oldLine}</span>
+                  <span role="cell">{line.newLine}</span>
+                  <div className="diff-line__comment-gutter" role="cell">
+                    {canComment &&
+                    tab.diffRef &&
+                    (line.newLine ?? line.oldLine) !== null &&
+                    line.kind !== "meta" ? (
+                      <DiffLineCommentComposer
+                        diffRef={tab.diffRef}
+                        side={line.newLine !== null ? "new" : "old"}
+                        line={(line.newLine ?? line.oldLine)!}
+                        onAdd={addContext}
+                      />
+                    ) : null}
+                  </div>
+                  <code role="cell">
                     {linePrefix[line.kind]}
                     {line.text}
                   </code>

@@ -53,7 +53,7 @@ fn read_snapshot(
     read_owned(&connection, project_id, diff_ref)
 }
 
-fn verify_current_owner(
+pub(crate) fn verify_current_owner(
     connection: &rusqlite::Connection,
     expected_revision: crate::acp::contract::ProjectionRevision,
     diff_ref: &DiffRef,

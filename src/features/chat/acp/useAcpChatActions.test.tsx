@@ -109,8 +109,8 @@ describe("useAcpChatActions per-Chat ownership", () => {
     useWorkbenchStore.getState().setComposerText("one");
     const { result } = renderHook(() => useAcpChatActions());
 
-    const first = result.current.submit("one", bindingId, null);
-    const repeated = result.current.submit("two", bindingId, null);
+    const first = result.current.submit("one", [], bindingId, null);
+    const repeated = result.current.submit("two", [], bindingId, null);
     await waitFor(() => expect(send).toHaveBeenCalledOnce());
     await expect(repeated).resolves.toBe("rejected");
     expect(send).toHaveBeenCalledWith(
@@ -160,7 +160,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
 
     let outcome!: Awaited<ReturnType<typeof result.current.submit>>;
     await act(async () => {
-      const action = result.current.submit("Retry ACP A", bindingId, null);
+      const action = result.current.submit("Retry ACP A", [], bindingId, null);
       await waitFor(() => expect(send).toHaveBeenCalledOnce());
       expect(useWorkbenchStore.getState()).toMatchObject({
         composerText: "",
@@ -230,7 +230,12 @@ describe("useAcpChatActions per-Chat ownership", () => {
 
     let outcome!: Awaited<ReturnType<typeof result.current.submit>>;
     await act(async () => {
-      const action = result.current.submit("Dispatch from A", bindingId, null);
+      const action = result.current.submit(
+        "Dispatch from A",
+        [],
+        bindingId,
+        null,
+      );
       await waitFor(() => expect(send).toHaveBeenCalledOnce());
       await useWorkbenchStore.getState().activateChat("chat-b");
       useWorkbenchStore.getState().setComposerText("Draft B");
@@ -294,7 +299,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
     const { result } = renderHook(() => useAcpChatActions());
 
     await act(async () => {
-      await result.current.submit("Retry bounded failure", bindingId, null);
+      await result.current.submit("Retry bounded failure", [], bindingId, null);
     });
 
     const retained = useWorkbenchStore.getState().chatUiById["chat-a"].error;
@@ -330,7 +335,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
     } as AcpChatPage);
     const { result } = renderHook(() => useAcpChatActions("chat-b"));
     await act(async () => {
-      await result.current.submit("From B", bindingId, null);
+      await result.current.submit("From B", [], bindingId, null);
     });
     expect(send).toHaveBeenCalledWith(
       expect.objectContaining({ chatId: "chat-b", prompt: "From B" }),

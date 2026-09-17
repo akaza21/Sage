@@ -68,11 +68,13 @@ impl BindingProjectRoot {
 type LaunchFactory = fn(Arc<AdmittedCodexBinding>, BindingProjectRoot) -> Box<dyn RuntimeFactory>;
 type SupportedCapabilities =
     fn(&AdmittedCodexBinding) -> Result<CapabilitySnapshotV1, CodexAdmissionUnavailable>;
-type TurnDispatch =
-    fn(
-        &crate::acp::service::AcpService,
-        crate::acp::store::PrepareTurnCommand,
-    ) -> Result<crate::acp::runtime::HostOutcome, crate::acp::service::CodexSessionError>;
+type TurnDispatch = fn(
+    &crate::acp::service::AcpService,
+    crate::acp::store::PrepareTurnCommand,
+) -> Result<
+    crate::acp::runtime::HostOutcome,
+    crate::acp::service::PromptSendError<crate::acp::service::CodexSessionError>,
+>;
 type CancelDispatch =
     fn(
         &crate::acp::service::AcpService,
@@ -192,7 +194,10 @@ impl AdmittedBindingRecord<'_> {
         &self,
         service: &crate::acp::service::AcpService,
         command: crate::acp::store::PrepareTurnCommand,
-    ) -> Result<crate::acp::runtime::HostOutcome, crate::acp::service::CodexSessionError> {
+    ) -> Result<
+        crate::acp::runtime::HostOutcome,
+        crate::acp::service::PromptSendError<crate::acp::service::CodexSessionError>,
+    > {
         (self.record.turn_dispatch)(service, command)
     }
 }
@@ -414,9 +419,14 @@ fn test_launch_factory(
 fn test_turn_dispatch(
     _: &crate::acp::service::AcpService,
     _: crate::acp::store::PrepareTurnCommand,
-) -> Result<crate::acp::runtime::HostOutcome, crate::acp::service::CodexSessionError> {
+) -> Result<
+    crate::acp::runtime::HostOutcome,
+    crate::acp::service::PromptSendError<crate::acp::service::CodexSessionError>,
+> {
     TEST_TURN_DISPATCHED.store(true, std::sync::atomic::Ordering::Release);
-    Err(crate::acp::service::CodexSessionError::Intent)
+    Err(crate::acp::service::PromptSendError::unknown(
+        crate::acp::service::CodexSessionError::Intent,
+    ))
 }
 
 #[cfg(test)]

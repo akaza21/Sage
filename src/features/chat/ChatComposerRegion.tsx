@@ -2,12 +2,14 @@ import { ArrowUp } from "lucide-react";
 import type { FormEventHandler, RefObject } from "react";
 
 import type { AcpItem } from "../../domain/acp";
+import type { DiffLineCommentContext } from "../../domain/attachedContext";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 import {
   composerPromptPlaceholder,
   composerShortcutLabel,
 } from "./composerChrome";
+import { ComposerAttachments } from "./ComposerAttachments";
 import { ComposerContext } from "./ComposerContext";
 import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
 
@@ -17,6 +19,7 @@ export function ChatComposerRegion({
   descriptionId,
   disabledReasonId,
   text,
+  attachedContext,
   enabled,
   actionBusy,
   projectTransitioning,
@@ -30,6 +33,7 @@ export function ChatComposerRegion({
   usage,
   onSubmit,
   onTextChange,
+  onRemoveContext,
   onCancelTurn,
 }: {
   composerRef: RefObject<HTMLTextAreaElement | null>;
@@ -37,6 +41,7 @@ export function ChatComposerRegion({
   descriptionId: string;
   disabledReasonId: string;
   text: string;
+  attachedContext: readonly DiffLineCommentContext[];
   enabled: boolean;
   actionBusy: boolean;
   projectTransitioning: boolean;
@@ -50,6 +55,7 @@ export function ChatComposerRegion({
   usage: Extract<AcpItem, { kind: "usage" }>["payload"] | null;
   onSubmit: FormEventHandler<HTMLFormElement>;
   onTextChange: (text: string) => void;
+  onRemoveContext: (context: DiffLineCommentContext) => void;
   onCancelTurn: (() => void) | null;
 }) {
   return (
@@ -74,6 +80,11 @@ export function ChatComposerRegion({
           No reviewed local binding is available for this harness.
         </div>
       ) : null}
+      <ComposerAttachments
+        contexts={attachedContext}
+        disabled={actionBusy || projectTransitioning}
+        onRemove={onRemoveContext}
+      />
       <label className="sr-only" htmlFor={fieldId}>
         Message agent
       </label>

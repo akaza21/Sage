@@ -1,3 +1,5 @@
+import type { DiffLineCommentContext } from "./attachedContext";
+
 export const MAX_CHAT_COMPOSER_BYTES = 16 * 1024;
 export const MAX_CHAT_ERROR_BYTES = 2 * 1024;
 export const MAX_ATTACHED_CHAT_OWNERSHIP_ENTRIES = 64;
@@ -7,6 +9,7 @@ export const MAX_CHAT_OWNERSHIP_ENTRIES =
 
 export interface ChatOwnershipEntry {
   composerText: string;
+  attachedContext: readonly DiffLineCommentContext[];
   sending: boolean;
   error: string | null;
   requestGeneration: number;

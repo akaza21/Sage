@@ -74,8 +74,13 @@ let registered = false;
 export function registerWorkbenchSurfaces(): void {
   if (registered) return;
   registerCanvasSurface("chat", ChatCanvas);
-  registerCanvasSurface("diff", ({ tab }) => (
-    <LazyCanvasSurface tab={tab} label="Diff" load={loadDiffSurface} />
+  registerCanvasSurface("diff", ({ tab, readOnly }) => (
+    <LazyCanvasSurface
+      tab={tab}
+      readOnly={readOnly}
+      label="Diff"
+      load={loadDiffSurface}
+    />
   ));
   registerCanvasSurface("file", ({ tab, readOnly }) => (
     <LazyCanvasSurface

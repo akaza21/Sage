@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  attachedContextKey,
+  MAX_ATTACHED_CONTEXTS_PER_TURN,
+} from "../domain/attachedContext";
 import type { BootstrapSnapshot, WorkbenchTab } from "../domain/workbench";
 import {
   MAX_ARCHIVED_CHAT_OWNERSHIP_ENTRIES,
@@ -302,6 +306,136 @@ describe("per-Chat disposable ownership", () => {
     });
   });
 
+  it("bounds attached context per Chat and clears or restores it atomically with ACP text", async () => {
+    const owner = useWorkbenchStore.getState().captureChatOwnership(chatA.id)!;
+    const context = {
+      kind: "diffLineComment" as const,
+      diffRef: {
+        projectId: "project-a",
+        chatId: chatA.id,
+        sessionId: "session-a",
+        runtimeEpoch: "1",
+        turnId: "turn-a",
+        itemId: "item-a",
+        diffOrdinal: 0 as const,
+        snapshotRevision: "1",
+        rootId: "root-a",
+        relativePath: "src/app.ts",
+        contentDigest: "a".repeat(64),
+      } as never,
+      side: "new" as const,
+      startLine: "4",
+      endLine: "4",
+      note: "Keep this explicit",
+    };
+    useWorkbenchStore.getState().setComposerText("ACP A");
+    expect(useWorkbenchStore.getState().attachChatContext(owner, context)).toBe(
+      true,
+    );
+    expect(
+      useWorkbenchStore.getState().clearChatComposer(owner, "ACP A", [context]),
+    ).toBe(true);
+    expect(useWorkbenchStore.getState().chatUiById[chatA.id]).toMatchObject({
+      composerText: "",
+      attachedContext: [],
+    });
+    expect(
+      useWorkbenchStore
+        .getState()
+        .restoreChatComposer(owner, "Retry ACP A", [context]),
+    ).toBe(true);
+    expect(useWorkbenchStore.getState().chatUiById[chatA.id]).toMatchObject({
+      composerText: "Retry ACP A",
+      attachedContext: [context],
+    });
+    useWorkbenchStore.getState().setChatComposer(owner, "");
+    const newer = { ...context, note: "A newer note" };
+    expect(useWorkbenchStore.getState().attachChatContext(owner, newer)).toBe(
+      true,
+    );
+    expect(
+      useWorkbenchStore
+        .getState()
+        .restoreChatComposer(owner, "Retry again", [context]),
+    ).toBe(true);
+    expect(useWorkbenchStore.getState().chatUiById[chatA.id]).toMatchObject({
+      composerText: "Retry again",
+      attachedContext: [context, newer],
+    });
+    useWorkbenchStore.getState().setChatComposer(owner, "");
+    for (let index = 2; index < MAX_ATTACHED_CONTEXTS_PER_TURN; index += 1) {
+      useWorkbenchStore.getState().attachChatContext(owner, {
+        ...context,
+        note: `Current ${index}`,
+      });
+    }
+    expect(
+      useWorkbenchStore
+        .getState()
+        .restoreChatComposer(owner, "Keep the text", [
+          { ...context, note: "Over cap" },
+        ]),
+    ).toBe(true);
+    const restored = useWorkbenchStore.getState().chatUiById[chatA.id];
+    expect(restored.composerText).toBe("Keep the text");
+    expect(restored.attachedContext).toHaveLength(
+      MAX_ATTACHED_CONTEXTS_PER_TURN,
+    );
+    expect(restored.attachedContext).not.toContainEqual(
+      expect.objectContaining({ note: "Over cap" }),
+    );
+    useWorkbenchStore.setState({
+      chatUiById: {
+        ...useWorkbenchStore.getState().chatUiById,
+        [chatA.id]: {
+          ...restored,
+          composerText: "New draft",
+          attachedContext: [newer],
+        },
+      },
+      composerText: "New draft",
+    });
+    expect(() =>
+      useWorkbenchStore
+        .getState()
+        .restoreChatComposer(owner, "Old draft", [
+          { ...context, note: "invalid\0note" },
+          context,
+          context,
+        ]),
+    ).not.toThrow();
+    expect(useWorkbenchStore.getState().chatUiById[chatA.id]).toMatchObject({
+      composerText: "New draft",
+      attachedContext: [newer, context],
+    });
+    expect(() =>
+      useWorkbenchStore
+        .getState()
+        .restoreChatComposer(owner, "Old draft", [
+          ...Array.from(
+            { length: MAX_ATTACHED_CONTEXTS_PER_TURN + 1 },
+            (_, index) => ({ ...context, note: `Restored ${index}` }),
+          ),
+        ]),
+    ).not.toThrow();
+    expect(
+      useWorkbenchStore.getState().chatUiById[chatA.id].attachedContext,
+    ).toHaveLength(MAX_ATTACHED_CONTEXTS_PER_TURN);
+    expect(useWorkbenchStore.getState().composerText).toBe("New draft");
+    const key = attachedContextKey(context);
+    useWorkbenchStore
+      .getState()
+      .setChatActionState(owner, { sending: true, error: null });
+    expect(
+      useWorkbenchStore
+        .getState()
+        .attachChatContext(owner, { ...context, note: "Busy" }),
+    ).toBe(false);
+    expect(useWorkbenchStore.getState().detachChatContext(owner, key)).toBe(
+      false,
+    );
+  });
+
   it("applies ACP presentation updates only to the captured ownership epoch", async () => {
     useWorkbenchStore.getState().setComposerText("ACP A");
     const owner = useWorkbenchStore.getState().captureChatOwnership(chatA.id);
@@ -325,13 +459,15 @@ describe("per-Chat disposable ownership", () => {
       error: null,
     });
     expect(
-      useWorkbenchStore.getState().clearChatComposer(owner!, "ACP A"),
+      useWorkbenchStore.getState().clearChatComposer(owner!, "ACP A", []),
     ).toBe(true);
 
     await useWorkbenchStore.getState().activateChat(chatB.id);
     useWorkbenchStore.getState().setComposerText("ACP B");
     expect(
-      useWorkbenchStore.getState().restoreChatComposer(owner!, "Retry ACP A"),
+      useWorkbenchStore
+        .getState()
+        .restoreChatComposer(owner!, "Retry ACP A", []),
     ).toBe(true);
     expect(
       useWorkbenchStore.getState().setChatActionState(owner!, {

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
+    attached_context::AttachedContexts,
     contract::*,
     intent::{BindingId, ModelId, PageCursor, Prompt},
 };
@@ -165,6 +166,8 @@ pub enum SendAcpTurnRequest {
         session_id: SageAgentSessionId,
         runtime_epoch: RuntimeEpoch,
         prompt: Prompt,
+        #[serde(default)]
+        attached_context: AttachedContexts,
     },
     NewSession {
         project_id: SageProjectId,
@@ -175,6 +178,8 @@ pub enum SendAcpTurnRequest {
         binding_id: BindingId,
         model_id: Option<ModelId>,
         prompt: Prompt,
+        #[serde(default)]
+        attached_context: AttachedContexts,
     },
 }
 
@@ -290,6 +295,21 @@ pub enum AcpIpcError {
     Internal {
         message: SafeText<8192>,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PromptDispatch {
+    NotStarted,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendAcpTurnFailure {
+    #[serde(flatten)]
+    pub failure: AcpIpcError,
+    pub prompt_dispatch: PromptDispatch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

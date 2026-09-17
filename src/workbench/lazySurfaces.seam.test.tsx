@@ -36,6 +36,10 @@ it("keeps all Q04 named surfaces behind dynamic imports", () => {
     'import("../features/preview/PreviewSurface")',
   );
   expect(registrySource).toContain('import("../features/diff/DiffSurface")');
+  expect(registrySource).toContain(
+    'registerCanvasSurface("diff", ({ tab, readOnly }) =>',
+  );
+  expect(registrySource).toContain("readOnly={readOnly}");
   expect(registrySource).toContain('import("../features/files/FileSurface")');
   expect(chatSource).not.toContain('from "./MermaidFigure"');
   expect(markdownSource).not.toContain('from "../chat/acp/MermaidFigure"');

@@ -17,6 +17,64 @@
   box-shadow: var(--highlight-focus-halo-shadow), var(--elevation-popover);
 }
 
+.composer__attachments {
+  display: flex;
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-2) var(--space-3) 0;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  list-style: none;
+}
+
+.composer__attachment {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 3px 4px 3px var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  background: var(--color-panel);
+  font-size: var(--font-size-xs);
+}
+
+.composer__attachment > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer__attachment-remove {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.composer__attachment-remove:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.composer__attachment-remove:disabled {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
+.composer__attachment-remove:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
 .composer textarea {
   display: block;
   width: 100%;
@@ -292,6 +350,8 @@
 
 @media (forced-colors: active) {
   .composer,
+  .composer__attachment,
+  .composer__attachment-remove,
   .select-control--chip,
   .send-button {
     border: 1px solid CanvasText;

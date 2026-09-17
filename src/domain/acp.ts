@@ -11,6 +11,7 @@ export type {
   TurnProjection,
 } from "./acpProjection";
 import type { AcpChatPage } from "./acpProjection";
+import type { DiffLineCommentContext } from "./attachedContext";
 
 export type {
   PermissionDecision,
@@ -185,14 +186,19 @@ export interface StartAcpSessionRequest extends AcpMutationIntent {
   modelId: CuratedModelId | null;
 }
 
+interface AcpTurnContent {
+  prompt: string;
+  attachedContext?: readonly DiffLineCommentContext[];
+}
+
 export type SendAcpTurnRequest =
-  | (AcpSessionMutationIntent & { target: "session"; prompt: string })
-  | (AcpMutationIntent & {
-      target: "newSession";
-      bindingId: CuratedBindingId;
-      modelId: CuratedModelId | null;
-      prompt: string;
-    });
+  | (AcpSessionMutationIntent & AcpTurnContent & { target: "session" })
+  | (AcpMutationIntent &
+      AcpTurnContent & {
+        target: "newSession";
+        bindingId: CuratedBindingId;
+        modelId: CuratedModelId | null;
+      });
 
 export interface CancelAcpTurnRequest extends AcpSessionMutationIntent {
   turnId: SageTurnId;
@@ -214,7 +220,7 @@ export interface AcpProjectionChangedEvent {
   projectionRevision: ProjectionRevision;
 }
 
-export type AcpCommandFailure =
+type AcpCommandFailureDetail =
   | {
       kind: "unavailable";
       reason:
@@ -252,3 +258,7 @@ export type AcpCommandFailure =
   | { kind: "invalidRequest"; message: string }
   | { kind: "recoveryRequired"; message: string }
   | { kind: "internal"; message: string };
+
+export type AcpCommandFailure = AcpCommandFailureDetail & {
+  promptDispatch?: "notStarted" | "unknown";
+};

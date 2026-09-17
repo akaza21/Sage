@@ -9,11 +9,11 @@ use crate::acp::{
         ToolState, TurnState, classify_terminal,
     },
     intent::{
-        ActivateAcpSessionRequest, ActivityProvenanceV1, CancelAcpTurnRequest,
+        AcpIpcError, ActivateAcpSessionRequest, ActivityProvenanceV1, CancelAcpTurnRequest,
         CapabilitySnapshotV1, CloseAcpSessionRequest, GetAcpChatPageRequest, IntentError,
-        IntentSnapshot, NormalizedPayload, ProjectionChangedV1, SafeResourceRef,
-        SendAcpTurnRequest, StartAcpSessionRequest, validate_base_intent, validate_cancel_intent,
-        validate_session_intent,
+        IntentSnapshot, NormalizedPayload, ProjectionChangedV1, PromptDispatch, SafeResourceRef,
+        SendAcpTurnFailure, SendAcpTurnRequest, StartAcpSessionRequest, validate_base_intent,
+        validate_cancel_intent, validate_session_intent,
     },
     limits::LIMITS,
     projection::{
@@ -403,7 +403,27 @@ fn every_ipc_request_is_closed_and_uses_camel_case() {
         }),
     );
     let parsed: SendAcpTurnRequest = serde_json::from_value(send.clone()).unwrap();
-    assert!(matches!(parsed, SendAcpTurnRequest::Session { .. }));
+    assert!(matches!(
+        parsed,
+        SendAcpTurnRequest::Session { attached_context, .. }
+            if attached_context.as_slice().is_empty()
+    ));
+    let context = json!({
+        "kind": "diffLineComment",
+        "diffRef": {
+            "projectId": "project-a", "chatId": "chat-a", "sessionId": "session-a",
+            "runtimeEpoch": "2", "turnId": "turn-a", "itemId": "item-a",
+            "diffOrdinal": 0, "snapshotRevision": "1", "rootId": "root-a",
+            "relativePath": "src/app.ts", "contentDigest": "a".repeat(64)
+        },
+        "side": "new", "startLine": "1", "endLine": "1", "note": "Review this"
+    });
+    let attached = with(send.clone(), json!({"attachedContext": [context.clone()]}));
+    assert!(serde_json::from_value::<SendAcpTurnRequest>(attached).is_ok());
+    assert!(serde_json::from_value::<SendAcpTurnRequest>(with(
+        send.clone(),
+        json!({"attachedContext": vec![context; crate::acp::limits::ATTACHED_CONTEXT_LIMIT + 1]})
+    )).is_err());
     assert!(
         serde_json::from_value::<SendAcpTurnRequest>(with(send, json!({"queueLimit": 5}))).is_err()
     );
@@ -439,6 +459,24 @@ fn every_ipc_request_is_closed_and_uses_camel_case() {
     assert!(
         serde_json::from_value::<CloseAcpSessionRequest>(with(close, json!({"environment": {}})))
             .is_err()
+    );
+}
+
+#[test]
+fn send_failure_serializes_prompt_dispatch_proof_without_changing_failure_kind() {
+    let failure = SendAcpTurnFailure {
+        failure: AcpIpcError::RecoveryRequired {
+            message: SafeText::new("message", "snapshot failed").unwrap(),
+        },
+        prompt_dispatch: PromptDispatch::NotStarted,
+    };
+    assert_eq!(
+        serde_json::to_value(failure).unwrap(),
+        json!({
+            "kind": "recoveryRequired",
+            "message": "snapshot failed",
+            "promptDispatch": "notStarted"
+        })
     );
 }
 

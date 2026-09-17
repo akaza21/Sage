@@ -11,6 +11,7 @@ import type { WorkbenchState } from "./store";
 export function emptyChatOwnershipEntry(): ChatOwnershipEntry {
   return {
     composerText: "",
+    attachedContext: [],
     sending: false,
     error: null,
     requestGeneration: 0,

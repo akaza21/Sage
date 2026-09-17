@@ -8,6 +8,7 @@ impl AcpService {
         command: PrepareTurnCommand,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
         self.send_session_turn(command)
+            .map_err(|failure| failure.error)
     }
 
     #[cfg(test)]
@@ -29,21 +30,25 @@ impl AcpService {
     pub(crate) fn send_session_turn(
         &self,
         command: PrepareTurnCommand,
-    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
+    ) -> Result<
+        crate::acp::runtime::HostOutcome,
+        crate::acp::service::PromptSendError<CodexSessionError>,
+    > {
         let owner = RuntimeOwner {
             project_id: command.project_id.clone(),
             chat_id: command.chat_id.clone(),
             session_id: command.session_id.clone(),
             runtime_epoch: command.runtime_epoch,
         };
-        let host = self.runtime.for_owner(&owner).map_err(map_slot_error)?;
+        let host = self
+            .runtime
+            .for_owner(&owner)
+            .map_err(map_slot_error)
+            .map_err(crate::acp::service::PromptSendError::not_started)?;
         match host.send(crate::acp::runtime::HostPromptIntent { command }) {
             Ok(outcome) => Ok(outcome),
-            Err(error) => Err(self.retain_live_host_error(
-                owner,
-                host,
-                LiveHostRecoveryPhase::SendEffect,
-                error,
+            Err(error) => Err(crate::acp::service::PromptSendError::unknown(
+                self.retain_live_host_error(owner, host, LiveHostRecoveryPhase::SendEffect, error),
             )),
         }
     }

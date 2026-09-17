@@ -146,6 +146,7 @@ fn run(case: CharacterizationCase, expected_terminal: TurnState) {
                 session_id: session_id.clone(),
                 runtime_epoch: epoch,
                 prompt: Prompt::new("prompt", "read only").unwrap(),
+                attached_context: Default::default(),
             },
         )
         .await

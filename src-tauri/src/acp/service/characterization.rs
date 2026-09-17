@@ -291,13 +291,16 @@ impl AcpService {
     pub(crate) fn send_characterization(
         &self,
         command: PrepareTurnCommand,
-    ) -> Result<HostOutcome, CharacterizationError> {
+    ) -> Result<HostOutcome, super::PromptSendError<CharacterizationError>> {
         let owner = command_owner(&command);
         self.runtime
             .for_owner(&owner)
-            .map_err(map_slot)?
+            .map_err(map_slot)
+            .map_err(super::PromptSendError::not_started)?
             .send(HostPromptIntent { command })
-            .map_err(|error| map_host_error(&self.runtime, &owner, error))
+            .map_err(|error| {
+                super::PromptSendError::unknown(map_host_error(&self.runtime, &owner, error))
+            })
     }
 
     pub(crate) fn cancel_characterization(

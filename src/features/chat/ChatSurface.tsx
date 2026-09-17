@@ -31,8 +31,16 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const harnessDiscoveryPhase = useWorkbenchStore(
     (state) => state.harnessDiscoveryPhase,
   );
-  const { composerText, sending, chatError, setComposerText, sendPrompt } =
-    useBoundChatComposer(chatId);
+  const {
+    composerText,
+    attachedContext,
+    sending,
+    chatError,
+    setComposerText,
+    removeAttachedContext,
+    attachedContextKey,
+    sendPrompt,
+  } = useBoundChatComposer(chatId);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
@@ -83,6 +91,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     page: acpPage,
     discoveryPhase: harnessDiscoveryPhase,
     composerText,
+    attachedContext,
     sending,
     chatError,
     projectTransitioning,
@@ -205,6 +214,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         descriptionId={composerDescriptionId}
         disabledReasonId={composerDisabledReasonId}
         text={composerText}
+        attachedContext={attachedContext}
         enabled={composerEnabled}
         actionBusy={actionBusy}
         projectTransitioning={projectTransitioning}
@@ -228,6 +238,9 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         usage={usage}
         onSubmit={submit}
         onTextChange={setComposerText}
+        onRemoveContext={(context) =>
+          removeAttachedContext(attachedContextKey(context))
+        }
         onCancelTurn={cancelTurn}
       />
     </section>

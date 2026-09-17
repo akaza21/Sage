@@ -165,6 +165,16 @@ function safeProjectionChanged(
 }
 
 export function safeFailure(value: unknown): AcpCommandFailure {
+  if (
+    isRecord(value) &&
+    isOneOf(value.promptDispatch, ["notStarted", "unknown"] as const)
+  ) {
+    const { promptDispatch, ...detail } = value;
+    const failure = safeFailure(
+      isRecord(value.failure) ? value.failure : detail,
+    );
+    return { ...failure, promptDispatch };
+  }
   if (isRecord(value)) {
     const kind = value.kind;
     const message = safeMessage(value.message);

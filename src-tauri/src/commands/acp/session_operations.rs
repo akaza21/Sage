@@ -1,17 +1,21 @@
 use super::*;
+use crate::acp::attached_context::effective_prompt;
 
 pub(crate) async fn send_acp_turn_inner(
     state: &AppState,
     request: SendAcpTurnRequest,
-) -> Result<AcpMutationResponse, AcpIpcError> {
+) -> Result<AcpMutationResponse, SendAcpTurnFailure> {
     let (project_id, generation, chat_id) = send_owner(&request);
     let (_transition, snapshot) =
-        snapshot_for(state, project_id.clone(), generation, chat_id.clone()).await?;
-    validate_send(&request, &snapshot)?;
+        snapshot_for(state, project_id.clone(), generation, chat_id.clone())
+            .await
+            .map_err(prompt_not_dispatched)?;
+    validate_send(state, &request, &snapshot).map_err(prompt_not_dispatched)?;
     #[cfg(all(windows, feature = "acp-fixture"))]
     if let SendAcpTurnRequest::Session { session_id, .. } = &request {
-        let binding_id =
-            session_routes::durable_binding_id(state, session_id).map_err(store_error)?;
+        let binding_id = session_routes::durable_binding_id(state, session_id)
+            .map_err(store_error)
+            .map_err(prompt_not_dispatched)?;
         if state.acp.accepts_characterization(&binding_id) {
             return characterization::send(state, request);
         }
@@ -25,6 +29,7 @@ pub(crate) async fn send_acp_turn_inner(
         session_id,
         runtime_epoch,
         prompt,
+        attached_context,
     ) = match request {
         SendAcpTurnRequest::NewSession {
             project_id,
@@ -35,24 +40,40 @@ pub(crate) async fn send_acp_turn_inner(
             binding_id,
             model_id,
             prompt,
+            attached_context,
         } => {
             #[cfg(all(windows, feature = "acp-fixture"))]
-            if state.acp.accepts_characterization_new_session(&binding_id) {
-                return characterization::send(
-                    state,
-                    SendAcpTurnRequest::NewSession {
-                        project_id,
-                        project_generation,
-                        chat_id,
-                        expected_projection_revision,
-                        client_intent_id,
-                        binding_id,
-                        model_id,
-                        prompt,
-                    },
-                );
+            {
+                if state.acp.accepts_characterization_new_session(&binding_id) {
+                    return characterization::send(
+                        state,
+                        SendAcpTurnRequest::NewSession {
+                            project_id,
+                            project_generation,
+                            chat_id,
+                            expected_projection_revision,
+                            client_intent_id,
+                            binding_id,
+                            model_id,
+                            prompt,
+                            attached_context,
+                        },
+                    );
+                }
             }
-            return Err(binding_unavailable());
+            #[cfg(not(all(windows, feature = "acp-fixture")))]
+            let _ = (
+                project_id,
+                project_generation,
+                chat_id,
+                expected_projection_revision,
+                client_intent_id,
+                binding_id,
+                model_id,
+                prompt,
+                attached_context,
+            );
+            return Err(prompt_not_dispatched(binding_unavailable()));
         }
         SendAcpTurnRequest::Session {
             project_id,
@@ -63,6 +84,7 @@ pub(crate) async fn send_acp_turn_inner(
             session_id,
             runtime_epoch,
             prompt,
+            attached_context,
         } => (
             project_id,
             project_generation,
@@ -72,9 +94,17 @@ pub(crate) async fn send_acp_turn_inner(
             session_id,
             runtime_epoch,
             prompt,
+            attached_context,
         ),
     };
-    let binding_id = session_routes::durable_binding_id(state, &session_id).map_err(store_error)?;
+    let binding_id = session_routes::durable_binding_id(state, &session_id)
+        .map_err(store_error)
+        .map_err(prompt_not_dispatched)?;
+    let prompt = effective_prompt(&prompt, &attached_context)
+        .map_err(|_| AcpIpcError::InvalidRequest {
+            message: safe_message("The prompt and attached context exceed the native byte limit."),
+        })
+        .map_err(prompt_not_dispatched)?;
     state
         .acp
         .dispatch_session_turn(
@@ -91,8 +121,25 @@ pub(crate) async fn send_acp_turn_inner(
                 now_millis: crate::persistence::now_millis(),
             },
         )
-        .map_err(dispatch_error)?;
-    mutation_response(state, project_id, chat_id)
+        .map_err(|failure| SendAcpTurnFailure {
+            failure: dispatch_error(failure.error),
+            prompt_dispatch: failure.prompt_dispatch,
+        })?;
+    mutation_response(state, project_id, chat_id).map_err(prompt_dispatch_unknown)
+}
+
+pub(super) fn prompt_not_dispatched(failure: AcpIpcError) -> SendAcpTurnFailure {
+    SendAcpTurnFailure {
+        failure,
+        prompt_dispatch: PromptDispatch::NotStarted,
+    }
+}
+
+pub(super) fn prompt_dispatch_unknown(failure: AcpIpcError) -> SendAcpTurnFailure {
+    SendAcpTurnFailure {
+        failure,
+        prompt_dispatch: PromptDispatch::Unknown,
+    }
 }
 
 pub(crate) async fn cancel_acp_turn_inner(

@@ -1,10 +1,11 @@
 use crate::{
     acp::{
+        attached_context::effective_prompt,
         contract::SafeText,
         intent::{
             AcpCapacityResource, AcpConflictResource, AcpIpcError, AcpMutationResponse,
             AcpUnavailableReason, ActivateAcpSessionRequest, CancelAcpTurnRequest,
-            CloseAcpSessionRequest, SendAcpTurnRequest, StartAcpSessionRequest,
+            CloseAcpSessionRequest, SendAcpTurnFailure, SendAcpTurnRequest, StartAcpSessionRequest,
         },
         limits::LIMITS,
         runtime::HostCancelIntent,
@@ -18,7 +19,11 @@ use crate::{
     state::AppState,
 };
 
-use super::{errors::safe_message, mutation_response};
+use super::{
+    errors::safe_message,
+    mutation_response,
+    session_operations::{prompt_dispatch_unknown, prompt_not_dispatched},
+};
 
 pub(super) async fn start(
     state: &AppState,
@@ -88,7 +93,7 @@ fn binding_unavailable() -> AcpIpcError {
 pub(super) fn send(
     state: &AppState,
     request: SendAcpTurnRequest,
-) -> Result<AcpMutationResponse, AcpIpcError> {
+) -> Result<AcpMutationResponse, SendAcpTurnFailure> {
     let SendAcpTurnRequest::Session {
         project_id,
         project_generation,
@@ -98,12 +103,18 @@ pub(super) fn send(
         session_id,
         runtime_epoch,
         prompt,
+        attached_context,
     } = request
     else {
-        return Err(AcpIpcError::InvalidRequest {
+        return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
             message: safe_message("Start and activate the characterized session before sending."),
-        });
+        }));
     };
+    let prompt = effective_prompt(&prompt, &attached_context)
+        .map_err(|_| AcpIpcError::InvalidRequest {
+            message: safe_message("The prompt and attached context exceed the native byte limit."),
+        })
+        .map_err(prompt_not_dispatched)?;
     state
         .acp
         .send_characterization(PrepareTurnCommand {
@@ -117,8 +128,11 @@ pub(super) fn send(
             prompt,
             now_millis: crate::persistence::now_millis(),
         })
-        .map_err(map_error)?;
-    mutation_response(state, project_id, chat_id)
+        .map_err(|failure| SendAcpTurnFailure {
+            failure: map_error(failure.error),
+            prompt_dispatch: failure.prompt_dispatch,
+        })?;
+    mutation_response(state, project_id, chat_id).map_err(prompt_dispatch_unknown)
 }
 
 pub(super) fn cancel(
@@ -189,5 +203,47 @@ pub(super) fn map_error(error: CharacterizationError) -> AcpIpcError {
         | CharacterizationError::Observation => AcpIpcError::Internal {
             message: safe_message("The characterized ACP operation failed safely."),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::acp::{
+        contract::{
+            ClientIntentId, ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId,
+            SageProjectId,
+        },
+        intent::{Prompt, PromptDispatch},
+    };
+
+    #[test]
+    fn characterization_missing_runtime_proves_prompt_not_started() {
+        let (state, project, chat, root) = crate::commands::tests::state_with_project();
+        let project_id = SageProjectId::parse(project).unwrap();
+        let chat_id = SageChatId::parse(chat).unwrap();
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+        let failure = send(
+            &state,
+            SendAcpTurnRequest::Session {
+                project_id,
+                project_generation: ProjectGeneration::ZERO,
+                chat_id,
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: SageAgentSessionId::parse("unavailable-session").unwrap(),
+                runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+                prompt: Prompt::new("prompt", "Do not infer retry safety from an error kind")
+                    .unwrap(),
+                attached_context: Default::default(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(failure.prompt_dispatch, PromptDispatch::NotStarted);
+        drop(state);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

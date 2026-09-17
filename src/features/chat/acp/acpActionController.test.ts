@@ -137,8 +137,8 @@ function harness(initialPage: AcpChatPage) {
     page: initialPage,
   };
   const applied: AcpChatPage[] = [];
-  const restored: string[] = [];
-  const cleared: string[] = [];
+  const restored: Array<{ prompt: string; attachedContext: unknown[] }> = [];
+  const cleared: Array<{ prompt: string; attachedContext: unknown[] }> = [];
   const states: Array<{
     scope: AcpProjectionScope | null;
     busy: boolean;
@@ -160,8 +160,10 @@ function harness(initialPage: AcpChatPage) {
       if (context) context = { ...context, page: authoritative };
       return "accepted";
     },
-    clearComposer: (_context, prompt) => cleared.push(prompt),
-    restoreComposer: (_context, prompt) => restored.push(prompt),
+    clearComposer: (_context, prompt, attachedContext) =>
+      cleared.push({ prompt, attachedContext: [...attachedContext] }),
+    restoreComposer: (_context, prompt, attachedContext) =>
+      restored.push({ prompt, attachedContext: [...attachedContext] }),
     onStateChange: (state) =>
       states.push({ scope: state.scope, busy: state.busy, error: state.error }),
     createIntentId: () => `intent-${++intent}` as ClientIntentId,
@@ -203,7 +205,7 @@ describe("ACP action controller", () => {
     vi.mocked(test.commands.sendTurn).mockResolvedValue({ projection: sent });
 
     await expect(
-      test.controller.submit("  hello  ", bindingId, modelId),
+      test.controller.submit("  hello  ", [], bindingId, modelId),
     ).resolves.toBe("applied");
 
     expect(test.commands.startSession).toHaveBeenCalledWith(
@@ -229,9 +231,48 @@ describe("ACP action controller", () => {
         clientIntentId: "intent-3",
       }),
     );
+    expect(
+      vi.mocked(test.commands.sendTurn).mock.calls[0]?.[0],
+    ).not.toHaveProperty("attachedContext");
     expect(test.applied).toEqual([created, active, sent]);
-    expect(test.cleared).toEqual(["hello"]);
+    expect(test.cleared).toEqual([{ prompt: "hello", attachedContext: [] }]);
     expect(test.restored).toEqual([]);
+  });
+
+  it("carries typed attached context through send and composer clearing", async () => {
+    const test = harness(page("5", session("hot", "1", null)));
+    const sent = page("6", session("hot", "1", null));
+    vi.mocked(test.commands.sendTurn).mockResolvedValue({ projection: sent });
+    const attachedContext = [
+      {
+        kind: "diffLineComment" as const,
+        diffRef: {
+          projectId: scope.projectId,
+          chatId: scope.chatId,
+          sessionId: "session-a",
+          runtimeEpoch: "1",
+          turnId: "turn-source",
+          itemId: "item-source",
+          diffOrdinal: 0 as const,
+          snapshotRevision: "1",
+          rootId: "root-a",
+          relativePath: "src/app.ts",
+          contentDigest: "a".repeat(64),
+        } as never,
+        side: "new" as const,
+        startLine: "4",
+        endLine: "4",
+        note: "Keep this explicit",
+      },
+    ];
+
+    await expect(
+      test.controller.submit("Fix it", attachedContext, bindingId, modelId),
+    ).resolves.toBe("applied");
+    expect(test.commands.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ attachedContext }),
+    );
+    expect(test.cleared).toEqual([{ prompt: "Fix it", attachedContext }]);
   });
 
   it("activates a cold durable session at nextRuntimeEpoch before sending", async () => {
@@ -243,7 +284,7 @@ describe("ACP action controller", () => {
     });
     vi.mocked(test.commands.sendTurn).mockResolvedValue({ projection: sent });
 
-    await test.controller.submit("resume", bindingId, modelId);
+    await test.controller.submit("resume", [], bindingId, modelId);
 
     expect(test.commands.startSession).not.toHaveBeenCalled();
     expect(test.commands.activateSession).toHaveBeenCalledWith(
@@ -258,7 +299,7 @@ describe("ACP action controller", () => {
     const test = harness(page("1", null));
     const starting = deferred<{ projection: AcpChatPage }>();
     vi.mocked(test.commands.startSession).mockReturnValue(starting.promise);
-    const action = test.controller.submit("Keep in A", bindingId, modelId);
+    const action = test.controller.submit("Keep in A", [], bindingId, modelId);
     await nextMicrotask();
     const nextScope = { ...scope, chatId: "chat-b" as SageChatId };
     test.setContext({
@@ -285,6 +326,7 @@ describe("ACP action controller", () => {
     );
     const action = test.controller.submit(
       "Keep activation prompt",
+      [],
       bindingId,
       modelId,
     );
@@ -337,7 +379,7 @@ describe("ACP action controller", () => {
       });
 
       await expect(
-        test.controller.submit("new attempt", nextBinding, nextModel),
+        test.controller.submit("new attempt", [], nextBinding, nextModel),
       ).resolves.toBe("applied");
       expect(test.commands.startSession).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -364,11 +406,13 @@ describe("ACP action controller", () => {
     });
 
     await expect(
-      test.controller.submit("keep this prompt", bindingId, modelId),
+      test.controller.submit("keep this prompt", [], bindingId, modelId),
     ).resolves.toBe("rejected");
     expect(test.commands.activateSession).not.toHaveBeenCalled();
     expect(test.commands.sendTurn).not.toHaveBeenCalled();
-    expect(test.restored).toEqual(["keep this prompt"]);
+    expect(test.restored).toEqual([
+      { prompt: "keep this prompt", attachedContext: [] },
+    ]);
   });
 
   it.each([
@@ -381,7 +425,7 @@ describe("ACP action controller", () => {
       const test = harness(page("5", session("hot", "1", null)));
       const pending = deferred<{ projection: AcpChatPage }>();
       vi.mocked(test.commands.sendTurn).mockReturnValue(pending.promise);
-      const action = test.controller.submit("late", bindingId, modelId);
+      const action = test.controller.submit("late", [], bindingId, modelId);
       await nextMicrotask();
       test.setContext({
         scope: nextScope,
@@ -406,8 +450,8 @@ describe("ACP action controller", () => {
         projection: page("7", session("hot", "1", null)),
       });
 
-    const actionOne = test.controller.submit("one", bindingId, modelId);
-    const actionTwo = test.controller.submit("two", bindingId, modelId);
+    const actionOne = test.controller.submit("one", [], bindingId, modelId);
+    const actionTwo = test.controller.submit("two", [], bindingId, modelId);
     await nextMicrotask();
     expect(test.commands.sendTurn).toHaveBeenCalledTimes(1);
     await expect(actionTwo).resolves.toBe("rejected");
@@ -416,7 +460,7 @@ describe("ACP action controller", () => {
       resource: "queue",
       limit: 1,
     });
-    expect(test.cleared).toEqual(["one"]);
+    expect(test.cleared).toEqual([{ prompt: "one", attachedContext: [] }]);
     expect(test.restored).toEqual([]);
 
     const runningTurn = turn("turn-first", 1, "running");
@@ -425,7 +469,7 @@ describe("ACP action controller", () => {
     });
     await expect(actionOne).resolves.toBe("applied");
     await expect(
-      test.controller.submit("too early", bindingId, modelId),
+      test.controller.submit("too early", [], bindingId, modelId),
     ).resolves.toBe("rejected");
     expect(test.commands.sendTurn).toHaveBeenCalledTimes(1);
     expect(test.states.at(-1)?.error?.failure).toMatchObject({
@@ -443,7 +487,7 @@ describe("ACP action controller", () => {
       ]),
     });
     await expect(
-      test.controller.submit("follow-up", bindingId, modelId),
+      test.controller.submit("follow-up", [], bindingId, modelId),
     ).resolves.toBe("applied");
     expect(test.commands.sendTurn).toHaveBeenCalledTimes(2);
     expect(test.commands.sendTurn).toHaveBeenLastCalledWith(
@@ -458,7 +502,7 @@ describe("ACP action controller", () => {
     const test = harness(page("5", session("hot", "1", null)));
     const pending = deferred<{ projection: AcpChatPage }>();
     vi.mocked(test.commands.sendTurn).mockReturnValue(pending.promise);
-    const first = test.controller.submit("one", bindingId, modelId);
+    const first = test.controller.submit("one", [], bindingId, modelId);
     await nextMicrotask();
 
     test.setContext({
@@ -472,7 +516,7 @@ describe("ACP action controller", () => {
     });
 
     await expect(
-      test.controller.submit("switch-back repeat", bindingId, modelId),
+      test.controller.submit("switch-back repeat", [], bindingId, modelId),
     ).resolves.toBe("rejected");
     expect(test.commands.sendTurn).toHaveBeenCalledTimes(1);
 
@@ -496,7 +540,7 @@ describe("ACP action controller", () => {
           projectionRevision: "2" as ProjectionRevision,
         },
       });
-    const oldAction = test.controller.submit("old", bindingId, modelId);
+    const oldAction = test.controller.submit("old", [], bindingId, modelId);
     await nextMicrotask();
     test.setContext({
       scope: nextScope,
@@ -506,7 +550,7 @@ describe("ACP action controller", () => {
     });
 
     await expect(
-      test.controller.submit("new", bindingId, modelId),
+      test.controller.submit("new", [], bindingId, modelId),
     ).resolves.toBe("applied");
     expect(test.commands.sendTurn).toHaveBeenCalledTimes(2);
     expect(test.states.at(-1)).toMatchObject({
@@ -523,7 +567,7 @@ describe("ACP action controller", () => {
     const test = harness(page("5", session("hot", "1", null)));
     const pending = deferred<{ projection: AcpChatPage }>();
     vi.mocked(test.commands.sendTurn).mockReturnValue(pending.promise);
-    const action = test.controller.submit("retry in A", bindingId, modelId);
+    const action = test.controller.submit("retry in A", [], bindingId, modelId);
     await nextMicrotask();
     const nextScope = { ...scope, chatId: "chat-b" as SageChatId };
     test.setContext({
@@ -542,7 +586,9 @@ describe("ACP action controller", () => {
     );
 
     await expect(action).resolves.toBe("rejected");
-    expect(test.restored).toEqual(["retry in A"]);
+    expect(test.restored).toEqual([
+      { prompt: "retry in A", attachedContext: [] },
+    ]);
     expect(test.states.at(-1)).toMatchObject({
       scope,
       busy: false,
@@ -554,7 +600,12 @@ describe("ACP action controller", () => {
     const test = harness(page("5", session("hot", "1", null)));
     const pending = deferred<{ projection: AcpChatPage }>();
     vi.mocked(test.commands.sendTurn).mockReturnValue(pending.promise);
-    const action = test.controller.submit("old renderer", bindingId, modelId);
+    const action = test.controller.submit(
+      "old renderer",
+      [],
+      bindingId,
+      modelId,
+    );
     await nextMicrotask();
     test.setContext({
       scope,
@@ -611,9 +662,29 @@ describe("ACP action controller", () => {
         message: "stale",
       }),
     );
-    await definite.controller.submit("restore me", bindingId, modelId);
-    expect(definite.restored).toEqual(["restore me"]);
+    await definite.controller.submit("restore me", [], bindingId, modelId);
+    expect(definite.restored).toEqual([
+      { prompt: "restore me", attachedContext: [] },
+    ]);
     expect(definite.states.at(-1)?.error).toBeInstanceOf(AcpDesktopError);
+
+    const preDispatchRecovery = harness(page("5", session("hot", "1", null)));
+    vi.mocked(preDispatchRecovery.commands.sendTurn).mockRejectedValue(
+      new AcpDesktopError({
+        kind: "recoveryRequired",
+        message: "snapshot integrity failed",
+        promptDispatch: "notStarted",
+      }),
+    );
+    await preDispatchRecovery.controller.submit(
+      "restore validated context",
+      [],
+      bindingId,
+      modelId,
+    );
+    expect(preDispatchRecovery.restored).toEqual([
+      { prompt: "restore validated context", attachedContext: [] },
+    ]);
 
     const uncertain = harness(page("5", session("hot", "1", null)));
     vi.mocked(uncertain.commands.sendTurn).mockRejectedValue(
@@ -622,11 +693,26 @@ describe("ACP action controller", () => {
         message: "delivery is unknown",
       }),
     );
-    await uncertain.controller.submit("do not replay", bindingId, modelId);
+    await uncertain.controller.submit("do not replay", [], bindingId, modelId);
     expect(uncertain.restored).toEqual([]);
     expect(uncertain.states.at(-1)?.error?.failure.kind).toBe(
       "recoveryRequired",
     );
+  });
+
+  it("never infers non-dispatch from the failure kind when native says unknown", async () => {
+    const test = harness(page("5", session("hot", "1", null)));
+    vi.mocked(test.commands.sendTurn).mockRejectedValue(
+      new AcpDesktopError({
+        kind: "invalidRequest",
+        message: "Outcome is not proven",
+        promptDispatch: "unknown",
+      }),
+    );
+    await expect(
+      test.controller.submit("do not replay", [], bindingId, modelId),
+    ).resolves.toBe("rejected");
+    expect(test.restored).toEqual([]);
   });
 
   it("closes only a hot current session with negotiated close capability", async () => {

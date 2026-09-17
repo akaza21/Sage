@@ -1,4 +1,7 @@
 import { useWorkbenchStore } from "../../app/store";
+import { attachedContextKey } from "../../domain/attachedContext";
+
+const EMPTY_ATTACHED_CONTEXT = [] as const;
 
 export function useBoundChatComposer(chatId?: string) {
   const composerText = useWorkbenchStore((state) => {
@@ -7,6 +10,12 @@ export function useBoundChatComposer(chatId?: string) {
       state.chatUiById[chatId]?.composerText ??
       (state.activeTabId === chatId ? state.composerText : "")
     );
+  });
+  const attachedContext = useWorkbenchStore((state) => {
+    const ownerId = chatId ?? state.activeTabId;
+    return ownerId
+      ? (state.chatUiById[ownerId]?.attachedContext ?? EMPTY_ATTACHED_CONTEXT)
+      : EMPTY_ATTACHED_CONTEXT;
   });
   const sending = useWorkbenchStore((state) =>
     chatId ? (state.chatUiById[chatId]?.sending ?? false) : state.sending,
@@ -19,6 +28,9 @@ export function useBoundChatComposer(chatId?: string) {
     (state) => state.captureChatOwnership,
   );
   const setChatComposer = useWorkbenchStore((state) => state.setChatComposer);
+  const detachChatContext = useWorkbenchStore(
+    (state) => state.detachChatContext,
+  );
   const sendPrompt = useWorkbenchStore((state) => state.sendPrompt);
   const activateTab = useWorkbenchStore((state) => state.activateTab);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
@@ -34,6 +46,12 @@ export function useBoundChatComposer(chatId?: string) {
     setComposerText(text);
   }
 
+  function removeAttachedContext(contextKey: string) {
+    const owner = chatId ?? activeTabId ?? undefined;
+    const intent = owner ? captureChatOwnership(owner) : null;
+    if (intent) detachChatContext(intent, contextKey);
+  }
+
   async function sendBoundPrompt() {
     if (chatId && activeTabId !== chatId) {
       await activateTab(chatId);
@@ -43,9 +61,12 @@ export function useBoundChatComposer(chatId?: string) {
 
   return {
     composerText,
+    attachedContext,
     sending,
     chatError,
     setComposerText: setBoundComposerText,
+    removeAttachedContext,
+    attachedContextKey,
     sendPrompt: sendBoundPrompt,
   };
 }
