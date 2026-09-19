@@ -1074,7 +1074,22 @@ fn initialize_session_prompt_stream_tool_usage_cancel_and_terminal_are_normalize
             &Mapper,
         )
         .expect("usage");
-    assert!(matches!(usage.events(), [AdapterEvent::Usage { .. }]));
+    let [AdapterEvent::Usage { turn_id, payload }] = usage.events() else {
+        panic!("usage event")
+    };
+    assert_eq!(
+        turn_id.turn_id.as_ref().map(ExternalId::as_str),
+        Some("turn-1")
+    );
+    assert!(turn_id.turn_client_message_id.is_some());
+    assert_eq!(
+        payload,
+        &NormalizedPayload::Usage {
+            input_tokens: 8,
+            output_tokens: 3,
+            context_window: None,
+        }
+    );
 
     let cancel = runtime.command(AdapterCommand::Cancel).expect("cancel");
     assert!(cancel.token().is_control() && cancel.token().is_cancel());

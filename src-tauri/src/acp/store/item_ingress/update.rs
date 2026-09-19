@@ -29,7 +29,11 @@ pub(super) fn update_existing(
     {
         return duplicate(transaction, command, existing);
     }
-    if current.is_terminal() && !(file_revision && current == command.lifecycle) {
+    // File metadata and usage are authoritative snapshots rather than terminal
+    // events: the same scoped identity may replace them as newer facts arrive.
+    let replaceable_snapshot = current == command.lifecycle
+        && (file_revision || matches!(command.payload, NormalizedPayload::Usage { .. }));
+    if current.is_terminal() && !replaceable_snapshot {
         return Err(StoreError::TerminalConflict { resource: "item" });
     }
     if current != command.lifecycle && !current.can_transition_to(command.lifecycle) {

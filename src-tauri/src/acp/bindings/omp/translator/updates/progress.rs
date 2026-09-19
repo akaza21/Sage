@@ -61,6 +61,7 @@ pub(super) fn usage_event(update: &Map<String, Value>) -> Result<AdapterEvent, T
                 .or_else(|| usage.get("input_tokens"))
                 .and_then(Value::as_u64)
                 .ok_or(TranslationError::MalformedFrame)?,
+            context_window: None,
             output_tokens: usage
                 .get("outputTokens")
                 .or_else(|| usage.get("output_tokens"))

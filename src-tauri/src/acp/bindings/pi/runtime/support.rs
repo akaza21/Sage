@@ -328,6 +328,7 @@ impl PiRuntime {
                     payload: NormalizedPayload::Usage {
                         input_tokens,
                         output_tokens,
+                        context_window: None,
                     },
                 }),
                 None,

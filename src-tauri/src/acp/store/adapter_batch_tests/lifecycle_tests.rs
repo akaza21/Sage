@@ -62,6 +62,7 @@ fn runtime_items_reload_losslessly_and_the_identical_batch_is_a_no_op() {
             NormalizedPayload::Usage {
                 input_tokens: 10,
                 output_tokens: 4,
+                context_window: None,
             },
             ItemLifecycle::Completed,
         ),
@@ -120,6 +121,97 @@ fn runtime_items_reload_losslessly_and_the_identical_batch_is_a_no_op() {
         item.content,
         ItemContent::Unsupported { ref category, .. } if category.as_str() == "futureEvent"
     )));
+}
+
+#[test]
+fn usage_replacement_updates_context_window_and_explicitly_clears_it() {
+    let mut fixture = fixture();
+    apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        batch(
+            &fixture.owner,
+            vec![AdapterInboundEvent::Turn {
+                state: TurnState::Running,
+                now_millis: 6,
+            }],
+        ),
+    )
+    .unwrap();
+
+    let usage =
+        |owner: &AdapterStoreOwner, input_tokens, output_tokens, context_window, now_millis| {
+            let payload = NormalizedPayload::Usage {
+                input_tokens,
+                output_tokens,
+                context_window,
+            };
+            let payload_digest = super::super::facts::hex_digest(
+                serde_json::to_string(&payload).unwrap().as_bytes(),
+            );
+            AdapterInboundEvent::Item(ItemIngressCommand {
+                project_id: owner.project_id.clone(),
+                chat_id: owner.chat_id.clone(),
+                session_id: owner.session_id.clone(),
+                turn_id: owner.turn_id.clone(),
+                runtime_epoch: owner.runtime_epoch,
+                external_item_id: ExternalId::new("usage", "turn-usage").unwrap(),
+                activity_id: None,
+                payload,
+                payload_digest,
+                lifecycle: ItemLifecycle::Completed,
+                tool_state: None,
+                now_millis,
+            })
+        };
+
+    let first = apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        batch(
+            &fixture.owner,
+            vec![usage(&fixture.owner, 10, 4, Some(272_000), 7)],
+        ),
+    )
+    .unwrap();
+    let replacement = apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        batch(
+            &fixture.owner,
+            vec![usage(&fixture.owner, 20, 5, Some(128_000), 8)],
+        ),
+    )
+    .unwrap();
+    assert_eq!(first.disposition, MutationDisposition::Applied);
+    assert_eq!(replacement.disposition, MutationDisposition::Applied);
+    assert_ne!(replacement.projection_revision, first.projection_revision);
+
+    let cleared = apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        batch(&fixture.owner, vec![usage(&fixture.owner, 30, 6, None, 9)]),
+    )
+    .unwrap();
+    assert_eq!(cleared.disposition, MutationDisposition::Applied);
+    let page = load_chat_page(
+        &fixture.connection,
+        fixture.owner.project_id.clone(),
+        fixture.owner.chat_id.clone(),
+        None,
+    )
+    .unwrap();
+    let usages = page.turns.as_slice()[0]
+        .items
+        .as_slice()
+        .iter()
+        .filter_map(|item| match item.content {
+            ItemContent::Usage {
+                input_tokens,
+                output_tokens,
+                context_window,
+                ..
+            } => Some((input_tokens, output_tokens, context_window)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(usages, [(Some(30), Some(6), None)]);
 }
 
 #[test]

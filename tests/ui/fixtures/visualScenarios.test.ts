@@ -19,6 +19,21 @@ describe("visual scenario contract", () => {
       },
       { name: "agent-picker-handoff", mode: "agent", resource: "empty" },
       { name: "agent-composer-narrow", mode: "agent", resource: "empty" },
+      {
+        name: "agent-composer-context-unknown",
+        mode: "agent",
+        resource: "empty",
+      },
+      {
+        name: "agent-composer-context-known",
+        mode: "agent",
+        resource: "empty",
+      },
+      {
+        name: "agent-composer-context-over-capacity",
+        mode: "agent",
+        resource: "empty",
+      },
       { name: "editor", mode: "editor", resource: "file" },
       {
         name: "editor-picker-repository",

@@ -8,6 +8,7 @@ function usage(
   ordinal: number,
   totalTokens: number | null,
   sessionId = "session-1",
+  contextWindow?: number,
 ): Extract<AcpItem, { kind: "usage" }> {
   return {
     id,
@@ -31,6 +32,7 @@ function usage(
       outputTokens: null,
       cachedInputTokens: null,
       totalTokens,
+      ...(contextWindow === undefined ? {} : { contextWindow }),
     },
   } as Extract<AcpItem, { kind: "usage" }>;
 }
@@ -78,6 +80,12 @@ describe("currentChatUsage", () => {
   it("omits usage when the current binding did not report a total", () => {
     expect(currentChatUsage(page([usage("unknown", 1, null)]))).toBeNull();
     expect(currentChatUsage(null)).toBeNull();
+  });
+
+  it("keeps runtime context capacity on the selected usage snapshot", () => {
+    expect(
+      currentChatUsage(page([usage("known", 1, 6_000, "session-1", 272_000)])),
+    ).toMatchObject({ totalTokens: 6_000, contextWindow: 272_000 });
   });
 
   it("uses the last current-session usage across turn-local ordinals", () => {

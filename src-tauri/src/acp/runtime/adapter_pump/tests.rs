@@ -1077,6 +1077,41 @@ fn deferred_snapshots_coalesce_by_identity_and_publish_once() {
 }
 
 #[test]
+fn deferred_usage_snapshots_coalesce_on_one_turn_scoped_identity() {
+    runtime().block_on(async {
+        let usage = |input_tokens, context_window| AdapterEvent::Usage {
+            turn_id: identity("external-turn"),
+            payload: NormalizedPayload::Usage {
+                input_tokens,
+                output_tokens: 2,
+                context_window,
+            },
+        };
+        let (mut pump, shared) = build_pump(vec![
+            owned(vec![usage(3, Some(272_000))], Vec::new()),
+            owned(vec![usage(8, None)], Vec::new()),
+        ]);
+        pump.push_stdout_chunk_deferred(b"{}\n", 1).await.unwrap();
+        pump.push_stdout_chunk_deferred(b"{}\n", 2).await.unwrap();
+        assert!(pump.flush_deferred().await.unwrap());
+
+        let state = shared.0.lock().unwrap();
+        assert!(matches!(
+            state.durable_batches[0].as_slice(),
+            [DurableAdapterEvent::RuntimePayload {
+                external_item_id,
+                payload: NormalizedPayload::Usage {
+                    input_tokens: 8,
+                    context_window: None,
+                    ..
+                },
+                ..
+            }] if external_item_id.as_str() == "external-turn"
+        ));
+    });
+}
+
+#[test]
 fn deferred_deadline_and_terminal_flush_without_polling_or_reordering() {
     runtime().block_on(async {
         let (mut pump, shared) = build_pump(vec![

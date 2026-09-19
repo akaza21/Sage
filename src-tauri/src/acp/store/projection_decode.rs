@@ -207,11 +207,13 @@ fn content(
         NormalizedPayload::Usage {
             input_tokens,
             output_tokens,
+            context_window,
         } => ItemContent::Usage {
             input_tokens: Some(input_tokens),
             output_tokens: Some(output_tokens),
             cached_input_tokens: None,
             total_tokens: input_tokens.checked_add(output_tokens),
+            context_window,
         },
         NormalizedPayload::PermissionRequest { summary, .. } => {
             let (request_id, state) =

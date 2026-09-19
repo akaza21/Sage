@@ -556,7 +556,8 @@ fn read_only_fixture_normalizes_items_and_denies_broad_tool_authority() {
         AdapterEvent::Item {
             payload: NormalizedPayload::Usage {
                 input_tokens: 12,
-                output_tokens: 7
+                output_tokens: 7,
+                context_window: None,
             },
             ..
         }

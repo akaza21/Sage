@@ -102,6 +102,7 @@ pub(crate) fn normalize(input: NormalizerInput) -> Result<NormalizedPayload, Con
         } => NormalizedPayload::Usage {
             input_tokens,
             output_tokens,
+            context_window: None,
         },
         NormalizerInput::Permission { category, summary } => NormalizedPayload::PermissionRequest {
             category,

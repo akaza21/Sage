@@ -74,6 +74,45 @@ function usageItem(input: ItemInput): AcpItem {
   } as AcpItem;
 }
 
+function composerContextPage(
+  chatIdValue: string,
+  title: string,
+  totalTokens: number,
+  contextWindow?: number,
+) {
+  const chatId = chatIdValue as SageChatId;
+  const turnId = `visual-turn-${chatId}-1` as SageTurnId;
+  const createdAt = FIXED_NOW - 60_000;
+  const input = (ordinal: number): ItemInput => ({
+    chatId,
+    turnId,
+    ordinal,
+    createdAt: createdAt + ordinal * 1_000,
+  });
+  const usage: AcpItem = {
+    ...itemIdentity(input(2)),
+    kind: "usage",
+    toolState: null,
+    payload: {
+      inputTokens: totalTokens,
+      outputTokens: 0,
+      cachedInputTokens: 0,
+      totalTokens,
+      ...(contextWindow === undefined ? {} : { contextWindow }),
+    },
+  } as AcpItem;
+  return page(chatId, title, [
+    turn(chatId, 1, "completed", [
+      textItem(
+        input(1),
+        "assistant",
+        "The runtime reported the current composer context usage.",
+      ),
+      usage,
+    ]),
+  ]);
+}
+
 function imageItem(input: ItemInput): AcpItem {
   return {
     ...itemIdentity(input),
@@ -351,6 +390,32 @@ export function buildAgentPages(
     case "agent-composer-narrow":
       return [
         standardPage("visual-chat-composer-narrow", "Narrow composer", "rich"),
+      ];
+    case "agent-composer-context-unknown":
+      return [
+        composerContextPage(
+          "visual-chat-composer-context-unknown",
+          "Composer context unknown capacity",
+          6_000,
+        ),
+      ];
+    case "agent-composer-context-known":
+      return [
+        composerContextPage(
+          "visual-chat-composer-context-known",
+          "Composer context known capacity",
+          6_000,
+          272_000,
+        ),
+      ];
+    case "agent-composer-context-over-capacity":
+      return [
+        composerContextPage(
+          "visual-chat-composer-context-over-capacity",
+          "Composer context over capacity",
+          300_000,
+          272_000,
+        ),
       ];
     default:
       return null;

@@ -29,6 +29,15 @@ function safeNullableNonnegativeInteger(
     : undefined;
 }
 
+function safeOptionalContextWindow(value: unknown): number | undefined {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value > 0 &&
+    value <= 0xffff_ffff
+    ? value
+    : undefined;
+}
+
 function safeItemIdentity(
   value: Record<string, unknown>,
 ): AcpItemIdentity | null {
@@ -248,8 +257,11 @@ export function safeItem(value: unknown): AcpItem | null {
         payload.cachedInputTokens,
         payload.totalTokens,
       ].map(safeNullableNonnegativeInteger);
+      const hasContextWindow = Object.hasOwn(payload, "contextWindow");
+      const contextWindow = safeOptionalContextWindow(payload.contextWindow);
       return value.toolState !== null ||
-        counters.some((counter) => counter === undefined)
+        counters.some((counter) => counter === undefined) ||
+        (hasContextWindow && contextWindow === undefined)
         ? null
         : {
             ...identity,
@@ -260,6 +272,7 @@ export function safeItem(value: unknown): AcpItem | null {
               outputTokens: counters[1] as number | null,
               cachedInputTokens: counters[2] as number | null,
               totalTokens: counters[3] as number | null,
+              ...(contextWindow === undefined ? {} : { contextWindow }),
             },
           };
     }

@@ -225,6 +225,28 @@
   white-space: nowrap;
 }
 
+.composer__context-item--usage {
+  gap: var(--space-2);
+}
+
+.composer__context-usage {
+  display: inline-block;
+  width: calc(var(--space-4) * 4);
+  height: var(--space-1);
+  flex: none;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-strong);
+}
+
+.composer__context-usage-fill {
+  display: block;
+  width: var(--composer-context-usage);
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+}
+
 .access-mode {
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
@@ -362,5 +384,14 @@
     outline: 2px solid Highlight;
     outline-offset: -2px;
     box-shadow: none;
+  }
+
+  .composer__context-usage {
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
+
+  .composer__context-usage-fill {
+    background: Highlight;
   }
 }

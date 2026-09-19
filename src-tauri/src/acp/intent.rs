@@ -213,6 +213,8 @@ pub enum NormalizedPayload {
     Usage {
         input_tokens: u64,
         output_tokens: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context_window: Option<u32>,
     },
     PermissionRequest {
         category: ToolCategory,

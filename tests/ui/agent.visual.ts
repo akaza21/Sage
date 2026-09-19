@@ -123,6 +123,9 @@ test.describe("Wave 2 canonical visual states", () => {
         "agent-picker-harness-model",
         "agent-picker-handoff",
         "agent-composer-narrow",
+        "agent-composer-context-unknown",
+        "agent-composer-context-known",
+        "agent-composer-context-over-capacity",
       ].includes(scenario.name),
   )) {
     test(`${name} stays visually stable`, async ({ page }) => {
@@ -329,6 +332,126 @@ test.describe("ED02 picker visual states", () => {
     await expectOpenPickerContained(page, input, listbox);
     await expectNoViewportOverflow(page);
     await takeCanonicalScreenshot(workbench, "agent-composer-narrow");
+  });
+});
+
+test.describe("V6 Composer context meter", () => {
+  test("renders runtime usage truthfully across unknown, known, and over-capacity states", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 720, height: 560 });
+
+    const unknownWorkbench = await openScenario(
+      page,
+      "agent-composer-context-unknown",
+      "agent",
+    );
+    const unknownContext = page.getByLabel("Composer context", { exact: true });
+    await expect(unknownContext).toContainText("Reported usage · 6,000 tokens");
+    await expect(unknownContext).not.toContainText("6,000 / ");
+    await expect(unknownContext.getByRole("progressbar")).toHaveCount(0);
+    await expectNoViewportOverflow(page);
+    await takeCanonicalScreenshot(
+      unknownWorkbench,
+      "agent-composer-context-unknown",
+    );
+
+    const knownWorkbench = await openScenario(
+      page,
+      "agent-composer-context-known",
+      "agent",
+    );
+    const knownContext = page.getByLabel("Composer context", { exact: true });
+    const knownProgress = knownContext.getByRole("progressbar", {
+      name: "Reported usage",
+    });
+    await expect(knownContext).toContainText(
+      "Reported usage · 6,000 / 272,000 tokens",
+    );
+    await expect(knownProgress).toHaveCount(1);
+    await expect(knownProgress).toHaveAttribute("aria-valuemin", "0");
+    await expect(knownProgress).toHaveAttribute("aria-valuemax", "272000");
+    await expect(knownProgress).toHaveAttribute("aria-valuenow", "6000");
+    await expect(knownProgress).toHaveAttribute(
+      "aria-valuetext",
+      "6,000 / 272,000 tokens used",
+    );
+    await expectNoViewportOverflow(page);
+    await takeCanonicalScreenshot(
+      knownWorkbench,
+      "agent-composer-context-known",
+    );
+
+    const overCapacityWorkbench = await openScenario(
+      page,
+      "agent-composer-context-over-capacity",
+      "agent",
+    );
+    const overCapacityContext = page.getByLabel("Composer context", {
+      exact: true,
+    });
+    const overCapacityProgress = overCapacityContext.getByRole("progressbar", {
+      name: "Reported usage",
+    });
+    const fill = overCapacityProgress.locator(".composer__context-usage-fill");
+    await expect(overCapacityContext).toContainText(
+      "Reported usage · 300,000 / 272,000 tokens",
+    );
+    await expect(overCapacityProgress).toHaveCount(1);
+    await expect(overCapacityProgress).toHaveAttribute(
+      "aria-valuenow",
+      "272000",
+    );
+    await expect(overCapacityProgress).toHaveAttribute(
+      "aria-valuetext",
+      "300,000 / 272,000 tokens used",
+    );
+    expect(
+      await fill.evaluate((element) => {
+        const fillWidth = element.getBoundingClientRect().width;
+        const trackWidth =
+          element.parentElement?.getBoundingClientRect().width ?? 0;
+        return trackWidth > 0 && fillWidth / trackWidth <= 1;
+      }),
+    ).toBe(true);
+    await expectNoViewportOverflow(page);
+    await takeCanonicalScreenshot(
+      overCapacityWorkbench,
+      "agent-composer-context-over-capacity",
+    );
+
+    await page.emulateMedia({
+      forcedColors: "active",
+      reducedMotion: "reduce",
+    });
+    const forcedColors = await overCapacityProgress.evaluate((element) => {
+      const fillElement = element.querySelector<HTMLElement>(
+        ".composer__context-usage-fill",
+      );
+      const systemProbe = document.createElement("span");
+      systemProbe.style.background = "Highlight";
+      systemProbe.style.border = "1px solid CanvasText";
+      document.body.append(systemProbe);
+      const highlight = getComputedStyle(systemProbe).backgroundColor;
+      const canvasText = getComputedStyle(systemProbe).borderTopColor;
+      systemProbe.style.background = "Canvas";
+      const canvas = getComputedStyle(systemProbe).backgroundColor;
+      systemProbe.remove();
+      return {
+        canvas,
+        canvasText,
+        fill: fillElement
+          ? getComputedStyle(fillElement).backgroundColor
+          : null,
+        highlight,
+        track: getComputedStyle(element).backgroundColor,
+        trackBorder: getComputedStyle(element).borderTopColor,
+        trackBorderStyle: getComputedStyle(element).borderTopStyle,
+      };
+    });
+    expect(forcedColors.fill).toBe(forcedColors.highlight);
+    expect(forcedColors.track).toBe(forcedColors.canvas);
+    expect(forcedColors.trackBorder).toBe(forcedColors.canvasText);
   });
 });
 

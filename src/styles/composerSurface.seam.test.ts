@@ -47,6 +47,25 @@ describe("Composer surface stylesheet seam", () => {
     expect(surfaceCss).not.toMatch(/transform:\s*translate/);
   });
 
+  it("owns an accessible token usage progressbar with tokenized and forced-color styling", async () => {
+    const surfaceCss = await readFile(
+      resolve("src/styles/composer-surface.css"),
+      "utf8",
+    );
+
+    expect(surfaceCss).toMatch(/^\.composer__context-usage\b/m);
+    expect(surfaceCss).toMatch(/^\.composer__context-usage-fill\b/m);
+    expect(surfaceCss).toMatch(
+      /\.composer__context-usage\s*\{[^}]*border-radius:\s*var\(--radius-pill\);[^}]*background:\s*var\(--color-border-strong\);/s,
+    );
+    expect(surfaceCss).toMatch(
+      /\.composer__context-usage-fill\s*\{[^}]*width:\s*var\(--composer-context-usage\);[^}]*border-radius:\s*var\(--radius-pill\);[^}]*background:\s*var\(--color-accent\);/s,
+    );
+    expect(surfaceCss).toMatch(
+      /@media \(forced-colors:\s*active\)\s*\{[\s\S]*?\.composer__context-usage\s*\{[^}]*border:[^}]*CanvasText;/s,
+    );
+  });
+
   it("uses the shared soft focus treatment and a system forced-colors edge", async () => {
     const surfaceCss = await readFile(
       resolve("src/styles/composer-surface.css"),

@@ -168,6 +168,8 @@ pub enum ItemContent {
         output_tokens: Option<u64>,
         cached_input_tokens: Option<u64>,
         total_tokens: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        context_window: Option<u32>,
     },
     PermissionRequest {
         request_id: SageServerRequestId,

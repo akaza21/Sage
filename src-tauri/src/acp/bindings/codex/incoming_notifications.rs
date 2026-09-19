@@ -148,9 +148,13 @@ pub(super) fn notification<M: ResourceMapper>(
                 }
                 return Err(IngressError::Identity);
             }
+            if adapter.turn_is_terminal(turn) {
+                let _ = parse_usage(params)?;
+                return Ok(IngressDisposition::IgnoredLate);
+            }
             Ok(IncomingEvent::Usage {
                 turn_id: adapter
-                    .scoped_id(ExternalKind::Turn, turn)
+                    .scoped_in_turn(ExternalKind::Turn, turn, turn)
                     .map_err(identity)?,
                 payload: parse_usage(params)?,
             }

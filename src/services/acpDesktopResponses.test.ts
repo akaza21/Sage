@@ -505,6 +505,71 @@ describe("safeAcpMutationResponse", () => {
     ).toBeNull();
   });
 
+  it("decodes known and omitted runtime context windows on usage", () => {
+    const usageMutation = (contextWindow: unknown, include = true) =>
+      mutation({
+        turns: [
+          turn({
+            items: [
+              item(0, {
+                kind: "usage",
+                payload: {
+                  inputTokens: 4_000,
+                  outputTokens: 2_000,
+                  cachedInputTokens: null,
+                  totalTokens: 6_000,
+                  ...(include ? { contextWindow } : {}),
+                },
+              }),
+            ],
+          }),
+        ],
+      });
+
+    expect(safeAcpMutationResponse(usageMutation(272_000))).toEqual(
+      usageMutation(272_000),
+    );
+    expect(safeAcpMutationResponse(usageMutation(undefined, false))).toEqual(
+      usageMutation(undefined, false),
+    );
+  });
+
+  it.each([
+    0,
+    -1,
+    1.5,
+    0x1_0000_0000,
+    Number.MAX_SAFE_INTEGER + 1,
+    "272000",
+    null,
+  ])(
+    "fails closed on invalid optional usage context window %s",
+    (contextWindow) => {
+      expect(
+        safeAcpMutationResponse(
+          mutation({
+            turns: [
+              turn({
+                items: [
+                  item(0, {
+                    kind: "usage",
+                    payload: {
+                      inputTokens: 4_000,
+                      outputTokens: 2_000,
+                      cachedInputTokens: null,
+                      totalTokens: 6_000,
+                      contextWindow,
+                    },
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ),
+      ).toBeNull();
+    },
+  );
+
   it("admits a bounded png image item and rejects svg, oversize, and http urls", () => {
     const png =
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";

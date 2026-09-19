@@ -143,6 +143,7 @@ export type AcpItem =
         outputTokens: number | null;
         cachedInputTokens: number | null;
         totalTokens: number | null;
+        contextWindow?: number;
       }
     >
   | ToolItem<

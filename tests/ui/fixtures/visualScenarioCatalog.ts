@@ -24,6 +24,12 @@ const SCENARIO_META: Record<
   "agent-picker-harness-model": { mode: "agent", resource: "empty" },
   "agent-picker-handoff": { mode: "agent", resource: "empty" },
   "agent-composer-narrow": { mode: "agent", resource: "empty" },
+  "agent-composer-context-unknown": { mode: "agent", resource: "empty" },
+  "agent-composer-context-known": { mode: "agent", resource: "empty" },
+  "agent-composer-context-over-capacity": {
+    mode: "agent",
+    resource: "empty",
+  },
   editor: { mode: "editor", resource: "file" },
   "editor-picker-repository": { mode: "editor", resource: "file" },
   "editor-picker-repository-filtered": { mode: "editor", resource: "file" },

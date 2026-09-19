@@ -1901,7 +1901,8 @@ fn all_outgoing_lifecycle_methods_are_exact_and_bounded() {
     let usage = json!({"method":"thread/tokenUsage/updated","params":{
         "threadId":"thread-1","turnId":"turn-1","tokenUsage":{
             "total":{"inputTokens":10,"outputTokens":4},
-            "last":{"inputTokens":3,"outputTokens":2}
+            "last":{"inputTokens":3,"outputTokens":2},
+            "modelContextWindow":272000
         }
     }});
     let IngressDisposition::Events(usage_events) = active
@@ -1915,7 +1916,8 @@ fn all_outgoing_lifecycle_methods_are_exact_and_bounded() {
         IncomingEvent::Usage {
             payload: NormalizedPayload::Usage {
                 input_tokens: 3,
-                output_tokens: 2
+                output_tokens: 2,
+                context_window: Some(272_000),
             },
             ..
         }

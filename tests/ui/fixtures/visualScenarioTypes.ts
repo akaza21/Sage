@@ -10,6 +10,9 @@ export type VisualScenarioName =
   | "agent-picker-harness-model"
   | "agent-picker-handoff"
   | "agent-composer-narrow"
+  | "agent-composer-context-unknown"
+  | "agent-composer-context-known"
+  | "agent-composer-context-over-capacity"
   | "editor"
   | "editor-picker-repository"
   | "editor-picker-repository-filtered"
@@ -56,6 +59,9 @@ export const AGENT_VISUAL_SCENARIOS: readonly VisualScenarioName[] = [
   "agent-picker-harness-model",
   "agent-picker-handoff",
   "agent-composer-narrow",
+  "agent-composer-context-unknown",
+  "agent-composer-context-known",
+  "agent-composer-context-over-capacity",
 ];
 
 export const EDITOR_VISUAL_SCENARIOS: readonly VisualScenarioName[] = [
