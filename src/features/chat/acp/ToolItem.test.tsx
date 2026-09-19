@@ -167,6 +167,7 @@ describe("ToolItem", () => {
             resource: { rootId: "root-a", relativePath: "package.json" },
           },
         ],
+        activity: "ordinary",
       }),
       kind: "toolUpdateResult" as const,
       payload: {
@@ -180,6 +181,7 @@ describe("ToolItem", () => {
               resource: { rootId: "root-a", relativePath: "package.json" },
             },
           ],
+          activity: "ordinary",
         },
         callItemId: null,
         outputSummary: "retained command output",
@@ -241,6 +243,7 @@ describe("ToolItem", () => {
       label: "Run command",
       summary: null,
       resources: [],
+      activity: "ordinary" as const,
     };
     if (kind === "toolCall") {
       return {
@@ -258,6 +261,7 @@ describe("ToolItem", () => {
         label: "Run command",
         summary: null,
         resources: [],
+        activity: "ordinary",
       }),
       kind,
       payload: {

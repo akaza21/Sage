@@ -25,7 +25,11 @@ export function ToolActivityRollup({
   onOpenResource?: AgentArtifactOpenHandler;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const label = toolRollupLabel(rollup.kind, rollup.items);
+  const label = toolRollupLabel(
+    rollup.kind,
+    rollup.items,
+    rollup.commandActivity,
+  );
   const state = toolRollupState(rollup.items);
   const stateLabel = toolRollupStateLabel(state);
   return (

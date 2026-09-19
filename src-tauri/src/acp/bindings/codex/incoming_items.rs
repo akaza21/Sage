@@ -3,6 +3,7 @@ use serde_json::{Map, Value};
 use crate::acp::{
     command_output::retain_command_output,
     contract::{BoundedVec, SafeText},
+    declared_test::CommandActivity,
     image_admit::{ImageAdmitError, admit_image_data_url},
     intent::{NormalizedPayload, ToolCategory},
     lifecycle::{ItemLifecycle, ToolState},
@@ -24,12 +25,15 @@ pub(super) fn normalize_materialized_command(
 ) -> Result<ItemNormalization, IngressError> {
     tool_with_summary_status(
         lifecycle,
-        ToolCategory::Command,
-        "Command",
-        command.status.as_str(),
-        command.output.clone(),
-        command.locations.clone(),
-        true,
+        ToolPresentationInput {
+            category: ToolCategory::Command,
+            label: "Command",
+            status: command.status.as_str(),
+            summary: command.output.clone(),
+            locations: command.locations.clone(),
+            command_activity: command.activity,
+            initial_summary_is_output: true,
+        },
     )
 }
 
@@ -233,27 +237,44 @@ fn tool_with_summary(
         .unwrap_or("inProgress");
     tool_with_summary_status(
         lifecycle,
-        category,
-        label,
-        status,
-        summary,
-        locations,
-        initial_summary_is_output,
+        ToolPresentationInput {
+            category,
+            label,
+            status,
+            summary,
+            locations,
+            command_activity: CommandActivity::Ordinary,
+            initial_summary_is_output,
+        },
     )
 }
 
-fn tool_with_summary_status(
-    lifecycle: ItemLifecycle,
+struct ToolPresentationInput<'a> {
     category: ToolCategory,
-    label: &str,
-    status: &str,
+    label: &'a str,
+    status: &'a str,
     summary: Option<String>,
     locations: BoundedVec<
         crate::acp::intent::SafeResourceLocation,
         { crate::acp::intent::COMMAND_RESOURCE_LIMIT },
     >,
+    command_activity: CommandActivity,
     initial_summary_is_output: bool,
+}
+
+fn tool_with_summary_status(
+    lifecycle: ItemLifecycle,
+    input: ToolPresentationInput<'_>,
 ) -> Result<ItemNormalization, IngressError> {
+    let ToolPresentationInput {
+        category,
+        label,
+        status,
+        summary,
+        locations,
+        command_activity,
+        initial_summary_is_output,
+    } = input;
     let tool_state = match status {
         "inProgress" => ToolState::InProgress,
         "completed" => ToolState::Completed,
@@ -281,6 +302,7 @@ fn tool_with_summary_status(
                 .flatten(),
             output_summary: initial_summary_is_output.then_some(summary).flatten(),
             locations,
+            command_activity,
         }
     } else {
         NormalizedPayload::ToolUpdateResult {
@@ -288,6 +310,7 @@ fn tool_with_summary_status(
             label,
             output_summary: summary,
             locations,
+            command_activity,
         }
     };
     Ok((payload, Some(tool_state), terminal))

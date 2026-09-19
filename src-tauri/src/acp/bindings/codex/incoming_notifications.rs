@@ -18,6 +18,7 @@ pub(super) fn notification<M: ResourceMapper>(
     method: &str,
     params: &Map<String, Value>,
     mapper: &M,
+    declarations: &crate::acp::declared_test::DeclaredTestCommands,
 ) -> Result<IngressDisposition, IngressError> {
     match method {
         "thread/started" => {
@@ -128,8 +129,20 @@ pub(super) fn notification<M: ResourceMapper>(
             .into())
         }
         "turn/completed" => turn_completed(adapter, params),
-        "item/started" => item_event(adapter, params, ItemLifecycle::Started, mapper),
-        "item/completed" => item_event(adapter, params, ItemLifecycle::Completed, mapper),
+        "item/started" => item_event(
+            adapter,
+            params,
+            ItemLifecycle::Started,
+            mapper,
+            declarations,
+        ),
+        "item/completed" => item_event(
+            adapter,
+            params,
+            ItemLifecycle::Completed,
+            mapper,
+            declarations,
+        ),
         "item/commandExecution/outputDelta" => command_output_delta(adapter, params),
         "item/agentMessage/delta" => delta_event(adapter, params, DeltaKind::Text),
         "item/reasoning/summaryTextDelta" => delta_event(adapter, params, DeltaKind::Thought),
@@ -235,6 +248,7 @@ fn item_event<M: ResourceMapper>(
     params: &Map<String, Value>,
     requested: ItemLifecycle,
     mapper: &M,
+    declarations: &crate::acp::declared_test::DeclaredTestCommands,
 ) -> Result<IngressDisposition, IngressError> {
     let turn = expect_thread_and_turn(adapter, params)?;
     let item = params
@@ -247,7 +261,14 @@ fn item_event<M: ResourceMapper>(
     }
     let command = (item.get("type").and_then(Value::as_str) == Some("commandExecution"))
         .then(|| {
-            adapter.materialize_command_item(turn, external, item, mapper, requested.is_terminal())
+            adapter.materialize_command_item(
+                turn,
+                external,
+                item,
+                mapper,
+                declarations,
+                requested.is_terminal(),
+            )
         })
         .transpose()?;
     let normalized = match command.as_ref() {

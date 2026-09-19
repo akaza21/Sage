@@ -1406,6 +1406,7 @@ describe("AcpChatProjection", () => {
             label: `Tool ${index}`,
             summary: null,
             resources: [],
+            activity: "ordinary",
           },
           inputSummary: null,
         },

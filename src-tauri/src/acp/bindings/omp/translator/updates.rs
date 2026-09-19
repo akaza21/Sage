@@ -144,6 +144,7 @@ impl OmpTranslator {
                 input_summary: browse_tool_summary("toolInput", update),
                 output_summary: command.then_some(output_summary).flatten(),
                 locations,
+                command_activity: Default::default(),
             },
             update_mode: ItemUpdateMode::Replace,
         }];
@@ -225,6 +226,7 @@ impl OmpTranslator {
                 label: SafeText::new("toolLabel", category_label(category))?,
                 output_summary,
                 locations,
+                command_activity: Default::default(),
             },
             update_mode: ItemUpdateMode::Replace,
         }];

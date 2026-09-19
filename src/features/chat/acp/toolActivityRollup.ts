@@ -10,6 +10,8 @@ const MAX_TOOL_ROLLUP_ITEMS = 64;
 
 export type ToolRollup = {
   kind: ToolPresentation["kind"];
+  /** Commands only; non-command groups use ordinary. */
+  commandActivity: "ordinary" | "declaredTest";
   items: readonly ToolProjectionItem[];
 };
 
@@ -18,6 +20,13 @@ export type PrimaryActivityItem =
 
 function isToolItem(item: AcpItem): item is ToolProjectionItem {
   return item.kind === "toolCall" || item.kind === "toolUpdateResult";
+}
+
+function commandActivity(
+  item: ToolProjectionItem,
+): ToolRollup["commandActivity"] {
+  const { presentation } = item.payload;
+  return presentation.kind === "command" ? presentation.activity : "ordinary";
 }
 
 function countLabel(count: number, singular: string, plural = `${singular}s`) {
@@ -66,10 +75,13 @@ function resourceRollupLabel(
 export function toolRollupLabel(
   kind: ToolPresentation["kind"],
   items: readonly ToolProjectionItem[],
+  commandActivity: ToolRollup["commandActivity"] = "ordinary",
 ): string {
   switch (kind) {
     case "command":
-      return `Ran ${countLabel(items.length, "command")}`;
+      return commandActivity === "declaredTest"
+        ? "Ran tests"
+        : `Ran ${countLabel(items.length, "command")}`;
     case "file":
       return resourceRollupLabel("File", items);
     case "diff":
@@ -120,6 +132,7 @@ export function groupPrimaryActivities(
     // Result linking can later alter a call's effective state; until bindings
     // admit callItemId, the projection's own toolState is the only authority.
     const toolKind = item.payload.presentation.kind;
+    const activity = commandActivity(item);
     const tools = [item];
     cursor += 1;
     while (tools.length < MAX_TOOL_ROLLUP_ITEMS) {
@@ -127,19 +140,24 @@ export function groupPrimaryActivities(
       if (
         !candidate ||
         !isToolItem(candidate) ||
-        candidate.payload.presentation.kind !== toolKind
+        candidate.payload.presentation.kind !== toolKind ||
+        commandActivity(candidate) !== activity
       )
         break;
       tools.push(candidate);
       cursor += 1;
     }
 
-    if (tools.length === 1) grouped.push({ kind: "item", item });
-    else
+    // A single declared test is itself a meaningful run summary; ordinary
+    // singleton tools remain individual cards.
+    if (tools.length === 1 && activity !== "declaredTest") {
+      grouped.push({ kind: "item", item });
+    } else {
       grouped.push({
         kind: "toolRollup",
-        rollup: { kind: toolKind, items: tools },
+        rollup: { kind: toolKind, commandActivity: activity, items: tools },
       });
+    }
   }
   return grouped;
 }

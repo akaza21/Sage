@@ -27,6 +27,7 @@ pub(crate) fn receipt(
         input_summary: Some(SafeText::new("toolInput", input).expect("bounded canonical identity")),
         output_summary: Some(SafeText::new("toolOutput", output).expect("bounded outcome")),
         locations: BoundedVec::default(),
+        command_activity: Default::default(),
     }
 }
 pub(crate) fn delivery_unknown(resource: &ResourceRef, range: ReadTextRange) -> NormalizedPayload {

@@ -218,6 +218,7 @@ impl OmpTranslator {
                     label: SafeText::new("toolLabel", "OMP tool")?,
                     output_summary: Some(SafeText::new("toolOutput", "Permission declined")?),
                     locations: Default::default(),
+                    command_activity: Default::default(),
                 },
                 update_mode: ItemUpdateMode::Replace,
             },

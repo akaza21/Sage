@@ -4,6 +4,7 @@ pub(crate) mod bindings;
 mod characterization_observation;
 pub(crate) mod command_output;
 pub mod contract;
+pub(crate) mod declared_test;
 pub(crate) mod file_diff;
 #[cfg(any(test, feature = "acp-fixture"))]
 pub mod fixture;
@@ -13,6 +14,7 @@ mod ipc;
 mod lifecycle;
 pub mod limits;
 pub(crate) mod migration;
+pub(crate) mod package_manifest;
 pub(crate) mod page_admission;
 pub(crate) mod process;
 pub mod projection;

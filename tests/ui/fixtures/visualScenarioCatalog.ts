@@ -19,6 +19,7 @@ const SCENARIO_META: Record<
   "agent-dual": { mode: "agent", resource: "empty" },
   "agent-long": { mode: "agent", resource: "empty" },
   "agent-activity-family": { mode: "agent", resource: "empty" },
+  "agent-declared-test": { mode: "agent", resource: "empty" },
   "agent-image": { mode: "agent", resource: "empty" },
   "agent-child-activity": { mode: "agent", resource: "empty" },
   "agent-picker-harness-model": { mode: "agent", resource: "empty" },

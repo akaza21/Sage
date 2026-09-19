@@ -1,7 +1,6 @@
 use std::{
     collections::BTreeSet,
-    fs::{self, File},
-    io::Read,
+    fs,
     path::{Path, PathBuf},
 };
 
@@ -21,13 +20,13 @@ use crate::{
 use super::error::PreviewError;
 #[cfg(test)]
 use super::lifecycle;
+use crate::acp::package_manifest::{PackageManifestError, read_bounded_package_manifest};
 
 const MAX_DEPTH: usize = PREVIEW_LIMITS.discovery_depth as usize;
 const MAX_PACKAGES_PER_ROOT: usize = PREVIEW_LIMITS.packages_per_root as usize;
 const MAX_TARGETS_PER_PROJECT: usize = PREVIEW_LIMITS.targets_per_project as usize;
 const MAX_DIRECTORIES_PER_ROOT: usize = PREVIEW_LIMITS.directories_per_root as usize;
 const MAX_DIRECTORY_ENTRIES: usize = PREVIEW_LIMITS.directory_entries as usize;
-const MAX_PACKAGE_BYTES: u64 = PREVIEW_LIMITS.manifest_bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -258,23 +257,9 @@ fn is_reparse_point(_entry: &fs::DirEntry, file_type: &fs::FileType) -> bool {
 }
 
 fn package_scripts(path: &Path) -> Result<Vec<PreviewScriptName>, PreviewError> {
-    let file = File::open(path)
-        .map_err(|_| PreviewError::internal("Preview package manifest could not be opened."))?;
-    let metadata = file
-        .metadata()
-        .map_err(|_| PreviewError::internal("Preview package metadata could not be read."))?;
-    if metadata.len() > MAX_PACKAGE_BYTES {
+    let Some(value) = read_bounded_package_manifest(path).map_err(manifest_error)? else {
         return Ok(Vec::new());
-    }
-    let mut bytes = Vec::with_capacity(metadata.len() as usize);
-    file.take(MAX_PACKAGE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| PreviewError::internal("Preview package manifest could not be read."))?;
-    if bytes.len() as u64 > MAX_PACKAGE_BYTES {
-        return Ok(Vec::new());
-    }
-    let value: serde_json::Value = serde_json::from_slice(&bytes)
-        .map_err(|_| PreviewError::invalid("Preview package manifest is invalid."))?;
+    };
     let Some(scripts) = value.get("scripts").and_then(serde_json::Value::as_object) else {
         return Ok(Vec::new());
     };
@@ -294,6 +279,23 @@ fn package_scripts(path: &Path) -> Result<Vec<PreviewScriptName>, PreviewError> 
         }
     }
     Ok(result)
+}
+
+fn manifest_error(error: PackageManifestError) -> PreviewError {
+    match error {
+        PackageManifestError::Open => {
+            PreviewError::internal("Preview package manifest could not be opened.")
+        }
+        PackageManifestError::Metadata => {
+            PreviewError::internal("Preview package metadata could not be read.")
+        }
+        PackageManifestError::Read => {
+            PreviewError::internal("Preview package manifest could not be read.")
+        }
+        PackageManifestError::Malformed => {
+            PreviewError::invalid("Preview package manifest is invalid.")
+        }
+    }
 }
 
 #[cfg(test)]

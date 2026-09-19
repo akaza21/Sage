@@ -13,6 +13,7 @@ use crate::acp::{
         },
     },
     contract::{RuntimeEpoch, SageAgentSessionId},
+    declared_test::declared_test_commands_for_project,
 };
 
 impl CodexRuntime {
@@ -63,6 +64,7 @@ impl CodexRuntime {
     ) -> Self {
         Self {
             launch_authority: RuntimeLaunchAuthority::metadata_only(),
+            declared_test_commands: Default::default(),
             inner: super::super::state::CodexAdapter::from_metadata_packet(
                 packet,
                 binding_digest,
@@ -81,8 +83,10 @@ impl CodexRuntime {
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<Self, AdapterRuntimeError> {
+        let declared_test_commands = declared_test_commands_for_project(project_root.as_path());
         let mut runtime = Self {
             launch_authority: RuntimeLaunchAuthority::metadata_only(),
+            declared_test_commands,
             inner: super::super::state::CodexAdapter::from_admitted_binding(
                 &binding,
                 runtime_epoch,

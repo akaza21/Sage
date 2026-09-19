@@ -316,6 +316,16 @@ impl CodexAdapter {
         ingest(self, bytes, mapper).map_err(AdapterError::Ingress)
     }
 
+    pub(crate) fn ingest_with_declarations<M: ResourceMapper>(
+        &mut self,
+        bytes: &[u8],
+        mapper: &M,
+        declarations: &crate::acp::declared_test::DeclaredTestCommands,
+    ) -> Result<IngressDisposition, AdapterError> {
+        super::incoming::ingest_with_declarations(self, bytes, mapper, declarations)
+            .map_err(AdapterError::Ingress)
+    }
+
     pub(super) fn take_pending(&mut self, id: u64) -> Option<RequestKind> {
         self.remove_pending(id)
     }

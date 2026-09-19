@@ -143,8 +143,9 @@ fn content(
             input_summary,
             output_summary,
             locations,
+            command_activity,
         } => ItemContent::ToolCall {
-            presentation: presentation(category, label, locations)?,
+            presentation: presentation(category, label, locations, command_activity)?,
             input_summary,
             output_summary,
         },
@@ -153,9 +154,10 @@ fn content(
             label,
             output_summary,
             locations,
+            command_activity,
         } => ItemContent::ToolUpdateResult {
             call_item_id: None,
-            presentation: presentation(category, label, locations)?,
+            presentation: presentation(category, label, locations, command_activity)?,
             output_summary,
         },
         NormalizedPayload::FileChangeDiff {

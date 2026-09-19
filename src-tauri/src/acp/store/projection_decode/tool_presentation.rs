@@ -1,5 +1,6 @@
 use crate::acp::{
     contract::{BoundedVec, SafeText},
+    declared_test::CommandActivity,
     intent::{COMMAND_RESOURCE_LIMIT, SafeResourceLocation, ToolCategory},
     projection::ToolPresentation,
 };
@@ -14,6 +15,7 @@ pub(super) fn presentation(
     category: ToolCategory,
     label: SafeText<512>,
     locations: BoundedVec<SafeResourceLocation, { COMMAND_RESOURCE_LIMIT }>,
+    command_activity: CommandActivity,
 ) -> Result<ToolPresentation, StoreError> {
     Ok(match category {
         ToolCategory::File => ToolPresentation::File {
@@ -28,6 +30,7 @@ pub(super) fn presentation(
             label,
             summary: None,
             resources: locations,
+            activity: command_activity,
         },
         ToolCategory::Search => ToolPresentation::Search {
             query_summary: SafeText::new("query", label.as_str()).map_err(contract)?,

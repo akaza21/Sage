@@ -402,6 +402,42 @@ describe("safeAcpMutationResponse", () => {
     ).toBeNull();
   });
 
+  it("defaults legacy command activity to ordinary and rejects unknown activity", () => {
+    const legacy = mutation({
+      turns: [
+        turn({
+          items: [
+            item(0, {
+              kind: "toolCall",
+              toolState: "completed",
+              payload: {
+                presentation: {
+                  kind: "command",
+                  label: "Command",
+                  summary: null,
+                  resources: [],
+                },
+                inputSummary: null,
+              },
+            }),
+          ],
+        }),
+      ],
+    });
+    expect(safeAcpMutationResponse(legacy)).not.toBeNull();
+
+    const unknown = structuredClone(legacy) as {
+      projection: {
+        turns: {
+          items: { payload: { presentation: { activity?: string } } }[];
+        }[];
+      };
+    };
+    unknown.projection.turns[0]!.items[0]!.payload.presentation.activity =
+      "completedTests";
+    expect(safeAcpMutationResponse(unknown)).toBeNull();
+  });
+
   it("admits exactly 64 command locations and rejects one more", () => {
     const command = (count: number) =>
       mutation({

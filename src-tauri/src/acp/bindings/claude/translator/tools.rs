@@ -70,6 +70,7 @@ impl ClaudeTranslator {
                 input_summary: browse_tool_summary("toolInput", update),
                 output_summary: command.then_some(output_summary).flatten(),
                 locations,
+                command_activity: Default::default(),
             },
         })
     }
@@ -132,6 +133,7 @@ impl ClaudeTranslator {
                 label: SafeText::new("toolLabel", category_label(category))?,
                 output_summary,
                 locations,
+                command_activity: Default::default(),
             },
         }];
         if let Some(content) = update.get("content").and_then(Value::as_array) {

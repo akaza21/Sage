@@ -3,6 +3,7 @@ use crate::acp::{
         AdapterBatch, AdapterBatchBuilder, AdapterEgress, AdapterEvent, AdapterRuntimeError,
         EgressToken,
     },
+    declared_test::DeclaredTestCommands,
     transport::OutboundFrame,
 };
 
@@ -37,6 +38,7 @@ pub(crate) use factory::CodexRuntimeFactory;
 
 pub(crate) struct CodexRuntime {
     launch_authority: RuntimeLaunchAuthority,
+    declared_test_commands: DeclaredTestCommands,
     inner: CodexAdapter,
     next_request_id: u64,
     snapshots: ItemSnapshots,

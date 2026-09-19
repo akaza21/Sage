@@ -173,6 +173,9 @@ pub enum NormalizedPayload {
         output_summary: Option<SafeText<65536>>,
         #[serde(default)]
         locations: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
+        /// Legacy rows decode as ordinary commands.
+        #[serde(default)]
+        command_activity: crate::acp::declared_test::CommandActivity,
     },
     ToolUpdateResult {
         category: ToolCategory,
@@ -180,6 +183,9 @@ pub enum NormalizedPayload {
         output_summary: Option<SafeText<65536>>,
         #[serde(default)]
         locations: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
+        /// Legacy rows decode as ordinary commands.
+        #[serde(default)]
+        command_activity: crate::acp::declared_test::CommandActivity,
     },
     FileChangeDiff {
         resource: SafeResourceLocation,

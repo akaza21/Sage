@@ -128,6 +128,7 @@ impl ClaudeTranslator {
                 label: SafeText::new("toolLabel", "Claude tool")?,
                 output_summary: Some(SafeText::new("toolOutput", "Permission declined")?),
                 locations: Default::default(),
+                command_activity: Default::default(),
             },
         })
     }
@@ -163,6 +164,7 @@ impl ClaudeTranslator {
                 label: SafeText::new("toolLabel", "Claude tool")?,
                 output_summary: Some(SafeText::new("toolOutput", "Permission cancelled")?),
                 locations: Default::default(),
+                command_activity: Default::default(),
             },
         })
     }

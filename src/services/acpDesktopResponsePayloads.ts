@@ -170,8 +170,16 @@ export function safeToolPresentation(value: unknown): ToolPresentation | null {
     }
     case "command": {
       const summary = safeNullableText(value.summary, 16_384);
+      // Old persisted projections predate command activity and remain ordinary.
+      const activity =
+        value.activity === undefined
+          ? "ordinary"
+          : value.activity === "ordinary" || value.activity === "declaredTest"
+            ? value.activity
+            : null;
       if (
         summary === undefined ||
+        activity === null ||
         !Array.isArray(value.resources) ||
         value.resources.length > MAX_TOOL_RESOURCES
       ) {
@@ -185,6 +193,7 @@ export function safeToolPresentation(value: unknown): ToolPresentation | null {
             label,
             summary,
             resources: resources as SafeResourceLocation[],
+            activity,
           };
     }
     case "file":

@@ -1172,6 +1172,7 @@ fn pending_actual_bytes_are_exact_and_kind_conflicts_are_not_hidden() {
                     input_summary: None,
                     output_summary: None,
                     locations: Default::default(),
+                    command_activity: Default::default(),
                 },
             )],
             1,

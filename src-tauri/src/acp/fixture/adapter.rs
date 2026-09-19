@@ -160,6 +160,7 @@ impl FixtureAdapter {
                     .map_err(|_| AdapterRuntimeError::Frame)?,
                 output_summary: None,
                 locations: Default::default(),
+                command_activity: Default::default(),
             },
         })
     }

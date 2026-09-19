@@ -128,7 +128,7 @@ impl HarnessAdapter for CodexRuntime {
         let mapper = MapperBridge(resources);
         let disposition = self
             .inner
-            .ingest(frame.as_bytes(), &mapper)
+            .ingest_with_declarations(frame.as_bytes(), &mapper, &self.declared_test_commands)
             .map_err(map_adapter)?;
         let request_digest =
             request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?;

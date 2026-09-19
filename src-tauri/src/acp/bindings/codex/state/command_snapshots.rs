@@ -7,6 +7,7 @@ use crate::acp::{
         incoming::ResourceMapper, state::command_output_stream::CommandOutputStream,
     },
     contract::BoundedVec,
+    declared_test::{CommandActivity, DeclaredTestCommands},
     intent::{COMMAND_RESOURCE_LIMIT, SafeResourceLocation},
     limits::LIMITS,
 };
@@ -43,6 +44,7 @@ impl CommandStatus {
 struct CommandSnapshot {
     stream: CommandOutputStream,
     location: Option<SafeResourceLocation>,
+    activity: CommandActivity,
 }
 
 impl CommandSnapshot {
@@ -70,6 +72,7 @@ pub(crate) struct MaterializedCommandItem {
     pub(crate) status: CommandStatus,
     pub(crate) output: Option<String>,
     pub(crate) locations: CommandLocations,
+    pub(crate) activity: CommandActivity,
 }
 
 #[derive(Debug, Default)]
@@ -89,10 +92,14 @@ impl CommandItemSnapshots {
         item_id: &str,
         item: &Map<String, Value>,
         mapper: &M,
+        declarations: &DeclaredTestCommands,
         terminal: bool,
     ) -> Result<MaterializedCommandItem, IngressError> {
         let status = parse_status(item)?;
         let mut next = self.values.get(item_id).cloned().unwrap_or_default();
+        if let Some(command) = raw_command(item) {
+            next.activity = declarations.activity_for(command);
+        }
 
         if let Some(output) = item.get("aggregatedOutput") {
             match output {
@@ -121,11 +128,13 @@ impl CommandItemSnapshots {
         }
         let output = next.output()?;
         let locations = next.locations()?;
+        let activity = next.activity;
         Ok(MaterializedCommandItem {
             next,
             status,
             output,
             locations,
+            activity,
         })
     }
 
@@ -145,6 +154,7 @@ impl CommandItemSnapshots {
         let output = next.output()?;
         let locations = next.locations()?;
         Ok(MaterializedCommandItem {
+            activity: next.activity,
             next,
             status: CommandStatus::InProgress,
             output,
@@ -202,6 +212,7 @@ impl CodexAdapter {
         item_id: &str,
         item: &Map<String, Value>,
         mapper: &M,
+        declarations: &DeclaredTestCommands,
         terminal: bool,
     ) -> Result<MaterializedCommandItem, IngressError> {
         if !self
@@ -212,7 +223,7 @@ impl CodexAdapter {
             return Err(IngressError::Identity);
         }
         self.command_item_snapshots
-            .materialize(item_id, item, mapper, terminal)
+            .materialize(item_id, item, mapper, declarations, terminal)
     }
 
     pub(crate) fn commit_command_item(
@@ -254,6 +265,22 @@ impl CodexAdapter {
     pub(crate) fn clear_command_items(&mut self) {
         self.command_item_snapshots.clear();
     }
+}
+
+/// Reads the stable Codex `command` field only for an immediate exact
+/// declaration comparison. It is never copied into a snapshot or payload.
+///
+/// Do not trim/collapse whitespace, case-fold, tokenize/rejoin, strip quotes,
+/// remove environment prefixes, peel shell wrappers, normalize path separators,
+/// or compare basenames: each would infer shell/package-manager intent.
+fn raw_command(item: &Map<String, Value>) -> Option<&str> {
+    item.get("command").and_then(Value::as_str).filter(|value| {
+        // The enclosing frame already has the wire byte cap. An empty or NUL
+        // command and any non-string shape simply lacks a stable admitted raw
+        // command contract, so it remains an ordinary command rather than
+        // tearing down the session.
+        !value.is_empty() && !value.contains('\0')
+    })
 }
 
 fn parse_status(item: &Map<String, Value>) -> Result<CommandStatus, IngressError> {
@@ -325,6 +352,7 @@ mod tests {
 
     use crate::acp::{
         contract::SageRootId,
+        declared_test::declared_test_commands_for_project,
         intent::{SafeResourceRef, UnavailableResourceReason},
     };
 
@@ -348,7 +376,13 @@ mod tests {
         let mut snapshots = CommandItemSnapshots::default();
         let item = command(json!({"status":"inProgress"}));
         let materialized = snapshots
-            .materialize("command", &item, &Mapper, false)
+            .materialize(
+                "command",
+                &item,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                false,
+            )
             .unwrap();
         snapshots.commit("command", materialized).unwrap();
         assert_eq!(snapshots.len(), 1);
@@ -359,11 +393,80 @@ mod tests {
     }
 
     #[test]
+    fn recognizes_a_declared_test_without_retaining_the_raw_command() {
+        let root =
+            std::env::temp_dir().join(format!("sage-command-activity-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("package.json"),
+            r#"{"scripts":{"test":"vitest"}}"#,
+        )
+        .unwrap();
+        let declarations = declared_test_commands_for_project(root.as_path());
+        let mut snapshots = CommandItemSnapshots::default();
+        let secret = "vitest --private-token";
+        let declared = command(json!({"command":"vitest"}));
+        let materialized = snapshots
+            .materialize("command", &declared, &Mapper, &declarations, false)
+            .unwrap();
+        assert_eq!(materialized.activity, CommandActivity::DeclaredTest);
+        snapshots.commit("command", materialized).unwrap();
+
+        let near_miss = command(json!({"command":secret}));
+        let materialized = snapshots
+            .materialize("command", &near_miss, &Mapper, &declarations, false)
+            .unwrap();
+        assert_eq!(materialized.activity, CommandActivity::Ordinary);
+        snapshots.commit("near-miss", materialized).unwrap();
+
+        // A raw near-miss has passed through materialization and commit. Neither
+        // retained snapshot nor its safe materialization may retain its bytes.
+        assert!(!format!("{snapshots:?}").contains(secret));
+        let stored = snapshots.values.get("near-miss").unwrap();
+        assert_eq!(stored.activity, CommandActivity::Ordinary);
+        assert!(!format!("{stored:?}").contains(secret));
+        assert!(!format!("{:?}", stored.output()).contains(secret));
+        assert!(!format!("{:?}", stored.locations()).contains(secret));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn unusable_raw_command_shapes_stay_ordinary_without_teardown() {
+        let snapshots = CommandItemSnapshots::default();
+        for value in [
+            json!(""),
+            json!(format!("{}npm test", '\0')),
+            json!(["npm", "test"]),
+        ] {
+            let item = command(json!({"command":value}));
+            assert_eq!(
+                snapshots
+                    .materialize(
+                        "command",
+                        &item,
+                        &Mapper,
+                        &DeclaredTestCommands::default(),
+                        false,
+                    )
+                    .unwrap()
+                    .activity,
+                CommandActivity::Ordinary
+            );
+        }
+    }
+
+    #[test]
     fn static_and_delta_output_share_one_unflushed_stream() {
         let mut snapshots = CommandItemSnapshots::default();
         let item = command(json!({"aggregatedOutput":"sk"}));
         let materialized = snapshots
-            .materialize("command", &item, &Mapper, false)
+            .materialize(
+                "command",
+                &item,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                false,
+            )
             .unwrap();
         assert!(materialized.output.is_none());
         snapshots.commit("command", materialized).unwrap();
@@ -376,25 +479,49 @@ mod tests {
         let mut snapshots = CommandItemSnapshots::default();
         let initial = command(json!({"aggregatedOutput":"partial"}));
         let materialized = snapshots
-            .materialize("command", &initial, &Mapper, false)
+            .materialize(
+                "command",
+                &initial,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                false,
+            )
             .unwrap();
         snapshots.commit("command", materialized).unwrap();
         let terminal = command(json!({"status":"completed","aggregatedOutput":"final"}));
         let materialized = snapshots
-            .materialize("command", &terminal, &Mapper, true)
+            .materialize(
+                "command",
+                &terminal,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                true,
+            )
             .unwrap();
         assert_eq!(materialized.output.as_deref(), Some("final"));
 
         snapshots.commit("command", materialized).unwrap();
         let omitted_terminal = command(json!({"status":"completed"}));
         let materialized = snapshots
-            .materialize("command", &omitted_terminal, &Mapper, true)
+            .materialize(
+                "command",
+                &omitted_terminal,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                true,
+            )
             .unwrap();
         assert_eq!(materialized.output.as_deref(), Some("final"));
 
         let clear = command(json!({"status":"completed","aggregatedOutput":null}));
         let materialized = snapshots
-            .materialize("command", &clear, &Mapper, true)
+            .materialize(
+                "command",
+                &clear,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                true,
+            )
             .unwrap();
         assert!(materialized.output.is_none());
     }
@@ -406,19 +533,37 @@ mod tests {
             json!({"commandActions":[{"type":"read","command":"cat","name":"read","path":"C:\\repo\\fixture.txt"}]}),
         );
         let materialized = snapshots
-            .materialize("command", &item, &Mapper, false)
+            .materialize(
+                "command",
+                &item,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                false,
+            )
             .unwrap();
         assert_eq!(materialized.locations.as_slice().len(), 1);
         snapshots.commit("command", materialized).unwrap();
         let sparse = command(json!({}));
         let materialized = snapshots
-            .materialize("command", &sparse, &Mapper, false)
+            .materialize(
+                "command",
+                &sparse,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                false,
+            )
             .unwrap();
         assert_eq!(materialized.locations.as_slice().len(), 1);
         let invalid =
             command(json!({"commandActions":[{"type":"read","path":"C:\\repo\\fixture.txt"}]}));
         let materialized = snapshots
-            .materialize("command", &invalid, &Mapper, false)
+            .materialize(
+                "command",
+                &invalid,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                false,
+            )
             .unwrap();
         assert!(materialized.locations.as_slice().is_empty());
     }
@@ -430,7 +575,9 @@ mod tests {
         for index in 0..LIMITS.wire.items_per_turn {
             let item = command(json!({"aggregatedOutput":aggregate}));
             let id = format!("command-{index}");
-            let materialized = snapshots.materialize(&id, &item, &Mapper, false).unwrap();
+            let materialized = snapshots
+                .materialize(&id, &item, &Mapper, &DeclaredTestCommands::default(), false)
+                .unwrap();
             snapshots.commit(&id, materialized).unwrap();
         }
         assert_eq!(snapshots.len(), LIMITS.wire.items_per_turn as usize);
@@ -445,7 +592,13 @@ mod tests {
 
         let item = command(json!({}));
         let materialized = snapshots
-            .materialize("command-overflow", &item, &Mapper, false)
+            .materialize(
+                "command-overflow",
+                &item,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                false,
+            )
             .unwrap();
         assert!(matches!(
             snapshots.commit("command-overflow", materialized),

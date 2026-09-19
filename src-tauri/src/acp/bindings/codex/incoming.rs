@@ -137,6 +137,29 @@ pub(crate) fn ingest<M: ResourceMapper>(
     bytes: &[u8],
     mapper: &M,
 ) -> Result<IngressDisposition, IngressError> {
+    ingest_inner(
+        adapter,
+        bytes,
+        mapper,
+        &crate::acp::declared_test::DeclaredTestCommands::default(),
+    )
+}
+
+pub(crate) fn ingest_with_declarations<M: ResourceMapper>(
+    adapter: &mut CodexAdapter,
+    bytes: &[u8],
+    mapper: &M,
+    declarations: &crate::acp::declared_test::DeclaredTestCommands,
+) -> Result<IngressDisposition, IngressError> {
+    ingest_inner(adapter, bytes, mapper, declarations)
+}
+
+fn ingest_inner<M: ResourceMapper>(
+    adapter: &mut CodexAdapter,
+    bytes: &[u8],
+    mapper: &M,
+    declarations: &crate::acp::declared_test::DeclaredTestCommands,
+) -> Result<IngressDisposition, IngressError> {
     if bytes.len() > LIMITS.wire.frame_bytes as usize {
         return Err(IngressError::FrameBytes);
     }
@@ -154,7 +177,7 @@ pub(crate) fn ingest<M: ResourceMapper>(
     if object.contains_key("id") {
         return server_request(adapter, object, method, params);
     }
-    notification(adapter, method, params, mapper)
+    notification(adapter, method, params, mapper, declarations)
 }
 
 fn response(

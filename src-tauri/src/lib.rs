@@ -5,7 +5,7 @@ pub mod acp;
 #[cfg(test)]
 static SERIAL_PROCESS_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-mod app_preview_commands;
+pub(crate) mod app_preview_commands;
 mod chat_archive;
 mod chat_archive_commands;
 mod chat_commands;

@@ -164,6 +164,7 @@
         "src-tauri/src/acp/bindings/runtime.rs",
         "src-tauri/src/acp/command_output.rs",
         "src-tauri/src/acp/contract.rs",
+        "src-tauri/src/acp/declared_test.rs",
         "src-tauri/src/acp/file_diff.rs",
         "src-tauri/src/acp/fixture_protocol.rs",
         "src-tauri/src/acp/image_admit.rs",
@@ -171,6 +172,7 @@
         "src-tauri/src/acp/lifecycle.rs",
         "src-tauri/src/acp/limits.rs",
         "src-tauri/src/acp/limits/preview.rs",
+        "src-tauri/src/acp/package_manifest.rs",
         "src-tauri/src/acp/projection.rs",
         "src-tauri/src/acp/semantic_ingress.rs",
         "src/domain/acp.ts"

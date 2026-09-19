@@ -171,6 +171,7 @@ impl HarnessAdapter for ActivityFixtureAdapter {
                         input_summary: None,
                         output_summary: None,
                         locations: Default::default(),
+                        command_activity: Default::default(),
                     },
                 }
             }

@@ -22,7 +22,13 @@ function tool(
     kind === "file" || kind === "diff"
       ? { kind, label: `${kind} activity`, resources }
       : kind === "command"
-        ? { kind, label: "Command activity", summary: null, resources: [] }
+        ? {
+            kind,
+            label: "Command activity",
+            summary: null,
+            resources: [],
+            activity: "ordinary" as const,
+          }
         : kind === "search"
           ? {
               kind,
@@ -140,10 +146,95 @@ describe("ToolActivityRollup", () => {
     expect(toolRollupLabel("file", items)).toBe("File activity · 2 items");
   });
 
-  it("uses call counts for presentation kinds without resources", () => {
+  it("uses call counts for ordinary commands", () => {
     expect(toolRollupLabel("command", [tool("command", "command")])).toBe(
       "Ran 1 command",
     );
+  });
+
+  it("rolls up a declared test singleton without a pass count", () => {
+    const test = {
+      ...tool("test", "command"),
+      payload: {
+        presentation: {
+          kind: "command" as const,
+          label: "Command activity",
+          summary: null,
+          resources: [],
+          activity: "declaredTest" as const,
+        },
+        inputSummary: null,
+      },
+    };
+
+    const grouped = groupPrimaryActivities([test]);
+    expect(grouped).toMatchObject([
+      {
+        kind: "toolRollup",
+        rollup: { kind: "command", commandActivity: "declaredTest" },
+      },
+    ]);
+    expect(toolRollupLabel("command", [test], "declaredTest")).toBe(
+      "Ran tests",
+    );
+  });
+
+  it("shows a failed declared-test rollup without a false success meaning", () => {
+    const failed = {
+      ...tool("failed-test", "command"),
+      toolState: "failed" as const,
+      payload: {
+        presentation: {
+          kind: "command" as const,
+          label: "Command activity",
+          summary: null,
+          resources: [],
+          activity: "declaredTest" as const,
+        },
+        inputSummary: null,
+      },
+    };
+    render(
+      <ToolActivityRollup
+        rollup={{
+          kind: "command",
+          commandActivity: "declaredTest",
+          items: [failed],
+        }}
+        linkedResults={new Map()}
+        interactive
+      />,
+    );
+
+    expect(screen.getByText("Ran tests")).toBeVisible();
+    expect(screen.getByText("Failed · Show")).toBeVisible();
+  });
+
+  it("keeps declared tests separate from ordinary command groups", () => {
+    const ordinary = tool("ordinary", "command");
+    const declared = {
+      ...tool("test", "command"),
+      payload: {
+        presentation: {
+          kind: "command" as const,
+          label: "Command activity",
+          summary: null,
+          resources: [],
+          activity: "declaredTest" as const,
+        },
+        inputSummary: null,
+      },
+    };
+    const grouped = groupPrimaryActivities([ordinary, declared]);
+    expect(grouped).toHaveLength(2);
+    expect(grouped[0]).toMatchObject({
+      kind: "item",
+      item: { id: "ordinary" },
+    });
+    expect(grouped[1]).toMatchObject({
+      kind: "toolRollup",
+      rollup: { commandActivity: "declaredTest", items: [{ id: "test" }] },
+    });
   });
 
   it("reflects failed, declined, cancelled, or active members in the rollup state", () => {
@@ -175,6 +266,29 @@ describe("ToolActivityRollup", () => {
     expect(toolRollupState([cancelled, tool("completed", "command")])).toBe(
       "cancelled",
     );
+
+    const declared = {
+      ...tool("declared", "command"),
+      payload: {
+        presentation: {
+          kind: "command" as const,
+          label: "Command activity",
+          summary: null,
+          resources: [],
+          activity: "declaredTest" as const,
+        },
+        inputSummary: null,
+      },
+    };
+    expect(
+      toolRollupState([{ ...declared, toolState: "failed" as const }]),
+    ).toBe("failed");
+    expect(
+      toolRollupState([{ ...declared, toolState: "declined" as const }]),
+    ).toBe("declined");
+    expect(
+      toolRollupState([{ ...declared, toolState: "cancelled" as const }]),
+    ).toBe("cancelled");
   });
 
   it("expands into the existing ToolItem cards", () => {
@@ -182,7 +296,11 @@ describe("ToolActivityRollup", () => {
     const second = tool("file-2", "file", [otherFile]);
     render(
       <ToolActivityRollup
-        rollup={{ kind: "file", items: [first, second] }}
+        rollup={{
+          kind: "file",
+          commandActivity: "ordinary",
+          items: [first, second],
+        }}
         linkedResults={new Map()}
         interactive
       />,

@@ -2,6 +2,7 @@ use serde::Serialize;
 
 use super::{
     contract::*,
+    declared_test::CommandActivity,
     intent::{
         BindingId, COMMAND_RESOURCE_LIMIT, CapabilitySnapshotV1, ModelId, PageCursor,
         SafeResourceRef,
@@ -64,6 +65,8 @@ pub enum ToolPresentation {
         label: SafeText<512>,
         summary: Option<SafeText<16384>>,
         resources: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
+        #[serde(default)]
+        activity: CommandActivity,
     },
     Search {
         label: SafeText<512>,

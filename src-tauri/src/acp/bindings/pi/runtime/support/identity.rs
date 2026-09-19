@@ -264,6 +264,7 @@ pub(super) fn tool_payload(
             label,
             output_summary: None,
             locations: Default::default(),
+            command_activity: Default::default(),
         }
     } else {
         NormalizedPayload::ToolCall {
@@ -272,6 +273,7 @@ pub(super) fn tool_payload(
             input_summary: None,
             output_summary: None,
             locations: Default::default(),
+            command_activity: Default::default(),
         }
     })
 }

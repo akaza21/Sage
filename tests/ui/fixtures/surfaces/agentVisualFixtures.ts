@@ -230,6 +230,7 @@ function activityFamilyPage() {
         summary:
           "npm test -- src/features/chat/acp/ToolItem.test.tsx src/features/chat/acp/TurnActivityItem.test.tsx src/features/chat/acp/AcpChatProjection.test.tsx",
         resources: [],
+        activity: "ordinary",
       },
       "completed",
       "Focused checks passed for ToolItem, TurnActivityItem, and AcpChatProjection. This deliberately bounded fixture output records the completed command result across parser coverage, mounted runtime lifecycle, visual projection ownership, accessibility labels, and compact-width containment so the activity card exercises the existing long-output overflow contract without using presentation text, input text, or raw process output.",
@@ -282,6 +283,33 @@ function activityFamilyPage() {
     [turn(chatId, 1, "running", items)],
     "active",
   );
+}
+
+function declaredTestPage() {
+  const chatId = "visual-chat-declared-test" as SageChatId;
+  const turnId = `visual-turn-${chatId}-1` as SageTurnId;
+  const input = (ordinal: number): ItemInput => ({
+    chatId,
+    turnId,
+    ordinal,
+    createdAt: FIXED_NOW - 60_000 + ordinal * 1_000,
+  });
+  return page(chatId, "Declared test run", [
+    turn(chatId, 1, "completed", [
+      textItem(
+        input(1),
+        "assistant",
+        "I ran the project's declared test script.",
+      ),
+      activityToolItem(input(2), {
+        kind: "command",
+        label: "Command",
+        summary: null,
+        resources: [],
+        activity: "declaredTest",
+      }),
+    ]),
+  ]);
 }
 
 function imagePage() {
@@ -397,6 +425,8 @@ export function buildAgentPages(
       return [longPage()];
     case "agent-activity-family":
       return [activityFamilyPage()];
+    case "agent-declared-test":
+      return [declaredTestPage()];
     case "agent-image":
       return [
         imagePage(),

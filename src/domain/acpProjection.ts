@@ -51,6 +51,8 @@ export type ToolPresentation =
       label: string;
       summary: string | null;
       resources: readonly SafeResourceLocation[];
+      /** Legacy projections without this field decode as ordinary. */
+      activity: "ordinary" | "declaredTest";
     }
   | {
       kind: "search";
