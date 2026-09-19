@@ -71,6 +71,8 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     availableBinding,
     harnessStatus,
     foregroundError,
+    modeError,
+    modeChanging,
     actionBusy,
     activeAcpTurn,
     workingTurnCount,
@@ -222,6 +224,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         chatError={foregroundError}
         availableBinding={availableBinding}
         canPrompt={canPrompt}
+        sessionConfig={acpPage?.sessionConfig ?? null}
+        modePending={modeChanging}
+        modeError={modeError}
+        focused={focused}
+        onSetSessionMode={acpActions.setSessionMode}
         missingBindingNotice={
           useNativeAcp &&
           !availableBinding &&

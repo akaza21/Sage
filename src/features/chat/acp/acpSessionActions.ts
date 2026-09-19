@@ -11,6 +11,7 @@ import { AcpDesktopError } from "../../../services/acpDesktop";
 import type { acpDesktop } from "../../../services/acpDesktop";
 import type {
   AcpActionContext,
+  AcpActionOrigin,
   AcpActionOutcome,
   AcpActionState,
 } from "./acpActionController";
@@ -20,6 +21,7 @@ interface SessionActionDependencies {
   getContext: () => AcpActionContext | null;
   enqueue: (
     captured: AcpActionContext,
+    origin: AcpActionOrigin,
     action: (
       updateState: (
         next: Partial<
@@ -67,7 +69,7 @@ export function createAcpSessionActions(
     if (!captured || cancellableTurnId(captured.page) !== turnId) {
       return Promise.resolve("rejected");
     }
-    return dependencies.enqueue(captured, async (updateState) => {
+    return dependencies.enqueue(captured, "chat", async (updateState) => {
       const context = dependencies.getContext();
       if (!dependencies.sameScope(context, captured) || !context) {
         return "ignoredStale";
@@ -119,7 +121,7 @@ export function createAcpSessionActions(
     ) {
       return Promise.resolve("rejected");
     }
-    return dependencies.enqueue(captured, async (updateState) => {
+    return dependencies.enqueue(captured, "chat", async (updateState) => {
       const context = dependencies.getContext();
       if (!dependencies.sameScope(context, captured) || !context) {
         return "ignoredStale";
@@ -157,47 +159,66 @@ export function createAcpSessionActions(
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const config = captured?.page.sessionConfig;
+    const modeId = "modeId" in mutation ? mutation.modeId : null;
     if (!captured || !config) return Promise.resolve("rejected");
-    return dependencies.enqueue(captured, async (updateState) => {
-      const context = dependencies.getContext();
-      if (!context || !dependencies.sameScope(context, captured))
-        return "ignoredStale";
-      const session = currentSession(context.page);
-      const current = context.page.sessionConfig;
-      if (
-        !session?.runtimeEpoch ||
-        !current ||
-        current.sageAgentSessionId !== config.sageAgentSessionId ||
-        current.runtimeEpoch !== config.runtimeEpoch ||
-        current.configRevision !== config.configRevision
-      )
-        return "ignoredStale";
-      const request = {
-        ...captured.scope,
-        projectGeneration: captured.commandProjectGeneration,
-        expectedProjectionRevision: context.page.projectionRevision,
-        clientIntentId: dependencies.nextIntentId(),
-        sessionId: session.id,
-        runtimeEpoch: session.runtimeEpoch,
-        expectedConfigRevision: current.configRevision,
-      };
-      try {
-        const result =
-          "modeId" in mutation
-            ? await dependencies.setSessionMode?.({ ...request, ...mutation })
-            : await dependencies.setSessionConfigOption?.({
-                ...request,
-                ...mutation,
-              });
-        if (!result) return "rejected";
-        return dependencies.apply(captured, result)
-          ? "applied"
-          : "ignoredStale";
-      } catch (error) {
-        updateState({ error: typedError(error) });
-        return "rejected";
-      }
-    });
+    if (
+      modeId !== null &&
+      (config.removed ||
+        !config.modes ||
+        !config.modes.availableModes.some((mode) => mode.id === modeId))
+    ) {
+      return Promise.resolve("rejected");
+    }
+    return dependencies.enqueue(
+      captured,
+      modeId !== null ? "mode" : "chat",
+      async (updateState) => {
+        const context = dependencies.getContext();
+        if (!context || !dependencies.sameScope(context, captured))
+          return "ignoredStale";
+        const session = currentSession(context.page);
+        const current = context.page.sessionConfig;
+        if (
+          !session?.runtimeEpoch ||
+          !current ||
+          (modeId !== null &&
+            (current.removed ||
+              !current.modes ||
+              !current.modes.availableModes.some(
+                (mode) => mode.id === modeId,
+              ))) ||
+          current.sageAgentSessionId !== config.sageAgentSessionId ||
+          current.runtimeEpoch !== config.runtimeEpoch ||
+          current.configRevision !== config.configRevision
+        )
+          return "ignoredStale";
+        const request = {
+          ...captured.scope,
+          projectGeneration: captured.commandProjectGeneration,
+          expectedProjectionRevision: context.page.projectionRevision,
+          clientIntentId: dependencies.nextIntentId(),
+          sessionId: session.id,
+          runtimeEpoch: session.runtimeEpoch,
+          expectedConfigRevision: current.configRevision,
+        };
+        try {
+          const result =
+            "modeId" in mutation
+              ? await dependencies.setSessionMode?.({ ...request, ...mutation })
+              : await dependencies.setSessionConfigOption?.({
+                  ...request,
+                  ...mutation,
+                });
+          if (!result) return "rejected";
+          return dependencies.apply(captured, result)
+            ? "applied"
+            : "ignoredStale";
+        } catch (error) {
+          updateState({ error: typedError(error) });
+          return "rejected";
+        }
+      },
+    );
   };
   return {
     cancel,

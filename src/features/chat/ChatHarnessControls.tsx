@@ -1,15 +1,39 @@
 import { ShieldCheck } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type RefObject,
+} from "react";
 
 import { useWorkbenchStore } from "../../app/store";
+import type { AcpSessionConfig } from "../../domain/acpSessionConfig";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 
 interface Props {
   availableBinding: boolean;
   canPrompt: boolean;
+  sessionConfig: AcpSessionConfig | null;
+  modePending: boolean;
+  modeError: string | null;
+  focused: boolean;
+  onSetSessionMode: (modeId: string) => Promise<unknown>;
+  onModeRemoved: () => void;
+  modeControlRef?: RefObject<HTMLLabelElement | null>;
 }
 
-export function ChatHarnessControls({ availableBinding, canPrompt }: Props) {
+export function ChatHarnessControls({
+  availableBinding,
+  canPrompt,
+  sessionConfig,
+  modePending,
+  modeError,
+  focused,
+  onSetSessionMode,
+  onModeRemoved,
+  modeControlRef: externalModeControlRef,
+}: Props) {
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const selectedHarnessId = useWorkbenchStore(
     (state) => state.selectedHarnessId,
@@ -63,6 +87,41 @@ export function ChatHarnessControls({ availableBinding, canPrompt }: Props) {
     [selectModel],
   );
   const modelUnavailable = !canPrompt || models.length === 0;
+  const internalModeControlRef = useRef<HTMLLabelElement>(null);
+  const modeControlRef = externalModeControlRef ?? internalModeControlRef;
+  const modeOptions = sessionConfig?.modes?.availableModes ?? [];
+  const hasModes = !sessionConfig?.removed && modeOptions.length > 0;
+  const modeCandidates = useMemo(
+    () =>
+      modeOptions.map((mode) => ({
+        id: mode.id,
+        label: mode.name || mode.id,
+      })),
+    [modeOptions],
+  );
+  const chooseMode = useCallback(
+    (modeId: string) => void onSetSessionMode(modeId),
+    [onSetSessionMode],
+  );
+  const hadModes = useRef(hasModes);
+  useLayoutEffect(() => {
+    const activeElement = document.activeElement;
+    const modePopoverHadFocus =
+      activeElement instanceof HTMLElement &&
+      activeElement.getAttribute("role") === "combobox" &&
+      activeElement.getAttribute("aria-label") === "Session mode";
+    const modeControlHadFocus = Boolean(
+      activeElement === document.body ||
+      modePopoverHadFocus ||
+      (activeElement instanceof HTMLElement &&
+        (!activeElement.isConnected ||
+          modeControlRef.current?.contains(activeElement))),
+    );
+    if (hadModes.current && !hasModes && focused && modeControlHadFocus) {
+      onModeRemoved();
+    }
+    hadModes.current = hasModes;
+  }, [focused, hasModes, onModeRemoved]);
 
   return (
     <div className="composer__controls">
@@ -91,6 +150,30 @@ export function ChatHarnessControls({ availableBinding, canPrompt }: Props) {
           </span>
         ) : null}
       </label>
+      {hasModes ? (
+        <label
+          ref={modeControlRef}
+          className="select-control select-control--chip"
+        >
+          <span className="select-control__label">Mode</span>
+          <SearchablePicker
+            ariaLabel="Session mode"
+            candidates={modeCandidates}
+            onSelect={chooseMode}
+            selectedId={sessionConfig?.modes?.currentModeId ?? null}
+          />
+          {modePending ? (
+            <span className="select-control__reason" role="status">
+              Changing mode…
+            </span>
+          ) : null}
+          {modeError ? (
+            <span className="select-control__reason" role="alert">
+              {modeError}
+            </span>
+          ) : null}
+        </label>
+      ) : null}
       {availableBinding ? (
         <span className="access-mode" title="Permission requests fail closed">
           <ShieldCheck size={14} aria-hidden="true" />

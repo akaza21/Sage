@@ -31,10 +31,14 @@ export interface AcpActionContext {
   page: AcpChatPage;
 }
 
+export type AcpActionOrigin = "chat" | "mode";
+
 export interface AcpActionState {
   scope: AcpProjectionScope | null;
   ownershipEpoch: number | null;
   transitionEpoch: number | null;
+  origin: AcpActionOrigin;
+  configOwner: { sessionId: string; runtimeEpoch: string } | null;
   busy: boolean;
   cancellingTurnId: SageTurnId | null;
   error: AcpDesktopError | null;
@@ -76,6 +80,19 @@ type AcpActionPresentation = Pick<
   AcpActionState,
   "busy" | "cancellingTurnId" | "error"
 >;
+
+function configOwner(page: AcpChatPage): {
+  sessionId: string;
+  runtimeEpoch: string;
+} | null {
+  const config = page.sessionConfig;
+  return config
+    ? {
+        sessionId: config.sageAgentSessionId,
+        runtimeEpoch: config.runtimeEpoch,
+      }
+    : null;
+}
 
 function typedError(error: unknown): AcpDesktopError {
   if (error instanceof AcpDesktopError) return error;
@@ -155,12 +172,15 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
 
   const emitState = (
     captured: AcpActionContext,
+    origin: AcpActionOrigin,
     presentation: AcpActionPresentation,
   ) => {
     const emitted: AcpActionState = {
       scope: captured.scope,
       ownershipEpoch: captured.ownershipEpoch,
       transitionEpoch: Number(captured.commandProjectGeneration),
+      origin,
+      configOwner: origin === "mode" ? configOwner(captured.page) : null,
       ...presentation,
     };
     dependencies.onStateChange?.(emitted);
@@ -180,6 +200,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
 
   const enqueue = (
     captured: AcpActionContext,
+    origin: AcpActionOrigin,
     action: (
       updateState: (next: Partial<AcpActionPresentation>) => void,
     ) => Promise<AcpActionOutcome>,
@@ -195,8 +216,8 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           ? "Another action is already in progress for this Chat."
           : "Too many Chat actions are already in progress.",
       });
-      emitState(captured, {
-        busy: scopeBusy,
+      emitState(captured, origin, {
+        busy: false,
         cancellingTurnId: null,
         error,
       });
@@ -209,10 +230,10 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     };
     const updateState = (next: Partial<AcpActionPresentation>) => {
       presentation = { ...presentation, ...next };
-      emitState(captured, presentation);
+      emitState(captured, origin, presentation);
     };
     activeScopes.add(key);
-    emitState(captured, presentation);
+    emitState(captured, origin, presentation);
     const result = Promise.resolve().then(async () => {
       if (!sameScope(dependencies.getContext(), captured)) {
         return "ignoredStale" as const;
@@ -238,7 +259,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
       boundedContext = validateAttachedContexts(attachedContext);
     } catch (error) {
       if (captured) {
-        emitState(captured, {
+        emitState(captured, "chat", {
           busy: false,
           cancellingTurnId: null,
           error: localFailure(
@@ -252,7 +273,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     }
     if (!captured || !normalizedPrompt) return Promise.resolve("rejected");
     if (currentNonterminalTurn(captured.page)) {
-      emitState(captured, {
+      emitState(captured, "chat", {
         busy: false,
         cancellingTurnId: null,
         error: localFailure(
@@ -261,7 +282,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
       });
       return Promise.resolve("rejected");
     }
-    return enqueue(captured, async (updateState) => {
+    return enqueue(captured, "chat", async (updateState) => {
       let page = dependencies.getContext()?.page ?? captured.page;
       let promptCallStarted = false;
       try {

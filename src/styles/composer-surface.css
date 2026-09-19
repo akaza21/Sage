@@ -132,6 +132,18 @@
   padding-left: var(--space-2);
 }
 
+.select-control__reason {
+  grid-column: 1 / -1;
+  padding: 0 var(--space-2) var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+}
+
+.select-control__reason[role="alert"] {
+  color: var(--color-danger);
+}
+
 .select-control__label {
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);

@@ -14,6 +14,9 @@ export function emptyChatOwnershipEntry(): ChatOwnershipEntry {
     attachedContext: [],
     sending: false,
     error: null,
+    modeError: null,
+    modeErrorOwner: null,
+    modeChanging: false,
     requestGeneration: 0,
   };
 }

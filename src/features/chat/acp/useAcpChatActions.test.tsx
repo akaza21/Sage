@@ -58,6 +58,16 @@ function page(): AcpChatPage {
     ],
     turns: [],
     nextCursor: null,
+    sessionConfig: {
+      sageAgentSessionId: "session-a",
+      runtimeEpoch: "1",
+      configRevision: "1",
+      modes: {
+        currentModeId: "review",
+        availableModes: [{ id: "review", name: "Review" }],
+      },
+      configOptions: [],
+    },
   } as unknown as AcpChatPage;
 }
 
@@ -101,6 +111,74 @@ afterEach(() => {
 });
 
 describe("useAcpChatActions per-Chat ownership", () => {
+  it("keeps a mode failure separate from the prompt error slot", async () => {
+    const setSessionMode = vi
+      .spyOn(acpDesktop, "setSessionMode")
+      .mockRejectedValue(
+        new AcpDesktopError({
+          kind: "conflict",
+          resource: "configRevision",
+          message: "Mode update conflicted",
+        }),
+      );
+    const { result } = renderHook(() => useAcpChatActions());
+
+    await act(async () => {
+      await result.current.setSessionMode("review");
+    });
+    expect(setSessionMode).toHaveBeenCalledOnce();
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.modeError).toBe("Mode update conflicted");
+    expect(result.current.modeChanging).toBe(false);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      chatError: null,
+      chatUiById: {
+        "chat-a": {
+          error: null,
+          modeError: "Mode update conflicted",
+          modeErrorOwner: { sessionId: "session-a", runtimeEpoch: "1" },
+        },
+      },
+    });
+  });
+
+  it("does not leak a mode error across a runtime epoch change", async () => {
+    useWorkbenchStore.setState({
+      chatUiById: {
+        "chat-a": {
+          composerText: "",
+          attachedContext: [],
+          sending: false,
+          error: null,
+          modeError: "Old runtime rejected the mode",
+          modeErrorOwner: { sessionId: "session-a", runtimeEpoch: "1" },
+          modeChanging: false,
+          requestGeneration: 0,
+        },
+      },
+    });
+    const { result } = renderHook(() => useAcpChatActions());
+    expect(result.current.modeError).toBe("Old runtime rejected the mode");
+
+    const scope = {
+      projectId: "project-a" as SageProjectId,
+      projectGeneration: "0" as ProjectGeneration,
+      chatId: "chat-a" as SageChatId,
+    };
+    useAcpProjectionStore.getState().applyAuthoritativePage(scope, {
+      ...page(),
+      projectionRevision: "2" as never,
+      sessionConfig: {
+        ...page().sessionConfig!,
+        runtimeEpoch: "2",
+        configRevision: "2",
+      },
+    });
+
+    await waitFor(() => expect(result.current.modeError).toBeNull());
+  });
+
   it("does not turn a rapid repeat Send into a queued prompt", async () => {
     const pending = deferred<Awaited<ReturnType<typeof acpDesktop.sendTurn>>>();
     const send = vi

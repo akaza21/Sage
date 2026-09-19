@@ -35,7 +35,10 @@ const hooks = vi.hoisted(() => ({
     submit: vi.fn(),
     cancel: vi.fn(),
     close: vi.fn(),
+    setSessionMode: vi.fn(),
     clearError: vi.fn(),
+    modeError: null as string | null,
+    modeChanging: false,
   },
 }));
 
@@ -177,6 +180,8 @@ beforeEach(() => {
   hooks.actions.busy = false;
   hooks.actions.error = null;
   hooks.actions.cancellableTurnId = null;
+  hooks.actions.modeError = null;
+  hooks.actions.modeChanging = false;
   Element.prototype.scrollIntoView = vi.fn();
   useWorkbenchStore.setState({
     harnesses: [
@@ -207,6 +212,161 @@ afterEach(() => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
+  it("renders only provider-advertised session modes and preserves their order", () => {
+    hooks.page = {
+      ...hooks.page!,
+      sessionConfig: {
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "1",
+        configRevision: "1",
+        modes: {
+          currentModeId: "review",
+          availableModes: [
+            { id: "review", name: "Review changes" },
+            { id: "apply", name: "Apply changes" },
+          ],
+        },
+        configOptions: [],
+      },
+    } as AcpChatPage;
+    render(<ChatSurface />);
+
+    const trigger = screen.getByRole("button", { name: "Session mode" });
+    expect(trigger).toHaveTextContent("Review changes");
+    fireEvent.click(trigger);
+    expect(
+      screen.getAllByRole("option").map((option) => option.textContent),
+    ).toEqual(["Review changes", "Apply changes"]);
+  });
+
+  it("does not render a session mode picker without advertised modes", () => {
+    render(<ChatSurface />);
+    expect(screen.queryByRole("button", { name: "Session mode" })).toBeNull();
+  });
+
+  it("removes a withdrawn session mode picker and returns focus to the composer", async () => {
+    hooks.page = {
+      ...hooks.page!,
+      turns: [],
+      sessionConfig: {
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "1",
+        configRevision: "1",
+        modes: {
+          currentModeId: "review",
+          availableModes: [{ id: "review", name: "Review changes" }],
+        },
+        configOptions: [],
+      },
+    } as AcpChatPage;
+    const { rerender } = render(<ChatSurface />);
+    const trigger = screen.getByRole("button", { name: "Session mode" });
+    fireEvent.click(trigger);
+    const modeInput = screen.getByRole("combobox", { name: "Session mode" });
+    await waitFor(() => expect(modeInput).toHaveFocus());
+    hooks.page = {
+      ...hooks.page!,
+      sessionConfig: {
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "1",
+        configRevision: "2",
+        removed: true,
+        modes: null,
+        configOptions: [],
+      },
+    } as AcpChatPage;
+    rerender(<ChatSurface />);
+
+    expect(screen.queryByRole("button", { name: "Session mode" })).toBeNull();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "Message agent" }),
+      ).toHaveFocus(),
+    );
+  });
+
+  it("does not move focus when an unfocused Chat withdraws its mode picker", () => {
+    pinAgentChatOwner("chat-a");
+    hooks.page = {
+      ...hooks.page!,
+      turns: [],
+      sessionConfig: {
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "1",
+        configRevision: "1",
+        modes: {
+          currentModeId: "review",
+          availableModes: [{ id: "review", name: "Review changes" }],
+        },
+        configOptions: [],
+      },
+    } as AcpChatPage;
+    const { rerender } = render(
+      <>
+        <textarea aria-label="Foreground draft" />
+        <ChatSurface chatId="chat-b" />
+      </>,
+    );
+    const foregroundDraft = screen.getByRole("textbox", {
+      name: "Foreground draft",
+    });
+    foregroundDraft.focus();
+    hooks.page = {
+      ...hooks.page!,
+      sessionConfig: {
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "1",
+        configRevision: "2",
+        removed: true,
+        modes: null,
+        configOptions: [],
+      },
+    } as AcpChatPage;
+    rerender(
+      <>
+        <textarea aria-label="Foreground draft" />
+        <ChatSurface chatId="chat-b" />
+      </>,
+    );
+
+    expect(foregroundDraft).toHaveFocus();
+  });
+
+  it("renders pending mode state and errors beside the mode picker", () => {
+    hooks.page = {
+      ...hooks.page!,
+      sessionConfig: {
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "1",
+        configRevision: "1",
+        modes: {
+          currentModeId: "review",
+          availableModes: [
+            { id: "review", name: "Review changes" },
+            { id: "apply", name: "Apply changes" },
+          ],
+        },
+        configOptions: [],
+      },
+    } as AcpChatPage;
+    hooks.actions.modeChanging = true;
+    hooks.actions.modeError = "Mode change was rejected";
+    hooks.actions.error = "Prompt dispatch failed";
+    render(<ChatSurface />);
+
+    expect(
+      screen.getByRole("button", { name: "Session mode" }),
+    ).toHaveTextContent("Review changes");
+    expect(screen.getByText("Changing mode…")).toHaveAttribute(
+      "role",
+      "status",
+    );
+    expect(screen.getByText("Prompt dispatch failed")).toHaveClass(
+      "composer__error",
+    );
+    expect(screen.getByText("Mode change was rejected")).toBeInTheDocument();
+  });
+
   it("satisfies the exported ACP-04 Codex-ready selector with real chat controls", async () => {
     hooks.page = {
       ...projection(),

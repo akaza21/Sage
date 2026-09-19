@@ -39,7 +39,13 @@ export interface ChatOwnershipSlice {
   ) => boolean;
   setChatActionState: (
     intent: ChatOwnershipIntent,
-    state: { sending: boolean; error: string | null },
+    state: {
+      sending: boolean;
+      error: string | null;
+      modeError?: string | null;
+      modeErrorOwner?: { sessionId: string; runtimeEpoch: string } | null;
+      modeChanging?: boolean;
+    },
   ) => boolean;
   clearActiveChatError: () => void;
   setComposerText: (text: string) => void;
@@ -175,6 +181,17 @@ export const createChatOwnershipSlice: StateCreator<
       sending: actionState.sending,
       error:
         actionState.error === null ? null : boundedChatError(actionState.error),
+      modeError:
+        actionState.modeError === undefined
+          ? entry.modeError
+          : actionState.modeError === null
+            ? null
+            : boundedChatError(actionState.modeError),
+      modeErrorOwner:
+        actionState.modeErrorOwner === undefined
+          ? entry.modeErrorOwner
+          : actionState.modeErrorOwner,
+      modeChanging: actionState.modeChanging ?? entry.modeChanging ?? false,
     };
     const active = activeChatId(state) === intent.chatId;
     set({

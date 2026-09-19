@@ -12,6 +12,9 @@ export interface ChatOwnershipEntry {
   attachedContext: readonly DiffLineCommentContext[];
   sending: boolean;
   error: string | null;
+  modeError?: string | null;
+  modeErrorOwner?: { sessionId: string; runtimeEpoch: string } | null;
+  modeChanging?: boolean;
   requestGeneration: number;
 }
 

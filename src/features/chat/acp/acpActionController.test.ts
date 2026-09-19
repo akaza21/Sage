@@ -141,6 +141,7 @@ function harness(initialPage: AcpChatPage) {
   const cleared: Array<{ prompt: string; attachedContext: unknown[] }> = [];
   const states: Array<{
     scope: AcpProjectionScope | null;
+    origin: "chat" | "mode";
     busy: boolean;
     error: AcpDesktopError | null;
   }> = [];
@@ -167,7 +168,12 @@ function harness(initialPage: AcpChatPage) {
     restoreComposer: (_context, prompt, attachedContext) =>
       restored.push({ prompt, attachedContext: [...attachedContext] }),
     onStateChange: (state) =>
-      states.push({ scope: state.scope, busy: state.busy, error: state.error }),
+      states.push({
+        scope: state.scope,
+        origin: state.origin,
+        busy: state.busy,
+        error: state.error,
+      }),
     createIntentId: () => `intent-${++intent}` as ClientIntentId,
   });
   return {
@@ -185,6 +191,68 @@ function harness(initialPage: AcpChatPage) {
 }
 
 describe("ACP action controller", () => {
+  it("rejects a mode that is no longer advertised before enqueueing", async () => {
+    const initial = {
+      ...page("10", session("hot", "2", null)),
+      sessionConfig: {
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "2",
+        configRevision: "3",
+        modes: {
+          currentModeId: "ask",
+          availableModes: [{ id: "ask", name: "Ask" }],
+        },
+        configOptions: [],
+      },
+    };
+    const test = harness(initial);
+
+    await expect(test.controller.setSessionMode("code")).resolves.toBe(
+      "rejected",
+    );
+    expect(test.commands.setSessionMode).not.toHaveBeenCalled();
+    expect(test.states).toHaveLength(0);
+  });
+
+  it("revalidates the mode against the live config before dispatch", async () => {
+    const initial = {
+      ...page("10", session("hot", "2", null)),
+      sessionConfig: {
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "2",
+        configRevision: "3",
+        modes: {
+          currentModeId: "ask",
+          availableModes: [
+            { id: "ask", name: "Ask" },
+            { id: "code", name: "Code" },
+          ],
+        },
+        configOptions: [],
+      },
+    };
+    const test = harness(initial);
+    const pending = test.controller.setSessionMode("code");
+    test.setContext({
+      ...test.getContext()!,
+      page: {
+        ...initial,
+        projectionRevision: "11" as ProjectionRevision,
+        sessionConfig: {
+          ...initial.sessionConfig,
+          configRevision: "3",
+          modes: {
+            currentModeId: "ask",
+            availableModes: [{ id: "ask", name: "Ask" }],
+          },
+        },
+      },
+    });
+
+    await expect(pending).resolves.toBe("ignoredStale");
+    expect(test.commands.setSessionMode).not.toHaveBeenCalled();
+  });
+
   it("does not optimistically echo a mode and carries exact config authority", async () => {
     const initial = {
       ...page("10", session("hot", "2", null)),
@@ -233,6 +301,44 @@ describe("ACP action controller", () => {
       "ask",
     );
   });
+  it("does not leave a mode pending after it collides with a prompt action", async () => {
+    const initial = {
+      ...page("10", session("hot", "2", null)),
+      sessionConfig: {
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "2",
+        configRevision: "3",
+        modes: {
+          currentModeId: "ask",
+          availableModes: [
+            { id: "ask", name: "Ask" },
+            { id: "code", name: "Code" },
+          ],
+        },
+        configOptions: [],
+      },
+    };
+    const test = harness(initial);
+    const pendingPrompt = deferred<{ projection: AcpChatPage }>();
+    vi.mocked(test.commands.sendTurn).mockReturnValue(pendingPrompt.promise);
+
+    const prompt = test.controller.submit("Prompt", [], bindingId, modelId);
+    await nextMicrotask();
+    await expect(test.controller.setSessionMode("code")).resolves.toBe(
+      "rejected",
+    );
+    expect(test.states.at(-1)).toMatchObject({
+      origin: "mode",
+      busy: false,
+      error: {
+        message: "Another action is already in progress for this Chat.",
+      },
+    });
+
+    pendingPrompt.resolve({ projection: initial });
+    await expect(prompt).resolves.toBe("applied");
+  });
+
   it("exposes no retained presentation snapshot after notifications", () => {
     const test = harness(page("1", null));
 

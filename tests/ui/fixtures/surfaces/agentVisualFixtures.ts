@@ -113,6 +113,34 @@ function composerContextPage(
   ]);
 }
 
+function sessionModePage(chatIdValue: string, title: string) {
+  const result = standardPage(chatIdValue, title, "rich");
+  return {
+    ...result,
+    sessionConfig: {
+      sageAgentSessionId: "visual-session",
+      runtimeEpoch: "7",
+      configRevision: "1",
+      modes: {
+        currentModeId: "review",
+        availableModes: [
+          {
+            id: "review",
+            name: "Review changes",
+            description: "Analyze changes without applying them.",
+          },
+          {
+            id: "apply",
+            name: "Apply changes",
+            description: "Apply approved changes to the workspace.",
+          },
+        ],
+      },
+      configOptions: [],
+    },
+  };
+}
+
 function imageItem(input: ItemInput): AcpItem {
   return {
     ...itemIdentity(input),
@@ -415,6 +443,23 @@ export function buildAgentPages(
           "Composer context over capacity",
           300_000,
           272_000,
+        ),
+      ];
+    case "agent-session-mode-closed":
+      return [
+        sessionModePage("visual-chat-session-mode-closed", "Session mode"),
+      ];
+    case "agent-session-mode-open":
+      return [sessionModePage("visual-chat-session-mode-open", "Session mode")];
+    case "agent-session-mode-narrow":
+      return [
+        sessionModePage("visual-chat-session-mode-narrow", "Session mode"),
+      ];
+    case "agent-session-mode-forced-colors":
+      return [
+        sessionModePage(
+          "visual-chat-session-mode-forced-colors",
+          "Session mode",
         ),
       ];
     default:

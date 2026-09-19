@@ -51,6 +51,8 @@ export function useChatSurfaceModel({
   acpActions: {
     busy: boolean;
     error: string | null;
+    modeError?: string | null;
+    modeChanging?: boolean;
     cancellableTurnId: TurnProjection["id"] | null;
     submit: (
       text: string,
@@ -252,6 +254,10 @@ export function useChatSurfaceModel({
   return {
     ...model,
     foregroundError: acpActions.error ?? chatError,
+    modeError: model.useNativeAcp ? (acpActions.modeError ?? null) : null,
+    modeChanging: model.useNativeAcp
+      ? (acpActions.modeChanging ?? false)
+      : false,
     actionBusy,
     activeAcpTurn,
     workingTurnCount,

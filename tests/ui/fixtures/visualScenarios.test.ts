@@ -34,6 +34,14 @@ describe("visual scenario contract", () => {
         mode: "agent",
         resource: "empty",
       },
+      { name: "agent-session-mode-closed", mode: "agent", resource: "empty" },
+      { name: "agent-session-mode-open", mode: "agent", resource: "empty" },
+      { name: "agent-session-mode-narrow", mode: "agent", resource: "empty" },
+      {
+        name: "agent-session-mode-forced-colors",
+        mode: "agent",
+        resource: "empty",
+      },
       { name: "editor", mode: "editor", resource: "file" },
       {
         name: "editor-picker-repository",

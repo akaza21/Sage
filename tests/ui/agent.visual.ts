@@ -126,6 +126,10 @@ test.describe("Wave 2 canonical visual states", () => {
         "agent-composer-context-unknown",
         "agent-composer-context-known",
         "agent-composer-context-over-capacity",
+        "agent-session-mode-closed",
+        "agent-session-mode-open",
+        "agent-session-mode-narrow",
+        "agent-session-mode-forced-colors",
       ].includes(scenario.name),
   )) {
     test(`${name} stays visually stable`, async ({ page }) => {
@@ -332,6 +336,94 @@ test.describe("ED02 picker visual states", () => {
     await expectOpenPickerContained(page, input, listbox);
     await expectNoViewportOverflow(page);
     await takeCanonicalScreenshot(workbench, "agent-composer-narrow");
+  });
+});
+
+test.describe("V2-4 session mode picker", () => {
+  test("captures closed, open, narrow, and forced-color mode states", async ({
+    page,
+  }) => {
+    const closedWorkbench = await openScenario(
+      page,
+      "agent-session-mode-closed",
+      "agent",
+    );
+    const closedTrigger = page.getByRole("button", {
+      name: "Session mode",
+      exact: true,
+    });
+    await expect(closedTrigger).toHaveText("Review changes");
+    await takeCanonicalScreenshot(closedWorkbench, "agent-session-mode-closed");
+
+    const openWorkbench = await openScenario(
+      page,
+      "agent-session-mode-open",
+      "agent",
+    );
+    const openTrigger = page.getByRole("button", {
+      name: "Session mode",
+      exact: true,
+    });
+    await openTrigger.click();
+    const openInput = page.getByRole("combobox", { name: "Session mode" });
+    const openListbox = page.getByRole("listbox", { name: "Session mode" });
+    await expect(openListbox.getByRole("option")).toHaveCount(2);
+    await expect(openListbox.getByRole("option").nth(0)).toHaveText(
+      "Review changes",
+    );
+    await expect(openListbox.getByRole("option").nth(1)).toHaveText(
+      "Apply changes",
+    );
+    await expectOpenPickerContained(page, openInput, openListbox);
+    await takeCanonicalScreenshot(openWorkbench, "agent-session-mode-open");
+
+    await page.setViewportSize({ width: 720, height: 560 });
+    const narrowWorkbench = await openScenario(
+      page,
+      "agent-session-mode-narrow",
+      "agent",
+    );
+    const narrowTrigger = page.getByRole("button", {
+      name: "Session mode",
+      exact: true,
+    });
+    await expect(narrowTrigger).toBeVisible();
+    await narrowTrigger.click();
+    await expectOpenPickerContained(
+      page,
+      page.getByRole("combobox", { name: "Session mode" }),
+      page.getByRole("listbox", { name: "Session mode" }),
+    );
+    await expectNoViewportOverflow(page);
+    await takeCanonicalScreenshot(narrowWorkbench, "agent-session-mode-narrow");
+
+    await page.emulateMedia({
+      forcedColors: "active",
+      reducedMotion: "reduce",
+    });
+    const forcedWorkbench = await openScenario(
+      page,
+      "agent-session-mode-forced-colors",
+      "agent",
+    );
+    const forcedTrigger = page.getByRole("button", {
+      name: "Session mode",
+      exact: true,
+    });
+    await forcedTrigger.click();
+    const forcedState = await page
+      .getByRole("listbox", { name: "Session mode" })
+      .getByRole("option", { name: "Review changes" })
+      .evaluate((option) => ({
+        background: getComputedStyle(option).backgroundColor,
+        color: getComputedStyle(option).color,
+      }));
+    expect(forcedState.background).not.toBe("rgba(0, 0, 0, 0)");
+    expect(forcedState.color).not.toBe("rgba(0, 0, 0, 0)");
+    await takeCanonicalScreenshot(
+      forcedWorkbench,
+      "agent-session-mode-forced-colors",
+    );
   });
 });
 

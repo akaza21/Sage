@@ -73,6 +73,21 @@ export function useAcpChatActions(boundChatId?: string | null) {
       ? (state.chatUiById[boundChatId]?.error ?? null)
       : state.chatError,
   );
+  const modeError = useWorkbenchStore((state) => {
+    const chatId = boundChatId ?? state.activeTabId;
+    return chatId ? (state.chatUiById[chatId]?.modeError ?? null) : null;
+  });
+  const modeErrorOwner = useWorkbenchStore((state) => {
+    const chatId = boundChatId ?? state.activeTabId;
+    return chatId ? (state.chatUiById[chatId]?.modeErrorOwner ?? null) : null;
+  });
+  const modeChanging = useWorkbenchStore((state) => {
+    const chatId = boundChatId ?? state.activeTabId;
+    return chatId ? (state.chatUiById[chatId]?.modeChanging ?? false) : false;
+  });
+  const modeOwnerMatches =
+    modeErrorOwner?.sessionId === page?.sessionConfig?.sageAgentSessionId &&
+    modeErrorOwner?.runtimeEpoch === page?.sessionConfig?.runtimeEpoch;
   const clearActiveChatError = useWorkbenchStore(
     (state) => state.clearActiveChatError,
   );
@@ -108,7 +123,28 @@ export function useAcpChatActions(boundChatId?: string | null) {
               projectGeneration: Number(state.scope.projectGeneration),
               transitionEpoch: state.transitionEpoch,
             },
-            { sending: state.busy, error: state.error?.message ?? null },
+            state.origin === "mode"
+              ? {
+                  sending:
+                    workbench.chatUiById[state.scope.chatId]?.sending ?? false,
+                  error:
+                    workbench.chatUiById[state.scope.chatId]?.error ?? null,
+                  modeError: state.error?.message ?? null,
+                  modeErrorOwner: state.configOwner,
+                  modeChanging: state.busy,
+                }
+              : {
+                  sending: state.busy,
+                  error: state.error?.message ?? null,
+                  modeError:
+                    workbench.chatUiById[state.scope.chatId]?.modeError ?? null,
+                  modeErrorOwner:
+                    workbench.chatUiById[state.scope.chatId]?.modeErrorOwner ??
+                    null,
+                  modeChanging:
+                    workbench.chatUiById[state.scope.chatId]?.modeChanging ??
+                    false,
+                },
           );
         },
         clearComposer: (context, prompt, attachedContext) => {
@@ -138,6 +174,8 @@ export function useAcpChatActions(boundChatId?: string | null) {
   return {
     busy: sending,
     error: chatError,
+    modeError: modeOwnerMatches ? modeError : null,
+    modeChanging: modeOwnerMatches && modeChanging,
     cancellableTurnId: page ? cancellableTurnId(page) : null,
     submit: (
       prompt: string,
@@ -157,6 +195,8 @@ export function useAcpChatActions(boundChatId?: string | null) {
         setChatActionState(ownership, {
           sending: entry?.sending ?? false,
           error: null,
+          modeError: entry?.modeError ?? null,
+          modeErrorOwner: entry?.modeErrorOwner ?? null,
         });
         return;
       }
@@ -165,6 +205,8 @@ export function useAcpChatActions(boundChatId?: string | null) {
   } satisfies {
     busy: boolean;
     error: string | null;
+    modeError: string | null;
+    modeChanging: boolean;
     cancellableTurnId: SageTurnId | null;
     submit: typeof controller.submit;
     cancel: typeof controller.cancel;

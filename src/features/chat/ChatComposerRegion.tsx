@@ -2,6 +2,7 @@ import { ArrowUp } from "lucide-react";
 import type { FormEventHandler, RefObject } from "react";
 
 import type { AcpItem } from "../../domain/acp";
+import type { AcpSessionConfig } from "../../domain/acpSessionConfig";
 import type { DiffLineCommentContext } from "../../domain/attachedContext";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { ChatHarnessControls } from "./ChatHarnessControls";
@@ -27,6 +28,11 @@ export function ChatComposerRegion({
   chatError,
   availableBinding,
   canPrompt,
+  sessionConfig,
+  modePending,
+  modeError,
+  focused,
+  onSetSessionMode,
   missingBindingNotice,
   disabledReason,
   project,
@@ -49,6 +55,11 @@ export function ChatComposerRegion({
   chatError: string | null;
   availableBinding: boolean;
   canPrompt: boolean;
+  sessionConfig: AcpSessionConfig | null;
+  modePending: boolean;
+  modeError: string | null;
+  focused: boolean;
+  onSetSessionMode: (modeId: string) => Promise<unknown>;
   missingBindingNotice: boolean;
   disabledReason: string | null;
   project: { name: string } | null | undefined;
@@ -121,6 +132,12 @@ export function ChatComposerRegion({
         <ChatHarnessControls
           availableBinding={availableBinding}
           canPrompt={canPrompt}
+          sessionConfig={sessionConfig}
+          modePending={modePending}
+          modeError={modeError}
+          focused={focused}
+          onSetSessionMode={onSetSessionMode}
+          onModeRemoved={() => composerRef.current?.focus()}
         />
         <span className="composer__shortcut" aria-hidden="true">
           Enter to send <span>/</span> Shift+Enter for a new line

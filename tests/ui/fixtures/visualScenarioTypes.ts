@@ -13,6 +13,10 @@ export type VisualScenarioName =
   | "agent-composer-context-unknown"
   | "agent-composer-context-known"
   | "agent-composer-context-over-capacity"
+  | "agent-session-mode-closed"
+  | "agent-session-mode-open"
+  | "agent-session-mode-narrow"
+  | "agent-session-mode-forced-colors"
   | "editor"
   | "editor-picker-repository"
   | "editor-picker-repository-filtered"
@@ -62,6 +66,10 @@ export const AGENT_VISUAL_SCENARIOS: readonly VisualScenarioName[] = [
   "agent-composer-context-unknown",
   "agent-composer-context-known",
   "agent-composer-context-over-capacity",
+  "agent-session-mode-closed",
+  "agent-session-mode-open",
+  "agent-session-mode-narrow",
+  "agent-session-mode-forced-colors",
 ];
 
 export const EDITOR_VISUAL_SCENARIOS: readonly VisualScenarioName[] = [
