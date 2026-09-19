@@ -7,6 +7,7 @@ import { useWorkbenchStore } from "../../../app/store";
 import type {
   AcpChatPage,
   AcpProjectionChangedEvent,
+  AcpSessionConfigChangedV1,
 } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";
 import { useAcpChatProjection } from "./useAcpChatProjection";
@@ -43,6 +44,48 @@ afterEach(() => {
 });
 
 describe("useAcpChatProjection", () => {
+  it("subscribes config before bootstrap, coalesces reloads and recovers on renderer remount", async () => {
+    let onConfig: ((event: AcpSessionConfigChangedV1) => void) | undefined;
+    const dispose = vi.fn();
+    vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockResolvedValue(
+      () => undefined,
+    );
+    let resolveSubscription!: (dispose: () => void) => void;
+    vi.spyOn(acpDesktop, "subscribeSessionConfigChanges").mockImplementation(
+      async (callback) => {
+        onConfig = callback;
+        return new Promise((resolve) => {
+          resolveSubscription = resolve;
+        });
+      },
+    );
+    const load = vi
+      .spyOn(acpDesktop, "getChatPage")
+      .mockResolvedValue(projection);
+    const hook = renderHook(() => useAcpChatProjection());
+    expect(load).not.toHaveBeenCalled();
+    await act(async () => resolveSubscription(dispose));
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+    const event = {
+      schemaVersion: 1 as const,
+      sageProjectId: "project-1",
+      sageChatId: "chat-1",
+      sageAgentSessionId: "session-a",
+      runtimeEpoch: "2",
+      configRevision: "1",
+    };
+    // This bootstrap has no live session; foreign notices cannot reload it.
+    act(() => onConfig?.(event));
+    await new Promise((resolve) => setTimeout(resolve, 70));
+    expect(load).toHaveBeenCalledTimes(1);
+    hook.unmount();
+    expect(dispose).toHaveBeenCalledTimes(1);
+    vi.spyOn(acpDesktop, "subscribeSessionConfigChanges").mockResolvedValue(
+      () => undefined,
+    );
+    renderHook(() => useAcpChatProjection());
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+  });
   it("loads with native authority while retaining the disposable UI generation", async () => {
     const load = vi
       .spyOn(acpDesktop, "getChatPage")

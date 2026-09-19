@@ -246,6 +246,7 @@ pub enum AcpUnavailableReason {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AcpConflictResource {
+    ConfigRevision,
     ProjectGeneration,
     ProjectionRevision,
     Session,
@@ -287,6 +288,9 @@ pub enum AcpIpcError {
         message: SafeText<8192>,
     },
     InvalidRequest {
+        message: SafeText<8192>,
+    },
+    Rejected {
         message: SafeText<8192>,
     },
     RecoveryRequired {

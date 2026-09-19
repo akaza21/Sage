@@ -37,8 +37,22 @@ where
         &mut self,
         mailbox: &DriverMailbox,
     ) -> Result<DriverStep, DriverError> {
+        self.run_next_step_until(mailbox, None).await
+    }
+
+    pub(crate) async fn run_next_step_until(
+        &mut self,
+        mailbox: &DriverMailbox,
+        operation_deadline_millis: Option<i64>,
+    ) -> Result<DriverStep, DriverError> {
         self.ensure_running()?;
-        let deadline = self.pump.next_deferred_flush_deadline_millis();
+        let deadline = match (
+            self.pump.next_deferred_flush_deadline_millis(),
+            operation_deadline_millis,
+        ) {
+            (Some(deferred), Some(operation)) => Some(deferred.min(operation)),
+            (deferred, operation) => deferred.or(operation),
+        };
         let message = mailbox
             .wait_next_until(deadline, self.clock.as_ref())
             .map_err(DriverError::Mailbox)?;
@@ -63,6 +77,7 @@ where
             mailbox,
             self.clock.now_millis(),
             DriverProgress::default(),
+            false,
             false,
         )
         .await
@@ -89,7 +104,7 @@ where
             }),
             ControlMessage::ReaderTerminal(terminal) => match terminal {
                 ReaderTerminal::Eof => {
-                    self.finish_stdout(now_millis).await?;
+                    let _ = self.finish_stdout(now_millis).await;
                     Err(self.latch(TeardownCause::ReaderEof))
                 }
                 ReaderTerminal::Io => Err(self.latch(TeardownCause::ReaderIo)),
@@ -117,19 +132,29 @@ where
         mailbox: &DriverMailbox,
         now_millis: i64,
     ) -> Result<DriverStep, DriverError> {
-        let produced = match self
+        let (produced, config_rejected) = match self
             .pump
             .push_stdout_chunk_deferred(chunk, now_millis)
             .await
         {
-            Ok(produced) => produced,
+            Ok(produced) => (produced, false),
+            Err(error @ crate::acp::runtime::AdapterPumpError::ConfigMutationRejected) => {
+                self.log_rejected_inbound_frame(chunk, &error);
+                (false, true)
+            }
             Err(error) => {
                 self.log_rejected_inbound_frame(chunk, &error);
                 return Err(self.pump_error(error));
             }
         };
-        self.drain_buffered(mailbox, now_millis, DriverProgress::default(), produced)
-            .await
+        self.drain_buffered(
+            mailbox,
+            now_millis,
+            DriverProgress::default(),
+            produced,
+            config_rejected,
+        )
+        .await
     }
 
     async fn drain_buffered(
@@ -138,6 +163,7 @@ where
         now_millis: i64,
         mut progress: DriverProgress,
         mut produced: bool,
+        mut config_rejected: bool,
     ) -> Result<DriverStep, DriverError> {
         loop {
             if produced {
@@ -145,18 +171,49 @@ where
                 self.flush_all_ingress(DispatchSource::Ingress, now_millis, &mut progress)
                     .await?;
             }
-            if let Some(envelope) = self.dispatch_urgent(mailbox, &mut progress).await? {
+            if !config_rejected
+                && let Some(envelope) = self.dispatch_urgent(mailbox, &mut progress).await?
+            {
                 return Ok(DriverStep::YieldWorker { progress, envelope });
+            }
+            if config_rejected {
+                loop {
+                    let produced = match self
+                        .pump
+                        .drain_stdout_after_config_rejection(now_millis)
+                        .await
+                    {
+                        Ok(produced) => produced,
+                        Err(error) => return Err(self.pump_error(error)),
+                    };
+                    if produced {
+                        progress.accepted_frames += 1;
+                        self.flush_all_ingress(DispatchSource::Ingress, now_millis, &mut progress)
+                            .await?;
+                    }
+                    if !self.pump.has_pending_stdout_input() {
+                        break;
+                    }
+                }
+                break;
             }
             produced = match self.pump.drain_stdout_deferred(now_millis).await {
                 Ok(produced) => produced,
+                Err(crate::acp::runtime::AdapterPumpError::ConfigMutationRejected) => {
+                    config_rejected = true;
+                    false
+                }
                 Err(error) => return Err(self.pump_error(error)),
             };
             if !produced {
                 break;
             }
         }
-        Ok(DriverStep::Progress(progress))
+        if config_rejected {
+            Err(DriverError::ConfigMutationRejected)
+        } else {
+            Ok(DriverStep::Progress(progress))
+        }
     }
 
     async fn finish_stdout(&mut self, now_millis: i64) -> Result<(), DriverError> {

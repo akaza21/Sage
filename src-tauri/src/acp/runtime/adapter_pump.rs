@@ -31,6 +31,7 @@ mod ingress;
 mod normalize;
 mod payload;
 mod receipt;
+pub(crate) mod session_config;
 
 pub(crate) use activity::DurableActivityItem;
 pub(crate) use batch_journal::{AdapterBatchJournal, JournalReceipt, PumpJournalError};
@@ -192,6 +193,8 @@ pub(crate) enum AdapterPumpError {
     RecoveryRequired,
     #[error("adapter frame is malformed")]
     Frame,
+    #[error("the harness rejected the session configuration mutation")]
+    ConfigMutationRejected,
     #[error(transparent)]
     Adapter(#[from] AdapterRuntimeError),
 }

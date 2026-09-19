@@ -56,6 +56,10 @@ struct Adapter {
 
 struct LateFrameAdapter;
 
+struct ConfigThenLateAdapter {
+    reject_next: bool,
+}
+
 struct SequencedAdapter {
     binding_digest: [u8; 32],
     runtime_epoch: RuntimeEpoch,
@@ -122,6 +126,39 @@ impl HarnessAdapter for LateFrameAdapter {
         _: &Frame,
         _: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        AdapterBatch::new(vec![AdapterEvent::IgnoredLate], vec![])
+    }
+
+    fn commit_mandatory_egress(&mut self, _: &EgressToken) -> Result<(), AdapterRuntimeError> {
+        Ok(())
+    }
+
+    fn resolve_egress(
+        &mut self,
+        _: EgressToken,
+        _: EgressResolution,
+    ) -> Result<(), AdapterRuntimeError> {
+        Ok(())
+    }
+}
+
+impl HarnessAdapter for ConfigThenLateAdapter {
+    fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
+        None
+    }
+
+    fn command(&mut self, _: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::Operation)
+    }
+
+    fn ingest(
+        &mut self,
+        _: &Frame,
+        _: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        if std::mem::take(&mut self.reject_next) {
+            return Err(AdapterRuntimeError::ConfigMutationRejected);
+        }
         AdapterBatch::new(vec![AdapterEvent::IgnoredLate], vec![])
     }
 
@@ -2062,6 +2099,56 @@ fn close_before_first_write(case: CloseBeforeWriteCase) {
         task.await.unwrap();
         drop(database);
         fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[test]
+fn activation_idle_config_rejection_drains_following_frame_and_stays_promptable() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let FirstTurnFixture {
+            project_id,
+            chat_id,
+            started,
+            epoch,
+            activation_journal,
+            capabilities,
+            external_session,
+            owner,
+            ..
+        } = prepare_first_turn_fixture().await;
+        let mut completed = CompletedActivationDriverParts {
+            parts: IdleActivationParts::new(
+                ConfigThenLateAdapter { reject_next: true },
+                activation_journal,
+                Mapper,
+                ActivatedSession {
+                    binding_digest: [0x11; 32],
+                    project_id,
+                    chat_id,
+                    session_id: started.session_id,
+                    external_session_id: external_session,
+                    runtime_epoch: epoch,
+                    capabilities,
+                    models: Vec::new(),
+                    next_model_cursor: None,
+                },
+            ),
+            idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
+            transport: Transport(Mutex::new(VecDeque::new())),
+            control: NoChildProcessControl {
+                zero_checks: Arc::new(AtomicUsize::new(0)),
+            },
+            owner,
+            clock: Arc::new(SystemDriverClock),
+        };
+
+        assert!(matches!(
+            completed.accept_idle_stdout_chunk(b"{}\n{}\n"),
+            Err(crate::acp::runtime::AdapterPumpError::ConfigMutationRejected)
+        ));
+        assert!(completed.idle_decoder.is_frame_aligned());
+        assert!(completed.accept_idle_stdout_chunk(b"{}\n").is_ok());
+        assert!(completed.idle_decoder.is_frame_aligned());
     });
 }
 

@@ -25,6 +25,7 @@ mod browse_host;
 mod commands;
 mod egress;
 mod ingress;
+mod session_config;
 #[path = "runtime/support.rs"]
 mod support;
 use ingress::terminal_state;
@@ -50,6 +51,7 @@ struct ActiveSession {
     external_id: ExternalId,
     translator: ClaudeTranslator,
     turn: Option<TurnIntent>,
+    config: crate::acp::session_config::SessionConfig,
 }
 
 #[derive(Clone)]
@@ -64,6 +66,8 @@ enum PendingRequest {
     NewSession,
     ResumeSession(ExternalId),
     CloseSession,
+    SetMode,
+    SetConfig,
     Prompt,
 }
 
@@ -186,6 +190,20 @@ impl ClaudeRuntime {
 }
 
 impl HarnessAdapter for ClaudeRuntime {
+    fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
+        self.active.as_ref().map(|a| a.config.clone())
+    }
+    fn config_pending(&self) -> bool {
+        self.pending
+            .values()
+            .any(|v| matches!(v, PendingRequest::SetMode | PendingRequest::SetConfig))
+    }
+    fn configure(
+        &mut self,
+        intent: &crate::acp::session_config::ConfigIntent,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.configure_session(intent)
+    }
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.capabilities.clone()
     }
@@ -227,6 +245,8 @@ impl HarnessAdapter for ClaudeRuntime {
     }
 }
 
+#[cfg(test)]
+mod config_tests;
 #[cfg(test)]
 #[path = "runtime/tests.rs"]
 mod tests;

@@ -3,7 +3,10 @@ use std::time::Instant;
 use crate::acp::{
     contract::{SageServerRequestId, SageTurnId},
     runtime::permissions::PermissionDecision,
-    runtime::{HostCancelIntent, HostError, HostPromptIntent, LiveRuntimePort, LiveWrite},
+    runtime::{
+        ConfigCompletionSink, HostCancelIntent, HostError, HostPromptIntent, LiveRuntimePort,
+        LiveWrite,
+    },
     scheduler::RuntimeOwner,
     store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
 };
@@ -12,6 +15,40 @@ use super::{ProcessLivePort, WorkerCommand, WorkerReply};
 
 impl LiveRuntimePort for ProcessLivePort {
     type ZeroProof = super::WorkerZeroProof;
+    fn begin_configure_session(
+        &mut self,
+        intent: &crate::acp::session_config::ConfigIntent,
+        deadline: Instant,
+        completion: ConfigCompletionSink,
+    ) -> Result<(), HostError> {
+        let response = self
+            .mailbox
+            .submit_worker_until(
+                WorkerCommand::ConfigureSession {
+                    intent: intent.clone(),
+                    completion,
+                },
+                deadline,
+            )
+            .map_err(super::support::map_mailbox)?;
+        // The worker owns completion settlement from this point. The bounded
+        // worker reply reports only whether the begin phase was admitted and
+        // may therefore be consumed synchronously without awaiting JSON-RPC.
+        match response.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            Ok(Ok(WorkerReply::Unit)) => Ok(()),
+            Ok(Ok(_)) => Err(HostError::State),
+            Ok(Err(error)) => Err(error),
+            // Configuration uses one original absolute deadline. Once admitted,
+            // the live runner owns deadline settlement and recovery; this begin
+            // caller must not turn a scheduling tie into process termination.
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(HostError::Deadline),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(HostError::Closed),
+        }
+    }
+
+    fn abandon_configuration(&mut self, deadline: Instant) {
+        ProcessLivePort::abandon_configuration(self, deadline);
+    }
 
     fn owner(&self) -> &RuntimeOwner {
         &self.owner
@@ -197,6 +234,22 @@ impl LiveRuntimePort for ProcessLivePort {
 }
 
 impl ProcessLivePort {
+    pub(crate) fn abandon_configuration(&self, deadline: Instant) {
+        let command = WorkerCommand::AbandonConfiguration {
+            owner: self.owner.clone(),
+        };
+        if deadline > Instant::now() {
+            if let Ok(response) = self.mailbox.submit_worker_until(command, deadline) {
+                let _ = response.recv_timeout(deadline.saturating_duration_since(Instant::now()));
+            }
+        } else {
+            // At the operation deadline, queue a best-effort exact-owner release
+            // on the control lane without minting a second wait budget. The live
+            // runner's own deadline wake still settles the retained callback.
+            let _ = self.mailbox.submit_worker(command);
+        }
+    }
+
     fn finish_shutdown_join(
         &mut self,
         error: HostError,

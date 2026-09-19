@@ -19,6 +19,7 @@ use super::*;
 
 type PrepareGate = Arc<(Mutex<(bool, bool)>, Condvar)>;
 type TerminalGate = Arc<(Mutex<(bool, bool)>, Condvar)>;
+type ConfigCompletion = Arc<Mutex<Option<ConfigCompletionSink>>>;
 
 fn test_deadline() -> Instant {
     Instant::now() + Duration::from_secs(1)
@@ -38,6 +39,7 @@ struct FakeEngine {
     begin_close_errors: Arc<Mutex<Vec<HostError>>>,
     prepare_gate: Option<PrepareGate>,
     terminal_gate: Option<TerminalGate>,
+    config_completion: Option<ConfigCompletion>,
 }
 
 impl FakeEngine {
@@ -57,6 +59,7 @@ impl FakeEngine {
             begin_close_errors: Arc::new(Mutex::new(Vec::new())),
             prepare_gate: None,
             terminal_gate: None,
+            config_completion: None,
         }
     }
 
@@ -116,6 +119,11 @@ impl FakeEngine {
         self
     }
 
+    fn with_config_completion(mut self, completion: ConfigCompletion) -> Self {
+        self.config_completion = Some(completion);
+        self
+    }
+
     fn events(&self) -> Vec<&'static str> {
         self.events.lock().unwrap().clone()
     }
@@ -126,6 +134,39 @@ impl FakeEngine {
 }
 
 impl RuntimeEngine for FakeEngine {
+    fn begin_configure_session(
+        &mut self,
+        _intent: &crate::acp::session_config::ConfigIntent,
+        _deadline: Instant,
+        completion: ConfigCompletionSink,
+    ) -> Result<(), HostError> {
+        self.push("beginConfigureSession");
+        match &self.config_completion {
+            Some(retained) => {
+                *retained.lock().unwrap() = Some(completion);
+            }
+            None => completion.complete(Ok(())),
+        }
+        Ok(())
+    }
+
+    fn abandon_configuration(&mut self, _deadline: Instant) {
+        self.push("abandonConfiguration");
+        if let Some(retained) = &self.config_completion {
+            retained.lock().unwrap().take();
+        }
+    }
+
+    fn resolve_permission(
+        &mut self,
+        _owner: &RuntimeOwner,
+        _request_id: &crate::acp::contract::SageServerRequestId,
+        _decision: crate::acp::runtime::permissions::PermissionDecision,
+    ) -> Result<(), HostError> {
+        self.push("resolvePermission");
+        Ok(())
+    }
+
     fn activate(&mut self, _owner: &RuntimeOwner) -> Result<(), HostError> {
         self.push("activate");
         Ok(())
@@ -304,6 +345,16 @@ fn cancel(owner: &RuntimeOwner) -> HostCancelIntent {
     }
 }
 
+fn config(owner: &RuntimeOwner) -> crate::acp::session_config::ConfigIntent {
+    crate::acp::session_config::ConfigIntent {
+        owner: owner.clone(),
+        expected_config_revision: crate::acp::session_config::ConfigRevision::first(),
+        mutation: crate::acp::session_config::ConfigMutation::Mode(
+            crate::acp::session_config::ConfigId::new("mode", "ask").unwrap(),
+        ),
+    }
+}
+
 fn close(owner: &RuntimeOwner) -> HostCloseIntent {
     HostCloseIntent {
         command: crate::acp::store::CloseSessionCommand {
@@ -316,6 +367,226 @@ fn close(owner: &RuntimeOwner) -> HostCloseIntent {
             now_millis: crate::persistence::now_millis(),
         },
     }
+}
+
+#[test]
+fn pending_configuration_does_not_block_permission_resolution() {
+    let completion = Arc::new(Mutex::new(None));
+    let engine = FakeEngine::new([PromptWrite::Complete(turn())])
+        .with_config_completion(Arc::clone(&completion));
+    let observed = engine.clone();
+    let host = Arc::new(RuntimeHost::start(engine).unwrap());
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+    host.send(prompt(&runtime)).unwrap();
+
+    let configuring = {
+        let host = Arc::clone(&host);
+        let intent = config(&runtime);
+        std::thread::spawn(move || host.configure_session(intent))
+    };
+    let started = Instant::now();
+    while completion.lock().unwrap().is_none() {
+        assert!(started.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    }
+
+    assert_eq!(
+        host.resolve_permission(
+            runtime,
+            crate::acp::contract::SageServerRequestId::parse("request-host").unwrap(),
+            crate::acp::runtime::permissions::PermissionDecision::Deny,
+        )
+        .unwrap(),
+        HostOutcome::PermissionResolved
+    );
+    completion.lock().unwrap().take().unwrap().complete(Ok(()));
+    assert_eq!(
+        configuring.join().unwrap().unwrap(),
+        HostOutcome::SessionConfigured
+    );
+    assert!(
+        observed
+            .events()
+            .ends_with(&["beginConfigureSession", "resolvePermission"])
+    );
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
+fn pending_configuration_does_not_block_exact_turn_cancellation() {
+    let completion = Arc::new(Mutex::new(None));
+    let engine = FakeEngine::new([PromptWrite::Complete(turn())])
+        .with_config_completion(Arc::clone(&completion));
+    let observed = engine.clone();
+    let host = Arc::new(RuntimeHost::start(engine).unwrap());
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+    host.send(prompt(&runtime)).unwrap();
+
+    let configuring = {
+        let host = Arc::clone(&host);
+        let intent = config(&runtime);
+        std::thread::spawn(move || host.configure_session(intent))
+    };
+    let started = Instant::now();
+    while completion.lock().unwrap().is_none() {
+        assert!(started.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    }
+
+    assert_eq!(
+        host.cancel(cancel(&runtime)).unwrap(),
+        HostOutcome::CancelQueued
+    );
+    completion.lock().unwrap().take().unwrap().complete(Ok(()));
+    assert_eq!(
+        configuring.join().unwrap().unwrap(),
+        HostOutcome::SessionConfigured
+    );
+    assert!(observed.events().ends_with(&[
+        "beginConfigureSession",
+        "beginCancel",
+        "dispatchCancel"
+    ]));
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
+fn close_abandons_pending_configuration_before_progressing() {
+    let completion = Arc::new(Mutex::new(None));
+    let engine = FakeEngine::new([]).with_config_completion(Arc::clone(&completion));
+    let observed = engine.clone();
+    let host = Arc::new(RuntimeHost::start(engine).unwrap());
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+
+    let configuring = {
+        let host = Arc::clone(&host);
+        let intent = config(&runtime);
+        std::thread::spawn(move || host.configure_session(intent))
+    };
+    let started = Instant::now();
+    while completion.lock().unwrap().is_none() {
+        assert!(started.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    }
+
+    assert_eq!(host.close(close(&runtime)).unwrap(), HostOutcome::Closed);
+    assert_eq!(configuring.join().unwrap(), Err(HostError::Closed));
+    assert!(observed.events().ends_with(&[
+        "beginConfigureSession",
+        "abandonConfiguration",
+        "beginClose",
+        "convergeZero",
+        "finalizeClose"
+    ]));
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
+fn shutdown_abandons_pending_configuration_before_progressing() {
+    let completion = Arc::new(Mutex::new(None));
+    let engine = FakeEngine::new([]).with_config_completion(Arc::clone(&completion));
+    let observed = engine.clone();
+    let host = Arc::new(RuntimeHost::start(engine).unwrap());
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+
+    let configuring = {
+        let host = Arc::clone(&host);
+        let intent = config(&runtime);
+        std::thread::spawn(move || host.configure_session(intent))
+    };
+    let started = Instant::now();
+    while completion.lock().unwrap().is_none() {
+        assert!(started.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    }
+
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+    assert_eq!(configuring.join().unwrap(), Err(HostError::Closed));
+    assert!(observed.events().starts_with(&[
+        "activate",
+        "beginConfigureSession",
+        "abandonConfiguration"
+    ]));
+}
+
+#[test]
+fn configuration_deadline_wakes_actor_and_ignores_late_completion() {
+    let completion = Arc::new(Mutex::new(None));
+    let engine = FakeEngine::new([]).with_config_completion(Arc::clone(&completion));
+    let observed = engine.clone();
+    let host =
+        Arc::new(RuntimeHost::start_with_timeout(engine, Duration::from_millis(25)).unwrap());
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+
+    assert_eq!(
+        host.configure_session(config(&runtime)),
+        Err(HostError::Deadline)
+    );
+    let settled = Instant::now();
+    loop {
+        match host.state() {
+            Ok(HostState::Recovery) => break,
+            Ok(state) => {
+                assert!(
+                    settled.elapsed() < Duration::from_secs(1),
+                    "configuration deadline left host in {state:?}"
+                );
+                std::thread::yield_now();
+            }
+            Err(error) => panic!("configuration deadline closed host: {error:?}"),
+        }
+    }
+    assert!(completion.lock().unwrap().is_none());
+    assert_eq!(
+        observed
+            .events()
+            .iter()
+            .filter(|event| **event == "abandonConfiguration")
+            .count(),
+        1
+    );
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
+fn second_configuration_cannot_displace_the_pending_exact_owner() {
+    let completion = Arc::new(Mutex::new(None));
+    let engine = FakeEngine::new([]).with_config_completion(Arc::clone(&completion));
+    let host = Arc::new(RuntimeHost::start(engine).unwrap());
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+
+    let configuring = {
+        let host = Arc::clone(&host);
+        let intent = config(&runtime);
+        std::thread::spawn(move || host.configure_session(intent))
+    };
+    let started = Instant::now();
+    while completion.lock().unwrap().is_none() {
+        assert!(started.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    }
+    assert_eq!(
+        host.configure_session(config(&runtime)),
+        Err(HostError::State)
+    );
+    completion
+        .lock()
+        .unwrap()
+        .take()
+        .unwrap()
+        .complete(Err(HostError::ConfigMutationRejected));
+    assert_eq!(
+        configuring.join().unwrap(),
+        Err(HostError::ConfigMutationRejected)
+    );
+    assert_eq!(host.state().unwrap(), HostState::Idle);
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]

@@ -44,36 +44,57 @@ where
 {
     /// Accepts only validated, explicitly ignorable frames that arrive after
     /// activation hands its ready session to the idle live worker.
-    pub(crate) fn accept_idle_stdout_chunk(&mut self, chunk: &[u8]) -> Result<(), ()> {
-        let mut frame = self.idle_decoder.push_chunk(chunk).map_err(|_| ())?;
+    pub(crate) fn accept_idle_stdout_chunk(
+        &mut self,
+        chunk: &[u8],
+    ) -> Result<(), AdapterPumpError> {
+        let mut frame = self
+            .idle_decoder
+            .push_chunk(chunk)
+            .map_err(|_| AdapterPumpError::Frame)?;
+        let mut config_rejected = false;
         loop {
             if let Some(frame) = frame {
                 if validate_structure(&frame).is_err() {
                     log_idle_frame_rejection(&frame, "invalid-structure");
-                    return Err(());
+                    return Err(AdapterPumpError::Frame);
                 }
-                let (events, egress) = self
-                    .parts
-                    .ingest_idle_frame(&frame)
-                    .map_err(|_| {
+                match self.parts.ingest_idle_frame(&frame) {
+                    Ok(batch) => {
+                        let (events, egress) = batch.into_parts();
+                        if !egress.is_empty()
+                            || !events.iter().all(|event| {
+                                matches!(
+                                    event,
+                                    AdapterEvent::IgnoredLate | AdapterEvent::IgnoredDuplicate
+                                )
+                            })
+                        {
+                            log_idle_frame_rejection(&frame, "non-ignorable-event");
+                            return Err(AdapterPumpError::Frame);
+                        }
+                    }
+                    Err(
+                        crate::acp::bindings::adapter::AdapterRuntimeError::ConfigMutationRejected,
+                    ) => {
+                        config_rejected = true;
+                    }
+                    Err(_) => {
                         log_idle_frame_rejection(&frame, "adapter-rejected");
-                    })?
-                    .into_parts();
-                if !egress.is_empty()
-                    || !events.iter().all(|event| {
-                        matches!(
-                            event,
-                            AdapterEvent::IgnoredLate | AdapterEvent::IgnoredDuplicate
-                        )
-                    })
-                {
-                    log_idle_frame_rejection(&frame, "non-ignorable-event");
-                    return Err(());
+                        return Err(AdapterPumpError::Frame);
+                    }
                 }
             }
-            frame = self.idle_decoder.drain_pending().map_err(|_| ())?;
+            frame = self
+                .idle_decoder
+                .drain_pending()
+                .map_err(|_| AdapterPumpError::Frame)?;
             if frame.is_none() {
-                return Ok(());
+                return if config_rejected {
+                    Err(AdapterPumpError::ConfigMutationRejected)
+                } else {
+                    Ok(())
+                };
             }
         }
     }
@@ -222,6 +243,12 @@ where
         journal: JournalHandle,
         publisher: Arc<dyn ProjectionPublisher>,
     ) -> FirstTurnDriverResult<A, R, T, C> {
+        if !self.parts.idle_decoder.is_frame_aligned() || self.parts.parts.config_pending() {
+            return Err(Box::new(FirstTurnBindFailure::Retained {
+                prepared: self,
+                error: FirstTurnBindError::Pump(AdapterPumpError::Intent),
+            }));
+        }
         #[cfg(feature = "acp-fixture")]
         let characterization_observation = self
             .parts

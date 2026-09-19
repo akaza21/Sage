@@ -75,6 +75,43 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             .await
     }
 
+    pub(crate) async fn drain_stdout_after_config_rejection(
+        &mut self,
+        now_millis: i64,
+    ) -> Result<bool, AdapterPumpError> {
+        let frame = match self.decode_pending() {
+            Ok(frame) => frame,
+            Err(AdapterPumpError::Frame) => return self.fail_deferred_frame().await,
+            Err(error) => return Err(error),
+        };
+        let Some(frame) = frame else { return Ok(false) };
+        if validate_structure(&frame).is_err() {
+            return self.fail_deferred_frame().await;
+        }
+        match self.adapter.ingest(&frame, &self.resources) {
+            Ok(batch) => {
+                self.accept_batch(batch, now_millis, IngestMode::Deferred)
+                    .await?
+            }
+            Err(AdapterRuntimeError::ConfigMutationRejected) => {}
+            Err(AdapterRuntimeError::MandatoryDenyTeardown) => {
+                return self
+                    .fail_deferred_mandatory_deny(IngestMode::Deferred)
+                    .await;
+            }
+            Err(AdapterRuntimeError::Frame) => return self.fail_deferred_frame().await,
+            Err(error) => {
+                if !self.pending.is_empty() {
+                    let _ = self.flush_deferred().await;
+                }
+                self.pending.clear();
+                self.teardown = true;
+                return Err(error.into());
+            }
+        }
+        Ok(true)
+    }
+
     pub(crate) async fn finish_stdout_deferred(
         &mut self,
         now_millis: i64,
@@ -91,6 +128,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             self.flush_deferred().await?;
         }
         Ok(accepted)
+    }
+
+    pub(crate) fn has_pending_stdout_input(&self) -> bool {
+        self.decoder.has_pending_input()
     }
 
     pub(crate) async fn flush_deferred_if_needed(
@@ -176,6 +217,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                     IngestMode::Immediate => self.latch_frame(),
                     IngestMode::Deferred => self.fail_deferred_frame().await,
                 };
+            }
+            Err(AdapterRuntimeError::ConfigMutationRejected) => {
+                if matches!(mode, IngestMode::Deferred) && !self.pending.is_empty() {
+                    self.flush_deferred().await?;
+                }
+                return Err(AdapterPumpError::ConfigMutationRejected);
             }
             Err(error) => {
                 if matches!(mode, IngestMode::Deferred) && !self.pending.is_empty() {

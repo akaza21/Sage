@@ -43,6 +43,9 @@ enum TimeoutOverride {
     },
 }
 
+#[path = "host_session_config.rs"]
+mod host_session_config;
+
 impl RuntimeHost {
     pub(crate) fn start<E: RuntimeEngine>(engine: E) -> Result<Self, HostError> {
         Self::start_inner(engine, None, None)
@@ -113,7 +116,7 @@ impl RuntimeHost {
         let mailbox = Arc::new(HostMailbox::new()?);
         let actor_mailbox = Arc::clone(&mailbox);
         let thread = BoundedThread::spawn("sage-acp-runtime-host", move || {
-            Actor::new(engine).run(&actor_mailbox)
+            Actor::new(engine).run(actor_mailbox)
         })
         .map_err(|_| HostError::Unavailable)?;
         Ok(Self {
@@ -333,6 +336,7 @@ impl RuntimeHost {
         command: HostCommand,
         deadline: Instant,
     ) -> Result<HostReply, HostError> {
+        let actor_settles_deadline = matches!(&command, HostCommand::ConfigureSession(_));
         match self.lifecycle.load(Ordering::Acquire) {
             HOST_RUNNING => {}
             HOST_AWAITING_EXIT => return Err(HostError::RecoveryRequired),
@@ -352,7 +356,9 @@ impl RuntimeHost {
         match response.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
             Ok(reply) => reply,
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                self.fail_deadline();
+                if !actor_settles_deadline {
+                    self.fail_deadline();
+                }
                 Err(HostError::Deadline)
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {

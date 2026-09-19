@@ -901,6 +901,53 @@ fn unknown_commit_and_projection_recovery_are_typed_fail_closed_boundaries() {
 }
 
 #[test]
+fn rejected_config_mutation_is_nonfatal_and_pump_remains_usable() {
+    runtime().block_on(async {
+        let (mut pump, shared) = build_pump(vec![owned(vec![item("after-rejection")], Vec::new())]);
+        shared.0.lock().unwrap().ingest_error = Some(AdapterRuntimeError::ConfigMutationRejected);
+
+        assert!(matches!(
+            pump.push_stdout_chunk(b"{}\n", 1).await,
+            Err(AdapterPumpError::ConfigMutationRejected)
+        ));
+        assert!(!pump.teardown_required());
+
+        assert!(pump.push_stdout_chunk(b"{}\n", 2).await.unwrap());
+        assert!(!pump.teardown_required());
+        assert!(matches!(
+            shared.0.lock().unwrap().durable_batches.as_slice(),
+            [batch] if matches!(batch.as_slice(), [DurableAdapterEvent::Item { .. }])
+        ));
+    });
+}
+
+#[test]
+fn idle_config_rejection_drains_following_frame_and_stays_aligned() {
+    runtime().block_on(async {
+        let (mut pump, shared) = build_pump(vec![
+            owned(vec![terminal(TurnState::Completed)], Vec::new()),
+            owned(vec![AdapterEvent::IgnoredLate], Vec::new()),
+            owned(vec![AdapterEvent::IgnoredLate], Vec::new()),
+        ]);
+        pump.push_stdout_chunk(b"{}\n", 1).await.unwrap();
+        let mut parts = match pump.try_into_completed_parts() {
+            Ok(parts) => parts,
+            Err(_) => panic!("completed parts"),
+        };
+        shared.0.lock().unwrap().ingest_error = Some(AdapterRuntimeError::ConfigMutationRejected);
+
+        assert!(matches!(
+            parts.accept_idle_stdout_chunk(b"{}\n{}\n"),
+            Err(AdapterPumpError::ConfigMutationRejected)
+        ));
+        assert!(parts.idle_frame_aligned());
+
+        assert!(parts.accept_idle_stdout_chunk(b"{}\n").is_ok());
+        assert!(parts.idle_frame_aligned());
+    });
+}
+
+#[test]
 fn consumed_failures_and_protocol_violations_latch_teardown() {
     runtime().block_on(async {
         let (mut pump, _) = pump_configured(

@@ -3,6 +3,7 @@ use super::*;
 impl RuntimeSlot {
     pub(crate) fn begin_shutdown(&self) -> Option<Arc<RuntimeHost>> {
         let mut state = self.lock();
+        self.config.clear_all();
         let retained = match &*state {
             State::Primed { owner, host }
             | State::Claimed { owner, host }

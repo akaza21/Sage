@@ -196,6 +196,7 @@ export function safeFailure(value: unknown): AcpCommandFailure {
       message &&
       isOneOf(value.resource, [
         "projectGeneration",
+        "configRevision",
         "projectionRevision",
         "session",
         "runtimeEpoch",
@@ -229,6 +230,7 @@ export function safeFailure(value: unknown): AcpCommandFailure {
     }
     if (
       (kind === "invalidRequest" ||
+        kind === "rejected" ||
         kind === "recoveryRequired" ||
         kind === "internal") &&
       message
@@ -286,7 +288,10 @@ async function invokeAcpMutation<Request extends object>(
   return safe;
 }
 
+import { sessionConfigDesktop } from "./acpSessionConfigDesktop";
+
 export const acpDesktop = {
+  ...sessionConfigDesktop(invokeAcpMutation, isTauriRuntime),
   async getFileSnapshot(
     request: GetAgentDiffRequest,
   ): Promise<AgentDiffSnapshot> {
@@ -331,8 +336,15 @@ export const acpDesktop = {
     return safe;
   },
 
-  getChatPage(request: GetAcpChatPageRequest): Promise<AcpChatPage> {
-    return invokeAcp("get_acp_chat_page", request);
+  async getChatPage(request: GetAcpChatPageRequest): Promise<AcpChatPage> {
+    const page = await invokeAcp("get_acp_chat_page", request);
+    const safe = safeAcpMutationResponse({ projection: page });
+    if (!safe)
+      throw new AcpDesktopError({
+        kind: "internal",
+        message: "ACP page returned an invalid bounded projection.",
+      });
+    return safe.projection;
   },
 
   startSession(request: StartAcpSessionRequest): Promise<AcpMutationResult> {
@@ -377,18 +389,7 @@ export const acpDesktop = {
   async recordAgentEditDisposition(
     request: AgentEditDisposition,
   ): Promise<AcpMutationResult> {
-    const response = await invokeAcp<unknown, AgentEditDisposition>(
-      "record_agent_edit_disposition",
-      request,
-    );
-    const safe = safeAcpMutationResponse(response);
-    if (!safe) {
-      throw new AcpDesktopError({
-        kind: "internal",
-        message: "Agent edit disposition returned an invalid projection.",
-      });
-    }
-    return safe;
+    return invokeAcpMutation("record_agent_edit_disposition", request);
   },
 
   acknowledgeReadTextFileFlush,

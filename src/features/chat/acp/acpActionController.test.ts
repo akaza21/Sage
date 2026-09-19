@@ -151,6 +151,8 @@ function harness(initialPage: AcpChatPage) {
     sendTurn: vi.fn(),
     cancelTurn: vi.fn(),
     closeSession: vi.fn(),
+    setSessionMode: vi.fn(),
+    setSessionConfigOption: vi.fn(),
   } as unknown as AcpActionCommands;
   const controller = createAcpActionController({
     commands,
@@ -183,6 +185,54 @@ function harness(initialPage: AcpChatPage) {
 }
 
 describe("ACP action controller", () => {
+  it("does not optimistically echo a mode and carries exact config authority", async () => {
+    const initial = {
+      ...page("10", session("hot", "2", null)),
+      sessionConfig: {
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "2",
+        configRevision: "3",
+        modes: {
+          currentModeId: "ask",
+          availableModes: [
+            { id: "ask", name: "Ask" },
+            { id: "code", name: "Code" },
+          ],
+        },
+        configOptions: [],
+      },
+    };
+    const test = harness(initial);
+    let finish!: (value: { projection: AcpChatPage }) => void;
+    vi.mocked(test.commands.setSessionMode!).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = test.controller.setSessionMode("code");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(test.getContext()?.page.sessionConfig?.modes?.currentModeId).toBe(
+      "ask",
+    );
+    expect(test.applied).toHaveLength(0);
+    expect(test.commands.setSessionMode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modeId: "code",
+        expectedConfigRevision: "3",
+        expectedProjectionRevision: "10",
+        sessionId: "session-a",
+        runtimeEpoch: "2",
+        projectGeneration: commandProjectGeneration,
+      }),
+    );
+    finish({ projection: initial });
+    expect(await pending).toBe("applied");
+    expect(test.getContext()?.page.sessionConfig?.modes?.currentModeId).toBe(
+      "ask",
+    );
+  });
   it("exposes no retained presentation snapshot after notifications", () => {
     const test = harness(page("1", null));
 

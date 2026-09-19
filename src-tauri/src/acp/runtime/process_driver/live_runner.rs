@@ -21,6 +21,7 @@ use super::{
 use crate::acp::runtime::BoundedThread;
 
 mod activation;
+mod configuration;
 mod drive;
 mod handle;
 mod observability;

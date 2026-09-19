@@ -60,6 +60,20 @@ impl<A, J, R> IdleActivationParts<A, J, R> {
 }
 
 impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
+    pub(crate) fn config_pending(&self) -> bool {
+        self.adapter.config_pending()
+    }
+    pub(crate) fn write_session_config(
+        &mut self,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+        intent: &crate::acp::session_config::ConfigIntent,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        crate::acp::runtime::adapter_pump::session_config::write_config(
+            &mut self.adapter,
+            transport,
+            intent,
+        )
+    }
     pub(crate) fn ingest_idle_frame(
         &mut self,
         frame: &Frame,

@@ -285,6 +285,7 @@ pub struct SessionProjection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AcpChatPage {
+    pub(crate) session_config: Option<super::session_config::SessionConfigOverlay>,
     pub project_id: SageProjectId,
     pub chat_id: SageChatId,
     pub title: SafeText<8192>,

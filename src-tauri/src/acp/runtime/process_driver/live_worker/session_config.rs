@@ -1,0 +1,47 @@
+use super::*;
+use crate::acp::session_config::ConfigIntent;
+
+impl<A, R, T, C> FirstTurnWorkerState<A, R, T, C>
+where
+    A: HarnessAdapter,
+    R: ResourceMapper,
+    T: StdinTransport,
+    C: ProcessTreeControl,
+    C::ZeroProof: CoordinatorZeroToken,
+{
+    pub(crate) fn begin_configure<Auth>(
+        &mut self,
+        context: &FirstTurnWorkerContext<Auth>,
+        intent: &ConfigIntent,
+        deadline: std::time::Instant,
+    ) -> Result<(), HostError> {
+        if std::time::Instant::now() >= deadline {
+            return Err(HostError::Deadline);
+        }
+        if intent.owner != context.owner {
+            return Err(HostError::Intent);
+        }
+        if self.config_pending() {
+            return Err(HostError::State);
+        }
+        match self {
+            Self::Idle(idle) => idle.parts.write_session_config(&mut idle.transport, intent),
+            Self::Reusable(parts) => parts
+                .completed
+                .write_session_config(&mut parts.transport, intent),
+            Self::Active(active) if active.stdout_allowed() => {
+                active.turn.driver.begin_configure_session(intent)
+            }
+            _ => Err(HostError::State),
+        }
+    }
+
+    pub(crate) fn config_pending(&self) -> bool {
+        match self {
+            Self::Idle(idle) => idle.parts.config_pending(),
+            Self::Reusable(parts) => parts.completed.config_pending(),
+            Self::Active(active) => active.turn.driver.config_pending(),
+            _ => false,
+        }
+    }
+}

@@ -44,6 +44,8 @@ struct SharedState {
     durable: Vec<Vec<DurableAdapterEvent>>,
     rebound_turns: Vec<SageTurnId>,
     ingest_error: Option<AdapterRuntimeError>,
+    rejected_ingests: usize,
+    ingest_outcomes: VecDeque<Result<(), AdapterRuntimeError>>,
     worker_observation: Option<Arc<DriverMailbox>>,
     worker_response: Option<mpsc::Receiver<Result<WorkerReply, crate::acp::runtime::HostError>>>,
 }
@@ -144,6 +146,13 @@ impl HarnessAdapter for FakeAdapter {
         _: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let mut state = self.shared.0.lock().expect("shared");
+        if let Some(outcome) = state.ingest_outcomes.pop_front() {
+            outcome?;
+        }
+        if state.rejected_ingests > 0 {
+            state.rejected_ingests -= 1;
+            return Err(AdapterRuntimeError::ConfigMutationRejected);
+        }
         if let Some(error) = state.ingest_error.take() {
             return Err(error);
         }
@@ -449,6 +458,227 @@ fn fragmented_multi_frame_chunks_coalesce_and_flush_on_the_single_deadline_wake(
         let progress = driver.run_next(&mailbox).await.expect("deadline flush");
         assert_eq!(progress.deferred_flushes, 1);
         assert_eq!(shared.0.lock().expect("shared").durable.len(), 1);
+    });
+}
+
+#[test]
+fn configuration_rejection_drains_following_frame_and_driver_remains_usable() {
+    runtime().block_on(async {
+        let (mut driver, shared, _, control) = build_driver(
+            vec![
+                owned(vec![item(identity_one("after-config-rejection"))]),
+                owned(vec![item(identity_one("after-subsequent-chunk"))]),
+            ],
+            VecDeque::new(),
+        );
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        shared.0.lock().expect("shared").ingest_error =
+            Some(AdapterRuntimeError::ConfigMutationRejected);
+        mailbox
+            .try_push_chunk(b"{}\n{}\n".to_vec())
+            .expect("correlated rejection followed by frame");
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(DriverError::ConfigMutationRejected)
+        );
+        assert_eq!(driver.teardown_cause(), None);
+        assert!(control.lock().expect("control").requested.is_empty());
+        assert_eq!(driver.transport.closes, 0);
+        assert_eq!(shared.0.lock().expect("shared").batches.len(), 1);
+
+        mailbox
+            .try_push_chunk(b"{}\n".to_vec())
+            .expect("subsequent chunk after drained rejection");
+        assert_eq!(
+            driver
+                .run_next(&mailbox)
+                .await
+                .expect("driver remains usable without input pending")
+                .accepted_frames,
+            1
+        );
+        assert_eq!(driver.teardown_cause(), None);
+        assert!(control.lock().expect("control").requested.is_empty());
+        assert_eq!(driver.transport.closes, 0);
+        assert!(shared.0.lock().expect("shared").durable.is_empty());
+    });
+}
+
+#[test]
+fn rejection_before_a_trailing_fatal_frame_flushes_prior_facts_then_latches() {
+    runtime().block_on(async {
+        let (mut driver, shared, _, control) = build_driver(
+            vec![owned(vec![item(identity_one("before-fatal"))])],
+            VecDeque::new(),
+        );
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        shared.0.lock().expect("shared").ingest_error =
+            Some(AdapterRuntimeError::ConfigMutationRejected);
+        mailbox
+            .try_push_chunk(b"{}\n{}\n{]\n".to_vec())
+            .expect("rejection, accepted frame, and malformed frame");
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(DriverError::TeardownRequired(
+                TeardownCause::ProtocolFailure
+            ))
+        );
+        assert_eq!(
+            driver.teardown_cause(),
+            Some(TeardownCause::ProtocolFailure)
+        );
+        assert_eq!(driver.transport.closes, 1);
+        assert_eq!(control.lock().expect("control").requested.len(), 1);
+        assert!(matches!(
+            shared.0.lock().expect("shared").durable.as_slice(),
+            [batch] if matches!(batch.as_slice(), [DurableAdapterEvent::Item { .. }])
+        ));
+    });
+}
+
+#[test]
+fn rejection_before_a_trailing_decoder_failure_flushes_prior_facts_then_latches() {
+    runtime().block_on(async {
+        let (mut driver, shared, _, control) = build_driver(
+            vec![owned(vec![item(identity_one("before-decoder-failure"))])],
+            VecDeque::new(),
+        );
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        shared.0.lock().expect("shared").ingest_error =
+            Some(AdapterRuntimeError::ConfigMutationRejected);
+        mailbox
+            .try_push_chunk(b"{}\n{}\n\0\n".to_vec())
+            .expect("rejection, accepted frame, and nul decoder failure");
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(DriverError::TeardownRequired(
+                TeardownCause::ProtocolFailure
+            ))
+        );
+        assert_eq!(
+            driver.teardown_cause(),
+            Some(TeardownCause::ProtocolFailure)
+        );
+        assert_eq!(driver.transport.closes, 1);
+        assert_eq!(control.lock().expect("control").requested.len(), 1);
+        assert!(matches!(
+            shared.0.lock().expect("shared").durable.as_slice(),
+            [batch] if matches!(batch.as_slice(), [DurableAdapterEvent::Item { .. }])
+        ));
+    });
+}
+
+#[test]
+fn multiple_rejections_in_one_chunk_are_non_latching_and_drain_to_alignment() {
+    runtime().block_on(async {
+        let (mut driver, shared, _, control) = build_driver(
+            vec![owned(vec![item(identity_one("after-two-rejections"))])],
+            VecDeque::new(),
+        );
+        shared.0.lock().expect("shared").rejected_ingests = 2;
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .try_push_chunk(b"{}\n{}\n{}\n".to_vec())
+            .expect("two rejections followed by an accepted frame");
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(DriverError::ConfigMutationRejected)
+        );
+        assert_eq!(driver.teardown_cause(), None);
+        assert!(control.lock().expect("control").requested.is_empty());
+        assert_eq!(driver.transport.closes, 0);
+    });
+}
+
+#[test]
+fn accepted_frame_before_rejection_stays_ordered_and_nonfatal() {
+    runtime().block_on(async {
+        let (mut driver, shared, _, control) = build_driver(
+            vec![owned(vec![item(identity_one("before-rejection"))])],
+            VecDeque::new(),
+        );
+        shared.0.lock().expect("shared").ingest_outcomes =
+            VecDeque::from([Ok(()), Err(AdapterRuntimeError::ConfigMutationRejected)]);
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .try_push_chunk(b"{}\n{}\n".to_vec())
+            .expect("accepted frame before rejection");
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(DriverError::ConfigMutationRejected)
+        );
+        assert_eq!(driver.teardown_cause(), None);
+        assert!(control.lock().expect("control").requested.is_empty());
+        assert_eq!(driver.transport.closes, 0);
+        assert_eq!(shared.0.lock().expect("shared").batches.len(), 0);
+        assert!(matches!(
+            shared.0.lock().expect("shared").durable.as_slice(),
+            [batch] if matches!(batch.as_slice(), [DurableAdapterEvent::Item { .. }])
+        ));
+    });
+}
+
+#[test]
+fn eof_with_a_buffered_config_rejection_still_latches_reader_eof() {
+    runtime().block_on(async {
+        let (mut driver, shared, _, control) = build_driver(
+            vec![owned(vec![item(identity_one("before-buffered-rejection"))])],
+            VecDeque::new(),
+        );
+        let mailbox = Arc::new(DriverMailbox::new().expect("mailbox"));
+        shared.0.lock().expect("shared").worker_observation = Some(Arc::clone(&mailbox));
+        shared.0.lock().expect("shared").ingest_outcomes =
+            VecDeque::from([Ok(()), Err(AdapterRuntimeError::ConfigMutationRejected)]);
+        mailbox
+            .try_push_chunk(b"{}\n{}\n".to_vec())
+            .expect("accepted frame followed by buffered rejection");
+
+        let step = driver
+            .run_next_step(mailbox.as_ref())
+            .await
+            .expect("worker yield");
+        let DriverStep::YieldWorker { envelope, .. } = step else {
+            panic!("accepted first frame must yield worker control before the rejection drains")
+        };
+        envelope.reject(crate::acp::runtime::HostError::Closed);
+        mailbox
+            .signal_reader_terminal(ReaderTerminal::Eof)
+            .expect("reader eof");
+
+        assert_eq!(
+            driver.run_next(mailbox.as_ref()).await,
+            Err(DriverError::TeardownRequired(TeardownCause::ReaderEof))
+        );
+        assert_eq!(driver.teardown_cause(), Some(TeardownCause::ReaderEof));
+        assert_eq!(driver.transport.closes, 1);
+        assert_eq!(control.lock().expect("control").requested.len(), 1);
+    });
+}
+
+#[test]
+fn operation_deadline_wakes_driver_without_an_incoming_message() {
+    runtime().block_on(async {
+        let (mut driver, _, _, control) = build_driver(Vec::new(), VecDeque::new());
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        driver.clock = Arc::new(SystemDriverClock);
+        let deadline = driver.clock.now_millis().saturating_add(20);
+
+        let progress = driver
+            .run_next_step_until(&mailbox, Some(deadline))
+            .await
+            .expect("deadline wake");
+        assert!(matches!(
+            progress,
+            DriverStep::Progress(progress) if progress == DriverProgress::default()
+        ));
+        assert_eq!(driver.teardown_cause(), None);
+        assert!(control.lock().expect("control").requested.is_empty());
+        assert_eq!(driver.transport.closes, 0);
     });
 }
 

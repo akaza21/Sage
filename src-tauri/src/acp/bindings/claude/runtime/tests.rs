@@ -9,7 +9,7 @@ use crate::acp::{
     transport::FrameReader,
 };
 
-struct Mapper;
+pub(super) struct Mapper;
 
 impl SharedResourceMapper for Mapper {
     fn map_existing(
@@ -28,7 +28,7 @@ impl SharedResourceMapper for Mapper {
     }
 }
 
-fn frame(value: Value) -> Frame {
+pub(super) fn frame(value: Value) -> Frame {
     let mut bytes = serde_json::to_vec(&value).expect("json");
     bytes.push(b'\n');
     tokio::runtime::Runtime::new()
@@ -38,13 +38,13 @@ fn frame(value: Value) -> Frame {
         .expect("complete frame")
 }
 
-fn request_id(egress: &AdapterEgress) -> u64 {
+pub(super) fn request_id(egress: &AdapterEgress) -> u64 {
     serde_json::from_slice::<Value>(egress.frame().payload()).expect("json")["id"]
         .as_u64()
         .expect("numeric id")
 }
 
-fn initialize(runtime: &mut ClaudeRuntime) {
+pub(super) fn initialize(runtime: &mut ClaudeRuntime) {
     let egress = runtime
         .command(AdapterCommand::Initialize)
         .expect("initialize command");
@@ -285,6 +285,7 @@ fn initialize_advertises_curated_host_tools_including_browse() {
         json!({
             "fs":{"readTextFile":true,"writeTextFile":false},
             "terminal":false,
+            "session":{"configOptions":{"boolean":{}}},
             "_meta":{"sage":{"tools":["sage.apply_file", "_sage/browse"]}}
         })
     );

@@ -100,18 +100,31 @@ export function useAcpChatProjection(
         });
     };
 
-    void acpDesktop
-      .subscribeProjectionChanges((event) => {
-        if (disposed) return;
-        const disposition = enqueueProjectionChange(event);
-        if (disposition === "ignoredStale" || refreshTimer) return;
-        refreshTimer = setTimeout(() => {
-          refreshTimer = null;
-          takeProjectionChange();
-          loadLatest();
-        }, 50);
-      })
-      .then((disposeListener) => {
+    const scheduleRefresh = (disposition: string) => {
+      if (disposed || disposition === "ignoredStale" || refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        takeProjectionChange();
+        store.getState().takeSessionConfigChange();
+        loadLatest();
+      }, 50);
+    };
+    // Install both wake channels before the authoritative bootstrap snapshot.
+    void Promise.allSettled([
+      acpDesktop.subscribeProjectionChanges((event) =>
+        scheduleRefresh(enqueueProjectionChange(event)),
+      ),
+      acpDesktop.subscribeSessionConfigChanges((event) =>
+        scheduleRefresh(
+          store.getState().enqueueSessionConfigChange(scope, event),
+        ),
+      ),
+    ])
+      .then((listeners) => {
+        const disposeListener = () =>
+          listeners.forEach((listener) => {
+            if (listener.status === "fulfilled") listener.value();
+          });
         if (disposed) {
           disposeListener();
         } else {
@@ -144,6 +157,7 @@ export function useAcpChatProjection(
     projectId,
     projectTransitioning,
     takeProjectionChange,
+    store,
   ]);
 
   if (

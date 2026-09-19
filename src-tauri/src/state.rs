@@ -114,7 +114,7 @@ impl AppState {
         let registry = std::sync::Arc::new(BindingRegistry::default());
         let acp = AcpService::new_with_notification_sink_and_registry(
             database.clone(),
-            std::sync::Arc::new(DesktopProjectionSink(app)),
+            std::sync::Arc::new(DesktopProjectionSink(app.clone())),
             registry.clone(),
         )
         .map_err(|_| {
@@ -122,6 +122,10 @@ impl AppState {
                 "bounded ACP restart recovery failed; durable history was preserved".into(),
             )
         })?;
+        acp.set_session_config_notice_sink(std::sync::Arc::new(move |notice| {
+            use tauri::Emitter;
+            let _ = app.emit("acp-session-config-changed-v1", notice);
+        }));
         Ok(Self {
             database,
             settings,

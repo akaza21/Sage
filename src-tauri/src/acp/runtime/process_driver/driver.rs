@@ -311,7 +311,7 @@ where
         }
     }
 
-    async fn flush_all_ingress(
+    pub(super) async fn flush_all_ingress(
         &mut self,
         source: DispatchSource,
         now_millis: i64,
@@ -338,6 +338,9 @@ where
     }
 
     fn pump_error(&mut self, error: AdapterPumpError) -> DriverError {
+        if matches!(error, AdapterPumpError::ConfigMutationRejected) {
+            return DriverError::ConfigMutationRejected;
+        }
         let cause = match error {
             AdapterPumpError::Frame => TeardownCause::ProtocolFailure,
             AdapterPumpError::Adapter(

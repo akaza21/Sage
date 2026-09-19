@@ -113,6 +113,47 @@ fn host_with_engine(owner: &RuntimeOwner, engine: Engine) -> Arc<RuntimeHost> {
 }
 
 #[test]
+fn config_overlay_is_cleared_by_exact_slot_lifecycle() {
+    let slot = RuntimeSlot::new();
+    let first = owner("session-first");
+    let first_host = host(&first);
+    slot.reserve_start(first.clone()).unwrap();
+    slot.config
+        .update(&first, crate::acp::session_config::SessionConfig::default())
+        .unwrap();
+    slot.finish_start(&first, Arc::clone(&first_host)).unwrap();
+    assert!(slot.config.snapshot(&first).is_none());
+    slot.publish_start(&first).unwrap();
+    assert!(slot.config.snapshot(&first).is_some());
+    slot.mark_recovery(&owner("foreign")).unwrap_err();
+    assert!(slot.config.snapshot(&first).is_some());
+    slot.mark_recovery(&first).unwrap();
+    let tombstone = slot.config.snapshot(&first).expect("recovery tombstone");
+    assert!(tombstone.removed);
+    assert_eq!(tombstone.config_revision.get(), 2);
+    slot.release_recovered(&first, &first_host).unwrap();
+    assert!(slot.config.snapshot(&first).is_none());
+    first_host.shutdown(RuntimeHost::close_deadline()).unwrap();
+    let second = owner("session-second");
+    let second_host = host(&second);
+    slot.reserve_start(second.clone()).unwrap();
+    slot.config
+        .update(
+            &second,
+            crate::acp::session_config::SessionConfig::default(),
+        )
+        .unwrap();
+    slot.finish_start(&second, Arc::clone(&second_host))
+        .unwrap();
+    slot.publish_start(&second).unwrap();
+    slot.release(&first, &first_host).unwrap_err();
+    assert!(slot.config.snapshot(&second).is_some());
+    slot.begin_shutdown();
+    assert!(slot.config.snapshot(&second).is_none());
+    second_host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
 fn claim_never_overwrites_a_live_or_recovery_owner() {
     let slot = RuntimeSlot::new();
     let first = owner("session-first");

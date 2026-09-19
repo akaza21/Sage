@@ -158,6 +158,7 @@
         "src-tauri/migrations/005_acp_session_foundation.sql",
         "src-tauri/src/acp/attached_context.rs",
         "src-tauri/src/acp/bindings/adapter.rs",
+        "src-tauri/src/acp/bindings/adapter/batch_builder.rs",
         "src-tauri/src/acp/bindings/adapter/byte_count.rs",
         "src-tauri/src/acp/bindings/registry.rs",
         "src-tauri/src/acp/bindings/runtime.rs",
@@ -198,6 +199,9 @@
         "src-tauri/src/workbench_persistence/"
       ],
       "files": [
+        "src-tauri/src/acp/session_config/mod.rs",
+        "src-tauri/src/acp/session_config/overlay.rs",
+        "src-tauri/src/acp/session_config/tests.rs",
         "src-tauri/src/acp/characterization_observation.rs",
         "src-tauri/src/acp/page_admission.rs",
         "src-tauri/src/acp/service.rs"

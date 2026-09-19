@@ -39,6 +39,7 @@ pub(crate) enum DriverError {
     IdentityMismatch,
     Mailbox(MailboxError),
     RejectedIntent,
+    ConfigMutationRejected,
     TeardownRequired(TeardownCause),
     Tree,
     NotReusable,

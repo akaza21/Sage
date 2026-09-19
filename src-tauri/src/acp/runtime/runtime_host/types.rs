@@ -32,6 +32,7 @@ pub(crate) enum HostOutcome {
     PromptAccepted,
     CancelQueued,
     PermissionResolved,
+    SessionConfigured,
     TurnTerminal,
     BackgroundTurnContinues,
     ProjectSwitchObserved,
@@ -50,6 +51,8 @@ pub(crate) enum HostError {
     Intent,
     #[error("the runtime host cannot accept this command in its current state")]
     State,
+    #[error("the harness rejected the session configuration mutation")]
+    ConfigMutationRejected,
     #[error("prompt delivery may have written bytes and cannot be replayed")]
     DeliveryUnknown,
     #[error("the one permitted zero-byte prompt retry is exhausted")]
@@ -102,6 +105,43 @@ impl HostCloseIntent {
     }
 }
 
+type ConfigCompletionCallback = Box<dyn FnOnce(Result<(), HostError>) + Send + 'static>;
+
+pub(crate) struct ConfigCompletionSink(Option<ConfigCompletionCallback>);
+
+impl ConfigCompletionSink {
+    pub(crate) fn new(complete: impl FnOnce(Result<(), HostError>) + Send + 'static) -> Self {
+        Self(Some(Box::new(complete)))
+    }
+
+    pub(crate) fn complete(mut self, result: Result<(), HostError>) {
+        if let Some(complete) = self.0.take() {
+            complete(result);
+        }
+    }
+}
+
+impl Drop for ConfigCompletionSink {
+    fn drop(&mut self) {
+        if let Some(complete) = self.0.take() {
+            complete(Err(HostError::Closed));
+        }
+    }
+}
+
+pub(super) struct ConfigCompletion {
+    pub(super) operation_id: u64,
+    pub(super) owner: RuntimeOwner,
+    pub(super) result: Result<(), HostError>,
+}
+
+pub(super) struct PendingHostConfig {
+    pub(super) operation_id: u64,
+    pub(super) owner: RuntimeOwner,
+    pub(super) reply: mpsc::SyncSender<Result<HostReply, HostError>>,
+    pub(super) deadline: Instant,
+}
+
 pub(super) struct PendingTerminal {
     pub(super) owner: RuntimeOwner,
     pub(super) cursor: AdapterTurnCursor,
@@ -130,6 +170,16 @@ pub(super) struct PendingClose {
 }
 
 pub(crate) trait RuntimeEngine: Send + 'static {
+    fn begin_configure_session(
+        &mut self,
+        _intent: &crate::acp::session_config::ConfigIntent,
+        _deadline: Instant,
+        completion: ConfigCompletionSink,
+    ) -> Result<(), HostError> {
+        completion.complete(Err(HostError::State));
+        Ok(())
+    }
+    fn abandon_configuration(&mut self, _deadline: Instant) {}
     fn resolve_permission(
         &mut self,
         _owner: &RuntimeOwner,
@@ -188,6 +238,7 @@ pub(crate) trait RuntimeShutdownRecovery: Send + Sync {
 }
 
 pub(super) enum HostCommand {
+    ConfigureSession(crate::acp::session_config::ConfigIntent),
     ResolvePermission {
         owner: RuntimeOwner,
         request_id: SageServerRequestId,
@@ -245,7 +296,9 @@ impl HostCommand {
     pub(super) fn deadline_millis(&self) -> u64 {
         use crate::acp::limits::LIMITS;
         match self {
-            Self::ResolvePermission { .. } => LIMITS.deadlines_ms.ordinary_rpc,
+            Self::ConfigureSession(_) | Self::ResolvePermission { .. } => {
+                LIMITS.deadlines_ms.ordinary_rpc
+            }
             Self::Activate(_) => LIMITS.deadlines_ms.initialize,
             Self::Cancel(_) => LIMITS.deadlines_ms.tree_termination,
             Self::Terminal { .. }
@@ -288,6 +341,7 @@ impl HostCommand {
                 + std::mem::size_of::<u64>()
         }
         match self {
+            Self::ConfigureSession(intent) => intent.actual_bytes(),
             Self::ResolvePermission {
                 owner, request_id, ..
             } => owner_bytes(owner) + request_id.as_str().len() + 1,

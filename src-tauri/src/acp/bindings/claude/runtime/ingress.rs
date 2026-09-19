@@ -26,6 +26,8 @@ impl ClaudeRuntime {
                 AdapterBatch::new(vec![SharedEvent::Acknowledged], Vec::new())
             }
             PendingRequest::Prompt => self.prompt_response(value),
+            PendingRequest::SetMode => self.config_response(value, false),
+            PendingRequest::SetConfig => self.config_response(value, true),
         };
         if result.is_ok() && self.delivery_unknown == Some(DeliveryUnknown::Request(id)) {
             self.delivery_unknown = None;
@@ -93,6 +95,8 @@ impl ClaudeRuntime {
             external_id: external_id.clone(),
             translator,
             turn: None,
+            config: crate::acp::session_config::SessionConfig::from_wire(&value["result"], true)
+                .map_err(|_| AdapterRuntimeError::Frame)?,
         });
         AdapterBatch::new(
             vec![SharedEvent::SessionReady {
@@ -152,6 +156,9 @@ impl ClaudeRuntime {
                 vec![SharedEvent::Unsupported(unsupported(method)?)],
                 Vec::new(),
             );
+        }
+        if self.config_notification(&value)? {
+            return AdapterBatch::new(vec![SharedEvent::IgnoredDuplicate], Vec::new());
         }
         let active = self.active.as_mut().ok_or(AdapterRuntimeError::Frame)?;
         let events = active

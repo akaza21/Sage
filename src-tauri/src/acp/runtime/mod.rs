@@ -91,8 +91,9 @@ pub(crate) use projection_publisher::{
 };
 #[allow(unused_imports)]
 pub(crate) use runtime_host::{
-    HostCancelIntent, HostCloseIntent, HostError, HostOutcome, HostPromptIntent, HostState,
-    PromptWrite, RuntimeEngine, RuntimeHost, RuntimeShutdownRecovery, TerminalNotification,
+    ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostOutcome,
+    HostPromptIntent, HostState, PromptWrite, RuntimeEngine, RuntimeHost, RuntimeShutdownRecovery,
+    TerminalNotification,
 };
 #[allow(unused_imports)]
 pub(crate) use session_coordinator::{

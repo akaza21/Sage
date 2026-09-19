@@ -1,4 +1,5 @@
 import type { AcpImagePayload } from "./acpImage";
+import type { AcpSessionConfig } from "./acpSessionConfig";
 import type { FilePairMetadata } from "./agentDiff";
 import type {
   ActivityState,
@@ -216,6 +217,7 @@ export interface AgentSessionProjection {
 }
 
 export interface AcpChatPage {
+  sessionConfig?: AcpSessionConfig | null;
   projectId: SageProjectId;
   chatId: SageChatId;
   title: string;

@@ -10,6 +10,7 @@ mod prepared_write;
 mod reader;
 mod reusable_close;
 mod reuse;
+mod session_config;
 mod types;
 mod worker_command;
 mod write_fence;

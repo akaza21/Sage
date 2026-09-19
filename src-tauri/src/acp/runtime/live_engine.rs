@@ -7,7 +7,8 @@ use crate::acp::{
 use std::time::Instant;
 
 use super::{
-    HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, PromptWrite, RuntimeEngine,
+    ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent,
+    PromptWrite, RuntimeEngine,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,6 +25,16 @@ pub(crate) enum LiveWrite {
 pub(crate) trait LiveRuntimePort: Send + 'static {
     type ZeroProof: Send + 'static;
 
+    fn begin_configure_session(
+        &mut self,
+        _intent: &crate::acp::session_config::ConfigIntent,
+        _deadline: Instant,
+        completion: ConfigCompletionSink,
+    ) -> Result<(), HostError> {
+        completion.complete(Err(HostError::State));
+        Ok(())
+    }
+    fn abandon_configuration(&mut self, _deadline: Instant) {}
     fn owner(&self) -> &RuntimeOwner;
     fn resolve_permission(
         &mut self,
@@ -109,6 +120,21 @@ impl<P: LiveRuntimePort> LiveRuntimeEngine<P> {
 }
 
 impl<P: LiveRuntimePort> RuntimeEngine for LiveRuntimeEngine<P> {
+    fn begin_configure_session(
+        &mut self,
+        intent: &crate::acp::session_config::ConfigIntent,
+        deadline: Instant,
+        completion: ConfigCompletionSink,
+    ) -> Result<(), HostError> {
+        if self.port.owner() != &intent.owner || self.zero_proof.is_some() {
+            return Err(HostError::Intent);
+        }
+        self.port
+            .begin_configure_session(intent, deadline, completion)
+    }
+    fn abandon_configuration(&mut self, deadline: Instant) {
+        self.port.abandon_configuration(deadline);
+    }
     fn resolve_permission(
         &mut self,
         owner: &RuntimeOwner,

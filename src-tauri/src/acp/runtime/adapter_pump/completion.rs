@@ -8,11 +8,56 @@ pub(crate) struct CompletedPumpParts<A, J, R> {
     session_intent: SessionPumpIntent,
     terminal_cursor: AdapterTurnCursor,
     next_synthetic_item: u64,
+    idle_decoder: IncrementalFrameDecoder,
 }
 
 type PumpHandoff<T, P> = Result<T, Box<(P, AdapterPumpError)>>;
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPumpParts<A, J, R> {
+    pub(crate) fn accept_idle_stdout_chunk(
+        &mut self,
+        chunk: &[u8],
+    ) -> Result<(), AdapterPumpError> {
+        let mut frame = self
+            .idle_decoder
+            .push_chunk(chunk)
+            .map_err(|_| AdapterPumpError::Frame)?;
+        let mut config_rejected = false;
+        while let Some(current) = frame {
+            validate_structure(&current).map_err(|_| AdapterPumpError::Frame)?;
+            match self.adapter.ingest(&current, &self.resources) {
+                Ok(batch) => {
+                    let (events, egress) = batch.into_parts();
+                    if !egress.is_empty()
+                        || !events.iter().all(|e| {
+                            matches!(
+                                e,
+                                AdapterEvent::IgnoredLate | AdapterEvent::IgnoredDuplicate
+                            )
+                        })
+                    {
+                        return Err(AdapterPumpError::Frame);
+                    }
+                }
+                Err(AdapterRuntimeError::ConfigMutationRejected) => {
+                    config_rejected = true;
+                }
+                Err(error) => return Err(AdapterPumpError::Adapter(error)),
+            }
+            frame = self
+                .idle_decoder
+                .drain_pending()
+                .map_err(|_| AdapterPumpError::Frame)?;
+        }
+        if config_rejected {
+            Err(AdapterPumpError::ConfigMutationRejected)
+        } else {
+            Ok(())
+        }
+    }
+    pub(crate) fn idle_frame_aligned(&self) -> bool {
+        self.idle_decoder.is_frame_aligned()
+    }
     pub(crate) fn terminal_cursor(&self) -> &AdapterTurnCursor {
         &self.terminal_cursor
     }
@@ -33,6 +78,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         self,
         active_turn: ActiveTurnIntent,
     ) -> PumpHandoff<AdapterPump<A, J, R>, Self> {
+        if !self.idle_decoder.is_frame_aligned() || self.adapter.config_pending() {
+            return Err(Box::new((self, AdapterPumpError::Intent)));
+        }
         let intent = self.session_intent.clone().bind_turn(active_turn);
         let admission = match AdapterPump::<A, J, R>::admit(&intent) {
             Ok(admission) => admission,
@@ -50,6 +98,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                         session_intent: self.session_intent,
                         terminal_cursor: self.terminal_cursor,
                         next_synthetic_item: self.next_synthetic_item,
+                        idle_decoder: self.idle_decoder,
                     },
                     AdapterPumpError::Journal(error),
                 )));
@@ -108,6 +157,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             session_intent,
             terminal_cursor,
             next_synthetic_item: self.next_synthetic_item,
+            idle_decoder: self.decoder,
         })
     }
 }

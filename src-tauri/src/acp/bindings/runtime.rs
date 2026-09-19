@@ -31,11 +31,25 @@ pub(crate) trait LaunchableRuntime: HarnessAdapter + Send {
 /// Owns the exact adapter and its native launch authority, including while a
 /// failed activation driver is retained for recovery. No serialization or
 /// Debug implementation: the enclosed authority can contain native paths.
-pub(crate) struct NativeRuntime(Box<dyn LaunchableRuntime>);
+pub(crate) struct NativeRuntime(
+    Box<dyn LaunchableRuntime>,
+    Option<(
+        crate::acp::scheduler::RuntimeOwner,
+        std::sync::Arc<crate::acp::session_config::ConfigChannel>,
+    )>,
+);
 
 impl NativeRuntime {
     pub(crate) fn new(runtime: impl LaunchableRuntime + 'static) -> Self {
-        Self(Box::new(runtime))
+        Self(Box::new(runtime), None)
+    }
+
+    pub(crate) fn attach_config(
+        &mut self,
+        owner: crate::acp::scheduler::RuntimeOwner,
+        channel: std::sync::Arc<crate::acp::session_config::ConfigChannel>,
+    ) {
+        self.1 = Some((owner, channel));
     }
 
     pub(crate) fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError> {
@@ -44,6 +58,25 @@ impl NativeRuntime {
 }
 
 impl HarnessAdapter for NativeRuntime {
+    fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
+        self.0.session_config()
+    }
+    fn config_pending(&self) -> bool {
+        self.0.config_pending()
+    }
+    fn configure(
+        &mut self,
+        intent: &crate::acp::session_config::ConfigIntent,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let (owner, channel) = self.1.as_ref().ok_or(AdapterRuntimeError::Operation)?;
+        if owner != &intent.owner {
+            return Err(AdapterRuntimeError::Operation);
+        }
+        channel
+            .validate(intent)
+            .map_err(|_| AdapterRuntimeError::Operation)?;
+        self.0.configure(intent)
+    }
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.0.capabilities()
     }
@@ -64,7 +97,18 @@ impl HarnessAdapter for NativeRuntime {
         frame: &Frame,
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        self.0.ingest(frame, resources)
+        let batch = self.0.ingest(frame, resources)?;
+        if let Some((owner, channel)) = &self.1 {
+            match self.0.session_config() {
+                Some(config) => channel
+                    .update(owner, config)
+                    .map_err(|_| AdapterRuntimeError::Frame)?,
+                None => channel
+                    .remove(owner)
+                    .map_err(|_| AdapterRuntimeError::Frame)?,
+            }
+        }
+        Ok(batch)
     }
 
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {

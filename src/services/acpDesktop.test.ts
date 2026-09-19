@@ -81,6 +81,71 @@ afterEach(() => {
 });
 
 describe("ACP desktop bridge", () => {
+  it("sends exact owner and independent config revision for typed config mutations", async () => {
+    setDesktopRuntime(true);
+    invokeMock.mockResolvedValue({
+      projection: {
+        projectId: "project-a",
+        chatId: "chat-a",
+        title: "A",
+        projectionRevision: "9",
+        currentSessionId: null,
+        sessions: [],
+        turns: [],
+        nextCursor: null,
+        sessionConfig: null,
+      },
+    });
+    const owner = {
+      projectId: request.projectId,
+      projectGeneration: request.projectGeneration,
+      chatId: request.chatId,
+      expectedProjectionRevision: request.expectedProjectionRevision,
+      clientIntentId: request.clientIntentId,
+      sessionId: sessionRequest.sessionId,
+      runtimeEpoch: sessionRequest.runtimeEpoch,
+      expectedConfigRevision: "3",
+    };
+    await acpDesktop.setSessionMode({ ...owner, modeId: "ask" });
+    expect(invokeMock).toHaveBeenLastCalledWith("set_acp_session_mode", {
+      request: { ...owner, modeId: "ask" },
+    });
+    await acpDesktop.setSessionConfigOption({
+      ...owner,
+      configId: "flag",
+      value: { type: "boolean", value: false },
+    });
+    expect(invokeMock).toHaveBeenLastCalledWith(
+      "set_acp_session_config_option",
+      {
+        request: {
+          ...owner,
+          configId: "flag",
+          value: { type: "boolean", value: false },
+        },
+      },
+    );
+  });
+  it("subscribes to the separate config wake channel with strict decoding", async () => {
+    setDesktopRuntime(true);
+    const onChange = vi.fn();
+    listenMock.mockResolvedValue(() => undefined);
+    await acpDesktop.subscribeSessionConfigChanges(onChange);
+    expect(listenMock.mock.calls[0][0]).toBe("acp-session-config-changed-v1");
+    const callback = listenMock.mock.calls[0][1];
+    const event = {
+      schemaVersion: 1,
+      sageProjectId: "project-a",
+      sageChatId: "chat-a",
+      sageAgentSessionId: "session-a",
+      runtimeEpoch: "2",
+      configRevision: "3",
+    };
+    callback({ payload: { ...event, configRevision: "0" } });
+    expect(onChange).not.toHaveBeenCalled();
+    callback({ payload: { ...event, raw: "discard" } });
+    expect(onChange).toHaveBeenCalledWith(event);
+  });
   it("projects only sanitized auth lifecycle fields and sends explicit consent", async () => {
     setDesktopRuntime(true);
     invokeMock.mockResolvedValue({
@@ -382,6 +447,7 @@ describe("ACP desktop bridge", () => {
 
     await expect(acpDesktop.startSession(request)).resolves.toEqual({
       projection: {
+        sessionConfig: null,
         projectId: "project-a",
         chatId: "chat-a",
         title: "A",
@@ -411,6 +477,25 @@ describe("ACP desktop bridge", () => {
       kind: "conflict",
       resource: "projectGeneration",
       message: "The project generation is stale.",
+    });
+    expect(JSON.stringify(error)).not.toContain("secret-never-retain");
+  });
+
+  it("preserves a bounded typed harness rejection without retaining native fields", async () => {
+    setDesktopRuntime(true);
+    invokeMock.mockRejectedValue({
+      kind: "rejected",
+      message: "The harness rejected this session configuration change.",
+      remoteMessage: "secret-never-retain",
+    });
+
+    const error = await acpDesktop
+      .startSession(request)
+      .catch((value) => value);
+    expect(error).toBeInstanceOf(AcpDesktopError);
+    expect((error as AcpDesktopError).failure).toEqual({
+      kind: "rejected",
+      message: "The harness rejected this session configuration change.",
     });
     expect(JSON.stringify(error)).not.toContain("secret-never-retain");
   });

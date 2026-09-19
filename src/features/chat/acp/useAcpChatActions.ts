@@ -147,6 +147,8 @@ export function useAcpChatActions(boundChatId?: string | null) {
     ) => controller.submit(prompt, attachedContext, bindingId, modelId),
     cancel: (turnId: SageTurnId) => controller.cancel(turnId),
     close: () => controller.close(),
+    setSessionMode: controller.setSessionMode,
+    setSessionConfigOption: controller.setSessionConfigOption,
     clearError: () => {
       if (boundChatId) {
         const ownership = captureChatOwnership(boundChatId);
@@ -167,6 +169,8 @@ export function useAcpChatActions(boundChatId?: string | null) {
     submit: typeof controller.submit;
     cancel: typeof controller.cancel;
     close: typeof controller.close;
+    setSessionMode: typeof controller.setSessionMode;
+    setSessionConfigOption: typeof controller.setSessionConfigOption;
     clearError: () => void;
   };
 }

@@ -715,6 +715,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         legacy: false,
     };
     let page = AcpChatPage {
+        session_config: None,
         project_id,
         chat_id,
         title: SafeText::new("title", "Wire fixture").unwrap(),

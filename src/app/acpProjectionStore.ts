@@ -1,4 +1,10 @@
 import { create } from "zustand";
+import type { AcpSessionConfigChangedV1 } from "../domain/acpSessionConfig";
+import {
+  configNoticeMatches,
+  preserveNewerConfig,
+  sameRevisionOwner,
+} from "./acpSessionConfigMailbox";
 
 import type {
   AcpChatPage,
@@ -51,6 +57,12 @@ interface AcpProjectionState {
   activeLoad: AcpPageLoadIntent | null;
   requestSequence: number;
   pendingChange: AcpProjectionChangedEvent | null;
+  pendingConfigChange: AcpSessionConfigChangedV1 | null;
+  enqueueSessionConfigChange: (
+    scope: AcpProjectionScope,
+    event: AcpSessionConfigChangedV1,
+  ) => ProjectionNoticeDisposition;
+  takeSessionConfigChange: () => AcpSessionConfigChangedV1 | null;
   error: string | null;
   activateScope: (scope: AcpProjectionScope) => void;
   beginPageLoad: (cursor: AcpPageCursor | null) => AcpPageLoadIntent;
@@ -192,6 +204,7 @@ const initialState = {
   activeLoad: null,
   requestSequence: 0,
   pendingChange: null,
+  pendingConfigChange: null,
   error: null,
 } satisfies Pick<
   AcpProjectionState,
@@ -202,6 +215,7 @@ const initialState = {
   | "activeLoad"
   | "requestSequence"
   | "pendingChange"
+  | "pendingConfigChange"
   | "error"
 >;
 
@@ -277,11 +291,15 @@ export function createAcpProjectionStore() {
         }
       }
 
+      if (!sameRevisionOwner(state.page, page)) {
+        set({ activeLoad: null });
+        return "ignoredStaleIntent";
+      }
       const source =
         intent.cursor && state.page
           ? mergeProjectionPage(state.page, page)
           : normalizeProjectionPage(page);
-      const retained = trimToByteLimit(source);
+      const retained = trimToByteLimit(preserveNewerConfig(state.page, source));
       set({
         page: retained.page,
         retainedBytes: retained.retainedBytes,
@@ -322,7 +340,10 @@ export function createAcpProjectionStore() {
         if (comparison === null) return "ignoredInvalidRevision";
         if (comparison < 0) return "ignoredStaleRevision";
       }
-      const retained = trimToByteLimit(normalizeProjectionPage(page));
+      if (!sameRevisionOwner(state.page, page)) return "ignoredStaleIntent";
+      const retained = trimToByteLimit(
+        preserveNewerConfig(state.page, normalizeProjectionPage(page)),
+      );
       set({
         page: retained.page,
         retainedBytes: retained.retainedBytes,
@@ -363,6 +384,36 @@ export function createAcpProjectionStore() {
       return pending;
     },
 
+    enqueueSessionConfigChange: (scope, event) => {
+      const state = get();
+      if (
+        !sameScope(state.scope, scope) ||
+        !configNoticeMatches(state.scope, state.page, event)
+      )
+        return "ignoredStale";
+      const revision = state.page?.sessionConfig?.configRevision;
+      if (
+        revision &&
+        (compareDecimalRevision(event.configRevision, revision) ?? -1) <= 0
+      )
+        return "ignoredStale";
+      const pending = state.pendingConfigChange;
+      if (
+        pending &&
+        pending.sageAgentSessionId === event.sageAgentSessionId &&
+        pending.runtimeEpoch === event.runtimeEpoch &&
+        (compareDecimalRevision(event.configRevision, pending.configRevision) ??
+          -1) <= 0
+      )
+        return "ignoredStale";
+      set({ pendingConfigChange: event });
+      return pending ? "coalesced" : "queued";
+    },
+    takeSessionConfigChange: () => {
+      const pending = get().pendingConfigChange;
+      if (pending) set({ pendingConfigChange: null });
+      return pending;
+    },
     clear: () =>
       set({ ...initialState, requestSequence: get().requestSequence }),
   }));

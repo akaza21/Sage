@@ -39,6 +39,23 @@ export type AcpPageCursor = Brand<string, "AcpPageCursor">;
 export type ProjectionRevision = Brand<string, "ProjectionRevision">;
 export type ProjectGeneration = Brand<string, "ProjectGeneration">;
 export type RuntimeEpoch = Brand<string, "RuntimeEpoch">;
+export type ConfigRevision = Brand<string, "ConfigRevision">;
+import type { AcpConfigValue } from "./acpSessionConfig";
+export type {
+  AcpSessionConfig,
+  AcpSessionConfigChangedV1,
+  AcpConfigOption,
+  AcpConfigValue,
+} from "./acpSessionConfig";
+export interface SetAcpSessionModeRequest extends AcpSessionMutationIntent {
+  expectedConfigRevision: string;
+  modeId: string;
+}
+export interface SetAcpSessionConfigOptionRequest extends AcpSessionMutationIntent {
+  expectedConfigRevision: string;
+  configId: string;
+  value: AcpConfigValue;
+}
 export type EntityRevision = Brand<string, "EntityRevision">;
 
 export interface AcpItemIdentity {
@@ -235,6 +252,7 @@ type AcpCommandFailureDetail =
       kind: "conflict";
       resource:
         | "projectGeneration"
+        | "configRevision"
         | "projectionRevision"
         | "session"
         | "runtimeEpoch"
@@ -256,6 +274,7 @@ type AcpCommandFailureDetail =
       message: string;
     }
   | { kind: "invalidRequest"; message: string }
+  | { kind: "rejected"; message: string }
   | { kind: "recoveryRequired"; message: string }
   | { kind: "internal"; message: string };
 

@@ -26,6 +26,7 @@ pub(crate) mod runtime;
 pub(crate) mod scheduler;
 pub(crate) mod semantic_ingress;
 pub(crate) mod service;
+pub(crate) mod session_config;
 pub(crate) mod store;
 pub(crate) mod transport;
 

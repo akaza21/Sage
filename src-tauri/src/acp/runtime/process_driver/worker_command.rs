@@ -7,7 +7,7 @@ use crate::acp::{
     contract::{SageServerRequestId, SageTurnId},
     process::TreeExit,
     runtime::permissions::PermissionDecision,
-    runtime::{HostCancelIntent, HostError, HostPromptIntent, LiveWrite},
+    runtime::{ConfigCompletionSink, HostCancelIntent, HostError, HostPromptIntent, LiveWrite},
     scheduler::RuntimeOwner,
     store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
 };
@@ -19,6 +19,13 @@ mod support;
 use support::{close_bytes, map_mailbox, owner_bytes};
 
 pub(crate) enum WorkerCommand {
+    ConfigureSession {
+        intent: crate::acp::session_config::ConfigIntent,
+        completion: ConfigCompletionSink,
+    },
+    AbandonConfiguration {
+        owner: RuntimeOwner,
+    },
     ResolvePermission {
         owner: RuntimeOwner,
         request_id: SageServerRequestId,
@@ -75,7 +82,9 @@ impl WorkerCommand {
     fn deadline_millis(&self) -> u64 {
         use crate::acp::limits::LIMITS;
         match self {
-            Self::ResolvePermission { .. } => LIMITS.deadlines_ms.ordinary_rpc,
+            Self::ConfigureSession { .. }
+            | Self::AbandonConfiguration { .. }
+            | Self::ResolvePermission { .. } => LIMITS.deadlines_ms.ordinary_rpc,
             Self::DispatchCancel(_) => LIMITS.deadlines_ms.cancel_dispatch,
             Self::BeginCancel(_)
             | Self::AcceptTerminal { .. }
@@ -95,7 +104,8 @@ impl WorkerCommand {
     fn is_control(&self) -> bool {
         matches!(
             self,
-            Self::ResolvePermission { .. }
+            Self::AbandonConfiguration { .. }
+                | Self::ResolvePermission { .. }
                 | Self::ObserveSend { .. }
                 | Self::BeginCancel(_)
                 | Self::DispatchCancel(_)
@@ -112,6 +122,8 @@ impl WorkerCommand {
 
     fn actual_bytes(&self) -> Option<usize> {
         match self {
+            Self::ConfigureSession { intent, .. } => Some(intent.actual_bytes()),
+            Self::AbandonConfiguration { owner } => owner_bytes(owner).checked_add(1),
             Self::ResolvePermission {
                 owner, request_id, ..
             } => owner_bytes(owner)
@@ -154,7 +166,7 @@ impl DriverMailbox {
         self.submit_worker_until(command, deadline)
     }
 
-    fn submit_worker_until(
+    pub(super) fn submit_worker_until(
         &self,
         command: WorkerCommand,
         deadline: Instant,

@@ -6,6 +6,8 @@ use std::{
 use crate::acp::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
     limits::LIMITS,
+    runtime::{ConfigCompletionSink, LiveRuntimePort},
+    session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigRevision},
 };
 
 use super::*;
@@ -39,6 +41,39 @@ fn nonresponding_worker_returns_at_deadline_and_closes_its_mailbox() {
         Err(MailboxError::Closed)
     ));
     assert_eq!(*exits.lock().unwrap(), [TreeExit::Deadline]);
+}
+
+#[test]
+fn configuration_begin_timeout_does_not_close_mailbox_or_terminate_tree() {
+    let mailbox = Arc::new(DriverMailbox::new().unwrap());
+    let exits = Arc::new(Mutex::new(Vec::new()));
+    let recorded = Arc::clone(&exits);
+    let abort: Arc<dyn WorkerDeadlineAbort> = Arc::new(move |reason| {
+        recorded.lock().unwrap().push(reason);
+    });
+    let mut port = ProcessLivePort::new_with_timeout(owner(), Arc::clone(&mailbox), abort, 20);
+    let completion = Arc::new(Mutex::new(None));
+    let observed = Arc::clone(&completion);
+    let result = port.begin_configure_session(
+        &ConfigIntent {
+            owner: owner(),
+            expected_config_revision: ConfigRevision::first(),
+            mutation: ConfigMutation::Mode(ConfigId::new("mode", "code").unwrap()),
+        },
+        Instant::now() + std::time::Duration::from_millis(20),
+        ConfigCompletionSink::new(move |result| {
+            *observed.lock().unwrap() = Some(result);
+        }),
+    );
+
+    assert_eq!(result, Err(HostError::Deadline));
+    assert!(mailbox.submit_worker(WorkerCommand::Shutdown).is_ok());
+    assert!(exits.lock().unwrap().is_empty());
+    mailbox.close();
+    assert_eq!(
+        completion.lock().unwrap().take(),
+        Some(Err(HostError::Closed))
+    );
 }
 
 #[test]

@@ -5,7 +5,7 @@ use std::{
 
 use crate::acp::{limits::LIMITS, transport::ReservedQueue};
 
-use super::types::{HostCommand, HostError, HostReply};
+use super::types::{ConfigCompletion, HostCommand, HostError, HostReply};
 
 pub(super) struct Envelope {
     pub(super) command: HostCommand,
@@ -15,7 +15,14 @@ pub(super) struct Envelope {
 
 struct State {
     queue: ReservedQueue<Envelope>,
+    config_completion: Option<ConfigCompletion>,
     closed: bool,
+}
+
+pub(super) enum HostMessage {
+    Command(Envelope),
+    ConfigCompletion(ConfigCompletion),
+    ConfigDeadline,
 }
 
 pub(super) struct HostMailbox {
@@ -35,6 +42,7 @@ impl HostMailbox {
         Ok(Self {
             state: Mutex::new(State {
                 queue,
+                config_completion: None,
                 closed: false,
             }),
             ready: Condvar::new(),
@@ -70,24 +78,62 @@ impl HostMailbox {
         Ok(())
     }
 
-    pub(super) fn wait_next(&self) -> Option<Envelope> {
+    pub(super) fn complete_config(&self, completion: ConfigCompletion) {
+        let mut state = self.lock();
+        if state.closed {
+            return;
+        }
+        let replace = state
+            .config_completion
+            .as_ref()
+            .is_none_or(|retained| completion.operation_id > retained.operation_id);
+        if replace {
+            state.config_completion = Some(completion);
+            self.ready.notify_one();
+        }
+    }
+
+    pub(super) fn wait_next(&self, config_deadline: Option<Instant>) -> Option<HostMessage> {
         loop {
             let expired = {
                 let mut state = self.lock();
                 loop {
+                    if let Some(completion) = state.config_completion.take() {
+                        return Some(HostMessage::ConfigCompletion(completion));
+                    }
                     match state.queue.pop() {
                         Some(envelope) if Instant::now() >= envelope.deadline => {
                             // Never dispatch work that expired while queued.
                             break Some(envelope);
                         }
-                        Some(envelope) => return Some(envelope),
+                        Some(envelope) => return Some(HostMessage::Command(envelope)),
                         None if state.closed => return None,
-                        None => {
-                            state = self
-                                .ready
-                                .wait(state)
-                                .unwrap_or_else(std::sync::PoisonError::into_inner);
-                        }
+                        None => match config_deadline {
+                            Some(deadline) => {
+                                let remaining = deadline.saturating_duration_since(Instant::now());
+                                if remaining.is_zero() {
+                                    return Some(HostMessage::ConfigDeadline);
+                                }
+                                let (next, timeout) = self
+                                    .ready
+                                    .wait_timeout(state, remaining)
+                                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                                state = next;
+                                if timeout.timed_out()
+                                    && state.config_completion.is_none()
+                                    && state.queue.data_usage().0 == 0
+                                    && state.queue.control_usage().0 == 0
+                                {
+                                    return Some(HostMessage::ConfigDeadline);
+                                }
+                            }
+                            None => {
+                                state = self
+                                    .ready
+                                    .wait(state)
+                                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                            }
+                        },
                     }
                 }
             };
@@ -101,6 +147,7 @@ impl HostMailbox {
         let drained = {
             let mut state = self.lock();
             state.closed = true;
+            state.config_completion = None;
             let mut drained = Vec::new();
             while let Some(envelope) = state.queue.pop() {
                 drained.push(envelope);

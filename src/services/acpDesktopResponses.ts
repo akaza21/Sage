@@ -125,6 +125,8 @@ function safeCapabilities(
   } as AgentSessionProjection["capabilities"];
 }
 
+import { decodeSessionConfig } from "../domain/acpSessionConfig";
+
 function safeSession(value: unknown): AgentSessionProjection | null {
   if (!isRecord(value)) return null;
   const id = safeIdentifier(value.id);
@@ -214,6 +216,32 @@ export function safeAcpMutationResponse(
   if (sessions.some((session) => !session) || turns.some((turn) => !turn))
     return null;
   const safeSessions = sessions as AgentSessionProjection[];
+  const sessionConfig =
+    projection.sessionConfig == null
+      ? null
+      : decodeSessionConfig(projection.sessionConfig);
+  if (projection.sessionConfig != null && !sessionConfig) return null;
+  const configOwner = safeSessions.find(
+    (session) => session.id === currentSessionId,
+  );
+  if (
+    sessionConfig &&
+    (sessionConfig.sageAgentSessionId !== currentSessionId ||
+      sessionConfig.runtimeEpoch !== configOwner?.runtimeEpoch ||
+      configOwner.residency !== "hot" ||
+      !["ready", "active"].includes(configOwner.state))
+  )
+    return null;
+  if (
+    safeSessions.some(
+      (session) =>
+        session.capabilities.configCount !==
+        (session.id === currentSessionId && !sessionConfig?.removed
+          ? (sessionConfig?.configOptions.length ?? 0)
+          : 0),
+    )
+  )
+    return null;
   const safeTurns = turns.filter(
     (turn): turn is NonNullable<typeof turn> => turn !== null,
   );
@@ -254,6 +282,7 @@ export function safeAcpMutationResponse(
         projectionRevision as AcpChatPage["projectionRevision"],
       currentSessionId: currentSessionId as AcpChatPage["currentSessionId"],
       sessions: safeSessions,
+      sessionConfig,
       turns: safeTurns,
       nextCursor: nextCursor as AcpChatPage["nextCursor"],
     },

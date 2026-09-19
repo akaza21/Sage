@@ -4,6 +4,7 @@ use super::*;
 
 impl AcpService {
     pub(crate) fn shutdown_blocking(&self) -> Result<(), crate::acp::runtime::HostError> {
+        self.runtime.config.clear_all();
         let started = Instant::now();
         let settlement = self.read_text_files.terminalize_all();
         let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
@@ -108,6 +109,7 @@ impl AcpService {
 
 impl Drop for AcpService {
     fn drop(&mut self) {
+        self.runtime.config.clear_all();
         let started = Instant::now();
         let settlement = self.read_text_files.terminalize_all();
         let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);

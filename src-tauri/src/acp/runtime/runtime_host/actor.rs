@@ -1,16 +1,23 @@
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use crate::acp::{scheduler::RuntimeOwner, store::AdapterTurnCursor};
 
+#[path = "actor_close.rs"]
+mod actor_close;
 #[path = "actor_park.rs"]
 mod actor_park;
+#[path = "actor_session_config.rs"]
+mod actor_session_config;
 
 use super::{
-    mailbox::HostMailbox,
+    mailbox::{HostMailbox, HostMessage},
     types::{
-        CancelPhase, ClosePhase, HostCancelIntent, HostCloseIntent, HostCommand, HostError,
-        HostOutcome, HostPromptIntent, HostReply, HostState, PendingCancel, PendingClose,
-        PendingTerminal, PromptWrite, RuntimeEngine,
+        CancelPhase, HostCancelIntent, HostCommand, HostError, HostOutcome, HostPromptIntent,
+        HostReply, HostState, PendingCancel, PendingClose, PendingHostConfig, PendingTerminal,
+        PromptWrite, RuntimeEngine,
     },
 };
 
@@ -23,6 +30,8 @@ pub(super) struct Actor<E> {
     pub(super) pending_cancel: Option<PendingCancel>,
     pub(super) pending_terminal: Option<PendingTerminal>,
     pub(super) pending_close: Option<PendingClose>,
+    pub(super) pending_config: Option<PendingHostConfig>,
+    pub(super) next_config_operation: u64,
 }
 
 impl<E: RuntimeEngine> Actor<E> {
@@ -36,27 +45,61 @@ impl<E: RuntimeEngine> Actor<E> {
             pending_cancel: None,
             pending_terminal: None,
             pending_close: None,
+            pending_config: None,
+            next_config_operation: 0,
         }
     }
 
-    pub(super) fn run(mut self, mailbox: &HostMailbox) {
-        while let Some(envelope) = mailbox.wait_next() {
-            let stop = matches!(envelope.command, HostCommand::Shutdown);
-            // Defense in depth: mailbox dequeue and actor dispatch are
-            // separate scheduling points, so queued expiry must be checked at
-            // both boundaries using the caller's original absolute deadline.
-            let result = if Instant::now() >= envelope.deadline {
-                Err(HostError::Deadline)
-            } else {
-                self.dispatch(envelope.command, envelope.deadline)
-            };
-            let stopped = stop && matches!(result, Ok(HostReply::Outcome(HostOutcome::Shutdown)));
-            let _ = envelope.reply.send(result);
-            if stopped {
-                mailbox.close();
-                return;
+    pub(super) fn run(mut self, mailbox: Arc<HostMailbox>) {
+        while let Some(message) =
+            mailbox.wait_next(self.pending_config.as_ref().map(|pending| pending.deadline))
+        {
+            match message {
+                HostMessage::ConfigCompletion(completion) => {
+                    self.complete_config(completion);
+                }
+                HostMessage::ConfigDeadline => {
+                    if let Some(deadline) =
+                        self.pending_config.as_ref().map(|pending| pending.deadline)
+                    {
+                        self.engine.abandon_configuration(deadline);
+                    }
+                    self.fail_pending_config(HostError::Deadline);
+                }
+                HostMessage::Command(envelope) => {
+                    if matches!(envelope.command, HostCommand::ConfigureSession(_)) {
+                        self.begin_configure_session(envelope, &mailbox);
+                        continue;
+                    }
+                    let stop = matches!(&envelope.command, HostCommand::Shutdown);
+                    let abandons_config = matches!(
+                        &envelope.command,
+                        HostCommand::BeginClose(_) | HostCommand::BeginPark | HostCommand::Shutdown
+                    );
+                    if abandons_config && self.pending_config.is_some() {
+                        self.engine.abandon_configuration(envelope.deadline);
+                        self.settle_pending_config(HostError::Closed);
+                    }
+                    // Defense in depth: mailbox dequeue and actor dispatch are
+                    // separate scheduling points, so queued expiry must be checked at
+                    // both boundaries using the caller's original absolute deadline.
+                    let result = if Instant::now() >= envelope.deadline {
+                        Err(HostError::Deadline)
+                    } else {
+                        self.dispatch(envelope.command, envelope.deadline)
+                    };
+                    let stopped =
+                        stop && matches!(result, Ok(HostReply::Outcome(HostOutcome::Shutdown)));
+                    let _ = envelope.reply.send(result);
+                    if stopped {
+                        self.fail_pending_config(HostError::Closed);
+                        mailbox.close();
+                        return;
+                    }
+                }
             }
         }
+        self.fail_pending_config(HostError::Closed);
         // Engine ownership must never be leaked: dropping the process driver
         // retains the platform supervisor's bounded emergency teardown path.
         let _ = self.engine.shutdown(
@@ -71,6 +114,7 @@ impl<E: RuntimeEngine> Actor<E> {
         deadline: Instant,
     ) -> Result<HostReply, HostError> {
         match command {
+            HostCommand::ConfigureSession(_) => Err(HostError::State),
             HostCommand::ResolvePermission {
                 owner,
                 request_id,
@@ -304,99 +348,5 @@ impl<E: RuntimeEngine> Actor<E> {
         self.pending_terminal = None;
         self.state = HostState::Idle;
         Ok(HostReply::Outcome(HostOutcome::TurnTerminal))
-    }
-
-    fn begin_close(&mut self, intent: HostCloseIntent) -> Result<HostReply, HostError> {
-        let owner = intent.owner();
-        if !matches!(self.state, HostState::Idle | HostState::Running)
-            || !self.matches_owner(&owner)
-        {
-            return Err(HostError::Intent);
-        }
-        let prior = self.state;
-        self.state = HostState::Draining;
-        self.pending_close = Some(PendingClose {
-            intent: intent.clone(),
-            phase: ClosePhase::Begin,
-        });
-        match self.engine.begin_close(&intent) {
-            Ok(()) => {
-                self.pending_close
-                    .as_mut()
-                    .expect("close intent retained")
-                    .phase = ClosePhase::Finish;
-                Ok(HostReply::Outcome(HostOutcome::CloseStarted))
-            }
-            Err(error) => {
-                if matches!(error, HostError::Capacity | HostError::Intent) {
-                    self.pending_close = None;
-                    self.state = prior;
-                } else {
-                    self.state = HostState::Recovery;
-                }
-                Err(error)
-            }
-        }
-    }
-
-    fn finish_close(&mut self, intent: HostCloseIntent) -> Result<HostReply, HostError> {
-        if self.state != HostState::Draining
-            || !self.pending_close.as_ref().is_some_and(|pending| {
-                pending.intent == intent && pending.phase == ClosePhase::Finish
-            })
-        {
-            return Err(HostError::Intent);
-        }
-        let result = self
-            .engine
-            .converge_zero(&intent)
-            .and_then(|()| self.engine.finalize_close(&intent));
-        match result {
-            Ok(()) => {
-                self.owner = None;
-                self.active_turn = None;
-                self.pending_prompt = false;
-                self.pending_cancel = None;
-                self.pending_terminal = None;
-                self.pending_close = None;
-                self.state = HostState::Cold;
-                Ok(HostReply::Outcome(HostOutcome::Closed))
-            }
-            Err(error) => {
-                self.state = HostState::Recovery;
-                Err(error)
-            }
-        }
-    }
-
-    fn recover_close(&mut self, intent: HostCloseIntent) -> Result<HostReply, HostError> {
-        if self.state != HostState::Recovery
-            || !self
-                .pending_close
-                .as_ref()
-                .is_some_and(|pending| pending.intent == intent)
-        {
-            return Err(HostError::Intent);
-        }
-        self.state = HostState::Draining;
-        if self
-            .pending_close
-            .as_ref()
-            .is_some_and(|pending| pending.phase == ClosePhase::Begin)
-        {
-            if let Err(error) = self.engine.begin_close(&intent) {
-                self.state = HostState::Recovery;
-                return Err(error);
-            }
-            self.pending_close
-                .as_mut()
-                .expect("close intent retained")
-                .phase = ClosePhase::Finish;
-        }
-        self.finish_close(intent)
-    }
-
-    fn matches_owner(&self, owner: &RuntimeOwner) -> bool {
-        self.owner.as_ref() == Some(owner)
     }
 }

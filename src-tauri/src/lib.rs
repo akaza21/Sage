@@ -309,6 +309,8 @@ pub fn run() {
             commands::acp::send_acp_turn,
             commands::acp::cancel_acp_turn,
             commands::acp::close_acp_session,
+            commands::acp::session_config::set_acp_session_mode,
+            commands::acp::session_config::set_acp_session_config_option,
             commands::acp::permission::resolve_permission_decision,
             commands::acp::read_text_file::acknowledge_acp_read_text_file,
             commands::acp::edit_disposition::record_agent_edit_disposition,

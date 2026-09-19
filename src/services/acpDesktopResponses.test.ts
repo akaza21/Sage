@@ -121,6 +121,7 @@ function mutation(overrides: Record<string, unknown> = {}): object {
       projectionRevision: "1",
       currentSessionId: "session-0",
       sessions: [session()],
+      sessionConfig: null,
       turns: [turn()],
       nextCursor: null,
       ...overrides,
@@ -144,6 +145,21 @@ function mutationWithEntityRevisions(revision: unknown): object {
 describe("safeAcpMutationResponse", () => {
   it("returns a well-bounded mutation projection", () => {
     expect(safeAcpMutationResponse(mutation())).toEqual(mutation());
+  });
+
+  it("accepts an exact-owner session config removal tombstone with no advertised configs", () => {
+    const projection = mutation({
+      sessions: [session()],
+      sessionConfig: {
+        sageAgentSessionId: "session-0",
+        runtimeEpoch: "1",
+        configRevision: "2",
+        removed: true,
+        modes: null,
+        configOptions: [],
+      },
+    });
+    expect(safeAcpMutationResponse(projection)).toEqual(projection);
   });
 
   it("admits native zero entity revisions while retaining counter bounds", () => {

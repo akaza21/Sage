@@ -61,6 +61,7 @@ mod renderer_recreation_packet;
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 pub(crate) mod runtime_identity;
 mod runtime_slot;
+mod session_config;
 mod shutdown;
 
 #[cfg(all(windows, feature = "acp-fixture"))]
@@ -343,7 +344,9 @@ impl AcpService {
         chat_id: SageChatId,
         cursor: Option<PageCursor>,
     ) -> Result<AcpChatPage, StoreError> {
-        load_chat_page(&self.database.connection(), project_id, chat_id, cursor)
+        let mut page = load_chat_page(&self.database.connection(), project_id, chat_id, cursor)?;
+        self.compose_session_config(&mut page)?;
+        Ok(page)
     }
 
     pub(crate) fn intent_snapshot(

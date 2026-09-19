@@ -46,6 +46,8 @@ export interface AcpActionCommands {
   sendTurn: typeof acpDesktop.sendTurn;
   cancelTurn: typeof acpDesktop.cancelTurn;
   closeSession: typeof acpDesktop.closeSession;
+  setSessionMode?: typeof acpDesktop.setSessionMode;
+  setSessionConfigOption?: typeof acpDesktop.setSessionConfigOption;
 }
 
 interface AcpActionDependencies {
@@ -357,15 +359,18 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     });
   };
 
-  const { cancel, close } = createAcpSessionActions({
-    getContext: dependencies.getContext,
-    enqueue,
-    apply,
-    sameScope,
-    nextIntentId,
-    cancelTurn: commands.cancelTurn,
-    closeSession: commands.closeSession,
-  });
+  const { cancel, close, setSessionMode, setSessionConfigOption } =
+    createAcpSessionActions({
+      getContext: dependencies.getContext,
+      enqueue,
+      apply,
+      sameScope,
+      nextIntentId,
+      cancelTurn: commands.cancelTurn,
+      closeSession: commands.closeSession,
+      setSessionMode: commands.setSessionMode,
+      setSessionConfigOption: commands.setSessionConfigOption,
+    });
 
-  return { submit, cancel, close };
+  return { submit, cancel, close, setSessionMode, setSessionConfigOption };
 }

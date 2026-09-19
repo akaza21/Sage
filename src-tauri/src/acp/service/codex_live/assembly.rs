@@ -148,6 +148,9 @@ impl AcpService {
                     .await;
             }
         };
+        prepared
+            .runtime
+            .attach_config(abort.owner.clone(), Arc::clone(&self.runtime.config));
         let pump = match ActivationPump::new_retained(
             prepared.runtime,
             CoordinatorActivationJournal::new(session_lease),

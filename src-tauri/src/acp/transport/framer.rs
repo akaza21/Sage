@@ -110,6 +110,10 @@ impl IncrementalFrameDecoder {
         }
     }
 
+    pub(crate) fn is_frame_aligned(&self) -> bool {
+        !self.has_pending_input() && self.assembly.is_empty() && !self.pending_cr
+    }
+
     pub(crate) fn has_pending_input(&self) -> bool {
         self.pending_cursor < self.pending.len()
     }

@@ -27,6 +27,7 @@ mod active_close;
 mod idle;
 mod recovery;
 mod reusable;
+mod session_config;
 mod turn;
 mod turn_park;
 mod write_recovery;
