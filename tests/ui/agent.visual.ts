@@ -220,6 +220,7 @@ test.describe("ED02 picker visual states", () => {
     );
     await modelTrigger.click();
     await expectOpenPickerContained(page, modelInput, modelListbox);
+    await settleTranscriptAtEnd(page);
     await expectNoViewportOverflow(page);
     await takeCanonicalScreenshot(workbench, "agent-picker-harness-model");
   });
