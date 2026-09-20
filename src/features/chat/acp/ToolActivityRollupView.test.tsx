@@ -306,11 +306,18 @@ describe("ToolActivityRollup", () => {
       />,
     );
 
-    const disclosure = document.querySelector(".acp-tool-rollup");
+    const disclosure =
+      document.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
     expect(disclosure).not.toBeNull();
     expect(disclosure).not.toHaveAttribute("open");
     expect(screen.queryByRole("group", { name: "file activity" })).toBeNull();
-    fireEvent.click(screen.getByText("File activity · 2 files"));
+    if (!disclosure) throw new Error("Expected the tool rollup disclosure");
+
+    disclosure.open = true;
+    fireEvent(disclosure, new Event("toggle"));
+
+    expect(disclosure.open).toBe(true);
+    expect(disclosure).toHaveAttribute("open");
     expect(
       screen.getAllByRole("group", { name: "file activity" }),
     ).toHaveLength(2);

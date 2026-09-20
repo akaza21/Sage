@@ -35,14 +35,11 @@ export function ToolActivityRollup({
   return (
     <details
       className="acp-activity-card acp-activity-card--tool-rollup acp-tool-rollup"
-      open={expanded}
       data-activity-kind={rollup.kind}
       data-activity-state={state}
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
-      <summary
-        aria-expanded={expanded}
-        onClick={() => setExpanded((current) => !current)}
-      >
+      <summary>
         <span>{label}</span>
         <span className="acp-state">
           {stateLabel} · {expanded ? "Hide" : "Show"}

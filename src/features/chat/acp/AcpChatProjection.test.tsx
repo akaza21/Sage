@@ -465,8 +465,12 @@ describe("AcpChatProjection", () => {
     ];
 
     const { container } = render(<AcpChatProjection page={next} active />);
-    const rollup = await screen.findByText("Tool activity · 2 items");
-    fireEvent.click(rollup);
+    await screen.findByText("Tool activity · 2 items");
+    const rollup =
+      container.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
+    if (!rollup) throw new Error("Expected the tool rollup disclosure");
+    rollup.open = true;
+    fireEvent(rollup, new Event("toggle"));
     expect(container.querySelectorAll(".acp-tool-card")).toHaveLength(2);
     expect(
       [...container.querySelectorAll(".acp-tool-card")].map((card) =>

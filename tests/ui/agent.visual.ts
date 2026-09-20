@@ -138,6 +138,32 @@ test.describe("Wave 2 canonical visual states", () => {
   }
 });
 
+test.describe("Tool activity rollup disclosure", () => {
+  test("opens real details content with pointer and keyboard activation", async ({
+    page,
+  }) => {
+    await openScenario(page, "agent-declared-test", "agent");
+    const rollup = page.locator(".acp-tool-rollup");
+    const summary = rollup.locator("summary");
+    const items = rollup.locator(".acp-tool-rollup__items");
+
+    await expect(rollup).not.toHaveAttribute("open", "");
+    await expect(items).toHaveCount(0);
+    await summary.click();
+    await expect(rollup).toHaveAttribute("open", "");
+    await expect(items).toBeVisible();
+
+    await summary.click();
+    await expect(rollup).not.toHaveAttribute("open", "");
+    await expect(items).toHaveCount(0);
+    await summary.focus();
+    await expect(summary).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(rollup).toHaveAttribute("open", "");
+    await expect(items).toBeVisible();
+  });
+});
+
 test.describe("ED02 picker visual states", () => {
   test("captures the ready harness and model picker state", async ({
     page,
