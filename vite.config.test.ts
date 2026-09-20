@@ -271,7 +271,9 @@ describe("desktop-native chunk topology", () => {
     expect(groupedGraph.entryCount).toBe(1);
     // Preserve the lazy-boundary shape without making every new module a merge
     // conflict: the initial graph must remain a minority of the full graph.
-    expect(ordinaryGraph.initialModules.length).toBeLessThanOrEqual(280);
+    // The reference's icon-and-value composer row replaces labels that
+    // truncated selected values, requiring one model glyph in the initial graph.
+    expect(ordinaryGraph.initialModules.length).toBeLessThanOrEqual(281);
     expect(ordinaryGraph.initialModules.length).toBeLessThanOrEqual(
       Math.ceil(ordinaryGraph.allModules.length * 0.65),
     );

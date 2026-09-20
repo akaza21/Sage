@@ -28,7 +28,10 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer__controls\s*\{[^}]*flex-wrap:\s*wrap;/s,
     );
     expect(surfaceCss).toMatch(
-      /\.composer__toolbar\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;/s,
+      /\.composer__controls\s*>\s*\.select-control\s*\{[^}]*flex:\s*0\s+1\s+auto;/s,
+    );
+    expect(surfaceCss).toMatch(
+      /\.composer__toolbar\s*\{[^}]*grid-template-areas:\s*"controls\s+send";[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;/s,
     );
   });
 
@@ -42,7 +45,10 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer textarea\s*\{[^}]*min-height:\s*76px;[^}]*padding:\s*var\(--space-3\)\s+var\(--space-3\)\s+var\(--space-6\);/s,
     );
     expect(surfaceCss).toMatch(
-      /@media \(max-width:\s*820px\)[\s\S]*\.composer__shortcut,\s*\.access-mode\s*\{[^}]*display:\s*none;/s,
+      /\.composer__shortcut\s*\{[^}]*display:\s*none;/s,
+    );
+    expect(surfaceCss).toMatch(
+      /@media \(max-width:\s*820px\)[\s\S]*\.access-mode\s*\{[^}]*display:\s*none;/s,
     );
     expect(surfaceCss).not.toMatch(/transform:\s*translate/);
   });
@@ -62,7 +68,16 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer__context\s*\{[^}]*position:\s*absolute;[^}]*right:\s*var\(--space-3\);[^}]*bottom:\s*var\(--space-2\);[^}]*pointer-events:\s*none;/s,
     );
     expect(surfaceCss).toMatch(
+      /\.project-scope\s*\{[^}]*height:\s*var\(--control-height-compact\);[^}]*gap:\s*var\(--space-1\);[^}]*border:\s*1px solid var\(--color-border-subtle\);/s,
+    );
+    expect(surfaceCss).toMatch(
+      /\.project-scope__icon,\s*\.select-control__icon\s*\{[^}]*flex:\s*0\s+0\s+auto;[^}]*color:\s*var\(--color-text-muted\);/s,
+    );
+    expect(surfaceCss).toMatch(
       /\.composer__context-usage-fill\s*\{[^}]*width:\s*var\(--composer-context-usage\);[^}]*border-radius:\s*var\(--radius-pill\);[^}]*background:\s*var\(--color-accent\);/s,
+    );
+    expect(surfaceCss).toMatch(
+      /@media \(forced-colors:\s*active\)\s*\{[\s\S]*?\.project-scope__icon,\s*\.select-control__icon,\s*[\s\S]*?\.send-button\s*\{[^}]*border:\s*1px solid CanvasText;/s,
     );
     expect(surfaceCss).toMatch(
       /@media \(forced-colors:\s*active\)\s*\{[\s\S]*?\.composer__context-usage\s*\{[^}]*border:[^}]*CanvasText;/s,

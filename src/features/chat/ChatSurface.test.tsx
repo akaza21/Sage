@@ -233,6 +233,8 @@ describe("ChatSurface ACP resource integration", () => {
 
     const trigger = screen.getByRole("button", { name: "Session mode" });
     expect(trigger).toHaveTextContent("Review changes");
+    expect(trigger).toHaveAccessibleName("Session mode");
+    expect(trigger.scrollWidth).toBe(trigger.clientWidth);
     fireEvent.click(trigger);
     expect(
       screen.getAllByRole("option").map((option) => option.textContent),
@@ -354,9 +356,10 @@ describe("ChatSurface ACP resource integration", () => {
     hooks.actions.error = "Prompt dispatch failed";
     render(<ChatSurface />);
 
-    expect(
-      screen.getByRole("button", { name: "Session mode" }),
-    ).toHaveTextContent("Review changes");
+    const modeTrigger = screen.getByRole("button", { name: "Session mode" });
+    expect(modeTrigger).toHaveTextContent("Review changes");
+    expect(modeTrigger).toHaveAccessibleName("Session mode");
+    expect(modeTrigger.scrollWidth).toBe(modeTrigger.clientWidth);
     expect(screen.getByText("Changing mode…")).toHaveAttribute(
       "role",
       "status",
@@ -2215,7 +2218,7 @@ describe("ChatSurface attached context", () => {
 });
 
 describe("ChatSurface composer context", () => {
-  it("does not claim a workspace location in the compact context meter", () => {
+  it("names the active project in the composer scope control", () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "  micrograd  ", roots: [] },
       harnesses: [
@@ -2233,10 +2236,11 @@ describe("ChatSurface composer context", () => {
       selectedHarnessId: "sage-simulator",
     });
     render(<ChatSurface />);
-    const context = screen.getByLabelText("Composer context");
-    expect(context).toBeEmptyDOMElement();
-    expect(context).not.toHaveTextContent("Local");
-    expect(context).not.toHaveTextContent("micrograd");
+
+    const scope = document.querySelector(".project-scope");
+    expect(scope).toHaveTextContent("micrograd");
+    expect(scope).toHaveAttribute("title", "Project switching is unavailable");
+    expect(screen.getByLabelText("Composer context")).toBeEmptyDOMElement();
   });
 
   it("shows Working for nonterminal ACP turns but hides it during project transition", async () => {

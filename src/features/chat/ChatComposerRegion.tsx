@@ -13,6 +13,7 @@ import {
 import { ComposerAffordances } from "./ComposerAffordances";
 import { ComposerAttachments } from "./ComposerAttachments";
 import { ComposerContext } from "./ComposerContext";
+import { composerWorkspaceName } from "./composerChrome";
 import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
 
 export function ChatComposerRegion({
@@ -36,6 +37,7 @@ export function ChatComposerRegion({
   onSetSessionMode,
   missingBindingNotice,
   disabledReason,
+  project,
   usage,
   onSubmit,
   onTextChange,
@@ -62,6 +64,7 @@ export function ChatComposerRegion({
   onSetSessionMode: (modeId: string) => Promise<unknown>;
   missingBindingNotice: boolean;
   disabledReason: string | null;
+  project: { name: string } | null | undefined;
   usage: Extract<AcpItem, { kind: "usage" }>["payload"] | null;
   onSubmit: FormEventHandler<HTMLFormElement>;
   onTextChange: (text: string) => void;
@@ -70,6 +73,7 @@ export function ChatComposerRegion({
 }) {
   const shortcutLabel = composerShortcutLabel(/mac/i.test(navigator.platform));
   const composerDisabled = !enabled || actionBusy || projectTransitioning;
+  const projectName = composerWorkspaceName(project);
   const shortcutDescriptionId = `${descriptionId}-shortcut`;
 
   return (
@@ -144,6 +148,7 @@ export function ChatComposerRegion({
         <ChatHarnessControls
           availableBinding={availableBinding}
           canPrompt={canPrompt}
+          projectName={projectName}
           sessionConfig={sessionConfig}
           modePending={modePending}
           modeError={modeError}

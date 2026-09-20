@@ -1,4 +1,4 @@
-import { ShieldCheck } from "lucide-react";
+import { Box, BrainCircuit, Folder, Settings, ShieldCheck } from "lucide-react";
 import {
   useCallback,
   useLayoutEffect,
@@ -14,6 +14,7 @@ import { SearchablePicker } from "../../ui/SearchablePicker";
 interface Props {
   availableBinding: boolean;
   canPrompt: boolean;
+  projectName: string | null;
   sessionConfig: AcpSessionConfig | null;
   modePending: boolean;
   modeError: string | null;
@@ -26,6 +27,7 @@ interface Props {
 export function ChatHarnessControls({
   availableBinding,
   canPrompt,
+  projectName,
   sessionConfig,
   modePending,
   modeError,
@@ -126,7 +128,7 @@ export function ChatHarnessControls({
   return (
     <div className="composer__controls">
       <label className="select-control select-control--chip">
-        <span className="select-control__label">Harness</span>
+        <Box className="select-control__icon" size={14} aria-hidden="true" />
         <SearchablePicker
           ariaLabel="Harness"
           candidates={harnessCandidates}
@@ -136,7 +138,11 @@ export function ChatHarnessControls({
         />
       </label>
       <label className="select-control select-control--chip">
-        <span className="select-control__label">Model</span>
+        <BrainCircuit
+          className="select-control__icon"
+          size={14}
+          aria-hidden="true"
+        />
         <SearchablePicker
           ariaLabel="Model"
           candidates={modelCandidates}
@@ -150,12 +156,29 @@ export function ChatHarnessControls({
           </span>
         ) : null}
       </label>
+      {projectName ? (
+        <span
+          className="project-scope"
+          title="Project switching is unavailable"
+        >
+          <Folder
+            className="project-scope__icon"
+            size={14}
+            aria-hidden="true"
+          />
+          <span>{projectName}</span>
+        </span>
+      ) : null}
       {hasModes ? (
         <label
           ref={modeControlRef}
           className="select-control select-control--chip"
         >
-          <span className="select-control__label">Mode</span>
+          <Settings
+            className="select-control__icon"
+            size={14}
+            aria-hidden="true"
+          />
           <SearchablePicker
             ariaLabel="Session mode"
             candidates={modeCandidates}

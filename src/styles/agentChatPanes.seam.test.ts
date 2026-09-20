@@ -25,7 +25,7 @@ describe("Agent Chat panes stylesheet seam", () => {
     );
     expect(panesCss).toContain(".agent-chat-chip--failed");
     expect(panesCss).toMatch(
-      /\.agent-chat-panes--split \.composer__shortcut\s*\{[^}]*display:\s*none;/s,
+      /\.agent-chat-panes--split \.composer__shortcut,\s*\.agent-chat-panes--split \.access-mode\s*\{[^}]*display:\s*none;/s,
     );
     expect(modeCss).not.toContain(".composer__shortcut");
     expect(panesCss).toMatch(

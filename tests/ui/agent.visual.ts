@@ -71,6 +71,42 @@ type ComposerControlBox = {
   y: number;
 };
 
+async function expectComposerControlRow(page: Page) {
+  // Scope to the composer and match exactly: an open picker puts its options
+  // in a listbox that also answers to these names, so a page-wide lookup
+  // resolves several elements and fails strict mode.
+  const form = page.locator("form.composer").first();
+  const controls = [
+    form.getByRole("button", { name: "Harness", exact: true }),
+    form.getByRole("button", { name: "Model", exact: true }),
+    form.getByRole("button", { name: "Session mode", exact: true }),
+    form.locator(".access-mode").first(),
+    form.getByRole("button", { name: "Send message", exact: true }),
+  ];
+  const centers = await Promise.all(
+    controls.map(async (control) => {
+      await expect(control).toBeVisible();
+      return control.evaluate((node) => {
+        const box = node.getBoundingClientRect();
+        return box.y + box.height / 2;
+      });
+    }),
+  );
+  expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(2);
+}
+
+async function expectComposerPickerValue(
+  picker: Locator,
+  name: "Harness" | "Model" | "Session mode",
+  value: string,
+) {
+  await expect(picker).toHaveAccessibleName(name);
+  await expect(picker).toHaveText(value);
+  expect(
+    await picker.evaluate((node) => node.scrollWidth === node.clientWidth),
+  ).toBe(true);
+}
+
 async function expectComposerControlsLaidOut(page: Page) {
   const controls = [
     page.getByRole("button", { name: "Harness" }),
@@ -379,7 +415,27 @@ test.describe("V2-4 session mode picker", () => {
       name: "Session mode",
       exact: true,
     });
-    await expect(closedTrigger).toHaveText("Review changes");
+    await expectComposerPickerValue(
+      page.getByRole("button", { name: "Harness", exact: true }),
+      "Harness",
+      "Codex — test only",
+    );
+    await expectComposerPickerValue(
+      page.getByRole("button", { name: "Model", exact: true }),
+      "Model",
+      "GPT-5",
+    );
+    await expectComposerPickerValue(
+      closedTrigger,
+      "Session mode",
+      "Review changes",
+    );
+    await expect(page.locator(".project-scope")).toHaveText("Sage");
+    await expect(page.locator(".project-scope")).toHaveAttribute(
+      "title",
+      "Project switching is unavailable",
+    );
+    await expectComposerControlRow(page);
     await takeCanonicalScreenshot(closedWorkbench, "agent-session-mode-closed");
 
     const openWorkbench = await openScenario(
@@ -759,12 +815,17 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const shortcuts = page.locator(
       ".agent-chat-panes--split .composer__shortcut",
     );
-    // Only the pane whose composer can actually be focused offers the chord:
-    // the other is mid-turn and disabled, and advertising Ctrl+L there would
-    // name a binding that does nothing. Split still hides the one that remains,
-    // so neither pane's toolbar grows a row.
+    // The focus chord remains in the enabled composer's accessible description,
+    // but no visual shortcut takes space from a split-pane control row.
     await expect(shortcuts).toHaveCount(1);
     await expect(shortcuts.first()).toBeHidden();
+    // Both panes, not just the first: split hides the policy chip in each so
+    // neither control group wraps and pushes its send out of the shared row.
+    const splitPolicies = page.locator(".agent-chat-panes--split .access-mode");
+    await expect(splitPolicies).toHaveCount(2);
+    for (let index = 0; index < 2; index += 1) {
+      await expect(splitPolicies.nth(index)).toBeHidden();
+    }
     for (let index = 0; index < 2; index += 1) {
       const pane = panes.nth(index);
       const controls = await Promise.all(
