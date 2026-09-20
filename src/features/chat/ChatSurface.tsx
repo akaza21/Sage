@@ -241,7 +241,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
           ].includes(harnessDiscoveryPhase)
         }
         disabledReason={disabledReason}
-        project={project}
         usage={usage}
         onSubmit={submit}
         onTextChange={setComposerText}

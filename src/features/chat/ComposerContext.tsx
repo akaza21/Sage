@@ -1,11 +1,16 @@
 import type { CSSProperties } from "react";
-import { Folder, Monitor } from "lucide-react";
 
 import type { AcpItem } from "../../domain/acp";
-import { composerWorkspaceName } from "./composerChrome";
 
 type UsagePayload = Extract<AcpItem, { kind: "usage" }>["payload"];
 type UsageStyle = CSSProperties & { "--composer-context-usage": string };
+
+function compactTokenCount(tokens: number): string {
+  if (tokens >= 1_000 && tokens % 1_000 === 0) {
+    return `${tokens / 1_000}K`;
+  }
+  return tokens.toLocaleString();
+}
 
 function UsageContext({ usage }: { usage: UsagePayload }) {
   const total = usage.totalTokens;
@@ -30,11 +35,12 @@ function UsageContext({ usage }: { usage: UsagePayload }) {
   const fill = `${(progress / capacity) * 100}%`;
   return (
     <span className="composer__context-item composer__context-item--usage">
-      <span>
-        Reported usage · {formattedTotal} / {formattedCapacity} tokens
+      <span className="composer__context-usage-label">
+        {compactTokenCount(total)} context
       </span>
       <span
         className="composer__context-usage"
+        title={`${formattedTotal} / ${formattedCapacity} tokens`}
         role="progressbar"
         aria-label="Reported usage"
         aria-valuemin={0}
@@ -50,25 +56,12 @@ function UsageContext({ usage }: { usage: UsagePayload }) {
 }
 
 export function ComposerContext({
-  project,
   usage,
 }: {
-  project: { name: string } | null | undefined;
   usage: Extract<AcpItem, { kind: "usage" }>["payload"] | null;
 }) {
-  const workspace = composerWorkspaceName(project);
   return (
     <p className="composer__context" aria-label="Composer context">
-      <span className="composer__context-item">
-        <Monitor size={12} strokeWidth={1.8} aria-hidden="true" />
-        Local
-      </span>
-      {workspace ? (
-        <span className="composer__context-item">
-          <Folder size={12} strokeWidth={1.8} aria-hidden="true" />
-          {workspace}
-        </span>
-      ) : null}
       {usage ? <UsageContext usage={usage} /> : null}
     </p>
   );

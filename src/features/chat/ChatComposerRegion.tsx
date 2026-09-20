@@ -10,6 +10,7 @@ import {
   composerPromptPlaceholder,
   composerShortcutLabel,
 } from "./composerChrome";
+import { ComposerAffordances } from "./ComposerAffordances";
 import { ComposerAttachments } from "./ComposerAttachments";
 import { ComposerContext } from "./ComposerContext";
 import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
@@ -35,7 +36,6 @@ export function ChatComposerRegion({
   onSetSessionMode,
   missingBindingNotice,
   disabledReason,
-  project,
   usage,
   onSubmit,
   onTextChange,
@@ -62,13 +62,16 @@ export function ChatComposerRegion({
   onSetSessionMode: (modeId: string) => Promise<unknown>;
   missingBindingNotice: boolean;
   disabledReason: string | null;
-  project: { name: string } | null | undefined;
   usage: Extract<AcpItem, { kind: "usage" }>["payload"] | null;
   onSubmit: FormEventHandler<HTMLFormElement>;
   onTextChange: (text: string) => void;
   onRemoveContext: (context: DiffLineCommentContext) => void;
   onCancelTurn: (() => void) | null;
 }) {
+  const shortcutLabel = composerShortcutLabel(/mac/i.test(navigator.platform));
+  const composerDisabled = !enabled || actionBusy || projectTransitioning;
+  const shortcutDescriptionId = `${descriptionId}-shortcut`;
+
   return (
     <form
       className="composer"
@@ -91,43 +94,52 @@ export function ChatComposerRegion({
           No reviewed local binding is available for this harness.
         </div>
       ) : null}
-      <ComposerAttachments
-        contexts={attachedContext}
-        disabled={actionBusy || projectTransitioning}
-        onRemove={onRemoveContext}
-      />
       <label className="sr-only" htmlFor={fieldId}>
         Message agent
       </label>
       <span className="sr-only" id={descriptionId}>
         Send a message to the selected harness and model
       </span>
-      <textarea
-        ref={composerRef}
-        id={fieldId}
-        aria-label="Message agent"
-        aria-describedby={`${descriptionId}${disabledReason ? ` ${disabledReasonId}` : ""}`}
-        value={text}
-        maxLength={MAX_CHAT_COMPOSER_BYTES}
-        rows={2}
-        placeholder={composerPromptPlaceholder(
-          canPrompt,
-          composerShortcutLabel(/mac/i.test(navigator.platform)),
-        )}
-        disabled={!enabled || actionBusy || projectTransitioning}
-        onChange={(event) => onTextChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey && enabled) {
-            event.preventDefault();
-            event.currentTarget.form?.requestSubmit();
-          }
-        }}
-      />
+      {!composerDisabled ? (
+        <span className="sr-only" id={shortcutDescriptionId}>
+          {shortcutLabel} focuses the composer. Enter sends. Shift+Enter adds a
+          new line.
+        </span>
+      ) : null}
+      <div className="composer__input-area">
+        <textarea
+          ref={composerRef}
+          id={fieldId}
+          aria-label="Message agent"
+          aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}`}
+          value={text}
+          maxLength={MAX_CHAT_COMPOSER_BYTES}
+          rows={2}
+          placeholder={composerPromptPlaceholder(canPrompt)}
+          disabled={composerDisabled}
+          onChange={(event) => onTextChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey && enabled) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
+          }}
+        />
+        <ComposerContext usage={usage} />
+      </div>
       {disabledReason ? (
         <p className="composer__disabled-reason" id={disabledReasonId}>
           {disabledReason}
         </p>
       ) : null}
+      <div className="composer__attachment-row">
+        <ComposerAffordances />
+        <ComposerAttachments
+          contexts={attachedContext}
+          disabled={actionBusy || projectTransitioning}
+          onRemove={onRemoveContext}
+        />
+      </div>
       <div className="composer__toolbar">
         <ChatHarnessControls
           availableBinding={availableBinding}
@@ -139,9 +151,11 @@ export function ChatComposerRegion({
           onSetSessionMode={onSetSessionMode}
           onModeRemoved={() => composerRef.current?.focus()}
         />
-        <span className="composer__shortcut" aria-hidden="true">
-          Enter to send <span>/</span> Shift+Enter for a new line
-        </span>
+        {!composerDisabled ? (
+          <span className="composer__shortcut" aria-hidden="true">
+            {shortcutLabel} to focus <span>/</span> Enter to send
+          </span>
+        ) : null}
         {onCancelTurn ? (
           <button
             className="send-button send-button--cancel"
@@ -161,11 +175,10 @@ export function ChatComposerRegion({
               projectTransitioning || !text.trim() || !enabled || actionBusy
             }
           >
-            <ArrowUp size={18} aria-hidden="true" />
+            <ArrowUp size={20} aria-hidden="true" />
           </button>
         )}
       </div>
-      <ComposerContext project={project} usage={usage} />
     </form>
   );
 }

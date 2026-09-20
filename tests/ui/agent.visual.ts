@@ -484,13 +484,18 @@ test.describe("V6 Composer context meter", () => {
     const knownProgress = knownContext.getByRole("progressbar", {
       name: "Reported usage",
     });
-    await expect(knownContext).toContainText(
-      "Reported usage · 6,000 / 272,000 tokens",
-    );
+    await expect(knownContext).toContainText("6K context");
+    await expect(
+      knownContext.locator(".composer__context-usage-label"),
+    ).toHaveText("6K context");
     await expect(knownProgress).toHaveCount(1);
     await expect(knownProgress).toHaveAttribute("aria-valuemin", "0");
     await expect(knownProgress).toHaveAttribute("aria-valuemax", "272000");
     await expect(knownProgress).toHaveAttribute("aria-valuenow", "6000");
+    await expect(knownProgress).toHaveAttribute(
+      "title",
+      "6,000 / 272,000 tokens",
+    );
     await expect(knownProgress).toHaveAttribute(
       "aria-valuetext",
       "6,000 / 272,000 tokens used",
@@ -513,9 +518,10 @@ test.describe("V6 Composer context meter", () => {
       name: "Reported usage",
     });
     const fill = overCapacityProgress.locator(".composer__context-usage-fill");
-    await expect(overCapacityContext).toContainText(
-      "Reported usage · 300,000 / 272,000 tokens",
-    );
+    await expect(overCapacityContext).toContainText("300K context");
+    await expect(
+      overCapacityContext.locator(".composer__context-usage-label"),
+    ).toHaveText("300K context");
     await expect(overCapacityProgress).toHaveCount(1);
     await expect(overCapacityProgress).toHaveAttribute(
       "aria-valuenow",
@@ -524,6 +530,10 @@ test.describe("V6 Composer context meter", () => {
     await expect(overCapacityProgress).toHaveAttribute(
       "aria-valuetext",
       "300,000 / 272,000 tokens used",
+    );
+    await expect(overCapacityProgress).toHaveAttribute(
+      "title",
+      "300,000 / 272,000 tokens",
     );
     expect(
       await fill.evaluate((element) => {
@@ -749,7 +759,11 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const shortcuts = page.locator(
       ".agent-chat-panes--split .composer__shortcut",
     );
-    await expect(shortcuts).toHaveCount(2);
+    // Only the pane whose composer can actually be focused offers the chord:
+    // the other is mid-turn and disabled, and advertising Ctrl+L there would
+    // name a binding that does nothing. Split still hides the one that remains,
+    // so neither pane's toolbar grows a row.
+    await expect(shortcuts).toHaveCount(1);
     await expect(shortcuts.first()).toBeHidden();
     for (let index = 0; index < 2; index += 1) {
       const pane = panes.nth(index);
@@ -759,10 +773,16 @@ test.describe("Wave 2 accessibility and responsive states", () => {
           pane.getByRole("button", { name: "Model" }),
           pane.locator(".send-button"),
         ].map((control) =>
-          control.evaluate((node) => node.getBoundingClientRect().y),
+          control.evaluate((node) => {
+            const box = node.getBoundingClientRect();
+            return box.y + box.height / 2;
+          }),
         ),
       );
-      expect(Math.max(...controls) - Math.min(...controls)).toBeLessThan(4);
+      // Centre lines, not top edges: send is deliberately the taller
+      // emphasized square, so equal tops would mean it was NOT centred
+      // against the shorter pickers.
+      expect(Math.max(...controls) - Math.min(...controls)).toBeLessThan(2);
     }
 
     const before = await panes.evaluateAll((items) =>

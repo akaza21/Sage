@@ -1911,7 +1911,9 @@ describe("ChatSurface per-chat composer", () => {
         <ChatSurface chatId="chat-b" />
       </>,
     );
-    const composers = screen.getAllByPlaceholderText("Ask anything (Ctrl+L)");
+    const composers = screen.getAllByPlaceholderText(
+      "Ask Sage to build, investigate, or explain…",
+    );
     fireEvent.change(composers[0], { target: { value: "Draft A" } });
     fireEvent.change(composers[1], { target: { value: "Draft B" } });
     expect(composers[0]).toHaveValue("Draft A");
@@ -2065,6 +2067,17 @@ describe("ChatSurface embedded chrome", () => {
 describe("ChatSurface composer focus hotkey", () => {
   it("focuses the enabled composer on Ctrl+L", () => {
     useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: "chat-hotkey",
+          kind: "chat",
+          title: "Chat: Hotkey",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-hotkey",
       harnesses: [
         {
           id: "sage-simulator",
@@ -2082,11 +2095,26 @@ describe("ChatSurface composer focus hotkey", () => {
     render(<ChatSurface />);
     const composer = screen.getByRole("textbox", { name: "Message agent" });
     expect(composer).toBeEnabled();
-    expect(composer).toHaveAttribute("placeholder", "Ask anything (Ctrl+L)");
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /Attach files:/ }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /Mention context:/ }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /Insert slash command:/ }),
+    ).toBeDisabled();
+    expect(composer).toHaveAttribute(
+      "placeholder",
+      "Ask Sage to build, investigate, or explain…",
+    );
     composer.blur();
     expect(composer).not.toHaveFocus();
     fireEvent.keyDown(window, { key: "l", ctrlKey: true });
     expect(composer).toHaveFocus();
+    fireEvent.change(composer, { target: { value: "Send this" } });
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
   });
 
   it("does not steal Ctrl+L when the composer is disabled", () => {
@@ -2170,9 +2198,11 @@ describe("ChatSurface attached context", () => {
     });
 
     render(<ChatSurface chatId={chatId} />);
-    expect(screen.getByLabelText("Attached context")).toHaveTextContent(
-      "Comment · src/AgentView.tsx:27-31",
-    );
+    const attachmentRow = document.querySelector(".composer__attachment-row");
+    expect(attachmentRow).not.toBeNull();
+    expect(
+      within(attachmentRow as HTMLElement).getByLabelText("Attached context"),
+    ).toHaveTextContent("Comment · src/AgentView.tsx:27-31");
     fireEvent.click(
       screen.getByRole("button", {
         name: "Remove Comment · src/AgentView.tsx:27-31 context",
@@ -2185,7 +2215,7 @@ describe("ChatSurface attached context", () => {
 });
 
 describe("ChatSurface composer context", () => {
-  it("shows Local and the project workspace name under the composer", () => {
+  it("does not claim a workspace location in the compact context meter", () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "  micrograd  ", roots: [] },
       harnesses: [
@@ -2204,8 +2234,9 @@ describe("ChatSurface composer context", () => {
     });
     render(<ChatSurface />);
     const context = screen.getByLabelText("Composer context");
-    expect(context).toHaveTextContent("Local");
-    expect(context).toHaveTextContent("micrograd");
+    expect(context).toBeEmptyDOMElement();
+    expect(context).not.toHaveTextContent("Local");
+    expect(context).not.toHaveTextContent("micrograd");
   });
 
   it("shows Working for nonterminal ACP turns but hides it during project transition", async () => {

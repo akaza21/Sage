@@ -1,38 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  COMPOSER_WORKSPACE_NAME_CAP,
+  COMPOSER_PROMPT_PLACEHOLDER,
   composerPromptPlaceholder,
   composerShortcutLabel,
-  composerWorkspaceName,
   isComposerFocusChord,
 } from "./composerChrome";
 
-describe("composer workspace name", () => {
-  it("trims a bounded project name and rejects empty or control input", () => {
-    expect(composerWorkspaceName({ name: "  micrograd  " })).toBe("micrograd");
-    expect(
-      composerWorkspaceName({ name: "x".repeat(COMPOSER_WORKSPACE_NAME_CAP) }),
-    ).toBe("x".repeat(COMPOSER_WORKSPACE_NAME_CAP));
-    expect(
-      composerWorkspaceName({
-        name: `x${"y".repeat(COMPOSER_WORKSPACE_NAME_CAP)}`,
-      }),
-    ).toBe(`x${"y".repeat(COMPOSER_WORKSPACE_NAME_CAP - 2)}…`);
-    expect(composerWorkspaceName({ name: "   " })).toBeNull();
-    expect(composerWorkspaceName({ name: "bad\nname" })).toBeNull();
-    expect(composerWorkspaceName(null)).toBeNull();
-  });
-});
-
 describe("composer prompt placeholder", () => {
-  it("shows Ask anything with an admitted shortcut and hides junk shortcuts", () => {
-    expect(composerPromptPlaceholder(true, "Ctrl+L")).toBe(
-      "Ask anything (Ctrl+L)",
-    );
-    expect(composerPromptPlaceholder(true, "⌘L")).toBe("Ask anything (⌘L)");
-    expect(composerPromptPlaceholder(true, "Alt+L")).toBe("Ask anything");
-    expect(composerPromptPlaceholder(false, "Ctrl+L")).toBe(
+  it("uses the target prompt independently of the focus shortcut", () => {
+    expect(composerPromptPlaceholder(true)).toBe(COMPOSER_PROMPT_PLACEHOLDER);
+    expect(composerPromptPlaceholder(false)).toBe(
       "Choose an available harness before starting a session",
     );
   });

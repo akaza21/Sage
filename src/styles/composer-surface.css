@@ -17,11 +17,122 @@
   box-shadow: var(--highlight-focus-halo-shadow), var(--elevation-popover);
 }
 
+.composer__input-area {
+  position: relative;
+  min-width: 0;
+}
+
+.composer textarea {
+  display: block;
+  width: 100%;
+  min-height: 76px;
+  max-height: min(180px, 28vh);
+  padding: var(--space-3) var(--space-3) var(--space-6);
+  resize: none;
+  border: 0;
+  outline: 0;
+  color: var(--color-text-primary);
+  background: transparent;
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-normal);
+}
+
+.composer textarea::placeholder {
+  color: var(--color-text-muted);
+}
+
+.composer textarea:disabled {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
+.composer__context {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-2);
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  pointer-events: none;
+}
+
+.composer__context-item {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.composer__context-item--usage {
+  gap: var(--space-2);
+}
+
+.composer__context-usage-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer__context-usage {
+  display: inline-block;
+  width: calc(var(--space-4) * 4);
+  height: var(--space-1);
+  flex: none;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-strong);
+}
+
+.composer__context-usage-fill {
+  display: block;
+  width: var(--composer-context-usage);
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+}
+
+.composer__attachment-row {
+  display: flex;
+  min-width: 0;
+  min-height: 36px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.composer__affordances {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.composer__affordance {
+  display: grid;
+  width: var(--control-height-compact);
+  height: var(--control-height-compact);
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-disabled);
+  background: transparent;
+  cursor: not-allowed;
+}
+
 .composer__attachments {
   display: flex;
   min-width: 0;
+  flex: 1 1 auto;
   margin: 0;
-  padding: var(--space-2) var(--space-3) 0;
+  padding: 0;
   flex-wrap: wrap;
   gap: var(--space-1);
   list-style: none;
@@ -75,39 +186,14 @@
   outline-offset: 1px;
 }
 
-.composer textarea {
-  display: block;
-  width: 100%;
-  min-height: 56px;
-  max-height: min(180px, 28vh);
-  padding: var(--space-3) var(--space-3) var(--space-1);
-  resize: none;
-  border: 0;
-  outline: 0;
-  color: var(--color-text-primary);
-  background: transparent;
-  font-family: var(--font-family-ui);
-  font-size: var(--font-size-md);
-  line-height: var(--line-height-normal);
-}
-
-.composer textarea::placeholder {
-  color: var(--color-text-muted);
-}
-
-.composer textarea:disabled {
-  color: var(--color-text-disabled);
-  cursor: not-allowed;
-}
-
 .composer__toolbar {
   display: grid;
-  min-height: 38px;
+  min-height: 44px;
   grid-template-areas: "controls shortcut send";
   grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: end;
+  align-items: center;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-2) 6px;
+  padding: var(--space-1) var(--space-2) var(--space-2);
 }
 
 .composer__controls {
@@ -212,54 +298,11 @@
   line-height: var(--line-height-normal);
 }
 
-.composer__context {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-3);
-  margin: 0;
-  padding: 0 var(--space-3) var(--space-2);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-}
-
-.composer__context-item,
 .access-mode {
   display: inline-flex;
   min-width: 0;
   align-items: center;
   gap: var(--space-1);
-}
-
-.composer__context-item span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.composer__context-item--usage {
-  gap: var(--space-2);
-}
-
-.composer__context-usage {
-  display: inline-block;
-  width: calc(var(--space-4) * 4);
-  height: var(--space-1);
-  flex: none;
-  overflow: hidden;
-  border-radius: var(--radius-pill);
-  background: var(--color-border-strong);
-}
-
-.composer__context-usage-fill {
-  display: block;
-  width: var(--composer-context-usage);
-  height: 100%;
-  border-radius: var(--radius-pill);
-  background: var(--color-accent);
-}
-
-.access-mode {
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   white-space: nowrap;
@@ -267,8 +310,8 @@
 
 .send-button {
   display: grid;
-  width: var(--control-height-default);
-  height: var(--control-height-default);
+  width: var(--control-height-emphasis);
+  height: var(--control-height-emphasis);
   grid-area: send;
   padding: 0;
   place-items: center;
@@ -298,7 +341,7 @@
 
 .send-button--cancel {
   width: auto;
-  min-width: 64px;
+  min-width: 72px;
   padding: 0 var(--space-3);
   color: var(--color-text-primary);
   background: var(--color-danger-muted);
@@ -351,17 +394,13 @@
 }
 
 @media (max-width: 520px) {
-  .composer__shortcut {
-    display: none;
-  }
-
   .select-control {
     max-width: none;
     flex-basis: 100%;
   }
 
-  .composer__context {
-    flex-wrap: wrap;
+  .composer__attachment-row {
+    align-items: flex-start;
   }
 }
 
@@ -377,7 +416,8 @@
   }
 
   .composer__context,
-  .composer__shortcut {
+  .composer__shortcut,
+  .composer__affordances {
     display: none;
   }
 }
@@ -385,6 +425,7 @@
 @media (forced-colors: active) {
   .composer,
   .composer__attachment,
+  .composer__affordance,
   .composer__attachment-remove,
   .select-control--chip,
   .send-button {

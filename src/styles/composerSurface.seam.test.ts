@@ -39,10 +39,10 @@ describe("Composer surface stylesheet seam", () => {
     );
 
     expect(surfaceCss).toMatch(
-      /\.composer textarea\s*\{[^}]*min-height:\s*56px;[^}]*padding:\s*var\(--space-3\)\s+var\(--space-3\)\s+var\(--space-1\);/s,
+      /\.composer textarea\s*\{[^}]*min-height:\s*76px;[^}]*padding:\s*var\(--space-3\)\s+var\(--space-3\)\s+var\(--space-6\);/s,
     );
     expect(surfaceCss).toMatch(
-      /@media \(max-width:\s*820px\)[\s\S]*\.composer__shortcut\s*\{[^}]*display:\s*none;/s,
+      /@media \(max-width:\s*820px\)[\s\S]*\.composer__shortcut,\s*\.access-mode\s*\{[^}]*display:\s*none;/s,
     );
     expect(surfaceCss).not.toMatch(/transform:\s*translate/);
   });
@@ -59,10 +59,36 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer__context-usage\s*\{[^}]*border-radius:\s*var\(--radius-pill\);[^}]*background:\s*var\(--color-border-strong\);/s,
     );
     expect(surfaceCss).toMatch(
+      /\.composer__context\s*\{[^}]*position:\s*absolute;[^}]*right:\s*var\(--space-3\);[^}]*bottom:\s*var\(--space-2\);[^}]*pointer-events:\s*none;/s,
+    );
+    expect(surfaceCss).toMatch(
       /\.composer__context-usage-fill\s*\{[^}]*width:\s*var\(--composer-context-usage\);[^}]*border-radius:\s*var\(--radius-pill\);[^}]*background:\s*var\(--color-accent\);/s,
     );
     expect(surfaceCss).toMatch(
       /@media \(forced-colors:\s*active\)\s*\{[\s\S]*?\.composer__context-usage\s*\{[^}]*border:[^}]*CanvasText;/s,
+    );
+  });
+
+  it("places disabled affordances and removable attachment chips on one row", async () => {
+    const surfaceCss = await readFile(
+      resolve("src/styles/composer-surface.css"),
+      "utf8",
+    );
+
+    expect(surfaceCss).toMatch(
+      /\.composer__attachment-row\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;/s,
+    );
+    expect(surfaceCss).toMatch(
+      /\.composer__attachments\s*\{[^}]*flex:\s*1\s+1\s+auto;[^}]*padding:\s*0;/s,
+    );
+    expect(surfaceCss).toMatch(
+      /\.send-button\s*\{[^}]*width:\s*var\(--control-height-emphasis\);[^}]*height:\s*var\(--control-height-emphasis\);[^}]*background:\s*var\(--color-accent\);/s,
+    );
+    expect(surfaceCss).toMatch(
+      /@media \(max-height:\s*360px\)[\s\S]*?\.composer__affordances\s*\{[^}]*display:\s*none;/s,
+    );
+    expect(surfaceCss).not.toMatch(
+      /@media \(max-height:\s*360px\)[\s\S]*?\.composer__attachment-row\s*\{[^}]*display:\s*none;/s,
     );
   });
 
