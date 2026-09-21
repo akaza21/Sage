@@ -1,24 +1,32 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, ffi::OsString, sync::Arc};
 
 use serde_json::{Value, json};
 
 use crate::acp::{
-    bindings::adapter::{
-        AdapterBatch, AdapterBatchBuilder, AdapterCommand, AdapterEgress,
-        AdapterEvent as SharedEvent, AdapterModel, AdapterRuntimeError, EgressResolution,
-        EgressToken, HarnessAdapter, ResourceMapper as SharedResourceMapper,
+    bindings::{
+        adapter::{
+            AdapterBatch, AdapterBatchBuilder, AdapterCommand, AdapterEgress,
+            AdapterEvent as SharedEvent, AdapterModel, AdapterRuntimeError, EgressResolution,
+            EgressToken, HarnessAdapter, ResourceMapper as SharedResourceMapper,
+        },
+        runtime::{LaunchableRuntime, NativeRuntime, RuntimeFactory},
     },
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     intent::{CapabilitySnapshotV1, ExternalId},
     lifecycle::TurnState,
     limits::LIMITS,
+    process::{
+        ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
+        RequiredContainment, TreeLimits,
+    },
     runtime::{later_permission::resolve_later_permission, permissions::PermissionDecision},
     transport::{Frame, OutboundFrame, request_payload_digest},
 };
 
 use super::{
     AdapterEvent, CandidateManifest, ClaudeCapabilityOffer, ClaudeTranslator, PromptTerminal,
-    negotiate_capabilities, validate_research_candidate, wire::decode_frame,
+    admission::AdmittedClaudeBinding, negotiate_capabilities, validate_research_candidate,
+    wire::decode_frame,
 };
 
 mod browse_host;
@@ -34,6 +42,8 @@ use support::*;
 const MAX_PENDING_REQUESTS: usize = 16;
 
 pub(crate) struct ClaudeRuntime {
+    launch_binding: Option<Arc<AdmittedClaudeBinding>>,
+    pending_project_root: Option<crate::project_registry::ProjectRootAuthority>,
     binding_digest: [u8; 32],
     runtime_epoch: RuntimeEpoch,
     session_id: SageAgentSessionId,
@@ -114,12 +124,29 @@ impl ClaudeRuntime {
         candidate
             .require_launch_admission()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        Ok(Self::new(binding_digest, runtime_epoch, session_id))
+        Ok(Self::new(None, binding_digest, runtime_epoch, session_id))
+    }
+
+    pub(crate) fn from_admitted_binding(
+        binding: Arc<AdmittedClaudeBinding>,
+        runtime_epoch: RuntimeEpoch,
+        session_id: SageAgentSessionId,
+    ) -> Result<Self, AdapterRuntimeError> {
+        binding
+            .revalidate()
+            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        Ok(Self::new(
+            Some(binding.clone()),
+            binding.binding_digest(),
+            runtime_epoch,
+            session_id,
+        ))
     }
 
     #[cfg(test)]
     pub(super) fn fixture() -> Self {
         Self::new(
+            None,
             [7; 32],
             RuntimeEpoch::new(3).expect("runtime epoch"),
             SageAgentSessionId::parse("session-claude-runtime").expect("session"),
@@ -127,11 +154,14 @@ impl ClaudeRuntime {
     }
 
     fn new(
+        launch_binding: Option<Arc<AdmittedClaudeBinding>>,
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Self {
         Self {
+            launch_binding,
+            pending_project_root: None,
             binding_digest,
             runtime_epoch,
             session_id,
@@ -186,6 +216,119 @@ impl ClaudeRuntime {
                 .as_ref()
                 .is_some_and(|default| default == model)
         })
+    }
+
+    fn launch_spec(
+        &mut self,
+        project_root: crate::project_registry::ProjectRootAuthority,
+    ) -> Result<LaunchSpec, AdapterRuntimeError> {
+        let binding = self
+            .launch_binding
+            .as_deref()
+            .ok_or(AdapterRuntimeError::LaunchUnavailable)?;
+        binding
+            .revalidate()
+            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        let candidate = binding.candidate();
+        let metadata = std::fs::metadata(&candidate.runtime_path)
+            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        let artifact = ArtifactExpectation::new(
+            digest_identity(self.binding_digest),
+            candidate.runtime_path.clone(),
+            parse_digest(&candidate.runtime_sha256)?,
+            metadata.len(),
+        )
+        .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        let fixed_args = BoundedOsArgs::new(vec![OsString::from(&candidate.artifact_path)])
+            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        let environment = BoundedEnvironment::new(
+            binding
+                .launch_environment()
+                .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?,
+        )
+        .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        project_root
+            .revalidate()
+            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        Ok(LaunchSpec {
+            binding_id: digest_identity(self.binding_digest),
+            runtime_epoch: self.runtime_epoch.get(),
+            artifact,
+            fixed_args,
+            environment,
+            project_root,
+            required_guarantee: if cfg!(windows) {
+                RequiredContainment::EnforcedTree
+            } else {
+                RequiredContainment::TrustedCooperativeTree
+            },
+            limits: TreeLimits::ade_0006a(),
+            deadlines: ProcessDeadlines::ade_0006a(),
+            absolute_cleanup_deadline: None,
+            #[cfg(all(test, windows))]
+            test_after_artifact_verified: None,
+        })
+    }
+}
+
+fn parse_digest(value: &str) -> Result<[u8; 32], AdapterRuntimeError> {
+    if value.len() != 64 {
+        return Err(AdapterRuntimeError::LaunchUnavailable);
+    }
+    let mut digest = [0_u8; 32];
+    for (index, byte) in digest.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16)
+            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+    }
+    Ok(digest)
+}
+
+fn digest_identity(digest: [u8; 32]) -> uuid::Uuid {
+    let mut identity = [0_u8; 16];
+    identity.copy_from_slice(&digest[..16]);
+    uuid::Uuid::from_bytes(identity)
+}
+
+pub(crate) struct ClaudeRuntimeFactory {
+    binding: Arc<AdmittedClaudeBinding>,
+    project_root: crate::project_registry::ProjectRootAuthority,
+}
+
+impl ClaudeRuntimeFactory {
+    pub(crate) fn from_admitted_binding(
+        binding: Arc<AdmittedClaudeBinding>,
+        project_root: crate::project_registry::ProjectRootAuthority,
+    ) -> Self {
+        Self {
+            binding,
+            project_root,
+        }
+    }
+}
+
+impl RuntimeFactory for ClaudeRuntimeFactory {
+    fn construct(
+        self: Box<Self>,
+        runtime_epoch: RuntimeEpoch,
+        session_id: SageAgentSessionId,
+    ) -> Result<NativeRuntime, AdapterRuntimeError> {
+        let Self {
+            binding,
+            project_root,
+        } = *self;
+        let mut runtime = ClaudeRuntime::from_admitted_binding(binding, runtime_epoch, session_id)?;
+        runtime.pending_project_root = Some(project_root);
+        Ok(NativeRuntime::new(runtime))
+    }
+}
+
+impl LaunchableRuntime for ClaudeRuntime {
+    fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError> {
+        let project_root = self
+            .pending_project_root
+            .take()
+            .ok_or(AdapterRuntimeError::LaunchUnavailable)?;
+        ClaudeRuntime::launch_spec(self, project_root)
     }
 }
 

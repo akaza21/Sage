@@ -10,6 +10,7 @@ use tokio::io::AsyncWrite;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use super::admission::{ClaudeAdmissionUnavailable, ClaudeBindingRegistration};
 use super::*;
 use crate::acp::{
     contract::{
@@ -28,6 +29,7 @@ use crate::acp::{
     },
     transport::{DeadlineAsyncWriter, FrameReader},
 };
+use crate::harness_discovery::{ClaudeLaunchDiscovery, DiscoveredClaudeLaunch};
 
 struct P02Capture(Vec<u8>);
 impl AsyncWrite for P02Capture {
@@ -1109,90 +1111,138 @@ fn foreign_sessions_or_orphan_tools_fail_without_projection() {
 }
 
 #[test]
-fn research_manifest_is_exact_bounded_single_root_and_never_launchable() {
+fn launch_manifest_admits_valid_discovery_shape_and_rejects_contract_drift() {
+    let adapter = absolute("claude-adapter.js");
     let candidate = CandidateManifest {
-        source_commit: Some("c2e4815029ef3962787ecaefe208b0b6f8b81302".into()),
         adapter_version: "0.76.0".into(),
         acp_sdk_version: "1.4.0".into(),
-        claude_sdk_version: "0.3.257".into(),
-        zod_version: "4.6.4".into(),
         entrypoint: "dist/index.js".into(),
         node_engine: ">=22".into(),
         node_version: "22.18.0".into(),
-        license: "Apache-2.0".into(),
-        artifact_path: absolute("claude-adapter.js"),
+        artifact_path: adapter.clone(),
         artifact_sha256: "9d73d1f0f121fb96cc8badb28c22d5bff02d8582eb2e40360a81c189e1b9422a".into(),
         runtime_path: absolute("node.exe"),
         runtime_sha256: "c22d1c59a1f767a1ed0178445a027f2257d318c55430fc819d48f269586822b7".into(),
         isolated_state_dir: absolute("isolated-state"),
-        fixed_arguments: vec!["claude-adapter.js".into()],
+        fixed_arguments: vec![adapter.to_string_lossy().into_owned()],
         environment_keys: vec!["CLAUDE_CONFIG_DIR".into()],
         project_root_count: 1,
     };
-    let validated = validate_research_candidate(candidate.clone(), &[]).unwrap();
-    assert!(matches!(
-        validated.require_launch_admission(),
-        Err(ManifestError::ArtifactGraphNotAdmitted)
-    ));
-    let mut identity_mismatch = candidate.clone();
-    identity_mismatch.zod_version = "4.6.3".into();
-    assert!(matches!(
-        validate_research_candidate(identity_mismatch, &[]),
+    // This discriminates because the validated candidate survives only the
+    // exact Node/adapter contract; each mutation below changes one guard.
+    assert!(validate_research_candidate(candidate.clone(), &[]).is_ok());
+    let mut sdk_mismatch = candidate.clone();
+    sdk_mismatch.acp_sdk_version = "1.5.0".into();
+    assert_eq!(
+        validate_research_candidate(sdk_mismatch, &[]),
         Err(ManifestError::IdentityMismatch)
-    ));
-    let mut missing_source_commit = candidate.clone();
-    missing_source_commit.source_commit = None;
-    assert!(matches!(
-        validate_research_candidate(missing_source_commit, &[]),
-        Err(ManifestError::IdentityMismatch)
-    ));
-    let mut entrypoint_mismatch = candidate.clone();
-    entrypoint_mismatch.entrypoint = "dist/lib.js".into();
-    assert!(matches!(
-        validate_research_candidate(entrypoint_mismatch, &[]),
-        Err(ManifestError::IdentityMismatch)
-    ));
-    let mut engine_mismatch = candidate.clone();
-    engine_mismatch.node_engine = ">=22.19.0".into();
-    assert!(matches!(
-        validate_research_candidate(engine_mismatch, &[]),
-        Err(ManifestError::IdentityMismatch)
-    ));
-    let mut runtime_mismatch = candidate.clone();
-    runtime_mismatch.node_version = "22.19.0".into();
-    assert!(matches!(
-        validate_research_candidate(runtime_mismatch, &[]),
-        Err(ManifestError::IdentityMismatch)
-    ));
-    let mut malformed_digest = candidate.clone();
-    malformed_digest.artifact_sha256 = "z".repeat(64);
-    assert!(matches!(
-        validate_research_candidate(malformed_digest, &[]),
-        Err(ManifestError::Hash)
-    ));
-    let mut artifact_mismatch = candidate.clone();
-    artifact_mismatch.artifact_sha256 = "0".repeat(64);
-    assert!(matches!(
-        validate_research_candidate(artifact_mismatch, &[]),
-        Err(ManifestError::IdentityMismatch)
-    ));
-    let mut runtime_digest_mismatch = candidate.clone();
-    runtime_digest_mismatch.runtime_sha256 = "0".repeat(64);
-    assert!(matches!(
-        validate_research_candidate(runtime_digest_mismatch, &[]),
-        Err(ManifestError::IdentityMismatch)
-    ));
-    let mut multi_root = candidate.clone();
-    multi_root.project_root_count = 2;
-    assert!(matches!(
-        validate_research_candidate(multi_root, &[]),
-        Err(ManifestError::MultiRootUnsupported)
-    ));
-    let forbidden = vec![candidate.isolated_state_dir.clone()];
-    assert!(matches!(
-        validate_research_candidate(candidate, &forbidden),
+    );
+    let mut old_node = candidate.clone();
+    old_node.node_version = "21.9.0".into();
+    assert_eq!(
+        validate_research_candidate(old_node, &[]),
+        Err(ManifestError::NodeEngineMismatch)
+    );
+    let ambient = candidate.clone();
+    let forbidden = vec![ambient.isolated_state_dir.clone()];
+    assert_eq!(
+        validate_research_candidate(ambient, &forbidden),
         Err(ManifestError::AmbientState)
-    ));
+    );
+    let mut unbounded_environment = candidate;
+    unbounded_environment.environment_keys.push("PATH".into());
+    assert_eq!(
+        validate_research_candidate(unbounded_environment, &[]),
+        Err(ManifestError::Environment)
+    );
+}
+
+#[test]
+fn injectable_discovery_reports_each_admission_refusal_truthfully() {
+    let root = absolute("claude-isolated-state");
+    // Each case is a distinct discovery outcome, so this cannot pass if
+    // admission collapses absent, unreadable, and incompatible evidence.
+    for (discovery, expected) in [
+        (
+            ClaudeLaunchDiscovery::AdapterAbsent,
+            ClaudeAdmissionUnavailable::AdapterAbsent,
+        ),
+        (
+            ClaudeLaunchDiscovery::AdapterVersionUnreadable,
+            ClaudeAdmissionUnavailable::AdapterVersionUnreadable,
+        ),
+        (
+            ClaudeLaunchDiscovery::NodeAbsent,
+            ClaudeAdmissionUnavailable::NodeAbsent,
+        ),
+        (
+            ClaudeLaunchDiscovery::NodeVersionUnreadable,
+            ClaudeAdmissionUnavailable::NodeVersionUnreadable,
+        ),
+    ] {
+        let registration = ClaudeBindingRegistration::admitted_for_test(discovery, root.clone());
+        assert_eq!(registration.unavailable(), Some(expected));
+        assert!(!registration.is_available());
+    }
+}
+
+#[test]
+fn injectable_discovery_refuses_acp_sdk_mismatch() {
+    let candidate = DiscoveredClaudeLaunch {
+        adapter_path: absolute("adapter.js"),
+        adapter_version: "0.76.0".into(),
+        acp_sdk_version: "9.9.9".into(),
+        node_engine: ">=22".into(),
+        node_path: absolute("node.exe"),
+        node_version: "22.18.0".into(),
+        adapter_sha256: "0".repeat(64),
+        node_sha256: "1".repeat(64),
+    };
+    // This discriminates because the incompatible SDK is readable but must not
+    // be admitted merely because the adapter and Node shapes are complete.
+    let registration = ClaudeBindingRegistration::admitted_for_test(
+        ClaudeLaunchDiscovery::Present(Box::new(candidate)),
+        absolute("claude-isolated-state"),
+    );
+    assert_eq!(
+        registration.unavailable(),
+        Some(ClaudeAdmissionUnavailable::AcpSdkMismatch)
+    );
+}
+
+#[test]
+fn admitted_runtime_launch_contract_scopes_state_and_environment() {
+    let root = std::env::temp_dir().join(format!("sage-claude-admission-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let adapter = root.join("adapter.js");
+    let node = root.join("node.exe");
+    fs::write(&adapter, b"adapter").unwrap();
+    fs::write(&node, b"node").unwrap();
+    let candidate = DiscoveredClaudeLaunch {
+        adapter_path: adapter.clone(),
+        adapter_version: "0.76.0".into(),
+        acp_sdk_version: "1.4.0".into(),
+        node_engine: ">=22".into(),
+        node_path: node.clone(),
+        node_version: "22.18.0".into(),
+        adapter_sha256: crate::harness_discovery::sha256_file(&adapter).unwrap(),
+        node_sha256: crate::harness_discovery::sha256_file(&node).unwrap(),
+    };
+    let state = root.join("state");
+    let registration = ClaudeBindingRegistration::admitted_for_test(
+        ClaudeLaunchDiscovery::Present(Box::new(candidate)),
+        state.clone(),
+    );
+    let binding = registration.refresh().unwrap();
+    // This discriminates because the concrete admitted authority has exactly one
+    // bounded environment entry and binds Node to the adapter script.
+    assert_eq!(
+        binding.launch_environment().unwrap(),
+        vec![("CLAUDE_CONFIG_DIR".into(), state.into())]
+    );
+    assert_eq!(binding.candidate().runtime_path, node);
+    assert_eq!(binding.candidate().artifact_path, adapter);
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

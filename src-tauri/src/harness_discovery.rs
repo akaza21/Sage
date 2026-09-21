@@ -7,6 +7,7 @@
 use std::{path::Path, path::PathBuf, time::Duration};
 
 mod candidates;
+mod claude;
 mod parsing;
 mod validation;
 mod version_probe;
@@ -15,6 +16,9 @@ mod version_probe;
 mod tests;
 
 use candidates::{legacy_candidates, production_candidates};
+pub(crate) use claude::{
+    ClaudeLaunchDiscovery, DiscoveredClaudeLaunch, discover_claude_launch, sha256_file,
+};
 use parsing::{normalized_legacy_version, parse_harness_version};
 use validation::{authentic_harness_file as validate_harness_file, legacy_basenames};
 use version_probe::run_version_command;

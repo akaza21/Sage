@@ -140,7 +140,7 @@ impl AcpService {
         };
         let ceiling = admitted
             .supported_capabilities()
-            .map_err(CodexSessionError::Binding)?;
+            .map_err(|error| CodexSessionError::Binding(error.into()))?;
         command.artifact_digest = binding.artifact_digest().to_owned();
         let intent = ActivationIntent {
             binding_digest: binding.binding_digest(),

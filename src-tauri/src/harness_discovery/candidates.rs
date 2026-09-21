@@ -79,7 +79,7 @@ fn known_install_roots() -> Vec<PathBuf> {
 }
 
 #[cfg(windows)]
-pub(super) fn known_install_roots_from_app_data(app_data: Option<&OsStr>) -> Vec<PathBuf> {
+pub(crate) fn known_install_roots_from_app_data(app_data: Option<&OsStr>) -> Vec<PathBuf> {
     app_data
         .map(|app_data| PathBuf::from(app_data).join("npm"))
         .filter(|root| is_local_probe_root(root))

@@ -119,7 +119,13 @@ impl HarnessCatalog {
     }
 
     fn install_state(&self, harness_id: &str) -> &'static str {
-        if self.discovered(harness_id).is_some() {
+        if self
+            .registry
+            .for_harness(harness_id)
+            .is_some_and(|record| record.admission_available())
+        {
+            "available"
+        } else if self.discovered(harness_id).is_some() {
             "unavailable"
         } else {
             "notInstalled"
@@ -136,6 +142,7 @@ impl HarnessCatalog {
         match self.registry.for_harness(harness_id) {
             Some(record) => match record.model_provider {
                 ModelProvider::CodexAccount => CuratedProtocol::account_models(record.binding_id()),
+                ModelProvider::ClaudeAdapter => CuratedProtocol::acp(Some(record.binding_id())),
             },
             None => CuratedProtocol::acp(None),
         }
@@ -162,10 +169,10 @@ impl HarnessCatalog {
             definition(
                 "claude-code",
                 "Claude Code",
-                "Local CLI discovery; launch integration remains pending.",
+                "Launches the discovered local Claude ACP adapter through Node.",
                 self.install_state("claude-code"),
                 "builtIn",
-                CuratedProtocol::acp(None),
+                self.registered_protocol("claude-code"),
             ),
             definition(
                 "oh-my-pi",

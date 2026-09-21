@@ -26,19 +26,59 @@ pub(super) fn expected_basenames(harness: HarnessExecutable) -> &'static [&'stat
 }
 
 pub(super) fn authentic_harness_file(path: &Path, expected_basename: &str) -> bool {
-    if path.as_os_str().is_empty()
-        || path_native_bytes(path.as_os_str()) > PATH_BYTES_MAX
-        || path.file_name() != Some(OsStr::new(expected_basename))
+    path.file_name() == Some(OsStr::new(expected_basename)) && authentic_file_with_parents(path)
+}
+
+/// Validates a package file relative to a bounded, plain npm-global root. Every
+/// path segment is inspected so a package, `node_modules`, or adapter entry can
+/// never cross a symlink/reparse-point boundary after root discovery.
+pub(super) fn authentic_descendant_file(root: &Path, relative: impl AsRef<Path>) -> bool {
+    let relative = relative.as_ref();
+    if !is_local_probe_root(root)
+        || relative.as_os_str().is_empty()
+        || relative.components().any(|part| {
+            matches!(
+                part,
+                Component::ParentDir
+                    | Component::CurDir
+                    | Component::RootDir
+                    | Component::Prefix(_)
+            )
+        })
     {
+        return false;
+    }
+    let mut current = root.to_path_buf();
+    if !usable_probe_directory(&current) {
+        return false;
+    }
+    let mut parts = relative.components().peekable();
+    while let Some(part) = parts.next() {
+        let Component::Normal(name) = part else {
+            return false;
+        };
+        current.push(name);
+        let metadata = current.symlink_metadata();
+        if parts.peek().is_some() {
+            if !matches!(metadata, Ok(meta) if meta.is_dir() && !is_link(&meta)) {
+                return false;
+            }
+        } else if !matches!(metadata, Ok(meta) if meta.is_file() && !is_link(&meta)) {
+            return false;
+        }
+    }
+    path_native_bytes(current.as_os_str()) <= PATH_BYTES_MAX
+}
+
+fn authentic_file_with_parents(path: &Path) -> bool {
+    if path.as_os_str().is_empty() || path_native_bytes(path.as_os_str()) > PATH_BYTES_MAX {
         return false;
     }
     let Some(parent) = path.parent() else {
         return false;
     };
-    if !usable_probe_directory(parent) {
-        return false;
-    }
-    matches!(path.symlink_metadata(), Ok(meta) if meta.is_file() && !is_link(&meta))
+    usable_probe_directory(parent)
+        && matches!(path.symlink_metadata(), Ok(meta) if meta.is_file() && !is_link(&meta))
 }
 
 pub(super) fn is_local_probe_root(dir: &Path) -> bool {

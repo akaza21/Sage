@@ -70,10 +70,16 @@ impl AcpService {
                 record.admission().clone(),
                 Arc::clone(&codex_gate),
             ),
+            ModelProvider::ClaudeAdapter => {
+                unreachable!("Codex bootstrap always uses the Codex record")
+            }
         };
         let codex_auth = match record.auth_provider {
             AuthProvider::CodexHarness => {
                 CodexAuthManager::new(record.admission().clone(), Arc::clone(&codex_gate))
+            }
+            AuthProvider::ClaudeHarness => {
+                unreachable!("Codex bootstrap always uses the Codex record")
             }
         };
         Ok(Self {
