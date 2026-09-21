@@ -1,20 +1,171 @@
-//! Bounded load-time discovery of user-installed harness CLIs.
+//! Bounded, read-only discovery of user-installed harness CLIs.
 //!
-//! Discovery proves only that a named, runnable executable is currently
-//! available. Protocol capability and session admission remain separate.
+//! Discovery is separate from protocol characterisation and launch admission.
+//! A validated executable whose version cannot be read remains truthfully
+//! present-but-unreadable rather than becoming absent or acquiring a guess.
 
-use std::{
-    collections::HashSet,
-    ffi::OsString,
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
-    thread,
-    time::{Duration, Instant},
-};
+use std::{path::Path, path::PathBuf, time::Duration};
 
-const MAX_CANDIDATES: usize = 128;
-const VERSION_TIMEOUT: Duration = Duration::from_secs(2);
+mod candidates;
+mod parsing;
+mod validation;
+mod version_probe;
 
+#[cfg(test)]
+mod tests;
+
+use candidates::{legacy_candidates, production_candidates};
+use parsing::{normalized_legacy_version, parse_harness_version};
+use validation::{authentic_harness_file as validate_harness_file, legacy_basenames};
+use version_probe::run_version_command;
+
+/// At most this many `PATH` directories are inspected for one harness.
+pub(crate) const PATH_DIR_CAP: usize = 16;
+/// The probe rejects paths whose platform-native byte representation is larger
+/// than this value.
+pub(crate) const PATH_BYTES_MAX: usize = 32 * 1024;
+pub(super) const KNOWN_INSTALL_ROOT_CAP: usize = 4;
+pub(super) const VERSION_OUTPUT_BYTES_MAX: usize = 16 * 1024;
+pub(super) const VERSION_TIMEOUT: Duration = Duration::from_secs(2);
+pub(super) const VERSION_REAP_TIMEOUT: Duration = Duration::from_millis(250);
+pub(super) const VERSION_POLL_INTERVAL: Duration = Duration::from_millis(5);
+
+/// The two harness executables covered by host discovery.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HarnessExecutable {
+    Codex,
+    Claude,
+}
+
+impl HarnessExecutable {
+    pub(super) fn identifier(self) -> &'static str {
+        match self {
+            Self::Codex => "codex",
+            Self::Claude => "claude-code",
+        }
+    }
+}
+
+/// A conservative, normalized semantic version. Pre-release and build
+/// metadata are intentionally not accepted until Sage has a concrete harness
+/// output shape for them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HarnessVersion {
+    major: u32,
+    minor: u32,
+    patch: u32,
+}
+
+impl std::fmt::Display for HarnessVersion {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+/// Where the executable's validated parent directory was discovered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DiscoverySource {
+    Path,
+    KnownInstallRoot,
+}
+
+/// A validated harness executable with a strictly parsed version.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DiscoveredHarness {
+    pub(crate) executable: PathBuf,
+    pub(crate) version: HarnessVersion,
+    pub(crate) source: DiscoverySource,
+}
+
+/// The complete truthful result of inspecting one named harness.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HarnessDiscovery {
+    Absent,
+    PresentVersionUnreadable {
+        executable: PathBuf,
+        source: DiscoverySource,
+    },
+    Present(DiscoveredHarness),
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct ProbeLimits {
+    pub(super) command_deadline: Duration,
+    pub(super) reap_deadline: Duration,
+    pub(super) output_bytes_max: usize,
+}
+
+impl ProbeLimits {
+    pub(super) const PRODUCTION: Self = Self {
+        command_deadline: VERSION_TIMEOUT,
+        reap_deadline: VERSION_REAP_TIMEOUT,
+        output_bytes_max: VERSION_OUTPUT_BYTES_MAX,
+    };
+}
+
+/// Discovers Codex or Claude using only bounded, validated candidate paths.
+///
+/// The worst case for one call is inspection of 16 `PATH` roots plus four
+/// known-install roots, followed by one version probe capped at 2 seconds and
+/// a 250 ms reap attempt. Stdout and stderr retain at most 16 KiB each.
+pub(crate) fn discover_harness(harness: HarnessExecutable) -> HarnessDiscovery {
+    discover_from_candidates(
+        harness,
+        production_candidates(harness),
+        ProbeLimits::PRODUCTION,
+    )
+}
+
+/// Shared validation used by legacy Codex host-presence reporting. This checks
+/// the same path and link discipline as full discovery without running a child.
+pub(crate) fn authentic_harness_file(path: &Path, expected_basename: &str) -> bool {
+    validate_harness_file(path, expected_basename)
+}
+
+/// Returns candidates formed from the first bounded set of valid PATH roots.
+/// Kept public within the crate so Codex's compatibility presence API can
+/// retain its exact historical PATH-only candidate set.
+pub(crate) fn path_candidates_for_basename(expected_basename: &str) -> Vec<PathBuf> {
+    candidates::path_candidates_for_basename(expected_basename)
+}
+
+fn discover_from_candidates(
+    harness: HarnessExecutable,
+    candidates: Vec<candidates::Candidate>,
+    limits: ProbeLimits,
+) -> HarnessDiscovery {
+    let Some(candidate) = candidates.into_iter().find(|candidate| {
+        validation::expected_basenames(harness)
+            .iter()
+            .any(|basename| validate_harness_file(&candidate.executable, basename))
+    }) else {
+        return HarnessDiscovery::Absent;
+    };
+
+    let Some(output) = run_version_command(&candidate.executable, limits) else {
+        return HarnessDiscovery::PresentVersionUnreadable {
+            executable: candidate.executable,
+            source: candidate.source,
+        };
+    };
+    let version = parse_harness_version(harness, &output.stdout)
+        .or_else(|| parse_harness_version(harness, &output.stderr));
+    match version {
+        Some(version) => HarnessDiscovery::Present(DiscoveredHarness {
+            executable: candidate.executable,
+            version,
+            source: candidate.source,
+        }),
+        None => HarnessDiscovery::PresentVersionUnreadable {
+            executable: candidate.executable,
+            source: candidate.source,
+        },
+    }
+}
+
+// The pre-HR-1 projection still consumes the legacy installed-harness shape.
+// Keep that adapter here so it shares candidate validation and the bounded
+// version process rather than growing a parallel discovery path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InstalledHarness {
     pub(crate) id: &'static str,
@@ -23,170 +174,58 @@ pub(crate) struct InstalledHarness {
 }
 
 #[derive(Clone, Copy)]
-struct HarnessSpec {
-    id: &'static str,
-    command: &'static str,
+enum InstalledHarnessSpec {
+    Shared(HarnessExecutable),
+    Legacy {
+        id: &'static str,
+        command: &'static str,
+    },
 }
 
-const HARNESS_SPECS: &[HarnessSpec] = &[
-    HarnessSpec {
-        id: "codex",
-        command: "codex",
-    },
-    HarnessSpec {
-        id: "claude-code",
-        command: "claude",
-    },
-    HarnessSpec {
+const INSTALLED_HARNESS_SPECS: &[InstalledHarnessSpec] = &[
+    InstalledHarnessSpec::Shared(HarnessExecutable::Codex),
+    InstalledHarnessSpec::Shared(HarnessExecutable::Claude),
+    InstalledHarnessSpec::Legacy {
         id: "oh-my-pi",
         command: "omp",
     },
-    HarnessSpec {
+    InstalledHarnessSpec::Legacy {
         id: "pi",
         command: "pi",
     },
 ];
 
-/// Runs during bootstrap and never treats a PATH string or a filename as
-/// availability. The candidate must successfully execute its own version
-/// command before it is returned.
 pub(crate) fn discover_installed_harnesses() -> Vec<InstalledHarness> {
-    HARNESS_SPECS.iter().filter_map(discover).collect()
-}
-
-fn discover(spec: &HarnessSpec) -> Option<InstalledHarness> {
-    candidate_paths(spec.command)
-        .into_iter()
-        .find_map(|executable| {
-            run_version(&executable).map(|version| InstalledHarness {
-                id: spec.id,
-                executable,
-                version,
-            })
+    INSTALLED_HARNESS_SPECS
+        .iter()
+        .filter_map(|spec| match *spec {
+            InstalledHarnessSpec::Shared(harness) => match discover_harness(harness) {
+                HarnessDiscovery::Present(discovered) => Some(InstalledHarness {
+                    id: harness.identifier(),
+                    executable: discovered.executable,
+                    version: discovered.version.to_string(),
+                }),
+                HarnessDiscovery::Absent | HarnessDiscovery::PresentVersionUnreadable { .. } => {
+                    None
+                }
+            },
+            InstalledHarnessSpec::Legacy { id, command } => discover_legacy(id, command),
         })
-}
-
-fn candidate_paths(command: &str) -> Vec<PathBuf> {
-    let mut roots = path_roots();
-    roots.extend(typical_user_roots());
-    let mut seen = HashSet::new();
-    roots
-        .into_iter()
-        .filter(|root| seen.insert(root.clone()))
-        .take(MAX_CANDIDATES)
-        .flat_map(|root| {
-            executable_names(command)
-                .into_iter()
-                .map(move |name| root.join(name))
-        })
-        .filter(|candidate| candidate.is_file())
         .collect()
 }
 
-fn path_roots() -> Vec<PathBuf> {
-    std::env::var_os("PATH")
-        .map(|path| std::env::split_paths(&path).take(MAX_CANDIDATES).collect())
-        .unwrap_or_default()
-}
-
-fn typical_user_roots() -> Vec<PathBuf> {
-    let home = std::env::var_os("USERPROFILE")
-        .or_else(|| std::env::var_os("HOME"))
-        .map(PathBuf::from);
-    #[cfg(windows)]
-    {
-        let mut roots = vec![
-            std::env::var_os("APPDATA").map(|value| PathBuf::from(value).join("npm")),
-            std::env::var_os("LOCALAPPDATA").map(|value| PathBuf::from(value).join("npm")),
-        ];
-        if let Some(home) = home {
-            roots.push(Some(home.join(".local").join("bin")));
-        }
-        roots.into_iter().flatten().collect()
-    }
-    #[cfg(not(windows))]
-    {
-        let mut roots = vec![
-            PathBuf::from("/usr/local/bin"),
-            PathBuf::from("/opt/homebrew/bin"),
-        ];
-        if let Some(home) = home {
-            roots.extend([
-                home.join(".local").join("bin"),
-                home.join(".npm-global").join("bin"),
-                home.join("Library").join("pnpm"),
-            ]);
-        }
-        roots
-    }
-}
-
-fn executable_names(command: &str) -> Vec<OsString> {
-    #[cfg(windows)]
-    {
-        vec![
-            format!("{command}.exe").into(),
-            format!("{command}.cmd").into(),
-        ]
-    }
-    #[cfg(not(windows))]
-    {
-        vec![command.into()]
-    }
-}
-
-fn run_version(executable: &Path) -> Option<String> {
-    let mut child = Command::new(executable)
-        .arg("--version")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .ok()?;
-    let deadline = Instant::now() + VERSION_TIMEOUT;
-    loop {
-        match child.try_wait().ok()? {
-            Some(status) if status.success() => {
-                let output = child.wait_with_output().ok()?;
-                return normalized_version(&output.stdout)
-                    .or_else(|| normalized_version(&output.stderr));
-            }
-            Some(_) => return None,
-            None if Instant::now() >= deadline => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return None;
-            }
-            None => thread::sleep(Duration::from_millis(10)),
-        }
-    }
-}
-
-fn normalized_version(bytes: &[u8]) -> Option<String> {
-    let output = String::from_utf8_lossy(bytes);
-    let version = output.trim().lines().next()?.trim();
-    (!version.is_empty() && version.len() <= 512).then(|| version.to_owned())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn version_output_requires_nonempty_bounded_first_line() {
-        assert_eq!(
-            normalized_version(b"codex 1.2.3\nignored"),
-            Some("codex 1.2.3".into())
-        );
-        assert_eq!(normalized_version(b" \n"), None);
-        assert_eq!(normalized_version(&vec![b'a'; 513]), None);
-    }
-
-    #[test]
-    fn cli_names_cover_the_curated_installation_catalog() {
-        assert_eq!(
-            HARNESS_SPECS.iter().map(|spec| spec.id).collect::<Vec<_>>(),
-            ["codex", "claude-code", "oh-my-pi", "pi"]
-        );
-    }
+fn discover_legacy(id: &'static str, command: &'static str) -> Option<InstalledHarness> {
+    let candidate = legacy_candidates(command).into_iter().find(|candidate| {
+        legacy_basenames(command)
+            .iter()
+            .any(|basename| validate_harness_file(&candidate.executable, basename))
+    })?;
+    let output = run_version_command(&candidate.executable, ProbeLimits::PRODUCTION)?;
+    let version = normalized_legacy_version(&output.stdout)
+        .or_else(|| normalized_legacy_version(&output.stderr))?;
+    Some(InstalledHarness {
+        id,
+        executable: candidate.executable,
+        version,
+    })
 }

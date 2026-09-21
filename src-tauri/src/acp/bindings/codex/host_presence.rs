@@ -1,13 +1,14 @@
 //! Fail-closed host presence for the Codex catalog.
 //!
-//! A present file is not launch, discovery, or admission authority.
+//! A present file is not launch, discovery, or admission authority. Full
+//! harness discovery lives in `crate::harness_discovery`; this compatibility
+//! projection intentionally retains the existing PATH-only result and callers.
 
-use std::ffi::OsStr;
-use std::fs::Metadata;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
-const PATH_DIR_CAP: usize = 16;
-const PATH_BYTES_MAX: usize = 32 * 1024;
+use crate::harness_discovery::{
+    PATH_BYTES_MAX, PATH_DIR_CAP, authentic_harness_file, path_candidates_for_basename,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CodexHostPresence {
@@ -26,7 +27,10 @@ pub(crate) fn expected_codex_basename() -> &'static str {
 }
 
 pub(crate) fn observe_codex_host_presence() -> CodexHostPresence {
-    observe_codex_host_presence_among(&production_path_candidates())
+    // The shared discovery probe additionally considers known roots and executes
+    // `--version`. This legacy projection intentionally remains PATH-only and
+    // side-effect-free for its existing install-state callers.
+    observe_codex_host_presence_among(&path_candidates_for_basename(expected_codex_basename()))
 }
 
 pub(crate) fn observe_codex_host_presence_among(candidates: &[PathBuf]) -> CodexHostPresence {
@@ -41,80 +45,8 @@ pub(crate) fn observe_codex_host_presence_among(candidates: &[PathBuf]) -> Codex
     }
 }
 
-fn production_path_candidates() -> Vec<PathBuf> {
-    let Some(path) = std::env::var_os("PATH") else {
-        return Vec::new();
-    };
-    std::env::split_paths(&path)
-        .take(PATH_DIR_CAP)
-        .filter(|dir| is_local_probe_root(dir))
-        .map(|dir| dir.join(expected_codex_basename()))
-        .collect()
-}
-
 fn authentic_codex_file(path: &Path) -> bool {
-    if path.as_os_str().is_empty() || path.as_os_str().len() > PATH_BYTES_MAX {
-        return false;
-    }
-    if path.file_name() != Some(OsStr::new(expected_codex_basename())) {
-        return false;
-    }
-    let Some(parent) = path.parent() else {
-        return false;
-    };
-    if !usable_probe_directory(parent) {
-        return false;
-    }
-    matches!(path.symlink_metadata(), Ok(meta) if meta.is_file() && !is_link(&meta))
-}
-
-fn usable_probe_directory(dir: &Path) -> bool {
-    if !is_local_probe_root(dir) {
-        return false;
-    }
-    matches!(dir.symlink_metadata(), Ok(meta) if meta.is_dir() && !is_link(&meta))
-}
-
-fn is_local_probe_root(dir: &Path) -> bool {
-    if dir.as_os_str().is_empty() || dir.as_os_str().len() > PATH_BYTES_MAX {
-        return false;
-    }
-    if dir
-        .components()
-        .any(|component| matches!(component, Component::ParentDir | Component::CurDir))
-    {
-        return false;
-    }
-    #[cfg(windows)]
-    {
-        use std::path::Prefix;
-        matches!(
-            dir.components().next(),
-            Some(Component::Prefix(prefix))
-                if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
-        ) && dir.is_absolute()
-    }
-    #[cfg(not(windows))]
-    {
-        dir.is_absolute()
-    }
-}
-
-fn is_link(meta: &Metadata) -> bool {
-    if meta.file_type().is_symlink() {
-        return true;
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
-        meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = meta;
-        false
-    }
+    authentic_harness_file(path, expected_codex_basename())
 }
 
 #[cfg(test)]
